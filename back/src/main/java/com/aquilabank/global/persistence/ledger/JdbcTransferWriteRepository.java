@@ -143,8 +143,8 @@ public class JdbcTransferWriteRepository implements TransferWritePort {
             .addValue("now", Timestamp.from(now))
             .addValue("lockedUntil", Timestamp.from(now.plusSeconds(30)));
 
-    Integer updated =
-        jdbcTemplate.queryForObject(
+    return jdbcTemplate
+        .query(
             """
             INSERT INTO command_idempotency (
                 idempotency_key,
@@ -166,8 +166,10 @@ public class JdbcTransferWriteRepository implements TransferWritePort {
             RETURNING 1
             """,
             params,
-            Integer.class);
-    return updated != null;
+            (rs, rowNum) -> rs.getInt(1))
+        .stream()
+        .findFirst()
+        .isPresent();
   }
 
   private IdempotencyRecord loadIdempotencyForUpdate(String key) {

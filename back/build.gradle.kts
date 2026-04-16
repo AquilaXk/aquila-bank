@@ -20,6 +20,8 @@ repositories {
 }
 
 dependencies {
+    testImplementation(platform("org.testcontainers:testcontainers-bom:1.21.3"))
+    implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springframework.boot:spring-boot-starter-jdbc")
     implementation("org.springframework.boot:spring-boot-starter-oauth2-resource-server")
@@ -29,8 +31,11 @@ dependencies {
     implementation("org.flywaydb:flyway-core")
     implementation("org.flywaydb:flyway-database-postgresql")
     runtimeOnly("org.postgresql:postgresql")
+    testImplementation("org.springframework.boot:spring-boot-testcontainers")
     testImplementation("org.springframework.security:spring-security-test")
     testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testImplementation("org.testcontainers:junit-jupiter")
+    testImplementation("org.testcontainers:postgresql")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
