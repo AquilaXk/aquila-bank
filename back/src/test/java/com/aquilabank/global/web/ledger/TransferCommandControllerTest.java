@@ -12,7 +12,8 @@ import com.aquilabank.domain.ledger.model.TransferResult;
 import com.aquilabank.domain.ledger.usecase.TransferCommandUseCase;
 import com.aquilabank.global.security.BootstrapHeaderAuthenticationFilter;
 import com.aquilabank.global.web.ApiExceptionHandler;
-import com.aquilabank.global.web.security.CurrentAccountIdArgumentResolver;
+import com.aquilabank.global.web.security.CurrentAuthenticatedPrincipalArgumentResolver;
+import com.aquilabank.global.web.security.RequestAccountAuthorizationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -22,15 +23,19 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 class TransferCommandControllerTest {
 
   private TransferCommandUseCase transferCommandUseCase;
+  private RequestAccountAuthorizationService requestAccountAuthorizationService;
   private MockMvc mockMvc;
 
   @BeforeEach
   void setUp() {
     transferCommandUseCase = mock(TransferCommandUseCase.class);
+    requestAccountAuthorizationService = mock(RequestAccountAuthorizationService.class);
     mockMvc =
-        MockMvcBuilders.standaloneSetup(new TransferCommandController(transferCommandUseCase))
+        MockMvcBuilders.standaloneSetup(
+                new TransferCommandController(
+                    transferCommandUseCase, requestAccountAuthorizationService))
             .addFilters(new BootstrapHeaderAuthenticationFilter("X-Account-Id", "X-Subject"))
-            .setCustomArgumentResolvers(new CurrentAccountIdArgumentResolver())
+            .setCustomArgumentResolvers(new CurrentAuthenticatedPrincipalArgumentResolver())
             .setControllerAdvice(new ApiExceptionHandler())
             .build();
   }
@@ -48,6 +53,9 @@ class TransferCommandControllerTest {
                 8500L,
                 java.time.Instant.parse("2026-04-16T10:00:00Z"),
                 "BOOKED"));
+    when(requestAccountAuthorizationService.resolveTransferSourceAccountId(
+            org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(101L)))
+        .thenReturn(101L);
 
     mockMvc
         .perform(
@@ -58,6 +66,7 @@ class TransferCommandControllerTest {
                 .content(
                     """
                     {
+                      "sourceAccountId": 101,
                       "targetAccountId": 202,
                       "amountMinor": 1500,
                       "currencyCode": "KRW",
@@ -83,6 +92,7 @@ class TransferCommandControllerTest {
                 .content(
                     """
                     {
+                      "sourceAccountId": 101,
                       "targetAccountId": 202,
                       "amountMinor": 1500,
                       "currencyCode": "KRW",
@@ -103,6 +113,7 @@ class TransferCommandControllerTest {
                 .content(
                     """
                     {
+                      "sourceAccountId": 0,
                       "targetAccountId": 101,
                       "amountMinor": 0,
                       "currencyCode": "krw",

@@ -60,10 +60,12 @@ class TransferCommandApiIntegrationTest extends PostgresContainerTestSupport {
     assertEquals(sourceAccountId, response.sourceAccountId());
     assertEquals(targetAccountId, response.targetAccountId());
     assertEquals(8_500L, response.availableBalanceAfterMinor());
+    assertEquals("transfer-001-request", response.requestId());
     assertEquals(2L, countRows("ledger_entry", response.transactionReference()));
     assertEquals(2L, countRows("transaction_read_model", response.transactionReference()));
     assertEquals(8_500L, balanceOf(sourceAccountId));
     assertEquals(1_500L, balanceOf(targetAccountId));
+    assertEquals(2L, countTraceRows(response.requestId()));
 
     Map<String, Object> commandState = idempotencyState("transfer-001");
     assertEquals("COMPLETED", commandState.get("processing_status"));
@@ -99,18 +101,20 @@ class TransferCommandApiIntegrationTest extends PostgresContainerTestSupport {
             .perform(
                 post("/api/v1/transfers")
                     .header("X-Account-Id", String.valueOf(sourceAccountId))
+                    .header("X-Request-Id", "transfer-003-request")
                     .header("Idempotency-Key", "transfer-003")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         """
                     {
+                      "sourceAccountId": %d,
                       "targetAccountId": %d,
                       "amountMinor": 1500,
                       "currencyCode": "KRW",
                       "summary": "rent"
                     }
                     """
-                            .formatted(targetAccountId)))
+                            .formatted(sourceAccountId, targetAccountId)))
             .andReturn();
 
     assertEquals(409, result.getResponse().getStatus(), result.getResponse().getContentAsString());
@@ -135,6 +139,7 @@ class TransferCommandApiIntegrationTest extends PostgresContainerTestSupport {
         mockMvc
             .perform(
                 post("/internal/api/v1/accounts/bootstrap")
+                    .header("X-Request-Id", "bootstrap-%s".formatted(displayName.replace(" ", "-")))
                     .header("X-Bootstrap-Token", "test-bootstrap-api-token")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
@@ -157,29 +162,34 @@ class TransferCommandApiIntegrationTest extends PostgresContainerTestSupport {
   private TransferResponseView invokeTransfer(
       String idempotencyKey, long targetAccountId, long amountMinor, String summary)
       throws Exception {
+    String requestId = idempotencyKey + "-request";
     MvcResult result =
         mockMvc
             .perform(
                 post("/api/v1/transfers")
                     .header("X-Account-Id", String.valueOf(sourceAccountId))
+                    .header("X-Request-Id", requestId)
                     .header("Idempotency-Key", idempotencyKey)
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         """
                         {
+                          "sourceAccountId": %d,
                           "targetAccountId": %d,
                           "amountMinor": %d,
                           "currencyCode": "KRW",
                           "summary": "%s"
                         }
                         """
-                            .formatted(targetAccountId, amountMinor, summary)))
+                            .formatted(sourceAccountId, targetAccountId, amountMinor, summary)))
             .andReturn();
 
     assertEquals(200, result.getResponse().getStatus(), result.getResponse().getContentAsString());
 
-    return objectMapper.readValue(
-        result.getResponse().getContentAsByteArray(), TransferResponseView.class);
+    return new TransferResponseView(
+        objectMapper.readValue(
+            result.getResponse().getContentAsByteArray(), TransferResponseBody.class),
+        result.getResponse().getHeader("X-Request-Id"));
   }
 
   private void updateBalance(long accountId, long availableBalanceMinor) {
@@ -241,6 +251,17 @@ class TransferCommandApiIntegrationTest extends PostgresContainerTestSupport {
         Long.class);
   }
 
+  private long countTraceRows(String requestId) {
+    return jdbcTemplate.queryForObject(
+        """
+        SELECT COUNT(*)
+        FROM ledger_entry
+        WHERE trace_id = :requestId
+        """,
+        new MapSqlParameterSource().addValue("requestId", requestId),
+        Long.class);
+  }
+
   private Map<String, Object> idempotencyState(String idempotencyKey) {
     return jdbcTemplate.queryForMap(
         """
@@ -264,7 +285,26 @@ class TransferCommandApiIntegrationTest extends PostgresContainerTestSupport {
         new MapSqlParameterSource().addValue("transactionReference", transactionReference));
   }
 
-  private record TransferResponseView(
+  private record TransferResponseView(TransferResponseBody body, String requestId) {
+
+    private String transactionReference() {
+      return body.transactionReference();
+    }
+
+    private long sourceAccountId() {
+      return body.sourceAccountId();
+    }
+
+    private long targetAccountId() {
+      return body.targetAccountId();
+    }
+
+    private long availableBalanceAfterMinor() {
+      return body.availableBalanceAfterMinor();
+    }
+  }
+
+  private record TransferResponseBody(
       String transactionReference,
       long sourceAccountId,
       long targetAccountId,

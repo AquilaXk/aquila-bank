@@ -9,41 +9,40 @@ import org.junit.jupiter.api.Test;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 
-class JwtAccountAuthenticationConverterTest {
+class JwtUserAuthenticationConverterTest {
 
-  private final JwtAccountAuthenticationConverter converter =
-      new JwtAccountAuthenticationConverter();
+  private final JwtUserAuthenticationConverter converter = new JwtUserAuthenticationConverter();
 
   @Test
-  void convertsJwtToAuthenticatedAccountPrincipal() {
+  void convertsJwtToAuthenticatedUserPrincipal() {
     Jwt jwt =
         new Jwt(
             "token",
             Instant.now(),
             Instant.now().plusSeconds(300),
             Map.of("alg", "HS256"),
-            Map.of("sub", "user-1", "account_id", 123L, "scope", "transactions:read"));
+            Map.of("sub", "alice", "user_id", 123L, "scope", "transactions:read"));
 
     JwtAuthenticationToken authentication = (JwtAuthenticationToken) converter.convert(jwt);
-    AuthenticatedAccountPrincipal principal =
-        (AuthenticatedAccountPrincipal) authentication.getPrincipal();
+    AuthenticatedUserPrincipal principal =
+        (AuthenticatedUserPrincipal) authentication.getPrincipal();
 
-    assertEquals(123L, principal.accountId());
-    assertEquals("user-1", principal.subject());
+    assertEquals(123L, principal.userId());
+    assertEquals("alice", principal.subject());
     assertEquals(
         "SCOPE_transactions:read",
         authentication.getAuthorities().iterator().next().getAuthority());
   }
 
   @Test
-  void rejectsMissingAccountIdClaim() {
+  void rejectsMissingUserIdClaim() {
     Jwt jwt =
         new Jwt(
             "token",
             Instant.now(),
             Instant.now().plusSeconds(300),
             Map.of("alg", "HS256"),
-            Map.of("sub", "user-1"));
+            Map.of("sub", "alice"));
 
     assertThrows(IllegalArgumentException.class, () -> converter.convert(jwt));
   }
