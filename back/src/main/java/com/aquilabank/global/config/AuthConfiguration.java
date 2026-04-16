@@ -1,6 +1,7 @@
 package com.aquilabank.global.config;
 
 import com.aquilabank.domain.auth.port.AccountAccessPort;
+import com.aquilabank.domain.auth.port.AuthStatusChangeAuditQueryPort;
 import com.aquilabank.domain.auth.port.AuthTokenIssuePort;
 import com.aquilabank.domain.auth.port.PasswordHashPort;
 import com.aquilabank.domain.auth.port.UserAccountMembershipQueryPort;
@@ -12,6 +13,8 @@ import com.aquilabank.domain.auth.port.UserQueryPort;
 import com.aquilabank.domain.auth.port.UserStatusUpdatePort;
 import com.aquilabank.domain.auth.usecase.AccountAccessService;
 import com.aquilabank.domain.auth.usecase.AccountAccessUseCase;
+import com.aquilabank.domain.auth.usecase.AuthStatusChangeAuditQueryService;
+import com.aquilabank.domain.auth.usecase.AuthStatusChangeAuditQueryUseCase;
 import com.aquilabank.domain.auth.usecase.AuthUserQueryService;
 import com.aquilabank.domain.auth.usecase.AuthUserQueryUseCase;
 import com.aquilabank.domain.auth.usecase.LoginService;
@@ -72,6 +75,12 @@ public class AuthConfiguration {
   UserAccountMembershipQueryUseCase userAccountMembershipQueryUseCase(
       UserAccountMembershipQueryPort userAccountMembershipQueryPort) {
     return new UserAccountMembershipQueryService(userAccountMembershipQueryPort);
+  }
+
+  @Bean
+  AuthStatusChangeAuditQueryUseCase authStatusChangeAuditQueryUseCase(
+      AuthStatusChangeAuditQueryPort authStatusChangeAuditQueryPort) {
+    return new AuthStatusChangeAuditQueryService(authStatusChangeAuditQueryPort);
   }
 
   @Bean

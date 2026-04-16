@@ -1,6 +1,9 @@
 package com.aquilabank.global.persistence.auth;
 
 import com.aquilabank.domain.auth.model.AccountAccessMembership;
+import com.aquilabank.domain.auth.model.AuthStatusChangeAuditSummary;
+import com.aquilabank.domain.auth.model.AuthStatusChangeOutcome;
+import com.aquilabank.domain.auth.model.AuthStatusChangeType;
 import com.aquilabank.domain.auth.model.AuthUserSummary;
 import com.aquilabank.domain.auth.model.LoginUser;
 import com.aquilabank.domain.auth.model.MembershipRole;
@@ -9,6 +12,7 @@ import com.aquilabank.domain.auth.model.UserAccountMembership;
 import com.aquilabank.domain.auth.model.UserAccountMembershipSummary;
 import com.aquilabank.domain.auth.model.UserStatus;
 import com.aquilabank.domain.auth.port.AccountAccessPort;
+import com.aquilabank.domain.auth.port.AuthStatusChangeAuditQueryPort;
 import com.aquilabank.domain.auth.port.UserAccountMembershipQueryPort;
 import com.aquilabank.domain.auth.port.UserCredentialLoadPort;
 import com.aquilabank.domain.auth.port.UserQueryPort;
@@ -27,7 +31,8 @@ public class JdbcAuthRepository
     implements UserCredentialLoadPort,
         AccountAccessPort,
         UserQueryPort,
-        UserAccountMembershipQueryPort {
+        UserAccountMembershipQueryPort,
+        AuthStatusChangeAuditQueryPort {
 
   private final NamedParameterJdbcTemplate jdbcTemplate;
 
@@ -135,6 +140,33 @@ public class JdbcAuthRepository
         .findFirst();
   }
 
+  @Override
+  public Optional<AuthStatusChangeAuditSummary> findByRequestId(String requestId) {
+    // requestId exact match만 허용해 idx_auth_status_change_audit_request_id 경로를 그대로 사용합니다.
+    return jdbcTemplate
+        .query(
+            """
+            SELECT request_id,
+                   actor_subject,
+                   change_type,
+                   target_user_id,
+                   target_account_id,
+                   before_status,
+                   after_status,
+                   reason,
+                   outcome,
+                   created_at
+            FROM auth_status_change_audit
+            WHERE request_id = :requestId
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            new MapSqlParameterSource().addValue("requestId", requestId),
+            (rs, rowNum) -> mapStatusChangeAuditSummary(rs))
+        .stream()
+        .findFirst();
+  }
+
   private LoginUser mapLoginUser(ResultSet rs) throws SQLException {
     return new LoginUser(
         rs.getLong("id"),
@@ -178,6 +210,22 @@ public class JdbcAuthRepository
         MembershipStatus.valueOf(rs.getString("membership_status")),
         toInstant(rs.getTimestamp("created_at")),
         toInstant(rs.getTimestamp("updated_at")));
+  }
+
+  private AuthStatusChangeAuditSummary mapStatusChangeAuditSummary(ResultSet rs)
+      throws SQLException {
+    Long targetAccountId = rs.getObject("target_account_id", Long.class);
+    return new AuthStatusChangeAuditSummary(
+        rs.getString("request_id"),
+        rs.getString("actor_subject"),
+        AuthStatusChangeType.valueOf(rs.getString("change_type")),
+        rs.getLong("target_user_id"),
+        targetAccountId,
+        rs.getString("before_status"),
+        rs.getString("after_status"),
+        rs.getString("reason"),
+        AuthStatusChangeOutcome.valueOf(rs.getString("outcome")),
+        toInstant(rs.getTimestamp("created_at")));
   }
 
   private Instant toInstant(Timestamp timestamp) {

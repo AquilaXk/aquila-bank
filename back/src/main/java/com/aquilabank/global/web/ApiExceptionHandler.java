@@ -1,6 +1,7 @@
 package com.aquilabank.global.web;
 
 import com.aquilabank.domain.auth.exception.AccountAccessDeniedException;
+import com.aquilabank.domain.auth.exception.AuthStatusChangeAuditNotFoundException;
 import com.aquilabank.domain.auth.exception.AuthUserNotFoundException;
 import com.aquilabank.domain.auth.exception.DuplicateLoginIdException;
 import com.aquilabank.domain.auth.exception.InvalidCredentialsException;
@@ -92,6 +93,7 @@ public class ApiExceptionHandler {
 
   @ExceptionHandler({
     SnapshotNotFoundException.class,
+    AuthStatusChangeAuditNotFoundException.class,
     AuthUserNotFoundException.class,
     UserAccountMembershipNotFoundException.class
   })
