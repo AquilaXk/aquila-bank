@@ -81,7 +81,10 @@ set +a
   - `X-Subject`: 호출 주체 식별값. 예) `ops-admin`, `fraud-batch`
   - `X-Request-Id`: 운영 상관키. 누락 시 서버가 UUID를 생성하지만, 감사 추적 일관성을 위해 운영 호출에서는 직접 넣는 것을 기본값으로 사용합니다.
 - 공통 필수 body 필드:
-  - `reason`: 회수/비활성화 사유
+  - `reasonCode`: 분류용 고정 코드. 예) `FRAUD_REVIEW`, `OPS_MANUAL`
+  - `reasonDetail`: 운영 문맥 상세값
+- legacy compatibility:
+  - `reason` 단일 필드는 한시 호환 경로로만 허용되고, 서버 내부에서는 `reasonCode=LEGACY_FREE_TEXT`로 정규화됩니다.
 
 ### 준비할 env
 
@@ -115,6 +118,7 @@ tools/ops/internal-auth-update-user-status.sh \
   auth-user-disable-20260416-001 \
   21 \
   DISABLED \
+  FRAUD_REVIEW \
   fraud-review
 ```
 
@@ -127,6 +131,7 @@ tools/ops/internal-auth-update-membership-status.sh \
   21 \
   1001 \
   REVOKED \
+  OPS_MANUAL \
   manual-revoke
 ```
 
@@ -141,7 +146,7 @@ curl --fail-with-body --silent --show-error \
   --header "X-Auth-Bootstrap-Token: ${SECURITY_AUTH_BOOTSTRAP_API_TOKEN}" \
   --header "X-Subject: ops-admin" \
   --header "X-Request-Id: auth-user-disable-20260416-001" \
-  --data '{"userStatus":"DISABLED","reason":"fraud-review"}' \
+  --data '{"userStatus":"DISABLED","reasonCode":"FRAUD_REVIEW","reasonDetail":"fraud-review"}' \
   "http://localhost:8080/internal/api/v1/auth/users/21/status"
 ```
 
@@ -154,22 +159,91 @@ curl --fail-with-body --silent --show-error \
   --header "X-Auth-Bootstrap-Token: ${SECURITY_AUTH_BOOTSTRAP_API_TOKEN}" \
   --header "X-Subject: ops-admin" \
   --header "X-Request-Id: auth-membership-revoke-20260416-001" \
-  --data '{"membershipStatus":"REVOKED","reason":"manual-revoke"}' \
+  --data '{"membershipStatus":"REVOKED","reasonCode":"OPS_MANUAL","reasonDetail":"manual-revoke"}' \
   "http://localhost:8080/internal/api/v1/auth/users/21/memberships/1001/status"
 ```
 
 ### 실패 조건
 
-- `reason` 누락 또는 blank: `400 Bad Request`
+- `reasonCode` 누락: `400 Bad Request`
+- `reasonDetail` 누락 또는 blank: `400 Bad Request`
 - `X-Subject` 누락 또는 blank: `400 Bad Request`
 - `X-Auth-Bootstrap-Token` 누락 또는 값 불일치: `401 Unauthorized`
+- `reason`과 `reasonCode`/`reasonDetail` 동시 사용: `400 Bad Request`
 - `X-Request-Id` 누락: 서버가 자동 생성하므로 요청 자체는 실패하지 않음. 다만 운영 감사 추적 키를 맞추기 위해 직접 지정하는 것을 기본값으로 사용
 
 ### 운영 주의사항
 
 - `X-Subject`는 shared token 사용자 구분 대신 운영 주체를 남기는 값이므로 배치명/운영자 식별값을 짧고 고정된 slug로 사용합니다.
-- `reason`은 감사 로그와 감사 테이블에 그대로 남으므로 길고 자유로운 문장보다 짧은 운영 사유 slug를 우선 사용합니다.
+- `reasonCode`는 alert/filter 기준으로 쓰고, `reasonDetail`은 감사 로그와 감사 테이블에 남는 운영 문맥으로 사용합니다.
+- `reasonDetail`은 길고 자유로운 문장보다 짧은 운영 사유 slug를 우선 사용합니다.
+- legacy `reason`은 한시 호환 경로라서 새 운영 호출과 스크립트에서는 사용하지 않는 것을 기본값으로 둡니다.
 - `dev`/`test`의 `X-Account-Id` bootstrap fallback은 계좌 요청 테스트용이며, 내부 auth admin status update 인증 방식과 혼용하지 않습니다.
+
+### 실패 감사 로그 필수 필드
+
+실패 감사 로그는 `warn` 레벨 한 줄로 남고, prefix는 항상 `internal auth status update failed`입니다.
+
+| field | 의미 | 운영 사용 기준 |
+| --- | --- | --- |
+| `requestId` | 호출 상관키 | 장애 drill-down 전용, alert group key로 사용 금지 |
+| `httpStatus` | API 응답 status | `401`/`400` alert 분류 1순위 |
+| `actorSubject` | 호출 주체 식별값 | 반복 오호출 actor 추적 |
+| `targetUserId` | 대상 user 식별자 | 대상 범위 확인 |
+| `targetAccountId` | 대상 account 식별자 | membership 경로만 값 존재, user status는 `-` |
+| `requestedStatus` | 요청한 상태값 | `DISABLED`, `REVOKED` 같은 실패 의도 확인 |
+| `reasonCode` | 분류 코드 | alert/filter 기준 |
+| `reasonDetail` | 운영 사유 상세 | 오호출/배치 drift 확인 |
+| `path` | 실패 endpoint | user/membership 경로 구분 |
+| `error` | 서버가 반환한 실패 원인 | validation/token 오류 분류 |
+
+### 수집 패턴
+
+로그 플랫폼 문법은 각자 다르므로 아래 키 조합만 그대로 매핑합니다.
+
+```text
+전체 실패:
+  "internal auth status update failed"
+
+401 집계:
+  "internal auth status update failed" AND "httpStatus=401"
+
+같은 actorSubject의 400 추적:
+  "internal auth status update failed" AND "httpStatus=400" AND "actorSubject=<actor-subject>"
+
+requestId drill-down:
+  "internal auth status update failed" AND "requestId=<request-id>"
+```
+
+- alert 집계 차원은 `httpStatus`, `actorSubject`, `path`, `error`를 우선 사용합니다.
+- `requestId`는 고카디널리티라 alert 집계 기준으로 쓰지 않고 incident drill-down에만 사용합니다.
+- `reasonCode` 차원은 `FRAUD_REVIEW`, `OPS_MANUAL`, `LEGACY_FREE_TEXT` 같은 고정값만 사용합니다.
+- 구버전 로그가 섞여 `httpStatus`가 없는 기간은 한시적으로 `error=bootstrap token is invalid`를 `401`, `error=actorSubject header is required|reasonCode is required|reasonDetail is required|reason and reasonCode/reasonDetail cannot be used together`를 `400` fallback으로 사용합니다.
+
+### 최소 alert 기준
+
+- `401 Unauthorized`: `5분 내 3회 이상`이면 warning, 같은 window에서 `10회 이상`이면 critical 후보로 봅니다.
+- `400 Bad Request`: 같은 `actorSubject`에서 연속 `2회 이상`이면 warning, `5회 이상`이면 critical 후보로 봅니다.
+- `actorSubject=-`인 `400`은 헤더 누락 성격이므로 운영 스크립트 drift 또는 수동 호출 오류로 분류합니다.
+- `404`, `409`, `500`은 이번 최소 범위에서 제외하고 후속 이슈로 분리합니다.
+
+### requestId 장애 추적 절차
+
+1. alert 또는 문의에서 `requestId`를 확보합니다. alert payload에 `requestId`가 없으면 같은 시간대 `actorSubject + path + error`로 실패 로그를 먼저 좁힙니다.
+2. 앱 로그에서 같은 `requestId`를 재검색해 최초 실패 시점, 재시도 여부, 같은 actor 반복 여부를 확인합니다.
+3. 성공 전환 여부가 필요하면 success audit exact lookup으로 같은 `requestId`를 조회합니다.
+4. success audit row가 없으면 실패-only incident로 보고 토큰, `X-Subject`, request body drift를 runbook 체크리스트로 확인합니다.
+
+success audit exact lookup 예시:
+
+```bash
+curl --fail-with-body --silent --show-error \
+  --header "X-Auth-Bootstrap-Token: ${SECURITY_AUTH_BOOTSTRAP_API_TOKEN}" \
+  "http://localhost:8080/internal/api/v1/auth/status-change-audits/by-request-id?requestId=auth-user-disable-20260416-001"
+```
+
+- exact lookup은 성공 변경 row만 반환합니다.
+- failure 원본은 structured log이므로 incident 시작점은 항상 로그 검색입니다.
 
 ## Test
 
