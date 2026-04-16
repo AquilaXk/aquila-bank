@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -16,14 +17,11 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
-import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.web.context.WebApplicationContext;
 
 @ActiveProfiles("test")
@@ -32,17 +30,17 @@ import org.springframework.web.context.WebApplicationContext;
     properties = {"spring.flyway.enabled=true", "management.health.db.enabled=true"})
 class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSupport {
 
+  private static final String ACCOUNT_BOOTSTRAP_TOKEN = "test-bootstrap-api-token";
+  private static final String AUTH_BOOTSTRAP_TOKEN = "test-auth-bootstrap-api-token";
+
   @Autowired private WebApplicationContext context;
 
   @Autowired private NamedParameterJdbcTemplate jdbcTemplate;
 
   @Autowired private ObjectMapper objectMapper;
 
-  @Autowired private PasswordEncoder passwordEncoder;
-
-  @Autowired private PlatformTransactionManager transactionManager;
-
   private MockMvc mockMvc;
+  private long userId;
   private long allowedSourceAccountId;
   private long targetAccountId;
   private long deniedAccountId;
@@ -56,13 +54,8 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
     targetAccountId = bootstrapAccount("allowed target", 0L);
     deniedAccountId = bootstrapAccount("denied source", 5_000L);
 
-    long[] userIdHolder = new long[1];
-    commit(
-        transactionManager,
-        () -> {
-          userIdHolder[0] = insertUser("alice", "Alice", "password123!");
-          insertMembership(userIdHolder[0], allowedSourceAccountId, "OWNER");
-        });
+    userId = bootstrapUser("alice", "Alice", "password123!");
+    upsertMembership(userId, allowedSourceAccountId, "OWNER", "ACTIVE");
   }
 
   @Test
@@ -142,6 +135,42 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
   }
 
   @Test
+  void membershipUpsertUpdatesTransferPermission() throws Exception {
+    upsertMembership(userId, allowedSourceAccountId, "VIEWER", "ACTIVE");
+    String token = login("alice", "password123!");
+
+    mockMvc
+        .perform(
+            get("/api/v1/transactions")
+                .header("Authorization", "Bearer " + token)
+                .param("accountId", String.valueOf(allowedSourceAccountId))
+                .param("from", "2026-04-01T00:00:00Z")
+                .param("to", "2026-04-17T00:00:00Z"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items[0].accountId").value(allowedSourceAccountId));
+
+    mockMvc
+        .perform(
+            post("/api/v1/transfers")
+                .header("Authorization", "Bearer " + token)
+                .header("Idempotency-Key", "jwt-transfer-viewer-403")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "sourceAccountId": %d,
+                      "targetAccountId": %d,
+                      "amountMinor": 500,
+                      "currencyCode": "KRW",
+                      "summary": "viewer-blocked"
+                    }
+                    """
+                        .formatted(allowedSourceAccountId, targetAccountId)))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.message").value("account access is denied"));
+  }
+
+  @Test
   void rejectsInvalidLoginCredentials() throws Exception {
     mockMvc
         .perform(
@@ -186,7 +215,7 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
         mockMvc
             .perform(
                 post("/internal/api/v1/accounts/bootstrap")
-                    .header("X-Bootstrap-Token", "test-bootstrap-api-token")
+                    .header("X-Bootstrap-Token", ACCOUNT_BOOTSTRAP_TOKEN)
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         """
@@ -206,62 +235,51 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
         .asLong();
   }
 
-  private long insertUser(String loginId, String displayName, String password) {
-    Long userId =
-        jdbcTemplate.queryForObject(
-            """
-            INSERT INTO bank_user (
-                login_id,
-                password_hash,
-                display_name,
-                user_status,
-                created_at,
-                updated_at
-            )
-            VALUES (
-                :loginId,
-                :passwordHash,
-                :displayName,
-                'ACTIVE',
-                CURRENT_TIMESTAMP,
-                CURRENT_TIMESTAMP
-            )
-            RETURNING id
-            """,
-            new MapSqlParameterSource()
-                .addValue("loginId", loginId)
-                .addValue("passwordHash", passwordEncoder.encode(password))
-                .addValue("displayName", displayName),
-            Long.class);
-    if (userId == null) {
-      throw new IllegalStateException("user insert did not return id");
-    }
-    return userId;
+  private long bootstrapUser(String loginId, String displayName, String password) throws Exception {
+    MvcResult result =
+        mockMvc
+            .perform(
+                post("/internal/api/v1/auth/users/bootstrap")
+                    .header("X-Auth-Bootstrap-Token", AUTH_BOOTSTRAP_TOKEN)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                          "loginId": "%s",
+                          "password": "%s",
+                          "displayName": "%s"
+                        }
+                        """
+                            .formatted(loginId, password, displayName)))
+            .andExpect(status().isOk())
+            .andReturn();
+
+    return objectMapper
+        .readTree(result.getResponse().getContentAsByteArray())
+        .get("userId")
+        .asLong();
   }
 
-  private void insertMembership(long userId, long accountId, String membershipRole) {
-    jdbcTemplate.update(
-        """
-        INSERT INTO user_account_membership (
-            user_id,
-            account_id,
-            membership_role,
-            membership_status,
-            created_at,
-            updated_at
-        )
-        VALUES (
-            :userId,
-            :accountId,
-            :membershipRole,
-            'ACTIVE',
-            CURRENT_TIMESTAMP,
-            CURRENT_TIMESTAMP
-        )
-        """,
-        new MapSqlParameterSource()
-            .addValue("userId", userId)
-            .addValue("accountId", accountId)
-            .addValue("membershipRole", membershipRole));
+  private void upsertMembership(
+      long userId, long accountId, String membershipRole, String membershipStatus)
+      throws Exception {
+    mockMvc
+        .perform(
+            put("/internal/api/v1/auth/users/%d/memberships/%d".formatted(userId, accountId))
+                .header("X-Auth-Bootstrap-Token", AUTH_BOOTSTRAP_TOKEN)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "membershipRole": "%s",
+                      "membershipStatus": "%s"
+                    }
+                    """
+                        .formatted(membershipRole, membershipStatus)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.userId").value(userId))
+        .andExpect(jsonPath("$.accountId").value(accountId))
+        .andExpect(jsonPath("$.membershipRole").value(membershipRole))
+        .andExpect(jsonPath("$.membershipStatus").value(membershipStatus));
   }
 }
