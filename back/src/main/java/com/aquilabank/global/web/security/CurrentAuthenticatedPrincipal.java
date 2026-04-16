@@ -5,7 +5,7 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
-/** 인증된 account id 주입용 controller parameter marker */
+/** 현재 인증 principal을 controller argument로 주입합니다. */
 @Target(ElementType.PARAMETER)
 @Retention(RetentionPolicy.RUNTIME)
-public @interface CurrentAccountId {}
+public @interface CurrentAuthenticatedPrincipal {}

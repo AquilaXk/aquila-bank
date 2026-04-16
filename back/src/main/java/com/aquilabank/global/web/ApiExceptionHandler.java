@@ -1,5 +1,7 @@
 package com.aquilabank.global.web;
 
+import com.aquilabank.domain.auth.exception.AccountAccessDeniedException;
+import com.aquilabank.domain.auth.exception.InvalidCredentialsException;
 import com.aquilabank.domain.ledger.exception.CommandConflictException;
 import com.aquilabank.domain.ledger.exception.CurrencyMismatchException;
 import com.aquilabank.domain.ledger.exception.InsufficientBalanceException;
@@ -46,6 +48,18 @@ public class ApiExceptionHandler {
   ResponseEntity<ApiErrorResponse> handleBootstrapUnauthorized(
       BootstrapApiAccessDeniedException ex, HttpServletRequest request) {
     return response(HttpStatus.UNAUTHORIZED, ex.getMessage(), request.getRequestURI());
+  }
+
+  @ExceptionHandler(InvalidCredentialsException.class)
+  ResponseEntity<ApiErrorResponse> handleUnauthorized(
+      InvalidCredentialsException ex, HttpServletRequest request) {
+    return response(HttpStatus.UNAUTHORIZED, ex.getMessage(), request.getRequestURI());
+  }
+
+  @ExceptionHandler(AccountAccessDeniedException.class)
+  ResponseEntity<ApiErrorResponse> handleForbidden(
+      AccountAccessDeniedException ex, HttpServletRequest request) {
+    return response(HttpStatus.FORBIDDEN, ex.getMessage(), request.getRequestURI());
   }
 
   @ExceptionHandler(SnapshotNotFoundException.class)

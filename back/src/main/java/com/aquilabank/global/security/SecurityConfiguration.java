@@ -1,15 +1,21 @@
 package com.aquilabank.global.security;
 
+import com.aquilabank.domain.auth.port.AuthTokenIssuePort;
+import com.aquilabank.domain.auth.port.PasswordHashPort;
+import com.aquilabank.global.web.RequestIdFilter;
 import javax.crypto.spec.SecretKeySpec;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.core.OAuth2TokenValidator;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -32,6 +38,7 @@ public class SecurityConfiguration {
   @Bean
   SecurityFilterChain securityFilterChain(
       HttpSecurity http,
+      RequestIdFilter requestIdFilter,
       ObjectProvider<BootstrapHeaderAuthenticationFilter> bootstrapHeaderAuthenticationFilter,
       JwtDecoder jwtDecoder)
       throws Exception {
@@ -47,6 +54,8 @@ public class SecurityConfiguration {
             auth ->
                 auth.requestMatchers("/actuator/health", "/actuator/info")
                     .permitAll()
+                    .requestMatchers("/api/v1/auth/login")
+                    .permitAll()
                     // 내부 bootstrap API는 계좌 principal 대신 별도 token으로 보호합니다.
                     .requestMatchers("/internal/api/v1/accounts/bootstrap")
                     .permitAll()
@@ -57,22 +66,30 @@ public class SecurityConfiguration {
                 oauth2.jwt(
                     jwt ->
                         jwt.decoder(jwtDecoder)
-                            .jwtAuthenticationConverter(new JwtAccountAuthenticationConverter())))
+                            .jwtAuthenticationConverter(new JwtUserAuthenticationConverter())))
         .exceptionHandling(
             exception ->
                 exception.authenticationEntryPoint(
                     new HttpStatusEntryPoint(org.springframework.http.HttpStatus.UNAUTHORIZED)));
 
+    http.addFilterBefore(requestIdFilter, AnonymousAuthenticationFilter.class);
+
     BootstrapHeaderAuthenticationFilter filter =
         bootstrapHeaderAuthenticationFilter.getIfAvailable();
     if (filter != null) {
-      // bootstrap header filter 선행 등록
-      http.addFilterBefore(filter, AnonymousAuthenticationFilter.class);
+      // request-id를 먼저 심고 그 다음에 bootstrap auth를 해석합니다.
+      http.addFilterAfter(filter, RequestIdFilter.class);
     }
     return http.build();
   }
 
   @Bean
+  RequestIdFilter requestIdFilter() {
+    return new RequestIdFilter();
+  }
+
+  @Bean
+  @Profile({"dev", "test"})
   @ConditionalOnProperty(name = "security.bootstrap-header-auth.enabled", havingValue = "true")
   BootstrapHeaderAuthenticationFilter bootstrapHeaderAuthenticationFilter(
       BootstrapHeaderAuthProperties bootstrapHeaderAuthProperties) {
@@ -83,10 +100,7 @@ public class SecurityConfiguration {
 
   @Bean
   JwtDecoder jwtDecoder(SecurityJwtProperties securityJwtProperties) {
-    SecretKeySpec secretKeySpec =
-        new SecretKeySpec(
-            securityJwtProperties.secret().getBytes(java.nio.charset.StandardCharsets.UTF_8),
-            "HmacSHA256");
+    SecretKeySpec secretKeySpec = secretKeySpec(securityJwtProperties);
     NimbusJwtDecoder decoder =
         NimbusJwtDecoder.withSecretKey(secretKeySpec).macAlgorithm(MacAlgorithm.HS256).build();
 
@@ -97,5 +111,29 @@ public class SecurityConfiguration {
             : JwtValidators.createDefaultWithIssuer(securityJwtProperties.issuer());
     decoder.setJwtValidator(validator);
     return decoder;
+  }
+
+  @Bean
+  PasswordEncoder passwordEncoder() {
+    return new BCryptPasswordEncoder();
+  }
+
+  @Bean
+  PasswordHashPort passwordHashPort(PasswordEncoder passwordEncoder) {
+    return passwordEncoder::matches;
+  }
+
+  @Bean
+  AuthTokenIssuePort authTokenIssuePort(SecurityJwtProperties securityJwtProperties) {
+    return new HmacAccessTokenIssuer(
+        secretKeySpec(securityJwtProperties),
+        securityJwtProperties.issuer(),
+        securityJwtProperties.accessTokenTtlSeconds());
+  }
+
+  private SecretKeySpec secretKeySpec(SecurityJwtProperties securityJwtProperties) {
+    return new SecretKeySpec(
+        securityJwtProperties.secret().getBytes(java.nio.charset.StandardCharsets.UTF_8),
+        "HmacSHA256");
   }
 }

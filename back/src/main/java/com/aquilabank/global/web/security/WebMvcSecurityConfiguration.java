@@ -9,15 +9,17 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Configuration
 public class WebMvcSecurityConfiguration implements WebMvcConfigurer {
 
-  private final CurrentAccountIdArgumentResolver currentAccountIdArgumentResolver;
+  private final CurrentAuthenticatedPrincipalArgumentResolver
+      currentAuthenticatedPrincipalArgumentResolver;
 
   public WebMvcSecurityConfiguration(
-      CurrentAccountIdArgumentResolver currentAccountIdArgumentResolver) {
-    this.currentAccountIdArgumentResolver = currentAccountIdArgumentResolver;
+      CurrentAuthenticatedPrincipalArgumentResolver currentAuthenticatedPrincipalArgumentResolver) {
+    this.currentAuthenticatedPrincipalArgumentResolver =
+        currentAuthenticatedPrincipalArgumentResolver;
   }
 
   @Override
   public void addArgumentResolvers(List<HandlerMethodArgumentResolver> resolvers) {
-    resolvers.add(currentAccountIdArgumentResolver);
+    resolvers.add(currentAuthenticatedPrincipalArgumentResolver);
   }
 }
