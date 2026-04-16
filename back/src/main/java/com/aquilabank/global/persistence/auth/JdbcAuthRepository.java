@@ -1,10 +1,10 @@
 package com.aquilabank.global.persistence.auth;
 
 import com.aquilabank.domain.auth.model.AccountAccessMembership;
-import com.aquilabank.domain.auth.model.AuthStatusChangeReason;
-import com.aquilabank.domain.auth.model.AuthStatusChangeReasonCode;
 import com.aquilabank.domain.auth.model.AuthStatusChangeAuditSummary;
 import com.aquilabank.domain.auth.model.AuthStatusChangeOutcome;
+import com.aquilabank.domain.auth.model.AuthStatusChangeReason;
+import com.aquilabank.domain.auth.model.AuthStatusChangeReasonCode;
 import com.aquilabank.domain.auth.model.AuthStatusChangeType;
 import com.aquilabank.domain.auth.model.AuthUserSummary;
 import com.aquilabank.domain.auth.model.LoginUser;
