@@ -1,10 +1,12 @@
 package com.aquilabank.global.config;
 
+import com.aquilabank.domain.auth.exception.InvalidCredentialsException;
 import com.aquilabank.domain.auth.model.LoginProtectionPolicy;
 import com.aquilabank.domain.auth.model.LoginResult;
 import com.aquilabank.domain.auth.port.AccountAccessPort;
 import com.aquilabank.domain.auth.port.AuthStatusChangeAuditQueryPort;
 import com.aquilabank.domain.auth.port.AuthTokenIssuePort;
+import com.aquilabank.domain.auth.port.LoginAttemptAuditPort;
 import com.aquilabank.domain.auth.port.LoginAttemptUpdatePort;
 import com.aquilabank.domain.auth.port.PasswordHashPort;
 import com.aquilabank.domain.auth.port.UserAccountMembershipQueryPort;
@@ -33,6 +35,7 @@ import com.aquilabank.domain.auth.usecase.UserBootstrapUseCase;
 import com.aquilabank.domain.auth.usecase.UserStatusUpdateService;
 import com.aquilabank.domain.auth.usecase.UserStatusUpdateUseCase;
 import com.aquilabank.global.security.LoginProtectionProperties;
+import com.aquilabank.global.security.StructuredLoginAttemptAuditLogger;
 import java.time.Clock;
 import java.time.Duration;
 import org.springframework.context.annotation.Bean;
@@ -56,6 +59,7 @@ public class AuthConfiguration {
   LoginUseCase loginUseCase(
       UserCredentialLoadPort userCredentialLoadPort,
       LoginAttemptUpdatePort loginAttemptUpdatePort,
+      LoginAttemptAuditPort loginAttemptAuditPort,
       PasswordHashPort passwordHashPort,
       AuthTokenIssuePort authTokenIssuePort,
       LoginProtectionPolicy loginProtectionPolicy,
@@ -64,6 +68,7 @@ public class AuthConfiguration {
         new LoginService(
             userCredentialLoadPort,
             loginAttemptUpdatePort,
+            loginAttemptAuditPort,
             passwordHashPort,
             authTokenIssuePort,
             loginProtectionPolicy,
@@ -71,12 +76,31 @@ public class AuthConfiguration {
             Clock.systemUTC());
     TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
     return command -> {
-      LoginResult result = transactionTemplate.execute(status -> loginService.login(command));
-      if (result == null) {
-        throw new IllegalStateException("login transaction returned null");
+      LoginTransactionResult transactionResult =
+          transactionTemplate.execute(
+              status -> {
+                try {
+                  return LoginTransactionResult.success(loginService.login(command));
+                } catch (InvalidCredentialsException ex) {
+                  return LoginTransactionResult.failure(ex);
+                }
+              });
+      if (transactionResult == null) {
+        throw new IllegalStateException("login transaction result is null");
       }
-      return result;
+      if (transactionResult.exception() != null) {
+        throw transactionResult.exception();
+      }
+      if (transactionResult.result() == null) {
+        throw new IllegalStateException("login transaction returned null result");
+      }
+      return transactionResult.result();
     };
+  }
+
+  @Bean
+  LoginAttemptAuditPort loginAttemptAuditPort() {
+    return new StructuredLoginAttemptAuditLogger();
   }
 
   @Bean
@@ -122,5 +146,16 @@ public class AuthConfiguration {
   UserAccountMembershipStatusUpdateUseCase userAccountMembershipStatusUpdateUseCase(
       UserAccountMembershipStatusUpdatePort userAccountMembershipStatusUpdatePort) {
     return new UserAccountMembershipStatusUpdateService(userAccountMembershipStatusUpdatePort);
+  }
+
+  private record LoginTransactionResult(LoginResult result, InvalidCredentialsException exception) {
+
+    private static LoginTransactionResult success(LoginResult result) {
+      return new LoginTransactionResult(result, null);
+    }
+
+    private static LoginTransactionResult failure(InvalidCredentialsException exception) {
+      return new LoginTransactionResult(null, exception);
+    }
   }
 }

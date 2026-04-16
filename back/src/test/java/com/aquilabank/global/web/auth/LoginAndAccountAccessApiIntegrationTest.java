@@ -2,6 +2,7 @@ package com.aquilabank.global.web.auth;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -12,22 +13,34 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.aquilabank.support.PostgresContainerTestSupport;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
 @ActiveProfiles("test")
+@ExtendWith(OutputCaptureExtension.class)
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.MOCK,
-    properties = {"spring.flyway.enabled=true", "management.health.db.enabled=true"})
+    properties = {
+      "spring.flyway.enabled=true",
+      "management.health.db.enabled=true",
+      "security.login-protection.max-failures=3",
+      "security.login-protection.lock-seconds=1",
+      "security.login-protection.reset-window-seconds=900"
+    })
 class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSupport {
 
   private static final String ACCOUNT_BOOTSTRAP_TOKEN = "test-bootstrap-api-token";
@@ -203,6 +216,63 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
                     """))
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.message").value("login failed"));
+  }
+
+  @Test
+  void locksUserAfterThresholdAndResetsStateAfterSuccessfulLogin() throws Exception {
+    loginExpectUnauthorized("alice", "wrong-password", "login-failure-001");
+    loginExpectUnauthorized("alice", "wrong-password", "login-failure-002");
+    loginExpectUnauthorized("alice", "wrong-password", "login-failure-003");
+
+    LoginProtectionState lockedState = loadLoginProtectionState(userId);
+    assertEquals(3, lockedState.failedLoginCount());
+    assertNotNull(lockedState.lastLoginFailedAt());
+    assertNotNull(lockedState.loginLockedUntil());
+    assertNull(lockedState.lastLoginSucceededAt());
+
+    loginExpectUnauthorized("alice", "password123!", "login-locked-001");
+    Thread.sleep(1200L);
+
+    String token = login("alice", "password123!", "login-reset-001");
+    assertNotNull(token);
+
+    LoginProtectionState resetState = loadLoginProtectionState(userId);
+    assertEquals(0, resetState.failedLoginCount());
+    assertNull(resetState.lastLoginFailedAt());
+    assertNull(resetState.loginLockedUntil());
+    assertNotNull(resetState.lastLoginSucceededAt());
+  }
+
+  @Test
+  void lockedUserStatusBlocksLogin() throws Exception {
+    updateLegacyUserStatus(userId, "LOCKED", "manual-lock", "user-locked-request");
+
+    loginExpectUnauthorized("alice", "password123!", "login-user-locked-001");
+  }
+
+  @Test
+  void logsFailureAndResetWithRequestIdAndMaskedLoginKey(CapturedOutput output) throws Exception {
+    loginExpectUnauthorized("alice", "wrong-password", "login-log-failure-001");
+    login("alice", "password123!", "login-log-reset-001");
+
+    String logs = output.getOut() + output.getErr();
+    org.junit.jupiter.api.Assertions.assertAll(
+        () -> org.junit.jupiter.api.Assertions.assertTrue(logs.contains("auth login failed")),
+        () ->
+            org.junit.jupiter.api.Assertions.assertTrue(
+                logs.contains("requestId=login-log-failure-001")),
+        () -> org.junit.jupiter.api.Assertions.assertTrue(logs.contains("failureCount=1")),
+        () ->
+            org.junit.jupiter.api.Assertions.assertTrue(
+                logs.contains("reason=INVALID_CREDENTIALS")),
+        () -> org.junit.jupiter.api.Assertions.assertTrue(logs.contains("loginIdHash=")),
+        () ->
+            org.junit.jupiter.api.Assertions.assertTrue(
+                logs.contains("auth login failure state reset")),
+        () ->
+            org.junit.jupiter.api.Assertions.assertTrue(
+                logs.contains("requestId=login-log-reset-001")),
+        () -> org.junit.jupiter.api.Assertions.assertTrue(logs.contains("previousFailureCount=1")));
   }
 
   @Test
@@ -407,26 +477,43 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
   }
 
   private String login(String loginId, String password) throws Exception {
+    return login(loginId, password, null);
+  }
+
+  private String login(String loginId, String password, String requestId) throws Exception {
     MvcResult result =
-        mockMvc
-            .perform(
-                post("/api/v1/auth/login")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(
-                        """
-                        {
-                          "loginId": "%s",
-                          "password": "%s"
-                        }
-                        """
-                            .formatted(loginId, password)))
-            .andExpect(status().isOk())
-            .andReturn();
+        performLogin(loginId, password, requestId).andExpect(status().isOk()).andReturn();
 
     JsonNode body = objectMapper.readTree(result.getResponse().getContentAsByteArray());
     assertEquals("Bearer", body.get("tokenType").asText());
     assertNotNull(body.get("expiresAt"));
     return body.get("accessToken").asText();
+  }
+
+  private void loginExpectUnauthorized(String loginId, String password, String requestId)
+      throws Exception {
+    performLogin(loginId, password, requestId)
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.message").value("login failed"));
+  }
+
+  private org.springframework.test.web.servlet.ResultActions performLogin(
+      String loginId, String password, String requestId) throws Exception {
+    MockHttpServletRequestBuilder requestBuilder =
+        post("/api/v1/auth/login")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(
+                """
+                {
+                  "loginId": "%s",
+                  "password": "%s"
+                }
+                """
+                    .formatted(loginId, password));
+    if (requestId != null && !requestId.isBlank()) {
+      requestBuilder.header("X-Request-Id", requestId);
+    }
+    return mockMvc.perform(requestBuilder);
   }
 
   private long bootstrapAccount(String displayName, long initialBalanceMinor) throws Exception {
@@ -619,6 +706,34 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
         .findFirst();
   }
 
+  private LoginProtectionState loadLoginProtectionState(long userId) {
+    return jdbcTemplate
+        .query(
+            """
+            SELECT failed_login_count,
+                   last_login_failed_at,
+                   login_locked_until,
+                   last_login_succeeded_at
+            FROM bank_user
+            WHERE id = :userId
+            """,
+            new org.springframework.jdbc.core.namedparam.MapSqlParameterSource()
+                .addValue("userId", userId),
+            (rs, rowNum) ->
+                new LoginProtectionState(
+                    rs.getInt("failed_login_count"),
+                    toInstant(rs.getTimestamp("last_login_failed_at")),
+                    toInstant(rs.getTimestamp("login_locked_until")),
+                    toInstant(rs.getTimestamp("last_login_succeeded_at"))))
+        .stream()
+        .findFirst()
+        .orElseThrow(() -> new AssertionError("login protection state is not found"));
+  }
+
+  private Instant toInstant(java.sql.Timestamp timestamp) {
+    return timestamp == null ? null : timestamp.toInstant();
+  }
+
   private record AuthStatusChangeAuditView(
       String requestId,
       String actorSubject,
@@ -631,4 +746,10 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
       String reasonDetail,
       String outcome,
       java.time.Instant createdAt) {}
+
+  private record LoginProtectionState(
+      int failedLoginCount,
+      Instant lastLoginFailedAt,
+      Instant loginLockedUntil,
+      Instant lastLoginSucceededAt) {}
 }

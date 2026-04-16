@@ -69,6 +69,51 @@ set +a
 - 운영 기본 인증 방식은 bearer JWT 입니다.
 - `dev`/`test` 프로필에서는 필요 시 `X-Account-Id` 헤더 fallback을 사용할 수 있습니다.
 
+## Public Login Protection
+
+공개 login 경로 `/api/v1/auth/login`에는 brute-force 1차 방어 기준이 기본 적용됩니다.
+
+- 기본값:
+  - `SECURITY_LOGIN_PROTECTION_MAX_FAILURES=5`
+  - `SECURITY_LOGIN_PROTECTION_LOCK_SECONDS=900`
+  - `SECURITY_LOGIN_PROTECTION_RESET_WINDOW_SECONDS=900`
+- 동작 기준:
+  - 같은 `loginId`에서 연속 `5회` 실패하면 `15분` 임시 잠금
+  - 마지막 실패 후 `15분`이 지나면 실패 카운트는 다시 `1`부터 계산
+  - 성공 login 시 `failed_login_count`, `last_login_failed_at`, `login_locked_until`은 reset
+  - 외부 응답은 존재 여부/잠금 여부를 드러내지 않도록 항상 `401 login failed` 유지
+- 상태 우선순위:
+  - 수동 운영 상태 `user_status=LOCKED|DISABLED`가 임시 잠금보다 우선
+  - 임시 brute-force 잠금은 `login_locked_until`로만 관리하고 `user_status`는 직접 바꾸지 않음
+
+### login 실패 감사 로그
+
+login 실패/잠금은 structured log 한 줄로 남습니다.
+
+| field | 의미 | 운영 사용 기준 |
+| --- | --- | --- |
+| `requestId` | 호출 상관키 | login incident drill-down |
+| `loginIdHash` | raw `loginId` 대신 남기는 SHA-256 hash | 개인정보 노출 없이 동일 loginId 반복 추적 |
+| `userId` | 존재하는 사용자면 user id, 아니면 `-` | 계정 존재/대상 추적 |
+| `failureCount` | 현재 누적 실패 횟수 | 임계치 도달 여부 판단 |
+| `remainingAttempts` | 임계치까지 남은 횟수 | 운영 위험도 판단 |
+| `lockedUntil` | 임시 잠금 만료 시각 | 잠금 해제 예상 시각 |
+| `reason` | `INVALID_CREDENTIALS`, `LOCKED_THRESHOLD_REACHED`, `ACCOUNT_TEMPORARILY_LOCKED`, `USER_STATUS_LOCKED`, `USER_DISABLED` | 검색/집계 기준 |
+| `path` | 현재 요청 path | 공개 login 경로 확인 |
+
+### login reset 로그
+
+성공 login 으로 failure state를 지웠고 이전 실패 흔적이 있었던 경우에만 `info` 로그를 남깁니다.
+
+| field | 의미 |
+| --- | --- |
+| `requestId` | 성공 요청 상관키 |
+| `loginIdHash` | 같은 loginId 추적용 SHA-256 hash |
+| `userId` | 성공 사용자 id |
+| `previousFailureCount` | reset 전 실패 누적 횟수 |
+| `previousLockedUntil` | reset 전 잠금 만료 시각 |
+| `path` | 현재 요청 path |
+
 ## Internal Auth Admin Runbook
 
 내부 auth status update는 공개 로그인 경로와 분리된 내부 운영 surface 입니다.
