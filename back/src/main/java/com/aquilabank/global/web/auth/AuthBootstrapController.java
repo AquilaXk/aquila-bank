@@ -9,13 +9,14 @@ import com.aquilabank.domain.auth.model.UserBootstrapResult;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipUpsertUseCase;
 import com.aquilabank.domain.auth.usecase.UserBootstrapUseCase;
 import com.aquilabank.global.security.AuthBootstrapApiProperties;
-import com.aquilabank.global.security.BootstrapApiAccessDeniedException;
+import com.aquilabank.global.security.InternalAuthTokenGuard;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -34,21 +35,32 @@ public class AuthBootstrapController {
 
   private final UserBootstrapUseCase userBootstrapUseCase;
   private final UserAccountMembershipUpsertUseCase userAccountMembershipUpsertUseCase;
-  private final AuthBootstrapApiProperties authBootstrapApiProperties;
+  private final InternalAuthTokenGuard internalAuthTokenGuard;
 
+  @Autowired
   public AuthBootstrapController(
       UserBootstrapUseCase userBootstrapUseCase,
       UserAccountMembershipUpsertUseCase userAccountMembershipUpsertUseCase,
-      AuthBootstrapApiProperties authBootstrapApiProperties) {
+      InternalAuthTokenGuard internalAuthTokenGuard) {
     this.userBootstrapUseCase = userBootstrapUseCase;
     this.userAccountMembershipUpsertUseCase = userAccountMembershipUpsertUseCase;
-    this.authBootstrapApiProperties = authBootstrapApiProperties;
+    this.internalAuthTokenGuard = internalAuthTokenGuard;
+  }
+
+  AuthBootstrapController(
+      UserBootstrapUseCase userBootstrapUseCase,
+      UserAccountMembershipUpsertUseCase userAccountMembershipUpsertUseCase,
+      AuthBootstrapApiProperties authBootstrapApiProperties) {
+    this(
+        userBootstrapUseCase,
+        userAccountMembershipUpsertUseCase,
+        new InternalAuthTokenGuard(authBootstrapApiProperties));
   }
 
   @PostMapping("/users/bootstrap")
   public UserBootstrapResponse bootstrapUser(
       HttpServletRequest httpServletRequest, @Valid @RequestBody UserBootstrapRequest request) {
-    validateBootstrapToken(httpServletRequest);
+    internalAuthTokenGuard.validate(httpServletRequest);
 
     UserBootstrapResult result =
         userBootstrapUseCase.bootstrap(
@@ -62,24 +74,13 @@ public class AuthBootstrapController {
       @PathVariable @Positive(message = "userId must be positive") long userId,
       @PathVariable @Positive(message = "accountId must be positive") long accountId,
       @Valid @RequestBody UserAccountMembershipRequest request) {
-    validateBootstrapToken(httpServletRequest);
+    internalAuthTokenGuard.validate(httpServletRequest);
 
     UserAccountMembership membership =
         userAccountMembershipUpsertUseCase.upsert(
             new UserAccountMembershipUpsertCommand(
                 userId, accountId, request.membershipRole(), request.membershipStatus()));
     return UserAccountMembershipResponse.from(membership);
-  }
-
-  private void validateBootstrapToken(HttpServletRequest httpServletRequest) {
-    String bootstrapToken = httpServletRequest.getHeader(authBootstrapApiProperties.tokenHeader());
-
-    // permitAll endpoint라도 shared token 검증이 없으면 내부 bootstrap이 외부 요청에 그대로 열립니다.
-    if (bootstrapToken == null
-        || bootstrapToken.isBlank()
-        || !authBootstrapApiProperties.token().equals(bootstrapToken)) {
-      throw new BootstrapApiAccessDeniedException("bootstrap token is invalid");
-    }
   }
 
   /** 내부 사용자 bootstrap 요청 body */
