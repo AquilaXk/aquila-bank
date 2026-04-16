@@ -370,6 +370,25 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
     assertEquals("fraud-review", audit.reasonDetail());
   }
 
+  @Test
+  void legacyMembershipReasonRequestFallsBackToLegacyFreeTextCode() throws Exception {
+    updateLegacyMembershipStatus(
+        userId,
+        allowedSourceAccountId,
+        "REVOKED",
+        "manual-revoke",
+        "membership-legacy-reason-request");
+
+    AuthStatusChangeAuditView audit =
+        loadAuditByRequestId("membership-legacy-reason-request")
+            .orElseThrow(() -> new AssertionError("audit row is not created"));
+
+    assertEquals("membership-legacy-reason-request", audit.requestId());
+    assertEquals("LEGACY_FREE_TEXT", audit.reasonCode());
+    assertEquals("manual-revoke", audit.reasonDetail());
+    assertEquals("SUCCESS", audit.outcome());
+  }
+
   private String login(String loginId, String password) throws Exception {
     MvcResult result =
         mockMvc
@@ -512,6 +531,30 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
                     }
                     """
                         .formatted(membershipStatus, reasonCode, reasonDetail)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.userId").value(userId))
+        .andExpect(jsonPath("$.accountId").value(accountId))
+        .andExpect(jsonPath("$.membershipStatus").value(membershipStatus));
+  }
+
+  private void updateLegacyMembershipStatus(
+      long userId, long accountId, String membershipStatus, String reason, String requestId)
+      throws Exception {
+    mockMvc
+        .perform(
+            put("/internal/api/v1/auth/users/%d/memberships/%d/status".formatted(userId, accountId))
+                .header("X-Auth-Bootstrap-Token", AUTH_BOOTSTRAP_TOKEN)
+                .header("X-Subject", AUTH_ADMIN_SUBJECT)
+                .header("X-Request-Id", requestId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "membershipStatus": "%s",
+                      "reason": "%s"
+                    }
+                    """
+                        .formatted(membershipStatus, reason)))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.userId").value(userId))
         .andExpect(jsonPath("$.accountId").value(accountId))
