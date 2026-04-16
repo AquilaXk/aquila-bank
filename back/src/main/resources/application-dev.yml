@@ -11,3 +11,9 @@ management:
   endpoint:
     health:
       show-details: always
+
+security:
+  jwt:
+    secret: ${SECURITY_JWT_SECRET:dev-local-jwt-secret-dev-local-jwt-secret}
+  bootstrap-header-auth:
+    enabled: ${SECURITY_BOOTSTRAP_HEADER_AUTH_ENABLED:true}

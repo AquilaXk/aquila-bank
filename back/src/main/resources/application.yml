@@ -71,3 +71,12 @@ outbox:
     batch-size: ${OUTBOX_POLLER_BATCH_SIZE:20}
     stale-after-seconds: ${OUTBOX_POLLER_STALE_AFTER_SECONDS:30}
     max-retry-delay-seconds: ${OUTBOX_POLLER_MAX_RETRY_DELAY_SECONDS:60}
+
+security:
+  jwt:
+    secret: ${SECURITY_JWT_SECRET}
+    issuer: ${SECURITY_JWT_ISSUER:}
+  bootstrap-header-auth:
+    enabled: ${SECURITY_BOOTSTRAP_HEADER_AUTH_ENABLED:false}
+    account-id-header: ${SECURITY_BOOTSTRAP_ACCOUNT_ID_HEADER:X-Account-Id}
+    subject-header: ${SECURITY_BOOTSTRAP_SUBJECT_HEADER:X-Subject}

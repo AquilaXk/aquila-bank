@@ -16,3 +16,9 @@ management:
 outbox:
   poller:
     enabled: false
+
+security:
+  jwt:
+    secret: test-local-jwt-secret-test-local-jwt-secret
+  bootstrap-header-auth:
+    enabled: true

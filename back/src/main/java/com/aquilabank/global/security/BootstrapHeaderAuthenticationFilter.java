@@ -25,6 +25,11 @@ public class BootstrapHeaderAuthenticationFilter extends OncePerRequestFilter {
   protected void doFilterInternal(
       HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
       throws ServletException, IOException {
+    if (SecurityContextHolder.getContext().getAuthentication() != null) {
+      filterChain.doFilter(request, response);
+      return;
+    }
+
     String rawAccountId = request.getHeader(accountIdHeader);
     if (rawAccountId == null || rawAccountId.isBlank()) {
       filterChain.doFilter(request, response);
