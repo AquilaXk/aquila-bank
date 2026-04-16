@@ -79,6 +79,10 @@ security:
     secret: ${SECURITY_JWT_SECRET}
     issuer: ${SECURITY_JWT_ISSUER:}
     access-token-ttl-seconds: ${SECURITY_JWT_ACCESS_TOKEN_TTL_SECONDS:900}
+  login-protection:
+    max-failures: ${SECURITY_LOGIN_PROTECTION_MAX_FAILURES:5}
+    lock-seconds: ${SECURITY_LOGIN_PROTECTION_LOCK_SECONDS:900}
+    reset-window-seconds: ${SECURITY_LOGIN_PROTECTION_RESET_WINDOW_SECONDS:900}
   bootstrap-header-auth:
     enabled: ${SECURITY_BOOTSTRAP_HEADER_AUTH_ENABLED:false}
     account-id-header: ${SECURITY_BOOTSTRAP_ACCOUNT_ID_HEADER:X-Account-Id}

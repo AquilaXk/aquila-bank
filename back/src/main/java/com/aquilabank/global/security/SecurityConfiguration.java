@@ -31,6 +31,7 @@ import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 @Configuration
 @EnableConfigurationProperties({
   SecurityJwtProperties.class,
+  LoginProtectionProperties.class,
   BootstrapHeaderAuthProperties.class,
   AccountBootstrapApiProperties.class,
   AuthBootstrapApiProperties.class

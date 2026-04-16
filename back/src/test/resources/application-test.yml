@@ -23,6 +23,10 @@ outbox:
 security:
   jwt:
     secret: test-local-jwt-secret-test-local-jwt-secret
+  login-protection:
+    max-failures: 5
+    lock-seconds: 900
+    reset-window-seconds: 900
   bootstrap-header-auth:
     enabled: true
   account-bootstrap-api:

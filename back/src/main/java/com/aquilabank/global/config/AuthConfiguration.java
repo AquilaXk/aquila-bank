@@ -1,5 +1,6 @@
 package com.aquilabank.global.config;
 
+import com.aquilabank.domain.auth.model.LoginProtectionPolicy;
 import com.aquilabank.domain.auth.port.AccountAccessPort;
 import com.aquilabank.domain.auth.port.AuthStatusChangeAuditQueryPort;
 import com.aquilabank.domain.auth.port.AuthTokenIssuePort;
@@ -29,12 +30,22 @@ import com.aquilabank.domain.auth.usecase.UserBootstrapService;
 import com.aquilabank.domain.auth.usecase.UserBootstrapUseCase;
 import com.aquilabank.domain.auth.usecase.UserStatusUpdateService;
 import com.aquilabank.domain.auth.usecase.UserStatusUpdateUseCase;
+import com.aquilabank.global.security.LoginProtectionProperties;
+import java.time.Duration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /** auth use case와 persistence/security adapter를 조립 */
 @Configuration
 public class AuthConfiguration {
+
+  @Bean
+  LoginProtectionPolicy loginProtectionPolicy(LoginProtectionProperties loginProtectionProperties) {
+    return new LoginProtectionPolicy(
+        loginProtectionProperties.maxFailures(),
+        Duration.ofSeconds(loginProtectionProperties.lockSeconds()),
+        Duration.ofSeconds(loginProtectionProperties.resetWindowSeconds()));
+  }
 
   @Bean
   LoginUseCase loginUseCase(
