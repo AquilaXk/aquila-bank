@@ -66,7 +66,16 @@ public abstract class PostgresContainerTestSupport {
   }
 
   protected void commit(PlatformTransactionManager transactionManager, Runnable callback) {
-    new TransactionTemplate(transactionManager).executeWithoutResult(status -> callback.run());
+    commit(transactionManager, null, callback);
+  }
+
+  protected void commit(
+      PlatformTransactionManager transactionManager, Integer timeoutSeconds, Runnable callback) {
+    TransactionTemplate transactionTemplate = new TransactionTemplate(transactionManager);
+    if (timeoutSeconds != null) {
+      transactionTemplate.setTimeout(timeoutSeconds);
+    }
+    transactionTemplate.executeWithoutResult(status -> callback.run());
   }
 
   private void migrateSchema(DataSource dataSource) {

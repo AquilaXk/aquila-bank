@@ -9,12 +9,10 @@ import com.aquilabank.domain.transaction.model.TransactionSummary;
 import com.aquilabank.domain.transaction.port.TransactionReadPort;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Timestamp;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,62 +32,9 @@ public class JdbcTransactionReadRepository implements TransactionReadPort {
   @Override
   @Transactional(readOnly = true)
   public TransactionSlice fetch(TransactionQuery query) {
-    MapSqlParameterSource params =
-        new MapSqlParameterSource()
-            .addValue("accountId", query.accountId())
-            .addValue("from", Timestamp.from(query.from()))
-            .addValue("to", Timestamp.from(query.to()))
-            // 다음 page 존재 여부 판단용 sentinel row 한 건 추가 조회
-            .addValue("fetchLimit", query.limit() + 1);
-
-    StringBuilder sql =
-        new StringBuilder(
-            """
-            SELECT id,
-                   account_id,
-                   transaction_reference,
-                   direction,
-                   transaction_status,
-                   amount_minor,
-                   balance_after_minor,
-                   currency_code,
-                   summary,
-                   counterparty_masked_name,
-                   booked_at
-            FROM transaction_read_model
-            WHERE account_id = :accountId
-              AND booked_at >= :from
-              AND booked_at < :to
-            """);
-
-    if (query.status() != null) {
-      sql.append("\n  AND transaction_status = :status");
-      params.addValue("status", query.status().name());
-    }
-
-    if (query.cursor() != null) {
-      // keyset pagination은 같은 ORDER BY 컬럼을 재사용해 깊은 OFFSET scan 회피
-      sql.append(
-          """
-
-              AND (
-                    booked_at < :cursorBookedAt
-                 OR (booked_at = :cursorBookedAt AND id < :cursorId)
-              )
-          """);
-      params
-          .addValue("cursorBookedAt", Timestamp.from(query.cursor().bookedAt()))
-          .addValue("cursorId", query.cursor().id());
-    }
-
-    sql.append(
-        """
-
-            ORDER BY booked_at DESC, id DESC
-            LIMIT :fetchLimit
-        """);
-
-    List<TransactionSummary> rows = jdbcTemplate.query(sql.toString(), params, ROW_MAPPER);
+    TransactionReadQueryStatement statement = TransactionReadQueryStatement.from(query);
+    List<TransactionSummary> rows =
+        jdbcTemplate.query(statement.sql(), statement.params(), ROW_MAPPER);
     boolean hasNext = rows.size() > query.limit();
     // hasNext 판단에만 쓴 sentinel row는 응답 전에 제거
     List<TransactionSummary> items =
