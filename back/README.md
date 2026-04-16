@@ -209,6 +209,31 @@ requestId drill-down:
 - `requestId`는 고카디널리티라 alert 집계 기준으로 쓰지 않고 incident drill-down에만 사용합니다.
 - 구버전 로그가 섞여 `httpStatus`가 없는 기간은 한시적으로 `error=bootstrap token is invalid`를 `401`, `error=actorSubject header is required|reason is required`를 `400` fallback으로 사용합니다.
 
+### 최소 alert 기준
+
+- `401 Unauthorized`: `5분 내 3회 이상`이면 warning, 같은 window에서 `10회 이상`이면 critical 후보로 봅니다.
+- `400 Bad Request`: 같은 `actorSubject`에서 연속 `2회 이상`이면 warning, `5회 이상`이면 critical 후보로 봅니다.
+- `actorSubject=-`인 `400`은 헤더 누락 성격이므로 운영 스크립트 drift 또는 수동 호출 오류로 분류합니다.
+- `404`, `409`, `500`은 이번 최소 범위에서 제외하고 후속 이슈로 분리합니다.
+
+### requestId 장애 추적 절차
+
+1. alert 또는 문의에서 `requestId`를 확보합니다. alert payload에 `requestId`가 없으면 같은 시간대 `actorSubject + path + error`로 실패 로그를 먼저 좁힙니다.
+2. 앱 로그에서 같은 `requestId`를 재검색해 최초 실패 시점, 재시도 여부, 같은 actor 반복 여부를 확인합니다.
+3. 성공 전환 여부가 필요하면 success audit exact lookup으로 같은 `requestId`를 조회합니다.
+4. success audit row가 없으면 실패-only incident로 보고 토큰, `X-Subject`, request body drift를 runbook 체크리스트로 확인합니다.
+
+success audit exact lookup 예시:
+
+```bash
+curl --fail-with-body --silent --show-error \
+  --header "X-Auth-Bootstrap-Token: ${SECURITY_AUTH_BOOTSTRAP_API_TOKEN}" \
+  "http://localhost:8080/internal/api/v1/auth/status-change-audits/by-request-id?requestId=auth-user-disable-20260416-001"
+```
+
+- exact lookup은 성공 변경 row만 반환합니다.
+- failure 원본은 structured log이므로 incident 시작점은 항상 로그 검색입니다.
+
 ## Test
 
 ```bash
