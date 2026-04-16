@@ -5,15 +5,29 @@ on:
     branches:
       - main
       - develop
+    paths:
+      - "back/**"
+      - ".github/workflows/backend-ci.yml"
   push:
     branches:
       - main
       - develop
+    paths:
+      - "back/**"
+      - ".github/workflows/backend-ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   backend-check:
     name: Backend Check
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: back
@@ -34,4 +48,4 @@ jobs:
         run: chmod +x gradlew
 
       - name: Run backend check
-        run: ./gradlew check --no-daemon
+        run: ./gradlew check --no-daemon --stacktrace

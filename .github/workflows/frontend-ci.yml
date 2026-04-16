@@ -5,15 +5,29 @@ on:
     branches:
       - main
       - develop
+    paths:
+      - "front/**"
+      - ".github/workflows/frontend-ci.yml"
   push:
     branches:
       - main
       - develop
+    paths:
+      - "front/**"
+      - ".github/workflows/frontend-ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   frontend-lint-build:
     name: Frontend Lint And Build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: front
@@ -29,7 +43,7 @@ jobs:
           cache-dependency-path: front/yarn.lock
 
       - name: Install dependencies
-        run: yarn install --non-interactive
+        run: yarn install --frozen-lockfile --non-interactive
 
       - name: Run frontend lint
         run: yarn lint
