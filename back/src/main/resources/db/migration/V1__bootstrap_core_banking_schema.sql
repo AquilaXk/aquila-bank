@@ -1,4 +1,4 @@
--- Immutable ledger rows remain the source of truth for balance reconstruction and audit.
+-- 변경 불가능한 ledger row를 balance 재구성과 audit의 source of truth로 사용합니다.
 CREATE TABLE ledger_entry (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     account_id BIGINT NOT NULL,
@@ -27,7 +27,7 @@ CREATE INDEX idx_ledger_entry_transaction_reference
 CREATE INDEX idx_ledger_entry_status_booked_at
     ON ledger_entry (entry_status, booked_at DESC, id DESC);
 
--- The read model is shaped for timeline lookup, not for write-side invariants.
+-- read model은 write-side invariant보다 timeline lookup에 맞춘 형태로 둡니다.
 CREATE TABLE transaction_read_model (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     ledger_entry_id BIGINT NOT NULL,
@@ -53,7 +53,7 @@ CREATE INDEX idx_transaction_read_model_account_cursor
 CREATE INDEX idx_transaction_read_model_account_status_cursor
     ON transaction_read_model (account_id, transaction_status, booked_at DESC, id DESC);
 
--- Snapshot rows let balance reads avoid replaying the full ledger every time.
+-- snapshot row를 두어 balance 조회 때마다 전체 ledger를 재생하지 않게 합니다.
 CREATE TABLE account_balance_snapshot (
     account_id BIGINT PRIMARY KEY,
     last_applied_ledger_entry_id BIGINT NOT NULL DEFAULT 0,
@@ -63,7 +63,7 @@ CREATE TABLE account_balance_snapshot (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Idempotency storage protects command endpoints from duplicate client retries.
+-- idempotency 저장소로 command endpoint의 중복 client retry를 막습니다.
 CREATE TABLE command_idempotency (
     idempotency_key VARCHAR(80) PRIMARY KEY,
     request_fingerprint VARCHAR(128) NOT NULL,
@@ -78,7 +78,7 @@ CREATE TABLE command_idempotency (
 CREATE INDEX idx_command_idempotency_status_lock
     ON command_idempotency (processing_status, locked_until);
 
--- Outbox rows decouple the write transaction from asynchronous delivery.
+-- outbox row로 write transaction과 비동기 delivery를 분리합니다.
 CREATE TABLE outbox_event (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     aggregate_type VARCHAR(40) NOT NULL,

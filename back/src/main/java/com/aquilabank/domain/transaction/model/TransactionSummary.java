@@ -2,7 +2,7 @@ package com.aquilabank.domain.transaction.model;
 
 import java.time.Instant;
 
-/** Read-optimized transaction projection returned to clients. */
+/** 거래 타임라인용 read model projection */
 public record TransactionSummary(
     long id,
     long accountId,

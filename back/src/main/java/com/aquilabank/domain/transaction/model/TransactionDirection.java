@@ -1,6 +1,6 @@
 package com.aquilabank.domain.transaction.model;
 
-/** Whether the transaction decreases or increases the account balance. */
+/** 거래가 잔액에 미치는 방향 */
 public enum TransactionDirection {
   DEBIT,
   CREDIT

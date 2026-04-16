@@ -1,5 +1,5 @@
 :root {
-  /* Global design tokens for the bootstrap landing page. */
+  /* bootstrap 랜딩 화면 공통 디자인 토큰 */
   color-scheme: light;
   --bg: #f4efe7;
   --ink: #14213d;
@@ -22,7 +22,7 @@ body {
 }
 
 body {
-  /* Layered gradients keep the initial screen from feeling like a blank scaffold. */
+  /* 여러 gradient를 겹쳐 초기 화면이 빈 scaffold처럼 보이지 않게 합니다. */
   background:
     radial-gradient(circle at top left, rgba(15, 118, 110, 0.18), transparent 28%),
     radial-gradient(circle at top right, rgba(20, 33, 61, 0.14), transparent 24%),
@@ -39,7 +39,7 @@ body {
 
 .hero,
 .panel {
-  /* Both surface types share the same glass-panel treatment for consistency. */
+  /* 두 surface 모두 같은 glass panel 톤을 써서 화면 일관성을 맞춥니다. */
   position: relative;
   overflow: hidden;
   border: 1px solid var(--line);
@@ -160,7 +160,7 @@ h1 {
 }
 
 @media (max-width: 900px) {
-  /* Mobile collapses metric and card grids into a single readable column. */
+  /* 모바일에서는 metric/card grid를 한 컬럼으로 접어 가독성을 유지합니다. */
   .shell {
     width: min(100% - 24px, 1120px);
     padding: 24px 0 56px;

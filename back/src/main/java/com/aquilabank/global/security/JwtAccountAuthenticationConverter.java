@@ -9,7 +9,7 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 
-/** Converts a verified JWT into the account-aware principal used by the web layer. */
+/** 검증 완료된 JWT를 account-aware principal로 바꾸는 converter */
 public class JwtAccountAuthenticationConverter
     implements Converter<Jwt, AbstractAuthenticationToken> {
 
@@ -35,7 +35,7 @@ public class JwtAccountAuthenticationConverter
   private Collection<GrantedAuthority> extractAuthorities(Jwt jwt) {
     Object rawScope = jwt.getClaims().get("scope");
     if (rawScope instanceof String scope && !scope.isBlank()) {
-      // Spring Security expects scope claims to be exposed as SCOPE_* authorities.
+      // scope claim을 SCOPE_* authority로 정규화
       return Arrays.stream(scope.split(" "))
           .filter(token -> !token.isBlank())
           .map(token -> (GrantedAuthority) () -> "SCOPE_" + token)

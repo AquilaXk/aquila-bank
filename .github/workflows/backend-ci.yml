@@ -1,4 +1,4 @@
-name: ci
+name: Backend CI
 
 on:
   pull_request:
@@ -11,7 +11,8 @@ on:
       - develop
 
 jobs:
-  backend:
+  backend-check:
+    name: Backend Check
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -32,30 +33,5 @@ jobs:
       - name: Grant Gradle wrapper execute permission
         run: chmod +x gradlew
 
-      - name: Backend check
+      - name: Run backend check
         run: ./gradlew check --no-daemon
-
-  frontend:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: front
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js 20
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: yarn
-          cache-dependency-path: front/yarn.lock
-
-      - name: Install dependencies
-        run: yarn install --non-interactive
-
-      - name: Frontend lint
-        run: yarn lint
-
-      - name: Frontend build
-        run: yarn build

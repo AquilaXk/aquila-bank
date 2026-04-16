@@ -1,4 +1,4 @@
-// Card content is defined as data so the initial landing page stays easy to replace or expand.
+// 카드 내용을 데이터로 분리해 초기 랜딩 화면을 나중에 쉽게 교체하거나 확장할 수 있게 합니다.
 const highlights = [
   {
     title: "Real-time Alerts",
@@ -18,7 +18,7 @@ export default function HomePage() {
   return (
     <main className="shell">
       <section className="hero">
-        {/* Hero area explains why the repo is split into front/back from the start. */}
+        {/* hero 영역에서 왜 repo를 처음부터 front/back으로 나눴는지 설명합니다. */}
         <p className="eyebrow">Aquila Bank Workspace</p>
         <h1>고신뢰 웹뱅킹을 위한 front/back 분리 워크스페이스</h1>
         <p className="lead">
@@ -48,7 +48,7 @@ export default function HomePage() {
           <h2>초기 프런트 골격</h2>
         </div>
         <div className="cards">
-          {/* Cards capture the three delivery axes this workspace is optimized around. */}
+          {/* 이 카드들은 현재 워크스페이스가 맞추려는 세 가지 delivery 축을 보여줍니다. */}
           {highlights.map((item) => (
             <article className="card" key={item.title}>
               <h3>{item.title}</h3>

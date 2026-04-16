@@ -5,7 +5,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.web.method.support.HandlerMethodArgumentResolver;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
-/** Registers web-layer argument resolvers that depend on the security context. */
+/** security 기반 argument resolver 등록 */
 @Configuration
 public class WebMvcSecurityConfiguration implements WebMvcConfigurer {
 

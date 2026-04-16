@@ -1,6 +1,6 @@
 spring:
   flyway:
-    # Tests that do not depend on real schema migration can bootstrap faster without Flyway.
+    # 실제 schema migration에 의존하지 않는 테스트는 Flyway 없이 더 빠르게 부팅합니다.
     enabled: false
   datasource:
     url: jdbc:postgresql://localhost:5432/aquila_bank_test
@@ -12,12 +12,12 @@ spring:
 management:
   health:
     db:
-      # Context-load tests should not fail only because the test database is absent.
+      # test DB가 없다는 이유만으로 context-load 테스트가 실패하지 않게 합니다.
       enabled: false
 
 outbox:
   poller:
-    # Scheduled dispatch is disabled so tests control retry timing explicitly.
+    # scheduled dispatch는 끄고 테스트가 retry 타이밍을 직접 제어하게 합니다.
     enabled: false
 
 security:

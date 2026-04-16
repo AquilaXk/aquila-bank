@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
-/** HTTP adapter for the transaction timeline read use case. */
+/** transaction timeline read use case를 노출하는 HTTP adapter */
 @RestController
 @RequestMapping("/api/v1/transactions")
 public class TransactionQueryController {
@@ -34,7 +34,7 @@ public class TransactionQueryController {
       @RequestParam(required = false) String cursor,
       @RequestParam(required = false) TransactionStatus status) {
     try {
-      // The cursor stays optional so the same endpoint handles both the first page and follow-ups.
+      // 첫 page와 후속 page를 같은 endpoint로 통일
       TransactionCursor decodedCursor =
           cursor == null || cursor.isBlank() ? null : TransactionCursorCodec.decode(cursor);
       TransactionQuery query =

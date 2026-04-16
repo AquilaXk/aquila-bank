@@ -1,6 +1,6 @@
 package com.aquilabank.domain.notification.usecase;
 
-/** Use case entry point for outbox polling jobs. */
+/** outbox polling job이 호출하는 use case 진입점 */
 public interface OutboxDispatchUseCase {
 
   int dispatchPendingEvents();

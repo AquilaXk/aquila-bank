@@ -2,7 +2,7 @@ package com.aquilabank.global.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-/** Runtime knobs for poll cadence, retry staleness, and batch size. */
+/** poll 주기, stale 기준, batch 크기용 runtime 설정 */
 @ConfigurationProperties(prefix = "outbox.poller")
 public record OutboxProperties(
     boolean enabled,

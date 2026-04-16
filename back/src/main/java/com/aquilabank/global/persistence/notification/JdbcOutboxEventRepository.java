@@ -15,7 +15,7 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
-/** JDBC adapter that manages outbox claiming and retry state in PostgreSQL. */
+/** PostgreSQL에서 outbox claim과 retry 상태를 관리하는 JDBC adapter */
 @Repository
 public class JdbcOutboxEventRepository implements OutboxEventStore {
 
@@ -38,7 +38,7 @@ public class JdbcOutboxEventRepository implements OutboxEventStore {
 
     String sql =
         """
-        -- Claim rows inside the database so parallel pollers do not overlap.
+        -- database 안에서 먼저 claim해 병렬 poller가 같은 row를 동시에 잡지 않게 둡니다.
         WITH candidates AS (
             SELECT id
             FROM outbox_event
@@ -117,7 +117,7 @@ public class JdbcOutboxEventRepository implements OutboxEventStore {
   }
 
   private static OutboxEvent mapRow(ResultSet rs) throws SQLException {
-    // Read timestamptz as OffsetDateTime first so the driver preserves timezone semantics.
+    // timestamptz는 먼저 OffsetDateTime으로 읽어 driver timezone semantics를 유지
     OffsetDateTime availableAt = rs.getObject("available_at", OffsetDateTime.class);
     OffsetDateTime updatedAt = rs.getObject("updated_at", OffsetDateTime.class);
     return new OutboxEvent(

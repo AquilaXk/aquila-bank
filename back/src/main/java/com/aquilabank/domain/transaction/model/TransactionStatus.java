@@ -1,6 +1,6 @@
 package com.aquilabank.domain.transaction.model;
 
-/** Read-model status exposed to the timeline API. */
+/** 거래 조회용 상태 */
 public enum TransactionStatus {
   PENDING,
   BOOKED,

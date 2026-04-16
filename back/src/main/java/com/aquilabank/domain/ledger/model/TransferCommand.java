@@ -2,6 +2,7 @@ package com.aquilabank.domain.ledger.model;
 
 import java.util.Locale;
 
+/** 송금 명령 입력 모델 */
 public record TransferCommand(
     long sourceAccountId,
     long targetAccountId,
@@ -35,6 +36,7 @@ public record TransferCommand(
   }
 
   public String fingerprint() {
+    // idempotency 충돌 판단용 command fingerprint
     return sourceAccountId
         + "|"
         + targetAccountId

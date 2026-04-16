@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+/** 송금 명령 use case를 노출하는 HTTP adapter */
 @Validated
 @RestController
 @RequestMapping("/api/v1/transfers")
@@ -32,6 +33,7 @@ public class TransferCommandController {
       @CurrentAccountId long sourceAccountId,
       @RequestHeader("Idempotency-Key") String idempotencyKey,
       @Valid @RequestBody TransferRequest request) {
+    // 인증 principal과 HTTP body/header를 domain command로 조립
     TransferResult result =
         transferCommandUseCase.transfer(
             new TransferCommand(
@@ -44,6 +46,7 @@ public class TransferCommandController {
     return TransferResponse.from(result);
   }
 
+  /** 송금 요청 body */
   public record TransferRequest(
       @Positive(message = "targetAccountId must be positive") long targetAccountId,
       @Positive(message = "amountMinor must be positive") long amountMinor,
@@ -53,6 +56,7 @@ public class TransferCommandController {
           String currencyCode,
       @NotBlank(message = "summary is required") @Size(max = 120, message = "summary must be 120 characters or less") String summary) {}
 
+  /** 송금 완료 응답 */
   public record TransferResponse(
       String transactionReference,
       long sourceAccountId,

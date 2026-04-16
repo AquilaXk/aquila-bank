@@ -5,7 +5,7 @@ import com.aquilabank.domain.transaction.model.TransactionSummary;
 import java.time.Instant;
 import java.util.List;
 
-/** API response model for the transaction timeline endpoint. */
+/** transaction timeline endpoint 응답 모델 */
 public record TransactionQueryResponse(
     List<TransactionItemResponse> items, String nextCursor, boolean hasNext, int limit) {
 
@@ -17,7 +17,7 @@ public record TransactionQueryResponse(
         slice.limit());
   }
 
-  /** Flat item shape returned to web/mobile clients. */
+  /** 웹/모바일 클라이언트용 flat item shape */
   public record TransactionItemResponse(
       long id,
       long accountId,

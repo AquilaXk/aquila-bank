@@ -2,7 +2,7 @@ package com.aquilabank.domain.notification.model;
 
 import java.time.Instant;
 
-/** Event snapshot claimed from the outbox table for dispatch. */
+/** dispatch 대상으로 claim한 outbox row 스냅샷 */
 public record OutboxEvent(
     long id,
     String aggregateType,

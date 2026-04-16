@@ -14,6 +14,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+/** domain/web 예외를 공통 API error response로 바꾸는 handler */
 @RestControllerAdvice
 public class ApiExceptionHandler {
 
@@ -69,6 +70,7 @@ public class ApiExceptionHandler {
                 Instant.now(), status.value(), status.getReasonPhrase(), message, path));
   }
 
+  /** 모든 API가 공유하는 기본 error body */
   public record ApiErrorResponse(
       Instant timestamp, int status, String error, String message, String path) {}
 }

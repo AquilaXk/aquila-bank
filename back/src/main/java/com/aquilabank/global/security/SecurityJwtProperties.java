@@ -2,6 +2,6 @@ package com.aquilabank.global.security;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-/** Shared JWT settings for local bootstrap and deployed resource-server validation. */
+/** 로컬 bootstrap과 배포 resource server 검증이 함께 쓰는 JWT 설정 */
 @ConfigurationProperties(prefix = "security.jwt")
 public record SecurityJwtProperties(String secret, String issuer) {}

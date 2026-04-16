@@ -19,7 +19,7 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
-/** JDBC read adapter optimized for account timeline lookup via keyset pagination. */
+/** 계좌 타임라인 조회를 keyset pagination 기준으로 읽어오는 JDBC adapter */
 @Repository
 public class JdbcTransactionReadRepository implements TransactionReadPort {
 
@@ -39,7 +39,7 @@ public class JdbcTransactionReadRepository implements TransactionReadPort {
             .addValue("accountId", query.accountId())
             .addValue("from", Timestamp.from(query.from()))
             .addValue("to", Timestamp.from(query.to()))
-            // Fetch one extra row to tell the API whether a next page exists.
+            // 다음 page 존재 여부 판단용 sentinel row 한 건 추가 조회
             .addValue("fetchLimit", query.limit() + 1);
 
     StringBuilder sql =
@@ -68,7 +68,7 @@ public class JdbcTransactionReadRepository implements TransactionReadPort {
     }
 
     if (query.cursor() != null) {
-      // Keyset pagination reuses the same ORDER BY columns to avoid deep OFFSET scans.
+      // keyset pagination은 같은 ORDER BY 컬럼을 재사용해 깊은 OFFSET scan 회피
       sql.append(
           """
 
@@ -91,7 +91,7 @@ public class JdbcTransactionReadRepository implements TransactionReadPort {
 
     List<TransactionSummary> rows = jdbcTemplate.query(sql.toString(), params, ROW_MAPPER);
     boolean hasNext = rows.size() > query.limit();
-    // Trim the sentinel row before returning the slice.
+    // hasNext 판단에만 쓴 sentinel row는 응답 전에 제거
     List<TransactionSummary> items =
         hasNext ? new ArrayList<>(rows.subList(0, query.limit())) : rows;
     TransactionCursor nextCursor = hasNext ? toCursor(items.getLast()) : null;
@@ -115,7 +115,7 @@ public class JdbcTransactionReadRepository implements TransactionReadPort {
   }
 
   private static TransactionCursor toCursor(TransactionSummary item) {
-    // The next page starts strictly after the last visible row in the current slice.
+    // 현재 slice의 마지막 visible row 다음부터 다음 page가 시작되게 cursor 생성
     return new TransactionCursor(item.bookedAt(), item.id());
   }
 }

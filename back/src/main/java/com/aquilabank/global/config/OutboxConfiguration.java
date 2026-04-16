@@ -10,7 +10,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
-/** Wires the domain outbox use case with Spring-managed adapters and scheduler support. */
+/** Spring adapter와 scheduler를 domain outbox use case에 연결 */
 @Configuration
 @EnableScheduling
 @EnableConfigurationProperties(OutboxProperties.class)
@@ -21,6 +21,7 @@ public class OutboxConfiguration {
       OutboxEventStore outboxEventStore,
       OutboxEventPublishPort outboxEventPublishPort,
       OutboxProperties outboxProperties) {
+    // poller가 바뀌어도 retry 기준과 batch 크기는 설정값에서만 제어되게 둡니다.
     return new OutboxDispatchService(
         outboxEventStore,
         outboxEventPublishPort,

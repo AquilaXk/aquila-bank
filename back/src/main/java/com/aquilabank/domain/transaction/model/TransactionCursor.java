@@ -2,7 +2,7 @@ package com.aquilabank.domain.transaction.model;
 
 import java.time.Instant;
 
-/** Keyset pagination cursor built from the sort columns used by the read model. */
+/** read model 정렬 컬럼으로 만드는 keyset pagination cursor */
 public record TransactionCursor(Instant bookedAt, long id) {
 
   public TransactionCursor {

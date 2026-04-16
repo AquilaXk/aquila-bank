@@ -6,7 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-/** Bootstrap publisher used until a real broker, websocket, or push adapter is introduced. */
+/** 실제 broker/websocket/push adapter 도입 전까지 쓰는 bootstrap publisher */
 @Component
 public class LoggingOutboxEventPublisher implements OutboxEventPublishPort {
 
@@ -14,6 +14,7 @@ public class LoggingOutboxEventPublisher implements OutboxEventPublishPort {
 
   @Override
   public void publish(OutboxEvent event) {
+    // delivery channel이 없을 때도 outbox publish 흐름과 운영 로그 형태는 먼저 검증 가능하게 둡니다.
     log.info(
         "publishing outbox event. id={}, key={}, type={}, aggregateType={}, aggregateId={}",
         event.id(),

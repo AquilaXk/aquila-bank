@@ -22,6 +22,7 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
+/** 송금 쓰기 명령을 ledger, snapshot, read model, outbox 적재로 풀어내는 JDBC adapter */
 @Repository
 public class JdbcTransferWriteRepository implements TransferWritePort {
 
@@ -42,6 +43,7 @@ public class JdbcTransferWriteRepository implements TransferWritePort {
   public TransferResult transfer(TransferCommand command) {
     Instant now = Instant.now();
     String fingerprint = command.fingerprint();
+    // 같은 idempotencyKey로 먼저 들어온 요청이 있으면 기존 처리 상태를 재사용합니다.
     boolean inserted = tryInsertIdempotency(command.idempotencyKey(), fingerprint, now);
 
     if (!inserted) {
@@ -58,6 +60,7 @@ public class JdbcTransferWriteRepository implements TransferWritePort {
       refreshIdempotencyLock(command.idempotencyKey(), now);
     }
 
+    // source/target snapshot을 모두 잠가 송금 중간 상태가 다른 쓰기와 엇갈리지 않게 합니다.
     LockedBalanceSnapshot source = loadBalanceSnapshot(command.sourceAccountId());
     LockedBalanceSnapshot target = loadBalanceSnapshot(command.targetAccountId());
 
@@ -74,6 +77,7 @@ public class JdbcTransferWriteRepository implements TransferWritePort {
     long sourceBalanceAfter = source.availableBalanceMinor() - command.amountMinor();
     long targetBalanceAfter = target.availableBalanceMinor() + command.amountMinor();
 
+    // ledger entry를 먼저 남겨 원장 기록을 source of truth로 고정합니다.
     long debitEntryId =
         insertLedgerEntry(
             command.sourceAccountId(),
@@ -96,6 +100,7 @@ public class JdbcTransferWriteRepository implements TransferWritePort {
     updateBalanceSnapshot(command.sourceAccountId(), debitEntryId, sourceBalanceAfter, bookedAt);
     updateBalanceSnapshot(command.targetAccountId(), creditEntryId, targetBalanceAfter, bookedAt);
 
+    // 조회 path는 read model을 별도로 적재해 대량 timeline lookup 비용을 낮춥니다.
     insertTransactionReadModel(
         debitEntryId,
         command.sourceAccountId(),
@@ -119,6 +124,7 @@ public class JdbcTransferWriteRepository implements TransferWritePort {
         "ACCOUNT-" + command.sourceAccountId(),
         bookedAt);
 
+    // 비동기 알림은 같은 transaction 안에서 outbox에 적재하고 실제 delivery는 나중에 분리합니다.
     insertOutboxEvent(command, transactionReference, bookedAt);
 
     TransferResult result =
@@ -131,6 +137,7 @@ public class JdbcTransferWriteRepository implements TransferWritePort {
             sourceBalanceAfter,
             bookedAt,
             "BOOKED");
+    // 최종 응답을 저장해 동일 요청 재시도 시 같은 결과를 재사용합니다.
     completeIdempotency(command.idempotencyKey(), result, bookedAt);
     return result;
   }
@@ -442,6 +449,7 @@ public class JdbcTransferWriteRepository implements TransferWritePort {
 
   private TransferResult readStoredResult(String rawPayload) {
     try {
+      // 완료된 idempotency 요청은 저장된 payload를 그대로 복원해 재응답합니다.
       return objectMapper.readValue(rawPayload, TransferResult.class);
     } catch (JsonProcessingException ex) {
       throw new IllegalStateException("stored idempotency payload is invalid", ex);
@@ -458,6 +466,7 @@ public class JdbcTransferWriteRepository implements TransferWritePort {
 
   private Map<String, Object> outboxPayload(
       TransferCommand command, String transactionReference, Instant bookedAt) {
+    // delivery channel이 바뀌어도 공통 event payload shape은 여기서 고정합니다.
     return Map.of(
         "transactionReference",
         transactionReference,

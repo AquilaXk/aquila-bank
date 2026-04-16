@@ -6,12 +6,13 @@ import com.aquilabank.domain.transaction.usecase.TransactionQueryUseCase;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-/** Connects the transaction query use case to its outbound read port. */
+/** transaction query use case와 read port를 연결 */
 @Configuration
 public class TransactionQueryConfiguration {
 
   @Bean
   TransactionQueryUseCase transactionQueryUseCase(TransactionReadPort transactionReadPort) {
+    // 조회 path는 얇은 use case를 통해 controller와 JDBC adapter를 분리합니다.
     return new TransactionQueryService(transactionReadPort);
   }
 }
