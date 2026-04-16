@@ -318,6 +318,33 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
         .andExpect(jsonPath("$.message").value("account access is denied"));
   }
 
+  @Test
+  void internalAuthAuditLookupReturnsStoredAuditByRequestId() throws Exception {
+    updateMembershipStatus(
+        userId, allowedSourceAccountId, "REVOKED", "manual-revoke", "membership-revoked-request");
+
+    AuthStatusChangeAuditView audit =
+        loadAuditByRequestId("membership-revoked-request")
+            .orElseThrow(() -> new AssertionError("audit row is not created"));
+
+    mockMvc
+        .perform(
+            get("/internal/api/v1/auth/status-change-audits/by-request-id")
+                .header("X-Auth-Bootstrap-Token", AUTH_BOOTSTRAP_TOKEN)
+                .param("requestId", "membership-revoked-request"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.requestId").value(audit.requestId()))
+        .andExpect(jsonPath("$.actorSubject").value(audit.actorSubject()))
+        .andExpect(jsonPath("$.targetUserId").value(audit.targetUserId()))
+        .andExpect(jsonPath("$.targetAccountId").value(audit.targetAccountId()))
+        .andExpect(jsonPath("$.changeType").value(audit.changeType()))
+        .andExpect(jsonPath("$.beforeStatus").value(audit.beforeStatus()))
+        .andExpect(jsonPath("$.afterStatus").value(audit.afterStatus()))
+        .andExpect(jsonPath("$.reason").value(audit.reason()))
+        .andExpect(jsonPath("$.outcome").value(audit.outcome()))
+        .andExpect(jsonPath("$.createdAt").value(audit.createdAt().toString()));
+  }
+
   private String login(String loginId, String password) throws Exception {
     MvcResult result =
         mockMvc
@@ -472,7 +499,8 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
                    before_status,
                    after_status,
                    reason,
-                   outcome
+                   outcome,
+                   created_at
             FROM auth_status_change_audit
             WHERE request_id = :requestId
             ORDER BY id DESC
@@ -491,7 +519,8 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
                   rs.getString("before_status"),
                   rs.getString("after_status"),
                   rs.getString("reason"),
-                  rs.getString("outcome"));
+                  rs.getString("outcome"),
+                  rs.getTimestamp("created_at").toInstant());
             })
         .stream()
         .findFirst();
@@ -506,5 +535,6 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
       String beforeStatus,
       String afterStatus,
       String reason,
-      String outcome) {}
+      String outcome,
+      java.time.Instant createdAt) {}
 }
