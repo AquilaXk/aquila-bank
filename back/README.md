@@ -237,12 +237,14 @@ requestId drill-down:
 success audit exact lookup 예시:
 
 ```bash
-curl --fail-with-body --silent --show-error \
-  --header "X-Auth-Bootstrap-Token: ${SECURITY_AUTH_BOOTSTRAP_API_TOKEN}" \
-  "http://localhost:8080/internal/api/v1/auth/status-change-audits/by-request-id?requestId=auth-user-disable-20260416-001"
+tools/ops/internal-auth-find-status-change-audit.sh \
+  http://localhost:8080 \
+  "$SECURITY_AUTH_BOOTSTRAP_API_TOKEN" \
+  auth-user-disable-20260416-001
 ```
 
 - exact lookup은 성공 변경 row만 반환합니다.
+- wrapper script 내부에서 exact lookup endpoint, `X-Auth-Bootstrap-Token`, `requestId` query를 고정합니다.
 - failure 원본은 structured log이므로 incident 시작점은 항상 로그 검색입니다.
 
 ## Test

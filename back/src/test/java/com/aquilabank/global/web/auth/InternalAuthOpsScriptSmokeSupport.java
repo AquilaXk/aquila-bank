@@ -13,6 +13,32 @@ import java.util.concurrent.TimeUnit;
 /** fake curl로 실제 네트워크 없이 script argv/body만 캡처합니다. */
 final class InternalAuthOpsScriptSmokeSupport {
 
+  static final ScriptSpec STATUS_CHANGE_AUDIT_LOOKUP_SPEC =
+      new ScriptSpec(
+          "status-change-audit-lookup",
+          repoRoot().resolve("tools/ops/internal-auth-find-status-change-audit.sh"),
+          "usage: tools/ops/internal-auth-find-status-change-audit.sh",
+          List.of(
+              "http://localhost:8080",
+              "test-auth-bootstrap-api-token",
+              "auth-user-disable-20260416-001"),
+          List.of(
+              "--fail-with-body",
+              "--silent",
+              "--show-error",
+              "--get",
+              "--header",
+              "X-Auth-Bootstrap-Token: test-auth-bootstrap-api-token",
+              "--data-urlencode",
+              "requestId=auth-user-disable-20260416-001",
+              "http://localhost:8080/internal/api/v1/auth/status-change-audits/by-request-id"),
+          List.of(
+              "tools/ops/internal-auth-find-status-change-audit.sh \\",
+              "http://localhost:8080 \\",
+              "\"$SECURITY_AUTH_BOOTSTRAP_API_TOKEN\" \\",
+              "auth-user-disable-20260416-001",
+              "- exact lookup은 성공 변경 row만 반환합니다."));
+
   static final ScriptSpec USER_STATUS_SPEC =
       new ScriptSpec(
           "user-status",

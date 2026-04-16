@@ -11,6 +11,20 @@ class InternalAuthOpsScriptSmokeTest {
   @TempDir Path tempDir;
 
   @Test
+  void statusChangeAuditLookupScriptRejectsMissingArgs() throws Exception {
+    InternalAuthOpsScriptSmokeSupport.ScriptResult result =
+        InternalAuthOpsScriptSmokeSupport.run(
+            tempDir,
+            InternalAuthOpsScriptSmokeSupport.STATUS_CHANGE_AUDIT_LOOKUP_SPEC,
+            InternalAuthOpsScriptSmokeSupport.STATUS_CHANGE_AUDIT_LOOKUP_SPEC.args().subList(0, 2));
+
+    assertThat(result.exitCode()).isEqualTo(1);
+    assertThat(result.stderr())
+        .contains(InternalAuthOpsScriptSmokeSupport.STATUS_CHANGE_AUDIT_LOOKUP_SPEC.usagePrefix());
+    assertThat(result.curlArgs()).isEmpty();
+  }
+
+  @Test
   void userStatusScriptRejectsMissingArgs() throws Exception {
     InternalAuthOpsScriptSmokeSupport.ScriptResult result =
         InternalAuthOpsScriptSmokeSupport.run(
@@ -71,6 +85,22 @@ class InternalAuthOpsScriptSmokeTest {
   }
 
   @Test
+  void statusChangeAuditLookupScriptBuildsExpectedCurlRequest() throws Exception {
+    InternalAuthOpsScriptSmokeSupport.ScriptResult result =
+        InternalAuthOpsScriptSmokeSupport.run(
+            tempDir,
+            InternalAuthOpsScriptSmokeSupport.STATUS_CHANGE_AUDIT_LOOKUP_SPEC,
+            InternalAuthOpsScriptSmokeSupport.STATUS_CHANGE_AUDIT_LOOKUP_SPEC.args());
+
+    assertThat(result.exitCode()).isZero();
+    assertThat(result.stderr()).isEmpty();
+    assertThat(result.stdout()).isEmpty();
+    assertThat(result.curlArgs())
+        .containsExactlyElementsOf(
+            InternalAuthOpsScriptSmokeSupport.STATUS_CHANGE_AUDIT_LOOKUP_SPEC.expectedCurlArgs());
+  }
+
+  @Test
   void readmeUserStatusExamplesMatchSmokeSpec() throws Exception {
     assertReadmeContains(InternalAuthOpsScriptSmokeSupport.USER_STATUS_SPEC);
   }
@@ -78,6 +108,11 @@ class InternalAuthOpsScriptSmokeTest {
   @Test
   void readmeMembershipStatusExamplesMatchSmokeSpec() throws Exception {
     assertReadmeContains(InternalAuthOpsScriptSmokeSupport.MEMBERSHIP_STATUS_SPEC);
+  }
+
+  @Test
+  void readmeStatusChangeAuditLookupExamplesMatchSmokeSpec() throws Exception {
+    assertReadmeContains(InternalAuthOpsScriptSmokeSupport.STATUS_CHANGE_AUDIT_LOOKUP_SPEC);
   }
 
   private void assertReadmeContains(InternalAuthOpsScriptSmokeSupport.ScriptSpec spec)
