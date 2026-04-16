@@ -20,3 +20,6 @@ security:
   account-bootstrap-api:
     enabled: ${SECURITY_ACCOUNT_BOOTSTRAP_API_ENABLED:true}
     token: ${SECURITY_ACCOUNT_BOOTSTRAP_API_TOKEN:dev-bootstrap-api-token}
+  auth-bootstrap-api:
+    enabled: ${SECURITY_AUTH_BOOTSTRAP_API_ENABLED:true}
+    token: ${SECURITY_AUTH_BOOTSTRAP_API_TOKEN:dev-auth-bootstrap-api-token}

@@ -1,6 +1,7 @@
 package com.aquilabank.global.web;
 
 import com.aquilabank.domain.auth.exception.AccountAccessDeniedException;
+import com.aquilabank.domain.auth.exception.DuplicateLoginIdException;
 import com.aquilabank.domain.auth.exception.InvalidCredentialsException;
 import com.aquilabank.domain.ledger.exception.CommandConflictException;
 import com.aquilabank.domain.ledger.exception.CurrencyMismatchException;
@@ -69,6 +70,7 @@ public class ApiExceptionHandler {
   }
 
   @ExceptionHandler({
+    DuplicateLoginIdException.class,
     CommandConflictException.class,
     CurrencyMismatchException.class,
     InsufficientBalanceException.class

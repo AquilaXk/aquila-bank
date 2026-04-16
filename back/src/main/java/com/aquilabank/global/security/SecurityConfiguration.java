@@ -31,7 +31,8 @@ import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 @EnableConfigurationProperties({
   SecurityJwtProperties.class,
   BootstrapHeaderAuthProperties.class,
-  AccountBootstrapApiProperties.class
+  AccountBootstrapApiProperties.class,
+  AuthBootstrapApiProperties.class
 })
 public class SecurityConfiguration {
 
@@ -56,8 +57,10 @@ public class SecurityConfiguration {
                     .permitAll()
                     .requestMatchers("/api/v1/auth/login")
                     .permitAll()
-                    // 내부 bootstrap API는 계좌 principal 대신 별도 token으로 보호합니다.
+                    // 내부 bootstrap API는 JWT 대신 별도 shared token으로 보호합니다.
                     .requestMatchers("/internal/api/v1/accounts/bootstrap")
+                    .permitAll()
+                    .requestMatchers("/internal/api/v1/auth/**")
                     .permitAll()
                     .anyRequest()
                     .authenticated())
@@ -120,7 +123,17 @@ public class SecurityConfiguration {
 
   @Bean
   PasswordHashPort passwordHashPort(PasswordEncoder passwordEncoder) {
-    return passwordEncoder::matches;
+    return new PasswordHashPort() {
+      @Override
+      public String encode(String rawPassword) {
+        return passwordEncoder.encode(rawPassword);
+      }
+
+      @Override
+      public boolean matches(String rawPassword, String passwordHash) {
+        return passwordEncoder.matches(rawPassword, passwordHash);
+      }
+    };
   }
 
   @Bean
