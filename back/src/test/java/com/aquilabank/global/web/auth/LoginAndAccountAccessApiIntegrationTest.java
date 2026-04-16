@@ -124,6 +124,57 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
   }
 
   @Test
+  void transactionDetailReturnsAllowedAccountDataAnd404ForMissingReference() throws Exception {
+    String token = login("alice", "password123!");
+
+    MvcResult transferResult =
+        mockMvc
+            .perform(
+                post("/api/v1/transfers")
+                    .header("Authorization", "Bearer " + token)
+                    .header("X-Request-Id", "jwt-detail-request")
+                    .header("Idempotency-Key", "jwt-detail-001")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                          "sourceAccountId": %d,
+                          "targetAccountId": %d,
+                          "amountMinor": 1500,
+                          "currencyCode": "KRW",
+                          "summary": "rent"
+                        }
+                        """
+                            .formatted(allowedSourceAccountId, targetAccountId)))
+            .andExpect(status().isOk())
+            .andReturn();
+
+    String transactionReference = transactionReference(transferResult);
+
+    mockMvc
+        .perform(
+            get("/api/v1/transactions/%s".formatted(transactionReference))
+                .header("Authorization", "Bearer " + token)
+                .param("accountId", String.valueOf(allowedSourceAccountId)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.accountId").value(allowedSourceAccountId))
+        .andExpect(jsonPath("$.transactionReference").value(transactionReference))
+        .andExpect(jsonPath("$.direction").value("DEBIT"))
+        .andExpect(jsonPath("$.transactionStatus").value("BOOKED"))
+        .andExpect(jsonPath("$.entryStatus").value("BOOKED"))
+        .andExpect(jsonPath("$.entryReference").isString())
+        .andExpect(jsonPath("$.summary").value("rent"));
+
+    mockMvc
+        .perform(
+            get("/api/v1/transactions/TRX-MISSING-DETAIL")
+                .header("Authorization", "Bearer " + token)
+                .param("accountId", String.valueOf(allowedSourceAccountId)))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.message").value("transaction detail is not found"));
+  }
+
+  @Test
   void rejectsUnmappedAccountAccess() throws Exception {
     String token = login("alice", "password123!");
 
@@ -161,6 +212,28 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
                     }
                     """
                         .formatted(deniedAccountId, targetAccountId)))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.message").value("account access is denied"));
+  }
+
+  @Test
+  void transactionDetailRejectsUnmappedAccountAndBootstrapMismatch() throws Exception {
+    String token = login("alice", "password123!");
+
+    mockMvc
+        .perform(
+            get("/api/v1/transactions/TRX-DENIED")
+                .header("Authorization", "Bearer " + token)
+                .param("accountId", String.valueOf(deniedAccountId)))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.message").value("account access is denied"));
+
+    mockMvc
+        .perform(
+            get("/api/v1/transactions/TRX-BOOTSTRAP-MISMATCH")
+                .header("X-Account-Id", String.valueOf(allowedSourceAccountId))
+                .header("X-Subject", "bootstrap-account")
+                .param("accountId", String.valueOf(targetAccountId)))
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.message").value("account access is denied"));
   }
@@ -478,6 +551,11 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
 
   private String login(String loginId, String password) throws Exception {
     return login(loginId, password, null);
+  }
+
+  private String transactionReference(MvcResult result) throws Exception {
+    JsonNode body = objectMapper.readTree(result.getResponse().getContentAsByteArray());
+    return body.get("transactionReference").asText();
   }
 
   private String login(String loginId, String password, String requestId) throws Exception {
