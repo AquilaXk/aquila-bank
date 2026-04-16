@@ -69,6 +69,108 @@ set +a
 - 운영 기본 인증 방식은 bearer JWT 입니다.
 - `dev`/`test` 프로필에서는 필요 시 `X-Account-Id` 헤더 fallback을 사용할 수 있습니다.
 
+## Internal Auth Admin Runbook
+
+내부 auth status update는 공개 로그인 경로와 분리된 내부 운영 surface 입니다.
+
+- 공통 endpoint:
+  - `PUT /internal/api/v1/auth/users/{userId}/status`
+  - `PUT /internal/api/v1/auth/users/{userId}/memberships/{accountId}/status`
+- 공통 필수 헤더:
+  - `X-Auth-Bootstrap-Token`: `SECURITY_AUTH_BOOTSTRAP_API_TOKEN` 값
+  - `X-Subject`: 호출 주체 식별값. 예) `ops-admin`, `fraud-batch`
+  - `X-Request-Id`: 운영 상관키. 누락 시 서버가 UUID를 생성하지만, 감사 추적 일관성을 위해 운영 호출에서는 직접 넣는 것을 기본값으로 사용합니다.
+- 공통 필수 body 필드:
+  - `reason`: 회수/비활성화 사유
+
+### 준비할 env
+
+`back/.env.example` 기준으로 아래 값이 준비되어 있어야 합니다.
+
+```bash
+SECURITY_BOOTSTRAP_SUBJECT_HEADER=X-Subject
+SECURITY_AUTH_BOOTSTRAP_API_ENABLED=true
+SECURITY_AUTH_BOOTSTRAP_API_TOKEN_HEADER=X-Auth-Bootstrap-Token
+SECURITY_AUTH_BOOTSTRAP_API_TOKEN=dev-auth-bootstrap-api-token
+```
+
+로컬 실행 예시:
+
+```bash
+set -a
+source back/.env
+set +a
+./back/gradlew -p back bootRun
+```
+
+### 예시 스크립트
+
+운영 호출 예시는 아래 스크립트를 그대로 사용할 수 있습니다.
+
+```bash
+tools/ops/internal-auth-update-user-status.sh \
+  http://localhost:8080 \
+  "$SECURITY_AUTH_BOOTSTRAP_API_TOKEN" \
+  ops-admin \
+  auth-user-disable-20260416-001 \
+  21 \
+  DISABLED \
+  fraud-review
+```
+
+```bash
+tools/ops/internal-auth-update-membership-status.sh \
+  http://localhost:8080 \
+  "$SECURITY_AUTH_BOOTSTRAP_API_TOKEN" \
+  ops-admin \
+  auth-membership-revoke-20260416-001 \
+  21 \
+  1001 \
+  REVOKED \
+  manual-revoke
+```
+
+### 직접 호출 예시
+
+user status update:
+
+```bash
+curl --fail-with-body --silent --show-error \
+  --request PUT \
+  --header "Content-Type: application/json" \
+  --header "X-Auth-Bootstrap-Token: ${SECURITY_AUTH_BOOTSTRAP_API_TOKEN}" \
+  --header "X-Subject: ops-admin" \
+  --header "X-Request-Id: auth-user-disable-20260416-001" \
+  --data '{"userStatus":"DISABLED","reason":"fraud-review"}' \
+  "http://localhost:8080/internal/api/v1/auth/users/21/status"
+```
+
+membership status update:
+
+```bash
+curl --fail-with-body --silent --show-error \
+  --request PUT \
+  --header "Content-Type: application/json" \
+  --header "X-Auth-Bootstrap-Token: ${SECURITY_AUTH_BOOTSTRAP_API_TOKEN}" \
+  --header "X-Subject: ops-admin" \
+  --header "X-Request-Id: auth-membership-revoke-20260416-001" \
+  --data '{"membershipStatus":"REVOKED","reason":"manual-revoke"}' \
+  "http://localhost:8080/internal/api/v1/auth/users/21/memberships/1001/status"
+```
+
+### 실패 조건
+
+- `reason` 누락 또는 blank: `400 Bad Request`
+- `X-Subject` 누락 또는 blank: `400 Bad Request`
+- `X-Auth-Bootstrap-Token` 누락 또는 값 불일치: `401 Unauthorized`
+- `X-Request-Id` 누락: 서버가 자동 생성하므로 요청 자체는 실패하지 않음. 다만 운영 감사 추적 키를 맞추기 위해 직접 지정하는 것을 기본값으로 사용
+
+### 운영 주의사항
+
+- `X-Subject`는 shared token 사용자 구분 대신 운영 주체를 남기는 값이므로 배치명/운영자 식별값을 짧고 고정된 slug로 사용합니다.
+- `reason`은 감사 로그와 감사 테이블에 그대로 남으므로 길고 자유로운 문장보다 짧은 운영 사유 slug를 우선 사용합니다.
+- `dev`/`test`의 `X-Account-Id` bootstrap fallback은 계좌 요청 테스트용이며, 내부 auth admin status update 인증 방식과 혼용하지 않습니다.
+
 ## Test
 
 ```bash
