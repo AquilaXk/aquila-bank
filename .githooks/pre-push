@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-allowed_branches_regex='^(main|develop)$'
+protected_branches_regex='^(main|develop)$'
+work_branch_regex='^(feat|fix|refactor|chore|docs|style|test|perf|build|ci|revert|hotfix)/[a-z0-9]+(-[a-z0-9]+)*$'
 zero_sha='0000000000000000000000000000000000000000'
 
 branch_name_from_ref() {
@@ -15,11 +16,25 @@ branch_name_from_ref() {
 
 violations=()
 
+validate_branch() {
+  local branch="${1:-}"
+
+  if [[ "${branch}" =~ ${protected_branches_regex} ]]; then
+    return 1
+  fi
+
+  if [[ "${branch}" =~ ${work_branch_regex} ]]; then
+    return 0
+  fi
+
+  return 1
+}
+
 while read -r local_ref local_sha remote_ref remote_sha; do
   [[ -z "${local_ref:-}" ]] && continue
 
   if local_branch="$(branch_name_from_ref "${local_ref}")"; then
-    if [[ ! "${local_branch}" =~ ${allowed_branches_regex} ]]; then
+    if ! validate_branch "${local_branch}"; then
       violations+=("local:${local_branch}")
     fi
   elif [[ "${local_sha}" != "${zero_sha}" ]]; then
@@ -27,7 +42,7 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   fi
 
   if remote_branch="$(branch_name_from_ref "${remote_ref}")"; then
-    if [[ ! "${remote_branch}" =~ ${allowed_branches_regex} ]]; then
+    if ! validate_branch "${remote_branch}"; then
       violations+=("remote:${remote_branch}")
     fi
   elif [[ "${remote_sha}" != "${zero_sha}" ]]; then
@@ -37,12 +52,14 @@ done
 
 if [[ "${#violations[@]}" -gt 0 ]]; then
   {
-    echo "[pre-push] push 는 main 또는 develop 브랜치에만 허용됩니다."
+    echo "[pre-push] main/develop 직접 push 는 금지됩니다."
+    echo "[pre-push] 허용 브랜치 형식: type/short-description"
+    echo "[pre-push] 허용 type: feat|fix|refactor|chore|docs|style|test|perf|build|ci|revert|hotfix"
     echo "[pre-push] 차단된 ref:"
     for violation in "${violations[@]}"; do
       echo "  - ${violation}"
     done
-    echo "[pre-push] 허용 브랜치: main, develop"
+    echo "[pre-push] 예시: feat/account-bootstrap"
   } >&2
   exit 1
 fi
