@@ -19,6 +19,7 @@ import com.aquilabank.domain.auth.usecase.UserAccountMembershipQueryUseCase;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipStatusUpdateUseCase;
 import com.aquilabank.domain.auth.usecase.UserStatusUpdateUseCase;
 import com.aquilabank.global.security.AuthBootstrapApiProperties;
+import com.aquilabank.global.security.BootstrapHeaderAuthProperties;
 import com.aquilabank.global.security.InternalAuthTokenGuard;
 import com.aquilabank.global.web.ApiExceptionHandler;
 import java.time.Instant;
@@ -32,6 +33,9 @@ class InternalAuthAdminControllerTest {
 
   private static final String TOKEN_HEADER = "X-Auth-Bootstrap-Token";
   private static final String TOKEN = "test-auth-bootstrap-api-token";
+  private static final String SUBJECT_HEADER = "X-Subject";
+  private static final String SUBJECT = "ops-admin";
+  private static final String REQUEST_ID_HEADER = "X-Request-Id";
 
   private AuthUserQueryUseCase authUserQueryUseCase;
   private UserStatusUpdateUseCase userStatusUpdateUseCase;
@@ -54,7 +58,8 @@ class InternalAuthAdminControllerTest {
                     userAccountMembershipQueryUseCase,
                     userAccountMembershipStatusUpdateUseCase,
                     new InternalAuthTokenGuard(
-                        new AuthBootstrapApiProperties(true, TOKEN_HEADER, TOKEN))))
+                        new AuthBootstrapApiProperties(true, TOKEN_HEADER, TOKEN)),
+                    new BootstrapHeaderAuthProperties(false, "X-Account-Id", SUBJECT_HEADER)))
             .setControllerAdvice(new ApiExceptionHandler())
             .build();
   }
@@ -134,11 +139,14 @@ class InternalAuthAdminControllerTest {
         .perform(
             put("/internal/api/v1/auth/users/21/status")
                 .header(TOKEN_HEADER, TOKEN)
+                .header(SUBJECT_HEADER, SUBJECT)
+                .header(REQUEST_ID_HEADER, "user-status-request")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     """
                     {
-                      "userStatus": "DISABLED"
+                      "userStatus": "DISABLED",
+                      "reason": "fraud-review"
                     }
                     """))
         .andExpect(status().isOk())
@@ -148,20 +156,69 @@ class InternalAuthAdminControllerTest {
         .perform(
             put("/internal/api/v1/auth/users/21/memberships/101/status")
                 .header(TOKEN_HEADER, TOKEN)
+                .header(SUBJECT_HEADER, SUBJECT)
+                .header(REQUEST_ID_HEADER, "membership-status-request")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     """
                     {
-                      "membershipStatus": "REVOKED"
+                      "membershipStatus": "REVOKED",
+                      "reason": "manual-revoke"
                     }
                     """))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.membershipStatus").value("REVOKED"));
 
     verify(userStatusUpdateUseCase)
-        .update(argThat(command -> command.status() == UserStatus.DISABLED));
+        .update(
+            argThat(
+                command ->
+                    command.status() == UserStatus.DISABLED
+                        && command.reason().equals("fraud-review")
+                        && command.actorSubject().equals(SUBJECT)
+                        && command.requestId().equals("user-status-request")));
     verify(userAccountMembershipStatusUpdateUseCase)
-        .update(argThat(command -> command.status() == MembershipStatus.REVOKED));
+        .update(
+            argThat(
+                command ->
+                    command.status() == MembershipStatus.REVOKED
+                        && command.reason().equals("manual-revoke")
+                        && command.actorSubject().equals(SUBJECT)
+                        && command.requestId().equals("membership-status-request")));
+  }
+
+  @Test
+  void rejectsMissingReasonOrActorSubject() throws Exception {
+    mockMvc
+        .perform(
+            put("/internal/api/v1/auth/users/21/status")
+                .header(TOKEN_HEADER, TOKEN)
+                .header(REQUEST_ID_HEADER, "missing-reason-request")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "userStatus": "DISABLED"
+                    }
+                    """))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message").value("reason is required"));
+
+    mockMvc
+        .perform(
+            put("/internal/api/v1/auth/users/21/memberships/101/status")
+                .header(TOKEN_HEADER, TOKEN)
+                .header(REQUEST_ID_HEADER, "missing-subject-request")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "membershipStatus": "REVOKED",
+                      "reason": "manual-revoke"
+                    }
+                    """))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message").value("actorSubject header is required"));
   }
 
   @Test

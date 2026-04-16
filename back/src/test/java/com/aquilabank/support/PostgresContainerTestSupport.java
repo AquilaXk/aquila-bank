@@ -44,6 +44,7 @@ public abstract class PostgresContainerTestSupport {
                     statement.execute(
                         """
                         TRUNCATE TABLE
+                            auth_status_change_audit,
                             transaction_read_model,
                             ledger_entry,
                             command_idempotency,
