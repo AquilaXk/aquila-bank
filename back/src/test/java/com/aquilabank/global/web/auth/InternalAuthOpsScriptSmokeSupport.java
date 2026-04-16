@@ -157,8 +157,8 @@ final class InternalAuthOpsScriptSmokeSupport {
     if (raw.isEmpty()) {
       return List.of();
     }
-    String[] parts = raw.split("\u0000", -1);
-    int size = raw.endsWith("\u0000") ? parts.length - 1 : parts.length;
+    String[] parts = raw.split("\n", -1);
+    int size = raw.endsWith("\n") ? parts.length - 1 : parts.length;
     return List.of(parts).subList(0, size);
   }
 
@@ -170,7 +170,7 @@ final class InternalAuthOpsScriptSmokeSupport {
         : "${FAKE_CURL_ARGS_FILE:?}"
         : > "${FAKE_CURL_ARGS_FILE}"
         for arg in "$@"; do
-          printf '%s\0' "$arg" >> "${FAKE_CURL_ARGS_FILE}"
+          printf '%s\n' "$arg" >> "${FAKE_CURL_ARGS_FILE}"
         done
         exit 0
         """;
