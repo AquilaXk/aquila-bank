@@ -146,7 +146,8 @@ class InternalAuthAdminControllerTest {
                     """
                     {
                       "userStatus": "DISABLED",
-                      "reason": "fraud-review"
+                      "reasonCode": "FRAUD_REVIEW",
+                      "reasonDetail": "fraud-review"
                     }
                     """))
         .andExpect(status().isOk())
@@ -174,6 +175,8 @@ class InternalAuthAdminControllerTest {
             argThat(
                 command ->
                     command.status() == UserStatus.DISABLED
+                        && command.reasonCode().name().equals("FRAUD_REVIEW")
+                        && command.reasonDetail().equals("fraud-review")
                         && command.reason().equals("fraud-review")
                         && command.actorSubject().equals(SUBJECT)
                         && command.requestId().equals("user-status-request")));
@@ -182,6 +185,8 @@ class InternalAuthAdminControllerTest {
             argThat(
                 command ->
                     command.status() == MembershipStatus.REVOKED
+                        && command.reasonCode().name().equals("LEGACY_FREE_TEXT")
+                        && command.reasonDetail().equals("manual-revoke")
                         && command.reason().equals("manual-revoke")
                         && command.actorSubject().equals(SUBJECT)
                         && command.requestId().equals("membership-status-request")));
@@ -202,7 +207,7 @@ class InternalAuthAdminControllerTest {
                     }
                     """))
         .andExpect(status().isBadRequest())
-        .andExpect(jsonPath("$.message").value("reason is required"));
+        .andExpect(jsonPath("$.message").value("reasonCode is required"));
 
     mockMvc
         .perform(
@@ -214,11 +219,52 @@ class InternalAuthAdminControllerTest {
                     """
                     {
                       "membershipStatus": "REVOKED",
-                      "reason": "manual-revoke"
+                      "reasonCode": "OPS_MANUAL"
                     }
                     """))
         .andExpect(status().isBadRequest())
-        .andExpect(jsonPath("$.message").value("actorSubject header is required"));
+        .andExpect(jsonPath("$.message").value("reasonDetail is required"));
+  }
+
+  @Test
+  void acceptsLegacyReasonAsFallbackCode() throws Exception {
+    AuthUserSummary disabledUser =
+        new AuthUserSummary(
+            21L,
+            "alice",
+            "Alice",
+            UserStatus.DISABLED,
+            Instant.parse("2026-04-16T11:00:00Z"),
+            Instant.parse("2026-04-16T11:06:00Z"));
+
+    when(userStatusUpdateUseCase.update(argThat(command -> command.userId() == 21L)))
+        .thenReturn(disabledUser);
+
+    mockMvc
+        .perform(
+            put("/internal/api/v1/auth/users/21/status")
+                .header(TOKEN_HEADER, TOKEN)
+                .header(SUBJECT_HEADER, SUBJECT)
+                .header(REQUEST_ID_HEADER, "legacy-reason-request")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "userStatus": "DISABLED",
+                      "reason": "legacy-free-text"
+                    }
+                    """))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.userStatus").value("DISABLED"));
+
+    verify(userStatusUpdateUseCase)
+        .update(
+            argThat(
+                command ->
+                    command.status() == UserStatus.DISABLED
+                        && command.reasonCode().name().equals("LEGACY_FREE_TEXT")
+                        && command.reasonDetail().equals("legacy-free-text")
+                        && command.requestId().equals("legacy-reason-request")));
   }
 
   @Test

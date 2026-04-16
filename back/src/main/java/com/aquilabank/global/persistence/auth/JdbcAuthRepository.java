@@ -3,6 +3,8 @@ package com.aquilabank.global.persistence.auth;
 import com.aquilabank.domain.auth.model.AccountAccessMembership;
 import com.aquilabank.domain.auth.model.AuthStatusChangeAuditSummary;
 import com.aquilabank.domain.auth.model.AuthStatusChangeOutcome;
+import com.aquilabank.domain.auth.model.AuthStatusChangeReason;
+import com.aquilabank.domain.auth.model.AuthStatusChangeReasonCode;
 import com.aquilabank.domain.auth.model.AuthStatusChangeType;
 import com.aquilabank.domain.auth.model.AuthUserSummary;
 import com.aquilabank.domain.auth.model.LoginUser;
@@ -153,6 +155,7 @@ public class JdbcAuthRepository
                    target_account_id,
                    before_status,
                    after_status,
+                   reason_code,
                    reason,
                    outcome,
                    created_at
@@ -223,7 +226,9 @@ public class JdbcAuthRepository
         targetAccountId,
         rs.getString("before_status"),
         rs.getString("after_status"),
-        rs.getString("reason"),
+        new AuthStatusChangeReason(
+            AuthStatusChangeReasonCode.valueOf(rs.getString("reason_code")),
+            rs.getString("reason")),
         AuthStatusChangeOutcome.valueOf(rs.getString("outcome")),
         toInstant(rs.getTimestamp("created_at")));
   }
