@@ -467,8 +467,7 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
   }
 
   private void updateLegacyUserStatus(
-      long userId, String userStatus, String reason, String requestId)
-      throws Exception {
+      long userId, String userStatus, String reason, String requestId) throws Exception {
     mockMvc
         .perform(
             put("/internal/api/v1/auth/users/%d/status".formatted(userId))
