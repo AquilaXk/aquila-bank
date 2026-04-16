@@ -98,11 +98,28 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.items[0].accountId").value(allowedSourceAccountId))
         .andExpect(jsonPath("$.items[0].transactionReference").isString());
+
+    mockMvc
+        .perform(
+            get("/api/v1/accounts/%d".formatted(allowedSourceAccountId))
+                .header("Authorization", "Bearer " + token))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.accountId").value(allowedSourceAccountId))
+        .andExpect(jsonPath("$.currencyCode").value("KRW"))
+        .andExpect(jsonPath("$.availableBalanceMinor").value(8500L))
+        .andExpect(jsonPath("$.pendingBalanceMinor").value(0));
   }
 
   @Test
   void rejectsUnmappedAccountAccess() throws Exception {
     String token = login("alice", "password123!");
+
+    mockMvc
+        .perform(
+            get("/api/v1/accounts/%d".formatted(deniedAccountId))
+                .header("Authorization", "Bearer " + token))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.message").value("account access is denied"));
 
     mockMvc
         .perform(
