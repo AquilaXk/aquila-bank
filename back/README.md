@@ -171,6 +171,44 @@ curl --fail-with-body --silent --show-error \
 - `reason`은 감사 로그와 감사 테이블에 그대로 남으므로 길고 자유로운 문장보다 짧은 운영 사유 slug를 우선 사용합니다.
 - `dev`/`test`의 `X-Account-Id` bootstrap fallback은 계좌 요청 테스트용이며, 내부 auth admin status update 인증 방식과 혼용하지 않습니다.
 
+### 실패 감사 로그 필수 필드
+
+실패 감사 로그는 `warn` 레벨 한 줄로 남고, prefix는 항상 `internal auth status update failed`입니다.
+
+| field | 의미 | 운영 사용 기준 |
+| --- | --- | --- |
+| `requestId` | 호출 상관키 | 장애 drill-down 전용, alert group key로 사용 금지 |
+| `httpStatus` | API 응답 status | `401`/`400` alert 분류 1순위 |
+| `actorSubject` | 호출 주체 식별값 | 반복 오호출 actor 추적 |
+| `targetUserId` | 대상 user 식별자 | 대상 범위 확인 |
+| `targetAccountId` | 대상 account 식별자 | membership 경로만 값 존재, user status는 `-` |
+| `requestedStatus` | 요청한 상태값 | `DISABLED`, `REVOKED` 같은 실패 의도 확인 |
+| `reason` | 운영 사유 | 오호출/배치 drift 확인 |
+| `path` | 실패 endpoint | user/membership 경로 구분 |
+| `error` | 서버가 반환한 실패 원인 | validation/token 오류 분류 |
+
+### 수집 패턴
+
+로그 플랫폼 문법은 각자 다르므로 아래 키 조합만 그대로 매핑합니다.
+
+```text
+전체 실패:
+  "internal auth status update failed"
+
+401 집계:
+  "internal auth status update failed" AND "httpStatus=401"
+
+같은 actorSubject의 400 추적:
+  "internal auth status update failed" AND "httpStatus=400" AND "actorSubject=<actor-subject>"
+
+requestId drill-down:
+  "internal auth status update failed" AND "requestId=<request-id>"
+```
+
+- alert 집계 차원은 `httpStatus`, `actorSubject`, `path`, `error`를 우선 사용합니다.
+- `requestId`는 고카디널리티라 alert 집계 기준으로 쓰지 않고 incident drill-down에만 사용합니다.
+- 구버전 로그가 섞여 `httpStatus`가 없는 기간은 한시적으로 `error=bootstrap token is invalid`를 `401`, `error=actorSubject header is required|reason is required`를 `400` fallback으로 사용합니다.
+
 ## Test
 
 ```bash
