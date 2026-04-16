@@ -83,7 +83,8 @@ class InternalAuthStatusFailureLoggingTest {
                     """
                     {
                       "userStatus": "DISABLED",
-                      "reason": "manual-revoke"
+                      "reasonCode": "OPS_MANUAL",
+                      "reasonDetail": "manual-revoke"
                     }
                     """))
         .andExpect(status().isBadRequest());
@@ -94,7 +95,8 @@ class InternalAuthStatusFailureLoggingTest {
         .contains("httpStatus=400")
         .contains("actorSubject=-")
         .contains("requestedStatus=DISABLED")
-        .contains("reason=manual-revoke")
+        .contains("reasonCode=OPS_MANUAL")
+        .contains("reasonDetail=manual-revoke")
         .contains("error=actorSubject header is required");
   }
 
@@ -110,7 +112,8 @@ class InternalAuthStatusFailureLoggingTest {
                     """
                     {
                       "userStatus": "DISABLED",
-                      "reason": "fraud-review"
+                      "reasonCode": "FRAUD_REVIEW",
+                      "reasonDetail": "fraud-review"
                     }
                     """))
         .andExpect(status().isUnauthorized());
@@ -121,7 +124,8 @@ class InternalAuthStatusFailureLoggingTest {
         .contains("httpStatus=401")
         .contains("actorSubject=ops-admin")
         .contains("requestedStatus=DISABLED")
-        .contains("reason=fraud-review")
+        .contains("reasonCode=FRAUD_REVIEW")
+        .contains("reasonDetail=fraud-review")
         .contains("error=bootstrap token is invalid");
   }
 

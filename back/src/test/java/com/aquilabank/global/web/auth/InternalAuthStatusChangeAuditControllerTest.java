@@ -9,6 +9,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.aquilabank.domain.auth.exception.AuthStatusChangeAuditNotFoundException;
 import com.aquilabank.domain.auth.model.AuthStatusChangeAuditSummary;
 import com.aquilabank.domain.auth.model.AuthStatusChangeOutcome;
+import com.aquilabank.domain.auth.model.AuthStatusChangeReason;
+import com.aquilabank.domain.auth.model.AuthStatusChangeReasonCode;
 import com.aquilabank.domain.auth.model.AuthStatusChangeType;
 import com.aquilabank.domain.auth.usecase.AuthStatusChangeAuditQueryUseCase;
 import com.aquilabank.global.security.AuthBootstrapApiProperties;
@@ -53,7 +55,7 @@ class InternalAuthStatusChangeAuditControllerTest {
                 101L,
                 "ACTIVE",
                 "REVOKED",
-                "manual-revoke",
+                new AuthStatusChangeReason(AuthStatusChangeReasonCode.OPS_MANUAL, "manual-revoke"),
                 AuthStatusChangeOutcome.SUCCESS,
                 Instant.parse("2026-04-16T11:06:00Z")));
 
@@ -70,6 +72,8 @@ class InternalAuthStatusChangeAuditControllerTest {
         .andExpect(jsonPath("$.changeType").value("MEMBERSHIP_STATUS"))
         .andExpect(jsonPath("$.beforeStatus").value("ACTIVE"))
         .andExpect(jsonPath("$.afterStatus").value("REVOKED"))
+        .andExpect(jsonPath("$.reasonCode").value("OPS_MANUAL"))
+        .andExpect(jsonPath("$.reasonDetail").value("manual-revoke"))
         .andExpect(jsonPath("$.reason").value("manual-revoke"))
         .andExpect(jsonPath("$.outcome").value("SUCCESS"))
         .andExpect(jsonPath("$.createdAt").value("2026-04-16T11:06:00Z"));

@@ -221,7 +221,7 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
   @Test
   void disabledUserCannotLoginOrUseExistingJwt() throws Exception {
     String token = login("alice", "password123!");
-    updateUserStatus(userId, "DISABLED", "fraud-review", "user-disabled-request");
+    updateLegacyUserStatus(userId, "DISABLED", "fraud-review", "user-disabled-request");
 
     mockMvc
         .perform(
@@ -272,7 +272,12 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
   void revokedMembershipBlocksExistingJwtAccess() throws Exception {
     String token = login("alice", "password123!");
     updateMembershipStatus(
-        userId, allowedSourceAccountId, "REVOKED", "manual-revoke", "membership-revoked-request");
+        userId,
+        allowedSourceAccountId,
+        "REVOKED",
+        "OPS_MANUAL",
+        "manual-revoke",
+        "membership-revoked-request");
 
     AuthStatusChangeAuditView audit =
         loadAuditByRequestId("membership-revoked-request")
@@ -284,7 +289,8 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
     assertEquals(allowedSourceAccountId, audit.targetAccountId());
     assertEquals("ACTIVE", audit.beforeStatus());
     assertEquals("REVOKED", audit.afterStatus());
-    assertEquals("manual-revoke", audit.reason());
+    assertEquals("OPS_MANUAL", audit.reasonCode());
+    assertEquals("manual-revoke", audit.reasonDetail());
     assertEquals("SUCCESS", audit.outcome());
 
     mockMvc
@@ -321,7 +327,12 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
   @Test
   void internalAuthAuditLookupReturnsStoredAuditByRequestId() throws Exception {
     updateMembershipStatus(
-        userId, allowedSourceAccountId, "REVOKED", "manual-revoke", "membership-revoked-request");
+        userId,
+        allowedSourceAccountId,
+        "REVOKED",
+        "OPS_MANUAL",
+        "manual-revoke",
+        "membership-revoked-request");
 
     AuthStatusChangeAuditView audit =
         loadAuditByRequestId("membership-revoked-request")
@@ -340,9 +351,23 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
         .andExpect(jsonPath("$.changeType").value(audit.changeType()))
         .andExpect(jsonPath("$.beforeStatus").value(audit.beforeStatus()))
         .andExpect(jsonPath("$.afterStatus").value(audit.afterStatus()))
-        .andExpect(jsonPath("$.reason").value(audit.reason()))
+        .andExpect(jsonPath("$.reasonCode").value(audit.reasonCode()))
+        .andExpect(jsonPath("$.reasonDetail").value(audit.reasonDetail()))
+        .andExpect(jsonPath("$.reason").value(audit.reasonDetail()))
         .andExpect(jsonPath("$.outcome").value(audit.outcome()))
         .andExpect(jsonPath("$.createdAt").value(audit.createdAt().toString()));
+  }
+
+  @Test
+  void legacyReasonRequestFallsBackToLegacyFreeTextCode() throws Exception {
+    updateLegacyUserStatus(userId, "DISABLED", "fraud-review", "legacy-reason-request");
+
+    AuthStatusChangeAuditView audit =
+        loadAuditByRequestId("legacy-reason-request")
+            .orElseThrow(() -> new AssertionError("audit row is not created"));
+
+    assertEquals("LEGACY_FREE_TEXT", audit.reasonCode());
+    assertEquals("fraud-review", audit.reasonDetail());
   }
 
   private String login(String loginId, String password) throws Exception {
@@ -441,8 +466,8 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
         .andExpect(jsonPath("$.membershipStatus").value(membershipStatus));
   }
 
-  private void updateUserStatus(long userId, String userStatus, String reason, String requestId)
-      throws Exception {
+  private void updateLegacyUserStatus(
+      long userId, String userStatus, String reason, String requestId) throws Exception {
     mockMvc
         .perform(
             put("/internal/api/v1/auth/users/%d/status".formatted(userId))
@@ -464,7 +489,12 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
   }
 
   private void updateMembershipStatus(
-      long userId, long accountId, String membershipStatus, String reason, String requestId)
+      long userId,
+      long accountId,
+      String membershipStatus,
+      String reasonCode,
+      String reasonDetail,
+      String requestId)
       throws Exception {
     mockMvc
         .perform(
@@ -477,10 +507,11 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
                     """
                     {
                       "membershipStatus": "%s",
-                      "reason": "%s"
+                      "reasonCode": "%s",
+                      "reasonDetail": "%s"
                     }
                     """
-                        .formatted(membershipStatus, reason)))
+                        .formatted(membershipStatus, reasonCode, reasonDetail)))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.userId").value(userId))
         .andExpect(jsonPath("$.accountId").value(accountId))
@@ -498,6 +529,7 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
                    target_account_id,
                    before_status,
                    after_status,
+                   reason_code,
                    reason,
                    outcome,
                    created_at
@@ -518,6 +550,7 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
                   targetAccountId,
                   rs.getString("before_status"),
                   rs.getString("after_status"),
+                  rs.getString("reason_code"),
                   rs.getString("reason"),
                   rs.getString("outcome"),
                   rs.getTimestamp("created_at").toInstant());
@@ -534,7 +567,8 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
       Long targetAccountId,
       String beforeStatus,
       String afterStatus,
-      String reason,
+      String reasonCode,
+      String reasonDetail,
       String outcome,
       java.time.Instant createdAt) {}
 }

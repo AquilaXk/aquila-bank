@@ -165,7 +165,7 @@ public class JdbcAuthWriteRepository
             null,
             beforeStatus.name(),
             summary.status().name(),
-            command.reason(),
+            command.normalizedReason(),
             AuthStatusChangeOutcome.SUCCESS,
             now));
     return summary;
@@ -208,7 +208,7 @@ public class JdbcAuthWriteRepository
             command.accountId(),
             beforeStatus.name(),
             summary.status().name(),
-            command.reason(),
+            command.normalizedReason(),
             AuthStatusChangeOutcome.SUCCESS,
             now));
     return summary;
@@ -262,6 +262,7 @@ public class JdbcAuthWriteRepository
             target_account_id,
             before_status,
             after_status,
+            reason_code,
             reason,
             outcome,
             created_at
@@ -274,6 +275,7 @@ public class JdbcAuthWriteRepository
             :targetAccountId,
             :beforeStatus,
             :afterStatus,
+            :reasonCode,
             :reason,
             :outcome,
             :createdAt
@@ -287,7 +289,8 @@ public class JdbcAuthWriteRepository
             .addValue("targetAccountId", entry.targetAccountId())
             .addValue("beforeStatus", entry.beforeStatus())
             .addValue("afterStatus", entry.afterStatus())
-            .addValue("reason", entry.reason())
+            .addValue("reasonCode", entry.reasonCode().name())
+            .addValue("reason", entry.reasonDetail())
             .addValue("outcome", entry.outcome().name())
             .addValue("createdAt", Timestamp.from(entry.createdAt())));
   }

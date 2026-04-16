@@ -48,6 +48,8 @@ public class InternalAuthStatusChangeAuditController {
       String changeType,
       String beforeStatus,
       String afterStatus,
+      String reasonCode,
+      String reasonDetail,
       String reason,
       String outcome,
       Instant createdAt) {
@@ -61,6 +63,8 @@ public class InternalAuthStatusChangeAuditController {
           summary.changeType().name(),
           summary.beforeStatus(),
           summary.afterStatus(),
+          summary.reasonCode().name(),
+          summary.reasonDetail(),
           summary.reason(),
           summary.outcome().name(),
           summary.createdAt());

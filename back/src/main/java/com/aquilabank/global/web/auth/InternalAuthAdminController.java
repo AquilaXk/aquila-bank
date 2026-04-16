@@ -1,5 +1,8 @@
 package com.aquilabank.global.web.auth;
 
+import com.aquilabank.domain.auth.model.AuthStatusChangeReason;
+import com.aquilabank.domain.auth.model.AuthStatusChangeReasonCode;
+import com.aquilabank.domain.auth.model.AuthStatusChangeReasonNormalizer;
 import com.aquilabank.domain.auth.model.AuthUserSummary;
 import com.aquilabank.domain.auth.model.UserAccountMembershipStatusUpdateCommand;
 import com.aquilabank.domain.auth.model.UserAccountMembershipSummary;
@@ -95,7 +98,7 @@ public class InternalAuthAdminController {
             new UserStatusUpdateCommand(
                 userId,
                 request.userStatus(),
-                request.reason(),
+                resolveReason(request.reasonCode(), request.reasonDetail(), request.reason()),
                 resolveActorSubject(httpServletRequest),
                 resolveRequestId(httpServletRequest))));
   }
@@ -113,7 +116,7 @@ public class InternalAuthAdminController {
                 userId,
                 accountId,
                 request.membershipStatus(),
-                request.reason(),
+                resolveReason(request.reasonCode(), request.reasonDetail(), request.reason()),
                 resolveActorSubject(httpServletRequest),
                 resolveRequestId(httpServletRequest))));
   }
@@ -121,12 +124,28 @@ public class InternalAuthAdminController {
   /** 내부 user status update 요청 body */
   public record UserStatusRequest(
       @NotNull(message = "userStatus is required") UserStatus userStatus,
-      @NotBlank(message = "reason is required") @Size(max = 200, message = "reason must be 200 characters or less") String reason) {}
+      AuthStatusChangeReasonCode reasonCode,
+      @Size(
+              max = AuthStatusChangeReason.MAX_REASON_DETAIL_LENGTH,
+              message = "reasonDetail must be 200 characters or less")
+          String reasonDetail,
+      @Size(
+              max = AuthStatusChangeReason.MAX_REASON_DETAIL_LENGTH,
+              message = "reason must be 200 characters or less")
+          String reason) {}
 
   /** 내부 membership status update 요청 body */
   public record UserAccountMembershipStatusRequest(
       @NotNull(message = "membershipStatus is required") com.aquilabank.domain.auth.model.MembershipStatus membershipStatus,
-      @NotBlank(message = "reason is required") @Size(max = 200, message = "reason must be 200 characters or less") String reason) {}
+      AuthStatusChangeReasonCode reasonCode,
+      @Size(
+              max = AuthStatusChangeReason.MAX_REASON_DETAIL_LENGTH,
+              message = "reasonDetail must be 200 characters or less")
+          String reasonDetail,
+      @Size(
+              max = AuthStatusChangeReason.MAX_REASON_DETAIL_LENGTH,
+              message = "reason must be 200 characters or less")
+          String reason) {}
 
   private String resolveActorSubject(HttpServletRequest httpServletRequest) {
     String actorSubject = httpServletRequest.getHeader(actorSubjectHeader);
@@ -147,6 +166,11 @@ public class InternalAuthAdminController {
               }
               return requestId;
             });
+  }
+
+  private AuthStatusChangeReason resolveReason(
+      AuthStatusChangeReasonCode reasonCode, String reasonDetail, String reason) {
+    return AuthStatusChangeReasonNormalizer.normalize(reasonCode, reasonDetail, reason);
   }
 
   /** 내부 auth user exact lookup 응답 */

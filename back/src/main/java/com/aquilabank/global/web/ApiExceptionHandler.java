@@ -6,6 +6,7 @@ import com.aquilabank.domain.auth.exception.AuthUserNotFoundException;
 import com.aquilabank.domain.auth.exception.DuplicateLoginIdException;
 import com.aquilabank.domain.auth.exception.InvalidCredentialsException;
 import com.aquilabank.domain.auth.exception.UserAccountMembershipNotFoundException;
+import com.aquilabank.domain.auth.model.AuthStatusChangeReasonCode;
 import com.aquilabank.domain.ledger.exception.CommandConflictException;
 import com.aquilabank.domain.ledger.exception.CurrencyMismatchException;
 import com.aquilabank.domain.ledger.exception.InsufficientBalanceException;
@@ -137,14 +138,15 @@ public class ApiExceptionHandler {
       return;
     }
     log.warn(
-        "internal auth status update failed requestId={} httpStatus={} actorSubject={} targetUserId={} targetAccountId={} requestedStatus={} reason={} path={} error={}",
+        "internal auth status update failed requestId={} httpStatus={} actorSubject={} targetUserId={} targetAccountId={} requestedStatus={} reasonCode={} reasonDetail={} path={} error={}",
         RequestTraceContext.currentRequestId().orElse("-"),
         status.value(),
         context.actorSubject(),
         context.targetUserId(),
         context.targetAccountId() == null ? "-" : context.targetAccountId(),
         context.requestedStatus(),
-        context.reason(),
+        context.reasonCode(),
+        context.reasonDetail(),
         request.getRequestURI(),
         error);
   }
@@ -158,7 +160,8 @@ public class ApiExceptionHandler {
           parseLong(membershipMatcher.group(1)),
           parseLong(membershipMatcher.group(2)),
           extractJsonField(request, "membershipStatus"),
-          extractJsonField(request, "reason"));
+          extractReasonCode(request),
+          extractReasonDetail(request));
     }
 
     Matcher userMatcher = USER_STATUS_PATH_PATTERN.matcher(path);
@@ -168,7 +171,8 @@ public class ApiExceptionHandler {
           parseLong(userMatcher.group(1)),
           null,
           extractJsonField(request, "userStatus"),
-          extractJsonField(request, "reason"));
+          extractReasonCode(request),
+          extractReasonDetail(request));
     }
     return null;
   }
@@ -200,18 +204,40 @@ public class ApiExceptionHandler {
     return value == null || value.isBlank() ? "-" : value;
   }
 
+  private String extractReasonCode(HttpServletRequest request) {
+    String reasonCode = extractJsonField(request, "reasonCode");
+    if (!"-".equals(reasonCode)) {
+      return reasonCode;
+    }
+    String legacyReason = extractJsonField(request, "reason");
+    if ("-".equals(legacyReason)) {
+      return "-";
+    }
+    return AuthStatusChangeReasonCode.LEGACY_FREE_TEXT.name();
+  }
+
+  private String extractReasonDetail(HttpServletRequest request) {
+    String reasonDetail = extractJsonField(request, "reasonDetail");
+    if (!"-".equals(reasonDetail)) {
+      return reasonDetail;
+    }
+    return extractJsonField(request, "reason");
+  }
+
   private record AuditFailureContext(
       String actorSubject,
       Long targetUserId,
       Long targetAccountId,
       String requestedStatus,
-      String reason) {
+      String reasonCode,
+      String reasonDetail) {
 
     private AuditFailureContext {
       actorSubject = actorSubject == null || actorSubject.isBlank() ? "-" : actorSubject;
       requestedStatus =
           requestedStatus == null || requestedStatus.isBlank() ? "-" : requestedStatus;
-      reason = reason == null || reason.isBlank() ? "-" : reason;
+      reasonCode = reasonCode == null || reasonCode.isBlank() ? "-" : reasonCode;
+      reasonDetail = reasonDetail == null || reasonDetail.isBlank() ? "-" : reasonDetail;
     }
   }
 

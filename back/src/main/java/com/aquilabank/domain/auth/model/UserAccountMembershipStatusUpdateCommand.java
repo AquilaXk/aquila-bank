@@ -5,7 +5,7 @@ public record UserAccountMembershipStatusUpdateCommand(
     long userId,
     long accountId,
     MembershipStatus status,
-    String reason,
+    AuthStatusChangeReason normalizedReason,
     String actorSubject,
     String requestId) {
 
@@ -19,7 +19,7 @@ public record UserAccountMembershipStatusUpdateCommand(
     if (status == null) {
       throw new IllegalArgumentException("status is required");
     }
-    if (reason == null || reason.isBlank()) {
+    if (normalizedReason == null) {
       throw new IllegalArgumentException("reason is required");
     }
     if (actorSubject == null || actorSubject.isBlank()) {
@@ -28,5 +28,17 @@ public record UserAccountMembershipStatusUpdateCommand(
     if (requestId == null || requestId.isBlank()) {
       throw new IllegalArgumentException("requestId is required");
     }
+  }
+
+  public AuthStatusChangeReasonCode reasonCode() {
+    return normalizedReason.reasonCode();
+  }
+
+  public String reasonDetail() {
+    return normalizedReason.reasonDetail();
+  }
+
+  public String reason() {
+    return normalizedReason.reasonDetail();
   }
 }

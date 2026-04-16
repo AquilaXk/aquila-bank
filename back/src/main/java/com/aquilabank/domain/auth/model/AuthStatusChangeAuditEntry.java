@@ -11,9 +11,33 @@ public record AuthStatusChangeAuditEntry(
     Long targetAccountId,
     String beforeStatus,
     String afterStatus,
-    String reason,
+    AuthStatusChangeReason normalizedReason,
     AuthStatusChangeOutcome outcome,
     Instant createdAt) {
+
+  public AuthStatusChangeAuditEntry(
+      AuthStatusChangeType changeType,
+      String requestId,
+      String actorSubject,
+      long targetUserId,
+      Long targetAccountId,
+      String beforeStatus,
+      String afterStatus,
+      String reason,
+      AuthStatusChangeOutcome outcome,
+      Instant createdAt) {
+    this(
+        changeType,
+        requestId,
+        actorSubject,
+        targetUserId,
+        targetAccountId,
+        beforeStatus,
+        afterStatus,
+        new AuthStatusChangeReason(AuthStatusChangeReasonCode.LEGACY_FREE_TEXT, reason),
+        outcome,
+        createdAt);
+  }
 
   public AuthStatusChangeAuditEntry {
     if (changeType == null) {
@@ -37,7 +61,7 @@ public record AuthStatusChangeAuditEntry(
     if (afterStatus == null || afterStatus.isBlank()) {
       throw new IllegalArgumentException("afterStatus is required");
     }
-    if (reason == null || reason.isBlank()) {
+    if (normalizedReason == null) {
       throw new IllegalArgumentException("reason is required");
     }
     if (outcome == null) {
@@ -46,5 +70,17 @@ public record AuthStatusChangeAuditEntry(
     if (createdAt == null) {
       throw new IllegalArgumentException("createdAt is required");
     }
+  }
+
+  public AuthStatusChangeReasonCode reasonCode() {
+    return normalizedReason.reasonCode();
+  }
+
+  public String reasonDetail() {
+    return normalizedReason.reasonDetail();
+  }
+
+  public String reason() {
+    return normalizedReason.reasonDetail();
   }
 }
