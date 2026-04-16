@@ -14,6 +14,8 @@ import com.aquilabank.domain.transaction.model.TransactionSlice;
 import com.aquilabank.domain.transaction.model.TransactionStatus;
 import com.aquilabank.domain.transaction.model.TransactionSummary;
 import com.aquilabank.domain.transaction.usecase.TransactionQueryUseCase;
+import com.aquilabank.global.security.BootstrapHeaderAuthenticationFilter;
+import com.aquilabank.global.web.security.CurrentAccountIdArgumentResolver;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,6 +33,8 @@ class TransactionQueryControllerTest {
     transactionQueryUseCase = mock(TransactionQueryUseCase.class);
     mockMvc =
         MockMvcBuilders.standaloneSetup(new TransactionQueryController(transactionQueryUseCase))
+            .addFilters(new BootstrapHeaderAuthenticationFilter("X-Account-Id", "X-Subject"))
+            .setCustomArgumentResolvers(new CurrentAccountIdArgumentResolver())
             .build();
   }
 
@@ -61,7 +65,7 @@ class TransactionQueryControllerTest {
     mockMvc
         .perform(
             get("/api/v1/transactions")
-                .param("accountId", "101")
+                .header("X-Account-Id", "101")
                 .param("from", "2026-04-01T00:00:00Z")
                 .param("to", "2026-04-17T00:00:00Z")
                 .param("limit", "20"))
@@ -77,7 +81,7 @@ class TransactionQueryControllerTest {
     mockMvc
         .perform(
             get("/api/v1/transactions")
-                .param("accountId", "101")
+                .header("X-Account-Id", "101")
                 .param("from", "2026-01-01T00:00:00Z")
                 .param("to", "2026-03-10T00:00:00Z")
                 .param("limit", "20"))
@@ -94,7 +98,7 @@ class TransactionQueryControllerTest {
     mockMvc
         .perform(
             get("/api/v1/transactions")
-                .param("accountId", "101")
+                .header("X-Account-Id", "101")
                 .param("from", "2026-04-01T00:00:00Z")
                 .param("to", "2026-04-17T00:00:00Z")
                 .param("limit", "20")
@@ -103,5 +107,16 @@ class TransactionQueryControllerTest {
 
     verify(transactionQueryUseCase)
         .getTransactions(argThat(query -> cursor.equals(query.cursor())));
+  }
+
+  @Test
+  void rejectsMissingAuthenticationHeader() throws Exception {
+    mockMvc
+        .perform(
+            get("/api/v1/transactions")
+                .param("from", "2026-04-01T00:00:00Z")
+                .param("to", "2026-04-17T00:00:00Z")
+                .param("limit", "20"))
+        .andExpect(status().isUnauthorized());
   }
 }

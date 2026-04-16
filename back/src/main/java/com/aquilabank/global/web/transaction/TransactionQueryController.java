@@ -4,6 +4,7 @@ import com.aquilabank.domain.transaction.model.TransactionCursor;
 import com.aquilabank.domain.transaction.model.TransactionQuery;
 import com.aquilabank.domain.transaction.model.TransactionStatus;
 import com.aquilabank.domain.transaction.usecase.TransactionQueryUseCase;
+import com.aquilabank.global.web.security.CurrentAccountId;
 import java.time.OffsetDateTime;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -25,7 +26,7 @@ public class TransactionQueryController {
 
   @GetMapping
   public TransactionQueryResponse getTransactions(
-      @RequestParam long accountId,
+      @CurrentAccountId long accountId,
       @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime from,
       @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime to,
       @RequestParam(defaultValue = "20") int limit,

@@ -12,3 +12,7 @@ management:
   health:
     db:
       enabled: false
+
+outbox:
+  poller:
+    enabled: false
