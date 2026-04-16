@@ -119,7 +119,7 @@ public class ApiExceptionHandler {
 
   private ResponseEntity<ApiErrorResponse> response(
       HttpStatus status, String message, HttpServletRequest request) {
-    logInternalAuthStatusFailure(request, message);
+    logInternalAuthStatusFailure(status, request, message);
     return ResponseEntity.status(status)
         .body(
             new ApiErrorResponse(
@@ -130,14 +130,16 @@ public class ApiExceptionHandler {
                 request.getRequestURI()));
   }
 
-  private void logInternalAuthStatusFailure(HttpServletRequest request, String error) {
+  private void logInternalAuthStatusFailure(
+      HttpStatus status, HttpServletRequest request, String error) {
     AuditFailureContext context = extractAuditFailureContext(request);
     if (context == null) {
       return;
     }
     log.warn(
-        "internal auth status update failed requestId={} actorSubject={} targetUserId={} targetAccountId={} requestedStatus={} reason={} path={} error={}",
+        "internal auth status update failed requestId={} httpStatus={} actorSubject={} targetUserId={} targetAccountId={} requestedStatus={} reason={} path={} error={}",
         RequestTraceContext.currentRequestId().orElse("-"),
+        status.value(),
         context.actorSubject(),
         context.targetUserId(),
         context.targetAccountId() == null ? "-" : context.targetAccountId(),
