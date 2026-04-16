@@ -35,12 +35,25 @@ class JdbcTransactionReadRepositoryBaselineIntegrationTest extends PostgresConta
 
   @Autowired private PlatformTransactionManager transactionManager;
 
+  private static final Object SEED_LOCK = new Object();
+  private static BaselineWindow sharedBaselineWindow;
+
   private BaselineWindow baselineWindow;
 
   @BeforeEach
   void setUpDatabase() {
-    resetBankingTables(jdbcTemplate);
-    commit(transactionManager, () -> baselineWindow = fixture.seed(jdbcTemplate));
+    if (sharedBaselineWindow != null) {
+      baselineWindow = sharedBaselineWindow;
+      return;
+    }
+
+    synchronized (SEED_LOCK) {
+      if (sharedBaselineWindow == null) {
+        resetBankingTables(jdbcTemplate);
+        commit(transactionManager, () -> sharedBaselineWindow = fixture.seed(jdbcTemplate));
+      }
+      baselineWindow = sharedBaselineWindow;
+    }
   }
 
   @Test
