@@ -8,6 +8,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.aquilabank.domain.auth.model.AccountAccessScope;
+import com.aquilabank.domain.auth.usecase.AccountAccessUseCase;
 import com.aquilabank.domain.transaction.model.TransactionDirection;
 import com.aquilabank.domain.transaction.model.TransactionSlice;
 import com.aquilabank.domain.transaction.model.TransactionStatus;
@@ -45,6 +47,8 @@ class TransactionJwtSecurityIntegrationTest {
 
   @Autowired private JwtDecoder jwtDecoder;
 
+  @MockitoBean private AccountAccessUseCase accountAccessUseCase;
+
   @MockitoBean private TransactionReadPort transactionReadPort;
 
   private MockMvc mockMvc;
@@ -55,7 +59,7 @@ class TransactionJwtSecurityIntegrationTest {
   }
 
   @Test
-  void acceptsBearerJwtAndResolvesAccountId() throws Exception {
+  void acceptsBearerJwtAndResolvesUserAccountAccess() throws Exception {
     when(transactionReadPort.fetch(argThat(query -> query.accountId() == 555L)))
         .thenReturn(
             new TransactionSlice(
@@ -75,11 +79,13 @@ class TransactionJwtSecurityIntegrationTest {
                 null,
                 false,
                 20));
+    when(accountAccessUseCase.verify(55L, 555L, AccountAccessScope.READ)).thenReturn(555L);
 
     mockMvc
         .perform(
             get("/api/v1/transactions")
-                .header("Authorization", "Bearer " + issueToken("user-555", 555L))
+                .header("Authorization", "Bearer " + issueToken("user-555", 55L))
+                .param("accountId", "555")
                 .param("from", "2026-04-01T00:00:00Z")
                 .param("to", "2026-04-17T00:00:00Z"))
         .andExpect(status().isOk())
@@ -91,6 +97,7 @@ class TransactionJwtSecurityIntegrationTest {
     mockMvc
         .perform(
             get("/api/v1/transactions")
+                .param("accountId", "555")
                 .param("from", "2026-04-01T00:00:00Z")
                 .param("to", "2026-04-17T00:00:00Z"))
         .andExpect(status().isUnauthorized());
@@ -99,22 +106,20 @@ class TransactionJwtSecurityIntegrationTest {
   @Test
   void decoderReadsSignedToken() throws Exception {
     String token = issueToken("user-777", 777L);
-    AuthenticatedAccountPrincipal principal =
-        (AuthenticatedAccountPrincipal)
-            new JwtAccountAuthenticationConverter()
-                .convert(jwtDecoder.decode(token))
-                .getPrincipal();
-    assertEquals(777L, principal.accountId());
+    AuthenticatedUserPrincipal principal =
+        (AuthenticatedUserPrincipal)
+            new JwtUserAuthenticationConverter().convert(jwtDecoder.decode(token)).getPrincipal();
+    assertEquals(777L, principal.userId());
   }
 
-  private String issueToken(String subject, long accountId) throws JOSEException {
+  private String issueToken(String subject, long userId) throws JOSEException {
     Instant now = Instant.now();
     JWTClaimsSet claimsSet =
         new JWTClaimsSet.Builder()
             .subject(subject)
             .issueTime(Date.from(now))
             .expirationTime(Date.from(now.plusSeconds(300)))
-            .claim("account_id", accountId)
+            .claim("user_id", userId)
             .build();
 
     SignedJWT signedJwt =

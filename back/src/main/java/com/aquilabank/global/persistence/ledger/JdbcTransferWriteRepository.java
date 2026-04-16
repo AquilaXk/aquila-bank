@@ -7,6 +7,7 @@ import com.aquilabank.domain.ledger.exception.SnapshotNotFoundException;
 import com.aquilabank.domain.ledger.model.TransferCommand;
 import com.aquilabank.domain.ledger.model.TransferResult;
 import com.aquilabank.domain.ledger.port.TransferWritePort;
+import com.aquilabank.global.web.RequestTraceContext;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.sql.ResultSet;
@@ -255,6 +256,7 @@ public class JdbcTransferWriteRepository implements TransferWritePort {
       String currencyCode,
       String summary,
       Instant bookedAt) {
+    String traceId = RequestTraceContext.currentRequestId().orElse(null);
     MapSqlParameterSource params =
         new MapSqlParameterSource()
             .addValue("accountId", accountId)
@@ -264,6 +266,7 @@ public class JdbcTransferWriteRepository implements TransferWritePort {
             .addValue("amountMinor", amountMinor)
             .addValue("currencyCode", currencyCode)
             .addValue("summary", summary)
+            .addValue("traceId", traceId)
             .addValue("bookedAt", Timestamp.from(bookedAt));
 
     Long id =
@@ -279,6 +282,7 @@ public class JdbcTransferWriteRepository implements TransferWritePort {
                 currency_code,
                 booked_at,
                 description,
+                trace_id,
                 occurred_at,
                 created_at,
                 updated_at
@@ -293,6 +297,7 @@ public class JdbcTransferWriteRepository implements TransferWritePort {
                 :currencyCode,
                 :bookedAt,
                 :summary,
+                :traceId,
                 :bookedAt,
                 :bookedAt,
                 :bookedAt

@@ -3,7 +3,9 @@ package com.aquilabank.global.web.ledger;
 import com.aquilabank.domain.ledger.model.TransferCommand;
 import com.aquilabank.domain.ledger.model.TransferResult;
 import com.aquilabank.domain.ledger.usecase.TransferCommandUseCase;
-import com.aquilabank.global.web.security.CurrentAccountId;
+import com.aquilabank.global.security.AuthenticatedRequestPrincipal;
+import com.aquilabank.global.web.security.CurrentAuthenticatedPrincipal;
+import com.aquilabank.global.web.security.RequestAccountAuthorizationService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
@@ -23,17 +25,23 @@ import org.springframework.web.bind.annotation.RestController;
 public class TransferCommandController {
 
   private final TransferCommandUseCase transferCommandUseCase;
+  private final RequestAccountAuthorizationService requestAccountAuthorizationService;
 
-  public TransferCommandController(TransferCommandUseCase transferCommandUseCase) {
+  public TransferCommandController(
+      TransferCommandUseCase transferCommandUseCase,
+      RequestAccountAuthorizationService requestAccountAuthorizationService) {
     this.transferCommandUseCase = transferCommandUseCase;
+    this.requestAccountAuthorizationService = requestAccountAuthorizationService;
   }
 
   @PostMapping
   public TransferResponse transfer(
-      @CurrentAccountId long sourceAccountId,
+      @CurrentAuthenticatedPrincipal AuthenticatedRequestPrincipal principal,
       @RequestHeader("Idempotency-Key") String idempotencyKey,
       @Valid @RequestBody TransferRequest request) {
-    // 인증 principal과 HTTP body/header를 domain command로 조립
+    long sourceAccountId =
+        requestAccountAuthorizationService.resolveTransferSourceAccountId(
+            principal, request.sourceAccountId());
     TransferResult result =
         transferCommandUseCase.transfer(
             new TransferCommand(
@@ -48,6 +56,7 @@ public class TransferCommandController {
 
   /** 송금 요청 body */
   public record TransferRequest(
+      @Positive(message = "sourceAccountId must be positive") long sourceAccountId,
       @Positive(message = "targetAccountId must be positive") long targetAccountId,
       @Positive(message = "amountMinor must be positive") long amountMinor,
       @NotBlank(message = "currencyCode is required") @Pattern(

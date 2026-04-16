@@ -9,21 +9,20 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 
-/** 검증 완료된 JWT를 account-aware principal로 바꾸는 converter */
-public class JwtAccountAuthenticationConverter
-    implements Converter<Jwt, AbstractAuthenticationToken> {
+/** 검증 완료된 JWT를 user 중심 principal로 변환합니다. */
+public class JwtUserAuthenticationConverter implements Converter<Jwt, AbstractAuthenticationToken> {
 
-  private static final String ACCOUNT_ID_CLAIM = "account_id";
+  private static final String USER_ID_CLAIM = "user_id";
 
   @Override
   public AbstractAuthenticationToken convert(Jwt jwt) {
-    Number accountId = jwt.getClaim(ACCOUNT_ID_CLAIM);
-    if (accountId == null || accountId.longValue() <= 0) {
-      throw new IllegalArgumentException("account_id claim must be a positive number");
+    Number userId = jwt.getClaim(USER_ID_CLAIM);
+    if (userId == null || userId.longValue() <= 0) {
+      throw new IllegalArgumentException("user_id claim must be a positive number");
     }
     Collection<GrantedAuthority> authorities = extractAuthorities(jwt);
-    AuthenticatedAccountPrincipal principal =
-        new AuthenticatedAccountPrincipal(accountId.longValue(), jwt.getSubject());
+    AuthenticatedUserPrincipal principal =
+        new AuthenticatedUserPrincipal(userId.longValue(), jwt.getSubject());
     return new JwtAuthenticationToken(jwt, authorities, jwt.getSubject()) {
       @Override
       public Object getPrincipal() {
@@ -35,7 +34,6 @@ public class JwtAccountAuthenticationConverter
   private Collection<GrantedAuthority> extractAuthorities(Jwt jwt) {
     Object rawScope = jwt.getClaims().get("scope");
     if (rawScope instanceof String scope && !scope.isBlank()) {
-      // scope claim을 SCOPE_* authority로 정규화
       return Arrays.stream(scope.split(" "))
           .filter(token -> !token.isBlank())
           .map(token -> (GrantedAuthority) () -> "SCOPE_" + token)

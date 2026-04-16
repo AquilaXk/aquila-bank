@@ -15,7 +15,8 @@ import com.aquilabank.domain.transaction.model.TransactionStatus;
 import com.aquilabank.domain.transaction.model.TransactionSummary;
 import com.aquilabank.domain.transaction.usecase.TransactionQueryUseCase;
 import com.aquilabank.global.security.BootstrapHeaderAuthenticationFilter;
-import com.aquilabank.global.web.security.CurrentAccountIdArgumentResolver;
+import com.aquilabank.global.web.security.CurrentAuthenticatedPrincipalArgumentResolver;
+import com.aquilabank.global.web.security.RequestAccountAuthorizationService;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -26,15 +27,19 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 class TransactionQueryControllerTest {
 
   private TransactionQueryUseCase transactionQueryUseCase;
+  private RequestAccountAuthorizationService requestAccountAuthorizationService;
   private MockMvc mockMvc;
 
   @BeforeEach
   void setUp() {
     transactionQueryUseCase = mock(TransactionQueryUseCase.class);
+    requestAccountAuthorizationService = mock(RequestAccountAuthorizationService.class);
     mockMvc =
-        MockMvcBuilders.standaloneSetup(new TransactionQueryController(transactionQueryUseCase))
+        MockMvcBuilders.standaloneSetup(
+                new TransactionQueryController(
+                    transactionQueryUseCase, requestAccountAuthorizationService))
             .addFilters(new BootstrapHeaderAuthenticationFilter("X-Account-Id", "X-Subject"))
-            .setCustomArgumentResolvers(new CurrentAccountIdArgumentResolver())
+            .setCustomArgumentResolvers(new CurrentAuthenticatedPrincipalArgumentResolver())
             .build();
   }
 
@@ -61,11 +66,15 @@ class TransactionQueryControllerTest {
                 nextCursor,
                 true,
                 20));
+    when(requestAccountAuthorizationService.resolveReadableAccountId(
+            org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(101L)))
+        .thenReturn(101L);
 
     mockMvc
         .perform(
             get("/api/v1/transactions")
                 .header("X-Account-Id", "101")
+                .param("accountId", "101")
                 .param("from", "2026-04-01T00:00:00Z")
                 .param("to", "2026-04-17T00:00:00Z")
                 .param("limit", "20"))
@@ -78,10 +87,14 @@ class TransactionQueryControllerTest {
 
   @Test
   void rejectsTooLargeDateRange() throws Exception {
+    when(requestAccountAuthorizationService.resolveReadableAccountId(
+            org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(101L)))
+        .thenReturn(101L);
     mockMvc
         .perform(
             get("/api/v1/transactions")
                 .header("X-Account-Id", "101")
+                .param("accountId", "101")
                 .param("from", "2026-01-01T00:00:00Z")
                 .param("to", "2026-03-10T00:00:00Z")
                 .param("limit", "20"))
@@ -94,11 +107,15 @@ class TransactionQueryControllerTest {
     String encoded = TransactionCursorCodec.encode(cursor);
     when(transactionQueryUseCase.getTransactions(argThat(query -> cursor.equals(query.cursor()))))
         .thenReturn(new TransactionSlice(List.of(), null, false, 20));
+    when(requestAccountAuthorizationService.resolveReadableAccountId(
+            org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(101L)))
+        .thenReturn(101L);
 
     mockMvc
         .perform(
             get("/api/v1/transactions")
                 .header("X-Account-Id", "101")
+                .param("accountId", "101")
                 .param("from", "2026-04-01T00:00:00Z")
                 .param("to", "2026-04-17T00:00:00Z")
                 .param("limit", "20")
@@ -114,6 +131,7 @@ class TransactionQueryControllerTest {
     mockMvc
         .perform(
             get("/api/v1/transactions")
+                .param("accountId", "101")
                 .param("from", "2026-04-01T00:00:00Z")
                 .param("to", "2026-04-17T00:00:00Z")
                 .param("limit", "20"))
