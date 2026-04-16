@@ -225,7 +225,7 @@ requestId drill-down:
 - `401 Unauthorized`: `5분 내 3회 이상`이면 warning, 같은 window에서 `10회 이상`이면 critical 후보로 봅니다.
 - `400 Bad Request`: 같은 `actorSubject`에서 연속 `2회 이상`이면 warning, `5회 이상`이면 critical 후보로 봅니다.
 - `actorSubject=-`인 `400`은 헤더 누락 성격이므로 운영 스크립트 drift 또는 수동 호출 오류로 분류합니다.
-- `404`, `409`, `500`은 이번 최소 범위에서 제외하고 후속 이슈로 분리합니다.
+- `404`, `409`, `500`은 최소 alert 기본값에서는 제외하고, 아래 후속 운영 기준으로 별도 판단합니다.
 
 ### 404/409/500 후속 수집 패턴
 
@@ -288,6 +288,46 @@ requestId 우선 drill-down:
   - 운영 입력 오류보다 서버 측 장애 후보 우선
   - 같은 시간대 `actorSubject`/`path` 확산 여부 확인 필요
   - success audit exact lookup 부재만으로 종료하지 말고 로그 타임라인 재확인이 필요
+
+### 404/409/500 제외/승격 조건
+
+#### 404 운영 기준
+
+- 제외 조건:
+  - 단발 `404`이고 같은 actor가 직후 대상 식별자를 수정해 성공 호출로 전환한 경우
+  - 수동 점검 과정에서 잘못된 `userId`/`accountId`를 한 번 입력한 경우
+- 승격 조건:
+  - 같은 `actorSubject + path`에서 동일 target miss가 `10분 내 3회 이상` 반복되면 warning 후보
+  - 같은 배치 또는 actor가 여러 target에서 `404`를 확산시키면 critical 후보
+
+#### 409 운영 기준
+
+- 제외 조건:
+  - 같은 actor의 단발 중복 호출이고, 인접 시간대에 성공 감사 row가 확인되는 경우
+  - 수동 재실행이나 caller retry가 이미 적용된 상태로 보이는 경우
+- 승격 조건:
+  - 같은 `actorSubject + path + requestedStatus` 조합의 `409`가 `10분 내 3회 이상` 반복되고 success audit row가 확인되지 않으면 warning 후보
+  - 서로 다른 actor가 같은 target에 충돌하는 정황이 보이면 critical 후보
+
+#### 500 운영 기준
+
+- 제외 조건:
+  - 기본적으로 제외하지 않습니다.
+- 승격 조건:
+  - `500` 한 건만으로도 incident 후보로 triage 합니다.
+  - 같은 시간대에 `500`이 2회 이상 반복되거나 여러 actor/path로 확산되면 critical 후보로 봅니다.
+
+### 404/409/500 requestId 추적 차이
+
+- `404`:
+  - `requestId`로 실패 로그 한 줄을 찾은 뒤, 같은 `targetUserId`/`targetAccountId`가 실제로 존재했는지 먼저 확인합니다.
+  - success audit row가 없더라도 바로 장애로 보지 않고, stale target 또는 수동 오입력 가능성을 먼저 분리합니다.
+- `409`:
+  - `requestId`로 실패 시점을 찾은 뒤, 같은 `actorSubject + path + requestedStatus` 조합의 직전/직후 호출을 같이 봅니다.
+  - 다른 `requestId`의 success audit row가 근접 시간대에 있으면 중복 호출 또는 재시도 충돌 가능성을 우선 봅니다.
+- `500`:
+  - `requestId`를 가장 먼저 확보하고, 같은 시간대 `actorSubject + path + error` 확산 여부를 바로 확인합니다.
+  - success audit row가 없고 같은 오류가 반복되면 caller 오입력보다 서버 장애 후보로 바로 승격합니다.
 
 ### requestId 장애 추적 절차
 
