@@ -4,10 +4,8 @@ import com.aquilabank.domain.notification.model.OutboxEvent;
 import com.aquilabank.domain.notification.port.OutboxEventPublishPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Component;
 
 /** 실제 broker/websocket/push adapter 도입 전까지 쓰는 bootstrap publisher */
-@Component
 public class LoggingOutboxEventPublisher implements OutboxEventPublishPort {
 
   private static final Logger log = LoggerFactory.getLogger(LoggingOutboxEventPublisher.class);
