@@ -17,3 +17,6 @@ security:
     secret: ${SECURITY_JWT_SECRET:dev-local-jwt-secret-dev-local-jwt-secret}
   bootstrap-header-auth:
     enabled: ${SECURITY_BOOTSTRAP_HEADER_AUTH_ENABLED:true}
+  account-bootstrap-api:
+    enabled: ${SECURITY_ACCOUNT_BOOTSTRAP_API_ENABLED:true}
+    token: ${SECURITY_ACCOUNT_BOOTSTRAP_API_TOKEN:dev-bootstrap-api-token}

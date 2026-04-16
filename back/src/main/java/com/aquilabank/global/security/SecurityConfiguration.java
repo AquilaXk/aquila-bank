@@ -22,7 +22,11 @@ import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 
 /** bootstrap auth와 JWT resource server를 함께 조립하는 security 설정 */
 @Configuration
-@EnableConfigurationProperties({SecurityJwtProperties.class, BootstrapHeaderAuthProperties.class})
+@EnableConfigurationProperties({
+  SecurityJwtProperties.class,
+  BootstrapHeaderAuthProperties.class,
+  AccountBootstrapApiProperties.class
+})
 public class SecurityConfiguration {
 
   @Bean
@@ -42,6 +46,9 @@ public class SecurityConfiguration {
         .authorizeHttpRequests(
             auth ->
                 auth.requestMatchers("/actuator/health", "/actuator/info")
+                    .permitAll()
+                    // 내부 bootstrap API는 계좌 principal 대신 별도 token으로 보호합니다.
+                    .requestMatchers("/internal/api/v1/accounts/bootstrap")
                     .permitAll()
                     .anyRequest()
                     .authenticated())

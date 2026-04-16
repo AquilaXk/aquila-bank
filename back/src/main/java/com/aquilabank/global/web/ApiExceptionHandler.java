@@ -4,6 +4,7 @@ import com.aquilabank.domain.ledger.exception.CommandConflictException;
 import com.aquilabank.domain.ledger.exception.CurrencyMismatchException;
 import com.aquilabank.domain.ledger.exception.InsufficientBalanceException;
 import com.aquilabank.domain.ledger.exception.SnapshotNotFoundException;
+import com.aquilabank.global.security.BootstrapApiAccessDeniedException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import java.time.Instant;
@@ -39,6 +40,12 @@ public class ApiExceptionHandler {
   ResponseEntity<ApiErrorResponse> handleIllegalArgument(
       IllegalArgumentException ex, HttpServletRequest request) {
     return response(HttpStatus.BAD_REQUEST, ex.getMessage(), request.getRequestURI());
+  }
+
+  @ExceptionHandler(BootstrapApiAccessDeniedException.class)
+  ResponseEntity<ApiErrorResponse> handleBootstrapUnauthorized(
+      BootstrapApiAccessDeniedException ex, HttpServletRequest request) {
+    return response(HttpStatus.UNAUTHORIZED, ex.getMessage(), request.getRequestURI());
   }
 
   @ExceptionHandler(SnapshotNotFoundException.class)
