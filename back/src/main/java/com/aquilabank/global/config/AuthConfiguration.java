@@ -1,8 +1,13 @@
 package com.aquilabank.global.config;
 
+import com.aquilabank.domain.auth.exception.InvalidCredentialsException;
+import com.aquilabank.domain.auth.model.LoginProtectionPolicy;
+import com.aquilabank.domain.auth.model.LoginResult;
 import com.aquilabank.domain.auth.port.AccountAccessPort;
 import com.aquilabank.domain.auth.port.AuthStatusChangeAuditQueryPort;
 import com.aquilabank.domain.auth.port.AuthTokenIssuePort;
+import com.aquilabank.domain.auth.port.LoginAttemptAuditPort;
+import com.aquilabank.domain.auth.port.LoginAttemptUpdatePort;
 import com.aquilabank.domain.auth.port.PasswordHashPort;
 import com.aquilabank.domain.auth.port.UserAccountMembershipQueryPort;
 import com.aquilabank.domain.auth.port.UserAccountMembershipStatusUpdatePort;
@@ -29,19 +34,73 @@ import com.aquilabank.domain.auth.usecase.UserBootstrapService;
 import com.aquilabank.domain.auth.usecase.UserBootstrapUseCase;
 import com.aquilabank.domain.auth.usecase.UserStatusUpdateService;
 import com.aquilabank.domain.auth.usecase.UserStatusUpdateUseCase;
+import com.aquilabank.global.security.LoginProtectionProperties;
+import com.aquilabank.global.security.StructuredLoginAttemptAuditLogger;
+import java.time.Clock;
+import java.time.Duration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /** auth use case와 persistence/security adapter를 조립 */
 @Configuration
 public class AuthConfiguration {
 
   @Bean
+  LoginProtectionPolicy loginProtectionPolicy(LoginProtectionProperties loginProtectionProperties) {
+    return new LoginProtectionPolicy(
+        loginProtectionProperties.maxFailures(),
+        Duration.ofSeconds(loginProtectionProperties.lockSeconds()),
+        Duration.ofSeconds(loginProtectionProperties.resetWindowSeconds()));
+  }
+
+  @Bean
   LoginUseCase loginUseCase(
       UserCredentialLoadPort userCredentialLoadPort,
+      LoginAttemptUpdatePort loginAttemptUpdatePort,
+      LoginAttemptAuditPort loginAttemptAuditPort,
       PasswordHashPort passwordHashPort,
-      AuthTokenIssuePort authTokenIssuePort) {
-    return new LoginService(userCredentialLoadPort, passwordHashPort, authTokenIssuePort);
+      AuthTokenIssuePort authTokenIssuePort,
+      LoginProtectionPolicy loginProtectionPolicy,
+      PlatformTransactionManager platformTransactionManager) {
+    LoginService loginService =
+        new LoginService(
+            userCredentialLoadPort,
+            loginAttemptUpdatePort,
+            loginAttemptAuditPort,
+            passwordHashPort,
+            authTokenIssuePort,
+            loginProtectionPolicy,
+            passwordHashPort.encode("login-dummy-password"),
+            Clock.systemUTC());
+    TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
+    return command -> {
+      LoginTransactionResult transactionResult =
+          transactionTemplate.execute(
+              status -> {
+                try {
+                  return LoginTransactionResult.success(loginService.login(command));
+                } catch (InvalidCredentialsException ex) {
+                  return LoginTransactionResult.failure(ex);
+                }
+              });
+      if (transactionResult == null) {
+        throw new IllegalStateException("login transaction result is null");
+      }
+      if (transactionResult.exception() != null) {
+        throw transactionResult.exception();
+      }
+      if (transactionResult.result() == null) {
+        throw new IllegalStateException("login transaction returned null result");
+      }
+      return transactionResult.result();
+    };
+  }
+
+  @Bean
+  LoginAttemptAuditPort loginAttemptAuditPort() {
+    return new StructuredLoginAttemptAuditLogger();
   }
 
   @Bean
@@ -87,5 +146,16 @@ public class AuthConfiguration {
   UserAccountMembershipStatusUpdateUseCase userAccountMembershipStatusUpdateUseCase(
       UserAccountMembershipStatusUpdatePort userAccountMembershipStatusUpdatePort) {
     return new UserAccountMembershipStatusUpdateService(userAccountMembershipStatusUpdatePort);
+  }
+
+  private record LoginTransactionResult(LoginResult result, InvalidCredentialsException exception) {
+
+    private static LoginTransactionResult success(LoginResult result) {
+      return new LoginTransactionResult(result, null);
+    }
+
+    private static LoginTransactionResult failure(InvalidCredentialsException exception) {
+      return new LoginTransactionResult(null, exception);
+    }
   }
 }

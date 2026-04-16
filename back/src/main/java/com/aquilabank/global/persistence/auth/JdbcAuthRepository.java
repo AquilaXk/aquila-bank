@@ -47,9 +47,39 @@ public class JdbcAuthRepository
     return jdbcTemplate
         .query(
             """
-            SELECT id, login_id, password_hash, user_status
+            SELECT id,
+                   login_id,
+                   password_hash,
+                   user_status,
+                   failed_login_count,
+                   last_login_failed_at,
+                   login_locked_until,
+                   last_login_succeeded_at
             FROM bank_user
             WHERE login_id = :loginId
+            """,
+            new MapSqlParameterSource().addValue("loginId", loginId),
+            (rs, rowNum) -> mapLoginUser(rs))
+        .stream()
+        .findFirst();
+  }
+
+  @Override
+  public Optional<LoginUser> findByLoginIdForUpdate(String loginId) {
+    return jdbcTemplate
+        .query(
+            """
+            SELECT id,
+                   login_id,
+                   password_hash,
+                   user_status,
+                   failed_login_count,
+                   last_login_failed_at,
+                   login_locked_until,
+                   last_login_succeeded_at
+            FROM bank_user
+            WHERE login_id = :loginId
+            FOR UPDATE
             """,
             new MapSqlParameterSource().addValue("loginId", loginId),
             (rs, rowNum) -> mapLoginUser(rs))
@@ -175,7 +205,11 @@ public class JdbcAuthRepository
         rs.getLong("id"),
         rs.getString("login_id"),
         rs.getString("password_hash"),
-        UserStatus.valueOf(rs.getString("user_status")));
+        UserStatus.valueOf(rs.getString("user_status")),
+        rs.getInt("failed_login_count"),
+        toNullableInstant(rs.getTimestamp("last_login_failed_at")),
+        toNullableInstant(rs.getTimestamp("login_locked_until")),
+        toNullableInstant(rs.getTimestamp("last_login_succeeded_at")));
   }
 
   private UserAccountMembership mapMembership(ResultSet rs) throws SQLException {
@@ -238,5 +272,9 @@ public class JdbcAuthRepository
       throw new IllegalStateException("timestamp must not be null");
     }
     return timestamp.toInstant();
+  }
+
+  private Instant toNullableInstant(Timestamp timestamp) {
+    return timestamp == null ? null : timestamp.toInstant();
   }
 }
