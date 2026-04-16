@@ -5,6 +5,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Base64;
 
+/** Encodes keyset cursors into an opaque token for the HTTP API. */
 public final class TransactionCursorCodec {
 
   private static final String DELIMITER = "|";
@@ -12,6 +13,7 @@ public final class TransactionCursorCodec {
   private TransactionCursorCodec() {}
 
   public static String encode(TransactionCursor cursor) {
+    // Base64 keeps the cursor opaque to clients, but it is still just transport encoding.
     String payload = cursor.bookedAt().toString() + DELIMITER + cursor.id();
     return Base64.getUrlEncoder()
         .withoutPadding()

@@ -5,6 +5,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 
+/** Port that owns the outbox claim, success, and retry lifecycle. */
 public interface OutboxEventStore {
 
   List<OutboxEvent> claimBatch(int batchSize, Duration staleAfter, Instant now);

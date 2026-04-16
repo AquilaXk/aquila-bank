@@ -7,6 +7,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+/** Scheduler entry point that continuously drains the outbox in small batches. */
 @Component
 @ConditionalOnProperty(name = "outbox.poller.enabled", havingValue = "true", matchIfMissing = true)
 public class OutboxDispatchPoller {
@@ -23,6 +24,7 @@ public class OutboxDispatchPoller {
       fixedDelayString = "${outbox.poller.fixed-delay-ms:1000}",
       initialDelayString = "${outbox.poller.initial-delay-ms:3000}")
   public void dispatch() {
+    // Quiet idle runs keep logs clean while still making activity visible during event bursts.
     int claimed = outboxDispatchUseCase.dispatchPendingEvents();
     if (claimed > 0) {
       log.debug("claimed {} outbox event(s) for dispatch", claimed);

@@ -4,6 +4,7 @@ import com.aquilabank.domain.transaction.model.TransactionQuery;
 import com.aquilabank.domain.transaction.model.TransactionSlice;
 import com.aquilabank.domain.transaction.port.TransactionReadPort;
 
+/** Thin application service that keeps the controller independent from persistence details. */
 public final class TransactionQueryService implements TransactionQueryUseCase {
 
   private final TransactionReadPort transactionReadPort;

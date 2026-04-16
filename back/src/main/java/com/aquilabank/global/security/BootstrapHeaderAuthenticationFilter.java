@@ -11,6 +11,9 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+/**
+ * Lightweight bootstrap authentication for local tools and tests before full login is implemented.
+ */
 public class BootstrapHeaderAuthenticationFilter extends OncePerRequestFilter {
 
   private final String accountIdHeader;
@@ -25,6 +28,7 @@ public class BootstrapHeaderAuthenticationFilter extends OncePerRequestFilter {
   protected void doFilterInternal(
       HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
       throws ServletException, IOException {
+    // Respect any authentication already established by the real security chain.
     if (SecurityContextHolder.getContext().getAuthentication() != null) {
       filterChain.doFilter(request, response);
       return;
@@ -52,6 +56,7 @@ public class BootstrapHeaderAuthenticationFilter extends OncePerRequestFilter {
     } catch (NumberFormatException ex) {
       response.sendError(HttpStatus.UNAUTHORIZED.value(), "invalid account header");
     } finally {
+      // Clear the context because this filter is meant to authenticate one request at a time.
       SecurityContextHolder.clearContext();
     }
   }

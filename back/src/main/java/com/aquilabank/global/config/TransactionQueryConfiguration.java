@@ -6,6 +6,7 @@ import com.aquilabank.domain.transaction.usecase.TransactionQueryUseCase;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+/** Connects the transaction query use case to its outbound read port. */
 @Configuration
 public class TransactionQueryConfiguration {
 

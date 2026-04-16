@@ -7,6 +7,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 
+/** Domain service that claims pending outbox rows and advances their publish status. */
 public final class OutboxDispatchService implements OutboxDispatchUseCase {
 
   private static final int MAX_BACKOFF_POWER = 4;
@@ -35,6 +36,7 @@ public final class OutboxDispatchService implements OutboxDispatchUseCase {
   @Override
   public int dispatchPendingEvents() {
     Instant now = Instant.now();
+    // Claim first so concurrent pollers do not publish the same event twice.
     List<OutboxEvent> batch = outboxEventStore.claimBatch(batchSize, staleAfter, now);
     for (OutboxEvent event : batch) {
       dispatchSingle(event);
@@ -48,18 +50,21 @@ public final class OutboxDispatchService implements OutboxDispatchUseCase {
       outboxEventPublishPort.publish(event);
       outboxEventStore.markPublished(event.id(), now);
     } catch (RuntimeException ex) {
+      // Failed events are rescheduled instead of dropped so the poller can retry later.
       outboxEventStore.markFailed(
           event.id(), now.plus(computeBackoff(event.retryCount())), now, shorten(ex.getMessage()));
     }
   }
 
   private Duration computeBackoff(int retryCount) {
+    // Exponential backoff reduces repeated hot-loop retries when the downstream channel is down.
     int exponent = Math.min(Math.max(retryCount, 0), MAX_BACKOFF_POWER);
     Duration candidate = Duration.ofSeconds((long) BASE_BACKOFF_SECONDS * (1L << exponent));
     return candidate.compareTo(maxRetryDelay) > 0 ? maxRetryDelay : candidate;
   }
 
   private String shorten(String errorMessage) {
+    // The outbox table keeps only a short operational hint, not a full stack trace.
     if (errorMessage == null || errorMessage.isBlank()) {
       return "publish failed";
     }

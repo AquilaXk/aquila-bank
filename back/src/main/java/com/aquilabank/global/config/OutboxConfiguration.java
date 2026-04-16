@@ -10,6 +10,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
+/** Wires the domain outbox use case with Spring-managed adapters and scheduler support. */
 @Configuration
 @EnableScheduling
 @EnableConfigurationProperties(OutboxProperties.class)

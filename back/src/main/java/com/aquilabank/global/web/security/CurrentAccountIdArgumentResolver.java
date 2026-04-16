@@ -11,6 +11,7 @@ import org.springframework.web.method.support.HandlerMethodArgumentResolver;
 import org.springframework.web.method.support.ModelAndViewContainer;
 import org.springframework.web.server.ResponseStatusException;
 
+/** Resolves {@link CurrentAccountId} from the authenticated principal in the security context. */
 @Component
 public class CurrentAccountIdArgumentResolver implements HandlerMethodArgumentResolver {
 
@@ -27,6 +28,7 @@ public class CurrentAccountIdArgumentResolver implements HandlerMethodArgumentRe
       ModelAndViewContainer mavContainer,
       NativeWebRequest webRequest,
       WebDataBinderFactory binderFactory) {
+    // Controller code should never inspect SecurityContextHolder directly for account identity.
     Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
     if (authentication == null || !authentication.isAuthenticated()) {
       throw unauthorized();

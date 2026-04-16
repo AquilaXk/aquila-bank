@@ -1,4 +1,5 @@
 :root {
+  /* Global design tokens for the bootstrap landing page. */
   color-scheme: light;
   --bg: #f4efe7;
   --ink: #14213d;
@@ -21,6 +22,7 @@ body {
 }
 
 body {
+  /* Layered gradients keep the initial screen from feeling like a blank scaffold. */
   background:
     radial-gradient(circle at top left, rgba(15, 118, 110, 0.18), transparent 28%),
     radial-gradient(circle at top right, rgba(20, 33, 61, 0.14), transparent 24%),
@@ -37,6 +39,7 @@ body {
 
 .hero,
 .panel {
+  /* Both surface types share the same glass-panel treatment for consistency. */
   position: relative;
   overflow: hidden;
   border: 1px solid var(--line);
@@ -157,6 +160,7 @@ h1 {
 }
 
 @media (max-width: 900px) {
+  /* Mobile collapses metric and card grids into a single readable column. */
   .shell {
     width: min(100% - 24px, 1120px);
     padding: 24px 0 56px;

@@ -19,6 +19,7 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
+/** JDBC read adapter optimized for account timeline lookup via keyset pagination. */
 @Repository
 public class JdbcTransactionReadRepository implements TransactionReadPort {
 
@@ -38,6 +39,7 @@ public class JdbcTransactionReadRepository implements TransactionReadPort {
             .addValue("accountId", query.accountId())
             .addValue("from", Timestamp.from(query.from()))
             .addValue("to", Timestamp.from(query.to()))
+            // Fetch one extra row to tell the API whether a next page exists.
             .addValue("fetchLimit", query.limit() + 1);
 
     StringBuilder sql =
@@ -66,6 +68,7 @@ public class JdbcTransactionReadRepository implements TransactionReadPort {
     }
 
     if (query.cursor() != null) {
+      // Keyset pagination reuses the same ORDER BY columns to avoid deep OFFSET scans.
       sql.append(
           """
 
@@ -88,6 +91,7 @@ public class JdbcTransactionReadRepository implements TransactionReadPort {
 
     List<TransactionSummary> rows = jdbcTemplate.query(sql.toString(), params, ROW_MAPPER);
     boolean hasNext = rows.size() > query.limit();
+    // Trim the sentinel row before returning the slice.
     List<TransactionSummary> items =
         hasNext ? new ArrayList<>(rows.subList(0, query.limit())) : rows;
     TransactionCursor nextCursor = hasNext ? toCursor(items.getLast()) : null;
@@ -111,6 +115,7 @@ public class JdbcTransactionReadRepository implements TransactionReadPort {
   }
 
   private static TransactionCursor toCursor(TransactionSummary item) {
+    // The next page starts strictly after the last visible row in the current slice.
     return new TransactionCursor(item.bookedAt(), item.id());
   }
 }

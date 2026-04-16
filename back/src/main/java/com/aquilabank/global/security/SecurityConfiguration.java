@@ -20,6 +20,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.AnonymousAuthenticationFilter;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 
+/** Configures the bootstrap authentication path and the JWT resource server path together. */
 @Configuration
 @EnableConfigurationProperties({SecurityJwtProperties.class, BootstrapHeaderAuthProperties.class})
 public class SecurityConfiguration {
@@ -30,6 +31,7 @@ public class SecurityConfiguration {
       ObjectProvider<BootstrapHeaderAuthenticationFilter> bootstrapHeaderAuthenticationFilter,
       JwtDecoder jwtDecoder)
       throws Exception {
+    // The API is stateless, so every request must be authenticated independently.
     http.csrf(AbstractHttpConfigurer::disable)
         .cors(Customizer.withDefaults())
         .formLogin(AbstractHttpConfigurer::disable)
@@ -57,6 +59,7 @@ public class SecurityConfiguration {
     BootstrapHeaderAuthenticationFilter filter =
         bootstrapHeaderAuthenticationFilter.getIfAvailable();
     if (filter != null) {
+      // The bootstrap header filter must run before anonymous auth fills the context.
       http.addFilterBefore(filter, AnonymousAuthenticationFilter.class);
     }
     return http.build();
@@ -81,6 +84,7 @@ public class SecurityConfiguration {
         NimbusJwtDecoder.withSecretKey(secretKeySpec).macAlgorithm(MacAlgorithm.HS256).build();
 
     OAuth2TokenValidator<Jwt> validator =
+        // Issuer validation is optional during bootstrap, but automatically enforced once set.
         securityJwtProperties.issuer() == null || securityJwtProperties.issuer().isBlank()
             ? JwtValidators.createDefault()
             : JwtValidators.createDefaultWithIssuer(securityJwtProperties.issuer());

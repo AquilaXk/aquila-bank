@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+/** Bootstrap publisher used until a real broker, websocket, or push adapter is introduced. */
 @Component
 public class LoggingOutboxEventPublisher implements OutboxEventPublishPort {
 
