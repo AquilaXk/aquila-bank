@@ -1,0 +1,14 @@
+spring:
+  flyway:
+    enabled: false
+  datasource:
+    url: jdbc:postgresql://localhost:5432/aquila_bank_test
+    username: postgres
+    password: postgres
+    hikari:
+      initialization-fail-timeout: 0
+
+management:
+  health:
+    db:
+      enabled: false

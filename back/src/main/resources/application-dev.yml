@@ -1,0 +1,13 @@
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+logging:
+  level:
+    com.aquilabank: DEBUG
+
+management:
+  endpoint:
+    health:
+      show-details: always

@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "${repo_root}"
+
+if [[ -n "${STAGED_FILES_OVERRIDE:-}" ]]; then
+  staged_files="${STAGED_FILES_OVERRIDE}"
+else
+  if ! git diff --cached --check >/dev/null; then
+    cat >&2 <<'EOF'
+[pre-commit] staged 변경에 trailing whitespace 또는 conflict marker가 있습니다.
+[pre-commit] 먼저 `git diff --cached --check` 결과를 정리한 뒤 다시 시도하세요.
+EOF
+    exit 1
+  fi
+
+  staged_files="$(git diff --cached --name-only --diff-filter=ACMR)"
+fi
+
+if [[ -z "${staged_files}" ]]; then
+  exit 0
+fi
+
+blocked_files=()
+needs_backend_check="false"
+needs_front_lint="false"
+
+while IFS= read -r file; do
+  [[ -z "${file}" ]] && continue
+
+  case "${file}" in
+    .env.example|back/.env.example|front/.env.example)
+      ;;
+    AGENTS.md|CLAUDE.md|GEMINI.md|CURSOR.md|COPILOT.md|docs/AGENT-CONTEXT.md|docs/agent/*|.codex/*|.claude/*|.cursor/*|.aider|.aider/*|.windsurf/*|.ai/*)
+      blocked_files+=("${file} (agent-local file)")
+      ;;
+    .env|.env.*|back/.env|back/.env.*|front/.env|front/.env.*|front/.env.local|front/.env.development.local|front/.env.test.local|front/.env.production.local|back/src/main/resources/application-local.yml|back/src/main/resources/application-local.yaml|back/src/main/resources/application-*.local.yml|back/src/main/resources/application-*.local.yaml)
+      blocked_files+=("${file} (local secret/config)")
+      ;;
+    .idea/*|*.iml|*.ipr|*.iws|back/.gradle/*|back/build/*|front/node_modules/*|front/.next/*|front/test-results/*|front/playwright-report/*|front/storybook-static/*)
+      blocked_files+=("${file} (generated/local artifact)")
+      ;;
+  esac
+
+  case "${file}" in
+    back/build.gradle.kts|back/settings.gradle.kts|back/gradlew|back/gradlew.bat|back/gradle/*|back/src/*)
+      needs_backend_check="true"
+      ;;
+  esac
+
+  case "${file}" in
+    front/package.json|front/yarn.lock|front/next.config.js|front/tsconfig.json|front/.eslintrc.json|front/src/*)
+      needs_front_lint="true"
+      ;;
+  esac
+done <<< "${staged_files}"
+
+if [[ "${#blocked_files[@]}" -gt 0 ]]; then
+  {
+    echo "[pre-commit] 추적하면 안 되는 로컬/생성 파일이 staged 상태입니다."
+    for item in "${blocked_files[@]}"; do
+      echo "  - ${item}"
+    done
+    echo "[pre-commit] 해당 파일을 unstage 하거나 .gitignore 대상만 유지하세요."
+  } >&2
+  exit 1
+fi
+
+if [[ "${needs_backend_check}" == "true" ]]; then
+  if [[ ! -x "back/gradlew" ]]; then
+    echo "[pre-commit] back/gradlew 실행 파일을 찾지 못했습니다." >&2
+    exit 1
+  fi
+
+  echo "[pre-commit] backend 검증(lock): ./back/gradlew -p back check"
+  bash tools/test/with-resource-lock.sh back-gradle-check ./back/gradlew -p back check --no-daemon
+fi
+
+if [[ "${needs_front_lint}" == "true" ]]; then
+  if ! command -v yarn >/dev/null 2>&1; then
+    echo "[pre-commit] front 변경이 있어 yarn 이 필요하지만 현재 찾을 수 없습니다." >&2
+    exit 1
+  fi
+
+  if [[ ! -d "front/node_modules" ]]; then
+    cat >&2 <<'EOF'
+[pre-commit] front 변경이 있어 lint 검증이 필요하지만 `front/node_modules`가 없습니다.
+[pre-commit] 먼저 `cd front && yarn install` 후 다시 커밋하세요.
+EOF
+    exit 1
+  fi
+
+  echo "[pre-commit] frontend 검증(lock): yarn --cwd front lint"
+  bash tools/test/with-resource-lock.sh front-lint yarn --cwd front lint
+fi
+
+exit 0

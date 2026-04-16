@@ -1,0 +1,80 @@
+name: "🐞 Bug"
+description: "버그, 장애, 회귀 이슈를 등록합니다."
+labels: ["bug"]
+body:
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: 영향도를 선택해 주세요.
+      options:
+        - Sev 1 - 거래 불가 / 서비스 중단
+        - Sev 2 - 핵심 기능 저하
+        - Sev 3 - 우회 가능한 문제
+        - Sev 4 - 경미한 문제
+    validations:
+      required: true
+
+  - type: input
+    id: domain
+    attributes:
+      label: Domain
+      description: 문제가 발생한 기능/도메인을 적어주세요.
+      placeholder: 예) auth, transaction, notification, admin
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: 문제를 한 줄로 요약해 주세요.
+      placeholder: 예) 거래 상세 조회 시 동일 거래가 중복 노출됩니다.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps To Reproduce
+      description: 재현 순서를 적어주세요.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_actual
+    attributes:
+      label: Expected Result / Actual Result
+      description: 기대 결과와 실제 결과를 함께 적어주세요.
+      placeholder: |
+        - Expected:
+        - Actual:
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: 고객, 운영, 데이터 정합성 영향 범위를 적어주세요.
+      placeholder: 예) 고객 문의 증가, 거래 정합성 영향 없음, 운영 모니터링 경고 발생
+    validations:
+      required: true
+
+  - type: textarea
+    id: todo
+    attributes:
+      label: Todo
+      description: 필요한 작업을 체크리스트로 적어주세요.
+      placeholder: |
+        - [ ] 재현
+        - [ ] 원인 분석
+        - [ ] 수정
+        - [ ] 테스트
+        - [ ] 운영 영향 확인
+    validations:
+      required: true

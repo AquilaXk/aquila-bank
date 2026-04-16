@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+allowed_branches_regex='^(main|develop)$'
+zero_sha='0000000000000000000000000000000000000000'
+
+branch_name_from_ref() {
+  local ref="${1:-}"
+  if [[ "${ref}" =~ ^refs/heads/(.+)$ ]]; then
+    printf '%s\n' "${BASH_REMATCH[1]}"
+    return 0
+  fi
+  return 1
+}
+
+violations=()
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [[ -z "${local_ref:-}" ]] && continue
+
+  if local_branch="$(branch_name_from_ref "${local_ref}")"; then
+    if [[ ! "${local_branch}" =~ ${allowed_branches_regex} ]]; then
+      violations+=("local:${local_branch}")
+    fi
+  elif [[ "${local_sha}" != "${zero_sha}" ]]; then
+    violations+=("local-ref:${local_ref}")
+  fi
+
+  if remote_branch="$(branch_name_from_ref "${remote_ref}")"; then
+    if [[ ! "${remote_branch}" =~ ${allowed_branches_regex} ]]; then
+      violations+=("remote:${remote_branch}")
+    fi
+  elif [[ "${remote_sha}" != "${zero_sha}" ]]; then
+    violations+=("remote-ref:${remote_ref}")
+  fi
+done
+
+if [[ "${#violations[@]}" -gt 0 ]]; then
+  {
+    echo "[pre-push] push 는 main 또는 develop 브랜치에만 허용됩니다."
+    echo "[pre-push] 차단된 ref:"
+    for violation in "${violations[@]}"; do
+      echo "  - ${violation}"
+    done
+    echo "[pre-push] 허용 브랜치: main, develop"
+  } >&2
+  exit 1
+fi
+
+exit 0

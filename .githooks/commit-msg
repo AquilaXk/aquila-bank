@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+msg_file="${1:?commit message file is required}"
+subject="$(head -n 1 "$msg_file" | tr -d '\r')"
+
+if [[ "$subject" =~ ^Merge\  ]] || [[ "$subject" =~ ^Revert\  ]] || [[ "$subject" =~ ^fixup!\  ]] || [[ "$subject" =~ ^squash!\  ]]; then
+  exit 0
+fi
+
+if ! [[ "$subject" =~ ^(feat|fix|refactor|chore|docs|style|test|perf|build|ci|revert|hotfix)(\([a-z0-9][a-z0-9._/-]*\))?!?:\ .+$ ]]; then
+  cat >&2 <<'EOF'
+[commit-msg] 커밋 메시지 규칙 위반
+형식: <type>(<scope>): <한글+English 혼합 요약>
+예시1: feat(auth): 로그인 session 안정화
+예시2: fix(transaction): 거래 목록 query 중복 제거
+허용 타입: feat, fix, refactor, chore, docs, style, test, perf, build, ci, revert, hotfix
+EOF
+  exit 1
+fi
+
+summary="${subject#*: }"
+
+if ! [[ "$summary" =~ [가-힣ㄱ-ㅎㅏ-ㅣ] ]]; then
+  cat >&2 <<'EOF'
+[commit-msg] 제목에는 한글이 최소 1자 이상 포함되어야 합니다.
+예시: feat(auth): 로그인 session 안정화
+EOF
+  exit 1
+fi
+
+if ! [[ "$summary" =~ [A-Za-z] ]]; then
+  cat >&2 <<'EOF'
+[commit-msg] 제목에는 영문 키워드가 최소 1자 이상 포함되어야 합니다.
+예시: feat(auth): 로그인 session 안정화
+EOF
+  exit 1
+fi

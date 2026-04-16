@@ -1,37 +1,72 @@
 HELP.md
-.gradle
-build/
-!gradle/wrapper/gradle-wrapper.jar
-!**/src/main/**/build/
-!**/src/test/**/build/
 
-### STS ###
-.apt_generated
-.classpath
-.factorypath
-.project
-.settings
-.springBeans
-.sts4-cache
-bin/
-!**/src/main/**/bin/
-!**/src/test/**/bin/
-
-### IntelliJ IDEA ###
-.idea
+# Workspace metadata
+.DS_Store
+.idea/
+.vscode/
+.fleet/
 *.iws
 *.iml
 *.ipr
-out/
-!**/src/main/**/out/
-!**/src/test/**/out/
 
-### NetBeans ###
-/nbproject/private/
-/nbbuild/
-/dist/
-/nbdist/
-/.nb-gradle/
+# Runtime logs and temp files
+logs/
+*.log
+tmp/
+temp/
+.cache/
 
-### VS Code ###
-.vscode/
+# Workspace local env
+.env
+.env.*
+!.env.example
+compose.override.yml
+
+# Backend local files
+/back/.gradle/
+/back/.gradle-user/
+/back/.kotlin/
+/back/build/
+/back/out/
+/back/bin/
+/back/.env
+/back/.env.*
+!/back/.env.example
+!/back/.env.default
+!/back/.env.test
+/back/src/main/resources/application-local.yml
+/back/src/main/resources/application-local.yaml
+/back/src/main/resources/application-*.local.yml
+/back/src/main/resources/application-*.local.yaml
+
+# Frontend local files
+/front/node_modules/
+/front/.next/
+/front/out/
+/front/build/
+/front/coverage/
+/front/test-results/
+/front/playwright-report/
+/front/storybook-static/
+/front/.storybook-home/
+/front/.env
+/front/.env.local
+/front/.env.development.local
+/front/.env.test.local
+/front/.env.production.local
+
+# Agent-only local docs and state
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+CURSOR.md
+COPILOT.md
+docs/AGENT-CONTEXT.md
+docs/agent/
+.codex/
+.claude/
+.cursor/
+.aider/
+.aider*
+.windsurf/
+.ai/
