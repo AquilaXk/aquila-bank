@@ -3,6 +3,7 @@ package com.aquilabank.global.web.auth;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -265,6 +266,100 @@ class InternalAuthAdminControllerTest {
                         && command.reasonCode().name().equals("LEGACY_FREE_TEXT")
                         && command.reasonDetail().equals("legacy-free-text")
                         && command.requestId().equals("legacy-reason-request")));
+  }
+
+  @Test
+  void acceptsLegacyReasonForMembershipStatusAsFallbackCode() throws Exception {
+    UserAccountMembershipSummary revokedMembership =
+        new UserAccountMembershipSummary(
+            21L,
+            101L,
+            MembershipRole.OWNER,
+            MembershipStatus.REVOKED,
+            Instant.parse("2026-04-16T11:00:00Z"),
+            Instant.parse("2026-04-16T11:06:00Z"));
+
+    when(userAccountMembershipStatusUpdateUseCase.update(
+            argThat(command -> command.accountId() == 101L)))
+        .thenReturn(revokedMembership);
+
+    mockMvc
+        .perform(
+            put("/internal/api/v1/auth/users/21/memberships/101/status")
+                .header(TOKEN_HEADER, TOKEN)
+                .header(SUBJECT_HEADER, SUBJECT)
+                .header(REQUEST_ID_HEADER, "membership-legacy-reason-request")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "membershipStatus": "REVOKED",
+                      "reason": "manual-revoke"
+                    }
+                    """))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.membershipStatus").value("REVOKED"));
+
+    verify(userAccountMembershipStatusUpdateUseCase)
+        .update(
+            argThat(
+                command ->
+                    command.status() == MembershipStatus.REVOKED
+                        && command.reasonCode().name().equals("LEGACY_FREE_TEXT")
+                        && command.reasonDetail().equals("manual-revoke")
+                        && command.reason().equals("manual-revoke")
+                        && command.actorSubject().equals(SUBJECT)
+                        && command.requestId().equals("membership-legacy-reason-request")));
+  }
+
+  @Test
+  void rejectsMixedReasonAndReasonCodeForUserStatusUpdate() throws Exception {
+    mockMvc
+        .perform(
+            put("/internal/api/v1/auth/users/21/status")
+                .header(TOKEN_HEADER, TOKEN)
+                .header(SUBJECT_HEADER, SUBJECT)
+                .header(REQUEST_ID_HEADER, "user-mixed-reason-request")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "userStatus": "DISABLED",
+                      "reasonCode": "FRAUD_REVIEW",
+                      "reason": "legacy-free-text"
+                    }
+                    """))
+        .andExpect(status().isBadRequest())
+        .andExpect(
+            jsonPath("$.message")
+                .value("reason and reasonCode/reasonDetail cannot be used together"));
+
+    verifyNoInteractions(userStatusUpdateUseCase);
+  }
+
+  @Test
+  void rejectsMixedReasonAndReasonDetailForMembershipStatusUpdate() throws Exception {
+    mockMvc
+        .perform(
+            put("/internal/api/v1/auth/users/21/memberships/101/status")
+                .header(TOKEN_HEADER, TOKEN)
+                .header(SUBJECT_HEADER, SUBJECT)
+                .header(REQUEST_ID_HEADER, "membership-mixed-reason-request")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "membershipStatus": "REVOKED",
+                      "reasonDetail": "manual-revoke",
+                      "reason": "legacy-free-text"
+                    }
+                    """))
+        .andExpect(status().isBadRequest())
+        .andExpect(
+            jsonPath("$.message")
+                .value("reason and reasonCode/reasonDetail cannot be used together"));
+
+    verifyNoInteractions(userAccountMembershipStatusUpdateUseCase);
   }
 
   @Test
