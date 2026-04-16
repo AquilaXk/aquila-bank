@@ -11,6 +11,43 @@ public record AuthStatusChangeAuditSummary(
     Long targetAccountId,
     String beforeStatus,
     String afterStatus,
-    String reason,
+    AuthStatusChangeReason normalizedReason,
     AuthStatusChangeOutcome outcome,
-    Instant createdAt) {}
+    Instant createdAt) {
+
+  public AuthStatusChangeAuditSummary(
+      String requestId,
+      String actorSubject,
+      AuthStatusChangeType changeType,
+      long targetUserId,
+      Long targetAccountId,
+      String beforeStatus,
+      String afterStatus,
+      String reason,
+      AuthStatusChangeOutcome outcome,
+      Instant createdAt) {
+    this(
+        requestId,
+        actorSubject,
+        changeType,
+        targetUserId,
+        targetAccountId,
+        beforeStatus,
+        afterStatus,
+        new AuthStatusChangeReason(AuthStatusChangeReasonCode.LEGACY_FREE_TEXT, reason),
+        outcome,
+        createdAt);
+  }
+
+  public AuthStatusChangeReasonCode reasonCode() {
+    return normalizedReason.reasonCode();
+  }
+
+  public String reasonDetail() {
+    return normalizedReason.reasonDetail();
+  }
+
+  public String reason() {
+    return normalizedReason.reasonDetail();
+  }
+}
