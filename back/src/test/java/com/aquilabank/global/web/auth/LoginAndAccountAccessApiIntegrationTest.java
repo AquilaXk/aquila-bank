@@ -187,6 +187,122 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
         .andExpect(jsonPath("$.message").value("login failed"));
   }
 
+  @Test
+  void internalAuthAdminLookupReturnsBootstrappedUserAndMembership() throws Exception {
+    mockMvc
+        .perform(
+            get("/internal/api/v1/auth/users/%d".formatted(userId))
+                .header("X-Auth-Bootstrap-Token", AUTH_BOOTSTRAP_TOKEN))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.userId").value(userId))
+        .andExpect(jsonPath("$.loginId").value("alice"))
+        .andExpect(jsonPath("$.userStatus").value("ACTIVE"));
+
+    mockMvc
+        .perform(
+            get("/internal/api/v1/auth/users/by-login-id")
+                .header("X-Auth-Bootstrap-Token", AUTH_BOOTSTRAP_TOKEN)
+                .param("loginId", "alice"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.displayName").value("Alice"));
+
+    mockMvc
+        .perform(
+            get("/internal/api/v1/auth/users/%d/memberships/%d"
+                    .formatted(userId, allowedSourceAccountId))
+                .header("X-Auth-Bootstrap-Token", AUTH_BOOTSTRAP_TOKEN))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.userId").value(userId))
+        .andExpect(jsonPath("$.accountId").value(allowedSourceAccountId))
+        .andExpect(jsonPath("$.membershipStatus").value("ACTIVE"));
+  }
+
+  @Test
+  void disabledUserCannotLoginOrUseExistingJwt() throws Exception {
+    String token = login("alice", "password123!");
+    updateUserStatus(userId, "DISABLED");
+
+    mockMvc
+        .perform(
+            post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "loginId": "alice",
+                      "password": "password123!"
+                    }
+                    """))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.message").value("login failed"));
+
+    mockMvc
+        .perform(
+            get("/api/v1/transactions")
+                .header("Authorization", "Bearer " + token)
+                .param("accountId", String.valueOf(allowedSourceAccountId))
+                .param("from", "2026-04-01T00:00:00Z")
+                .param("to", "2026-04-17T00:00:00Z"))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.message").value("account access is denied"));
+
+    mockMvc
+        .perform(
+            post("/api/v1/transfers")
+                .header("Authorization", "Bearer " + token)
+                .header("Idempotency-Key", "jwt-transfer-disabled-403")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "sourceAccountId": %d,
+                      "targetAccountId": %d,
+                      "amountMinor": 500,
+                      "currencyCode": "KRW",
+                      "summary": "disabled-blocked"
+                    }
+                    """
+                        .formatted(allowedSourceAccountId, targetAccountId)))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.message").value("account access is denied"));
+  }
+
+  @Test
+  void revokedMembershipBlocksExistingJwtAccess() throws Exception {
+    String token = login("alice", "password123!");
+    updateMembershipStatus(userId, allowedSourceAccountId, "REVOKED");
+
+    mockMvc
+        .perform(
+            get("/api/v1/transactions")
+                .header("Authorization", "Bearer " + token)
+                .param("accountId", String.valueOf(allowedSourceAccountId))
+                .param("from", "2026-04-01T00:00:00Z")
+                .param("to", "2026-04-17T00:00:00Z"))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.message").value("account access is denied"));
+
+    mockMvc
+        .perform(
+            post("/api/v1/transfers")
+                .header("Authorization", "Bearer " + token)
+                .header("Idempotency-Key", "jwt-transfer-revoked-403")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "sourceAccountId": %d,
+                      "targetAccountId": %d,
+                      "amountMinor": 500,
+                      "currencyCode": "KRW",
+                      "summary": "revoked-blocked"
+                    }
+                    """
+                        .formatted(allowedSourceAccountId, targetAccountId)))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.message").value("account access is denied"));
+  }
+
   private String login(String loginId, String password) throws Exception {
     MvcResult result =
         mockMvc
@@ -280,6 +396,44 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
         .andExpect(jsonPath("$.userId").value(userId))
         .andExpect(jsonPath("$.accountId").value(accountId))
         .andExpect(jsonPath("$.membershipRole").value(membershipRole))
+        .andExpect(jsonPath("$.membershipStatus").value(membershipStatus));
+  }
+
+  private void updateUserStatus(long userId, String userStatus) throws Exception {
+    mockMvc
+        .perform(
+            put("/internal/api/v1/auth/users/%d/status".formatted(userId))
+                .header("X-Auth-Bootstrap-Token", AUTH_BOOTSTRAP_TOKEN)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "userStatus": "%s"
+                    }
+                    """
+                        .formatted(userStatus)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.userId").value(userId))
+        .andExpect(jsonPath("$.userStatus").value(userStatus));
+  }
+
+  private void updateMembershipStatus(long userId, long accountId, String membershipStatus)
+      throws Exception {
+    mockMvc
+        .perform(
+            put("/internal/api/v1/auth/users/%d/memberships/%d/status".formatted(userId, accountId))
+                .header("X-Auth-Bootstrap-Token", AUTH_BOOTSTRAP_TOKEN)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "membershipStatus": "%s"
+                    }
+                    """
+                        .formatted(membershipStatus)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.userId").value(userId))
+        .andExpect(jsonPath("$.accountId").value(accountId))
         .andExpect(jsonPath("$.membershipStatus").value(membershipStatus));
   }
 }

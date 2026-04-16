@@ -1,8 +1,10 @@
 package com.aquilabank.global.web;
 
 import com.aquilabank.domain.auth.exception.AccountAccessDeniedException;
+import com.aquilabank.domain.auth.exception.AuthUserNotFoundException;
 import com.aquilabank.domain.auth.exception.DuplicateLoginIdException;
 import com.aquilabank.domain.auth.exception.InvalidCredentialsException;
+import com.aquilabank.domain.auth.exception.UserAccountMembershipNotFoundException;
 import com.aquilabank.domain.ledger.exception.CommandConflictException;
 import com.aquilabank.domain.ledger.exception.CurrencyMismatchException;
 import com.aquilabank.domain.ledger.exception.InsufficientBalanceException;
@@ -63,9 +65,12 @@ public class ApiExceptionHandler {
     return response(HttpStatus.FORBIDDEN, ex.getMessage(), request.getRequestURI());
   }
 
-  @ExceptionHandler(SnapshotNotFoundException.class)
-  ResponseEntity<ApiErrorResponse> handleNotFound(
-      SnapshotNotFoundException ex, HttpServletRequest request) {
+  @ExceptionHandler({
+    SnapshotNotFoundException.class,
+    AuthUserNotFoundException.class,
+    UserAccountMembershipNotFoundException.class
+  })
+  ResponseEntity<ApiErrorResponse> handleNotFound(RuntimeException ex, HttpServletRequest request) {
     return response(HttpStatus.NOT_FOUND, ex.getMessage(), request.getRequestURI());
   }
 
