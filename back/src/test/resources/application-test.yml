@@ -19,6 +19,8 @@ outbox:
   poller:
     # scheduled dispatch는 끄고 테스트가 retry 타이밍을 직접 제어하게 합니다.
     enabled: false
+  kafka:
+    enabled: false
 
 security:
   jwt:

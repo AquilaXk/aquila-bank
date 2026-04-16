@@ -73,6 +73,27 @@ outbox:
     batch-size: ${OUTBOX_POLLER_BATCH_SIZE:20}
     stale-after-seconds: ${OUTBOX_POLLER_STALE_AFTER_SECONDS:30}
     max-retry-delay-seconds: ${OUTBOX_POLLER_MAX_RETRY_DELAY_SECONDS:60}
+  kafka:
+    enabled: ${OUTBOX_KAFKA_ENABLED:false}
+    bootstrap-servers: ${OUTBOX_KAFKA_BOOTSTRAP_SERVERS:}
+    send-timeout-ms: ${OUTBOX_KAFKA_SEND_TIMEOUT_MS:5000}
+    topic:
+      default-name: ${OUTBOX_KAFKA_TOPIC_DEFAULT:}
+      event-type-overrides:
+        TransferBooked: ${OUTBOX_KAFKA_TOPIC_TRANSFER_BOOKED:}
+    serializer:
+      key-class: ${OUTBOX_KAFKA_KEY_SERIALIZER:org.apache.kafka.common.serialization.StringSerializer}
+      value-class: ${OUTBOX_KAFKA_VALUE_SERIALIZER:org.apache.kafka.common.serialization.StringSerializer}
+    retry:
+      retries: ${OUTBOX_KAFKA_PRODUCER_RETRIES:3}
+      retry-backoff-ms: ${OUTBOX_KAFKA_PRODUCER_RETRY_BACKOFF_MS:1000}
+      delivery-timeout-ms: ${OUTBOX_KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS:30000}
+      request-timeout-ms: ${OUTBOX_KAFKA_PRODUCER_REQUEST_TIMEOUT_MS:3000}
+    producer:
+      client-id: ${OUTBOX_KAFKA_PRODUCER_CLIENT_ID:aquila-bank-outbox-producer}
+      acks: ${OUTBOX_KAFKA_PRODUCER_ACKS:all}
+      enable-idempotence: ${OUTBOX_KAFKA_PRODUCER_ENABLE_IDEMPOTENCE:true}
+      max-in-flight-requests-per-connection: ${OUTBOX_KAFKA_PRODUCER_MAX_IN_FLIGHT:1}
 
 security:
   jwt:
