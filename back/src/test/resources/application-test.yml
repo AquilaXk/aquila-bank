@@ -28,3 +28,6 @@ security:
   account-bootstrap-api:
     enabled: true
     token: test-bootstrap-api-token
+  auth-bootstrap-api:
+    enabled: true
+    token: test-auth-bootstrap-api-token

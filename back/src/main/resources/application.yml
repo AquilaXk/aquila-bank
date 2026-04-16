@@ -87,3 +87,7 @@ security:
     enabled: ${SECURITY_ACCOUNT_BOOTSTRAP_API_ENABLED:false}
     token-header: ${SECURITY_ACCOUNT_BOOTSTRAP_API_TOKEN_HEADER:X-Bootstrap-Token}
     token: ${SECURITY_ACCOUNT_BOOTSTRAP_API_TOKEN:}
+  auth-bootstrap-api:
+    enabled: ${SECURITY_AUTH_BOOTSTRAP_API_ENABLED:false}
+    token-header: ${SECURITY_AUTH_BOOTSTRAP_API_TOKEN_HEADER:X-Auth-Bootstrap-Token}
+    token: ${SECURITY_AUTH_BOOTSTRAP_API_TOKEN:}
