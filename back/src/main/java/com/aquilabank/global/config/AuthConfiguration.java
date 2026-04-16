@@ -1,9 +1,11 @@
 package com.aquilabank.global.config;
 
 import com.aquilabank.domain.auth.model.LoginProtectionPolicy;
+import com.aquilabank.domain.auth.model.LoginResult;
 import com.aquilabank.domain.auth.port.AccountAccessPort;
 import com.aquilabank.domain.auth.port.AuthStatusChangeAuditQueryPort;
 import com.aquilabank.domain.auth.port.AuthTokenIssuePort;
+import com.aquilabank.domain.auth.port.LoginAttemptUpdatePort;
 import com.aquilabank.domain.auth.port.PasswordHashPort;
 import com.aquilabank.domain.auth.port.UserAccountMembershipQueryPort;
 import com.aquilabank.domain.auth.port.UserAccountMembershipStatusUpdatePort;
@@ -31,9 +33,12 @@ import com.aquilabank.domain.auth.usecase.UserBootstrapUseCase;
 import com.aquilabank.domain.auth.usecase.UserStatusUpdateService;
 import com.aquilabank.domain.auth.usecase.UserStatusUpdateUseCase;
 import com.aquilabank.global.security.LoginProtectionProperties;
+import java.time.Clock;
 import java.time.Duration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /** auth use case와 persistence/security adapter를 조립 */
 @Configuration
@@ -50,9 +55,28 @@ public class AuthConfiguration {
   @Bean
   LoginUseCase loginUseCase(
       UserCredentialLoadPort userCredentialLoadPort,
+      LoginAttemptUpdatePort loginAttemptUpdatePort,
       PasswordHashPort passwordHashPort,
-      AuthTokenIssuePort authTokenIssuePort) {
-    return new LoginService(userCredentialLoadPort, passwordHashPort, authTokenIssuePort);
+      AuthTokenIssuePort authTokenIssuePort,
+      LoginProtectionPolicy loginProtectionPolicy,
+      PlatformTransactionManager platformTransactionManager) {
+    LoginService loginService =
+        new LoginService(
+            userCredentialLoadPort,
+            loginAttemptUpdatePort,
+            passwordHashPort,
+            authTokenIssuePort,
+            loginProtectionPolicy,
+            passwordHashPort.encode("login-dummy-password"),
+            Clock.systemUTC());
+    TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
+    return command -> {
+      LoginResult result = transactionTemplate.execute(status -> loginService.login(command));
+      if (result == null) {
+        throw new IllegalStateException("login transaction returned null");
+      }
+      return result;
+    };
   }
 
   @Bean

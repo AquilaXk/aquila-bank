@@ -7,4 +7,6 @@ import java.util.Optional;
 public interface UserCredentialLoadPort {
 
   Optional<LoginUser> findByLoginId(String loginId);
+
+  Optional<LoginUser> findByLoginIdForUpdate(String loginId);
 }

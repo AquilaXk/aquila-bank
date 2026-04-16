@@ -7,6 +7,8 @@ import com.aquilabank.domain.auth.model.AuthStatusChangeAuditEntry;
 import com.aquilabank.domain.auth.model.AuthStatusChangeOutcome;
 import com.aquilabank.domain.auth.model.AuthStatusChangeType;
 import com.aquilabank.domain.auth.model.AuthUserSummary;
+import com.aquilabank.domain.auth.model.LoginFailureUpdateCommand;
+import com.aquilabank.domain.auth.model.LoginSuccessUpdateCommand;
 import com.aquilabank.domain.auth.model.UserAccountMembership;
 import com.aquilabank.domain.auth.model.UserAccountMembershipStatusUpdateCommand;
 import com.aquilabank.domain.auth.model.UserAccountMembershipSummary;
@@ -15,6 +17,7 @@ import com.aquilabank.domain.auth.model.UserBootstrapResult;
 import com.aquilabank.domain.auth.model.UserBootstrapWriteCommand;
 import com.aquilabank.domain.auth.model.UserStatus;
 import com.aquilabank.domain.auth.model.UserStatusUpdateCommand;
+import com.aquilabank.domain.auth.port.LoginAttemptUpdatePort;
 import com.aquilabank.domain.auth.port.UserAccountMembershipStatusUpdatePort;
 import com.aquilabank.domain.auth.port.UserAccountMembershipUpsertPort;
 import com.aquilabank.domain.auth.port.UserBootstrapPort;
@@ -33,6 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Repository
 public class JdbcAuthWriteRepository
     implements UserBootstrapPort,
+        LoginAttemptUpdatePort,
         UserAccountMembershipUpsertPort,
         UserStatusUpdatePort,
         UserAccountMembershipStatusUpdatePort {
@@ -89,6 +93,47 @@ public class JdbcAuthWriteRepository
     } catch (DuplicateKeyException ex) {
       throw new DuplicateLoginIdException("loginId is already used");
     }
+  }
+
+  @Override
+  @Transactional
+  public void recordLoginFailure(LoginFailureUpdateCommand command) {
+    int updated =
+        jdbcTemplate.update(
+            """
+            UPDATE bank_user
+            SET failed_login_count = :failedLoginCount,
+                last_login_failed_at = :failedAt,
+                login_locked_until = :loginLockedUntil,
+                updated_at = :failedAt
+            WHERE id = :userId
+            """,
+            new MapSqlParameterSource()
+                .addValue("userId", command.userId())
+                .addValue("failedLoginCount", command.failedLoginCount())
+                .addValue("failedAt", Timestamp.from(command.failedAt()))
+                .addValue("loginLockedUntil", toTimestamp(command.loginLockedUntil())));
+    assertUserUpdated(updated);
+  }
+
+  @Override
+  @Transactional
+  public void recordLoginSuccess(LoginSuccessUpdateCommand command) {
+    int updated =
+        jdbcTemplate.update(
+            """
+            UPDATE bank_user
+            SET failed_login_count = 0,
+                last_login_failed_at = NULL,
+                login_locked_until = NULL,
+                last_login_succeeded_at = :succeededAt,
+                updated_at = :succeededAt
+            WHERE id = :userId
+            """,
+            new MapSqlParameterSource()
+                .addValue("userId", command.userId())
+                .addValue("succeededAt", Timestamp.from(command.succeededAt())));
+    assertUserUpdated(updated);
   }
 
   @Override
@@ -293,6 +338,16 @@ public class JdbcAuthWriteRepository
             .addValue("reason", entry.reasonDetail())
             .addValue("outcome", entry.outcome().name())
             .addValue("createdAt", Timestamp.from(entry.createdAt())));
+  }
+
+  private void assertUserUpdated(int updated) {
+    if (updated == 0) {
+      throw new AuthUserNotFoundException("user is not found");
+    }
+  }
+
+  private Timestamp toTimestamp(Instant value) {
+    return value == null ? null : Timestamp.from(value);
   }
 
   private void assertUserExists(long userId) {
