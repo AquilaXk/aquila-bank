@@ -25,8 +25,12 @@ class AuthBootstrapSecurityProfileTest {
 
   @Autowired private ObjectProvider<AuthBootstrapController> authBootstrapControllerProvider;
 
+  @Autowired
+  private ObjectProvider<InternalAuthAdminController> internalAuthAdminControllerProvider;
+
   @Test
-  void doesNotRegisterAuthBootstrapControllerInProdByDefault() {
+  void doesNotRegisterInternalAuthControllersInProdByDefault() {
     assertNull(authBootstrapControllerProvider.getIfAvailable());
+    assertNull(internalAuthAdminControllerProvider.getIfAvailable());
   }
 }
