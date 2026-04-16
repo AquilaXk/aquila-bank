@@ -80,3 +80,7 @@ security:
     enabled: ${SECURITY_BOOTSTRAP_HEADER_AUTH_ENABLED:false}
     account-id-header: ${SECURITY_BOOTSTRAP_ACCOUNT_ID_HEADER:X-Account-Id}
     subject-header: ${SECURITY_BOOTSTRAP_SUBJECT_HEADER:X-Subject}
+  account-bootstrap-api:
+    enabled: ${SECURITY_ACCOUNT_BOOTSTRAP_API_ENABLED:false}
+    token-header: ${SECURITY_ACCOUNT_BOOTSTRAP_API_TOKEN_HEADER:X-Bootstrap-Token}
+    token: ${SECURITY_ACCOUNT_BOOTSTRAP_API_TOKEN:}

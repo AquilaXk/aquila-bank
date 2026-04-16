@@ -25,3 +25,6 @@ security:
     secret: test-local-jwt-secret-test-local-jwt-secret
   bootstrap-header-auth:
     enabled: true
+  account-bootstrap-api:
+    enabled: true
+    token: test-bootstrap-api-token
