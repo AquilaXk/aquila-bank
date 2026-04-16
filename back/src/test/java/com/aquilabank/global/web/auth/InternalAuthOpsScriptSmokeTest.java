@@ -69,4 +69,22 @@ class InternalAuthOpsScriptSmokeTest {
         .containsExactlyElementsOf(
             InternalAuthOpsScriptSmokeSupport.MEMBERSHIP_STATUS_SPEC.expectedCurlArgs());
   }
+
+  @Test
+  void readmeUserStatusExamplesMatchSmokeSpec() throws Exception {
+    assertReadmeContains(InternalAuthOpsScriptSmokeSupport.USER_STATUS_SPEC);
+  }
+
+  @Test
+  void readmeMembershipStatusExamplesMatchSmokeSpec() throws Exception {
+    assertReadmeContains(InternalAuthOpsScriptSmokeSupport.MEMBERSHIP_STATUS_SPEC);
+  }
+
+  private void assertReadmeContains(InternalAuthOpsScriptSmokeSupport.ScriptSpec spec)
+      throws Exception {
+    String readme = InternalAuthOpsScriptSmokeSupport.readReadme();
+    for (String snippet : spec.requiredReadmeSnippets()) {
+      assertThat(readme).contains(snippet);
+    }
+  }
 }
