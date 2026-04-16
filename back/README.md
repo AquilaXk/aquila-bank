@@ -227,6 +227,68 @@ requestId drill-down:
 - `actorSubject=-`인 `400`은 헤더 누락 성격이므로 운영 스크립트 drift 또는 수동 호출 오류로 분류합니다.
 - `404`, `409`, `500`은 이번 최소 범위에서 제외하고 후속 이슈로 분리합니다.
 
+### 404/409/500 후속 수집 패턴
+
+#### 404 운영 기준
+
+- 대표 원인:
+  - `user is not found`
+  - `membership is not found`
+- 수집 패턴:
+
+```text
+404 후보:
+  "internal auth status update failed" AND "httpStatus=404"
+
+같은 actor의 404 반복:
+  "internal auth status update failed" AND "httpStatus=404" AND "actorSubject=<actor-subject>" AND "path=<endpoint>"
+```
+
+- 운영 의미:
+  - stale `userId`/`accountId` 재사용
+  - 수동 호출 대상 오입력
+  - 배치가 이미 정리된 대상을 늦게 호출한 경우
+
+#### 409 운영 기준
+
+- 현재 known 상태:
+  - 내부 auth status update 경로에서 `409` 대표 error 문구는 아직 고정돼 있지 않습니다.
+  - 현재 runbook에서는 `httpStatus=409`와 같은 `actorSubject`/`path` 반복 패턴을 먼저 수집하고, 세부 error 분류는 후속 구현 이슈로 남깁니다.
+- 수집 패턴:
+
+```text
+409 후보:
+  "internal auth status update failed" AND "httpStatus=409"
+
+같은 actor의 409 반복:
+  "internal auth status update failed" AND "httpStatus=409" AND "actorSubject=<actor-subject>" AND "path=<endpoint>"
+```
+
+- 운영 의미:
+  - 같은 대상에 대한 중복 상태 변경 시도
+  - caller 재시도 정책 또는 수동 재실행 충돌
+  - 상태 전이 전후 확인이 필요한 경쟁 조건 후보
+
+#### 500 운영 기준
+
+- 대표 원인:
+  - `requestId is not initialized` 같은 서버 상태 불일치
+  - persistence/runtime 예외로 인한 internal error
+- 수집 패턴:
+
+```text
+500 후보:
+  "internal auth status update failed" AND "httpStatus=500"
+
+requestId 우선 drill-down:
+  "internal auth status update failed" AND "httpStatus=500" AND "requestId=<request-id>"
+```
+
+- 운영 의미:
+  - 운영 입력 오류보다 서버 측 장애 후보 우선
+  - 같은 시간대 `actorSubject`/`path` 확산 여부 확인 필요
+  - success audit exact lookup 부재만으로 종료하지 말고 로그 타임라인 재확인이 필요
+
 ### requestId 장애 추적 절차
 
 1. alert 또는 문의에서 `requestId`를 확보합니다. alert payload에 `requestId`가 없으면 같은 시간대 `actorSubject + path + error`로 실패 로그를 먼저 좁힙니다.
