@@ -5,9 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
-import com.aquilabank.domain.account.model.AccountBootstrapCommand;
-import com.aquilabank.domain.account.model.AccountBootstrapResult;
-import com.aquilabank.domain.account.usecase.AccountBootstrapUseCase;
 import com.aquilabank.support.PostgresContainerTestSupport;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
@@ -40,22 +37,17 @@ class TransferCommandApiIntegrationTest extends PostgresContainerTestSupport {
 
   @Autowired private PlatformTransactionManager transactionManager;
 
-  @Autowired private AccountBootstrapUseCase accountBootstrapUseCase;
-
   private MockMvc mockMvc;
   private long sourceAccountId;
   private long targetAccountId;
 
   @BeforeEach
-  void setUpDatabase() {
+  void setUpDatabase() throws Exception {
     mockMvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
     resetBankingTables(jdbcTemplate);
 
-    AccountBootstrapResult sourceAccount =
-        accountBootstrapUseCase.bootstrap(
-            new AccountBootstrapCommand("source account", "KRW", 10_000L));
-    AccountBootstrapResult targetAccount =
-        accountBootstrapUseCase.bootstrap(new AccountBootstrapCommand("target account", "KRW", 0L));
+    AccountBootstrapResponseView sourceAccount = bootstrapAccount("source account", 10_000L);
+    AccountBootstrapResponseView targetAccount = bootstrapAccount("target account", 0L);
 
     sourceAccountId = sourceAccount.accountId();
     targetAccountId = targetAccount.accountId();
@@ -135,6 +127,31 @@ class TransferCommandApiIntegrationTest extends PostgresContainerTestSupport {
     assertEquals(0L, totalCount("command_idempotency"));
     assertEquals(100L, balanceOf(sourceAccountId));
     assertEquals(0L, balanceOf(targetAccountId));
+  }
+
+  private AccountBootstrapResponseView bootstrapAccount(
+      String displayName, long initialBalanceMinor) throws Exception {
+    MvcResult result =
+        mockMvc
+            .perform(
+                post("/internal/api/v1/accounts/bootstrap")
+                    .header("X-Bootstrap-Token", "test-bootstrap-api-token")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                          "displayName": "%s",
+                          "currencyCode": "KRW",
+                          "initialBalanceMinor": %d
+                        }
+                        """
+                            .formatted(displayName, initialBalanceMinor)))
+            .andReturn();
+
+    assertEquals(200, result.getResponse().getStatus(), result.getResponse().getContentAsString());
+
+    return objectMapper.readValue(
+        result.getResponse().getContentAsByteArray(), AccountBootstrapResponseView.class);
   }
 
   private TransferResponseView invokeTransfer(
@@ -256,4 +273,13 @@ class TransferCommandApiIntegrationTest extends PostgresContainerTestSupport {
       long availableBalanceAfterMinor,
       Instant bookedAt,
       String status) {}
+
+  private record AccountBootstrapResponseView(
+      long accountId,
+      String accountNumber,
+      String displayName,
+      String currencyCode,
+      long availableBalanceMinor,
+      String accountStatus,
+      Instant createdAt) {}
 }
