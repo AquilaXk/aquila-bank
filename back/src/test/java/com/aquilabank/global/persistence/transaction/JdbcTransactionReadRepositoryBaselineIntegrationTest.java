@@ -50,7 +50,8 @@ class JdbcTransactionReadRepositoryBaselineIntegrationTest extends PostgresConta
     synchronized (SEED_LOCK) {
       if (sharedBaselineWindow == null) {
         resetBankingTables(jdbcTemplate);
-        commit(transactionManager, () -> sharedBaselineWindow = fixture.seed(jdbcTemplate));
+        // baseline seed는 조회 성능 검증용 setup이라 기본 5초 transaction timeout보다 넉넉히 둡니다.
+        commit(transactionManager, 30, () -> sharedBaselineWindow = fixture.seed(jdbcTemplate));
       }
       baselineWindow = sharedBaselineWindow;
     }
