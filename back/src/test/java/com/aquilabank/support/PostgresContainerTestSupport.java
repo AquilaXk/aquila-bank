@@ -3,6 +3,7 @@ package com.aquilabank.support;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -11,6 +12,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @Testcontainers(disabledWithoutDocker = true)
 public abstract class PostgresContainerTestSupport {
 
@@ -41,9 +43,11 @@ public abstract class PostgresContainerTestSupport {
                 ledger_entry,
                 command_idempotency,
                 outbox_event,
-                account_balance_snapshot
+                account_balance_snapshot,
+                bank_account
             RESTART IDENTITY CASCADE
             """);
+    jdbcTemplate.getJdbcTemplate().execute("ALTER SEQUENCE bank_account_number_seq RESTART WITH 1");
   }
 
   protected void commit(PlatformTransactionManager transactionManager, Runnable callback) {
