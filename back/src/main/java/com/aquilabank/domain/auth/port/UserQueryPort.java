@@ -6,7 +6,7 @@ import java.util.Optional;
 /** 내부 auth 관리 exact lookup을 위한 user 조회 port입니다. */
 public interface UserQueryPort {
 
-  Optional<AuthUserSummary> findByUserId(long userId);
+  Optional<AuthUserSummary> findSummaryByUserId(long userId);
 
-  Optional<AuthUserSummary> findByLoginId(String loginId);
+  Optional<AuthUserSummary> findSummaryByLoginId(String loginId);
 }

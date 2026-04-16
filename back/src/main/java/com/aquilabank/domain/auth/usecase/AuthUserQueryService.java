@@ -19,7 +19,7 @@ public final class AuthUserQueryService implements AuthUserQueryUseCase {
       throw new IllegalArgumentException("userId must be positive");
     }
     return userQueryPort
-        .findByUserId(userId)
+        .findSummaryByUserId(userId)
         .orElseThrow(() -> new AuthUserNotFoundException("user is not found"));
   }
 
@@ -29,7 +29,7 @@ public final class AuthUserQueryService implements AuthUserQueryUseCase {
       throw new IllegalArgumentException("loginId is required");
     }
     return userQueryPort
-        .findByLoginId(loginId)
+        .findSummaryByLoginId(loginId)
         .orElseThrow(() -> new AuthUserNotFoundException("user is not found"));
   }
 }
