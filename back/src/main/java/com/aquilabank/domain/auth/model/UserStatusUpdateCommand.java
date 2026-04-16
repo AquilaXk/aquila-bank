@@ -2,7 +2,11 @@ package com.aquilabank.domain.auth.model;
 
 /** 내부 auth 관리 경로가 user 상태를 변경할 때 쓰는 명령입니다. */
 public record UserStatusUpdateCommand(
-    long userId, UserStatus status, String reason, String actorSubject, String requestId) {
+    long userId,
+    UserStatus status,
+    AuthStatusChangeReason normalizedReason,
+    String actorSubject,
+    String requestId) {
 
   public UserStatusUpdateCommand {
     if (userId <= 0) {
@@ -11,7 +15,7 @@ public record UserStatusUpdateCommand(
     if (status == null) {
       throw new IllegalArgumentException("status is required");
     }
-    if (reason == null || reason.isBlank()) {
+    if (normalizedReason == null) {
       throw new IllegalArgumentException("reason is required");
     }
     if (actorSubject == null || actorSubject.isBlank()) {
@@ -20,5 +24,17 @@ public record UserStatusUpdateCommand(
     if (requestId == null || requestId.isBlank()) {
       throw new IllegalArgumentException("requestId is required");
     }
+  }
+
+  public AuthStatusChangeReasonCode reasonCode() {
+    return normalizedReason.reasonCode();
+  }
+
+  public String reasonDetail() {
+    return normalizedReason.reasonDetail();
+  }
+
+  public String reason() {
+    return normalizedReason.reasonDetail();
   }
 }

@@ -202,7 +202,7 @@ class InternalAuthAdminControllerTest {
                     }
                     """))
         .andExpect(status().isBadRequest())
-        .andExpect(jsonPath("$.message").value("reason is required"));
+        .andExpect(jsonPath("$.message").value("reasonCode is required"));
 
     mockMvc
         .perform(
