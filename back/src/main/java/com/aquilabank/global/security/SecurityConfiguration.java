@@ -2,6 +2,7 @@ package com.aquilabank.global.security;
 
 import com.aquilabank.domain.auth.port.AuthTokenIssuePort;
 import com.aquilabank.domain.auth.port.PasswordHashPort;
+import com.aquilabank.global.web.InternalAuthStatusAuditRequestCachingFilter;
 import com.aquilabank.global.web.RequestIdFilter;
 import javax.crypto.spec.SecretKeySpec;
 import org.springframework.beans.factory.ObjectProvider;
@@ -40,6 +41,7 @@ public class SecurityConfiguration {
   SecurityFilterChain securityFilterChain(
       HttpSecurity http,
       RequestIdFilter requestIdFilter,
+      InternalAuthStatusAuditRequestCachingFilter internalAuthStatusAuditRequestCachingFilter,
       ObjectProvider<BootstrapHeaderAuthenticationFilter> bootstrapHeaderAuthenticationFilter,
       JwtDecoder jwtDecoder)
       throws Exception {
@@ -76,6 +78,7 @@ public class SecurityConfiguration {
                     new HttpStatusEntryPoint(org.springframework.http.HttpStatus.UNAUTHORIZED)));
 
     http.addFilterBefore(requestIdFilter, AnonymousAuthenticationFilter.class);
+    http.addFilterAfter(internalAuthStatusAuditRequestCachingFilter, RequestIdFilter.class);
 
     BootstrapHeaderAuthenticationFilter filter =
         bootstrapHeaderAuthenticationFilter.getIfAvailable();
@@ -89,6 +92,11 @@ public class SecurityConfiguration {
   @Bean
   RequestIdFilter requestIdFilter() {
     return new RequestIdFilter();
+  }
+
+  @Bean
+  InternalAuthStatusAuditRequestCachingFilter internalAuthStatusAuditRequestCachingFilter() {
+    return new InternalAuthStatusAuditRequestCachingFilter();
   }
 
   @Bean

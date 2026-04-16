@@ -9,12 +9,15 @@ import com.aquilabank.domain.auth.usecase.AuthUserQueryUseCase;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipQueryUseCase;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipStatusUpdateUseCase;
 import com.aquilabank.domain.auth.usecase.UserStatusUpdateUseCase;
+import com.aquilabank.global.security.BootstrapHeaderAuthProperties;
 import com.aquilabank.global.security.InternalAuthTokenGuard;
+import com.aquilabank.global.web.RequestTraceContext;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.validation.annotation.Validated;
@@ -38,18 +41,21 @@ public class InternalAuthAdminController {
   private final UserAccountMembershipQueryUseCase userAccountMembershipQueryUseCase;
   private final UserAccountMembershipStatusUpdateUseCase userAccountMembershipStatusUpdateUseCase;
   private final InternalAuthTokenGuard internalAuthTokenGuard;
+  private final String actorSubjectHeader;
 
   public InternalAuthAdminController(
       AuthUserQueryUseCase authUserQueryUseCase,
       UserStatusUpdateUseCase userStatusUpdateUseCase,
       UserAccountMembershipQueryUseCase userAccountMembershipQueryUseCase,
       UserAccountMembershipStatusUpdateUseCase userAccountMembershipStatusUpdateUseCase,
-      InternalAuthTokenGuard internalAuthTokenGuard) {
+      InternalAuthTokenGuard internalAuthTokenGuard,
+      BootstrapHeaderAuthProperties bootstrapHeaderAuthProperties) {
     this.authUserQueryUseCase = authUserQueryUseCase;
     this.userStatusUpdateUseCase = userStatusUpdateUseCase;
     this.userAccountMembershipQueryUseCase = userAccountMembershipQueryUseCase;
     this.userAccountMembershipStatusUpdateUseCase = userAccountMembershipStatusUpdateUseCase;
     this.internalAuthTokenGuard = internalAuthTokenGuard;
+    this.actorSubjectHeader = bootstrapHeaderAuthProperties.subjectHeader();
   }
 
   @GetMapping("/users/{userId}")
@@ -85,7 +91,13 @@ public class InternalAuthAdminController {
       @Valid @RequestBody UserStatusRequest request) {
     internalAuthTokenGuard.validate(httpServletRequest);
     return AuthUserResponse.from(
-        userStatusUpdateUseCase.update(new UserStatusUpdateCommand(userId, request.userStatus())));
+        userStatusUpdateUseCase.update(
+            new UserStatusUpdateCommand(
+                userId,
+                request.userStatus(),
+                request.reason(),
+                resolveActorSubject(httpServletRequest),
+                resolveRequestId(httpServletRequest))));
   }
 
   @PutMapping("/users/{userId}/memberships/{accountId}/status")
@@ -98,16 +110,44 @@ public class InternalAuthAdminController {
     return UserAccountMembershipResponse.from(
         userAccountMembershipStatusUpdateUseCase.update(
             new UserAccountMembershipStatusUpdateCommand(
-                userId, accountId, request.membershipStatus())));
+                userId,
+                accountId,
+                request.membershipStatus(),
+                request.reason(),
+                resolveActorSubject(httpServletRequest),
+                resolveRequestId(httpServletRequest))));
   }
 
   /** 내부 user status update 요청 body */
   public record UserStatusRequest(
-      @NotNull(message = "userStatus is required") UserStatus userStatus) {}
+      @NotNull(message = "userStatus is required") UserStatus userStatus,
+      @NotBlank(message = "reason is required") @Size(max = 200, message = "reason must be 200 characters or less") String reason) {}
 
   /** 내부 membership status update 요청 body */
   public record UserAccountMembershipStatusRequest(
-      @NotNull(message = "membershipStatus is required") com.aquilabank.domain.auth.model.MembershipStatus membershipStatus) {}
+      @NotNull(message = "membershipStatus is required") com.aquilabank.domain.auth.model.MembershipStatus membershipStatus,
+      @NotBlank(message = "reason is required") @Size(max = 200, message = "reason must be 200 characters or less") String reason) {}
+
+  private String resolveActorSubject(HttpServletRequest httpServletRequest) {
+    String actorSubject = httpServletRequest.getHeader(actorSubjectHeader);
+    if (actorSubject == null || actorSubject.isBlank()) {
+      throw new IllegalArgumentException("actorSubject header is required");
+    }
+    return actorSubject;
+  }
+
+  private String resolveRequestId(HttpServletRequest httpServletRequest) {
+    return RequestTraceContext.currentRequestId()
+        .orElseGet(
+            () -> {
+              String requestId =
+                  httpServletRequest.getHeader(RequestTraceContext.REQUEST_ID_HEADER);
+              if (requestId == null || requestId.isBlank()) {
+                throw new IllegalStateException("requestId is not initialized");
+              }
+              return requestId;
+            });
+  }
 
   /** 내부 auth user exact lookup 응답 */
   public record AuthUserResponse(

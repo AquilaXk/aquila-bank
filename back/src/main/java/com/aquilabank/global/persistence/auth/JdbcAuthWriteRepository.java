@@ -3,6 +3,9 @@ package com.aquilabank.global.persistence.auth;
 import com.aquilabank.domain.auth.exception.AuthUserNotFoundException;
 import com.aquilabank.domain.auth.exception.DuplicateLoginIdException;
 import com.aquilabank.domain.auth.exception.UserAccountMembershipNotFoundException;
+import com.aquilabank.domain.auth.model.AuthStatusChangeAuditEntry;
+import com.aquilabank.domain.auth.model.AuthStatusChangeOutcome;
+import com.aquilabank.domain.auth.model.AuthStatusChangeType;
 import com.aquilabank.domain.auth.model.AuthUserSummary;
 import com.aquilabank.domain.auth.model.UserAccountMembership;
 import com.aquilabank.domain.auth.model.UserAccountMembershipStatusUpdateCommand;
@@ -134,23 +137,38 @@ public class JdbcAuthWriteRepository
   @Transactional
   public AuthUserSummary updateStatus(UserStatusUpdateCommand command) {
     Instant now = Instant.now();
-    return jdbcTemplate
-        .query(
-            """
+    UserStatus beforeStatus = loadCurrentUserStatusForUpdate(command.userId());
+    AuthUserSummary summary =
+        jdbcTemplate
+            .query(
+                """
             UPDATE bank_user
             SET user_status = :userStatus,
                 updated_at = :now
             WHERE id = :userId
             RETURNING id, login_id, display_name, user_status, created_at, updated_at
             """,
-            new MapSqlParameterSource()
-                .addValue("userId", command.userId())
-                .addValue("userStatus", command.status().name())
-                .addValue("now", Timestamp.from(now)),
-            (rs, rowNum) -> mapUserSummary(rs))
-        .stream()
-        .findFirst()
-        .orElseThrow(() -> new AuthUserNotFoundException("user is not found"));
+                new MapSqlParameterSource()
+                    .addValue("userId", command.userId())
+                    .addValue("userStatus", command.status().name())
+                    .addValue("now", Timestamp.from(now)),
+                (rs, rowNum) -> mapUserSummary(rs))
+            .stream()
+            .findFirst()
+            .orElseThrow(() -> new AuthUserNotFoundException("user is not found"));
+    insertStatusChangeAudit(
+        new AuthStatusChangeAuditEntry(
+            AuthStatusChangeType.USER_STATUS,
+            command.requestId(),
+            command.actorSubject(),
+            command.userId(),
+            null,
+            beforeStatus.name(),
+            summary.status().name(),
+            command.reason(),
+            AuthStatusChangeOutcome.SUCCESS,
+            now));
+    return summary;
   }
 
   @Override
@@ -158,9 +176,12 @@ public class JdbcAuthWriteRepository
   public UserAccountMembershipSummary updateStatus(
       UserAccountMembershipStatusUpdateCommand command) {
     Instant now = Instant.now();
-    return jdbcTemplate
-        .query(
-            """
+    com.aquilabank.domain.auth.model.MembershipStatus beforeStatus =
+        loadCurrentMembershipStatusForUpdate(command.userId(), command.accountId());
+    UserAccountMembershipSummary summary =
+        jdbcTemplate
+            .query(
+                """
             UPDATE user_account_membership
             SET membership_status = :membershipStatus,
                 updated_at = :now
@@ -168,15 +189,107 @@ public class JdbcAuthWriteRepository
               AND account_id = :accountId
             RETURNING user_id, account_id, membership_role, membership_status, created_at, updated_at
             """,
-            new MapSqlParameterSource()
-                .addValue("userId", command.userId())
-                .addValue("accountId", command.accountId())
-                .addValue("membershipStatus", command.status().name())
-                .addValue("now", Timestamp.from(now)),
-            (rs, rowNum) -> mapMembershipSummary(rs))
+                new MapSqlParameterSource()
+                    .addValue("userId", command.userId())
+                    .addValue("accountId", command.accountId())
+                    .addValue("membershipStatus", command.status().name())
+                    .addValue("now", Timestamp.from(now)),
+                (rs, rowNum) -> mapMembershipSummary(rs))
+            .stream()
+            .findFirst()
+            .orElseThrow(
+                () -> new UserAccountMembershipNotFoundException("membership is not found"));
+    insertStatusChangeAudit(
+        new AuthStatusChangeAuditEntry(
+            AuthStatusChangeType.MEMBERSHIP_STATUS,
+            command.requestId(),
+            command.actorSubject(),
+            command.userId(),
+            command.accountId(),
+            beforeStatus.name(),
+            summary.status().name(),
+            command.reason(),
+            AuthStatusChangeOutcome.SUCCESS,
+            now));
+    return summary;
+  }
+
+  private UserStatus loadCurrentUserStatusForUpdate(long userId) {
+    return jdbcTemplate
+        .query(
+            """
+            SELECT user_status
+            FROM bank_user
+            WHERE id = :userId
+            FOR UPDATE
+            """,
+            new MapSqlParameterSource().addValue("userId", userId),
+            (rs, rowNum) -> UserStatus.valueOf(rs.getString("user_status")))
+        .stream()
+        .findFirst()
+        .orElseThrow(() -> new AuthUserNotFoundException("user is not found"));
+  }
+
+  private com.aquilabank.domain.auth.model.MembershipStatus loadCurrentMembershipStatusForUpdate(
+      long userId, long accountId) {
+    return jdbcTemplate
+        .query(
+            """
+            SELECT membership_status
+            FROM user_account_membership
+            WHERE user_id = :userId
+              AND account_id = :accountId
+            FOR UPDATE
+            """,
+            new MapSqlParameterSource().addValue("userId", userId).addValue("accountId", accountId),
+            (rs, rowNum) ->
+                com.aquilabank.domain.auth.model.MembershipStatus.valueOf(
+                    rs.getString("membership_status")))
         .stream()
         .findFirst()
         .orElseThrow(() -> new UserAccountMembershipNotFoundException("membership is not found"));
+  }
+
+  private void insertStatusChangeAudit(AuthStatusChangeAuditEntry entry) {
+    // status update와 감사 row를 같은 transaction에 묶어 운영 흔적이 빠지지 않게 합니다.
+    jdbcTemplate.update(
+        """
+        INSERT INTO auth_status_change_audit (
+            request_id,
+            actor_subject,
+            change_type,
+            target_user_id,
+            target_account_id,
+            before_status,
+            after_status,
+            reason,
+            outcome,
+            created_at
+        )
+        VALUES (
+            :requestId,
+            :actorSubject,
+            :changeType,
+            :targetUserId,
+            :targetAccountId,
+            :beforeStatus,
+            :afterStatus,
+            :reason,
+            :outcome,
+            :createdAt
+        )
+        """,
+        new MapSqlParameterSource()
+            .addValue("requestId", entry.requestId())
+            .addValue("actorSubject", entry.actorSubject())
+            .addValue("changeType", entry.changeType().name())
+            .addValue("targetUserId", entry.targetUserId())
+            .addValue("targetAccountId", entry.targetAccountId())
+            .addValue("beforeStatus", entry.beforeStatus())
+            .addValue("afterStatus", entry.afterStatus())
+            .addValue("reason", entry.reason())
+            .addValue("outcome", entry.outcome().name())
+            .addValue("createdAt", Timestamp.from(entry.createdAt())));
   }
 
   private void assertUserExists(long userId) {

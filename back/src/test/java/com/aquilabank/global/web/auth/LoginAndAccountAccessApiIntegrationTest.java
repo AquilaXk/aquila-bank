@@ -32,6 +32,7 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
 
   private static final String ACCOUNT_BOOTSTRAP_TOKEN = "test-bootstrap-api-token";
   private static final String AUTH_BOOTSTRAP_TOKEN = "test-auth-bootstrap-api-token";
+  private static final String AUTH_ADMIN_SUBJECT = "ops-admin";
 
   @Autowired private WebApplicationContext context;
 
@@ -220,7 +221,7 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
   @Test
   void disabledUserCannotLoginOrUseExistingJwt() throws Exception {
     String token = login("alice", "password123!");
-    updateUserStatus(userId, "DISABLED");
+    updateUserStatus(userId, "DISABLED", "fraud-review", "user-disabled-request");
 
     mockMvc
         .perform(
@@ -270,7 +271,21 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
   @Test
   void revokedMembershipBlocksExistingJwtAccess() throws Exception {
     String token = login("alice", "password123!");
-    updateMembershipStatus(userId, allowedSourceAccountId, "REVOKED");
+    updateMembershipStatus(
+        userId, allowedSourceAccountId, "REVOKED", "manual-revoke", "membership-revoked-request");
+
+    AuthStatusChangeAuditView audit =
+        loadAuditByRequestId("membership-revoked-request")
+            .orElseThrow(() -> new AssertionError("audit row is not created"));
+    assertEquals("membership-revoked-request", audit.requestId());
+    assertEquals(AUTH_ADMIN_SUBJECT, audit.actorSubject());
+    assertEquals("MEMBERSHIP_STATUS", audit.changeType());
+    assertEquals(userId, audit.targetUserId());
+    assertEquals(allowedSourceAccountId, audit.targetAccountId());
+    assertEquals("ACTIVE", audit.beforeStatus());
+    assertEquals("REVOKED", audit.afterStatus());
+    assertEquals("manual-revoke", audit.reason());
+    assertEquals("SUCCESS", audit.outcome());
 
     mockMvc
         .perform(
@@ -399,41 +414,97 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
         .andExpect(jsonPath("$.membershipStatus").value(membershipStatus));
   }
 
-  private void updateUserStatus(long userId, String userStatus) throws Exception {
+  private void updateUserStatus(long userId, String userStatus, String reason, String requestId)
+      throws Exception {
     mockMvc
         .perform(
             put("/internal/api/v1/auth/users/%d/status".formatted(userId))
                 .header("X-Auth-Bootstrap-Token", AUTH_BOOTSTRAP_TOKEN)
+                .header("X-Subject", AUTH_ADMIN_SUBJECT)
+                .header("X-Request-Id", requestId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     """
                     {
-                      "userStatus": "%s"
+                      "userStatus": "%s",
+                      "reason": "%s"
                     }
                     """
-                        .formatted(userStatus)))
+                        .formatted(userStatus, reason)))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.userId").value(userId))
         .andExpect(jsonPath("$.userStatus").value(userStatus));
   }
 
-  private void updateMembershipStatus(long userId, long accountId, String membershipStatus)
+  private void updateMembershipStatus(
+      long userId, long accountId, String membershipStatus, String reason, String requestId)
       throws Exception {
     mockMvc
         .perform(
             put("/internal/api/v1/auth/users/%d/memberships/%d/status".formatted(userId, accountId))
                 .header("X-Auth-Bootstrap-Token", AUTH_BOOTSTRAP_TOKEN)
+                .header("X-Subject", AUTH_ADMIN_SUBJECT)
+                .header("X-Request-Id", requestId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     """
                     {
-                      "membershipStatus": "%s"
+                      "membershipStatus": "%s",
+                      "reason": "%s"
                     }
                     """
-                        .formatted(membershipStatus)))
+                        .formatted(membershipStatus, reason)))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.userId").value(userId))
         .andExpect(jsonPath("$.accountId").value(accountId))
         .andExpect(jsonPath("$.membershipStatus").value(membershipStatus));
   }
+
+  private java.util.Optional<AuthStatusChangeAuditView> loadAuditByRequestId(String requestId) {
+    return jdbcTemplate
+        .query(
+            """
+            SELECT request_id,
+                   actor_subject,
+                   change_type,
+                   target_user_id,
+                   target_account_id,
+                   before_status,
+                   after_status,
+                   reason,
+                   outcome
+            FROM auth_status_change_audit
+            WHERE request_id = :requestId
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            new org.springframework.jdbc.core.namedparam.MapSqlParameterSource()
+                .addValue("requestId", requestId),
+            (rs, rowNum) -> {
+              Long targetAccountId = rs.getObject("target_account_id", Long.class);
+              return new AuthStatusChangeAuditView(
+                  rs.getString("request_id"),
+                  rs.getString("actor_subject"),
+                  rs.getString("change_type"),
+                  rs.getLong("target_user_id"),
+                  targetAccountId,
+                  rs.getString("before_status"),
+                  rs.getString("after_status"),
+                  rs.getString("reason"),
+                  rs.getString("outcome"));
+            })
+        .stream()
+        .findFirst();
+  }
+
+  private record AuthStatusChangeAuditView(
+      String requestId,
+      String actorSubject,
+      String changeType,
+      long targetUserId,
+      Long targetAccountId,
+      String beforeStatus,
+      String afterStatus,
+      String reason,
+      String outcome) {}
 }
