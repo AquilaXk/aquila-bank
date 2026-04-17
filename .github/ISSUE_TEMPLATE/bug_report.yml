@@ -6,14 +6,14 @@ body:
     attributes:
       value: |
         ## 🐞 Bug Intake
-        - 선언형 말투로 작성했음.
-        - 재현 결과와 영향 범위를 같이 적었음.
+        - 선언형 말투로 작성했다.
+        - 재현 결과와 영향 범위를 같이 적었다.
 
   - type: dropdown
     id: severity
     attributes:
       label: "🚨 Severity"
-      description: 영향도를 선택했음.
+      description: 영향도를 선택했다.
       options:
         - Sev 1 - 거래 불가 / 서비스 중단
         - Sev 2 - 핵심 기능 저하
@@ -26,7 +26,7 @@ body:
     id: domain
     attributes:
       label: "🧩 Domain"
-      description: 문제가 발생한 기능/도메인을 적었음.
+      description: 문제가 발생한 기능/도메인을 적었다.
       placeholder: 예) auth, transaction, notification, admin
     validations:
       required: true
@@ -35,8 +35,8 @@ body:
     id: summary
     attributes:
       label: "📝 Summary"
-      description: 문제를 한 줄로 요약했음.
-      placeholder: 예) 거래 상세 조회 시 동일 거래가 중복 노출됐음.
+      description: 문제를 한 줄로 요약했다.
+      placeholder: 예) 거래 상세 조회 시 동일 거래가 중복 노출됐다.
     validations:
       required: true
 
@@ -44,11 +44,11 @@ body:
     id: steps
     attributes:
       label: "🔁 Steps To Reproduce"
-      description: 재현 순서를 적었음.
+      description: 재현 순서를 적었다.
       placeholder: |
         1. ...
         2. ...
-        3. 문제가 재현됐음
+        3. 문제가 재현됐다
     validations:
       required: true
 
@@ -56,10 +56,10 @@ body:
     id: expected_actual
     attributes:
       label: "⚖️ Expected Result / Actual Result"
-      description: 기대 결과와 실제 결과를 같이 적었음.
+      description: 기대 결과와 실제 결과를 같이 적었다.
       placeholder: |
-        - Expected: 기대한 결과를 적었음
-        - Actual: 실제 결과를 적었음
+        - Expected: 기대한 결과를 적었다
+        - Actual: 실제 결과를 적었다
     validations:
       required: true
 
@@ -67,8 +67,8 @@ body:
     id: impact
     attributes:
       label: "📉 Impact"
-      description: 고객, 운영, 데이터 정합성 영향 범위를 적었음.
-      placeholder: 예) 고객 문의가 증가했고, 거래 정합성 영향은 없었고, 운영 모니터링 경고가 발생했음.
+      description: 고객, 운영, 데이터 정합성 영향 범위를 적었다.
+      placeholder: 예) 고객 문의가 증가했고, 거래 정합성 영향은 없었고, 운영 모니터링 경고가 발생했다.
     validations:
       required: true
 
@@ -76,12 +76,12 @@ body:
     id: todo
     attributes:
       label: "🛠 Todo"
-      description: 필요한 작업을 선언형 체크리스트로 적었음.
+      description: 필요한 작업을 선언형 체크리스트로 적었다.
       placeholder: |
-        - [ ] 재현했음
-        - [ ] 원인을 분석했음
-        - [ ] 수정했음
-        - [ ] 테스트했음
-        - [ ] 운영 영향을 확인했음
+        - [ ] 재현했다
+        - [ ] 원인을 분석했다
+        - [ ] 수정했다
+        - [ ] 테스트했다
+        - [ ] 운영 영향을 확인했다
     validations:
       required: true
