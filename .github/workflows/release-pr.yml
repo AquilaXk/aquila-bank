@@ -110,20 +110,19 @@ jobs:
             gh pr create \
               --base main \
               --head develop \
-              --title "chore(release): develop -> main release sync" \
+              --title "[CI] develop -> main release sync" \
               --body-file .github/release_pull_request_template.md
             pr_number="$(gh pr list --base main --head develop --state open --json number --jq '.[0].number')"
           else
             gh pr edit \
               "${pr_number}" \
-              --title "chore(release): develop -> main release sync" \
+              --title "[CI] develop -> main release sync" \
               --body-file .github/release_pull_request_template.md
           fi
           echo "number=${pr_number}" >> "$GITHUB_OUTPUT"
 
       - name: Enable auto-merge
         if: steps.diff.outputs.has_diff == 'true' && steps.release_pr.outputs.number != ''
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh pr merge "${{ steps.release_pr.outputs.number }}" --auto --merge
