@@ -12,6 +12,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.aquilabank.domain.auth.port.RefreshTokenSecretPort;
+import com.aquilabank.global.security.InternalServiceScope;
+import com.aquilabank.global.security.InternalServiceTokenIssuer;
 import com.aquilabank.support.PostgresContainerTestSupport;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -47,8 +49,6 @@ import org.springframework.web.context.WebApplicationContext;
     })
 class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSupport {
 
-  private static final String ACCOUNT_BOOTSTRAP_TOKEN = "test-bootstrap-api-token";
-  private static final String AUTH_BOOTSTRAP_TOKEN = "test-auth-bootstrap-api-token";
   private static final String AUTH_ADMIN_SUBJECT = "ops-admin";
 
   @Autowired private WebApplicationContext context;
@@ -58,6 +58,8 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
   @Autowired private ObjectMapper objectMapper;
 
   @Autowired private RefreshTokenSecretPort refreshTokenSecretPort;
+
+  @Autowired private InternalServiceTokenIssuer internalServiceTokenIssuer;
 
   private MockMvc mockMvc;
   private long userId;
@@ -445,7 +447,10 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
     mockMvc
         .perform(
             get("/internal/api/v1/auth/users/%d".formatted(userId))
-                .header("X-Auth-Bootstrap-Token", AUTH_BOOTSTRAP_TOKEN))
+                .header(
+                    "Authorization",
+                    internalServiceAuthorization(
+                        AUTH_ADMIN_SUBJECT, InternalServiceScope.AUTH_ADMIN)))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.userId").value(userId))
         .andExpect(jsonPath("$.loginId").value("alice"))
@@ -454,7 +459,10 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
     mockMvc
         .perform(
             get("/internal/api/v1/auth/users/by-login-id")
-                .header("X-Auth-Bootstrap-Token", AUTH_BOOTSTRAP_TOKEN)
+                .header(
+                    "Authorization",
+                    internalServiceAuthorization(
+                        AUTH_ADMIN_SUBJECT, InternalServiceScope.AUTH_ADMIN))
                 .param("loginId", "alice"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.displayName").value("Alice"));
@@ -463,7 +471,10 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
         .perform(
             get("/internal/api/v1/auth/users/%d/memberships/%d"
                     .formatted(userId, allowedSourceAccountId))
-                .header("X-Auth-Bootstrap-Token", AUTH_BOOTSTRAP_TOKEN))
+                .header(
+                    "Authorization",
+                    internalServiceAuthorization(
+                        AUTH_ADMIN_SUBJECT, InternalServiceScope.AUTH_ADMIN)))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.userId").value(userId))
         .andExpect(jsonPath("$.accountId").value(allowedSourceAccountId))
@@ -601,7 +612,10 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
     mockMvc
         .perform(
             get("/internal/api/v1/auth/status-change-audits/by-request-id")
-                .header("X-Auth-Bootstrap-Token", AUTH_BOOTSTRAP_TOKEN)
+                .header(
+                    "Authorization",
+                    internalServiceAuthorization(
+                        AUTH_ADMIN_SUBJECT, InternalServiceScope.AUTH_ADMIN))
                 .param("requestId", "membership-revoked-request"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.requestId").value(audit.requestId()))
@@ -730,7 +744,10 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
         mockMvc
             .perform(
                 post("/internal/api/v1/accounts/bootstrap")
-                    .header("X-Bootstrap-Token", ACCOUNT_BOOTSTRAP_TOKEN)
+                    .header(
+                        "Authorization",
+                        internalServiceAuthorization(
+                            "account-bootstrap", InternalServiceScope.ACCOUNT_BOOTSTRAP))
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         """
@@ -755,7 +772,10 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
         mockMvc
             .perform(
                 post("/internal/api/v1/auth/users/bootstrap")
-                    .header("X-Auth-Bootstrap-Token", AUTH_BOOTSTRAP_TOKEN)
+                    .header(
+                        "Authorization",
+                        internalServiceAuthorization(
+                            "auth-bootstrap", InternalServiceScope.AUTH_BOOTSTRAP))
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         """
@@ -781,7 +801,10 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
     mockMvc
         .perform(
             put("/internal/api/v1/auth/users/%d/memberships/%d".formatted(userId, accountId))
-                .header("X-Auth-Bootstrap-Token", AUTH_BOOTSTRAP_TOKEN)
+                .header(
+                    "Authorization",
+                    internalServiceAuthorization(
+                        "auth-bootstrap", InternalServiceScope.AUTH_BOOTSTRAP))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     """
@@ -803,8 +826,10 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
     mockMvc
         .perform(
             put("/internal/api/v1/auth/users/%d/status".formatted(userId))
-                .header("X-Auth-Bootstrap-Token", AUTH_BOOTSTRAP_TOKEN)
-                .header("X-Subject", AUTH_ADMIN_SUBJECT)
+                .header(
+                    "Authorization",
+                    internalServiceAuthorization(
+                        AUTH_ADMIN_SUBJECT, InternalServiceScope.AUTH_ADMIN))
                 .header("X-Request-Id", requestId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
@@ -831,8 +856,10 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
     mockMvc
         .perform(
             put("/internal/api/v1/auth/users/%d/memberships/%d/status".formatted(userId, accountId))
-                .header("X-Auth-Bootstrap-Token", AUTH_BOOTSTRAP_TOKEN)
-                .header("X-Subject", AUTH_ADMIN_SUBJECT)
+                .header(
+                    "Authorization",
+                    internalServiceAuthorization(
+                        AUTH_ADMIN_SUBJECT, InternalServiceScope.AUTH_ADMIN))
                 .header("X-Request-Id", requestId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
@@ -856,8 +883,10 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
     mockMvc
         .perform(
             put("/internal/api/v1/auth/users/%d/memberships/%d/status".formatted(userId, accountId))
-                .header("X-Auth-Bootstrap-Token", AUTH_BOOTSTRAP_TOKEN)
-                .header("X-Subject", AUTH_ADMIN_SUBJECT)
+                .header(
+                    "Authorization",
+                    internalServiceAuthorization(
+                        AUTH_ADMIN_SUBJECT, InternalServiceScope.AUTH_ADMIN))
                 .header("X-Request-Id", requestId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
@@ -913,6 +942,10 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
             })
         .stream()
         .findFirst();
+  }
+
+  private String internalServiceAuthorization(String subject, InternalServiceScope scope) {
+    return "Bearer " + internalServiceTokenIssuer.issue(subject, java.util.Set.of(scope));
   }
 
   private LoginProtectionState loadLoginProtectionState(long userId) {

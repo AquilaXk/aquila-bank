@@ -3,10 +3,10 @@ set -euo pipefail
 
 if [[ $# -ne 3 ]]; then
   cat <<'USAGE' >&2
-usage: tools/ops/outbox-find-failed-events.sh <base_url> <service_token> <limit>
+usage: tools/ops/notification-find-dlq-events.sh <base_url> <service_token> <limit>
 
 example:
-  tools/ops/outbox-find-failed-events.sh \
+  tools/ops/notification-find-dlq-events.sh \
     http://localhost:8080 \
     "$OUTBOX_OPS_SERVICE_TOKEN" \
     20
@@ -18,9 +18,9 @@ base_url="$1"
 service_token="$2"
 limit="$3"
 
-# failed list 는 dispatch 순서 기준으로 잘라서 보도록 limit query 를 항상 고정합니다.
+# DLQ preview 는 poison message 최근 항목만 bounded query 로 확인해 복구 범위를 넓히지 않습니다.
 curl --fail-with-body --silent --show-error \
   --get \
   --header "Authorization: Bearer ${service_token}" \
   --data-urlencode "limit=${limit}" \
-  "${base_url%/}/internal/api/v1/outbox/failed-events"
+  "${base_url%/}/internal/api/v1/outbox/notification/dlq-events"

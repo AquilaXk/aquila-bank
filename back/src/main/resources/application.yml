@@ -119,6 +119,15 @@ notification:
       auto-offset-reset: ${NOTIFICATION_INBOX_CONSUMER_AUTO_OFFSET_RESET:earliest}
       transfer-booked:
         topic: ${NOTIFICATION_INBOX_CONSUMER_TRANSFER_BOOKED_TOPIC:}
+      dlq:
+        topic: ${NOTIFICATION_INBOX_CONSUMER_DLQ_TOPIC:}
+      ops:
+        enabled: ${NOTIFICATION_INBOX_CONSUMER_OPS_ENABLED:false}
+        dlq-preview-limit: ${NOTIFICATION_INBOX_CONSUMER_OPS_DLQ_PREVIEW_LIMIT:20}
+        summary-cache-seconds: ${NOTIFICATION_INBOX_CONSUMER_OPS_SUMMARY_CACHE_SECONDS:5}
+        health:
+          max-lag-messages: ${NOTIFICATION_INBOX_CONSUMER_OPS_HEALTH_MAX_LAG_MESSAGES:100}
+          max-dlq-count: ${NOTIFICATION_INBOX_CONSUMER_OPS_HEALTH_MAX_DLQ_COUNT:0}
 
 security:
   jwt:
@@ -126,6 +135,14 @@ security:
     issuer: ${SECURITY_JWT_ISSUER:}
     access-token-ttl-seconds: ${SECURITY_JWT_ACCESS_TOKEN_TTL_SECONDS:900}
     refresh-token-ttl-seconds: ${SECURITY_JWT_REFRESH_TOKEN_TTL_SECONDS:1209600}
+  internal-service-token:
+    issuer: ${SECURITY_INTERNAL_SERVICE_TOKEN_ISSUER:}
+    audience: ${SECURITY_INTERNAL_SERVICE_TOKEN_AUDIENCE:}
+    authorization-header: ${SECURITY_INTERNAL_SERVICE_TOKEN_AUTHORIZATION_HEADER:Authorization}
+    clock-skew-seconds: ${SECURITY_INTERNAL_SERVICE_TOKEN_CLOCK_SKEW_SECONDS:30}
+    default-ttl-seconds: ${SECURITY_INTERNAL_SERVICE_TOKEN_DEFAULT_TTL_SECONDS:300}
+    active-key-id: ${SECURITY_INTERNAL_SERVICE_TOKEN_ACTIVE_KEY_ID:}
+    keys: {}
   login-protection:
     max-failures: ${SECURITY_LOGIN_PROTECTION_MAX_FAILURES:5}
     lock-seconds: ${SECURITY_LOGIN_PROTECTION_LOCK_SECONDS:900}

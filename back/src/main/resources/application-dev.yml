@@ -15,6 +15,13 @@ management:
 security:
   jwt:
     secret: ${SECURITY_JWT_SECRET:dev-local-jwt-secret-dev-local-jwt-secret}
+  internal-service-token:
+    issuer: ${SECURITY_INTERNAL_SERVICE_TOKEN_ISSUER:dev-internal-service}
+    audience: ${SECURITY_INTERNAL_SERVICE_TOKEN_AUDIENCE:aquila-internal-api}
+    active-key-id: ${SECURITY_INTERNAL_SERVICE_TOKEN_ACTIVE_KEY_ID:ops-202604}
+    keys:
+      ops-202604: ${SECURITY_INTERNAL_SERVICE_TOKEN_KEYS_OPS_202604:dev-internal-service-secret-ops-202604}
+      ops-202603: ${SECURITY_INTERNAL_SERVICE_TOKEN_KEYS_OPS_202603:dev-internal-service-secret-ops-202603}
   bootstrap-header-auth:
     enabled: ${SECURITY_BOOTSTRAP_HEADER_AUTH_ENABLED:true}
   account-bootstrap-api:
@@ -39,3 +46,7 @@ notification:
       bootstrap-servers: ${NOTIFICATION_INBOX_CONSUMER_BOOTSTRAP_SERVERS:localhost:9092}
       transfer-booked:
         topic: ${NOTIFICATION_INBOX_CONSUMER_TRANSFER_BOOKED_TOPIC:bank.transfer.booked.v1}
+      dlq:
+        topic: ${NOTIFICATION_INBOX_CONSUMER_DLQ_TOPIC:bank.transfer.booked.dlq.v1}
+      ops:
+        enabled: ${NOTIFICATION_INBOX_CONSUMER_OPS_ENABLED:true}

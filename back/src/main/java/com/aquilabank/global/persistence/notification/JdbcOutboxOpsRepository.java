@@ -73,6 +73,12 @@ public class JdbcOutboxOpsRepository implements OutboxOpsReadPort, OutboxOpsReco
                    (
                        SELECT COUNT(*)
                        FROM outbox_event
+                       WHERE publish_status = 'FAILED'
+                         AND last_error = 'kafka publish timed out'
+                   ) AS producer_timeout_failed_count,
+                   (
+                       SELECT COUNT(*)
+                       FROM outbox_event
                        WHERE publish_status = 'SENDING'
                          AND updated_at <= :staleCutoff
                    ) AS stale_sending_count
@@ -84,6 +90,7 @@ public class JdbcOutboxOpsRepository implements OutboxOpsReadPort, OutboxOpsReco
                 new SummaryRow(
                     nullableInstant(rs, "oldest_dispatchable_at"),
                     rs.getLong("failed_count"),
+                    rs.getLong("producer_timeout_failed_count"),
                     rs.getLong("stale_sending_count")));
     if (row == null) {
       throw new IllegalStateException("outbox ops summary query returned null");
@@ -96,7 +103,12 @@ public class JdbcOutboxOpsRepository implements OutboxOpsReadPort, OutboxOpsReco
       lag = Duration.ZERO;
     }
     return new OutboxOpsSummary(
-        observedAt, row.oldestDispatchableAt(), lag, row.failedCount(), row.staleSendingCount());
+        observedAt,
+        row.oldestDispatchableAt(),
+        lag,
+        row.failedCount(),
+        row.producerTimeoutFailedCount(),
+        row.staleSendingCount());
   }
 
   @Override
@@ -135,5 +147,8 @@ public class JdbcOutboxOpsRepository implements OutboxOpsReadPort, OutboxOpsReco
   }
 
   private record SummaryRow(
-      Instant oldestDispatchableAt, long failedCount, long staleSendingCount) {}
+      Instant oldestDispatchableAt,
+      long failedCount,
+      long producerTimeoutFailedCount,
+      long staleSendingCount) {}
 }

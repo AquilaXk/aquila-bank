@@ -16,7 +16,8 @@ import com.aquilabank.domain.ledger.exception.TransferReversalNotFoundException;
 import com.aquilabank.domain.notification.exception.NotificationNotFoundException;
 import com.aquilabank.domain.transaction.exception.TransactionDetailNotFoundException;
 import com.aquilabank.global.security.BootstrapApiAccessDeniedException;
-import com.aquilabank.global.security.BootstrapHeaderAuthProperties;
+import com.aquilabank.global.security.InternalServiceRequestAuthorizer;
+import com.aquilabank.global.security.InternalServiceTokenClaims;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import java.nio.charset.StandardCharsets;
@@ -25,7 +26,6 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -39,21 +39,10 @@ import org.springframework.web.util.ContentCachingRequestWrapper;
 public class ApiExceptionHandler {
 
   private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
-  private static final String DEFAULT_ACTOR_SUBJECT_HEADER = "X-Subject";
   private static final Pattern USER_STATUS_PATH_PATTERN =
       Pattern.compile("^/internal/api/v1/auth/users/(\\d+)/status$");
   private static final Pattern MEMBERSHIP_STATUS_PATH_PATTERN =
       Pattern.compile("^/internal/api/v1/auth/users/(\\d+)/memberships/(\\d+)/status$");
-  private final String actorSubjectHeader;
-
-  public ApiExceptionHandler() {
-    this.actorSubjectHeader = DEFAULT_ACTOR_SUBJECT_HEADER;
-  }
-
-  @Autowired
-  public ApiExceptionHandler(BootstrapHeaderAuthProperties bootstrapHeaderAuthProperties) {
-    this.actorSubjectHeader = bootstrapHeaderAuthProperties.subjectHeader();
-  }
 
   @ExceptionHandler(MethodArgumentNotValidException.class)
   ResponseEntity<ApiErrorResponse> handleValidation(
@@ -164,7 +153,7 @@ public class ApiExceptionHandler {
     Matcher membershipMatcher = MEMBERSHIP_STATUS_PATH_PATTERN.matcher(path);
     if (membershipMatcher.matches()) {
       return new AuditFailureContext(
-          request.getHeader(actorSubjectHeader),
+          resolveActorSubject(request),
           parseLong(membershipMatcher.group(1)),
           parseLong(membershipMatcher.group(2)),
           extractJsonField(request, "membershipStatus"),
@@ -175,7 +164,7 @@ public class ApiExceptionHandler {
     Matcher userMatcher = USER_STATUS_PATH_PATTERN.matcher(path);
     if (userMatcher.matches()) {
       return new AuditFailureContext(
-          request.getHeader(actorSubjectHeader),
+          resolveActorSubject(request),
           parseLong(userMatcher.group(1)),
           null,
           extractJsonField(request, "userStatus"),
@@ -183,6 +172,14 @@ public class ApiExceptionHandler {
           extractReasonDetail(request));
     }
     return null;
+  }
+
+  private String resolveActorSubject(HttpServletRequest request) {
+    Object value = request.getAttribute(InternalServiceRequestAuthorizer.REQUEST_ATTRIBUTE);
+    if (value instanceof InternalServiceTokenClaims claims) {
+      return claims.subject();
+    }
+    return "-";
   }
 
   private Long parseLong(String value) {

@@ -19,9 +19,8 @@ import com.aquilabank.domain.auth.usecase.AuthUserQueryUseCase;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipQueryUseCase;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipStatusUpdateUseCase;
 import com.aquilabank.domain.auth.usecase.UserStatusUpdateUseCase;
-import com.aquilabank.global.security.AuthBootstrapApiProperties;
-import com.aquilabank.global.security.BootstrapHeaderAuthProperties;
-import com.aquilabank.global.security.InternalAuthTokenGuard;
+import com.aquilabank.global.security.InternalServiceScope;
+import com.aquilabank.global.security.InternalServiceTokenTestSupport;
 import com.aquilabank.global.web.ApiExceptionHandler;
 import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,10 +30,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 class InternalAuthAdminControllerTest {
-
-  private static final String TOKEN_HEADER = "X-Auth-Bootstrap-Token";
-  private static final String TOKEN = "test-auth-bootstrap-api-token";
-  private static final String SUBJECT_HEADER = "X-Subject";
   private static final String SUBJECT = "ops-admin";
   private static final String REQUEST_ID_HEADER = "X-Request-Id";
 
@@ -58,9 +53,7 @@ class InternalAuthAdminControllerTest {
                     userStatusUpdateUseCase,
                     userAccountMembershipQueryUseCase,
                     userAccountMembershipStatusUpdateUseCase,
-                    new InternalAuthTokenGuard(
-                        new AuthBootstrapApiProperties(true, TOKEN_HEADER, TOKEN)),
-                    new BootstrapHeaderAuthProperties(false, "X-Account-Id", SUBJECT_HEADER)))
+                    InternalServiceTokenTestSupport.authorizer()))
             .setControllerAdvice(new ApiExceptionHandler())
             .build();
   }
@@ -80,7 +73,12 @@ class InternalAuthAdminControllerTest {
     when(authUserQueryUseCase.getByLoginId("alice")).thenReturn(summary);
 
     mockMvc
-        .perform(get("/internal/api/v1/auth/users/21").header(TOKEN_HEADER, TOKEN))
+        .perform(
+            get("/internal/api/v1/auth/users/21")
+                .header(
+                    "Authorization",
+                    InternalServiceTokenTestSupport.authorization(
+                        SUBJECT, InternalServiceScope.AUTH_ADMIN)))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.userId").value(21))
         .andExpect(jsonPath("$.loginId").value("alice"))
@@ -89,7 +87,10 @@ class InternalAuthAdminControllerTest {
     mockMvc
         .perform(
             get("/internal/api/v1/auth/users/by-login-id")
-                .header(TOKEN_HEADER, TOKEN)
+                .header(
+                    "Authorization",
+                    InternalServiceTokenTestSupport.authorization(
+                        SUBJECT, InternalServiceScope.AUTH_ADMIN))
                 .param("loginId", "alice"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.displayName").value("Alice"));
@@ -131,7 +132,12 @@ class InternalAuthAdminControllerTest {
         .thenReturn(revokedMembership);
 
     mockMvc
-        .perform(get("/internal/api/v1/auth/users/21/memberships/101").header(TOKEN_HEADER, TOKEN))
+        .perform(
+            get("/internal/api/v1/auth/users/21/memberships/101")
+                .header(
+                    "Authorization",
+                    InternalServiceTokenTestSupport.authorization(
+                        SUBJECT, InternalServiceScope.AUTH_ADMIN)))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.membershipRole").value("OWNER"))
         .andExpect(jsonPath("$.membershipStatus").value("ACTIVE"));
@@ -139,8 +145,10 @@ class InternalAuthAdminControllerTest {
     mockMvc
         .perform(
             put("/internal/api/v1/auth/users/21/status")
-                .header(TOKEN_HEADER, TOKEN)
-                .header(SUBJECT_HEADER, SUBJECT)
+                .header(
+                    "Authorization",
+                    InternalServiceTokenTestSupport.authorization(
+                        SUBJECT, InternalServiceScope.AUTH_ADMIN))
                 .header(REQUEST_ID_HEADER, "user-status-request")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
@@ -157,8 +165,10 @@ class InternalAuthAdminControllerTest {
     mockMvc
         .perform(
             put("/internal/api/v1/auth/users/21/memberships/101/status")
-                .header(TOKEN_HEADER, TOKEN)
-                .header(SUBJECT_HEADER, SUBJECT)
+                .header(
+                    "Authorization",
+                    InternalServiceTokenTestSupport.authorization(
+                        SUBJECT, InternalServiceScope.AUTH_ADMIN))
                 .header(REQUEST_ID_HEADER, "membership-status-request")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
@@ -198,7 +208,10 @@ class InternalAuthAdminControllerTest {
     mockMvc
         .perform(
             put("/internal/api/v1/auth/users/21/status")
-                .header(TOKEN_HEADER, TOKEN)
+                .header(
+                    "Authorization",
+                    InternalServiceTokenTestSupport.authorization(
+                        SUBJECT, InternalServiceScope.AUTH_ADMIN))
                 .header(REQUEST_ID_HEADER, "missing-reason-request")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
@@ -213,7 +226,10 @@ class InternalAuthAdminControllerTest {
     mockMvc
         .perform(
             put("/internal/api/v1/auth/users/21/memberships/101/status")
-                .header(TOKEN_HEADER, TOKEN)
+                .header(
+                    "Authorization",
+                    InternalServiceTokenTestSupport.authorization(
+                        SUBJECT, InternalServiceScope.AUTH_ADMIN))
                 .header(REQUEST_ID_HEADER, "missing-subject-request")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
@@ -244,8 +260,10 @@ class InternalAuthAdminControllerTest {
     mockMvc
         .perform(
             put("/internal/api/v1/auth/users/21/status")
-                .header(TOKEN_HEADER, TOKEN)
-                .header(SUBJECT_HEADER, SUBJECT)
+                .header(
+                    "Authorization",
+                    InternalServiceTokenTestSupport.authorization(
+                        SUBJECT, InternalServiceScope.AUTH_ADMIN))
                 .header(REQUEST_ID_HEADER, "legacy-reason-request")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
@@ -286,8 +304,10 @@ class InternalAuthAdminControllerTest {
     mockMvc
         .perform(
             put("/internal/api/v1/auth/users/21/memberships/101/status")
-                .header(TOKEN_HEADER, TOKEN)
-                .header(SUBJECT_HEADER, SUBJECT)
+                .header(
+                    "Authorization",
+                    InternalServiceTokenTestSupport.authorization(
+                        SUBJECT, InternalServiceScope.AUTH_ADMIN))
                 .header(REQUEST_ID_HEADER, "membership-legacy-reason-request")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
@@ -317,8 +337,10 @@ class InternalAuthAdminControllerTest {
     mockMvc
         .perform(
             put("/internal/api/v1/auth/users/21/status")
-                .header(TOKEN_HEADER, TOKEN)
-                .header(SUBJECT_HEADER, SUBJECT)
+                .header(
+                    "Authorization",
+                    InternalServiceTokenTestSupport.authorization(
+                        SUBJECT, InternalServiceScope.AUTH_ADMIN))
                 .header(REQUEST_ID_HEADER, "user-mixed-reason-request")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
@@ -342,8 +364,10 @@ class InternalAuthAdminControllerTest {
     mockMvc
         .perform(
             put("/internal/api/v1/auth/users/21/memberships/101/status")
-                .header(TOKEN_HEADER, TOKEN)
-                .header(SUBJECT_HEADER, SUBJECT)
+                .header(
+                    "Authorization",
+                    InternalServiceTokenTestSupport.authorization(
+                        SUBJECT, InternalServiceScope.AUTH_ADMIN))
                 .header(REQUEST_ID_HEADER, "membership-mixed-reason-request")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
@@ -363,10 +387,10 @@ class InternalAuthAdminControllerTest {
   }
 
   @Test
-  void rejectsMissingOrInvalidBootstrapToken() throws Exception {
+  void rejectsMissingOrInvalidInternalServiceToken() throws Exception {
     mockMvc
         .perform(get("/internal/api/v1/auth/users/21"))
         .andExpect(status().isUnauthorized())
-        .andExpect(jsonPath("$.message").value("bootstrap token is invalid"));
+        .andExpect(jsonPath("$.message").value("internal service token is invalid"));
   }
 }

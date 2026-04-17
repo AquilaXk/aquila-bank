@@ -46,4 +46,24 @@ class NotificationInboxConsumerConfigurationTest {
               assertThat(context).hasBean("transferBookedNotificationConsumer");
             });
   }
+
+  @Test
+  void createsNotificationOpsBeansWhenDlqAndOpsPropertiesArePresent() {
+    contextRunner
+        .withPropertyValues(
+            "notification.inbox.consumer.enabled=true",
+            "notification.inbox.consumer.bootstrap-servers=localhost:9092",
+            "notification.inbox.consumer.group-id=test-notification-ops",
+            "notification.inbox.consumer.transfer-booked.topic=bank.transfer.booked.v1",
+            "notification.inbox.consumer.dlq.topic=bank.transfer.booked.dlq.v1",
+            "notification.inbox.consumer.ops.enabled=true")
+        .run(
+            context -> {
+              assertThat(context).hasBean("notificationInboxDlqProducerFactory");
+              assertThat(context).hasBean("notificationInboxDlqKafkaTemplate");
+              assertThat(context).hasBean("notificationOpsReadPort");
+              assertThat(context).hasBean("notificationOpsQueryUseCase");
+              assertThat(context).hasBean("notificationInboxHealthIndicator");
+            });
+  }
 }

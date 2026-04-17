@@ -5,6 +5,7 @@ import com.aquilabank.domain.auth.port.PasswordHashPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSecretPort;
 import com.aquilabank.global.web.InternalAuthStatusAuditRequestCachingFilter;
 import com.aquilabank.global.web.RequestIdFilter;
+import jakarta.servlet.http.HttpServletRequest;
 import javax.crypto.spec.SecretKeySpec;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -24,6 +25,8 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.security.oauth2.server.resource.web.BearerTokenResolver;
+import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.AnonymousAuthenticationFilter;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
@@ -39,13 +42,16 @@ import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 })
 public class SecurityConfiguration {
 
+  private static final String INTERNAL_API_PATH_PREFIX = "/internal/api/v1/";
+
   @Bean
   SecurityFilterChain securityFilterChain(
       HttpSecurity http,
       RequestIdFilter requestIdFilter,
       InternalAuthStatusAuditRequestCachingFilter internalAuthStatusAuditRequestCachingFilter,
       ObjectProvider<BootstrapHeaderAuthenticationFilter> bootstrapHeaderAuthenticationFilter,
-      JwtDecoder jwtDecoder)
+      JwtDecoder jwtDecoder,
+      BearerTokenResolver publicApiBearerTokenResolver)
       throws Exception {
     // stateless API 기본선
     http.csrf(AbstractHttpConfigurer::disable)
@@ -63,7 +69,7 @@ public class SecurityConfiguration {
                     .permitAll()
                     .requestMatchers("/api/v1/auth/refresh")
                     .permitAll()
-                    // 내부 bootstrap API는 JWT 대신 별도 shared token으로 보호합니다.
+                    // 내부 운영 API는 public JWT resolver에서 제외하고 전용 service JWT로만 검증합니다.
                     .requestMatchers("/internal/api/v1/accounts/bootstrap")
                     .permitAll()
                     .requestMatchers("/internal/api/v1/outbox/**")
@@ -74,10 +80,12 @@ public class SecurityConfiguration {
                     .authenticated())
         .oauth2ResourceServer(
             oauth2 ->
-                oauth2.jwt(
-                    jwt ->
-                        jwt.decoder(jwtDecoder)
-                            .jwtAuthenticationConverter(new JwtUserAuthenticationConverter())))
+                oauth2
+                    .jwt(
+                        jwt ->
+                            jwt.decoder(jwtDecoder)
+                                .jwtAuthenticationConverter(new JwtUserAuthenticationConverter()))
+                    .bearerTokenResolver(publicApiBearerTokenResolver))
         .exceptionHandling(
             exception ->
                 exception.authenticationEntryPoint(
@@ -131,6 +139,12 @@ public class SecurityConfiguration {
   }
 
   @Bean
+  BearerTokenResolver publicApiBearerTokenResolver() {
+    DefaultBearerTokenResolver delegate = new DefaultBearerTokenResolver();
+    return request -> isInternalApiRequest(request) ? null : delegate.resolve(request);
+  }
+
+  @Bean
   PasswordEncoder passwordEncoder() {
     return new BCryptPasswordEncoder();
   }
@@ -167,5 +181,14 @@ public class SecurityConfiguration {
     return new SecretKeySpec(
         securityJwtProperties.secret().getBytes(java.nio.charset.StandardCharsets.UTF_8),
         "HmacSHA256");
+  }
+
+  private boolean isInternalApiRequest(HttpServletRequest request) {
+    String servletPath = request.getServletPath();
+    if (servletPath != null && servletPath.startsWith(INTERNAL_API_PATH_PREFIX)) {
+      return true;
+    }
+    String requestUri = request.getRequestURI();
+    return requestUri != null && requestUri.startsWith(INTERNAL_API_PATH_PREFIX);
   }
 }

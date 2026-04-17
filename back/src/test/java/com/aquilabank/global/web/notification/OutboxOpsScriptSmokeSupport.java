@@ -18,22 +18,22 @@ final class OutboxOpsScriptSmokeSupport {
           "outbox-failed-events",
           repoRoot().resolve("tools/ops/outbox-find-failed-events.sh"),
           "usage: tools/ops/outbox-find-failed-events.sh",
-          List.of("http://localhost:8080", "test-outbox-ops-token", "20"),
+          List.of("http://localhost:8080", "test-outbox-ops-service-token", "20"),
           List.of(
               "--fail-with-body",
               "--silent",
               "--show-error",
               "--get",
               "--header",
-              "X-Outbox-Ops-Token: test-outbox-ops-token",
+              "Authorization: Bearer test-outbox-ops-service-token",
               "--data-urlencode",
               "limit=20",
               "http://localhost:8080/internal/api/v1/outbox/failed-events"),
           List.of(
               "tools/ops/outbox-find-failed-events.sh \\",
               "http://localhost:8080 \\",
-              "\"$OUTBOX_OPS_TOKEN\" \\",
-              "\"X-Outbox-Ops-Token: ${OUTBOX_OPS_TOKEN}\"",
+              "\"$OUTBOX_OPS_SERVICE_TOKEN\" \\",
+              "\"Authorization: Bearer ${OUTBOX_OPS_SERVICE_TOKEN}\"",
               "\"http://localhost:8080/internal/api/v1/outbox/summary\"",
               "\"http://localhost:8080/actuator/health\"",
               "OUT_OF_SERVICE",
@@ -44,7 +44,7 @@ final class OutboxOpsScriptSmokeSupport {
           "outbox-recover-stale-sending",
           repoRoot().resolve("tools/ops/outbox-recover-stale-sending.sh"),
           "usage: tools/ops/outbox-recover-stale-sending.sh",
-          List.of("http://localhost:8080", "test-outbox-ops-token"),
+          List.of("http://localhost:8080", "test-outbox-ops-service-token"),
           List.of(
               "--fail-with-body",
               "--silent",
@@ -52,14 +52,58 @@ final class OutboxOpsScriptSmokeSupport {
               "--request",
               "POST",
               "--header",
-              "X-Outbox-Ops-Token: test-outbox-ops-token",
+              "Authorization: Bearer test-outbox-ops-service-token",
               "http://localhost:8080/internal/api/v1/outbox/recovery/stale-sending"),
           List.of(
               "tools/ops/outbox-recover-stale-sending.sh \\",
               "http://localhost:8080 \\",
-              "\"$OUTBOX_OPS_TOKEN\"",
+              "\"$OUTBOX_OPS_SERVICE_TOKEN\"",
               "stale `SENDING` row 를 `PENDING` 으로 되돌리는",
               "`OUTBOX_OPS_ENABLED=false`"));
+
+  static final ScriptSpec NOTIFICATION_SUMMARY_SPEC =
+      new ScriptSpec(
+          "notification-consumer-summary",
+          repoRoot().resolve("tools/ops/notification-get-consumer-summary.sh"),
+          "usage: tools/ops/notification-get-consumer-summary.sh",
+          List.of("http://localhost:8080", "test-outbox-ops-service-token"),
+          List.of(
+              "--fail-with-body",
+              "--silent",
+              "--show-error",
+              "--get",
+              "--header",
+              "Authorization: Bearer test-outbox-ops-service-token",
+              "http://localhost:8080/internal/api/v1/outbox/notification/summary"),
+          List.of(
+              "tools/ops/notification-get-consumer-summary.sh \\",
+              "\"$OUTBOX_OPS_SERVICE_TOKEN\"",
+              "\"Authorization: Bearer ${OUTBOX_OPS_SERVICE_TOKEN}\"",
+              "\"http://localhost:8080/internal/api/v1/outbox/notification/summary\"",
+              "consumer lag 와 DLQ count"));
+
+  static final ScriptSpec NOTIFICATION_DLQ_EVENTS_SPEC =
+      new ScriptSpec(
+          "notification-dlq-events",
+          repoRoot().resolve("tools/ops/notification-find-dlq-events.sh"),
+          "usage: tools/ops/notification-find-dlq-events.sh",
+          List.of("http://localhost:8080", "test-outbox-ops-service-token", "20"),
+          List.of(
+              "--fail-with-body",
+              "--silent",
+              "--show-error",
+              "--get",
+              "--header",
+              "Authorization: Bearer test-outbox-ops-service-token",
+              "--data-urlencode",
+              "limit=20",
+              "http://localhost:8080/internal/api/v1/outbox/notification/dlq-events"),
+          List.of(
+              "tools/ops/notification-find-dlq-events.sh \\",
+              "\"$OUTBOX_OPS_SERVICE_TOKEN\"",
+              "\"Authorization: Bearer ${OUTBOX_OPS_SERVICE_TOKEN}\"",
+              "\"http://localhost:8080/internal/api/v1/outbox/notification/dlq-events\"",
+              "poison message 최근 항목"));
 
   private static final Duration SCRIPT_TIMEOUT = Duration.ofSeconds(5);
 

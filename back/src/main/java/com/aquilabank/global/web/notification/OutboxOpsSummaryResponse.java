@@ -9,6 +9,7 @@ public record OutboxOpsSummaryResponse(
     Instant oldestDispatchableAt,
     long lagSeconds,
     long failedCount,
+    long producerTimeoutFailedCount,
     long staleSendingCount) {
 
   public static OutboxOpsSummaryResponse from(OutboxOpsSummary summary) {
@@ -17,6 +18,7 @@ public record OutboxOpsSummaryResponse(
         summary.oldestDispatchableAt(),
         summary.oldestDispatchLag().toSeconds(),
         summary.failedCount(),
+        summary.producerTimeoutFailedCount(),
         summary.staleSendingCount());
   }
 }

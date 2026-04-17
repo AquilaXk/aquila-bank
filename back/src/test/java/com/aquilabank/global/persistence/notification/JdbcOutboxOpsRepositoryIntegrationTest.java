@@ -80,7 +80,7 @@ class JdbcOutboxOpsRepositoryIntegrationTest extends PostgresContainerTestSuppor
               "evt-failed-now",
               "FAILED",
               2,
-              "timeout",
+              "kafka publish timed out",
               observedAt.minusSeconds(10),
               observedAt.minusSeconds(20));
           insertOutboxEvent(
@@ -111,6 +111,7 @@ class JdbcOutboxOpsRepositoryIntegrationTest extends PostgresContainerTestSuppor
     assertThat(summary.oldestDispatchableAt()).isEqualTo(observedAt.minusSeconds(20));
     assertThat(summary.oldestDispatchLag()).isEqualTo(Duration.ofSeconds(20));
     assertThat(summary.failedCount()).isEqualTo(2L);
+    assertThat(summary.producerTimeoutFailedCount()).isEqualTo(1L);
     assertThat(summary.staleSendingCount()).isEqualTo(1L);
   }
 
