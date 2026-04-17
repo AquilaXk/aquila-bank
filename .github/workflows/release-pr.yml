@@ -166,6 +166,10 @@ jobs:
 
           if ! gh pr merge "${{ steps.release_pr.outputs.number }}" --auto --merge 2>auto-merge-error.log; then
             cat auto-merge-error.log >&2
+            if grep -q "Protected branch rules not configured for this branch" auto-merge-error.log; then
+              gh pr merge "${{ steps.release_pr.outputs.number }}" --merge
+              exit 0
+            fi
             if grep -q "GitHub Actions is not permitted to create or approve pull requests" auto-merge-error.log \
               && [[ "${TOKEN_SOURCE}" == "GITHUB_TOKEN" ]]; then
               echo "::error::Settings > Actions > General > Workflow permissions 에서 'Allow GitHub Actions to create and approve pull requests'를 켜거나 RELEASE_PR_TOKEN secret을 추가하세요." >&2
