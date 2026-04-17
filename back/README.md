@@ -77,15 +77,19 @@ tools/test/with-resource-lock.sh back-transaction-baseline \
 ./gradlew bootRun
 ```
 
-## Local Database
+## Local Infra
 
 ```bash
 cp ../.env.example ../.env
 cd ..
-docker compose up -d postgres
+docker compose up -d postgres kafka
 ```
 
-로컬 DB는 루트 [compose.yml](/Users/aquila/Custom/GitProjects/aquila-bank/compose.yml)의 `postgres:18` 컨테이너를 기준으로 사용합니다.
+루트 [compose.yml](/Users/aquila/Custom/GitProjects/aquila-bank/compose.yml)은 `postgres:18`과 단일 노드 Kafka broker를 함께 올립니다.
+
+- PostgreSQL 기본 포트: `localhost:5432`
+- Kafka 기본 포트: `localhost:9092`
+- Kafka topic은 broker 기본 auto-create를 사용하되, app 설정은 `TransferBooked`/`TransferReversed`를 분리해 consumer 충돌을 막습니다.
 
 백엔드는 [back/.env.example](/Users/aquila/Custom/GitProjects/aquila-bank/back/.env.example)를 복사한 뒤 실행합니다.
 
@@ -93,6 +97,8 @@ docker compose up -d postgres
 cp back/.env.example back/.env
 set -a
 source back/.env
+export OUTBOX_KAFKA_ENABLED=true
+export NOTIFICATION_INBOX_CONSUMER_ENABLED=true
 set +a
 ./back/gradlew -p back bootRun
 ```
@@ -101,6 +107,20 @@ set +a
 - 기본값은 `t3.micro`를 전제로 작은 커넥션 풀과 짧은 DB 타임아웃을 사용합니다.
 - 운영 기본 인증 방식은 bearer JWT 입니다.
 - `dev`/`test` 프로필에서는 필요 시 `X-Account-Id` 헤더 fallback을 사용할 수 있습니다.
+- `dev` 프로필은 `OUTBOX_KAFKA_ENABLED=true`, `NOTIFICATION_INBOX_CONSUMER_ENABLED=true`만 주면 `localhost:9092`와 기본 topic 이름을 자동 사용합니다.
+- Kafka 포트를 바꾸면 `OUTBOX_KAFKA_BOOTSTRAP_SERVERS`, `NOTIFICATION_INBOX_CONSUMER_BOOTSTRAP_SERVERS`를 같은 값으로 같이 넘깁니다.
+
+### Local Notification E2E
+
+실제 broker를 통과하는 알림 검증은 transfer write path와 outbox dispatch를 같이 봐야 합니다.
+
+```bash
+tools/test/with-resource-lock.sh back-gradle-check \
+  ./back/gradlew -p back test --tests '*NotificationKafkaE2eIntegrationTest'
+```
+
+- 위 테스트는 Testcontainers PostgreSQL + Kafka를 띄워 `transfer API -> outbox -> Kafka -> notification_inbox` 전체 경로를 검증합니다.
+- 로컬 앱을 직접 띄운 뒤 수동 확인이 필요하면 transfer 호출 후 notification API 또는 DB `notification_inbox` row를 확인합니다.
 
 ## Transfer Reversal
 
