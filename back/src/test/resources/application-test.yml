@@ -21,6 +21,15 @@ outbox:
     enabled: false
   kafka:
     enabled: false
+  ops:
+    enabled: false
+    token-header: X-Outbox-Ops-Token
+    token: ""
+    failed-list-limit: 20
+    health:
+      max-lag-seconds: 120
+      max-failed-count: 10
+      max-stale-sending-count: 0
 
 security:
   jwt:
