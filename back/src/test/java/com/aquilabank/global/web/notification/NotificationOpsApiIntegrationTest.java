@@ -4,6 +4,7 @@ import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.isOneOf;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -11,6 +12,7 @@ import com.aquilabank.domain.notification.usecase.NotificationOpsQueryUseCase;
 import com.aquilabank.global.security.InternalServiceScope;
 import com.aquilabank.global.security.InternalServiceTokenIssuer;
 import com.aquilabank.support.PostgresKafkaContainerTestSupport;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -56,6 +58,8 @@ class NotificationOpsApiIntegrationTest extends PostgresKafkaContainerTestSuppor
   @Qualifier("notificationInboxDlqKafkaTemplate") private KafkaTemplate<String, String> kafkaTemplate;
 
   @Autowired private NotificationOpsQueryUseCase notificationOpsQueryUseCase;
+
+  @Autowired private ObjectMapper objectMapper;
 
   @Autowired private InternalServiceTokenIssuer internalServiceTokenIssuer;
 
@@ -109,6 +113,31 @@ class NotificationOpsApiIntegrationTest extends PostgresKafkaContainerTestSuppor
   }
 
   @Test
+  void redrivesNotificationDlqRecordWithInternalServiceToken() throws Exception {
+    String eventKey = "transfer-booked:REDRIVE-" + System.currentTimeMillis();
+    ProducerRecord<String, String> record =
+        validDlqRecord(eventKey, "{\"transactionReference\":\"redrive\"}");
+    var sendResult = kafkaTemplate.send(record).get(5, TimeUnit.SECONDS);
+
+    mockMvc
+        .perform(
+            post("/internal/api/v1/outbox/notification/dlq-events/redrive")
+                .header("Authorization", outboxOpsAuthorization())
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .content(
+                    objectMapper.writeValueAsString(
+                        new NotificationDlqRedriveRequest(
+                            sendResult.getRecordMetadata().partition(),
+                            sendResult.getRecordMetadata().offset()))))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.eventKey").value(eventKey))
+        .andExpect(jsonPath("$.sourceTopic").value(TRANSFER_BOOKED_DLQ_TOPIC))
+        .andExpect(jsonPath("$.targetTopic").value(TRANSFER_BOOKED_TOPIC))
+        .andExpect(jsonPath("$.targetPartition").value(0))
+        .andExpect(jsonPath("$.targetOffset", greaterThanOrEqualTo(0)));
+  }
+
+  @Test
   void degradesHealthWhenNotificationLagOrDlqExists() throws Exception {
     String lagEventKey = "transfer-booked:HEALTH-" + System.currentTimeMillis();
     kafkaTemplate
@@ -119,6 +148,54 @@ class NotificationOpsApiIntegrationTest extends PostgresKafkaContainerTestSuppor
         .perform(get("/actuator/health"))
         .andExpect(status().isServiceUnavailable())
         .andExpect(jsonPath("$.status").value(isOneOf("OUT_OF_SERVICE", "DOWN")));
+  }
+
+  @Test
+  void returnsBadRequestWhenDlqOriginalTopicHeaderIsMissing() throws Exception {
+    String eventKey = "transfer-booked:REDRIVE-MISSING-" + System.currentTimeMillis();
+    ProducerRecord<String, String> record =
+        new ProducerRecord<>(TRANSFER_BOOKED_DLQ_TOPIC, eventKey, "{\"broken\":true}");
+    var sendResult = kafkaTemplate.send(record).get(5, TimeUnit.SECONDS);
+
+    mockMvc
+        .perform(
+            post("/internal/api/v1/outbox/notification/dlq-events/redrive")
+                .header("Authorization", outboxOpsAuthorization())
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .content(
+                    objectMapper.writeValueAsString(
+                        new NotificationDlqRedriveRequest(
+                            sendResult.getRecordMetadata().partition(),
+                            sendResult.getRecordMetadata().offset()))))
+        .andExpect(status().isBadRequest())
+        .andExpect(
+            jsonPath("$.message").value("notification DLQ record original topic is missing"));
+  }
+
+  @Test
+  void returnsNotFoundWhenDlqRecordDoesNotExist() throws Exception {
+    mockMvc
+        .perform(
+            post("/internal/api/v1/outbox/notification/dlq-events/redrive")
+                .header("Authorization", outboxOpsAuthorization())
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .content(
+                    objectMapper.writeValueAsString(new NotificationDlqRedriveRequest(0, 9999L))))
+        .andExpect(status().isNotFound())
+        .andExpect(
+            jsonPath("$.message")
+                .value("notification DLQ record is not found: partition=0 offset=9999"));
+  }
+
+  @Test
+  void rejectsMissingInternalServiceTokenForRedrive() throws Exception {
+    mockMvc
+        .perform(
+            post("/internal/api/v1/outbox/notification/dlq-events/redrive")
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(new NotificationDlqRedriveRequest(0, 0L))))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.message").value("internal service token is invalid"));
   }
 
   private ProducerRecord<String, String> dlqRecord(String eventKey) {
@@ -145,6 +222,20 @@ class NotificationOpsApiIntegrationTest extends PostgresKafkaContainerTestSuppor
         .add(
             KafkaHeaders.DLT_EXCEPTION_MESSAGE,
             "TransferBooked payload is invalid".getBytes(StandardCharsets.UTF_8));
+    return record;
+  }
+
+  private ProducerRecord<String, String> validDlqRecord(String eventKey, String payload) {
+    ProducerRecord<String, String> record =
+        new ProducerRecord<>(TRANSFER_BOOKED_DLQ_TOPIC, eventKey, payload);
+    record
+        .headers()
+        .add(
+            KafkaHeaders.DLT_ORIGINAL_TOPIC,
+            TRANSFER_BOOKED_TOPIC.getBytes(StandardCharsets.UTF_8));
+    record
+        .headers()
+        .add(KafkaHeaders.DLT_ORIGINAL_PARTITION, ByteBuffer.allocate(4).putInt(0).array());
     return record;
   }
 

@@ -558,6 +558,7 @@ Kafka producer 를 붙인 이후 outbox backlog 는 actuator health 와 내부 o
   - `POST /internal/api/v1/outbox/recovery/stale-sending`
   - `GET /internal/api/v1/outbox/notification/summary`
   - `GET /internal/api/v1/outbox/notification/dlq-events?limit=<n>`
+  - `POST /internal/api/v1/outbox/notification/dlq-events/redrive`
 - health endpoint:
   - `GET /actuator/health`
 
@@ -610,7 +611,7 @@ consumer lag 와 DLQ count summary 조회:
 ```bash
 tools/ops/notification-get-consumer-summary.sh \
   http://localhost:8080 \
-  "$OUTBOX_OPS_TOKEN"
+  "$OUTBOX_OPS_SERVICE_TOKEN"
 ```
 
 poison message 최근 항목 조회:
@@ -618,8 +619,18 @@ poison message 최근 항목 조회:
 ```bash
 tools/ops/notification-find-dlq-events.sh \
   http://localhost:8080 \
-  "$OUTBOX_OPS_TOKEN" \
+  "$OUTBOX_OPS_SERVICE_TOKEN" \
   20
+```
+
+preview 좌표 기준 DLQ redrive:
+
+```bash
+tools/ops/notification-redrive-dlq-event.sh \
+  http://localhost:8080 \
+  "$OUTBOX_OPS_SERVICE_TOKEN" \
+  0 \
+  12
 ```
 
 ### 직접 호출 예시
@@ -638,7 +649,7 @@ notification consumer summary 조회:
 ```bash
 curl --fail-with-body --silent --show-error \
   --get \
-  --header "X-Outbox-Ops-Token: ${OUTBOX_OPS_TOKEN}" \
+  --header "Authorization: Bearer ${OUTBOX_OPS_SERVICE_TOKEN}" \
   "http://localhost:8080/internal/api/v1/outbox/notification/summary"
 ```
 
@@ -647,9 +658,20 @@ notification DLQ preview 조회:
 ```bash
 curl --fail-with-body --silent --show-error \
   --get \
-  --header "X-Outbox-Ops-Token: ${OUTBOX_OPS_TOKEN}" \
+  --header "Authorization: Bearer ${OUTBOX_OPS_SERVICE_TOKEN}" \
   --data-urlencode "limit=20" \
   "http://localhost:8080/internal/api/v1/outbox/notification/dlq-events"
+```
+
+notification DLQ redrive:
+
+```bash
+curl --fail-with-body --silent --show-error \
+  --request POST \
+  --header "Authorization: Bearer ${OUTBOX_OPS_SERVICE_TOKEN}" \
+  --header "Content-Type: application/json" \
+  --data '{"partition":0,"offset":12}' \
+  "http://localhost:8080/internal/api/v1/outbox/notification/dlq-events/redrive"
 ```
 
 health 확인:
@@ -672,9 +694,10 @@ curl --fail-with-body --silent --show-error \
 1. `/actuator/health` 가 `503`이면 `/internal/api/v1/outbox/summary` 를 먼저 조회해 `lagSeconds`, `failedCount`, `producerTimeoutFailedCount`, `staleSendingCount` 중 초과 축을 확인합니다.
 2. `producerTimeoutFailedCount` 또는 `failedCount` 가 크면 `tools/ops/outbox-find-failed-events.sh` 로 bounded failed list 를 보고 `eventKey`, `retryCount`, `lastError` 를 먼저 확인합니다.
 3. `/internal/api/v1/outbox/notification/summary` 또는 `tools/ops/notification-get-consumer-summary.sh` 로 consumer lag 와 DLQ count 를 확인합니다.
-4. `dlqCount` 가 0보다 크면 `tools/ops/notification-find-dlq-events.sh` 로 poison message 최근 항목을 보고 `eventKey`, `originalTopic`, `errorClass`, `errorMessage`, `payloadPreview` 를 먼저 확인합니다.
-5. `staleSendingCount` 가 0보다 크면 `tools/ops/outbox-recover-stale-sending.sh` 를 한 번만 호출하고, 응답의 `recoveredCount` 와 이후 summary 변화를 확인합니다.
-6. recovery 이후에도 `lagSeconds`, `lagCount`, `failedCount` 가 계속 증가하면 producer timeout, consumer 중단, broker 연결 문제를 별도 incident 로 분리합니다.
+4. `dlqCount` 가 0보다 크면 `tools/ops/notification-find-dlq-events.sh` 로 poison message 최근 항목을 보고 `eventKey`, `partition`, `offset`, `originalTopic`, `errorClass`, `errorMessage`, `payloadPreview` 를 먼저 확인합니다.
+5. redrive 대상이 명확하면 `tools/ops/notification-redrive-dlq-event.sh` 로 preview -> redrive -> summary 순서로 한 건씩 재처리하고, 응답의 `targetTopic`, `targetPartition`, `targetOffset` 을 기록합니다.
+6. `staleSendingCount` 가 0보다 크면 `tools/ops/outbox-recover-stale-sending.sh` 를 한 번만 호출하고, 응답의 `recoveredCount` 와 이후 summary 변화를 확인합니다.
+7. recovery 이후에도 `lagSeconds`, `lagCount`, `failedCount` 가 계속 증가하면 producer timeout, consumer 중단, broker 연결 문제를 별도 incident 로 분리합니다.
 
 ### 운영 주의사항
 
@@ -684,7 +707,8 @@ curl --fail-with-body --silent --show-error \
 - `lastError` 는 outbox table 의 짧은 힌트만 남기므로, 상세 stack trace 는 앱 로그와 Kafka client 로그를 같이 봐야 합니다.
 - consumer poison message 만 DLQ 로 격리하고, broker/DB 같은 transient failure 는 main topic retry failure 로 남깁니다.
 - DLQ preview 는 최근 bounded item 만 보여주므로, 전문 payload/stack trace 가 필요하면 앱 로그와 Kafka client 로그를 같이 확인합니다.
-- DLQ 항목은 자동 재발행하지 않으므로, payload 수정이나 redrive 는 후속 작업으로 분리합니다.
+- DLQ redrive 는 source DLQ record 를 삭제하지 않고 original topic 으로 한 번 더 publish 하는 동작입니다.
+- payload 또는 참조 데이터가 그대로 잘못돼 있으면 redrive 후 같은 항목이 다시 DLQ 로 돌아올 수 있으므로, preview 에서 `errorClass`, `errorMessage`, `payloadPreview` 를 먼저 확인합니다.
 
 ### rollback 기준
 
