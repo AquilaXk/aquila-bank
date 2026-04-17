@@ -122,6 +122,12 @@ tools/test/with-resource-lock.sh back-gradle-check \
 - 위 테스트는 Testcontainers PostgreSQL + Kafka를 띄워 `transfer API -> outbox -> Kafka -> notification_inbox` 전체 경로를 검증합니다.
 - 로컬 앱을 직접 띄운 뒤 수동 확인이 필요하면 transfer 호출 후 notification API 또는 DB `notification_inbox` row를 확인합니다.
 
+## Notification Read State
+
+- JWT user 경로의 읽음 상태는 `notification_user_read_state`에 user별로 저장됩니다.
+- `notification_inbox`는 account-scoped read model 본체를 유지하고, `read_at`은 account principal/internal 경로 의미로 분리됩니다.
+- 기존 shared `read_at` 값은 user read state로 자동 backfill 하지 않으므로, 배포 이전 알림은 JWT user 기준에서 다시 unread로 보일 수 있습니다.
+
 ## Transfer Reversal
 
 기존 BOOKED 송금은 직접 수정하지 않고 reversal transaction을 추가해 취소/정정합니다.

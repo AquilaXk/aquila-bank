@@ -126,6 +126,75 @@ class NotificationApiIntegrationTest extends PostgresContainerTestSupport {
         .andExpect(jsonPath("$.message").value("notification is not found"));
   }
 
+  @Test
+  void keepsReadStateSeparatedBetweenSharedAccountUsers() throws Exception {
+    long[] userIds = new long[2];
+    long[] accountId = new long[1];
+    long[] notificationId = new long[1];
+    Instant base = Instant.parse("2026-04-17T00:00:00Z");
+    commit(
+        transactionManager,
+        () -> {
+          userIds[0] = insertUser("shared-user-a");
+          userIds[1] = insertUser("shared-user-b");
+          accountId[0] = insertAccount("shared account");
+          insertMembership(userIds[0], accountId[0], "OWNER", "ACTIVE");
+          insertMembership(userIds[1], accountId[0], "VIEWER", "ACTIVE");
+          notificationId[0] =
+              insertNotification(
+                  accountId[0], "evt-shared-1", "TransferBooked", "공동 알림", "shared", null, base);
+        });
+
+    String tokenA = issueToken("shared-user-a-subject", userIds[0]);
+    String tokenB = issueToken("shared-user-b-subject", userIds[1]);
+
+    mockMvc
+        .perform(
+            get("/api/v1/notifications/unread-count").header("Authorization", "Bearer " + tokenA))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.unreadCount").value(1));
+
+    mockMvc
+        .perform(
+            get("/api/v1/notifications/unread-count").header("Authorization", "Bearer " + tokenB))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.unreadCount").value(1));
+
+    mockMvc
+        .perform(
+            post("/api/v1/notifications/" + notificationId[0] + "/read")
+                .header("Authorization", "Bearer " + tokenA))
+        .andExpect(status().isNoContent());
+
+    mockMvc
+        .perform(get("/api/v1/notifications").header("Authorization", "Bearer " + tokenA))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(1))
+        .andExpect(jsonPath("$.items[0].notificationId").value(notificationId[0]))
+        .andExpect(jsonPath("$.items[0].read").value(true))
+        .andExpect(jsonPath("$.items[0].readAt").isNotEmpty());
+
+    mockMvc
+        .perform(get("/api/v1/notifications").header("Authorization", "Bearer " + tokenB))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(1))
+        .andExpect(jsonPath("$.items[0].notificationId").value(notificationId[0]))
+        .andExpect(jsonPath("$.items[0].read").value(false))
+        .andExpect(jsonPath("$.items[0].readAt").isEmpty());
+
+    mockMvc
+        .perform(
+            get("/api/v1/notifications/unread-count").header("Authorization", "Bearer " + tokenA))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.unreadCount").value(0));
+
+    mockMvc
+        .perform(
+            get("/api/v1/notifications/unread-count").header("Authorization", "Bearer " + tokenB))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.unreadCount").value(1));
+  }
+
   private long insertUser(String loginId) {
     Long userId =
         jdbcTemplate.queryForObject(
