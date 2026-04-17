@@ -69,6 +69,12 @@ set +a
 - 운영 기본 인증 방식은 bearer JWT 입니다.
 - `dev`/`test` 프로필에서는 필요 시 `X-Account-Id` 헤더 fallback을 사용할 수 있습니다.
 
+## Notification Read State
+
+- JWT user 경로의 읽음 상태는 `notification_user_read_state`에 user별로 저장됩니다.
+- `notification_inbox`는 account-scoped read model 본체를 유지하고, `read_at`은 account principal/internal 경로 의미로 분리됩니다.
+- 기존 shared `read_at` 값은 user read state로 자동 backfill 하지 않으므로, 배포 이전 알림은 JWT user 기준에서 다시 unread로 보일 수 있습니다.
+
 ## Transfer Reversal
 
 기존 BOOKED 송금은 직접 수정하지 않고 reversal transaction을 추가해 취소/정정합니다.
