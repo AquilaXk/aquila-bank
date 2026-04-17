@@ -96,8 +96,8 @@ export default function HomePage() {
             <p className="eyebrow">Preview Enabled</p>
             <h3>Operations Console Preview</h3>
             <p>
-              staging, production 같은-SHA 승격 이력과 운영 배포 버튼을 노출하는
-              실험 UI를 여기서 이어서 붙일 수 있습니다.
+              `main` merge 후 CI 결과와 운영 체크리스트를 노출하는 preview UI를
+              여기서 이어서 붙일 수 있습니다.
             </p>
           </article>
         ) : null}
