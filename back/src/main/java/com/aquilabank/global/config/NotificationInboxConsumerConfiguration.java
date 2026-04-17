@@ -2,10 +2,14 @@ package com.aquilabank.global.config;
 
 import com.aquilabank.domain.notification.port.NotificationInboxAppendPort;
 import com.aquilabank.domain.notification.port.NotificationOpsReadPort;
+import com.aquilabank.domain.notification.port.NotificationOpsRecoveryPort;
 import com.aquilabank.domain.notification.usecase.NotificationInboxIngestService;
 import com.aquilabank.domain.notification.usecase.NotificationInboxIngestUseCase;
 import com.aquilabank.domain.notification.usecase.NotificationOpsQueryService;
 import com.aquilabank.domain.notification.usecase.NotificationOpsQueryUseCase;
+import com.aquilabank.domain.notification.usecase.NotificationOpsRecoveryService;
+import com.aquilabank.domain.notification.usecase.NotificationOpsRecoveryUseCase;
+import com.aquilabank.global.notification.KafkaNotificationOpsRecoveryRepository;
 import com.aquilabank.global.notification.KafkaNotificationOpsRepository;
 import com.aquilabank.global.notification.NotificationInboxHealthIndicator;
 import com.aquilabank.global.notification.TransferBookedNotificationConsumer;
@@ -127,10 +131,27 @@ public class NotificationInboxConsumerConfiguration {
   }
 
   @Bean
+  @Conditional(NotificationInboxKafkaOpsCondition.class)
+  @ConditionalOnBean(name = "notificationInboxDlqKafkaTemplate")
+  NotificationOpsRecoveryPort notificationOpsRecoveryPort(
+      NotificationInboxConsumerProperties properties,
+      @Qualifier("notificationInboxDlqKafkaTemplate") KafkaTemplate<String, String> notificationInboxDlqKafkaTemplate) {
+    return new KafkaNotificationOpsRecoveryRepository(
+        properties, notificationInboxDlqKafkaTemplate);
+  }
+
+  @Bean
   @ConditionalOnBean(NotificationOpsReadPort.class)
   NotificationOpsQueryUseCase notificationOpsQueryUseCase(
       NotificationOpsReadPort notificationOpsReadPort) {
     return new NotificationOpsQueryService(notificationOpsReadPort);
+  }
+
+  @Bean
+  @ConditionalOnBean(NotificationOpsRecoveryPort.class)
+  NotificationOpsRecoveryUseCase notificationOpsRecoveryUseCase(
+      NotificationOpsRecoveryPort notificationOpsRecoveryPort) {
+    return new NotificationOpsRecoveryService(notificationOpsRecoveryPort);
   }
 
   @Bean

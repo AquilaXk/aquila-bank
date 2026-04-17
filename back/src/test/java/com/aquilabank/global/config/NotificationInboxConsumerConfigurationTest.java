@@ -63,6 +63,8 @@ class NotificationInboxConsumerConfigurationTest {
               assertThat(context).hasBean("notificationInboxDlqKafkaTemplate");
               assertThat(context).hasBean("notificationOpsReadPort");
               assertThat(context).hasBean("notificationOpsQueryUseCase");
+              assertThat(context).hasBean("notificationOpsRecoveryPort");
+              assertThat(context).hasBean("notificationOpsRecoveryUseCase");
               assertThat(context).hasBean("notificationInboxHealthIndicator");
             });
   }
