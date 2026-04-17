@@ -12,6 +12,7 @@ import com.aquilabank.domain.ledger.exception.CommandConflictException;
 import com.aquilabank.domain.ledger.exception.CurrencyMismatchException;
 import com.aquilabank.domain.ledger.exception.InsufficientBalanceException;
 import com.aquilabank.domain.ledger.exception.SnapshotNotFoundException;
+import com.aquilabank.domain.notification.exception.NotificationNotFoundException;
 import com.aquilabank.domain.transaction.exception.TransactionDetailNotFoundException;
 import com.aquilabank.global.security.BootstrapApiAccessDeniedException;
 import com.aquilabank.global.security.BootstrapHeaderAuthProperties;
@@ -100,6 +101,7 @@ public class ApiExceptionHandler {
     AuthStatusChangeAuditNotFoundException.class,
     AuthUserNotFoundException.class,
     UserAccountMembershipNotFoundException.class,
+    NotificationNotFoundException.class,
     TransactionDetailNotFoundException.class
   })
   ResponseEntity<ApiErrorResponse> handleNotFound(RuntimeException ex, HttpServletRequest request) {
