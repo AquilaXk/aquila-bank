@@ -2,14 +2,23 @@ package com.aquilabank.global.web.ledger;
 
 import com.aquilabank.domain.ledger.model.TransferCommand;
 import com.aquilabank.domain.ledger.model.TransferResult;
+import com.aquilabank.domain.ledger.model.TransferReversalCommand;
+import com.aquilabank.domain.ledger.model.TransferReversalReason;
+import com.aquilabank.domain.ledger.model.TransferReversalResult;
 import com.aquilabank.domain.ledger.usecase.TransferCommandUseCase;
-import com.aquilabank.global.web.security.CurrentAccountId;
+import com.aquilabank.domain.ledger.usecase.TransferReversalUseCase;
+import com.aquilabank.global.security.AuthenticatedRequestPrincipal;
+import com.aquilabank.global.web.security.CurrentAuthenticatedPrincipal;
+import com.aquilabank.global.web.security.RequestAccountAuthorizationService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
+import java.time.Instant;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -23,17 +32,26 @@ import org.springframework.web.bind.annotation.RestController;
 public class TransferCommandController {
 
   private final TransferCommandUseCase transferCommandUseCase;
+  private final TransferReversalUseCase transferReversalUseCase;
+  private final RequestAccountAuthorizationService requestAccountAuthorizationService;
 
-  public TransferCommandController(TransferCommandUseCase transferCommandUseCase) {
+  public TransferCommandController(
+      TransferCommandUseCase transferCommandUseCase,
+      TransferReversalUseCase transferReversalUseCase,
+      RequestAccountAuthorizationService requestAccountAuthorizationService) {
     this.transferCommandUseCase = transferCommandUseCase;
+    this.transferReversalUseCase = transferReversalUseCase;
+    this.requestAccountAuthorizationService = requestAccountAuthorizationService;
   }
 
   @PostMapping
   public TransferResponse transfer(
-      @CurrentAccountId long sourceAccountId,
+      @CurrentAuthenticatedPrincipal AuthenticatedRequestPrincipal principal,
       @RequestHeader("Idempotency-Key") String idempotencyKey,
       @Valid @RequestBody TransferRequest request) {
-    // 인증 principal과 HTTP body/header를 domain command로 조립
+    long sourceAccountId =
+        requestAccountAuthorizationService.resolveTransferSourceAccountId(
+            principal, request.sourceAccountId());
     TransferResult result =
         transferCommandUseCase.transfer(
             new TransferCommand(
@@ -46,14 +64,41 @@ public class TransferCommandController {
     return TransferResponse.from(result);
   }
 
+  @PostMapping("/{transactionReference}/reversal")
+  public TransferReversalResponse reverse(
+      @CurrentAuthenticatedPrincipal AuthenticatedRequestPrincipal principal,
+      @PathVariable String transactionReference,
+      @RequestHeader("Idempotency-Key") String idempotencyKey,
+      @Valid @RequestBody TransferReversalRequest request) {
+    long sourceAccountId =
+        requestAccountAuthorizationService.resolveTransferSourceAccountId(
+            principal, request.sourceAccountId());
+    TransferReversalResult result =
+        transferReversalUseCase.reverse(
+            new TransferReversalCommand(
+                transactionReference,
+                sourceAccountId,
+                request.reversalReason(),
+                request.summary(),
+                idempotencyKey));
+    return TransferReversalResponse.from(result);
+  }
+
   /** 송금 요청 body */
   public record TransferRequest(
+      @Positive(message = "sourceAccountId must be positive") long sourceAccountId,
       @Positive(message = "targetAccountId must be positive") long targetAccountId,
       @Positive(message = "amountMinor must be positive") long amountMinor,
       @NotBlank(message = "currencyCode is required") @Pattern(
               regexp = "^[A-Z]{3}$",
               message = "currencyCode must be a 3-letter uppercase code")
           String currencyCode,
+      @NotBlank(message = "summary is required") @Size(max = 120, message = "summary must be 120 characters or less") String summary) {}
+
+  /** 송금 reversal 요청 body */
+  public record TransferReversalRequest(
+      @Positive(message = "sourceAccountId must be positive") long sourceAccountId,
+      @NotNull(message = "reversalReason is required") TransferReversalReason reversalReason,
       @NotBlank(message = "summary is required") @Size(max = 120, message = "summary must be 120 characters or less") String summary) {}
 
   /** 송금 완료 응답 */
@@ -70,6 +115,32 @@ public class TransferCommandController {
     static TransferResponse from(TransferResult result) {
       return new TransferResponse(
           result.transactionReference(),
+          result.sourceAccountId(),
+          result.targetAccountId(),
+          result.amountMinor(),
+          result.currencyCode(),
+          result.availableBalanceAfterMinor(),
+          result.bookedAt(),
+          result.status());
+    }
+  }
+
+  /** 송금 reversal 완료 응답 */
+  public record TransferReversalResponse(
+      String originalTransactionReference,
+      String reversalTransactionReference,
+      long sourceAccountId,
+      long targetAccountId,
+      long amountMinor,
+      String currencyCode,
+      long availableBalanceAfterMinor,
+      Instant bookedAt,
+      String status) {
+
+    static TransferReversalResponse from(TransferReversalResult result) {
+      return new TransferReversalResponse(
+          result.originalTransactionReference(),
+          result.reversalTransactionReference(),
           result.sourceAccountId(),
           result.targetAccountId(),
           result.amountMinor(),

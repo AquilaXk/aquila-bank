@@ -17,3 +17,25 @@ security:
     secret: ${SECURITY_JWT_SECRET:dev-local-jwt-secret-dev-local-jwt-secret}
   bootstrap-header-auth:
     enabled: ${SECURITY_BOOTSTRAP_HEADER_AUTH_ENABLED:true}
+  account-bootstrap-api:
+    enabled: ${SECURITY_ACCOUNT_BOOTSTRAP_API_ENABLED:true}
+    token: ${SECURITY_ACCOUNT_BOOTSTRAP_API_TOKEN:dev-bootstrap-api-token}
+  auth-bootstrap-api:
+    enabled: ${SECURITY_AUTH_BOOTSTRAP_API_ENABLED:true}
+    token: ${SECURITY_AUTH_BOOTSTRAP_API_TOKEN:dev-auth-bootstrap-api-token}
+
+outbox:
+  kafka:
+    bootstrap-servers: ${OUTBOX_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    topic:
+      default-name: ${OUTBOX_KAFKA_TOPIC_DEFAULT:bank.notification.outbox.v1}
+      event-type-overrides:
+        TransferBooked: ${OUTBOX_KAFKA_TOPIC_TRANSFER_BOOKED:bank.transfer.booked.v1}
+        TransferReversed: ${OUTBOX_KAFKA_TOPIC_TRANSFER_REVERSED:bank.transfer.reversed.v1}
+
+notification:
+  inbox:
+    consumer:
+      bootstrap-servers: ${NOTIFICATION_INBOX_CONSUMER_BOOTSTRAP_SERVERS:localhost:9092}
+      transfer-booked:
+        topic: ${NOTIFICATION_INBOX_CONSUMER_TRANSFER_BOOKED_TOPIC:bank.transfer.booked.v1}

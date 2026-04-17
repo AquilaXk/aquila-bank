@@ -9,10 +9,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.aquilabank.domain.ledger.model.TransferResult;
+import com.aquilabank.domain.ledger.model.TransferReversalResult;
 import com.aquilabank.domain.ledger.usecase.TransferCommandUseCase;
+import com.aquilabank.domain.ledger.usecase.TransferReversalUseCase;
 import com.aquilabank.global.security.BootstrapHeaderAuthenticationFilter;
 import com.aquilabank.global.web.ApiExceptionHandler;
-import com.aquilabank.global.web.security.CurrentAccountIdArgumentResolver;
+import com.aquilabank.global.web.security.CurrentAuthenticatedPrincipalArgumentResolver;
+import com.aquilabank.global.web.security.RequestAccountAuthorizationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -22,15 +25,23 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 class TransferCommandControllerTest {
 
   private TransferCommandUseCase transferCommandUseCase;
+  private TransferReversalUseCase transferReversalUseCase;
+  private RequestAccountAuthorizationService requestAccountAuthorizationService;
   private MockMvc mockMvc;
 
   @BeforeEach
   void setUp() {
     transferCommandUseCase = mock(TransferCommandUseCase.class);
+    transferReversalUseCase = mock(TransferReversalUseCase.class);
+    requestAccountAuthorizationService = mock(RequestAccountAuthorizationService.class);
     mockMvc =
-        MockMvcBuilders.standaloneSetup(new TransferCommandController(transferCommandUseCase))
+        MockMvcBuilders.standaloneSetup(
+                new TransferCommandController(
+                    transferCommandUseCase,
+                    transferReversalUseCase,
+                    requestAccountAuthorizationService))
             .addFilters(new BootstrapHeaderAuthenticationFilter("X-Account-Id", "X-Subject"))
-            .setCustomArgumentResolvers(new CurrentAccountIdArgumentResolver())
+            .setCustomArgumentResolvers(new CurrentAuthenticatedPrincipalArgumentResolver())
             .setControllerAdvice(new ApiExceptionHandler())
             .build();
   }
@@ -48,6 +59,9 @@ class TransferCommandControllerTest {
                 8500L,
                 java.time.Instant.parse("2026-04-16T10:00:00Z"),
                 "BOOKED"));
+    when(requestAccountAuthorizationService.resolveTransferSourceAccountId(
+            org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(101L)))
+        .thenReturn(101L);
 
     mockMvc
         .perform(
@@ -58,6 +72,7 @@ class TransferCommandControllerTest {
                 .content(
                     """
                     {
+                      "sourceAccountId": 101,
                       "targetAccountId": 202,
                       "amountMinor": 1500,
                       "currencyCode": "KRW",
@@ -74,6 +89,48 @@ class TransferCommandControllerTest {
   }
 
   @Test
+  void reversesTransferUsingAuthenticatedAccountAndIdempotencyKey() throws Exception {
+    when(transferReversalUseCase.reverse(
+            argThat(command -> "TRX-1".equals(command.originalTransactionReference()))))
+        .thenReturn(
+            new TransferReversalResult(
+                "TRX-1",
+                "TRX-2",
+                101L,
+                202L,
+                1500L,
+                "KRW",
+                10_000L,
+                java.time.Instant.parse("2026-04-16T10:10:00Z"),
+                "REVERSED"));
+    when(requestAccountAuthorizationService.resolveTransferSourceAccountId(
+            org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(101L)))
+        .thenReturn(101L);
+
+    mockMvc
+        .perform(
+            post("/api/v1/transfers/TRX-1/reversal")
+                .header("X-Account-Id", "101")
+                .header("Idempotency-Key", "reversal-001")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "sourceAccountId": 101,
+                      "reversalReason": "CANCEL",
+                      "summary": "cancel transfer"
+                    }
+                    """))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.originalTransactionReference").value("TRX-1"))
+        .andExpect(jsonPath("$.reversalTransactionReference").value("TRX-2"))
+        .andExpect(jsonPath("$.availableBalanceAfterMinor").value(10000));
+
+    verify(transferReversalUseCase)
+        .reverse(argThat(command -> "reversal-001".equals(command.idempotencyKey())));
+  }
+
+  @Test
   void rejectsMissingAuthenticationHeader() throws Exception {
     mockMvc
         .perform(
@@ -83,6 +140,7 @@ class TransferCommandControllerTest {
                 .content(
                     """
                     {
+                      "sourceAccountId": 101,
                       "targetAccountId": 202,
                       "amountMinor": 1500,
                       "currencyCode": "KRW",
@@ -103,6 +161,7 @@ class TransferCommandControllerTest {
                 .content(
                     """
                     {
+                      "sourceAccountId": 0,
                       "targetAccountId": 101,
                       "amountMinor": 0,
                       "currencyCode": "krw",

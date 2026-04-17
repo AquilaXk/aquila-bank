@@ -38,40 +38,34 @@ class TransferCommandApiIntegrationTest extends PostgresContainerTestSupport {
   @Autowired private PlatformTransactionManager transactionManager;
 
   private MockMvc mockMvc;
+  private long sourceAccountId;
+  private long targetAccountId;
 
   @BeforeEach
-  void setUpDatabase() {
+  void setUpDatabase() throws Exception {
     mockMvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
-    commit(
-        transactionManager,
-        () -> {
-          resetBankingTables(jdbcTemplate);
-          seedSnapshot(101L, 10_000L, "KRW");
-          seedSnapshot(202L, 5_000L, "KRW");
-        });
+    resetBankingTables(jdbcTemplate);
+
+    AccountBootstrapResponseView sourceAccount = bootstrapAccount("source account", 10_000L);
+    AccountBootstrapResponseView targetAccount = bootstrapAccount("target account", 0L);
+
+    sourceAccountId = sourceAccount.accountId();
+    targetAccountId = targetAccount.accountId();
   }
 
   @Test
   void createsTransferAndPersistsLedgerReadModelOutboxAndIdempotency() throws Exception {
-    TransferResponseView response =
-        invokeTransfer(
-            "transfer-001",
-            """
-            {
-              "targetAccountId": 202,
-              "amountMinor": 1500,
-              "currencyCode": "KRW",
-              "summary": "rent"
-            }
-            """);
+    TransferResponseView response = invokeTransfer("transfer-001", targetAccountId, 1_500L, "rent");
 
-    assertEquals(101L, response.sourceAccountId());
-    assertEquals(202L, response.targetAccountId());
+    assertEquals(sourceAccountId, response.sourceAccountId());
+    assertEquals(targetAccountId, response.targetAccountId());
     assertEquals(8_500L, response.availableBalanceAfterMinor());
+    assertEquals("transfer-001-request", response.requestId());
     assertEquals(2L, countRows("ledger_entry", response.transactionReference()));
     assertEquals(2L, countRows("transaction_read_model", response.transactionReference()));
-    assertEquals(8_500L, balanceOf(101L));
-    assertEquals(6_500L, balanceOf(202L));
+    assertEquals(8_500L, balanceOf(sourceAccountId));
+    assertEquals(1_500L, balanceOf(targetAccountId));
+    assertEquals(2L, countTraceRows(response.requestId()));
 
     Map<String, Object> commandState = idempotencyState("transfer-001");
     assertEquals("COMPLETED", commandState.get("processing_status"));
@@ -87,28 +81,9 @@ class TransferCommandApiIntegrationTest extends PostgresContainerTestSupport {
 
   @Test
   void reusesCompletedResponseForSameIdempotencyKeyWithoutDuplicatingWriteRows() throws Exception {
-    TransferResponseView first =
-        invokeTransfer(
-            "transfer-002",
-            """
-            {
-              "targetAccountId": 202,
-              "amountMinor": 900,
-              "currencyCode": "KRW",
-              "summary": "utilities"
-            }
-            """);
+    TransferResponseView first = invokeTransfer("transfer-002", targetAccountId, 900L, "utilities");
     TransferResponseView second =
-        invokeTransfer(
-            "transfer-002",
-            """
-            {
-              "targetAccountId": 202,
-              "amountMinor": 900,
-              "currencyCode": "KRW",
-              "summary": "utilities"
-            }
-            """);
+        invokeTransfer("transfer-002", targetAccountId, 900L, "utilities");
 
     assertEquals(first.transactionReference(), second.transactionReference());
     assertEquals(2L, countRows("ledger_entry", first.transactionReference()));
@@ -119,24 +94,27 @@ class TransferCommandApiIntegrationTest extends PostgresContainerTestSupport {
 
   @Test
   void rollsBackEntireTransactionWhenBalanceIsInsufficient() throws Exception {
-    commit(transactionManager, () -> updateBalance(101L, 100L));
+    commit(transactionManager, () -> updateBalance(sourceAccountId, 100L));
 
     MvcResult result =
         mockMvc
             .perform(
                 post("/api/v1/transfers")
-                    .header("X-Account-Id", "101")
+                    .header("X-Account-Id", String.valueOf(sourceAccountId))
+                    .header("X-Request-Id", "transfer-003-request")
                     .header("Idempotency-Key", "transfer-003")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         """
                     {
-                      "targetAccountId": 202,
+                      "sourceAccountId": %d,
+                      "targetAccountId": %d,
                       "amountMinor": 1500,
                       "currencyCode": "KRW",
                       "summary": "rent"
                     }
-                    """))
+                    """
+                            .formatted(sourceAccountId, targetAccountId)))
             .andReturn();
 
     assertEquals(409, result.getResponse().getStatus(), result.getResponse().getContentAsString());
@@ -147,55 +125,179 @@ class TransferCommandApiIntegrationTest extends PostgresContainerTestSupport {
             .get("message")
             .asText());
 
-    assertEquals(0L, totalCount("ledger_entry"));
-    assertEquals(0L, totalCount("transaction_read_model"));
+    assertEquals(1L, totalCount("ledger_entry"));
+    assertEquals(1L, totalCount("transaction_read_model"));
     assertEquals(0L, totalCount("outbox_event"));
     assertEquals(0L, totalCount("command_idempotency"));
-    assertEquals(100L, balanceOf(101L));
-    assertEquals(5_000L, balanceOf(202L));
+    assertEquals(100L, balanceOf(sourceAccountId));
+    assertEquals(0L, balanceOf(targetAccountId));
   }
 
-  private TransferResponseView invokeTransfer(String idempotencyKey, String body) throws Exception {
+  @Test
+  void reversesTransferAndPersistsReversalLedgerReadModelOutboxAndIdempotency() throws Exception {
+    TransferResponseView booked = invokeTransfer("transfer-004", targetAccountId, 1_500L, "rent");
+
+    TransferReversalResponseView reversed =
+        invokeReversal(booked.transactionReference(), "reversal-001", "CANCEL", "cancel rent");
+
+    assertEquals(booked.transactionReference(), reversed.originalTransactionReference());
+    assertEquals(sourceAccountId, reversed.sourceAccountId());
+    assertEquals(targetAccountId, reversed.targetAccountId());
+    assertEquals(10_000L, reversed.availableBalanceAfterMinor());
+    assertEquals("reversal-001-request", reversed.requestId());
+    assertEquals(2L, countRows("ledger_entry", booked.transactionReference()));
+    assertEquals(2L, countRows("ledger_entry", reversed.reversalTransactionReference()));
+    assertEquals(2L, countRows("transaction_read_model", reversed.reversalTransactionReference()));
+    assertEquals(2L, transactionStatusCount(booked.transactionReference(), "REVERSED"));
+    assertEquals(10_000L, balanceOf(sourceAccountId));
+    assertEquals(0L, balanceOf(targetAccountId));
+    assertEquals(1L, transferReversalCount(booked.transactionReference()));
+    assertEquals(2L, countTraceRows(reversed.requestId()));
+
+    Map<String, Object> commandState = idempotencyState("reversal-001");
+    assertEquals("COMPLETED", commandState.get("processing_status"));
+    assertEquals(200, ((Number) commandState.get("response_code")).intValue());
+
+    Map<String, Object> outboxState = outboxState(reversed.reversalTransactionReference());
+    assertEquals("TRANSFER", outboxState.get("aggregate_type"));
+    assertEquals("TransferReversed", outboxState.get("event_type"));
+    assertEquals("PENDING", outboxState.get("publish_status"));
+    assertTrue(String.valueOf(outboxState.get("payload")).contains(booked.transactionReference()));
+    assertTrue(
+        String.valueOf(outboxState.get("payload"))
+            .contains(reversed.reversalTransactionReference()));
+  }
+
+  @Test
+  void rejectsDuplicateReversalForSameOriginalTransfer() throws Exception {
+    TransferResponseView booked =
+        invokeTransfer("transfer-005", targetAccountId, 1_200L, "tuition");
+    TransferReversalResponseView reversed =
+        invokeReversal(booked.transactionReference(), "reversal-002", "CORRECTION", "fix tuition");
+
     MvcResult result =
         mockMvc
             .perform(
-                post("/api/v1/transfers")
-                    .header("X-Account-Id", "101")
-                    .header("Idempotency-Key", idempotencyKey)
+                post("/api/v1/transfers/%s/reversal".formatted(booked.transactionReference()))
+                    .header("X-Account-Id", String.valueOf(sourceAccountId))
+                    .header("X-Request-Id", "reversal-003-request")
+                    .header("Idempotency-Key", "reversal-003")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content(body))
+                    .content(
+                        """
+                        {
+                          "sourceAccountId": %d,
+                          "reversalReason": "CANCEL",
+                          "summary": "duplicate cancel"
+                        }
+                        """
+                            .formatted(sourceAccountId)))
+            .andReturn();
+
+    assertEquals(409, result.getResponse().getStatus(), result.getResponse().getContentAsString());
+    assertEquals(
+        "transfer is already reversed",
+        objectMapper
+            .readTree(result.getResponse().getContentAsByteArray())
+            .get("message")
+            .asText());
+    assertEquals(1L, transferReversalCount(booked.transactionReference()));
+    assertEquals(2L, countRows("ledger_entry", reversed.reversalTransactionReference()));
+    assertEquals(1L, outboxCount(reversed.reversalTransactionReference()));
+    assertEquals(0L, idempotencyCount("reversal-003"));
+  }
+
+  private AccountBootstrapResponseView bootstrapAccount(
+      String displayName, long initialBalanceMinor) throws Exception {
+    MvcResult result =
+        mockMvc
+            .perform(
+                post("/internal/api/v1/accounts/bootstrap")
+                    .header("X-Request-Id", "bootstrap-%s".formatted(displayName.replace(" ", "-")))
+                    .header("X-Bootstrap-Token", "test-bootstrap-api-token")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                          "displayName": "%s",
+                          "currencyCode": "KRW",
+                          "initialBalanceMinor": %d
+                        }
+                        """
+                            .formatted(displayName, initialBalanceMinor)))
             .andReturn();
 
     assertEquals(200, result.getResponse().getStatus(), result.getResponse().getContentAsString());
 
     return objectMapper.readValue(
-        result.getResponse().getContentAsByteArray(), TransferResponseView.class);
+        result.getResponse().getContentAsByteArray(), AccountBootstrapResponseView.class);
   }
 
-  private void seedSnapshot(long accountId, long availableBalanceMinor, String currencyCode) {
-    jdbcTemplate.update(
-        """
-        INSERT INTO account_balance_snapshot (
-            account_id,
-            last_applied_ledger_entry_id,
-            available_balance_minor,
-            pending_balance_minor,
-            currency_code,
-            updated_at
-        )
-        VALUES (
-            :accountId,
-            0,
-            :availableBalanceMinor,
-            0,
-            :currencyCode,
-            CURRENT_TIMESTAMP
-        )
-        """,
-        new MapSqlParameterSource()
-            .addValue("accountId", accountId)
-            .addValue("availableBalanceMinor", availableBalanceMinor)
-            .addValue("currencyCode", currencyCode));
+  private TransferResponseView invokeTransfer(
+      String idempotencyKey, long targetAccountId, long amountMinor, String summary)
+      throws Exception {
+    String requestId = idempotencyKey + "-request";
+    MvcResult result =
+        mockMvc
+            .perform(
+                post("/api/v1/transfers")
+                    .header("X-Account-Id", String.valueOf(sourceAccountId))
+                    .header("X-Request-Id", requestId)
+                    .header("Idempotency-Key", idempotencyKey)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                          "sourceAccountId": %d,
+                          "targetAccountId": %d,
+                          "amountMinor": %d,
+                          "currencyCode": "KRW",
+                          "summary": "%s"
+                        }
+                        """
+                            .formatted(sourceAccountId, targetAccountId, amountMinor, summary)))
+            .andReturn();
+
+    assertEquals(200, result.getResponse().getStatus(), result.getResponse().getContentAsString());
+
+    return new TransferResponseView(
+        objectMapper.readValue(
+            result.getResponse().getContentAsByteArray(), TransferResponseBody.class),
+        result.getResponse().getHeader("X-Request-Id"));
+  }
+
+  private TransferReversalResponseView invokeReversal(
+      String originalTransactionReference,
+      String idempotencyKey,
+      String reversalReason,
+      String summary)
+      throws Exception {
+    String requestId = idempotencyKey + "-request";
+    MvcResult result =
+        mockMvc
+            .perform(
+                post("/api/v1/transfers/%s/reversal".formatted(originalTransactionReference))
+                    .header("X-Account-Id", String.valueOf(sourceAccountId))
+                    .header("X-Request-Id", requestId)
+                    .header("Idempotency-Key", idempotencyKey)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                          "sourceAccountId": %d,
+                          "reversalReason": "%s",
+                          "summary": "%s"
+                        }
+                        """
+                            .formatted(sourceAccountId, reversalReason, summary)))
+            .andReturn();
+
+    assertEquals(200, result.getResponse().getStatus(), result.getResponse().getContentAsString());
+
+    return new TransferReversalResponseView(
+        objectMapper.readValue(
+            result.getResponse().getContentAsByteArray(), TransferReversalResponseBody.class),
+        result.getResponse().getHeader("X-Request-Id"));
   }
 
   private void updateBalance(long accountId, long availableBalanceMinor) {
@@ -246,6 +348,32 @@ class TransferCommandApiIntegrationTest extends PostgresContainerTestSupport {
         Long.class);
   }
 
+  private long transferReversalCount(String originalTransactionReference) {
+    return jdbcTemplate.queryForObject(
+        """
+        SELECT COUNT(*)
+        FROM transfer_reversal
+        WHERE original_transaction_reference = :originalTransactionReference
+        """,
+        new MapSqlParameterSource()
+            .addValue("originalTransactionReference", originalTransactionReference),
+        Long.class);
+  }
+
+  private long transactionStatusCount(String transactionReference, String transactionStatus) {
+    return jdbcTemplate.queryForObject(
+        """
+        SELECT COUNT(*)
+        FROM transaction_read_model
+        WHERE transaction_reference = :transactionReference
+          AND transaction_status = :transactionStatus
+        """,
+        new MapSqlParameterSource()
+            .addValue("transactionReference", transactionReference)
+            .addValue("transactionStatus", transactionStatus),
+        Long.class);
+  }
+
   private long idempotencyCount(String idempotencyKey) {
     return jdbcTemplate.queryForObject(
         """
@@ -254,6 +382,17 @@ class TransferCommandApiIntegrationTest extends PostgresContainerTestSupport {
         WHERE idempotency_key = :idempotencyKey
         """,
         new MapSqlParameterSource().addValue("idempotencyKey", idempotencyKey),
+        Long.class);
+  }
+
+  private long countTraceRows(String requestId) {
+    return jdbcTemplate.queryForObject(
+        """
+        SELECT COUNT(*)
+        FROM ledger_entry
+        WHERE trace_id = :requestId
+        """,
+        new MapSqlParameterSource().addValue("requestId", requestId),
         Long.class);
   }
 
@@ -280,7 +419,49 @@ class TransferCommandApiIntegrationTest extends PostgresContainerTestSupport {
         new MapSqlParameterSource().addValue("transactionReference", transactionReference));
   }
 
-  private record TransferResponseView(
+  private record TransferResponseView(TransferResponseBody body, String requestId) {
+
+    private String transactionReference() {
+      return body.transactionReference();
+    }
+
+    private long sourceAccountId() {
+      return body.sourceAccountId();
+    }
+
+    private long targetAccountId() {
+      return body.targetAccountId();
+    }
+
+    private long availableBalanceAfterMinor() {
+      return body.availableBalanceAfterMinor();
+    }
+  }
+
+  private record TransferReversalResponseView(TransferReversalResponseBody body, String requestId) {
+
+    private String originalTransactionReference() {
+      return body.originalTransactionReference();
+    }
+
+    private String reversalTransactionReference() {
+      return body.reversalTransactionReference();
+    }
+
+    private long sourceAccountId() {
+      return body.sourceAccountId();
+    }
+
+    private long targetAccountId() {
+      return body.targetAccountId();
+    }
+
+    private long availableBalanceAfterMinor() {
+      return body.availableBalanceAfterMinor();
+    }
+  }
+
+  private record TransferResponseBody(
       String transactionReference,
       long sourceAccountId,
       long targetAccountId,
@@ -289,4 +470,24 @@ class TransferCommandApiIntegrationTest extends PostgresContainerTestSupport {
       long availableBalanceAfterMinor,
       Instant bookedAt,
       String status) {}
+
+  private record TransferReversalResponseBody(
+      String originalTransactionReference,
+      String reversalTransactionReference,
+      long sourceAccountId,
+      long targetAccountId,
+      long amountMinor,
+      String currencyCode,
+      long availableBalanceAfterMinor,
+      Instant bookedAt,
+      String status) {}
+
+  private record AccountBootstrapResponseView(
+      long accountId,
+      String accountNumber,
+      String displayName,
+      String currencyCode,
+      long availableBalanceMinor,
+      String accountStatus,
+      Instant createdAt) {}
 }

@@ -19,9 +19,31 @@ outbox:
   poller:
     # scheduled dispatch는 끄고 테스트가 retry 타이밍을 직접 제어하게 합니다.
     enabled: false
+  kafka:
+    enabled: false
+  ops:
+    enabled: false
+    token-header: X-Outbox-Ops-Token
+    token: ""
+    failed-list-limit: 20
+    health:
+      max-lag-seconds: 120
+      max-failed-count: 10
+      max-stale-sending-count: 0
 
 security:
   jwt:
     secret: test-local-jwt-secret-test-local-jwt-secret
+    refresh-token-ttl-seconds: 1209600
+  login-protection:
+    max-failures: 5
+    lock-seconds: 900
+    reset-window-seconds: 900
   bootstrap-header-auth:
     enabled: true
+  account-bootstrap-api:
+    enabled: true
+    token: test-bootstrap-api-token
+  auth-bootstrap-api:
+    enabled: true
+    token: test-auth-bootstrap-api-token

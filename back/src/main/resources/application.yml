@@ -60,6 +60,8 @@ management:
       show-details: never
 
 logging:
+  pattern:
+    level: '%5p [requestId:%X{requestId:-}]'
   level:
     root: INFO
 
@@ -71,12 +73,72 @@ outbox:
     batch-size: ${OUTBOX_POLLER_BATCH_SIZE:20}
     stale-after-seconds: ${OUTBOX_POLLER_STALE_AFTER_SECONDS:30}
     max-retry-delay-seconds: ${OUTBOX_POLLER_MAX_RETRY_DELAY_SECONDS:60}
+  kafka:
+    enabled: ${OUTBOX_KAFKA_ENABLED:false}
+    bootstrap-servers: ${OUTBOX_KAFKA_BOOTSTRAP_SERVERS:}
+    send-timeout-ms: ${OUTBOX_KAFKA_SEND_TIMEOUT_MS:5000}
+    topic:
+      default-name: ${OUTBOX_KAFKA_TOPIC_DEFAULT:}
+      event-type-overrides:
+        TransferBooked: ${OUTBOX_KAFKA_TOPIC_TRANSFER_BOOKED:}
+        TransferReversed: ${OUTBOX_KAFKA_TOPIC_TRANSFER_REVERSED:}
+    serializer:
+      key-class: ${OUTBOX_KAFKA_KEY_SERIALIZER:org.apache.kafka.common.serialization.StringSerializer}
+      value-class: ${OUTBOX_KAFKA_VALUE_SERIALIZER:org.apache.kafka.common.serialization.StringSerializer}
+    retry:
+      retries: ${OUTBOX_KAFKA_PRODUCER_RETRIES:3}
+      retry-backoff-ms: ${OUTBOX_KAFKA_PRODUCER_RETRY_BACKOFF_MS:1000}
+      delivery-timeout-ms: ${OUTBOX_KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS:30000}
+      request-timeout-ms: ${OUTBOX_KAFKA_PRODUCER_REQUEST_TIMEOUT_MS:3000}
+    producer:
+      client-id: ${OUTBOX_KAFKA_PRODUCER_CLIENT_ID:aquila-bank-outbox-producer}
+      acks: ${OUTBOX_KAFKA_PRODUCER_ACKS:all}
+      enable-idempotence: ${OUTBOX_KAFKA_PRODUCER_ENABLE_IDEMPOTENCE:true}
+      max-in-flight-requests-per-connection: ${OUTBOX_KAFKA_PRODUCER_MAX_IN_FLIGHT:1}
+  ops:
+    enabled: ${OUTBOX_OPS_ENABLED:false}
+    token-header: ${OUTBOX_OPS_TOKEN_HEADER:X-Outbox-Ops-Token}
+    token: ${OUTBOX_OPS_TOKEN:}
+    failed-list-limit: ${OUTBOX_OPS_FAILED_LIST_LIMIT:20}
+    health:
+      max-lag-seconds: ${OUTBOX_OPS_HEALTH_MAX_LAG_SECONDS:120}
+      max-failed-count: ${OUTBOX_OPS_HEALTH_MAX_FAILED_COUNT:10}
+      max-stale-sending-count: ${OUTBOX_OPS_HEALTH_MAX_STALE_SENDING_COUNT:0}
+
+notification:
+  sse:
+    connection-timeout-ms: ${NOTIFICATION_SSE_CONNECTION_TIMEOUT_MS:1800000}
+    heartbeat-interval-ms: ${NOTIFICATION_SSE_HEARTBEAT_INTERVAL_MS:10000}
+    reconnect-delay-ms: ${NOTIFICATION_SSE_RECONNECT_DELAY_MS:3000}
+  inbox:
+    consumer:
+      enabled: ${NOTIFICATION_INBOX_CONSUMER_ENABLED:false}
+      auto-startup: ${NOTIFICATION_INBOX_CONSUMER_AUTO_STARTUP:true}
+      bootstrap-servers: ${NOTIFICATION_INBOX_CONSUMER_BOOTSTRAP_SERVERS:}
+      group-id: ${NOTIFICATION_INBOX_CONSUMER_GROUP_ID:aquila-bank-notification-inbox-consumer}
+      auto-offset-reset: ${NOTIFICATION_INBOX_CONSUMER_AUTO_OFFSET_RESET:earliest}
+      transfer-booked:
+        topic: ${NOTIFICATION_INBOX_CONSUMER_TRANSFER_BOOKED_TOPIC:}
 
 security:
   jwt:
     secret: ${SECURITY_JWT_SECRET}
     issuer: ${SECURITY_JWT_ISSUER:}
+    access-token-ttl-seconds: ${SECURITY_JWT_ACCESS_TOKEN_TTL_SECONDS:900}
+    refresh-token-ttl-seconds: ${SECURITY_JWT_REFRESH_TOKEN_TTL_SECONDS:1209600}
+  login-protection:
+    max-failures: ${SECURITY_LOGIN_PROTECTION_MAX_FAILURES:5}
+    lock-seconds: ${SECURITY_LOGIN_PROTECTION_LOCK_SECONDS:900}
+    reset-window-seconds: ${SECURITY_LOGIN_PROTECTION_RESET_WINDOW_SECONDS:900}
   bootstrap-header-auth:
     enabled: ${SECURITY_BOOTSTRAP_HEADER_AUTH_ENABLED:false}
     account-id-header: ${SECURITY_BOOTSTRAP_ACCOUNT_ID_HEADER:X-Account-Id}
     subject-header: ${SECURITY_BOOTSTRAP_SUBJECT_HEADER:X-Subject}
+  account-bootstrap-api:
+    enabled: ${SECURITY_ACCOUNT_BOOTSTRAP_API_ENABLED:false}
+    token-header: ${SECURITY_ACCOUNT_BOOTSTRAP_API_TOKEN_HEADER:X-Bootstrap-Token}
+    token: ${SECURITY_ACCOUNT_BOOTSTRAP_API_TOKEN:}
+  auth-bootstrap-api:
+    enabled: ${SECURITY_AUTH_BOOTSTRAP_API_ENABLED:false}
+    token-header: ${SECURITY_AUTH_BOOTSTRAP_API_TOKEN_HEADER:X-Auth-Bootstrap-Token}
+    token: ${SECURITY_AUTH_BOOTSTRAP_API_TOKEN:}

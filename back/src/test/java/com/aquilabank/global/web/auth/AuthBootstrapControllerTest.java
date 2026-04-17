@@ -1,0 +1,124 @@
+package com.aquilabank.global.web.auth;
+
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import com.aquilabank.domain.auth.model.MembershipRole;
+import com.aquilabank.domain.auth.model.MembershipStatus;
+import com.aquilabank.domain.auth.model.UserAccountMembership;
+import com.aquilabank.domain.auth.model.UserBootstrapResult;
+import com.aquilabank.domain.auth.model.UserStatus;
+import com.aquilabank.domain.auth.usecase.UserAccountMembershipUpsertUseCase;
+import com.aquilabank.domain.auth.usecase.UserBootstrapUseCase;
+import com.aquilabank.global.security.AuthBootstrapApiProperties;
+import com.aquilabank.global.web.ApiExceptionHandler;
+import java.time.Instant;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+
+class AuthBootstrapControllerTest {
+
+  private static final String TOKEN_HEADER = "X-Auth-Bootstrap-Token";
+  private static final String TOKEN = "test-auth-bootstrap-api-token";
+
+  private UserBootstrapUseCase userBootstrapUseCase;
+  private UserAccountMembershipUpsertUseCase userAccountMembershipUpsertUseCase;
+  private MockMvc mockMvc;
+
+  @BeforeEach
+  void setUp() {
+    userBootstrapUseCase = mock(UserBootstrapUseCase.class);
+    userAccountMembershipUpsertUseCase = mock(UserAccountMembershipUpsertUseCase.class);
+    mockMvc =
+        MockMvcBuilders.standaloneSetup(
+                new AuthBootstrapController(
+                    userBootstrapUseCase,
+                    userAccountMembershipUpsertUseCase,
+                    new AuthBootstrapApiProperties(true, TOKEN_HEADER, TOKEN)))
+            .setControllerAdvice(new ApiExceptionHandler())
+            .build();
+  }
+
+  @Test
+  void bootstrapsUserWithSharedToken() throws Exception {
+    when(userBootstrapUseCase.bootstrap(argThat(command -> "alice".equals(command.loginId()))))
+        .thenReturn(
+            new UserBootstrapResult(
+                21L, "alice", "Alice", UserStatus.ACTIVE, Instant.parse("2026-04-16T10:30:00Z")));
+
+    mockMvc
+        .perform(
+            post("/internal/api/v1/auth/users/bootstrap")
+                .header(TOKEN_HEADER, TOKEN)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "loginId": "alice",
+                      "password": "password123!",
+                      "displayName": "Alice"
+                    }
+                    """))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.userId").value(21))
+        .andExpect(jsonPath("$.loginId").value("alice"))
+        .andExpect(jsonPath("$.userStatus").value("ACTIVE"));
+
+    verify(userBootstrapUseCase)
+        .bootstrap(argThat(command -> "password123!".equals(command.password())));
+  }
+
+  @Test
+  void upsertsMembershipWithSharedToken() throws Exception {
+    when(userAccountMembershipUpsertUseCase.upsert(argThat(command -> command.accountId() == 101L)))
+        .thenReturn(
+            new UserAccountMembership(21L, 101L, MembershipRole.OWNER, MembershipStatus.ACTIVE));
+
+    mockMvc
+        .perform(
+            put("/internal/api/v1/auth/users/21/memberships/101")
+                .header(TOKEN_HEADER, TOKEN)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "membershipRole": "OWNER",
+                      "membershipStatus": "ACTIVE"
+                    }
+                    """))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.userId").value(21))
+        .andExpect(jsonPath("$.accountId").value(101))
+        .andExpect(jsonPath("$.membershipRole").value("OWNER"));
+
+    verify(userAccountMembershipUpsertUseCase)
+        .upsert(argThat(command -> command.role() == MembershipRole.OWNER));
+  }
+
+  @Test
+  void rejectsMissingOrInvalidBootstrapToken() throws Exception {
+    mockMvc
+        .perform(
+            post("/internal/api/v1/auth/users/bootstrap")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "loginId": "alice",
+                      "password": "password123!",
+                      "displayName": "Alice"
+                    }
+                    """))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.message").value("bootstrap token is invalid"));
+  }
+}

@@ -99,31 +99,80 @@ jobs:
         if: steps.diff.outputs.has_diff != 'true'
         run: echo "develop branch has no release diff against main"
 
+      - name: Resolve release token source
+        if: steps.diff.outputs.has_diff == 'true'
+        id: auth
+        env:
+          RELEASE_PR_TOKEN: ${{ secrets.RELEASE_PR_TOKEN }}
+        run: |
+          if [[ -n "${RELEASE_PR_TOKEN}" ]]; then
+            echo "token_source=RELEASE_PR_TOKEN" >> "$GITHUB_OUTPUT"
+          else
+            echo "token_source=GITHUB_TOKEN" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Create or update release PR
         if: steps.diff.outputs.has_diff == 'true'
         id: release_pr
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_PR_TOKEN || github.token }}
+          TOKEN_SOURCE: ${{ steps.auth.outputs.token_source }}
         run: |
-          pr_number="$(gh pr list --base main --head develop --state open --json number --jq '.[0].number')"
-          if [[ -z "${pr_number}" ]]; then
-            gh pr create \
-              --base main \
-              --head develop \
-              --title "chore(release): develop -> main release sync" \
-              --body-file .github/release_pull_request_template.md
+          set -euo pipefail
+
+          create_or_update_release_pr() {
+            local pr_number
+            local pr_url
             pr_number="$(gh pr list --base main --head develop --state open --json number --jq '.[0].number')"
-          else
-            gh pr edit \
-              "${pr_number}" \
-              --title "chore(release): develop -> main release sync" \
-              --body-file .github/release_pull_request_template.md
+            if [[ -z "${pr_number}" ]]; then
+              pr_url="$(gh pr create \
+                --base main \
+                --head develop \
+                --title "[CI] develop -> main release sync" \
+                --body-file .github/release_pull_request_template.md)"
+              pr_number="${pr_url##*/}"
+            else
+              gh pr edit \
+                "${pr_number}" \
+                --title "[CI] develop -> main release sync" \
+                --body-file .github/release_pull_request_template.md
+            fi
+
+            if [[ -z "${pr_number}" ]]; then
+              echo "::error::release PR 번호를 확인하지 못했습니다. gh pr create/list 결과를 확인하세요." >&2
+              return 1
+            fi
+
+            echo "number=${pr_number}" >> "$GITHUB_OUTPUT"
+          }
+
+          # 설정 미스매치 시 즉시 원인과 우회 경로가 로그에 남도록 처리
+          if ! create_or_update_release_pr 2>release-pr-error.log; then
+            cat release-pr-error.log >&2
+            if grep -q "GitHub Actions is not permitted to create or approve pull requests" release-pr-error.log \
+              && [[ "${TOKEN_SOURCE}" == "GITHUB_TOKEN" ]]; then
+              echo "::error::Settings > Actions > General > Workflow permissions 에서 'Allow GitHub Actions to create and approve pull requests'를 켜거나 RELEASE_PR_TOKEN secret을 추가하세요." >&2
+            fi
+            exit 1
           fi
-          echo "number=${pr_number}" >> "$GITHUB_OUTPUT"
 
       - name: Enable auto-merge
         if: steps.diff.outputs.has_diff == 'true' && steps.release_pr.outputs.number != ''
-        continue-on-error: true
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh pr merge "${{ steps.release_pr.outputs.number }}" --auto --merge
+          GH_TOKEN: ${{ secrets.RELEASE_PR_TOKEN || github.token }}
+          TOKEN_SOURCE: ${{ steps.auth.outputs.token_source }}
+        run: |
+          set -euo pipefail
+
+          if ! gh pr merge "${{ steps.release_pr.outputs.number }}" --auto --merge 2>auto-merge-error.log; then
+            cat auto-merge-error.log >&2
+            if grep -q "Protected branch rules not configured for this branch" auto-merge-error.log; then
+              gh pr merge "${{ steps.release_pr.outputs.number }}" --merge
+              exit 0
+            fi
+            if grep -q "GitHub Actions is not permitted to create or approve pull requests" auto-merge-error.log \
+              && [[ "${TOKEN_SOURCE}" == "GITHUB_TOKEN" ]]; then
+              echo "::error::Settings > Actions > General > Workflow permissions 에서 'Allow GitHub Actions to create and approve pull requests'를 켜거나 RELEASE_PR_TOKEN secret을 추가하세요." >&2
+            fi
+            exit 1
+          fi
