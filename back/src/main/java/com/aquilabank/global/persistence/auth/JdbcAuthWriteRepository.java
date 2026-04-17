@@ -287,6 +287,10 @@ public class JdbcAuthWriteRepository
             .stream()
             .findFirst()
             .orElseThrow(() -> new AuthUserNotFoundException("user is not found"));
+    // disable 직후 옛 refresh token이 재활성화와 함께 되살아나는 경로를 막으려고 ACTIVE session만 같이 정리합니다.
+    if (shouldRevokeActiveRefreshTokenSessions(beforeStatus, summary.status())) {
+      revokeActiveRefreshTokenSessions(command.userId(), now);
+    }
     insertStatusChangeAudit(
         new AuthStatusChangeAuditEntry(
             AuthStatusChangeType.USER_STATUS,
@@ -359,6 +363,26 @@ public class JdbcAuthWriteRepository
         .stream()
         .findFirst()
         .orElseThrow(() -> new AuthUserNotFoundException("user is not found"));
+  }
+
+  private boolean shouldRevokeActiveRefreshTokenSessions(
+      UserStatus beforeStatus, UserStatus afterStatus) {
+    return beforeStatus != UserStatus.DISABLED && afterStatus == UserStatus.DISABLED;
+  }
+
+  private void revokeActiveRefreshTokenSessions(long userId, Instant revokedAt) {
+    jdbcTemplate.update(
+        """
+        UPDATE auth_refresh_token_session
+        SET session_status = 'REVOKED',
+            last_used_at = :revokedAt,
+            updated_at = :revokedAt
+        WHERE user_id = :userId
+          AND session_status = 'ACTIVE'
+        """,
+        new MapSqlParameterSource()
+            .addValue("userId", userId)
+            .addValue("revokedAt", Timestamp.from(revokedAt)));
   }
 
   private com.aquilabank.domain.auth.model.MembershipStatus loadCurrentMembershipStatusForUpdate(
