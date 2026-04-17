@@ -134,6 +134,26 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
         .andExpect(jsonPath("$.items.length()").value(1))
         .andExpect(jsonPath("$.items[0].accountId").value(allowedSourceAccountId))
         .andExpect(jsonPath("$.items[0].availableBalanceMinor").value(8500L));
+
+    String transactionReference = transactionReference(transferResult);
+
+    mockMvc
+        .perform(
+            get("/api/v1/transactions")
+                .header("Authorization", "Bearer " + token)
+                .param("accountId", String.valueOf(allowedSourceAccountId))
+                .param("from", transactionQueryFrom())
+                .param("to", transactionQueryTo())
+                .param("status", "BOOKED")
+                .param("direction", "DEBIT")
+                .param("minAmountMinor", "1500")
+                .param("maxAmountMinor", "1500")
+                .param("transactionReference", transactionReference))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(1))
+        .andExpect(jsonPath("$.items[0].transactionReference").value(transactionReference))
+        .andExpect(jsonPath("$.items[0].direction").value("DEBIT"))
+        .andExpect(jsonPath("$.items[0].amountMinor").value(1500L));
   }
 
   @Test
