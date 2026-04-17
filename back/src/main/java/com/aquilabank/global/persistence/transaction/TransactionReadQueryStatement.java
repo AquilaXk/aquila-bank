@@ -49,6 +49,27 @@ final class TransactionReadQueryStatement {
       params.addValue("status", query.status().name());
     }
 
+    if (query.direction() != null) {
+      sql.append("\n  AND direction = :direction");
+      params.addValue("direction", query.direction().name());
+    }
+
+    if (query.minAmountMinor() != null) {
+      sql.append("\n  AND amount_minor >= :minAmountMinor");
+      params.addValue("minAmountMinor", query.minAmountMinor());
+    }
+
+    if (query.maxAmountMinor() != null) {
+      sql.append("\n  AND amount_minor <= :maxAmountMinor");
+      params.addValue("maxAmountMinor", query.maxAmountMinor());
+    }
+
+    if (query.transactionReference() != null) {
+      // transactionReference exact lookup은 account scope 안에서 먼저 좁혀 전용 exact index 경로를 타게 둡니다.
+      sql.append("\n  AND transaction_reference = :transactionReference");
+      params.addValue("transactionReference", query.transactionReference());
+    }
+
     if (query.cursor() != null) {
       // keyset cursor와 ORDER BY tuple을 같게 두어 composite index range scan으로 이어지게 합니다.
       sql.append("\n  AND (booked_at, id) < (:cursorBookedAt, :cursorId)");
