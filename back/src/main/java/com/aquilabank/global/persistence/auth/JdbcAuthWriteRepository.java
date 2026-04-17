@@ -9,6 +9,8 @@ import com.aquilabank.domain.auth.model.AuthStatusChangeType;
 import com.aquilabank.domain.auth.model.AuthUserSummary;
 import com.aquilabank.domain.auth.model.LoginFailureUpdateCommand;
 import com.aquilabank.domain.auth.model.LoginSuccessUpdateCommand;
+import com.aquilabank.domain.auth.model.RefreshTokenSessionCreateCommand;
+import com.aquilabank.domain.auth.model.RefreshTokenSessionRotateCommand;
 import com.aquilabank.domain.auth.model.UserAccountMembership;
 import com.aquilabank.domain.auth.model.UserAccountMembershipStatusUpdateCommand;
 import com.aquilabank.domain.auth.model.UserAccountMembershipSummary;
@@ -18,6 +20,7 @@ import com.aquilabank.domain.auth.model.UserBootstrapWriteCommand;
 import com.aquilabank.domain.auth.model.UserStatus;
 import com.aquilabank.domain.auth.model.UserStatusUpdateCommand;
 import com.aquilabank.domain.auth.port.LoginAttemptUpdatePort;
+import com.aquilabank.domain.auth.port.RefreshTokenSessionWritePort;
 import com.aquilabank.domain.auth.port.UserAccountMembershipStatusUpdatePort;
 import com.aquilabank.domain.auth.port.UserAccountMembershipUpsertPort;
 import com.aquilabank.domain.auth.port.UserBootstrapPort;
@@ -37,6 +40,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class JdbcAuthWriteRepository
     implements UserBootstrapPort,
         LoginAttemptUpdatePort,
+        RefreshTokenSessionWritePort,
         UserAccountMembershipUpsertPort,
         UserStatusUpdatePort,
         UserAccountMembershipStatusUpdatePort {
@@ -134,6 +138,66 @@ public class JdbcAuthWriteRepository
                 .addValue("userId", command.userId())
                 .addValue("succeededAt", Timestamp.from(command.succeededAt())));
     assertUserUpdated(updated);
+  }
+
+  @Override
+  @Transactional
+  public long create(RefreshTokenSessionCreateCommand command) {
+    Long sessionId =
+        jdbcTemplate.queryForObject(
+            """
+            INSERT INTO auth_refresh_token_session (
+                user_id,
+                token_hash,
+                session_status,
+                expires_at,
+                created_at,
+                updated_at
+            )
+            VALUES (
+                :userId,
+                :tokenHash,
+                'ACTIVE',
+                :expiresAt,
+                :createdAt,
+                :createdAt
+            )
+            RETURNING id
+            """,
+            new MapSqlParameterSource()
+                .addValue("userId", command.userId())
+                .addValue("tokenHash", command.tokenHash())
+                .addValue("expiresAt", Timestamp.from(command.expiresAt()))
+                .addValue("createdAt", Timestamp.from(command.createdAt())),
+            Long.class);
+    if (sessionId == null) {
+      throw new IllegalStateException("refresh token session insert did not return an id");
+    }
+    return sessionId;
+  }
+
+  @Override
+  @Transactional
+  public void rotate(RefreshTokenSessionRotateCommand command) {
+    int updated =
+        jdbcTemplate.update(
+            """
+            UPDATE auth_refresh_token_session
+            SET session_status = 'ROTATED',
+                last_used_at = :rotatedAt,
+                rotated_at = :rotatedAt,
+                replaced_by_session_id = :replacedBySessionId,
+                updated_at = :rotatedAt
+            WHERE id = :sessionId
+              AND session_status = 'ACTIVE'
+            """,
+            new MapSqlParameterSource()
+                .addValue("sessionId", command.sessionId())
+                .addValue("replacedBySessionId", command.replacedBySessionId())
+                .addValue("rotatedAt", Timestamp.from(command.rotatedAt())));
+    if (updated != 1) {
+      throw new IllegalStateException("refresh token session is not active");
+    }
   }
 
   @Override

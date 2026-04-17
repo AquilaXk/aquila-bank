@@ -1,6 +1,7 @@
 package com.aquilabank.domain.auth.usecase;
 
 import com.aquilabank.domain.auth.exception.InvalidCredentialsException;
+import com.aquilabank.domain.auth.model.IssuedAccessToken;
 import com.aquilabank.domain.auth.model.LoginCommand;
 import com.aquilabank.domain.auth.model.LoginFailureAuditEntry;
 import com.aquilabank.domain.auth.model.LoginFailureReason;
@@ -10,11 +11,15 @@ import com.aquilabank.domain.auth.model.LoginResetAuditEntry;
 import com.aquilabank.domain.auth.model.LoginResult;
 import com.aquilabank.domain.auth.model.LoginSuccessUpdateCommand;
 import com.aquilabank.domain.auth.model.LoginUser;
+import com.aquilabank.domain.auth.model.RefreshTokenPolicy;
+import com.aquilabank.domain.auth.model.RefreshTokenSessionCreateCommand;
 import com.aquilabank.domain.auth.model.UserStatus;
 import com.aquilabank.domain.auth.port.AuthTokenIssuePort;
 import com.aquilabank.domain.auth.port.LoginAttemptAuditPort;
 import com.aquilabank.domain.auth.port.LoginAttemptUpdatePort;
 import com.aquilabank.domain.auth.port.PasswordHashPort;
+import com.aquilabank.domain.auth.port.RefreshTokenSecretPort;
+import com.aquilabank.domain.auth.port.RefreshTokenSessionWritePort;
 import com.aquilabank.domain.auth.port.UserCredentialLoadPort;
 import java.time.Clock;
 import java.time.Instant;
@@ -26,8 +31,11 @@ public final class LoginService implements LoginUseCase {
   private final LoginAttemptUpdatePort loginAttemptUpdatePort;
   private final LoginAttemptAuditPort loginAttemptAuditPort;
   private final PasswordHashPort passwordHashPort;
+  private final RefreshTokenSessionWritePort refreshTokenSessionWritePort;
+  private final RefreshTokenSecretPort refreshTokenSecretPort;
   private final AuthTokenIssuePort authTokenIssuePort;
   private final LoginProtectionPolicy loginProtectionPolicy;
+  private final RefreshTokenPolicy refreshTokenPolicy;
   private final String dummyPasswordHash;
   private final Clock clock;
 
@@ -36,16 +44,22 @@ public final class LoginService implements LoginUseCase {
       LoginAttemptUpdatePort loginAttemptUpdatePort,
       LoginAttemptAuditPort loginAttemptAuditPort,
       PasswordHashPort passwordHashPort,
+      RefreshTokenSessionWritePort refreshTokenSessionWritePort,
+      RefreshTokenSecretPort refreshTokenSecretPort,
       AuthTokenIssuePort authTokenIssuePort,
       LoginProtectionPolicy loginProtectionPolicy,
+      RefreshTokenPolicy refreshTokenPolicy,
       String dummyPasswordHash,
       Clock clock) {
     this.userCredentialLoadPort = userCredentialLoadPort;
     this.loginAttemptUpdatePort = loginAttemptUpdatePort;
     this.loginAttemptAuditPort = loginAttemptAuditPort;
     this.passwordHashPort = passwordHashPort;
+    this.refreshTokenSessionWritePort = refreshTokenSessionWritePort;
+    this.refreshTokenSecretPort = refreshTokenSecretPort;
     this.authTokenIssuePort = authTokenIssuePort;
     this.loginProtectionPolicy = loginProtectionPolicy;
+    this.refreshTokenPolicy = refreshTokenPolicy;
     this.dummyPasswordHash = dummyPasswordHash;
     this.clock = clock;
   }
@@ -105,7 +119,7 @@ public final class LoginService implements LoginUseCase {
           new LoginResetAuditEntry(
               command.loginId(), user.userId(), user.failedLoginCount(), user.loginLockedUntil()));
     }
-    return authTokenIssuePort.issue(user.userId(), user.loginId());
+    return issueTokenPair(user.userId(), user.loginId(), now);
   }
 
   private LoginUser consumeMissingUserPath(String loginId, String password) {
@@ -162,5 +176,21 @@ public final class LoginService implements LoginUseCase {
 
   private boolean shouldLogReset(LoginUser user) {
     return user.failedLoginCount() > 0 || user.loginLockedUntil() != null;
+  }
+
+  private LoginResult issueTokenPair(long userId, String loginId, Instant now) {
+    String refreshToken = refreshTokenSecretPort.createToken();
+    Instant refreshExpiresAt = now.plus(refreshTokenPolicy.ttl());
+    refreshTokenSessionWritePort.create(
+        new RefreshTokenSessionCreateCommand(
+            userId, refreshTokenSecretPort.hash(refreshToken), refreshExpiresAt, now));
+    IssuedAccessToken issuedAccessToken = authTokenIssuePort.issue(userId, loginId, now);
+    return new LoginResult(
+        issuedAccessToken.accessToken(),
+        refreshToken,
+        issuedAccessToken.tokenType(),
+        issuedAccessToken.expiresAt(),
+        refreshExpiresAt,
+        issuedAccessToken.userId());
   }
 }
