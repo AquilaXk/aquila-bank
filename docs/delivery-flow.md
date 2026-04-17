@@ -9,26 +9,15 @@
 ## CI Gate
 
 - backend/frontend CI는 `main` 대상 PR에서 실행합니다.
-- `main` push 후에도 같은 gate를 다시 실행해 merge SHA 기준 상태를 확인합니다.
 - workflow 수정만 있는 PR도 gate가 돌도록 `.github/workflows/**` 변경을 CI path에 포함합니다.
 
-## Staging Deploy
+## Main CI/CD
 
-- `main`에 merge된 SHA는 `Deploy Staging` workflow가 자동 배포합니다.
-- `staging` GitHub Environment에 `DEPLOY_WEBHOOK_URL` secret이 반드시 있어야 합니다.
-- 인증이 필요한 배포 엔드포인트면 `DEPLOY_WEBHOOK_TOKEN` secret을 같은 environment에 추가합니다.
-- staging deploy payload는 `sha`, `ref`, `repository`, `environment`를 포함합니다.
-
-## Production Promote
-
-- production 승격은 `Deploy Production` workflow로만 수행합니다.
-- 트리거는 두 가지입니다.
-  - `workflow_dispatch`로 staging 성공 SHA를 직접 입력
-  - 같은 SHA를 가리키는 `prod-*` 태그 push
-- workflow는 승격 전에 다음을 검증합니다.
-  - 대상 SHA가 `main`에 포함되어 있는지
-  - `staging` environment에서 같은 SHA deploy가 `success` 상태인지
-- `production` GitHub Environment에 required reviewers를 설정하면 수동 승인 경로를 강제할 수 있습니다.
+- `main`에 merge된 SHA는 `Main CI/CD` workflow가 backend/frontend check 후 자동 배포합니다.
+- 배포 webhook 주소는 repository Actions secret `DEPLOY_WEBHOOK_URL`에 둡니다.
+- 인증이 필요한 배포 엔드포인트면 repository Actions secret `DEPLOY_WEBHOOK_TOKEN`을 추가합니다.
+- deploy payload는 `sha`, `ref`, `repository`를 포함합니다.
+- 별도 staging/prod 승격 단계나 GitHub Environment 승인 단계는 두지 않습니다.
 
 ## Feature Flag
 
