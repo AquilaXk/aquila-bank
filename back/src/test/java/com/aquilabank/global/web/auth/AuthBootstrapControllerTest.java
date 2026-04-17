@@ -16,7 +16,8 @@ import com.aquilabank.domain.auth.model.UserBootstrapResult;
 import com.aquilabank.domain.auth.model.UserStatus;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipUpsertUseCase;
 import com.aquilabank.domain.auth.usecase.UserBootstrapUseCase;
-import com.aquilabank.global.security.AuthBootstrapApiProperties;
+import com.aquilabank.global.security.InternalServiceScope;
+import com.aquilabank.global.security.InternalServiceTokenTestSupport;
 import com.aquilabank.global.web.ApiExceptionHandler;
 import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
@@ -26,9 +27,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 class AuthBootstrapControllerTest {
-
-  private static final String TOKEN_HEADER = "X-Auth-Bootstrap-Token";
-  private static final String TOKEN = "test-auth-bootstrap-api-token";
 
   private UserBootstrapUseCase userBootstrapUseCase;
   private UserAccountMembershipUpsertUseCase userAccountMembershipUpsertUseCase;
@@ -43,13 +41,13 @@ class AuthBootstrapControllerTest {
                 new AuthBootstrapController(
                     userBootstrapUseCase,
                     userAccountMembershipUpsertUseCase,
-                    new AuthBootstrapApiProperties(true, TOKEN_HEADER, TOKEN)))
+                    InternalServiceTokenTestSupport.authorizer()))
             .setControllerAdvice(new ApiExceptionHandler())
             .build();
   }
 
   @Test
-  void bootstrapsUserWithSharedToken() throws Exception {
+  void bootstrapsUserWithInternalServiceToken() throws Exception {
     when(userBootstrapUseCase.bootstrap(argThat(command -> "alice".equals(command.loginId()))))
         .thenReturn(
             new UserBootstrapResult(
@@ -58,7 +56,10 @@ class AuthBootstrapControllerTest {
     mockMvc
         .perform(
             post("/internal/api/v1/auth/users/bootstrap")
-                .header(TOKEN_HEADER, TOKEN)
+                .header(
+                    "Authorization",
+                    InternalServiceTokenTestSupport.authorization(
+                        "auth-bootstrap-test", InternalServiceScope.AUTH_BOOTSTRAP))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     """
@@ -78,7 +79,7 @@ class AuthBootstrapControllerTest {
   }
 
   @Test
-  void upsertsMembershipWithSharedToken() throws Exception {
+  void upsertsMembershipWithInternalServiceToken() throws Exception {
     when(userAccountMembershipUpsertUseCase.upsert(argThat(command -> command.accountId() == 101L)))
         .thenReturn(
             new UserAccountMembership(21L, 101L, MembershipRole.OWNER, MembershipStatus.ACTIVE));
@@ -86,7 +87,10 @@ class AuthBootstrapControllerTest {
     mockMvc
         .perform(
             put("/internal/api/v1/auth/users/21/memberships/101")
-                .header(TOKEN_HEADER, TOKEN)
+                .header(
+                    "Authorization",
+                    InternalServiceTokenTestSupport.authorization(
+                        "auth-bootstrap-test", InternalServiceScope.AUTH_BOOTSTRAP))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     """
@@ -105,7 +109,7 @@ class AuthBootstrapControllerTest {
   }
 
   @Test
-  void rejectsMissingOrInvalidBootstrapToken() throws Exception {
+  void rejectsMissingOrInvalidInternalServiceToken() throws Exception {
     mockMvc
         .perform(
             post("/internal/api/v1/auth/users/bootstrap")
@@ -119,6 +123,6 @@ class AuthBootstrapControllerTest {
                     }
                     """))
         .andExpect(status().isUnauthorized())
-        .andExpect(jsonPath("$.message").value("bootstrap token is invalid"));
+        .andExpect(jsonPath("$.message").value("internal service token is invalid"));
   }
 }

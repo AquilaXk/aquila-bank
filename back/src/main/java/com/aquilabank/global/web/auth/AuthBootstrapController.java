@@ -8,8 +8,8 @@ import com.aquilabank.domain.auth.model.UserBootstrapCommand;
 import com.aquilabank.domain.auth.model.UserBootstrapResult;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipUpsertUseCase;
 import com.aquilabank.domain.auth.usecase.UserBootstrapUseCase;
-import com.aquilabank.global.security.AuthBootstrapApiProperties;
-import com.aquilabank.global.security.InternalAuthTokenGuard;
+import com.aquilabank.global.security.InternalServiceRequestAuthorizer;
+import com.aquilabank.global.security.InternalServiceScope;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -35,32 +35,23 @@ public class AuthBootstrapController {
 
   private final UserBootstrapUseCase userBootstrapUseCase;
   private final UserAccountMembershipUpsertUseCase userAccountMembershipUpsertUseCase;
-  private final InternalAuthTokenGuard internalAuthTokenGuard;
+  private final InternalServiceRequestAuthorizer internalServiceRequestAuthorizer;
 
   @Autowired
   public AuthBootstrapController(
       UserBootstrapUseCase userBootstrapUseCase,
       UserAccountMembershipUpsertUseCase userAccountMembershipUpsertUseCase,
-      InternalAuthTokenGuard internalAuthTokenGuard) {
+      InternalServiceRequestAuthorizer internalServiceRequestAuthorizer) {
     this.userBootstrapUseCase = userBootstrapUseCase;
     this.userAccountMembershipUpsertUseCase = userAccountMembershipUpsertUseCase;
-    this.internalAuthTokenGuard = internalAuthTokenGuard;
-  }
-
-  AuthBootstrapController(
-      UserBootstrapUseCase userBootstrapUseCase,
-      UserAccountMembershipUpsertUseCase userAccountMembershipUpsertUseCase,
-      AuthBootstrapApiProperties authBootstrapApiProperties) {
-    this(
-        userBootstrapUseCase,
-        userAccountMembershipUpsertUseCase,
-        new InternalAuthTokenGuard(authBootstrapApiProperties));
+    this.internalServiceRequestAuthorizer = internalServiceRequestAuthorizer;
   }
 
   @PostMapping("/users/bootstrap")
   public UserBootstrapResponse bootstrapUser(
       HttpServletRequest httpServletRequest, @Valid @RequestBody UserBootstrapRequest request) {
-    internalAuthTokenGuard.validate(httpServletRequest);
+    internalServiceRequestAuthorizer.requireScope(
+        httpServletRequest, InternalServiceScope.AUTH_BOOTSTRAP);
 
     UserBootstrapResult result =
         userBootstrapUseCase.bootstrap(
@@ -74,7 +65,8 @@ public class AuthBootstrapController {
       @PathVariable @Positive(message = "userId must be positive") long userId,
       @PathVariable @Positive(message = "accountId must be positive") long accountId,
       @Valid @RequestBody UserAccountMembershipRequest request) {
-    internalAuthTokenGuard.validate(httpServletRequest);
+    internalServiceRequestAuthorizer.requireScope(
+        httpServletRequest, InternalServiceScope.AUTH_BOOTSTRAP);
 
     UserAccountMembership membership =
         userAccountMembershipUpsertUseCase.upsert(

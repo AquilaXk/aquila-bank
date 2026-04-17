@@ -10,7 +10,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.aquilabank.domain.account.model.AccountBootstrapResult;
 import com.aquilabank.domain.account.usecase.AccountBootstrapUseCase;
-import com.aquilabank.global.security.AccountBootstrapApiProperties;
+import com.aquilabank.global.security.InternalServiceScope;
+import com.aquilabank.global.security.InternalServiceTokenTestSupport;
 import com.aquilabank.global.web.ApiExceptionHandler;
 import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,9 +22,6 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 class AccountBootstrapControllerTest {
 
-  private static final String TOKEN_HEADER = "X-Bootstrap-Token";
-  private static final String TOKEN = "test-bootstrap-api-token";
-
   private AccountBootstrapUseCase accountBootstrapUseCase;
   private MockMvc mockMvc;
 
@@ -33,14 +31,13 @@ class AccountBootstrapControllerTest {
     mockMvc =
         MockMvcBuilders.standaloneSetup(
                 new AccountBootstrapController(
-                    accountBootstrapUseCase,
-                    new AccountBootstrapApiProperties(true, TOKEN_HEADER, TOKEN)))
+                    accountBootstrapUseCase, InternalServiceTokenTestSupport.authorizer()))
             .setControllerAdvice(new ApiExceptionHandler())
             .build();
   }
 
   @Test
-  void bootstrapsAccountWithSharedToken() throws Exception {
+  void bootstrapsAccountWithInternalServiceToken() throws Exception {
     when(accountBootstrapUseCase.bootstrap(
             argThat(command -> "main account".equals(command.displayName()))))
         .thenReturn(
@@ -56,7 +53,10 @@ class AccountBootstrapControllerTest {
     mockMvc
         .perform(
             post("/internal/api/v1/accounts/bootstrap")
-                .header(TOKEN_HEADER, TOKEN)
+                .header(
+                    "Authorization",
+                    InternalServiceTokenTestSupport.authorization(
+                        "account-bootstrap-test", InternalServiceScope.ACCOUNT_BOOTSTRAP))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     """
@@ -76,7 +76,7 @@ class AccountBootstrapControllerTest {
   }
 
   @Test
-  void rejectsMissingOrInvalidBootstrapToken() throws Exception {
+  void rejectsMissingOrInvalidInternalServiceToken() throws Exception {
     mockMvc
         .perform(
             post("/internal/api/v1/accounts/bootstrap")
@@ -90,7 +90,7 @@ class AccountBootstrapControllerTest {
                     }
                     """))
         .andExpect(status().isUnauthorized())
-        .andExpect(jsonPath("$.message").value("bootstrap token is invalid"));
+        .andExpect(jsonPath("$.message").value("internal service token is invalid"));
   }
 
   @Test
@@ -98,7 +98,10 @@ class AccountBootstrapControllerTest {
     mockMvc
         .perform(
             post("/internal/api/v1/accounts/bootstrap")
-                .header(TOKEN_HEADER, TOKEN)
+                .header(
+                    "Authorization",
+                    InternalServiceTokenTestSupport.authorization(
+                        "account-bootstrap-test", InternalServiceScope.ACCOUNT_BOOTSTRAP))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     """

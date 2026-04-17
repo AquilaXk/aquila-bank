@@ -12,8 +12,9 @@ import com.aquilabank.domain.auth.usecase.AuthUserQueryUseCase;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipQueryUseCase;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipStatusUpdateUseCase;
 import com.aquilabank.domain.auth.usecase.UserStatusUpdateUseCase;
-import com.aquilabank.global.security.BootstrapHeaderAuthProperties;
-import com.aquilabank.global.security.InternalAuthTokenGuard;
+import com.aquilabank.global.security.InternalServiceRequestAuthorizer;
+import com.aquilabank.global.security.InternalServiceScope;
+import com.aquilabank.global.security.InternalServiceTokenClaims;
 import com.aquilabank.global.web.RequestTraceContext;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -43,29 +44,27 @@ public class InternalAuthAdminController {
   private final UserStatusUpdateUseCase userStatusUpdateUseCase;
   private final UserAccountMembershipQueryUseCase userAccountMembershipQueryUseCase;
   private final UserAccountMembershipStatusUpdateUseCase userAccountMembershipStatusUpdateUseCase;
-  private final InternalAuthTokenGuard internalAuthTokenGuard;
-  private final String actorSubjectHeader;
+  private final InternalServiceRequestAuthorizer internalServiceRequestAuthorizer;
 
   public InternalAuthAdminController(
       AuthUserQueryUseCase authUserQueryUseCase,
       UserStatusUpdateUseCase userStatusUpdateUseCase,
       UserAccountMembershipQueryUseCase userAccountMembershipQueryUseCase,
       UserAccountMembershipStatusUpdateUseCase userAccountMembershipStatusUpdateUseCase,
-      InternalAuthTokenGuard internalAuthTokenGuard,
-      BootstrapHeaderAuthProperties bootstrapHeaderAuthProperties) {
+      InternalServiceRequestAuthorizer internalServiceRequestAuthorizer) {
     this.authUserQueryUseCase = authUserQueryUseCase;
     this.userStatusUpdateUseCase = userStatusUpdateUseCase;
     this.userAccountMembershipQueryUseCase = userAccountMembershipQueryUseCase;
     this.userAccountMembershipStatusUpdateUseCase = userAccountMembershipStatusUpdateUseCase;
-    this.internalAuthTokenGuard = internalAuthTokenGuard;
-    this.actorSubjectHeader = bootstrapHeaderAuthProperties.subjectHeader();
+    this.internalServiceRequestAuthorizer = internalServiceRequestAuthorizer;
   }
 
   @GetMapping("/users/{userId}")
   public AuthUserResponse getUser(
       HttpServletRequest httpServletRequest,
       @PathVariable @Positive(message = "userId must be positive") long userId) {
-    internalAuthTokenGuard.validate(httpServletRequest);
+    internalServiceRequestAuthorizer.requireScope(
+        httpServletRequest, InternalServiceScope.AUTH_ADMIN);
     return AuthUserResponse.from(authUserQueryUseCase.getByUserId(userId));
   }
 
@@ -73,7 +72,8 @@ public class InternalAuthAdminController {
   public AuthUserResponse getUserByLoginId(
       HttpServletRequest httpServletRequest,
       @RequestParam @NotBlank(message = "loginId is required") String loginId) {
-    internalAuthTokenGuard.validate(httpServletRequest);
+    internalServiceRequestAuthorizer.requireScope(
+        httpServletRequest, InternalServiceScope.AUTH_ADMIN);
     return AuthUserResponse.from(authUserQueryUseCase.getByLoginId(loginId));
   }
 
@@ -82,7 +82,8 @@ public class InternalAuthAdminController {
       HttpServletRequest httpServletRequest,
       @PathVariable @Positive(message = "userId must be positive") long userId,
       @PathVariable @Positive(message = "accountId must be positive") long accountId) {
-    internalAuthTokenGuard.validate(httpServletRequest);
+    internalServiceRequestAuthorizer.requireScope(
+        httpServletRequest, InternalServiceScope.AUTH_ADMIN);
     return UserAccountMembershipResponse.from(
         userAccountMembershipQueryUseCase.getByUserIdAndAccountId(userId, accountId));
   }
@@ -92,14 +93,16 @@ public class InternalAuthAdminController {
       HttpServletRequest httpServletRequest,
       @PathVariable @Positive(message = "userId must be positive") long userId,
       @Valid @RequestBody UserStatusRequest request) {
-    internalAuthTokenGuard.validate(httpServletRequest);
+    InternalServiceTokenClaims claims =
+        internalServiceRequestAuthorizer.requireScope(
+            httpServletRequest, InternalServiceScope.AUTH_ADMIN);
     return AuthUserResponse.from(
         userStatusUpdateUseCase.update(
             new UserStatusUpdateCommand(
                 userId,
                 request.userStatus(),
                 resolveReason(request.reasonCode(), request.reasonDetail(), request.reason()),
-                resolveActorSubject(httpServletRequest),
+                claims.subject(),
                 resolveRequestId(httpServletRequest))));
   }
 
@@ -109,7 +112,9 @@ public class InternalAuthAdminController {
       @PathVariable @Positive(message = "userId must be positive") long userId,
       @PathVariable @Positive(message = "accountId must be positive") long accountId,
       @Valid @RequestBody UserAccountMembershipStatusRequest request) {
-    internalAuthTokenGuard.validate(httpServletRequest);
+    InternalServiceTokenClaims claims =
+        internalServiceRequestAuthorizer.requireScope(
+            httpServletRequest, InternalServiceScope.AUTH_ADMIN);
     return UserAccountMembershipResponse.from(
         userAccountMembershipStatusUpdateUseCase.update(
             new UserAccountMembershipStatusUpdateCommand(
@@ -117,7 +122,7 @@ public class InternalAuthAdminController {
                 accountId,
                 request.membershipStatus(),
                 resolveReason(request.reasonCode(), request.reasonDetail(), request.reason()),
-                resolveActorSubject(httpServletRequest),
+                claims.subject(),
                 resolveRequestId(httpServletRequest))));
   }
 
@@ -146,14 +151,6 @@ public class InternalAuthAdminController {
               max = AuthStatusChangeReason.MAX_REASON_DETAIL_LENGTH,
               message = "reason must be 200 characters or less")
           String reason) {}
-
-  private String resolveActorSubject(HttpServletRequest httpServletRequest) {
-    String actorSubject = httpServletRequest.getHeader(actorSubjectHeader);
-    if (actorSubject == null || actorSubject.isBlank()) {
-      throw new IllegalArgumentException("actorSubject header is required");
-    }
-    return actorSubject;
-  }
 
   private String resolveRequestId(HttpServletRequest httpServletRequest) {
     return RequestTraceContext.currentRequestId()
