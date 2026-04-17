@@ -1,9 +1,13 @@
 package com.aquilabank.global.web.auth;
 
+import com.aquilabank.domain.auth.model.AuthSessionList;
+import com.aquilabank.domain.auth.model.AuthSessionListQuery;
+import com.aquilabank.domain.auth.model.AuthSessionSummary;
 import com.aquilabank.domain.auth.model.LoginCommand;
 import com.aquilabank.domain.auth.model.LoginResult;
 import com.aquilabank.domain.auth.model.LogoutCommand;
 import com.aquilabank.domain.auth.model.RefreshTokenCommand;
+import com.aquilabank.domain.auth.usecase.AuthSessionListUseCase;
 import com.aquilabank.domain.auth.usecase.LoginUseCase;
 import com.aquilabank.domain.auth.usecase.LogoutUseCase;
 import com.aquilabank.domain.auth.usecase.RefreshTokenUseCase;
@@ -12,32 +16,40 @@ import com.aquilabank.global.security.AuthenticatedRequestPrincipal;
 import com.aquilabank.global.security.AuthenticatedUserPrincipal;
 import com.aquilabank.global.web.security.CurrentAuthenticatedPrincipal;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.time.Instant;
+import java.util.List;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
-/** public auth session 생성, 재발급, 종료 API를 노출합니다. */
+/** public auth session 생성, 조회, 재발급, 종료 API를 노출합니다. */
 @Validated
 @RestController
 @RequestMapping("/api/v1/auth")
 public class LoginController {
 
   private final LoginUseCase loginUseCase;
+  private final AuthSessionListUseCase authSessionListUseCase;
   private final RefreshTokenUseCase refreshTokenUseCase;
   private final LogoutUseCase logoutUseCase;
 
   public LoginController(
       LoginUseCase loginUseCase,
+      AuthSessionListUseCase authSessionListUseCase,
       RefreshTokenUseCase refreshTokenUseCase,
       LogoutUseCase logoutUseCase) {
     this.loginUseCase = loginUseCase;
+    this.authSessionListUseCase = authSessionListUseCase;
     this.refreshTokenUseCase = refreshTokenUseCase;
     this.logoutUseCase = logoutUseCase;
   }
@@ -47,6 +59,16 @@ public class LoginController {
     LoginResult result =
         loginUseCase.login(new LoginCommand(request.loginId(), request.password()));
     return LoginResponse.from(result);
+  }
+
+  @GetMapping("/sessions")
+  public AuthSessionListResponse getSessions(
+      @CurrentAuthenticatedPrincipal AuthenticatedRequestPrincipal principal,
+      @RequestParam(defaultValue = "20")
+          @Min(value = 1, message = "size must be at least 1") @Max(value = 50, message = "size must be 50 or less") int size) {
+    AuthSessionList result =
+        authSessionListUseCase.get(new AuthSessionListQuery(resolveUserId(principal), size));
+    return AuthSessionListResponse.from(result);
   }
 
   @PostMapping("/refresh")
@@ -94,6 +116,33 @@ public class LoginController {
           result.expiresAt(),
           result.refreshExpiresAt(),
           result.userId());
+    }
+  }
+
+  /** 현재 user refresh token session 목록 응답 */
+  public record AuthSessionListResponse(List<AuthSessionItemResponse> items) {
+
+    private static AuthSessionListResponse from(AuthSessionList result) {
+      return new AuthSessionListResponse(
+          result.items().stream().map(AuthSessionItemResponse::from).toList());
+    }
+  }
+
+  /** 현재 user refresh token session 목록 item 응답 */
+  public record AuthSessionItemResponse(
+      long sessionId,
+      String sessionStatus,
+      Instant expiresAt,
+      Instant lastUsedAt,
+      Instant createdAt) {
+
+    private static AuthSessionItemResponse from(AuthSessionSummary summary) {
+      return new AuthSessionItemResponse(
+          summary.sessionId(),
+          summary.sessionStatus().name(),
+          summary.expiresAt(),
+          summary.lastUsedAt(),
+          summary.createdAt());
     }
   }
 
