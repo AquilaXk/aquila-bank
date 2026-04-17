@@ -66,10 +66,13 @@ public class JdbcNotificationInboxRepository
               ON m.account_id = n.account_id
             JOIN bank_user u
               ON u.id = m.user_id
+            LEFT JOIN notification_user_read_state r
+              ON r.user_id = :userId
+             AND r.notification_id = n.id
             WHERE m.user_id = :userId
               AND m.membership_status = 'ACTIVE'
               AND u.user_status = 'ACTIVE'
-              AND n.read_at IS NULL
+              AND r.notification_id IS NULL
             """,
             new MapSqlParameterSource().addValue("userId", userId),
             Long.class);
@@ -95,11 +98,11 @@ public class JdbcNotificationInboxRepository
   @Override
   @Transactional
   public boolean markAsReadByUserId(long userId, long notificationId, Instant readAt) {
-    AccessibleNotification notification =
-        jdbcTemplate
-            .query(
-                """
-                SELECT n.account_id, n.read_at
+    Boolean accessible =
+        jdbcTemplate.queryForObject(
+            """
+            WITH accessible_notification AS (
+                SELECT n.id
                 FROM notification_inbox n
                 JOIN user_account_membership m
                   ON m.account_id = n.account_id
@@ -110,33 +113,25 @@ public class JdbcNotificationInboxRepository
                   AND m.membership_status = 'ACTIVE'
                   AND u.user_status = 'ACTIVE'
                 LIMIT 1
-                """,
-                new MapSqlParameterSource()
-                    .addValue("notificationId", notificationId)
-                    .addValue("userId", userId),
-                (rs, rowNum) -> accessibleNotification(rs))
-            .stream()
-            .findFirst()
-            .orElse(null);
-    if (notification == null) {
-      return false;
-    }
-    if (notification.readAt() != null) {
-      return true;
-    }
-    jdbcTemplate.update(
-        """
-        UPDATE notification_inbox
-        SET read_at = :readAt
-        WHERE id = :notificationId
-          AND account_id = :accountId
-          AND read_at IS NULL
-        """,
-        new MapSqlParameterSource()
-            .addValue("readAt", Timestamp.from(readAt))
-            .addValue("notificationId", notificationId)
-            .addValue("accountId", notification.accountId()));
-    return true;
+            ),
+            inserted_read_state AS (
+                INSERT INTO notification_user_read_state (
+                    user_id,
+                    notification_id,
+                    read_at
+                )
+                SELECT :userId, id, :readAt
+                FROM accessible_notification
+                ON CONFLICT (user_id, notification_id) DO NOTHING
+            )
+            SELECT EXISTS(SELECT 1 FROM accessible_notification)
+            """,
+            new MapSqlParameterSource()
+                .addValue("notificationId", notificationId)
+                .addValue("userId", userId)
+                .addValue("readAt", Timestamp.from(readAt)),
+            Boolean.class);
+    return Boolean.TRUE.equals(accessible);
   }
 
   @Override
@@ -259,12 +254,15 @@ public class JdbcNotificationInboxRepository
                n.title,
                n.message,
                n.created_at,
-               n.read_at
+               r.read_at
         FROM notification_inbox n
         JOIN user_account_membership m
           ON m.account_id = n.account_id
         JOIN bank_user u
           ON u.id = m.user_id
+        LEFT JOIN notification_user_read_state r
+          ON r.user_id = :userId
+         AND r.notification_id = n.id
         WHERE m.user_id = :userId
           AND m.membership_status = 'ACTIVE'
           AND u.user_status = 'ACTIVE'
@@ -287,12 +285,15 @@ public class JdbcNotificationInboxRepository
                n.title,
                n.message,
                n.created_at,
-               n.read_at
+               r.read_at
         FROM notification_inbox n
         JOIN user_account_membership m
           ON m.account_id = n.account_id
         JOIN bank_user u
           ON u.id = m.user_id
+        LEFT JOIN notification_user_read_state r
+          ON r.user_id = :userId
+         AND r.notification_id = n.id
         WHERE m.user_id = :userId
           AND m.membership_status = 'ACTIVE'
           AND u.user_status = 'ACTIVE'

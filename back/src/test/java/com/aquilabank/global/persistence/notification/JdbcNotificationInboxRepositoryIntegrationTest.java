@@ -37,6 +37,7 @@ class JdbcNotificationInboxRepositoryIntegrationTest extends PostgresContainerTe
   void fetchesOnlyAccessibleNotificationsForUser() {
     long[] userId = new long[1];
     long[] accountIds = new long[3];
+    long[] notificationIds = new long[3];
     Instant base = Instant.parse("2026-04-17T00:00:00Z");
     commit(
         transactionManager,
@@ -48,23 +49,28 @@ class JdbcNotificationInboxRepositoryIntegrationTest extends PostgresContainerTe
           insertMembership(userId[0], accountIds[0], "OWNER", "ACTIVE");
           insertMembership(userId[0], accountIds[1], "VIEWER", "ACTIVE");
           insertMembership(userId[0], accountIds[2], "VIEWER", "REVOKED");
-          insertNotification(accountIds[0], "evt-1", "TransferBooked", "입금 1", "첫 알림", null, base);
-          insertNotification(
-              accountIds[1],
-              "evt-2",
-              "TransferBooked",
-              "입금 2",
-              "둘째 알림",
-              null,
-              base.plusSeconds(10));
-          insertNotification(
-              accountIds[2],
-              "evt-3",
-              "TransferBooked",
-              "입금 3",
-              "숨김 알림",
-              null,
-              base.plusSeconds(20));
+          notificationIds[0] =
+              insertNotification(
+                  accountIds[0], "evt-1", "TransferBooked", "입금 1", "첫 알림", null, base);
+          notificationIds[1] =
+              insertNotification(
+                  accountIds[1],
+                  "evt-2",
+                  "TransferBooked",
+                  "입금 2",
+                  "둘째 알림",
+                  null,
+                  base.plusSeconds(10));
+          notificationIds[2] =
+              insertNotification(
+                  accountIds[2],
+                  "evt-3",
+                  "TransferBooked",
+                  "입금 3",
+                  "숨김 알림",
+                  null,
+                  base.plusSeconds(20));
+          insertUserReadState(userId[0], notificationIds[0], base.plusSeconds(30));
         });
 
     NotificationSlice slice =
@@ -73,44 +79,77 @@ class JdbcNotificationInboxRepositoryIntegrationTest extends PostgresContainerTe
     assertThat(slice.items()).hasSize(2);
     assertThat(slice.items()).extracting("title").containsExactly("입금 2", "입금 1");
     assertThat(slice.items()).extracting("accountId").containsExactly(accountIds[1], accountIds[0]);
+    assertThat(slice.items()).extracting("readAt").containsExactly(null, base.plusSeconds(30));
   }
 
   @Test
-  void countsUnreadAndMarksAsReadIdempotently() {
-    long[] userId = new long[1];
+  void countsUnreadAndMarksAsReadIdempotentlyPerUser() {
+    long[] userIds = new long[2];
     long[] accountId = new long[1];
-    long[] notificationIds = new long[3];
+    long[] notificationIds = new long[2];
     Instant base = Instant.parse("2026-04-17T00:00:00Z");
     commit(
         transactionManager,
         () -> {
-          userId[0] = insertUser("user-2");
+          userIds[0] = insertUser("user-2");
+          userIds[1] = insertUser("user-3");
           accountId[0] = insertAccount("main account");
-          insertMembership(userId[0], accountId[0], "OWNER", "ACTIVE");
+          insertMembership(userIds[0], accountId[0], "OWNER", "ACTIVE");
+          insertMembership(userIds[1], accountId[0], "VIEWER", "ACTIVE");
           notificationIds[0] =
               insertNotification(accountId[0], "evt-10", "TransferBooked", "A", "A", null, base);
           notificationIds[1] =
               insertNotification(
+                  accountId[0], "evt-11", "TransferBooked", "B", "B", null, base.plusSeconds(5));
+        });
+
+    assertThat(repository.countUnreadByUserId(userIds[0])).isEqualTo(2L);
+    assertThat(repository.countUnreadByUserId(userIds[1])).isEqualTo(2L);
+    assertThat(repository.markAsReadByUserId(userIds[0], notificationIds[0], base.plusSeconds(30)))
+        .isTrue();
+    assertThat(repository.countUnreadByUserId(userIds[0])).isEqualTo(1L);
+    assertThat(repository.countUnreadByUserId(userIds[1])).isEqualTo(2L);
+    assertThat(repository.markAsReadByUserId(userIds[0], notificationIds[0], base.plusSeconds(40)))
+        .isTrue();
+    assertThat(repository.countUnreadByUserId(userIds[0])).isEqualTo(1L);
+    assertThat(repository.countUnreadByUserId(userIds[1])).isEqualTo(2L);
+    assertThat(repository.markAsReadByUserId(userIds[0], 99999L, base.plusSeconds(50))).isFalse();
+  }
+
+  @Test
+  void keepsAccountScopedReadPathOnNotificationInbox() {
+    long[] accountId = new long[1];
+    long[] notificationIds = new long[2];
+    Instant base = Instant.parse("2026-04-17T00:00:00Z");
+    commit(
+        transactionManager,
+        () -> {
+          accountId[0] = insertAccount("account read model");
+          notificationIds[0] =
+              insertNotification(accountId[0], "evt-20", "TransferBooked", "A", "A", null, base);
+          notificationIds[1] =
+              insertNotification(
                   accountId[0],
-                  "evt-11",
+                  "evt-21",
                   "TransferBooked",
                   "B",
                   "B",
                   base.plusSeconds(5),
                   base.plusSeconds(5));
-          notificationIds[2] =
-              insertNotification(
-                  accountId[0], "evt-12", "TransferBooked", "C", "C", null, base.plusSeconds(10));
         });
 
-    assertThat(repository.countUnreadByUserId(userId[0])).isEqualTo(2L);
-    assertThat(repository.markAsReadByUserId(userId[0], notificationIds[0], base.plusSeconds(30)))
+    assertThat(repository.countUnreadByAccountId(accountId[0])).isEqualTo(1L);
+    assertThat(
+            repository.markAsReadByAccountId(
+                accountId[0], notificationIds[0], base.plusSeconds(30)))
         .isTrue();
-    assertThat(repository.countUnreadByUserId(userId[0])).isEqualTo(1L);
-    assertThat(repository.markAsReadByUserId(userId[0], notificationIds[0], base.plusSeconds(40)))
+    assertThat(repository.countUnreadByAccountId(accountId[0])).isEqualTo(0L);
+    assertThat(
+            repository.markAsReadByAccountId(
+                accountId[0], notificationIds[0], base.plusSeconds(40)))
         .isTrue();
-    assertThat(repository.countUnreadByUserId(userId[0])).isEqualTo(1L);
-    assertThat(repository.markAsReadByUserId(userId[0], 99999L, base.plusSeconds(50))).isFalse();
+    assertThat(repository.markAsReadByAccountId(accountId[0], 99999L, base.plusSeconds(50)))
+        .isFalse();
   }
 
   @Test
@@ -292,6 +331,26 @@ class JdbcNotificationInboxRepositoryIntegrationTest extends PostgresContainerTe
       throw new IllegalStateException("notification_inbox insert did not return id");
     }
     return notificationId;
+  }
+
+  private void insertUserReadState(long userId, long notificationId, Instant readAt) {
+    jdbcTemplate.update(
+        """
+        INSERT INTO notification_user_read_state (
+            user_id,
+            notification_id,
+            read_at
+        )
+        VALUES (
+            :userId,
+            :notificationId,
+            :readAt
+        )
+        """,
+        new MapSqlParameterSource()
+            .addValue("userId", userId)
+            .addValue("notificationId", notificationId)
+            .addValue("readAt", Timestamp.from(readAt)));
   }
 
   private long totalNotifications() {
