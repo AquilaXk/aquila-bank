@@ -133,6 +133,80 @@ class TransferCommandApiIntegrationTest extends PostgresContainerTestSupport {
     assertEquals(0L, balanceOf(targetAccountId));
   }
 
+  @Test
+  void reversesTransferAndPersistsReversalLedgerReadModelOutboxAndIdempotency() throws Exception {
+    TransferResponseView booked = invokeTransfer("transfer-004", targetAccountId, 1_500L, "rent");
+
+    TransferReversalResponseView reversed =
+        invokeReversal(booked.transactionReference(), "reversal-001", "CANCEL", "cancel rent");
+
+    assertEquals(booked.transactionReference(), reversed.originalTransactionReference());
+    assertEquals(sourceAccountId, reversed.sourceAccountId());
+    assertEquals(targetAccountId, reversed.targetAccountId());
+    assertEquals(10_000L, reversed.availableBalanceAfterMinor());
+    assertEquals("reversal-001-request", reversed.requestId());
+    assertEquals(2L, countRows("ledger_entry", booked.transactionReference()));
+    assertEquals(2L, countRows("ledger_entry", reversed.reversalTransactionReference()));
+    assertEquals(2L, countRows("transaction_read_model", reversed.reversalTransactionReference()));
+    assertEquals(2L, transactionStatusCount(booked.transactionReference(), "REVERSED"));
+    assertEquals(10_000L, balanceOf(sourceAccountId));
+    assertEquals(0L, balanceOf(targetAccountId));
+    assertEquals(1L, transferReversalCount(booked.transactionReference()));
+    assertEquals(2L, countTraceRows(reversed.requestId()));
+
+    Map<String, Object> commandState = idempotencyState("reversal-001");
+    assertEquals("COMPLETED", commandState.get("processing_status"));
+    assertEquals(200, ((Number) commandState.get("response_code")).intValue());
+
+    Map<String, Object> outboxState = outboxState(reversed.reversalTransactionReference());
+    assertEquals("TRANSFER", outboxState.get("aggregate_type"));
+    assertEquals("TransferReversed", outboxState.get("event_type"));
+    assertEquals("PENDING", outboxState.get("publish_status"));
+    assertTrue(String.valueOf(outboxState.get("payload")).contains(booked.transactionReference()));
+    assertTrue(
+        String.valueOf(outboxState.get("payload"))
+            .contains(reversed.reversalTransactionReference()));
+  }
+
+  @Test
+  void rejectsDuplicateReversalForSameOriginalTransfer() throws Exception {
+    TransferResponseView booked =
+        invokeTransfer("transfer-005", targetAccountId, 1_200L, "tuition");
+    TransferReversalResponseView reversed =
+        invokeReversal(booked.transactionReference(), "reversal-002", "CORRECTION", "fix tuition");
+
+    MvcResult result =
+        mockMvc
+            .perform(
+                post("/api/v1/transfers/%s/reversal".formatted(booked.transactionReference()))
+                    .header("X-Account-Id", String.valueOf(sourceAccountId))
+                    .header("X-Request-Id", "reversal-003-request")
+                    .header("Idempotency-Key", "reversal-003")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                          "sourceAccountId": %d,
+                          "reversalReason": "CANCEL",
+                          "summary": "duplicate cancel"
+                        }
+                        """
+                            .formatted(sourceAccountId)))
+            .andReturn();
+
+    assertEquals(409, result.getResponse().getStatus(), result.getResponse().getContentAsString());
+    assertEquals(
+        "transfer is already reversed",
+        objectMapper
+            .readTree(result.getResponse().getContentAsByteArray())
+            .get("message")
+            .asText());
+    assertEquals(1L, transferReversalCount(booked.transactionReference()));
+    assertEquals(2L, countRows("ledger_entry", reversed.reversalTransactionReference()));
+    assertEquals(1L, outboxCount(reversed.reversalTransactionReference()));
+    assertEquals(0L, idempotencyCount("reversal-003"));
+  }
+
   private AccountBootstrapResponseView bootstrapAccount(
       String displayName, long initialBalanceMinor) throws Exception {
     MvcResult result =
@@ -192,6 +266,40 @@ class TransferCommandApiIntegrationTest extends PostgresContainerTestSupport {
         result.getResponse().getHeader("X-Request-Id"));
   }
 
+  private TransferReversalResponseView invokeReversal(
+      String originalTransactionReference,
+      String idempotencyKey,
+      String reversalReason,
+      String summary)
+      throws Exception {
+    String requestId = idempotencyKey + "-request";
+    MvcResult result =
+        mockMvc
+            .perform(
+                post("/api/v1/transfers/%s/reversal".formatted(originalTransactionReference))
+                    .header("X-Account-Id", String.valueOf(sourceAccountId))
+                    .header("X-Request-Id", requestId)
+                    .header("Idempotency-Key", idempotencyKey)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                          "sourceAccountId": %d,
+                          "reversalReason": "%s",
+                          "summary": "%s"
+                        }
+                        """
+                            .formatted(sourceAccountId, reversalReason, summary)))
+            .andReturn();
+
+    assertEquals(200, result.getResponse().getStatus(), result.getResponse().getContentAsString());
+
+    return new TransferReversalResponseView(
+        objectMapper.readValue(
+            result.getResponse().getContentAsByteArray(), TransferReversalResponseBody.class),
+        result.getResponse().getHeader("X-Request-Id"));
+  }
+
   private void updateBalance(long accountId, long availableBalanceMinor) {
     jdbcTemplate.update(
         """
@@ -237,6 +345,32 @@ class TransferCommandApiIntegrationTest extends PostgresContainerTestSupport {
         WHERE aggregate_id = :transactionReference
         """,
         new MapSqlParameterSource().addValue("transactionReference", transactionReference),
+        Long.class);
+  }
+
+  private long transferReversalCount(String originalTransactionReference) {
+    return jdbcTemplate.queryForObject(
+        """
+        SELECT COUNT(*)
+        FROM transfer_reversal
+        WHERE original_transaction_reference = :originalTransactionReference
+        """,
+        new MapSqlParameterSource()
+            .addValue("originalTransactionReference", originalTransactionReference),
+        Long.class);
+  }
+
+  private long transactionStatusCount(String transactionReference, String transactionStatus) {
+    return jdbcTemplate.queryForObject(
+        """
+        SELECT COUNT(*)
+        FROM transaction_read_model
+        WHERE transaction_reference = :transactionReference
+          AND transaction_status = :transactionStatus
+        """,
+        new MapSqlParameterSource()
+            .addValue("transactionReference", transactionReference)
+            .addValue("transactionStatus", transactionStatus),
         Long.class);
   }
 
@@ -304,8 +438,42 @@ class TransferCommandApiIntegrationTest extends PostgresContainerTestSupport {
     }
   }
 
+  private record TransferReversalResponseView(TransferReversalResponseBody body, String requestId) {
+
+    private String originalTransactionReference() {
+      return body.originalTransactionReference();
+    }
+
+    private String reversalTransactionReference() {
+      return body.reversalTransactionReference();
+    }
+
+    private long sourceAccountId() {
+      return body.sourceAccountId();
+    }
+
+    private long targetAccountId() {
+      return body.targetAccountId();
+    }
+
+    private long availableBalanceAfterMinor() {
+      return body.availableBalanceAfterMinor();
+    }
+  }
+
   private record TransferResponseBody(
       String transactionReference,
+      long sourceAccountId,
+      long targetAccountId,
+      long amountMinor,
+      String currencyCode,
+      long availableBalanceAfterMinor,
+      Instant bookedAt,
+      String status) {}
+
+  private record TransferReversalResponseBody(
+      String originalTransactionReference,
+      String reversalTransactionReference,
       long sourceAccountId,
       long targetAccountId,
       long amountMinor,
