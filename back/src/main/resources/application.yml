@@ -115,6 +115,12 @@ notification:
     fanout-listen-timeout-ms: ${NOTIFICATION_SSE_FANOUT_LISTEN_TIMEOUT_MS:1000}
     fanout-retry-delay-ms: ${NOTIFICATION_SSE_FANOUT_RETRY_DELAY_MS:2000}
   inbox:
+    cleanup:
+      enabled: ${NOTIFICATION_INBOX_CLEANUP_ENABLED:true}
+      fixed-delay-ms: ${NOTIFICATION_INBOX_CLEANUP_FIXED_DELAY_MS:300000}
+      initial-delay-ms: ${NOTIFICATION_INBOX_CLEANUP_INITIAL_DELAY_MS:60000}
+      batch-size: ${NOTIFICATION_INBOX_CLEANUP_BATCH_SIZE:500}
+      retention-days: ${NOTIFICATION_INBOX_CLEANUP_RETENTION_DAYS:90}
     consumer:
       enabled: ${NOTIFICATION_INBOX_CONSUMER_ENABLED:false}
       auto-startup: ${NOTIFICATION_INBOX_CONSUMER_AUTO_STARTUP:true}

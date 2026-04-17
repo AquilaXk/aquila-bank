@@ -7,6 +7,7 @@ import com.aquilabank.domain.notification.model.NotificationReplayQuery;
 import com.aquilabank.domain.notification.model.NotificationSlice;
 import com.aquilabank.domain.notification.model.NotificationSummary;
 import com.aquilabank.domain.notification.port.NotificationInboxAppendPort;
+import com.aquilabank.domain.notification.port.NotificationInboxCleanupPort;
 import com.aquilabank.domain.notification.port.NotificationInboxReadPort;
 import com.aquilabank.domain.notification.port.NotificationInboxWritePort;
 import com.aquilabank.global.notification.NotificationInboxInsertedEvent;
@@ -26,10 +27,13 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-/** JWT user inbox join 과 bootstrap account inbox exact lookup 을 한 adapter 로 묶습니다. */
+/** JWT user/account inbox 조회, read 처리, retention cleanup 을 한 JDBC adapter로 묶습니다. */
 @Repository
 public class JdbcNotificationInboxRepository
-    implements NotificationInboxReadPort, NotificationInboxWritePort, NotificationInboxAppendPort {
+    implements NotificationInboxReadPort,
+        NotificationInboxWritePort,
+        NotificationInboxAppendPort,
+        NotificationInboxCleanupPort {
 
   private static final RowMapper<NotificationSummary> ROW_MAPPER = (rs, rowNum) -> mapRow(rs);
 
@@ -291,6 +295,37 @@ public class JdbcNotificationInboxRepository
               ROW_MAPPER));
     }
     publishInsertedNotifications(insertedItems);
+  }
+
+  @Override
+  @Transactional
+  public int deleteExpiredNotifications(Instant cutoff, int batchSize) {
+    // 여러 인스턴스 cleanup 이 겹쳐도 같은 오래된 row를 두 번 잡지 않게 SKIP LOCKED 로 batch를 나눕니다.
+    Integer deleted =
+        jdbcTemplate.queryForObject(
+            """
+            WITH expired AS (
+                SELECT id
+                FROM notification_inbox
+                WHERE created_at < :cutoff
+                ORDER BY created_at ASC, id ASC
+                FOR UPDATE SKIP LOCKED
+                LIMIT :batchSize
+            ),
+            deleted AS (
+                DELETE FROM notification_inbox n
+                USING expired e
+                WHERE n.id = e.id
+                RETURNING n.id
+            )
+            SELECT COUNT(*)
+            FROM deleted
+            """,
+            new MapSqlParameterSource()
+                .addValue("cutoff", Timestamp.from(cutoff))
+                .addValue("batchSize", batchSize),
+            Integer.class);
+    return deleted == null ? 0 : deleted;
   }
 
   private void publishInsertedNotifications(List<NotificationSummary> insertedItems) {
