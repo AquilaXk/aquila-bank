@@ -6,6 +6,8 @@ import com.aquilabank.domain.notification.usecase.NotificationQueryService;
 import com.aquilabank.domain.notification.usecase.NotificationQueryUseCase;
 import com.aquilabank.domain.notification.usecase.NotificationReadService;
 import com.aquilabank.domain.notification.usecase.NotificationReadUseCase;
+import com.aquilabank.global.notification.NotificationSseFanoutInstanceId;
+import java.util.UUID;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -25,5 +27,10 @@ public class NotificationConfiguration {
   NotificationReadUseCase notificationReadUseCase(
       NotificationInboxWritePort notificationInboxWritePort) {
     return new NotificationReadService(notificationInboxWritePort);
+  }
+
+  @Bean
+  NotificationSseFanoutInstanceId notificationSseFanoutInstanceId() {
+    return new NotificationSseFanoutInstanceId(UUID.randomUUID().toString());
   }
 }
