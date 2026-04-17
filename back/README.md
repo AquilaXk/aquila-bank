@@ -38,6 +38,39 @@ com.aquilabank
 - Spring JDBC / HikariCP
 - Spring Boot Actuator
 
+## Transaction Query Baseline
+
+거래 조회 성능 기준선은 `GET /api/v1/transactions` 의 query shape, index 사용 여부, timeout 가드, p95 목표를 함께 보도록 고정합니다.
+
+- baseline fixture:
+  - hot account `8만 건`
+  - noise account `6계좌 x 4천 건`
+  - 30일 조회 창
+  - fixture 적재 뒤 `ANALYZE` 수행
+- 대표 조회 3종:
+  - 첫 page: `accountId + from/to + limit`
+  - 후속 cursor page: `accountId + from/to + cursor + limit`
+  - 상태 필터 page: `accountId + from/to + status + cursor/limit`
+- baseline p95 목표:
+  - 첫 page `<= 120ms`
+  - 후속 cursor page `<= 150ms`
+  - 상태 필터 page `<= 150ms`
+- timeout 보호 순서:
+  - datasource `statement_timeout=3000ms`
+  - Spring JDBC `query-timeout=3s`
+  - MVC async `request-timeout=5000ms`
+- 운영 해석 기준:
+  - p95 목표는 baseline fixture 기준 회귀 감지선입니다.
+  - 1억 건 전체를 로컬에 적재하는 대신, planner가 계좌/기간/status/cursor 조건으로 bounded index range scan을 유지하는지 먼저 확인합니다.
+  - `Seq Scan`, 불필요한 `Sort`, timeout 근접 실행 시간이 보이면 index 또는 query shape를 다시 검토합니다.
+
+재현 명령:
+
+```bash
+tools/test/with-resource-lock.sh back-transaction-baseline \
+  tools/test/run-transaction-query-baseline.sh
+```
+
 ## Run
 
 ```bash
