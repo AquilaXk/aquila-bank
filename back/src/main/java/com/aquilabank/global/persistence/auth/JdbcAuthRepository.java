@@ -1,6 +1,7 @@
 package com.aquilabank.global.persistence.auth;
 
 import com.aquilabank.domain.auth.model.AccountAccessMembership;
+import com.aquilabank.domain.auth.model.AuthSessionSummary;
 import com.aquilabank.domain.auth.model.AuthStatusChangeAuditSummary;
 import com.aquilabank.domain.auth.model.AuthStatusChangeOutcome;
 import com.aquilabank.domain.auth.model.AuthStatusChangeReason;
@@ -16,6 +17,7 @@ import com.aquilabank.domain.auth.model.UserAccountMembership;
 import com.aquilabank.domain.auth.model.UserAccountMembershipSummary;
 import com.aquilabank.domain.auth.model.UserStatus;
 import com.aquilabank.domain.auth.port.AccountAccessPort;
+import com.aquilabank.domain.auth.port.AuthSessionQueryPort;
 import com.aquilabank.domain.auth.port.AuthStatusChangeAuditQueryPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionLoadPort;
 import com.aquilabank.domain.auth.port.UserAccountMembershipQueryPort;
@@ -25,6 +27,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -35,6 +38,7 @@ import org.springframework.stereotype.Repository;
 public class JdbcAuthRepository
     implements UserCredentialLoadPort,
         RefreshTokenSessionLoadPort,
+        AuthSessionQueryPort,
         AccountAccessPort,
         UserQueryPort,
         UserAccountMembershipQueryPort,
@@ -116,6 +120,30 @@ public class JdbcAuthRepository
             (rs, rowNum) -> mapRefreshTokenSession(rs))
         .stream()
         .findFirst();
+  }
+
+  @Override
+  public List<AuthSessionSummary> findActiveSessionsByUserId(long userId, Instant now, int size) {
+    // user_id + session_status + expires_at DESC index 경로를 그대로 쓰려고 조건과 정렬을 고정합니다.
+    return jdbcTemplate.query(
+        """
+        SELECT id,
+               session_status,
+               expires_at,
+               last_used_at,
+               created_at
+        FROM auth_refresh_token_session
+        WHERE user_id = :userId
+          AND session_status = 'ACTIVE'
+          AND expires_at > :now
+        ORDER BY expires_at DESC, id DESC
+        LIMIT :size
+        """,
+        new MapSqlParameterSource()
+            .addValue("userId", userId)
+            .addValue("now", Timestamp.from(now))
+            .addValue("size", size),
+        (rs, rowNum) -> mapAuthSessionSummary(rs));
   }
 
   @Override
@@ -255,6 +283,15 @@ public class JdbcAuthRepository
         toNullableInstant(rs.getTimestamp("last_used_at")),
         toNullableInstant(rs.getTimestamp("rotated_at")),
         rs.getObject("replaced_by_session_id", Long.class));
+  }
+
+  private AuthSessionSummary mapAuthSessionSummary(ResultSet rs) throws SQLException {
+    return new AuthSessionSummary(
+        rs.getLong("id"),
+        RefreshTokenSessionStatus.valueOf(rs.getString("session_status")),
+        toInstant(rs.getTimestamp("expires_at")),
+        toNullableInstant(rs.getTimestamp("last_used_at")),
+        toInstant(rs.getTimestamp("created_at")));
   }
 
   private UserAccountMembership mapMembership(ResultSet rs) throws SQLException {
