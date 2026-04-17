@@ -106,6 +106,10 @@ outbox:
       max-stale-sending-count: ${OUTBOX_OPS_HEALTH_MAX_STALE_SENDING_COUNT:0}
 
 notification:
+  sse:
+    connection-timeout-ms: ${NOTIFICATION_SSE_CONNECTION_TIMEOUT_MS:1800000}
+    heartbeat-interval-ms: ${NOTIFICATION_SSE_HEARTBEAT_INTERVAL_MS:10000}
+    reconnect-delay-ms: ${NOTIFICATION_SSE_RECONNECT_DELAY_MS:3000}
   inbox:
     consumer:
       enabled: ${NOTIFICATION_INBOX_CONSUMER_ENABLED:false}

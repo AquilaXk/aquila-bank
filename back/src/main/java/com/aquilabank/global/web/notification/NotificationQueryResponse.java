@@ -28,7 +28,7 @@ public record NotificationQueryResponse(
       Instant createdAt,
       Instant readAt) {
 
-    static NotificationItemResponse from(NotificationSummary item) {
+    public static NotificationItemResponse from(NotificationSummary item) {
       return new NotificationItemResponse(
           item.id(),
           item.accountId(),
