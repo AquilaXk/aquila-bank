@@ -24,6 +24,7 @@ public class TransferBookedNotificationConsumer {
   @KafkaListener(
       id = "transferBookedNotificationConsumer",
       topics = "${notification.inbox.consumer.transfer-booked.topic}",
+      groupId = "${notification.inbox.consumer.group-id}",
       containerFactory = "notificationInboxKafkaListenerContainerFactory",
       autoStartup = "${notification.inbox.consumer.auto-startup:true}")
   public void consume(@Header(KafkaHeaders.RECEIVED_KEY) String eventKey, String payload) {
