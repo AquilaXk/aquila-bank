@@ -105,6 +105,32 @@ final class OutboxOpsScriptSmokeSupport {
               "\"http://localhost:8080/internal/api/v1/outbox/notification/dlq-events\"",
               "poison message 최근 항목"));
 
+  static final ScriptSpec NOTIFICATION_DLQ_REDRIVE_SPEC =
+      new ScriptSpec(
+          "notification-dlq-redrive",
+          repoRoot().resolve("tools/ops/notification-redrive-dlq-event.sh"),
+          "usage: tools/ops/notification-redrive-dlq-event.sh",
+          List.of("http://localhost:8080", "test-outbox-ops-service-token", "0", "12"),
+          List.of(
+              "--fail-with-body",
+              "--silent",
+              "--show-error",
+              "--request",
+              "POST",
+              "--header",
+              "Authorization: Bearer test-outbox-ops-service-token",
+              "--header",
+              "Content-Type: application/json",
+              "--data",
+              "{\"partition\":0,\"offset\":12}",
+              "http://localhost:8080/internal/api/v1/outbox/notification/dlq-events/redrive"),
+          List.of(
+              "tools/ops/notification-redrive-dlq-event.sh \\",
+              "\"$OUTBOX_OPS_SERVICE_TOKEN\" \\",
+              "\"http://localhost:8080/internal/api/v1/outbox/notification/dlq-events/redrive\"",
+              "\"partition\":0",
+              "preview -> redrive -> summary"));
+
   private static final Duration SCRIPT_TIMEOUT = Duration.ofSeconds(5);
 
   private OutboxOpsScriptSmokeSupport() {}

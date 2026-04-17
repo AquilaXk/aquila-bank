@@ -39,6 +39,20 @@ class NotificationOpsScriptSmokeTest {
   }
 
   @Test
+  void notificationDlqRedriveScriptRejectsMissingArgs() throws Exception {
+    OutboxOpsScriptSmokeSupport.ScriptResult result =
+        OutboxOpsScriptSmokeSupport.run(
+            tempDir,
+            OutboxOpsScriptSmokeSupport.NOTIFICATION_DLQ_REDRIVE_SPEC,
+            OutboxOpsScriptSmokeSupport.NOTIFICATION_DLQ_REDRIVE_SPEC.args().subList(0, 3));
+
+    assertThat(result.exitCode()).isEqualTo(1);
+    assertThat(result.stderr())
+        .contains(OutboxOpsScriptSmokeSupport.NOTIFICATION_DLQ_REDRIVE_SPEC.usagePrefix());
+    assertThat(result.curlArgs()).isEmpty();
+  }
+
+  @Test
   void notificationSummaryScriptBuildsExpectedCurlRequest() throws Exception {
     OutboxOpsScriptSmokeSupport.ScriptResult result =
         OutboxOpsScriptSmokeSupport.run(
@@ -71,6 +85,22 @@ class NotificationOpsScriptSmokeTest {
   }
 
   @Test
+  void notificationDlqRedriveScriptBuildsExpectedCurlRequest() throws Exception {
+    OutboxOpsScriptSmokeSupport.ScriptResult result =
+        OutboxOpsScriptSmokeSupport.run(
+            tempDir,
+            OutboxOpsScriptSmokeSupport.NOTIFICATION_DLQ_REDRIVE_SPEC,
+            OutboxOpsScriptSmokeSupport.NOTIFICATION_DLQ_REDRIVE_SPEC.args());
+
+    assertThat(result.exitCode()).isZero();
+    assertThat(result.stderr()).isEmpty();
+    assertThat(result.stdout()).isEmpty();
+    assertThat(result.curlArgs())
+        .containsExactlyElementsOf(
+            OutboxOpsScriptSmokeSupport.NOTIFICATION_DLQ_REDRIVE_SPEC.expectedCurlArgs());
+  }
+
+  @Test
   void readmeContainsNotificationSummaryRunbook() throws Exception {
     assertReadmeContains(OutboxOpsScriptSmokeSupport.NOTIFICATION_SUMMARY_SPEC);
   }
@@ -78,6 +108,11 @@ class NotificationOpsScriptSmokeTest {
   @Test
   void readmeContainsNotificationDlqRunbook() throws Exception {
     assertReadmeContains(OutboxOpsScriptSmokeSupport.NOTIFICATION_DLQ_EVENTS_SPEC);
+  }
+
+  @Test
+  void readmeContainsNotificationDlqRedriveRunbook() throws Exception {
+    assertReadmeContains(OutboxOpsScriptSmokeSupport.NOTIFICATION_DLQ_REDRIVE_SPEC);
   }
 
   private void assertReadmeContains(OutboxOpsScriptSmokeSupport.ScriptSpec spec) throws Exception {
