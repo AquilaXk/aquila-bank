@@ -110,6 +110,9 @@ notification:
     connection-timeout-ms: ${NOTIFICATION_SSE_CONNECTION_TIMEOUT_MS:1800000}
     heartbeat-interval-ms: ${NOTIFICATION_SSE_HEARTBEAT_INTERVAL_MS:10000}
     reconnect-delay-ms: ${NOTIFICATION_SSE_RECONNECT_DELAY_MS:3000}
+    fanout-channel: ${NOTIFICATION_SSE_FANOUT_CHANNEL:notification_sse_fanout}
+    fanout-listen-timeout-ms: ${NOTIFICATION_SSE_FANOUT_LISTEN_TIMEOUT_MS:1000}
+    fanout-retry-delay-ms: ${NOTIFICATION_SSE_FANOUT_RETRY_DELAY_MS:2000}
   inbox:
     consumer:
       enabled: ${NOTIFICATION_INBOX_CONSUMER_ENABLED:false}
