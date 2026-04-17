@@ -2,10 +2,17 @@ package com.aquilabank.global.config;
 
 import com.aquilabank.domain.notification.port.OutboxEventPublishPort;
 import com.aquilabank.domain.notification.port.OutboxEventStore;
+import com.aquilabank.domain.notification.port.OutboxOpsReadPort;
+import com.aquilabank.domain.notification.port.OutboxOpsRecoveryPort;
 import com.aquilabank.domain.notification.usecase.OutboxDispatchService;
 import com.aquilabank.domain.notification.usecase.OutboxDispatchUseCase;
+import com.aquilabank.domain.notification.usecase.OutboxOpsQueryService;
+import com.aquilabank.domain.notification.usecase.OutboxOpsQueryUseCase;
+import com.aquilabank.domain.notification.usecase.OutboxOpsRecoveryService;
+import com.aquilabank.domain.notification.usecase.OutboxOpsRecoveryUseCase;
 import com.aquilabank.global.notification.KafkaOutboxEventPublisher;
 import com.aquilabank.global.notification.LoggingOutboxEventPublisher;
+import com.aquilabank.global.notification.OutboxHealthIndicator;
 import com.aquilabank.global.notification.OutboxTopicResolver;
 import java.time.Duration;
 import java.util.HashMap;
@@ -17,6 +24,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.health.contributor.HealthIndicator;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Configuration;
@@ -29,7 +37,11 @@ import org.springframework.util.ClassUtils;
 /** Spring adapter와 scheduler를 domain outbox use case에 연결 */
 @Configuration
 @EnableScheduling
-@EnableConfigurationProperties({OutboxProperties.class, OutboxKafkaProperties.class})
+@EnableConfigurationProperties({
+  OutboxProperties.class,
+  OutboxKafkaProperties.class,
+  OutboxOpsProperties.class
+})
 public class OutboxConfiguration {
 
   private static final Logger log = LoggerFactory.getLogger(OutboxConfiguration.class);
@@ -46,6 +58,26 @@ public class OutboxConfiguration {
         outboxProperties.batchSize(),
         Duration.ofSeconds(outboxProperties.staleAfterSeconds()),
         Duration.ofSeconds(outboxProperties.maxRetryDelaySeconds()));
+  }
+
+  @Bean
+  OutboxOpsQueryUseCase outboxOpsQueryUseCase(
+      OutboxOpsReadPort outboxOpsReadPort, OutboxProperties outboxProperties) {
+    return new OutboxOpsQueryService(
+        outboxOpsReadPort, Duration.ofSeconds(outboxProperties.staleAfterSeconds()));
+  }
+
+  @Bean
+  OutboxOpsRecoveryUseCase outboxOpsRecoveryUseCase(
+      OutboxOpsRecoveryPort outboxOpsRecoveryPort, OutboxProperties outboxProperties) {
+    return new OutboxOpsRecoveryService(
+        outboxOpsRecoveryPort, Duration.ofSeconds(outboxProperties.staleAfterSeconds()));
+  }
+
+  @Bean
+  HealthIndicator outboxHealthIndicator(
+      OutboxOpsQueryUseCase outboxOpsQueryUseCase, OutboxOpsProperties outboxOpsProperties) {
+    return new OutboxHealthIndicator(outboxOpsQueryUseCase, outboxOpsProperties.health());
   }
 
   @Bean

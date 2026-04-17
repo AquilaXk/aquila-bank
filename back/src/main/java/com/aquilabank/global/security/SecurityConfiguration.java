@@ -63,6 +63,8 @@ public class SecurityConfiguration {
                     // 내부 bootstrap API는 JWT 대신 별도 shared token으로 보호합니다.
                     .requestMatchers("/internal/api/v1/accounts/bootstrap")
                     .permitAll()
+                    .requestMatchers("/internal/api/v1/outbox/**")
+                    .permitAll()
                     .requestMatchers("/internal/api/v1/auth/**")
                     .permitAll()
                     .anyRequest()

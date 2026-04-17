@@ -394,6 +394,93 @@ tools/ops/internal-auth-find-status-change-audit.sh \
 - wrapper script 내부에서 exact lookup endpoint, `X-Auth-Bootstrap-Token`, `requestId` query를 고정합니다.
 - failure 원본은 structured log이므로 incident 시작점은 항상 로그 검색입니다.
 
+## Outbox Ops Runbook
+
+Kafka producer 를 붙인 이후 outbox backlog 는 actuator health 와 내부 ops 경로를 같이 봐야 복구 판단이 빨라집니다.
+
+- 내부 ops endpoint:
+  - `GET /internal/api/v1/outbox/summary`
+  - `GET /internal/api/v1/outbox/failed-events?limit=<n>`
+  - `POST /internal/api/v1/outbox/recovery/stale-sending`
+- health endpoint:
+  - `GET /actuator/health`
+
+### 준비할 env
+
+```bash
+OUTBOX_OPS_ENABLED=true
+OUTBOX_OPS_TOKEN_HEADER=X-Outbox-Ops-Token
+OUTBOX_OPS_TOKEN=dev-outbox-ops-token
+OUTBOX_OPS_FAILED_LIST_LIMIT=20
+OUTBOX_OPS_HEALTH_MAX_LAG_SECONDS=120
+OUTBOX_OPS_HEALTH_MAX_FAILED_COUNT=10
+OUTBOX_OPS_HEALTH_MAX_STALE_SENDING_COUNT=0
+```
+
+### 예시 스크립트
+
+failed backlog 조회:
+
+```bash
+tools/ops/outbox-find-failed-events.sh \
+  http://localhost:8080 \
+  "$OUTBOX_OPS_TOKEN" \
+  20
+```
+
+stale `SENDING` 수동 회수:
+
+```bash
+tools/ops/outbox-recover-stale-sending.sh \
+  http://localhost:8080 \
+  "$OUTBOX_OPS_TOKEN"
+```
+
+### 직접 호출 예시
+
+summary 조회:
+
+```bash
+curl --fail-with-body --silent --show-error \
+  --get \
+  --header "X-Outbox-Ops-Token: ${OUTBOX_OPS_TOKEN}" \
+  "http://localhost:8080/internal/api/v1/outbox/summary"
+```
+
+health 확인:
+
+```bash
+curl --fail-with-body --silent --show-error \
+  --get \
+  "http://localhost:8080/actuator/health"
+```
+
+### health 상태 해석
+
+- `UP`: `lagSeconds`, `failedCount`, `staleSendingCount` 가 모두 설정 임계값 이하다.
+- `OUT_OF_SERVICE`: outbox backlog 가 임계값을 넘었고 `/actuator/health` 는 `503`으로 내려간다.
+- `OUT_OF_SERVICE` 여도 앱 전체 장애와 동일시하지 말고 먼저 `/internal/api/v1/outbox/summary` 로 lag/failure/stale 축 중 어떤 값이 넘었는지 확인한다.
+
+### 기본 triage 순서
+
+1. `/actuator/health` 가 `503`이면 `/internal/api/v1/outbox/summary` 를 조회해 `lagSeconds`, `failedCount`, `staleSendingCount` 중 초과 축을 확인합니다.
+2. `failedCount` 가 크면 `tools/ops/outbox-find-failed-events.sh` 로 bounded failed list 를 보고 `eventKey`, `retryCount`, `lastError` 를 먼저 확인합니다.
+3. `staleSendingCount` 가 0보다 크면 `tools/ops/outbox-recover-stale-sending.sh` 를 한 번만 호출하고, 응답의 `recoveredCount` 와 이후 summary 변화를 확인합니다.
+4. recovery 이후에도 `lagSeconds` 또는 `failedCount` 가 계속 증가하면 broker 연결, Kafka topic 설정, consumer 적재 지연을 별도 incident 로 분리합니다.
+
+### 운영 주의사항
+
+- stale recovery 는 직접 publish 가 아니라 stale `SENDING` row 를 `PENDING` 으로 되돌리는 동작입니다.
+- recovery 대상은 `outbox.poller.stale-after-seconds` 를 넘긴 row 만 포함합니다.
+- failed list 는 `availableAt ASC, id ASC` 순서의 bounded query 이므로, 대량 backlog 에서도 즉시 재시도 대상부터 확인할 수 있습니다.
+- `lastError` 는 outbox table 의 짧은 힌트만 남기므로, 상세 stack trace 는 앱 로그와 Kafka client 로그를 같이 봐야 합니다.
+
+### rollback 기준
+
+- 운영에서 내부 ops 경로를 임시 차단해야 하면 `OUTBOX_OPS_ENABLED=false` 로 내려 endpoint 노출만 끕니다.
+- 수동 recovery 가 과도하게 반복되면 더 이상 반복 호출하지 말고 poller 자동 reclaim 과 broker 장애 복구를 먼저 확인합니다.
+- 이 runbook 경로는 outbox schema 나 payload 를 수정하지 않으므로, rollback 은 endpoint 비활성화와 PR revert 로 제한합니다.
+
 ## Test
 
 ```bash

@@ -94,6 +94,15 @@ outbox:
       acks: ${OUTBOX_KAFKA_PRODUCER_ACKS:all}
       enable-idempotence: ${OUTBOX_KAFKA_PRODUCER_ENABLE_IDEMPOTENCE:true}
       max-in-flight-requests-per-connection: ${OUTBOX_KAFKA_PRODUCER_MAX_IN_FLIGHT:1}
+  ops:
+    enabled: ${OUTBOX_OPS_ENABLED:false}
+    token-header: ${OUTBOX_OPS_TOKEN_HEADER:X-Outbox-Ops-Token}
+    token: ${OUTBOX_OPS_TOKEN:}
+    failed-list-limit: ${OUTBOX_OPS_FAILED_LIST_LIMIT:20}
+    health:
+      max-lag-seconds: ${OUTBOX_OPS_HEALTH_MAX_LAG_SECONDS:120}
+      max-failed-count: ${OUTBOX_OPS_HEALTH_MAX_FAILED_COUNT:10}
+      max-stale-sending-count: ${OUTBOX_OPS_HEALTH_MAX_STALE_SENDING_COUNT:0}
 
 notification:
   inbox:

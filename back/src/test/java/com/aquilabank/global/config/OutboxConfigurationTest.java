@@ -5,6 +5,8 @@ import static org.mockito.Mockito.mock;
 
 import com.aquilabank.domain.notification.port.OutboxEventPublishPort;
 import com.aquilabank.domain.notification.port.OutboxEventStore;
+import com.aquilabank.domain.notification.port.OutboxOpsReadPort;
+import com.aquilabank.domain.notification.port.OutboxOpsRecoveryPort;
 import com.aquilabank.global.notification.KafkaOutboxEventPublisher;
 import com.aquilabank.global.notification.LoggingOutboxEventPublisher;
 import org.junit.jupiter.api.Test;
@@ -16,13 +18,21 @@ class OutboxConfigurationTest {
       new ApplicationContextRunner()
           .withUserConfiguration(OutboxConfiguration.class)
           .withBean(OutboxEventStore.class, () -> mock(OutboxEventStore.class))
+          .withBean(OutboxOpsReadPort.class, () -> mock(OutboxOpsReadPort.class))
+          .withBean(OutboxOpsRecoveryPort.class, () -> mock(OutboxOpsRecoveryPort.class))
           .withPropertyValues(
               "outbox.poller.enabled=false",
               "outbox.poller.fixed-delay-ms=1000",
               "outbox.poller.initial-delay-ms=3000",
               "outbox.poller.batch-size=20",
               "outbox.poller.stale-after-seconds=30",
-              "outbox.poller.max-retry-delay-seconds=60");
+              "outbox.poller.max-retry-delay-seconds=60",
+              "outbox.ops.enabled=false",
+              "outbox.ops.token-header=X-Outbox-Ops-Token",
+              "outbox.ops.failed-list-limit=20",
+              "outbox.ops.health.max-lag-seconds=120",
+              "outbox.ops.health.max-failed-count=10",
+              "outbox.ops.health.max-stale-sending-count=0");
 
   @Test
   void usesLoggingFallbackWhenKafkaIsDisabled() {
