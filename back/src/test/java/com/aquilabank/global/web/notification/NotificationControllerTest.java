@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -123,7 +124,7 @@ class NotificationControllerTest {
 
   @Test
   void opensNotificationStream() throws Exception {
-    when(notificationSseBroker.subscribeAccount(101L, "bootstrap"))
+    when(notificationSseBroker.subscribeAccount(101L, "bootstrap", null))
         .thenReturn(new SseEmitter(60_000L));
 
     mockMvc
@@ -131,6 +132,33 @@ class NotificationControllerTest {
         .andExpect(status().isOk())
         .andExpect(request().asyncStarted())
         .andExpect(header().string("X-Accel-Buffering", "no"));
+  }
+
+  @Test
+  void opensNotificationStreamWithLastEventIdReplay() throws Exception {
+    when(notificationSseBroker.subscribeAccount(101L, "bootstrap", 7L))
+        .thenReturn(new SseEmitter(60_000L));
+
+    mockMvc
+        .perform(
+            get("/api/v1/notifications/stream")
+                .header("X-Account-Id", "101")
+                .header("Last-Event-ID", "7"))
+        .andExpect(status().isOk())
+        .andExpect(request().asyncStarted())
+        .andExpect(header().string("X-Accel-Buffering", "no"));
+
+    verify(notificationSseBroker).subscribeAccount(101L, "bootstrap", 7L);
+  }
+
+  @Test
+  void rejectsInvalidLastEventIdHeader() throws Exception {
+    mockMvc
+        .perform(
+            get("/api/v1/notifications/stream")
+                .header("X-Account-Id", "101")
+                .header("Last-Event-ID", "broken"))
+        .andExpect(status().isBadRequest());
   }
 
   @Test

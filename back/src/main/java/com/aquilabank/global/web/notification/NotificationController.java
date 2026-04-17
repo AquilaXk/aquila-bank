@@ -18,6 +18,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -61,12 +62,13 @@ public class NotificationController {
 
   @GetMapping(path = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
   public ResponseEntity<SseEmitter> streamNotifications(
-      @CurrentAuthenticatedPrincipal AuthenticatedRequestPrincipal principal) {
+      @CurrentAuthenticatedPrincipal AuthenticatedRequestPrincipal principal,
+      @RequestHeader(name = "Last-Event-ID", required = false) String lastEventIdHeader) {
     try {
       return ResponseEntity.ok()
           .cacheControl(CacheControl.noStore())
           .header("X-Accel-Buffering", "no")
-          .body(openStream(principal));
+          .body(openStream(principal, parseLastEventId(lastEventIdHeader)));
     } catch (IllegalArgumentException ex) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage(), ex);
     }
@@ -128,14 +130,30 @@ public class NotificationController {
     throw new IllegalArgumentException("unsupported principal type");
   }
 
-  private SseEmitter openStream(AuthenticatedRequestPrincipal principal) {
+  private SseEmitter openStream(AuthenticatedRequestPrincipal principal, Long lastEventId) {
     if (principal instanceof AuthenticatedUserPrincipal userPrincipal) {
-      return notificationSseBroker.subscribeUser(userPrincipal.userId(), userPrincipal.subject());
+      return notificationSseBroker.subscribeUser(
+          userPrincipal.userId(), userPrincipal.subject(), lastEventId);
     }
     if (principal instanceof AuthenticatedAccountPrincipal accountPrincipal) {
       return notificationSseBroker.subscribeAccount(
-          accountPrincipal.accountId(), accountPrincipal.subject());
+          accountPrincipal.accountId(), accountPrincipal.subject(), lastEventId);
     }
     throw new IllegalArgumentException("unsupported principal type");
+  }
+
+  private Long parseLastEventId(String lastEventIdHeader) {
+    if (lastEventIdHeader == null || lastEventIdHeader.isBlank()) {
+      return null;
+    }
+    try {
+      long lastEventId = Long.parseLong(lastEventIdHeader.trim());
+      if (lastEventId <= 0) {
+        throw new IllegalArgumentException("Last-Event-ID must be positive");
+      }
+      return lastEventId;
+    } catch (NumberFormatException ex) {
+      throw new IllegalArgumentException("Last-Event-ID must be numeric", ex);
+    }
   }
 }

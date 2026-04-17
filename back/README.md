@@ -144,12 +144,16 @@ tools/test/with-resource-lock.sh back-gradle-check \
   - 같은 인스턴스 안에서는 local event로 즉시 fan-out 하고, 다른 인스턴스에는 PostgreSQL `LISTEN/NOTIFY` signal로 fan-out 합니다.
   - duplicate Kafka consume로 insert가 `ON CONFLICT DO NOTHING` 이면 SSE도 추가 발행하지 않습니다.
   - user stream fan-out 대상은 `ACTIVE membership + ACTIVE user` 조건으로만 계산합니다.
-  - ordering 보장 범위는 같은 fan-out signal 안의 `notification_inbox.id ASC` 처리 순서와 단일 app instance 안의 publish 순서까지입니다.
-  - PostgreSQL LISTEN 연결 재수립 또는 reconnect 사이에 놓친 알림은 기존 `GET /api/v1/notifications` pull API로 재동기화합니다.
+  - `Last-Event-ID` header가 있으면 `notification_inbox.id > header` 범위를 `id ASC` 순서로 replay 합니다.
+  - replay 중 들어온 live 알림은 같은 session lock 안에서 이어 보내 duplicate/out-of-order push를 막습니다.
+  - replay 는 `NOTIFICATION_SSE_REPLAY_LIMIT` 기본값 100건까지만 수행하고, 그보다 큰 reconnect gap 이나 PostgreSQL LISTEN 연결 재수립 사이의 누락은 기존 `GET /api/v1/notifications` pull API로 재동기화합니다.
+  - ordering 보장 범위는 같은 fan-out signal 안의 `notification_inbox.id ASC` 처리 순서와, 같은 reconnect session 안의 replay `id ASC` 순서, 그리고 단일 app instance 안의 live publish 순서까지입니다.
 - 기본 설정:
   - `NOTIFICATION_SSE_CONNECTION_TIMEOUT_MS=1800000`
   - `NOTIFICATION_SSE_HEARTBEAT_INTERVAL_MS=10000`
   - `NOTIFICATION_SSE_RECONNECT_DELAY_MS=3000`
+  - `NOTIFICATION_SSE_REPLAY_LIMIT=100`
+  - `NOTIFICATION_SSE_FANOUT_CHANNEL=notification_sse_fanout`
 
 ## Transfer Reversal
 
