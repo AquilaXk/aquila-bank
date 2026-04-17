@@ -2,6 +2,8 @@ package com.aquilabank.global.notification;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.aquilabank.domain.notification.model.NotificationDlqRedriveTarget;
+import com.aquilabank.domain.notification.usecase.NotificationOpsRecoveryUseCase;
 import com.aquilabank.support.PostgresKafkaContainerTestSupport;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -17,6 +19,7 @@ import org.apache.kafka.clients.admin.OffsetSpec;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,6 +30,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.kafka.config.KafkaListenerEndpointRegistry;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.listener.MessageListenerContainer;
+import org.springframework.kafka.support.KafkaHeaders;
 import org.springframework.test.context.ActiveProfiles;
 
 @ActiveProfiles("test")
@@ -49,6 +53,8 @@ class NotificationDlqIntegrationTest extends PostgresKafkaContainerTestSupport {
   @Qualifier("notificationInboxDlqKafkaTemplate") private KafkaTemplate<String, String> kafkaTemplate;
 
   @Autowired private KafkaListenerEndpointRegistry kafkaListenerEndpointRegistry;
+
+  @Autowired private NotificationOpsRecoveryUseCase notificationOpsRecoveryUseCase;
 
   @BeforeEach
   void waitUntilListenerIsReady() {
@@ -85,6 +91,36 @@ class NotificationDlqIntegrationTest extends PostgresKafkaContainerTestSupport {
         .contains("TransferBooked payload is invalid");
   }
 
+  @Test
+  void redrivesDlqRecordToMainTopicWithSameKeyAndPayload() throws Exception {
+    stopListener();
+    String eventKey = "transfer-booked:REDRIVE-" + System.currentTimeMillis();
+    String payload = validTransferBookedPayload("dlq-redrive");
+
+    ProducerRecord<String, String> record = validDlqRecord(eventKey, payload);
+    var sendResult = kafkaTemplate.send(record).get(5, TimeUnit.SECONDS);
+    NotificationDlqRedriveTarget target =
+        new NotificationDlqRedriveTarget(
+            sendResult.getRecordMetadata().partition(), sendResult.getRecordMetadata().offset());
+
+    var firstResult = notificationOpsRecoveryUseCase.redrive(target);
+    ConsumerRecord<String, String> firstRedrivenRecord =
+        findTopicRecord(TRANSFER_BOOKED_TOPIC, firstResult.targetOffset());
+    assertThat(firstResult.eventKey()).isEqualTo(eventKey);
+    assertThat(firstResult.targetTopic()).isEqualTo(TRANSFER_BOOKED_TOPIC);
+    assertThat(firstRedrivenRecord).isNotNull();
+    assertThat(firstRedrivenRecord.key()).isEqualTo(eventKey);
+    assertThat(firstRedrivenRecord.value()).isEqualTo(payload);
+
+    var secondResult = notificationOpsRecoveryUseCase.redrive(target);
+    ConsumerRecord<String, String> secondRedrivenRecord =
+        findTopicRecord(TRANSFER_BOOKED_TOPIC, secondResult.targetOffset());
+    assertThat(secondResult.targetOffset()).isGreaterThan(firstResult.targetOffset());
+    assertThat(secondRedrivenRecord).isNotNull();
+    assertThat(secondRedrivenRecord.key()).isEqualTo(eventKey);
+    assertThat(secondRedrivenRecord.value()).isEqualTo(payload);
+  }
+
   private ConsumerRecord<String, String> findDlqRecord(String eventKey) {
     TopicPartition partition = new TopicPartition(TRANSFER_BOOKED_DLQ_TOPIC, 0);
     long latestOffset = latestOffset(partition);
@@ -113,6 +149,64 @@ class NotificationDlqIntegrationTest extends PostgresKafkaContainerTestSupport {
       }
       return null;
     }
+  }
+
+  private ProducerRecord<String, String> validDlqRecord(String eventKey, String payload) {
+    ProducerRecord<String, String> record =
+        new ProducerRecord<>(TRANSFER_BOOKED_DLQ_TOPIC, eventKey, payload);
+    record
+        .headers()
+        .add(
+            KafkaHeaders.DLT_ORIGINAL_TOPIC,
+            TRANSFER_BOOKED_TOPIC.getBytes(StandardCharsets.UTF_8));
+    record
+        .headers()
+        .add(
+            KafkaHeaders.DLT_ORIGINAL_PARTITION, java.nio.ByteBuffer.allocate(4).putInt(0).array());
+    return record;
+  }
+
+  private ConsumerRecord<String, String> findTopicRecord(String topic, long offset) {
+    TopicPartition partition = new TopicPartition(topic, 0);
+    Map<String, Object> config =
+        Map.of(
+            ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG,
+            kafkaBootstrapServers(),
+            ConsumerConfig.GROUP_ID_CONFIG,
+            "notification-topic-inspect-" + UUID.randomUUID(),
+            ConsumerConfig.AUTO_OFFSET_RESET_CONFIG,
+            "latest",
+            ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG,
+            false,
+            ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG,
+            StringDeserializer.class,
+            ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,
+            StringDeserializer.class);
+    try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(config)) {
+      consumer.assign(List.of(partition));
+      consumer.seek(partition, offset);
+      for (ConsumerRecord<String, String> record : consumer.poll(Duration.ofSeconds(2))) {
+        if (record.offset() == offset) {
+          return record;
+        }
+      }
+      return null;
+    }
+  }
+
+  private String validTransferBookedPayload(String summary) {
+    return """
+        {
+          "transactionReference": "TRX-DLQ-REDRIVE",
+          "sourceAccountId": 11,
+          "targetAccountId": 22,
+          "amountMinor": 1200,
+          "currencyCode": "KRW",
+          "summary": "%s",
+          "bookedAt": "2026-04-17T00:00:00Z"
+        }
+        """
+        .formatted(summary);
   }
 
   private long latestOffset(TopicPartition partition) {
@@ -154,5 +248,16 @@ class NotificationDlqIntegrationTest extends PostgresKafkaContainerTestSupport {
     } catch (ReflectiveOperationException ex) {
       return container.isRunning();
     }
+  }
+
+  private void stopListener() {
+    MessageListenerContainer container =
+        kafkaListenerEndpointRegistry.getListenerContainer("transferBookedNotificationConsumer");
+    if (container == null) {
+      throw new IllegalStateException("notification consumer container is not found");
+    }
+    container.stop();
+    awaitCondition(
+        "notification consumer stop", DLQ_TIMEOUT, POLL_INTERVAL, () -> !container.isRunning());
   }
 }
