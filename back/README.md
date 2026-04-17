@@ -128,6 +128,28 @@ tools/test/with-resource-lock.sh back-gradle-check \
 - `notification_inbox`는 account-scoped read model 본체를 유지하고, `read_at`은 account principal/internal 경로 의미로 분리됩니다.
 - 기존 shared `read_at` 값은 user read state로 자동 backfill 하지 않으므로, 배포 이전 알림은 JWT user 기준에서 다시 unread로 보일 수 있습니다.
 
+## Notification SSE Stream
+
+- endpoint:
+  - `GET /api/v1/notifications/stream`
+- 인증 기준:
+  - 운영 기본선은 bearer JWT user
+  - `dev`/`test` 에서는 `X-Account-Id` bootstrap header도 같은 endpoint로 사용 가능
+- SSE event 이름:
+  - `connected`: stream handshake 완료
+  - `notification`: 새 inbox row payload
+  - `heartbeat`: idle 연결 유지
+- 전달 계약:
+  - SSE push는 `notification_inbox` insert 성공 이후에만 발행됩니다.
+  - duplicate Kafka consume로 insert가 `ON CONFLICT DO NOTHING` 이면 SSE도 추가 발행하지 않습니다.
+  - user stream fan-out 대상은 `ACTIVE membership + ACTIVE user` 조건으로만 계산합니다.
+  - ordering 보장 범위는 현재 단일 app instance 안의 publish 순서까지입니다.
+  - reconnect 사이에 놓친 알림은 기존 `GET /api/v1/notifications` pull API로 재동기화합니다.
+- 기본 설정:
+  - `NOTIFICATION_SSE_CONNECTION_TIMEOUT_MS=1800000`
+  - `NOTIFICATION_SSE_HEARTBEAT_INTERVAL_MS=10000`
+  - `NOTIFICATION_SSE_RECONNECT_DELAY_MS=3000`
+
 ## Transfer Reversal
 
 기존 BOOKED 송금은 직접 수정하지 않고 reversal transaction을 추가해 취소/정정합니다.

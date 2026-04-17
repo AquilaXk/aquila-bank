@@ -8,7 +8,9 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.aquilabank.domain.notification.exception.NotificationNotFoundException;
@@ -17,6 +19,7 @@ import com.aquilabank.domain.notification.model.NotificationSlice;
 import com.aquilabank.domain.notification.model.NotificationSummary;
 import com.aquilabank.domain.notification.usecase.NotificationQueryUseCase;
 import com.aquilabank.domain.notification.usecase.NotificationReadUseCase;
+import com.aquilabank.global.notification.NotificationSseBroker;
 import com.aquilabank.global.security.BootstrapHeaderAuthenticationFilter;
 import com.aquilabank.global.web.ApiExceptionHandler;
 import com.aquilabank.global.web.security.CurrentAuthenticatedPrincipalArgumentResolver;
@@ -26,20 +29,24 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 class NotificationControllerTest {
 
   private NotificationQueryUseCase notificationQueryUseCase;
   private NotificationReadUseCase notificationReadUseCase;
+  private NotificationSseBroker notificationSseBroker;
   private MockMvc mockMvc;
 
   @BeforeEach
   void setUp() {
     notificationQueryUseCase = mock(NotificationQueryUseCase.class);
     notificationReadUseCase = mock(NotificationReadUseCase.class);
+    notificationSseBroker = mock(NotificationSseBroker.class);
     mockMvc =
         MockMvcBuilders.standaloneSetup(
-                new NotificationController(notificationQueryUseCase, notificationReadUseCase))
+                new NotificationController(
+                    notificationQueryUseCase, notificationReadUseCase, notificationSseBroker))
             .setControllerAdvice(new ApiExceptionHandler())
             .addFilters(new BootstrapHeaderAuthenticationFilter("X-Account-Id", "X-Subject"))
             .setCustomArgumentResolvers(new CurrentAuthenticatedPrincipalArgumentResolver())
@@ -112,6 +119,18 @@ class NotificationControllerTest {
         .perform(
             get("/api/v1/notifications").header("X-Account-Id", "101").param("cursor", "broken"))
         .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  void opensNotificationStream() throws Exception {
+    when(notificationSseBroker.subscribeAccount(101L, "bootstrap"))
+        .thenReturn(new SseEmitter(60_000L));
+
+    mockMvc
+        .perform(get("/api/v1/notifications/stream").header("X-Account-Id", "101"))
+        .andExpect(status().isOk())
+        .andExpect(request().asyncStarted())
+        .andExpect(header().string("X-Accel-Buffering", "no"));
   }
 
   @Test

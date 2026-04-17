@@ -8,6 +8,7 @@ import com.aquilabank.domain.notification.model.NotificationSummary;
 import com.aquilabank.domain.notification.port.NotificationInboxAppendPort;
 import com.aquilabank.domain.notification.port.NotificationInboxReadPort;
 import com.aquilabank.domain.notification.port.NotificationInboxWritePort;
+import com.aquilabank.global.notification.NotificationInboxInsertedEvent;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -15,11 +16,14 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /** JWT user inbox join 과 bootstrap account inbox exact lookup 을 한 adapter 로 묶습니다. */
 @Repository
@@ -29,9 +33,13 @@ public class JdbcNotificationInboxRepository
   private static final RowMapper<NotificationSummary> ROW_MAPPER = (rs, rowNum) -> mapRow(rs);
 
   private final NamedParameterJdbcTemplate jdbcTemplate;
+  private final ApplicationEventPublisher applicationEventPublisher;
 
-  public JdbcNotificationInboxRepository(NamedParameterJdbcTemplate jdbcTemplate) {
+  public JdbcNotificationInboxRepository(
+      NamedParameterJdbcTemplate jdbcTemplate,
+      ApplicationEventPublisher applicationEventPublisher) {
     this.jdbcTemplate = jdbcTemplate;
+    this.applicationEventPublisher = applicationEventPublisher;
   }
 
   @Override
@@ -182,9 +190,11 @@ public class JdbcNotificationInboxRepository
     if (entries.isEmpty()) {
       throw new IllegalArgumentException("items must not be empty");
     }
+    List<NotificationSummary> insertedItems = new ArrayList<>();
     for (NotificationInboxEntry item : entries) {
-      jdbcTemplate.update(
-          """
+      insertedItems.addAll(
+          jdbcTemplate.query(
+              """
           INSERT INTO notification_inbox (
               account_id,
               event_key,
@@ -202,15 +212,42 @@ public class JdbcNotificationInboxRepository
               :createdAt
           )
           ON CONFLICT (event_key) DO NOTHING
+          RETURNING id,
+                    account_id,
+                    event_type,
+                    title,
+                    message,
+                    created_at,
+                    NULL::timestamptz AS read_at
           """,
-          new MapSqlParameterSource()
-              .addValue("accountId", item.accountId())
-              .addValue("eventKey", item.eventKey())
-              .addValue("eventType", item.eventType())
-              .addValue("title", item.title())
-              .addValue("message", item.message())
-              .addValue("createdAt", Timestamp.from(item.createdAt())));
+              new MapSqlParameterSource()
+                  .addValue("accountId", item.accountId())
+                  .addValue("eventKey", item.eventKey())
+                  .addValue("eventType", item.eventType())
+                  .addValue("title", item.title())
+                  .addValue("message", item.message())
+                  .addValue("createdAt", Timestamp.from(item.createdAt())),
+              ROW_MAPPER));
     }
+    publishInsertedNotifications(insertedItems);
+  }
+
+  private void publishInsertedNotifications(List<NotificationSummary> insertedItems) {
+    if (insertedItems.isEmpty()) {
+      return;
+    }
+    NotificationInboxInsertedEvent event = new NotificationInboxInsertedEvent(insertedItems);
+    if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+      applicationEventPublisher.publishEvent(event);
+      return;
+    }
+    TransactionSynchronizationManager.registerSynchronization(
+        new TransactionSynchronization() {
+          @Override
+          public void afterCommit() {
+            applicationEventPublisher.publishEvent(event);
+          }
+        });
   }
 
   private NotificationSlice toSlice(List<NotificationSummary> rows, int limit) {
