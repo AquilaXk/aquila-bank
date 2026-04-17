@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -ne 8 ]]; then
+if [[ $# -ne 7 ]]; then
   cat <<'USAGE' >&2
-usage: tools/ops/internal-auth-update-user-status.sh <base_url> <bootstrap_token> <actor_subject> <request_id> <user_id> <user_status> <reason_code> <reason_detail>
+usage: tools/ops/internal-auth-update-user-status.sh <base_url> <service_token> <request_id> <user_id> <user_status> <reason_code> <reason_detail>
 
 example:
   tools/ops/internal-auth-update-user-status.sh \
     http://localhost:8080 \
-    "$SECURITY_AUTH_BOOTSTRAP_API_TOKEN" \
-    ops-admin \
+    "$AUTH_ADMIN_SERVICE_TOKEN" \
     auth-user-disable-20260416-001 \
     21 \
     DISABLED \
@@ -20,20 +19,18 @@ USAGE
 fi
 
 base_url="$1"
-bootstrap_token="$2"
-actor_subject="$3"
-request_id="$4"
-user_id="$5"
-user_status="$6"
-reason_code="$7"
-reason_detail="$8"
+service_token="$2"
+request_id="$3"
+user_id="$4"
+user_status="$5"
+reason_code="$6"
+reason_detail="$7"
 
-# 운영 추적 기준: X-Subject / X-Request-Id / reasonCode / reasonDetail을 항상 명시합니다.
+# 운영 추적 기준: token sub / X-Request-Id / reasonCode / reasonDetail을 항상 명시합니다.
 curl --fail-with-body --silent --show-error \
   --request PUT \
   --header "Content-Type: application/json" \
-  --header "X-Auth-Bootstrap-Token: ${bootstrap_token}" \
-  --header "X-Subject: ${actor_subject}" \
+  --header "Authorization: Bearer ${service_token}" \
   --header "X-Request-Id: ${request_id}" \
   --data "{\"userStatus\":\"${user_status}\",\"reasonCode\":\"${reason_code}\",\"reasonDetail\":\"${reason_detail}\"}" \
   "${base_url%/}/internal/api/v1/auth/users/${user_id}/status"

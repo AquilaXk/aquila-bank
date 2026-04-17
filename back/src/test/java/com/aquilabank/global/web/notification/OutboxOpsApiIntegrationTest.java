@@ -8,6 +8,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.aquilabank.global.security.InternalServiceScope;
+import com.aquilabank.global.security.InternalServiceTokenIssuer;
 import com.aquilabank.support.PostgresContainerTestSupport;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -45,6 +47,8 @@ class OutboxOpsApiIntegrationTest extends PostgresContainerTestSupport {
 
   @Autowired private PlatformTransactionManager transactionManager;
 
+  @Autowired private InternalServiceTokenIssuer internalServiceTokenIssuer;
+
   private MockMvc mockMvc;
 
   @BeforeEach
@@ -54,7 +58,7 @@ class OutboxOpsApiIntegrationTest extends PostgresContainerTestSupport {
   }
 
   @Test
-  void returnsSummaryAndFailedEventsWithoutJwtWhenOpsTokenMatches() throws Exception {
+  void returnsSummaryAndFailedEventsWithInternalServiceToken() throws Exception {
     Instant base = Instant.now();
     commit(
         transactionManager,
@@ -75,7 +79,7 @@ class OutboxOpsApiIntegrationTest extends PostgresContainerTestSupport {
     mockMvc
         .perform(
             get("/internal/api/v1/outbox/summary")
-                .header("X-Outbox-Ops-Token", "test-outbox-ops-token"))
+                .header("Authorization", outboxOpsAuthorization()))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.failedCount").value(2))
         .andExpect(jsonPath("$.staleSendingCount").value(0))
@@ -84,7 +88,7 @@ class OutboxOpsApiIntegrationTest extends PostgresContainerTestSupport {
     mockMvc
         .perform(
             get("/internal/api/v1/outbox/failed-events")
-                .header("X-Outbox-Ops-Token", "test-outbox-ops-token")
+                .header("Authorization", outboxOpsAuthorization())
                 .param("limit", "5"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.limit").value(2))
@@ -121,7 +125,7 @@ class OutboxOpsApiIntegrationTest extends PostgresContainerTestSupport {
     mockMvc
         .perform(
             post("/internal/api/v1/outbox/recovery/stale-sending")
-                .header("X-Outbox-Ops-Token", "test-outbox-ops-token"))
+                .header("Authorization", outboxOpsAuthorization()))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.recoveredCount").value(1))
         .andExpect(jsonPath("$.staleAfterSeconds").value(30));
@@ -131,11 +135,11 @@ class OutboxOpsApiIntegrationTest extends PostgresContainerTestSupport {
   }
 
   @Test
-  void rejectsMissingOpsToken() throws Exception {
+  void rejectsMissingInternalServiceToken() throws Exception {
     mockMvc
         .perform(get("/internal/api/v1/outbox/summary"))
         .andExpect(status().isUnauthorized())
-        .andExpect(jsonPath("$.message").value("outbox ops token is invalid"));
+        .andExpect(jsonPath("$.message").value("internal service token is invalid"));
   }
 
   @Test
@@ -213,5 +217,11 @@ class OutboxOpsApiIntegrationTest extends PostgresContainerTestSupport {
         "SELECT publish_status FROM outbox_event WHERE id = :id",
         new MapSqlParameterSource().addValue("id", id),
         String.class);
+  }
+
+  private String outboxOpsAuthorization() {
+    return "Bearer "
+        + internalServiceTokenIssuer.issue(
+            "outbox-ops", java.util.Set.of(InternalServiceScope.OUTBOX_OPS));
   }
 }

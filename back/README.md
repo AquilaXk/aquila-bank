@@ -264,9 +264,13 @@ login 실패/잠금은 structured log 한 줄로 남습니다.
   - `PUT /internal/api/v1/auth/users/{userId}/status`
   - `PUT /internal/api/v1/auth/users/{userId}/memberships/{accountId}/status`
 - 공통 필수 헤더:
-  - `X-Auth-Bootstrap-Token`: `SECURITY_AUTH_BOOTSTRAP_API_TOKEN` 값
-  - `X-Subject`: 호출 주체 식별값. 예) `ops-admin`, `fraud-batch`
+  - `Authorization: Bearer <internal-service-jwt>`
   - `X-Request-Id`: 운영 상관키. 누락 시 서버가 UUID를 생성하지만, 감사 추적 일관성을 위해 운영 호출에서는 직접 넣는 것을 기본값으로 사용합니다.
+- token claim 기준:
+  - `sub`: 호출 주체 식별값. 예) `ops-admin`, `fraud-batch`
+  - `aud`: `aquila-internal-api`
+  - `scope`: `internal:auth-admin`
+  - `kid`: 서버에 등록된 active/legacy secret 식별값
 - 공통 필수 body 필드:
   - `reasonCode`: 분류용 고정 코드. 예) `FRAUD_REVIEW`, `OPS_MANUAL`
   - `reasonDetail`: 운영 문맥 상세값
@@ -275,13 +279,15 @@ login 실패/잠금은 structured log 한 줄로 남습니다.
 
 ### 준비할 env
 
-`back/.env.example` 기준으로 아래 값이 준비되어 있어야 합니다.
+앱 실행 기준으로 아래 값이 준비되어 있어야 합니다.
 
 ```bash
-SECURITY_BOOTSTRAP_SUBJECT_HEADER=X-Subject
 SECURITY_AUTH_BOOTSTRAP_API_ENABLED=true
-SECURITY_AUTH_BOOTSTRAP_API_TOKEN_HEADER=X-Auth-Bootstrap-Token
-SECURITY_AUTH_BOOTSTRAP_API_TOKEN=dev-auth-bootstrap-api-token
+SECURITY_INTERNAL_SERVICE_TOKEN_ISSUER=dev-internal-service
+SECURITY_INTERNAL_SERVICE_TOKEN_AUDIENCE=aquila-internal-api
+SECURITY_INTERNAL_SERVICE_TOKEN_ACTIVE_KEY_ID=ops-202604
+SECURITY_INTERNAL_SERVICE_TOKEN_KEYS_OPS_202604=dev-internal-service-secret-ops-202604
+SECURITY_INTERNAL_SERVICE_TOKEN_KEYS_OPS_202603=dev-internal-service-secret-ops-202603
 ```
 
 로컬 실행 예시:
@@ -293,6 +299,12 @@ set +a
 ./back/gradlew -p back bootRun
 ```
 
+운영자 shell 또는 runbook wrapper에는 아래처럼 scope가 포함된 pre-generated token을 준비합니다.
+
+```bash
+AUTH_ADMIN_SERVICE_TOKEN='<jwt with sub=ops-admin aud=aquila-internal-api scope=internal:auth-admin>'
+```
+
 ### 예시 스크립트
 
 운영 호출 예시는 아래 스크립트를 그대로 사용할 수 있습니다.
@@ -300,8 +312,7 @@ set +a
 ```bash
 tools/ops/internal-auth-update-user-status.sh \
   http://localhost:8080 \
-  "$SECURITY_AUTH_BOOTSTRAP_API_TOKEN" \
-  ops-admin \
+  "$AUTH_ADMIN_SERVICE_TOKEN" \
   auth-user-disable-20260416-001 \
   21 \
   DISABLED \
@@ -312,8 +323,7 @@ tools/ops/internal-auth-update-user-status.sh \
 ```bash
 tools/ops/internal-auth-update-membership-status.sh \
   http://localhost:8080 \
-  "$SECURITY_AUTH_BOOTSTRAP_API_TOKEN" \
-  ops-admin \
+  "$AUTH_ADMIN_SERVICE_TOKEN" \
   auth-membership-revoke-20260416-001 \
   21 \
   1001 \
@@ -330,8 +340,7 @@ user status update:
 curl --fail-with-body --silent --show-error \
   --request PUT \
   --header "Content-Type: application/json" \
-  --header "X-Auth-Bootstrap-Token: ${SECURITY_AUTH_BOOTSTRAP_API_TOKEN}" \
-  --header "X-Subject: ops-admin" \
+  --header "Authorization: Bearer ${AUTH_ADMIN_SERVICE_TOKEN}" \
   --header "X-Request-Id: auth-user-disable-20260416-001" \
   --data '{"userStatus":"DISABLED","reasonCode":"FRAUD_REVIEW","reasonDetail":"fraud-review"}' \
   "http://localhost:8080/internal/api/v1/auth/users/21/status"
@@ -343,8 +352,7 @@ membership status update:
 curl --fail-with-body --silent --show-error \
   --request PUT \
   --header "Content-Type: application/json" \
-  --header "X-Auth-Bootstrap-Token: ${SECURITY_AUTH_BOOTSTRAP_API_TOKEN}" \
-  --header "X-Subject: ops-admin" \
+  --header "Authorization: Bearer ${AUTH_ADMIN_SERVICE_TOKEN}" \
   --header "X-Request-Id: auth-membership-revoke-20260416-001" \
   --data '{"membershipStatus":"REVOKED","reasonCode":"OPS_MANUAL","reasonDetail":"manual-revoke"}' \
   "http://localhost:8080/internal/api/v1/auth/users/21/memberships/1001/status"
@@ -354,14 +362,13 @@ curl --fail-with-body --silent --show-error \
 
 - `reasonCode` 누락: `400 Bad Request`
 - `reasonDetail` 누락 또는 blank: `400 Bad Request`
-- `X-Subject` 누락 또는 blank: `400 Bad Request`
-- `X-Auth-Bootstrap-Token` 누락 또는 값 불일치: `401 Unauthorized`
+- service token 누락, 만료, 서명 오류, audience/scope mismatch: `401 Unauthorized`
 - `reason`과 `reasonCode`/`reasonDetail` 동시 사용: `400 Bad Request`
 - `X-Request-Id` 누락: 서버가 자동 생성하므로 요청 자체는 실패하지 않음. 다만 운영 감사 추적 키를 맞추기 위해 직접 지정하는 것을 기본값으로 사용
 
 ### 운영 주의사항
 
-- `X-Subject`는 shared token 사용자 구분 대신 운영 주체를 남기는 값이므로 배치명/운영자 식별값을 짧고 고정된 slug로 사용합니다.
+- `actorSubject` 는 request header가 아니라 service token `sub` 에서 읽습니다. 배치명/운영자 식별값을 짧고 고정된 slug로 발급 단계에서 넣습니다.
 - `reasonCode`는 alert/filter 기준으로 쓰고, `reasonDetail`은 감사 로그와 감사 테이블에 남는 운영 문맥으로 사용합니다.
 - `reasonDetail`은 길고 자유로운 문장보다 짧은 운영 사유 slug를 우선 사용합니다.
 - legacy `reason`은 한시 호환 경로라서 새 운영 호출과 스크립트에서는 사용하지 않는 것을 기본값으로 둡니다.
@@ -405,7 +412,7 @@ requestId drill-down:
 - alert 집계 차원은 `httpStatus`, `actorSubject`, `path`, `error`를 우선 사용합니다.
 - `requestId`는 고카디널리티라 alert 집계 기준으로 쓰지 않고 incident drill-down에만 사용합니다.
 - `reasonCode` 차원은 `FRAUD_REVIEW`, `OPS_MANUAL`, `LEGACY_FREE_TEXT` 같은 고정값만 사용합니다.
-- 구버전 로그가 섞여 `httpStatus`가 없는 기간은 한시적으로 `error=bootstrap token is invalid`를 `401`, `error=actorSubject header is required|reasonCode is required|reasonDetail is required|reason and reasonCode/reasonDetail cannot be used together`를 `400` fallback으로 사용합니다.
+- 구버전 로그가 섞여 `httpStatus`가 없는 기간은 한시적으로 `error=internal service token is invalid`를 `401`, `error=reasonCode is required|reasonDetail is required|reason and reasonCode/reasonDetail cannot be used together`를 `400` fallback으로 사용합니다.
 
 ### 최소 alert 기준
 
@@ -521,19 +528,19 @@ requestId 우선 drill-down:
 1. alert 또는 문의에서 `requestId`를 확보합니다. alert payload에 `requestId`가 없으면 같은 시간대 `actorSubject + path + error`로 실패 로그를 먼저 좁힙니다.
 2. 앱 로그에서 같은 `requestId`를 재검색해 최초 실패 시점, 재시도 여부, 같은 actor 반복 여부를 확인합니다.
 3. 성공 전환 여부가 필요하면 success audit exact lookup으로 같은 `requestId`를 조회합니다.
-4. success audit row가 없으면 실패-only incident로 보고 토큰, `X-Subject`, request body drift를 runbook 체크리스트로 확인합니다.
+4. success audit row가 없으면 실패-only incident로 보고 service token claim, request body drift를 runbook 체크리스트로 확인합니다.
 
 success audit exact lookup 예시:
 
 ```bash
 tools/ops/internal-auth-find-status-change-audit.sh \
   http://localhost:8080 \
-  "$SECURITY_AUTH_BOOTSTRAP_API_TOKEN" \
+  "$AUTH_ADMIN_SERVICE_TOKEN" \
   auth-user-disable-20260416-001
 ```
 
 - exact lookup은 성공 변경 row만 반환합니다.
-- wrapper script 내부에서 exact lookup endpoint, `X-Auth-Bootstrap-Token`, `requestId` query를 고정합니다.
+- wrapper script 내부에서 exact lookup endpoint, `Authorization: Bearer`, `requestId` query를 고정합니다.
 - failure 원본은 structured log이므로 incident 시작점은 항상 로그 검색입니다.
 
 ## Outbox Ops Runbook
@@ -551,12 +558,21 @@ Kafka producer 를 붙인 이후 outbox backlog 는 actuator health 와 내부 o
 
 ```bash
 OUTBOX_OPS_ENABLED=true
-OUTBOX_OPS_TOKEN_HEADER=X-Outbox-Ops-Token
-OUTBOX_OPS_TOKEN=dev-outbox-ops-token
+SECURITY_INTERNAL_SERVICE_TOKEN_ISSUER=dev-internal-service
+SECURITY_INTERNAL_SERVICE_TOKEN_AUDIENCE=aquila-internal-api
+SECURITY_INTERNAL_SERVICE_TOKEN_ACTIVE_KEY_ID=ops-202604
+SECURITY_INTERNAL_SERVICE_TOKEN_KEYS_OPS_202604=dev-internal-service-secret-ops-202604
+SECURITY_INTERNAL_SERVICE_TOKEN_KEYS_OPS_202603=dev-internal-service-secret-ops-202603
 OUTBOX_OPS_FAILED_LIST_LIMIT=20
 OUTBOX_OPS_HEALTH_MAX_LAG_SECONDS=120
 OUTBOX_OPS_HEALTH_MAX_FAILED_COUNT=10
 OUTBOX_OPS_HEALTH_MAX_STALE_SENDING_COUNT=0
+```
+
+운영 호출용 shell에는 아래처럼 pre-generated token을 둡니다.
+
+```bash
+OUTBOX_OPS_SERVICE_TOKEN='<jwt with sub=outbox-ops aud=aquila-internal-api scope=internal:outbox-ops>'
 ```
 
 ### 예시 스크립트
@@ -566,7 +582,7 @@ failed backlog 조회:
 ```bash
 tools/ops/outbox-find-failed-events.sh \
   http://localhost:8080 \
-  "$OUTBOX_OPS_TOKEN" \
+  "$OUTBOX_OPS_SERVICE_TOKEN" \
   20
 ```
 
@@ -575,7 +591,7 @@ stale `SENDING` 수동 회수:
 ```bash
 tools/ops/outbox-recover-stale-sending.sh \
   http://localhost:8080 \
-  "$OUTBOX_OPS_TOKEN"
+  "$OUTBOX_OPS_SERVICE_TOKEN"
 ```
 
 ### 직접 호출 예시
@@ -585,7 +601,7 @@ summary 조회:
 ```bash
 curl --fail-with-body --silent --show-error \
   --get \
-  --header "X-Outbox-Ops-Token: ${OUTBOX_OPS_TOKEN}" \
+  --header "Authorization: Bearer ${OUTBOX_OPS_SERVICE_TOKEN}" \
   "http://localhost:8080/internal/api/v1/outbox/summary"
 ```
 

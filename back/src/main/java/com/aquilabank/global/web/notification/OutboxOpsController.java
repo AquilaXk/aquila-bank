@@ -3,7 +3,8 @@ package com.aquilabank.global.web.notification;
 import com.aquilabank.domain.notification.usecase.OutboxOpsQueryUseCase;
 import com.aquilabank.domain.notification.usecase.OutboxOpsRecoveryUseCase;
 import com.aquilabank.global.config.OutboxOpsProperties;
-import com.aquilabank.global.security.OutboxOpsTokenGuard;
+import com.aquilabank.global.security.InternalServiceRequestAuthorizer;
+import com.aquilabank.global.security.InternalServiceScope;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.constraints.Positive;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -23,23 +24,23 @@ public class OutboxOpsController {
 
   private final OutboxOpsQueryUseCase outboxOpsQueryUseCase;
   private final OutboxOpsRecoveryUseCase outboxOpsRecoveryUseCase;
-  private final OutboxOpsTokenGuard outboxOpsTokenGuard;
+  private final InternalServiceRequestAuthorizer internalServiceRequestAuthorizer;
   private final OutboxOpsProperties outboxOpsProperties;
 
   public OutboxOpsController(
       OutboxOpsQueryUseCase outboxOpsQueryUseCase,
       OutboxOpsRecoveryUseCase outboxOpsRecoveryUseCase,
-      OutboxOpsTokenGuard outboxOpsTokenGuard,
+      InternalServiceRequestAuthorizer internalServiceRequestAuthorizer,
       OutboxOpsProperties outboxOpsProperties) {
     this.outboxOpsQueryUseCase = outboxOpsQueryUseCase;
     this.outboxOpsRecoveryUseCase = outboxOpsRecoveryUseCase;
-    this.outboxOpsTokenGuard = outboxOpsTokenGuard;
+    this.internalServiceRequestAuthorizer = internalServiceRequestAuthorizer;
     this.outboxOpsProperties = outboxOpsProperties;
   }
 
   @GetMapping("/summary")
   public OutboxOpsSummaryResponse getSummary(HttpServletRequest request) {
-    outboxOpsTokenGuard.validate(request);
+    internalServiceRequestAuthorizer.requireScope(request, InternalServiceScope.OUTBOX_OPS);
     return OutboxOpsSummaryResponse.from(outboxOpsQueryUseCase.getSummary());
   }
 
@@ -47,7 +48,7 @@ public class OutboxOpsController {
   public OutboxFailedEventListResponse getFailedEvents(
       HttpServletRequest request,
       @RequestParam(required = false) @Positive(message = "limit must be positive") Integer limit) {
-    outboxOpsTokenGuard.validate(request);
+    internalServiceRequestAuthorizer.requireScope(request, InternalServiceScope.OUTBOX_OPS);
     int resolvedLimit =
         limit == null
             ? outboxOpsProperties.failedListLimit()
@@ -58,7 +59,7 @@ public class OutboxOpsController {
 
   @PostMapping("/recovery/stale-sending")
   public OutboxStaleRecoveryResponse recoverStaleSending(HttpServletRequest request) {
-    outboxOpsTokenGuard.validate(request);
+    internalServiceRequestAuthorizer.requireScope(request, InternalServiceScope.OUTBOX_OPS);
     return OutboxStaleRecoveryResponse.from(outboxOpsRecoveryUseCase.recoverStaleSending());
   }
 }

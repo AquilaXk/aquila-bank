@@ -30,7 +30,7 @@ class InternalAuthOpsScriptSmokeTest {
         InternalAuthOpsScriptSmokeSupport.run(
             tempDir,
             InternalAuthOpsScriptSmokeSupport.USER_STATUS_SPEC,
-            InternalAuthOpsScriptSmokeSupport.USER_STATUS_SPEC.args().subList(0, 7));
+            InternalAuthOpsScriptSmokeSupport.USER_STATUS_SPEC.args().subList(0, 6));
 
     assertThat(result.exitCode()).isEqualTo(1);
     assertThat(result.stderr())
@@ -44,7 +44,7 @@ class InternalAuthOpsScriptSmokeTest {
         InternalAuthOpsScriptSmokeSupport.run(
             tempDir,
             InternalAuthOpsScriptSmokeSupport.MEMBERSHIP_STATUS_SPEC,
-            InternalAuthOpsScriptSmokeSupport.MEMBERSHIP_STATUS_SPEC.args().subList(0, 8));
+            InternalAuthOpsScriptSmokeSupport.MEMBERSHIP_STATUS_SPEC.args().subList(0, 7));
 
     assertThat(result.exitCode()).isEqualTo(1);
     assertThat(result.stderr())

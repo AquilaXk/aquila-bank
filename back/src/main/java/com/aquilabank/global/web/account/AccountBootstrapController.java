@@ -3,8 +3,8 @@ package com.aquilabank.global.web.account;
 import com.aquilabank.domain.account.model.AccountBootstrapCommand;
 import com.aquilabank.domain.account.model.AccountBootstrapResult;
 import com.aquilabank.domain.account.usecase.AccountBootstrapUseCase;
-import com.aquilabank.global.security.AccountBootstrapApiProperties;
-import com.aquilabank.global.security.BootstrapApiAccessDeniedException;
+import com.aquilabank.global.security.InternalServiceRequestAuthorizer;
+import com.aquilabank.global.security.InternalServiceScope;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -26,37 +26,26 @@ import org.springframework.web.bind.annotation.RestController;
 public class AccountBootstrapController {
 
   private final AccountBootstrapUseCase accountBootstrapUseCase;
-  private final AccountBootstrapApiProperties accountBootstrapApiProperties;
+  private final InternalServiceRequestAuthorizer internalServiceRequestAuthorizer;
 
   public AccountBootstrapController(
       AccountBootstrapUseCase accountBootstrapUseCase,
-      AccountBootstrapApiProperties accountBootstrapApiProperties) {
+      InternalServiceRequestAuthorizer internalServiceRequestAuthorizer) {
     this.accountBootstrapUseCase = accountBootstrapUseCase;
-    this.accountBootstrapApiProperties = accountBootstrapApiProperties;
+    this.internalServiceRequestAuthorizer = internalServiceRequestAuthorizer;
   }
 
   @PostMapping
   public AccountBootstrapResponse bootstrap(
       HttpServletRequest httpServletRequest, @Valid @RequestBody AccountBootstrapRequest request) {
-    validateBootstrapToken(httpServletRequest);
+    internalServiceRequestAuthorizer.requireScope(
+        httpServletRequest, InternalServiceScope.ACCOUNT_BOOTSTRAP);
 
     AccountBootstrapResult result =
         accountBootstrapUseCase.bootstrap(
             new AccountBootstrapCommand(
                 request.displayName(), request.currencyCode(), request.initialBalanceMinor()));
     return AccountBootstrapResponse.from(result);
-  }
-
-  private void validateBootstrapToken(HttpServletRequest httpServletRequest) {
-    String bootstrapToken =
-        httpServletRequest.getHeader(accountBootstrapApiProperties.tokenHeader());
-
-    // permitAll endpoint라도 전용 shared token이 없으면 내부 bootstrap 경로가 그대로 노출됩니다.
-    if (bootstrapToken == null
-        || bootstrapToken.isBlank()
-        || !accountBootstrapApiProperties.token().equals(bootstrapToken)) {
-      throw new BootstrapApiAccessDeniedException("bootstrap token is invalid");
-    }
   }
 
   /** 내부 계좌 bootstrap 요청 body */

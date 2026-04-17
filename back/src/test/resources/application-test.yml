@@ -35,6 +35,13 @@ security:
   jwt:
     secret: test-local-jwt-secret-test-local-jwt-secret
     refresh-token-ttl-seconds: 1209600
+  internal-service-token:
+    issuer: test-internal-service
+    audience: aquila-internal-api
+    active-key-id: ops-202604
+    keys:
+      ops-202604: test-internal-service-secret-ops-202604
+      ops-202603: test-internal-service-secret-ops-202603
   login-protection:
     max-failures: 5
     lock-seconds: 900

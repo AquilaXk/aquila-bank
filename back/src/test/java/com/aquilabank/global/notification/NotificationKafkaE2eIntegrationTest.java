@@ -5,6 +5,8 @@ import static org.springframework.security.test.web.servlet.setup.SecurityMockMv
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 import com.aquilabank.domain.notification.usecase.OutboxDispatchUseCase;
+import com.aquilabank.global.security.InternalServiceScope;
+import com.aquilabank.global.security.InternalServiceTokenIssuer;
 import com.aquilabank.support.PostgresKafkaContainerTestSupport;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
@@ -43,6 +45,8 @@ class NotificationKafkaE2eIntegrationTest extends PostgresKafkaContainerTestSupp
   @Autowired private ObjectMapper objectMapper;
 
   @Autowired private OutboxDispatchUseCase outboxDispatchUseCase;
+
+  @Autowired private InternalServiceTokenIssuer internalServiceTokenIssuer;
 
   private MockMvc mockMvc;
   private long sourceAccountId;
@@ -95,7 +99,12 @@ class NotificationKafkaE2eIntegrationTest extends PostgresKafkaContainerTestSupp
             .perform(
                 post("/internal/api/v1/accounts/bootstrap")
                     .header("X-Request-Id", "bootstrap-" + displayName)
-                    .header("X-Bootstrap-Token", "test-bootstrap-api-token")
+                    .header(
+                        "Authorization",
+                        "Bearer "
+                            + internalServiceTokenIssuer.issue(
+                                "account-bootstrap",
+                                java.util.Set.of(InternalServiceScope.ACCOUNT_BOOTSTRAP)))
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         """
