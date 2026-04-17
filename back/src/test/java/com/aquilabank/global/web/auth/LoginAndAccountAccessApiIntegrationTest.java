@@ -418,6 +418,60 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
   }
 
   @Test
+  void logoutRevokesRefreshTokenSessionAndBlocksRefresh() throws Exception {
+    TokenPairResponseView loginResult = loginResult("alice", "password123!", "logout-login-001");
+
+    logout(loginResult.accessToken(), loginResult.refreshToken(), "logout-request-001")
+        .andExpect(status().isNoContent());
+
+    RefreshTokenSessionView revokedSession = loadRefreshTokenSession(loginResult.refreshToken());
+    assertEquals("REVOKED", revokedSession.sessionStatus());
+    assertNotNull(revokedSession.lastUsedAt());
+    assertNull(revokedSession.rotatedAt());
+    assertNull(revokedSession.replacedBySessionId());
+
+    refreshExpectUnauthorized(loginResult.refreshToken(), "logout-refresh-001");
+  }
+
+  @Test
+  void logoutKeepsOtherUsersRefreshTokenSessionUntouched() throws Exception {
+    TokenPairResponseView alice = loginResult("alice", "password123!", "logout-alice-001");
+    long otherUserId = bootstrapUser("bob", "Bob", "password123!");
+    upsertMembership(otherUserId, targetAccountId, "VIEWER", "ACTIVE");
+    TokenPairResponseView bob = loginResult("bob", "password123!", "logout-bob-001");
+
+    logout(alice.accessToken(), bob.refreshToken(), "logout-other-user-001")
+        .andExpect(status().isNoContent());
+
+    RefreshTokenSessionView bobSession = loadRefreshTokenSession(bob.refreshToken());
+    assertEquals("ACTIVE", bobSession.sessionStatus());
+    assertNull(bobSession.lastUsedAt());
+
+    refresh(bob.refreshToken(), "logout-bob-refresh-001");
+  }
+
+  @Test
+  void bootstrapAccountPrincipalCannotCallLogout() throws Exception {
+    TokenPairResponseView loginResult =
+        loginResult("alice", "password123!", "logout-bootstrap-001");
+
+    mockMvc
+        .perform(
+            post("/api/v1/auth/logout")
+                .header("X-Account-Id", String.valueOf(allowedSourceAccountId))
+                .header("X-Subject", "bootstrap-account")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "refreshToken": "%s"
+                    }
+                    """
+                        .formatted(loginResult.refreshToken())))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
   void logsFailureAndResetWithRequestIdAndMaskedLoginKey(CapturedOutput output) throws Exception {
     loginExpectUnauthorized("alice", "wrong-password", "login-log-failure-001");
     login("alice", "password123!", "login-log-reset-001");
@@ -725,6 +779,25 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
       String refreshToken, String requestId) throws Exception {
     MockHttpServletRequestBuilder requestBuilder =
         post("/api/v1/auth/refresh")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(
+                """
+                {
+                  "refreshToken": "%s"
+                }
+                """
+                    .formatted(refreshToken));
+    if (requestId != null && !requestId.isBlank()) {
+      requestBuilder.header("X-Request-Id", requestId);
+    }
+    return mockMvc.perform(requestBuilder);
+  }
+
+  private org.springframework.test.web.servlet.ResultActions logout(
+      String accessToken, String refreshToken, String requestId) throws Exception {
+    MockHttpServletRequestBuilder requestBuilder =
+        post("/api/v1/auth/logout")
+            .header("Authorization", "Bearer " + accessToken)
             .contentType(MediaType.APPLICATION_JSON)
             .content(
                 """
