@@ -6,14 +6,14 @@ body:
     attributes:
       value: |
         ## ⚡ Performance Intake
-        - 병목과 목표를 선언형으로 적었다.
-        - 측정값과 검증 계획을 같이 적었다.
+        - 병목과 목표를 함께 적는다.
+        - 측정값과 검증 계획을 함께 적는다.
 
   - type: input
     id: target
     attributes:
       label: "🎯 Target"
-      description: 개선 대상 API, 배치, 이벤트 경로를 적었다.
+      description: 개선 대상 API, 배치, 이벤트 경로를 적는다.
       placeholder: 예) GET /api/v1/transactions
     validations:
       required: true
@@ -22,8 +22,8 @@ body:
     id: scenario
     attributes:
       label: "🧪 Scenario"
-      description: 트래픽, 데이터 규모, 사용 시나리오를 적었다.
-      placeholder: 예) 계좌당 1억 건 거래 중 최근 3개월 데이터를 필터링 조회했다.
+      description: 트래픽, 데이터 규모, 사용 시나리오를 적는다.
+      placeholder: 예) 계좌당 1억 건 거래 중 최근 3개월 데이터를 필터링 조회한다.
     validations:
       required: true
 
@@ -31,7 +31,7 @@ body:
     id: current
     attributes:
       label: "📉 Current Metric"
-      description: 현재 성능 지표를 적었다.
+      description: 현재 성능 지표를 적는다.
       placeholder: 예) p95 4.8s, timeout rate 2%, DB CPU 80%
     validations:
       required: true
@@ -40,7 +40,7 @@ body:
     id: target_metric
     attributes:
       label: "📈 Target Metric"
-      description: 목표 성능 기준을 적었다.
+      description: 목표 성능 기준을 적는다.
       placeholder: 예) p95 800ms 이하, timeout rate 0.1% 이하
     validations:
       required: true
@@ -49,18 +49,18 @@ body:
     id: hypothesis
     attributes:
       label: "🔍 Bottleneck / Hypothesis"
-      description: 병목 원인 추정이나 확인 포인트를 적었다.
-      placeholder: 예) 인덱스 미활용, 커서 설계 부족, 알림 consumer 지연을 의심했다.
+      description: 병목 원인 추정이나 확인 포인트를 적는다.
+      placeholder: 예) 인덱스 미활용, 커서 설계 부족, 알림 consumer 지연을 의심한다.
 
   - type: textarea
     id: validation
     attributes:
       label: "✅ Validation Plan"
-      description: 개선 후 검증 계획을 적었다.
+      description: 개선 후 검증 계획을 적는다.
       placeholder: |
-        - [ ] 부하 테스트를 수행했다
-        - [ ] 대시보드를 비교했다
-        - [ ] 샘플 데이터로 리허설했다
+        - [ ] 부하 테스트를 수행했는가?
+        - [ ] 대시보드를 비교했는가?
+        - [ ] 샘플 데이터로 리허설했는가?
     validations:
       required: true
 
@@ -68,12 +68,12 @@ body:
     id: todo
     attributes:
       label: "🛠 Todo"
-      description: 작업 항목을 선언형 체크리스트로 적었다.
+      description: 작업 항목을 체크리스트로 적는다.
       placeholder: |
-        - [ ] 병목을 재현했다
-        - [ ] 프로파일링했다
-        - [ ] 개선을 적용했다
-        - [ ] 성능을 재측정했다
-        - [ ] 롤백 기준을 정리했다
+        - [ ] 병목을 재현했는가?
+        - [ ] 프로파일링했는가?
+        - [ ] 개선을 적용했는가?
+        - [ ] 성능을 재측정했는가?
+        - [ ] 롤백 기준을 정리했는가?
     validations:
       required: true

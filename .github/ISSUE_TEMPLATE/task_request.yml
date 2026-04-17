@@ -6,8 +6,8 @@ body:
     attributes:
       value: |
         ## 🔧 Task Intake
-        - 선언형 말투로 작성했다.
-        - 완료 조건과 실제 작업 항목을 같이 적었다.
+        - 완료 조건과 실제 작업 항목을 함께 적는다.
+        - 비해당 항목은 `없음`으로 적는다.
 
   - type: dropdown
     id: task_type
@@ -28,7 +28,7 @@ body:
     id: domain
     attributes:
       label: "🧩 Domain"
-      description: 관련 모듈이나 영역을 적었다.
+      description: 관련 모듈이나 영역을 적는다.
       placeholder: 예) back/auth, front/dashboard, github-actions
     validations:
       required: true
@@ -37,8 +37,8 @@ body:
     id: reason
     attributes:
       label: "📝 Description"
-      description: 어떤 작업인지, 왜 필요한지 적었다.
-      placeholder: 예) 거래 조회 서비스 책임을 분리해 유지보수성을 높였다.
+      description: 어떤 작업인지, 왜 필요한지 적는다.
+      placeholder: 예) 거래 조회 서비스 책임을 분리해 유지보수성을 높인다.
     validations:
       required: true
 
@@ -46,10 +46,10 @@ body:
     id: done_when
     attributes:
       label: "✅ Done When"
-      description: 완료 조건을 선언형 체크리스트로 적었다.
+      description: 완료 조건을 체크리스트로 적는다.
       placeholder: |
-        - [ ] 조건 A를 반영했다
-        - [ ] 조건 B를 검증했다
+        - [ ] 조건 A를 반영했는가?
+        - [ ] 조건 B를 검증했는가?
     validations:
       required: true
 
@@ -57,11 +57,11 @@ body:
     id: todo
     attributes:
       label: "🛠 Todo"
-      description: 실제 작업 항목을 선언형 체크리스트로 적었다.
+      description: 실제 작업 항목을 체크리스트로 적는다.
       placeholder: |
-        - [ ] 대상을 파악했다
-        - [ ] 변경을 적용했다
-        - [ ] 테스트 / 검증했다
-        - [ ] 문서를 반영했다
+        - [ ] 대상을 파악했는가?
+        - [ ] 변경을 적용했는가?
+        - [ ] 테스트 / 검증했는가?
+        - [ ] 문서를 반영했는가?
     validations:
       required: true

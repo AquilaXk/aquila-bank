@@ -6,15 +6,15 @@ body:
     attributes:
       value: |
         ## ✨ Feature Intake
-        - 선언형 말투로 작성했다.
-        - 비해당 항목은 `없음`으로 적었다.
+        - 핵심 목표와 범위를 자연스럽게 적는다.
+        - 비해당 항목은 `없음`으로 적는다.
 
   - type: input
     id: goal
     attributes:
       label: "🎯 Goal"
-      description: 달성한 목표를 선언형으로 적었다.
-      placeholder: 예) 고객이 최근 1년 거래를 조건 검색으로 빠르게 조회할 수 있게 했다.
+      description: 이 기능으로 달성하려는 목표를 적는다.
+      placeholder: 예) 고객이 최근 1년 거래를 조건 검색으로 빠르게 조회할 수 있게 한다.
     validations:
       required: true
 
@@ -22,7 +22,7 @@ body:
     id: domain
     attributes:
       label: "🧩 Domain"
-      description: 관련 도메인 또는 화면을 적었다.
+      description: 관련 도메인 또는 화면을 적는다.
       placeholder: 예) transaction query, auth, notification
     validations:
       required: true
@@ -31,8 +31,8 @@ body:
     id: background
     attributes:
       label: "📝 Background"
-      description: 필요한 이유와 현재 불편을 선언형으로 적었다.
-      placeholder: 예) 기간/금액 필터가 제한적이라 대량 거래 조회 UX가 떨어졌다.
+      description: 왜 필요한지와 현재 불편을 적는다.
+      placeholder: 예) 기간/금액 필터가 제한적이라 대량 거래 조회 UX가 떨어진다.
     validations:
       required: true
 
@@ -40,11 +40,11 @@ body:
     id: acceptance
     attributes:
       label: "✅ Acceptance Criteria"
-      description: 완료 기준을 선언형 체크리스트로 적었다.
+      description: 완료 기준을 체크리스트로 적는다.
       placeholder: |
-        - [ ] 조건 A를 반영했다
-        - [ ] 조건 B를 검증했다
-        - [ ] 조건 C를 문서화했다
+        - [ ] 조건 A를 반영했는가?
+        - [ ] 조건 B를 검증했는가?
+        - [ ] 조건 C를 문서화했는가?
     validations:
       required: true
 
@@ -52,26 +52,26 @@ body:
     id: out_of_scope
     attributes:
       label: "🚫 Out Of Scope"
-      description: 이번 작업에서 제외한 범위를 적었다.
-      placeholder: 예) 모바일 앱 대응은 이번 범위에서 제외했다.
+      description: 이번 작업에서 제외할 범위를 적는다.
+      placeholder: 예) 모바일 앱 대응은 이번 범위에서 제외한다.
 
   - type: textarea
     id: notes
     attributes:
       label: "📌 Notes"
-      description: 보안, 권한, 감사 로그, 운영 리스크를 적었다.
-      placeholder: 예) 타 계좌 거래 접근 방지용 권한 검증을 유지했다.
+      description: 보안, 권한, 감사 로그, 운영 리스크를 적는다.
+      placeholder: 예) 타 계좌 거래 접근 방지용 권한 검증이 필요하다.
 
   - type: textarea
     id: todo
     attributes:
       label: "🛠 Todo"
-      description: 구현 작업을 선언형 체크리스트로 적었다.
+      description: 구현 작업을 체크리스트로 적는다.
       placeholder: |
-        - [ ] 요구사항을 구체화했다
-        - [ ] API / 화면 설계를 정리했다
-        - [ ] 구현했다
-        - [ ] 테스트했다
-        - [ ] 문서를 반영했다
+        - [ ] 요구사항을 구체화했는가?
+        - [ ] API / 화면 설계를 정리했는가?
+        - [ ] 구현했는가?
+        - [ ] 테스트했는가?
+        - [ ] 문서를 반영했는가?
     validations:
       required: true
