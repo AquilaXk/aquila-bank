@@ -141,10 +141,11 @@ tools/test/with-resource-lock.sh back-gradle-check \
   - `heartbeat`: idle 연결 유지
 - 전달 계약:
   - SSE push는 `notification_inbox` insert 성공 이후에만 발행됩니다.
+  - 같은 인스턴스 안에서는 local event로 즉시 fan-out 하고, 다른 인스턴스에는 PostgreSQL `LISTEN/NOTIFY` signal로 fan-out 합니다.
   - duplicate Kafka consume로 insert가 `ON CONFLICT DO NOTHING` 이면 SSE도 추가 발행하지 않습니다.
   - user stream fan-out 대상은 `ACTIVE membership + ACTIVE user` 조건으로만 계산합니다.
-  - ordering 보장 범위는 현재 단일 app instance 안의 publish 순서까지입니다.
-  - reconnect 사이에 놓친 알림은 기존 `GET /api/v1/notifications` pull API로 재동기화합니다.
+  - ordering 보장 범위는 같은 fan-out signal 안의 `notification_inbox.id ASC` 처리 순서와 단일 app instance 안의 publish 순서까지입니다.
+  - PostgreSQL LISTEN 연결 재수립 또는 reconnect 사이에 놓친 알림은 기존 `GET /api/v1/notifications` pull API로 재동기화합니다.
 - 기본 설정:
   - `NOTIFICATION_SSE_CONNECTION_TIMEOUT_MS=1800000`
   - `NOTIFICATION_SSE_HEARTBEAT_INTERVAL_MS=10000`
