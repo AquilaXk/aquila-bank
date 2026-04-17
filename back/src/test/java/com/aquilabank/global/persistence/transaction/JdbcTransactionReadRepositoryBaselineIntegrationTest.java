@@ -66,6 +66,10 @@ class JdbcTransactionReadRepositoryBaselineIntegrationTest extends PostgresConta
             baselineWindow.to(),
             50,
             null,
+            null,
+            null,
+            null,
+            null,
             null);
 
     TransactionSlice slice = repository.fetch(query);
@@ -89,6 +93,10 @@ class JdbcTransactionReadRepositoryBaselineIntegrationTest extends PostgresConta
             baselineWindow.to(),
             50,
             null,
+            null,
+            null,
+            null,
+            null,
             null);
     TransactionSlice firstSlice = repository.fetch(firstPageQuery);
 
@@ -99,6 +107,10 @@ class JdbcTransactionReadRepositoryBaselineIntegrationTest extends PostgresConta
             baselineWindow.to(),
             50,
             firstSlice.nextCursor(),
+            null,
+            null,
+            null,
+            null,
             null);
 
     TransactionSlice nextSlice = repository.fetch(nextPageQuery);
@@ -122,7 +134,11 @@ class JdbcTransactionReadRepositoryBaselineIntegrationTest extends PostgresConta
             baselineWindow.to(),
             50,
             null,
-            TransactionStatus.BOOKED);
+            TransactionStatus.BOOKED,
+            null,
+            null,
+            null,
+            null);
     TransactionSlice firstSlice = repository.fetch(firstPageQuery);
 
     TransactionQuery nextPageQuery =
@@ -132,7 +148,11 @@ class JdbcTransactionReadRepositoryBaselineIntegrationTest extends PostgresConta
             baselineWindow.to(),
             50,
             firstSlice.nextCursor(),
-            TransactionStatus.BOOKED);
+            TransactionStatus.BOOKED,
+            null,
+            null,
+            null,
+            null);
 
     TransactionSlice nextSlice = repository.fetch(nextPageQuery);
     TransactionExplainPlan plan = explain(nextPageQuery);
