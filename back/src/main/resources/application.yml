@@ -95,6 +95,17 @@ outbox:
       enable-idempotence: ${OUTBOX_KAFKA_PRODUCER_ENABLE_IDEMPOTENCE:true}
       max-in-flight-requests-per-connection: ${OUTBOX_KAFKA_PRODUCER_MAX_IN_FLIGHT:1}
 
+notification:
+  inbox:
+    consumer:
+      enabled: ${NOTIFICATION_INBOX_CONSUMER_ENABLED:false}
+      auto-startup: ${NOTIFICATION_INBOX_CONSUMER_AUTO_STARTUP:true}
+      bootstrap-servers: ${NOTIFICATION_INBOX_CONSUMER_BOOTSTRAP_SERVERS:}
+      group-id: ${NOTIFICATION_INBOX_CONSUMER_GROUP_ID:aquila-bank-notification-inbox-consumer}
+      auto-offset-reset: ${NOTIFICATION_INBOX_CONSUMER_AUTO_OFFSET_RESET:earliest}
+      transfer-booked:
+        topic: ${NOTIFICATION_INBOX_CONSUMER_TRANSFER_BOOKED_TOPIC:}
+
 security:
   jwt:
     secret: ${SECURITY_JWT_SECRET}
