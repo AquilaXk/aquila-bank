@@ -39,8 +39,8 @@
 
 - feature 작업은 `main`에서 짧게 분기한 `feature/*`, `fix/*`, `ci/*` 브랜치에서 진행합니다.
 - PR 리뷰와 backend/frontend CI 통과 후 `main`에 병합합니다.
-- `main`에 병합되면 `Main CI/CD` workflow가 backend/frontend check 후 자동 배포를 실행합니다.
-- 자동 배포는 repository Actions secret `DEPLOY_WEBHOOK_URL`과 선택형 `DEPLOY_WEBHOOK_TOKEN`으로 호출합니다.
+- `main`에 병합되면 `Main CI` workflow가 backend/frontend check를 다시 실행합니다.
+- 아직 자동 배포는 연결하지 않고, 배포가 필요해질 때 별도 workflow로 추가합니다.
 - 미완성 기능은 장기 `develop` 브랜치 대신 feature flag로 기본 비노출 처리합니다.
 - 상세 운영 규칙은 [docs/delivery-flow.md](/Users/aquila/Custom/GitProjects/aquila-bank/docs/delivery-flow.md)에서 확인합니다.
 

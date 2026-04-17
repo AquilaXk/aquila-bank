@@ -96,8 +96,8 @@ export default function HomePage() {
             <p className="eyebrow">Preview Enabled</p>
             <h3>Operations Console Preview</h3>
             <p>
-              `main` merge 후 자동 배포 이력과 최근 deploy 상태를 노출하는 운영
-              preview UI를 여기서 이어서 붙일 수 있습니다.
+              `main` merge 후 CI 결과와 운영 체크리스트를 노출하는 preview UI를
+              여기서 이어서 붙일 수 있습니다.
             </p>
           </article>
         ) : null}

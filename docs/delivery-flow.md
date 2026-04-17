@@ -11,13 +11,11 @@
 - backend/frontend CI는 `main` 대상 PR에서 실행합니다.
 - workflow 수정만 있는 PR도 gate가 돌도록 `.github/workflows/**` 변경을 CI path에 포함합니다.
 
-## Main CI/CD
+## Main CI
 
-- `main`에 merge된 SHA는 `Main CI/CD` workflow가 backend/frontend check 후 자동 배포합니다.
-- 배포 webhook 주소는 repository Actions secret `DEPLOY_WEBHOOK_URL`에 둡니다.
-- 인증이 필요한 배포 엔드포인트면 repository Actions secret `DEPLOY_WEBHOOK_TOKEN`을 추가합니다.
-- deploy payload는 `sha`, `ref`, `repository`를 포함합니다.
-- 별도 staging/prod 승격 단계나 GitHub Environment 승인 단계는 두지 않습니다.
+- `main`에 merge된 SHA는 `Main CI` workflow가 backend/frontend check를 다시 실행합니다.
+- 아직 자동 배포는 연결하지 않습니다.
+- 배포가 필요해지면 별도 workflow 또는 외부 CD 연동을 추가합니다.
 
 ## Feature Flag
 
