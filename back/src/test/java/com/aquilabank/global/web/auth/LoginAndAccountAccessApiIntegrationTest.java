@@ -13,6 +13,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.aquilabank.support.PostgresContainerTestSupport;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Duration;
 import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -106,8 +107,8 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
             get("/api/v1/transactions")
                 .header("Authorization", "Bearer " + token)
                 .param("accountId", String.valueOf(allowedSourceAccountId))
-                .param("from", "2026-04-01T00:00:00Z")
-                .param("to", "2026-04-17T00:00:00Z"))
+                .param("from", transactionQueryFrom())
+                .param("to", transactionQueryTo()))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.items[0].accountId").value(allowedSourceAccountId))
         .andExpect(jsonPath("$.items[0].transactionReference").isString());
@@ -190,8 +191,8 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
             get("/api/v1/transactions")
                 .header("Authorization", "Bearer " + token)
                 .param("accountId", String.valueOf(deniedAccountId))
-                .param("from", "2026-04-01T00:00:00Z")
-                .param("to", "2026-04-17T00:00:00Z"))
+                .param("from", transactionQueryFrom())
+                .param("to", transactionQueryTo()))
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.message").value("account access is denied"));
 
@@ -248,8 +249,8 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
             get("/api/v1/transactions")
                 .header("Authorization", "Bearer " + token)
                 .param("accountId", String.valueOf(allowedSourceAccountId))
-                .param("from", "2026-04-01T00:00:00Z")
-                .param("to", "2026-04-17T00:00:00Z"))
+                .param("from", transactionQueryFrom())
+                .param("to", transactionQueryTo()))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.items[0].accountId").value(allowedSourceAccountId));
 
@@ -402,8 +403,8 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
             get("/api/v1/transactions")
                 .header("Authorization", "Bearer " + token)
                 .param("accountId", String.valueOf(allowedSourceAccountId))
-                .param("from", "2026-04-01T00:00:00Z")
-                .param("to", "2026-04-17T00:00:00Z"))
+                .param("from", transactionQueryFrom())
+                .param("to", transactionQueryTo()))
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.message").value("account access is denied"));
 
@@ -458,8 +459,8 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
             get("/api/v1/transactions")
                 .header("Authorization", "Bearer " + token)
                 .param("accountId", String.valueOf(allowedSourceAccountId))
-                .param("from", "2026-04-01T00:00:00Z")
-                .param("to", "2026-04-17T00:00:00Z"))
+                .param("from", transactionQueryFrom())
+                .param("to", transactionQueryTo()))
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.message").value("account access is denied"));
 
@@ -810,6 +811,14 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
 
   private Instant toInstant(java.sql.Timestamp timestamp) {
     return timestamp == null ? null : timestamp.toInstant();
+  }
+
+  private String transactionQueryFrom() {
+    return Instant.now().minus(Duration.ofHours(1)).toString();
+  }
+
+  private String transactionQueryTo() {
+    return Instant.now().plus(Duration.ofHours(1)).toString();
   }
 
   private record AuthStatusChangeAuditView(

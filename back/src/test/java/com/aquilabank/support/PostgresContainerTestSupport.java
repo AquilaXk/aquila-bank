@@ -45,6 +45,7 @@ public abstract class PostgresContainerTestSupport {
                         """
                         TRUNCATE TABLE
                             auth_status_change_audit,
+                            notification_inbox,
                             transaction_read_model,
                             ledger_entry,
                             command_idempotency,
