@@ -2,30 +2,19 @@ package com.aquilabank.domain.auth.model;
 
 import java.time.Instant;
 
-/** 로그인 성공 후 반환하는 bearer token 결과 */
-public record LoginResult(
-    String accessToken,
-    String refreshToken,
-    String tokenType,
-    Instant expiresAt,
-    Instant refreshExpiresAt,
-    long userId) {
+/** JWT signer가 만든 access token 결과만 분리해 전달합니다. */
+public record IssuedAccessToken(
+    String accessToken, String tokenType, Instant expiresAt, long userId) {
 
-  public LoginResult {
+  public IssuedAccessToken {
     if (accessToken == null || accessToken.isBlank()) {
       throw new IllegalArgumentException("accessToken is required");
-    }
-    if (refreshToken == null || refreshToken.isBlank()) {
-      throw new IllegalArgumentException("refreshToken is required");
     }
     if (tokenType == null || tokenType.isBlank()) {
       throw new IllegalArgumentException("tokenType is required");
     }
     if (expiresAt == null) {
       throw new IllegalArgumentException("expiresAt is required");
-    }
-    if (refreshExpiresAt == null) {
-      throw new IllegalArgumentException("refreshExpiresAt is required");
     }
     if (userId <= 0) {
       throw new IllegalArgumentException("userId must be positive");

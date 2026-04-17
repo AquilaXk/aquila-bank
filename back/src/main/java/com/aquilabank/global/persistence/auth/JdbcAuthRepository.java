@@ -10,11 +10,14 @@ import com.aquilabank.domain.auth.model.AuthUserSummary;
 import com.aquilabank.domain.auth.model.LoginUser;
 import com.aquilabank.domain.auth.model.MembershipRole;
 import com.aquilabank.domain.auth.model.MembershipStatus;
+import com.aquilabank.domain.auth.model.RefreshTokenSession;
+import com.aquilabank.domain.auth.model.RefreshTokenSessionStatus;
 import com.aquilabank.domain.auth.model.UserAccountMembership;
 import com.aquilabank.domain.auth.model.UserAccountMembershipSummary;
 import com.aquilabank.domain.auth.model.UserStatus;
 import com.aquilabank.domain.auth.port.AccountAccessPort;
 import com.aquilabank.domain.auth.port.AuthStatusChangeAuditQueryPort;
+import com.aquilabank.domain.auth.port.RefreshTokenSessionLoadPort;
 import com.aquilabank.domain.auth.port.UserAccountMembershipQueryPort;
 import com.aquilabank.domain.auth.port.UserCredentialLoadPort;
 import com.aquilabank.domain.auth.port.UserQueryPort;
@@ -31,6 +34,7 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class JdbcAuthRepository
     implements UserCredentialLoadPort,
+        RefreshTokenSessionLoadPort,
         AccountAccessPort,
         UserQueryPort,
         UserAccountMembershipQueryPort,
@@ -83,6 +87,33 @@ public class JdbcAuthRepository
             """,
             new MapSqlParameterSource().addValue("loginId", loginId),
             (rs, rowNum) -> mapLoginUser(rs))
+        .stream()
+        .findFirst();
+  }
+
+  @Override
+  public Optional<RefreshTokenSession> findByTokenHashForUpdate(String tokenHash) {
+    return jdbcTemplate
+        .query(
+            """
+            SELECT s.id,
+                   s.user_id,
+                   u.login_id,
+                   u.user_status,
+                   s.token_hash,
+                   s.session_status,
+                   s.expires_at,
+                   s.last_used_at,
+                   s.rotated_at,
+                   s.replaced_by_session_id
+            FROM auth_refresh_token_session s
+            JOIN bank_user u
+              ON u.id = s.user_id
+            WHERE s.token_hash = :tokenHash
+            FOR UPDATE OF s, u
+            """,
+            new MapSqlParameterSource().addValue("tokenHash", tokenHash),
+            (rs, rowNum) -> mapRefreshTokenSession(rs))
         .stream()
         .findFirst();
   }
@@ -210,6 +241,20 @@ public class JdbcAuthRepository
         toNullableInstant(rs.getTimestamp("last_login_failed_at")),
         toNullableInstant(rs.getTimestamp("login_locked_until")),
         toNullableInstant(rs.getTimestamp("last_login_succeeded_at")));
+  }
+
+  private RefreshTokenSession mapRefreshTokenSession(ResultSet rs) throws SQLException {
+    return new RefreshTokenSession(
+        rs.getLong("id"),
+        rs.getLong("user_id"),
+        rs.getString("login_id"),
+        UserStatus.valueOf(rs.getString("user_status")),
+        rs.getString("token_hash"),
+        RefreshTokenSessionStatus.valueOf(rs.getString("session_status")),
+        toInstant(rs.getTimestamp("expires_at")),
+        toNullableInstant(rs.getTimestamp("last_used_at")),
+        toNullableInstant(rs.getTimestamp("rotated_at")),
+        rs.getObject("replaced_by_session_id", Long.class));
   }
 
   private UserAccountMembership mapMembership(ResultSet rs) throws SQLException {

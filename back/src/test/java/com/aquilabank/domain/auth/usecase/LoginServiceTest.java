@@ -9,10 +9,13 @@ import static org.mockito.Mockito.when;
 import com.aquilabank.domain.auth.exception.InvalidCredentialsException;
 import com.aquilabank.domain.auth.model.LoginCommand;
 import com.aquilabank.domain.auth.model.LoginProtectionPolicy;
+import com.aquilabank.domain.auth.model.RefreshTokenPolicy;
 import com.aquilabank.domain.auth.port.AuthTokenIssuePort;
 import com.aquilabank.domain.auth.port.LoginAttemptAuditPort;
 import com.aquilabank.domain.auth.port.LoginAttemptUpdatePort;
 import com.aquilabank.domain.auth.port.PasswordHashPort;
+import com.aquilabank.domain.auth.port.RefreshTokenSecretPort;
+import com.aquilabank.domain.auth.port.RefreshTokenSessionWritePort;
 import com.aquilabank.domain.auth.port.UserCredentialLoadPort;
 import java.time.Clock;
 import java.time.Duration;
@@ -30,6 +33,9 @@ class LoginServiceTest {
     LoginAttemptUpdatePort loginAttemptUpdatePort = Mockito.mock(LoginAttemptUpdatePort.class);
     LoginAttemptAuditPort loginAttemptAuditPort = Mockito.mock(LoginAttemptAuditPort.class);
     PasswordHashPort passwordHashPort = Mockito.mock(PasswordHashPort.class);
+    RefreshTokenSessionWritePort refreshTokenSessionWritePort =
+        Mockito.mock(RefreshTokenSessionWritePort.class);
+    RefreshTokenSecretPort refreshTokenSecretPort = Mockito.mock(RefreshTokenSecretPort.class);
     AuthTokenIssuePort authTokenIssuePort = Mockito.mock(AuthTokenIssuePort.class);
 
     when(userCredentialLoadPort.findByLoginIdForUpdate("missing-user"))
@@ -42,8 +48,11 @@ class LoginServiceTest {
             loginAttemptUpdatePort,
             loginAttemptAuditPort,
             passwordHashPort,
+            refreshTokenSessionWritePort,
+            refreshTokenSecretPort,
             authTokenIssuePort,
             new LoginProtectionPolicy(5, Duration.ofMinutes(15), Duration.ofMinutes(15)),
+            new RefreshTokenPolicy(Duration.ofDays(14)),
             "dummy-hash",
             Clock.fixed(Instant.parse("2026-04-17T00:00:00Z"), ZoneOffset.UTC));
 
@@ -54,7 +63,9 @@ class LoginServiceTest {
     verify(passwordHashPort).matches("wrong-password", "dummy-hash");
     verify(loginAttemptUpdatePort, never()).recordLoginFailure(Mockito.any());
     verify(loginAttemptUpdatePort, never()).recordLoginSuccess(Mockito.any());
-    verify(authTokenIssuePort, never()).issue(Mockito.anyLong(), Mockito.anyString());
+    verify(refreshTokenSessionWritePort, never()).create(Mockito.any());
+    verify(authTokenIssuePort, never())
+        .issue(Mockito.anyLong(), Mockito.anyString(), Mockito.any());
     verify(userCredentialLoadPort).findByLoginIdForUpdate(eq("missing-user"));
   }
 }

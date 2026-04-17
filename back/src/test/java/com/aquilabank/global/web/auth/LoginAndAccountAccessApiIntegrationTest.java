@@ -1,6 +1,7 @@
 package com.aquilabank.global.web.auth;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
@@ -10,6 +11,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.aquilabank.domain.auth.port.RefreshTokenSecretPort;
 import com.aquilabank.support.PostgresContainerTestSupport;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -40,7 +42,8 @@ import org.springframework.web.context.WebApplicationContext;
       "management.health.db.enabled=true",
       "security.login-protection.max-failures=3",
       "security.login-protection.lock-seconds=1",
-      "security.login-protection.reset-window-seconds=900"
+      "security.login-protection.reset-window-seconds=900",
+      "security.jwt.refresh-token-ttl-seconds=2"
     })
 class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSupport {
 
@@ -53,6 +56,8 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
   @Autowired private NamedParameterJdbcTemplate jdbcTemplate;
 
   @Autowired private ObjectMapper objectMapper;
+
+  @Autowired private RefreshTokenSecretPort refreshTokenSecretPort;
 
   private MockMvc mockMvc;
   private long userId;
@@ -325,6 +330,41 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
   }
 
   @Test
+  void refreshRotatesTokenAndRejectsReusedToken() throws Exception {
+    TokenPairResponseView loginResult = loginResult("alice", "password123!", "refresh-login-001");
+    assertNotNull(loginResult.refreshToken());
+    assertNotNull(loginResult.refreshExpiresAt());
+
+    RefreshTokenSessionView initialSession = loadRefreshTokenSession(loginResult.refreshToken());
+    assertEquals("ACTIVE", initialSession.sessionStatus());
+
+    TokenPairResponseView refreshed = refresh(loginResult.refreshToken(), "refresh-rotate-001");
+    assertNotNull(refreshed.accessToken());
+    assertNotNull(refreshed.refreshToken());
+    assertNotEquals(loginResult.refreshToken(), refreshed.refreshToken());
+
+    RefreshTokenSessionView rotatedSession = loadRefreshTokenSession(loginResult.refreshToken());
+    assertEquals("ROTATED", rotatedSession.sessionStatus());
+    assertNotNull(rotatedSession.lastUsedAt());
+    assertNotNull(rotatedSession.rotatedAt());
+    assertNotNull(rotatedSession.replacedBySessionId());
+
+    RefreshTokenSessionView newSession = loadRefreshTokenSession(refreshed.refreshToken());
+    assertEquals("ACTIVE", newSession.sessionStatus());
+    assertNull(newSession.lastUsedAt());
+    assertNull(newSession.rotatedAt());
+
+    refreshExpectUnauthorized(loginResult.refreshToken(), "refresh-reuse-001");
+  }
+
+  @Test
+  void expiredRefreshTokenIsRejected() throws Exception {
+    TokenPairResponseView loginResult = loginResult("alice", "password123!", "refresh-expire-001");
+    Thread.sleep(2200L);
+    refreshExpectUnauthorized(loginResult.refreshToken(), "refresh-expire-002");
+  }
+
+  @Test
   void logsFailureAndResetWithRequestIdAndMaskedLoginKey(CapturedOutput output) throws Exception {
     loginExpectUnauthorized("alice", "wrong-password", "login-log-failure-001");
     login("alice", "password123!", "login-log-reset-001");
@@ -381,7 +421,8 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
 
   @Test
   void disabledUserCannotLoginOrUseExistingJwt() throws Exception {
-    String token = login("alice", "password123!");
+    TokenPairResponseView loginResult = loginResult("alice", "password123!", null);
+    String token = loginResult.accessToken();
     updateLegacyUserStatus(userId, "DISABLED", "fraud-review", "user-disabled-request");
 
     mockMvc
@@ -397,6 +438,8 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
                     """))
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.message").value("login failed"));
+
+    refreshExpectUnauthorized(loginResult.refreshToken(), "refresh-disabled-001");
 
     mockMvc
         .perform(
@@ -560,13 +603,14 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
   }
 
   private String login(String loginId, String password, String requestId) throws Exception {
+    return loginResult(loginId, password, requestId).accessToken();
+  }
+
+  private TokenPairResponseView loginResult(String loginId, String password, String requestId)
+      throws Exception {
     MvcResult result =
         performLogin(loginId, password, requestId).andExpect(status().isOk()).andReturn();
-
-    JsonNode body = objectMapper.readTree(result.getResponse().getContentAsByteArray());
-    assertEquals("Bearer", body.get("tokenType").asText());
-    assertNotNull(body.get("expiresAt"));
-    return body.get("accessToken").asText();
+    return readTokenPair(result);
   }
 
   private void loginExpectUnauthorized(String loginId, String password, String requestId)
@@ -589,6 +633,36 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
                 }
                 """
                     .formatted(loginId, password));
+    if (requestId != null && !requestId.isBlank()) {
+      requestBuilder.header("X-Request-Id", requestId);
+    }
+    return mockMvc.perform(requestBuilder);
+  }
+
+  private TokenPairResponseView refresh(String refreshToken, String requestId) throws Exception {
+    MvcResult result =
+        performRefresh(refreshToken, requestId).andExpect(status().isOk()).andReturn();
+    return readTokenPair(result);
+  }
+
+  private void refreshExpectUnauthorized(String refreshToken, String requestId) throws Exception {
+    performRefresh(refreshToken, requestId)
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.message").value("refresh failed"));
+  }
+
+  private org.springframework.test.web.servlet.ResultActions performRefresh(
+      String refreshToken, String requestId) throws Exception {
+    MockHttpServletRequestBuilder requestBuilder =
+        post("/api/v1/auth/refresh")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(
+                """
+                {
+                  "refreshToken": "%s"
+                }
+                """
+                    .formatted(refreshToken));
     if (requestId != null && !requestId.isBlank()) {
       requestBuilder.header("X-Request-Id", requestId);
     }
@@ -809,6 +883,46 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
         .orElseThrow(() -> new AssertionError("login protection state is not found"));
   }
 
+  private RefreshTokenSessionView loadRefreshTokenSession(String refreshToken) {
+    return jdbcTemplate
+        .query(
+            """
+            SELECT session_status,
+                   expires_at,
+                   last_used_at,
+                   rotated_at,
+                   replaced_by_session_id
+            FROM auth_refresh_token_session
+            WHERE token_hash = :tokenHash
+            """,
+            new org.springframework.jdbc.core.namedparam.MapSqlParameterSource()
+                .addValue("tokenHash", refreshTokenSecretPort.hash(refreshToken)),
+            (rs, rowNum) ->
+                new RefreshTokenSessionView(
+                    rs.getString("session_status"),
+                    toInstant(rs.getTimestamp("expires_at")),
+                    toInstant(rs.getTimestamp("last_used_at")),
+                    toInstant(rs.getTimestamp("rotated_at")),
+                    rs.getObject("replaced_by_session_id", Long.class)))
+        .stream()
+        .findFirst()
+        .orElseThrow(() -> new AssertionError("refresh token session is not found"));
+  }
+
+  private TokenPairResponseView readTokenPair(MvcResult result) throws Exception {
+    JsonNode body = objectMapper.readTree(result.getResponse().getContentAsByteArray());
+    assertEquals("Bearer", body.get("tokenType").asText());
+    assertNotNull(body.get("expiresAt"));
+    assertNotNull(body.get("refreshExpiresAt"));
+    return new TokenPairResponseView(
+        body.get("accessToken").asText(),
+        body.get("refreshToken").asText(),
+        body.get("tokenType").asText(),
+        Instant.parse(body.get("expiresAt").asText()),
+        Instant.parse(body.get("refreshExpiresAt").asText()),
+        body.get("userId").asLong());
+  }
+
   private Instant toInstant(java.sql.Timestamp timestamp) {
     return timestamp == null ? null : timestamp.toInstant();
   }
@@ -839,4 +953,19 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
       Instant lastLoginFailedAt,
       Instant loginLockedUntil,
       Instant lastLoginSucceededAt) {}
+
+  private record TokenPairResponseView(
+      String accessToken,
+      String refreshToken,
+      String tokenType,
+      Instant expiresAt,
+      Instant refreshExpiresAt,
+      long userId) {}
+
+  private record RefreshTokenSessionView(
+      String sessionStatus,
+      Instant expiresAt,
+      Instant lastUsedAt,
+      Instant rotatedAt,
+      Long replacedBySessionId) {}
 }

@@ -2,6 +2,7 @@ package com.aquilabank.global.security;
 
 import com.aquilabank.domain.auth.port.AuthTokenIssuePort;
 import com.aquilabank.domain.auth.port.PasswordHashPort;
+import com.aquilabank.domain.auth.port.RefreshTokenSecretPort;
 import com.aquilabank.global.web.InternalAuthStatusAuditRequestCachingFilter;
 import com.aquilabank.global.web.RequestIdFilter;
 import javax.crypto.spec.SecretKeySpec;
@@ -59,6 +60,8 @@ public class SecurityConfiguration {
                 auth.requestMatchers("/actuator/health", "/actuator/info")
                     .permitAll()
                     .requestMatchers("/api/v1/auth/login")
+                    .permitAll()
+                    .requestMatchers("/api/v1/auth/refresh")
                     .permitAll()
                     // 내부 bootstrap API는 JWT 대신 별도 shared token으로 보호합니다.
                     .requestMatchers("/internal/api/v1/accounts/bootstrap")
@@ -145,6 +148,11 @@ public class SecurityConfiguration {
         return passwordEncoder.matches(rawPassword, passwordHash);
       }
     };
+  }
+
+  @Bean
+  RefreshTokenSecretPort refreshTokenSecretPort() {
+    return new Sha256RefreshTokenManager();
   }
 
   @Bean

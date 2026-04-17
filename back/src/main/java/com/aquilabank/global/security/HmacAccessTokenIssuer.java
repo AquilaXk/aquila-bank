@@ -1,6 +1,6 @@
 package com.aquilabank.global.security;
 
-import com.aquilabank.domain.auth.model.LoginResult;
+import com.aquilabank.domain.auth.model.IssuedAccessToken;
 import com.aquilabank.domain.auth.port.AuthTokenIssuePort;
 import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.JOSEObjectType;
@@ -28,14 +28,13 @@ public class HmacAccessTokenIssuer implements AuthTokenIssuePort {
   }
 
   @Override
-  public LoginResult issue(long userId, String subject) {
-    Instant now = Instant.now();
-    Instant expiresAt = now.plusSeconds(accessTokenTtlSeconds);
+  public IssuedAccessToken issue(long userId, String subject, Instant issuedAt) {
+    Instant expiresAt = issuedAt.plusSeconds(accessTokenTtlSeconds);
 
     JWTClaimsSet.Builder claims =
         new JWTClaimsSet.Builder()
             .subject(subject)
-            .issueTime(Date.from(now))
+            .issueTime(Date.from(issuedAt))
             .expirationTime(Date.from(expiresAt))
             .claim("user_id", userId);
     if (issuer != null && !issuer.isBlank()) {
@@ -51,6 +50,6 @@ public class HmacAccessTokenIssuer implements AuthTokenIssuePort {
     } catch (JOSEException ex) {
       throw new IllegalStateException("access token signing failed", ex);
     }
-    return new LoginResult(signedJwt.serialize(), "Bearer", expiresAt, userId);
+    return new IssuedAccessToken(signedJwt.serialize(), "Bearer", expiresAt, userId);
   }
 }

@@ -3,12 +3,16 @@ package com.aquilabank.global.config;
 import com.aquilabank.domain.auth.exception.InvalidCredentialsException;
 import com.aquilabank.domain.auth.model.LoginProtectionPolicy;
 import com.aquilabank.domain.auth.model.LoginResult;
+import com.aquilabank.domain.auth.model.RefreshTokenPolicy;
 import com.aquilabank.domain.auth.port.AccountAccessPort;
 import com.aquilabank.domain.auth.port.AuthStatusChangeAuditQueryPort;
 import com.aquilabank.domain.auth.port.AuthTokenIssuePort;
 import com.aquilabank.domain.auth.port.LoginAttemptAuditPort;
 import com.aquilabank.domain.auth.port.LoginAttemptUpdatePort;
 import com.aquilabank.domain.auth.port.PasswordHashPort;
+import com.aquilabank.domain.auth.port.RefreshTokenSecretPort;
+import com.aquilabank.domain.auth.port.RefreshTokenSessionLoadPort;
+import com.aquilabank.domain.auth.port.RefreshTokenSessionWritePort;
 import com.aquilabank.domain.auth.port.UserAccountMembershipQueryPort;
 import com.aquilabank.domain.auth.port.UserAccountMembershipStatusUpdatePort;
 import com.aquilabank.domain.auth.port.UserAccountMembershipUpsertPort;
@@ -24,6 +28,8 @@ import com.aquilabank.domain.auth.usecase.AuthUserQueryService;
 import com.aquilabank.domain.auth.usecase.AuthUserQueryUseCase;
 import com.aquilabank.domain.auth.usecase.LoginService;
 import com.aquilabank.domain.auth.usecase.LoginUseCase;
+import com.aquilabank.domain.auth.usecase.RefreshTokenService;
+import com.aquilabank.domain.auth.usecase.RefreshTokenUseCase;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipQueryService;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipQueryUseCase;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipStatusUpdateService;
@@ -35,6 +41,7 @@ import com.aquilabank.domain.auth.usecase.UserBootstrapUseCase;
 import com.aquilabank.domain.auth.usecase.UserStatusUpdateService;
 import com.aquilabank.domain.auth.usecase.UserStatusUpdateUseCase;
 import com.aquilabank.global.security.LoginProtectionProperties;
+import com.aquilabank.global.security.SecurityJwtProperties;
 import com.aquilabank.global.security.StructuredLoginAttemptAuditLogger;
 import java.time.Clock;
 import java.time.Duration;
@@ -56,13 +63,28 @@ public class AuthConfiguration {
   }
 
   @Bean
+  RefreshTokenPolicy refreshTokenPolicy(SecurityJwtProperties securityJwtProperties) {
+    return new RefreshTokenPolicy(
+        Duration.ofSeconds(securityJwtProperties.refreshTokenTtlSeconds()));
+  }
+
+  @Bean
+  Clock authClock() {
+    return Clock.systemUTC();
+  }
+
+  @Bean
   LoginUseCase loginUseCase(
       UserCredentialLoadPort userCredentialLoadPort,
       LoginAttemptUpdatePort loginAttemptUpdatePort,
       LoginAttemptAuditPort loginAttemptAuditPort,
       PasswordHashPort passwordHashPort,
+      RefreshTokenSessionWritePort refreshTokenSessionWritePort,
+      RefreshTokenSecretPort refreshTokenSecretPort,
       AuthTokenIssuePort authTokenIssuePort,
       LoginProtectionPolicy loginProtectionPolicy,
+      RefreshTokenPolicy refreshTokenPolicy,
+      Clock authClock,
       PlatformTransactionManager platformTransactionManager) {
     LoginService loginService =
         new LoginService(
@@ -70,10 +92,13 @@ public class AuthConfiguration {
             loginAttemptUpdatePort,
             loginAttemptAuditPort,
             passwordHashPort,
+            refreshTokenSessionWritePort,
+            refreshTokenSecretPort,
             authTokenIssuePort,
             loginProtectionPolicy,
+            refreshTokenPolicy,
             passwordHashPort.encode("login-dummy-password"),
-            Clock.systemUTC());
+            authClock);
     TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
     return command -> {
       LoginTransactionResult transactionResult =
@@ -95,6 +120,34 @@ public class AuthConfiguration {
         throw new IllegalStateException("login transaction returned null result");
       }
       return transactionResult.result();
+    };
+  }
+
+  @Bean
+  RefreshTokenUseCase refreshTokenUseCase(
+      RefreshTokenSessionLoadPort refreshTokenSessionLoadPort,
+      RefreshTokenSessionWritePort refreshTokenSessionWritePort,
+      RefreshTokenSecretPort refreshTokenSecretPort,
+      AuthTokenIssuePort authTokenIssuePort,
+      RefreshTokenPolicy refreshTokenPolicy,
+      Clock authClock,
+      PlatformTransactionManager platformTransactionManager) {
+    RefreshTokenService refreshTokenService =
+        new RefreshTokenService(
+            refreshTokenSessionLoadPort,
+            refreshTokenSessionWritePort,
+            refreshTokenSecretPort,
+            authTokenIssuePort,
+            refreshTokenPolicy,
+            authClock);
+    TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
+    return command -> {
+      LoginResult result =
+          transactionTemplate.execute(status -> refreshTokenService.refresh(command));
+      if (result == null) {
+        throw new IllegalStateException("refresh transaction returned null result");
+      }
+      return result;
     };
   }
 
