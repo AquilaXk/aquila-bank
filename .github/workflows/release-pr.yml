@@ -1,0 +1,128 @@
+name: Release PR
+
+on:
+  push:
+    branches:
+      - develop
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-pr-develop
+  cancel-in-progress: true
+
+jobs:
+  backend-release-check:
+    name: Backend Release Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: back
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Grant Gradle wrapper execute permission
+        run: chmod +x gradlew
+
+      - name: Run backend release check
+        run: ./gradlew check --no-daemon --stacktrace
+
+  frontend-release-check:
+    name: Frontend Release Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: front
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: yarn
+          cache-dependency-path: front/yarn.lock
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile --non-interactive
+
+      - name: Run frontend lint
+        run: yarn lint
+
+      - name: Run frontend build
+        run: yarn build
+
+  release-pr:
+    name: Open Release PR
+    runs-on: ubuntu-latest
+    needs:
+      - backend-release-check
+      - frontend-release-check
+    if: ${{ needs.backend-release-check.result == 'success' && needs.frontend-release-check.result == 'success' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch main and develop
+        run: git fetch origin main develop
+
+      - name: Check release diff
+        id: diff
+        run: |
+          ahead_count="$(git rev-list --right-only --count origin/main...origin/develop)"
+          echo "ahead_count=${ahead_count}" >> "$GITHUB_OUTPUT"
+          if [[ "${ahead_count}" == "0" ]]; then
+            echo "has_diff=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_diff=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip when develop is not ahead of main
+        if: steps.diff.outputs.has_diff != 'true'
+        run: echo "develop branch has no release diff against main"
+
+      - name: Create or update release PR
+        if: steps.diff.outputs.has_diff == 'true'
+        id: release_pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pr_number="$(gh pr list --base main --head develop --state open --json number --jq '.[0].number')"
+          if [[ -z "${pr_number}" ]]; then
+            gh pr create \
+              --base main \
+              --head develop \
+              --title "[CI] develop -> main release sync" \
+              --body-file .github/release_pull_request_template.md
+            pr_number="$(gh pr list --base main --head develop --state open --json number --jq '.[0].number')"
+          else
+            gh pr edit \
+              "${pr_number}" \
+              --title "[CI] develop -> main release sync" \
+              --body-file .github/release_pull_request_template.md
+          fi
+          echo "number=${pr_number}" >> "$GITHUB_OUTPUT"
+
+      - name: Enable auto-merge
+        if: steps.diff.outputs.has_diff == 'true' && steps.release_pr.outputs.number != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr merge "${{ steps.release_pr.outputs.number }}" --auto --merge
