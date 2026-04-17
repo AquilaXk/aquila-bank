@@ -9,8 +9,11 @@ import com.aquilabank.domain.notification.port.OutboxOpsReadPort;
 import com.aquilabank.domain.notification.port.OutboxOpsRecoveryPort;
 import com.aquilabank.global.notification.KafkaOutboxEventPublisher;
 import com.aquilabank.global.notification.LoggingOutboxEventPublisher;
+import org.apache.kafka.clients.producer.ProducerConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.kafka.core.DefaultKafkaProducerFactory;
+import org.springframework.kafka.core.ProducerFactory;
 
 class OutboxConfigurationTest {
 
@@ -68,5 +71,40 @@ class OutboxConfigurationTest {
                 assertInstanceOf(
                     LoggingOutboxEventPublisher.class,
                     context.getBean("outboxEventPublishPort", OutboxEventPublishPort.class)));
+  }
+
+  @Test
+  void usesIntegerKafkaTimeoutConfigsWhenKafkaPublisherIsEnabled() {
+    contextRunner
+        .withPropertyValues(
+            "outbox.kafka.enabled=true",
+            "outbox.kafka.bootstrap-servers=localhost:9092",
+            "outbox.kafka.topic.default-name=bank.notification.outbox.v1",
+            "outbox.kafka.retry.retry-backoff-ms=1000",
+            "outbox.kafka.retry.delivery-timeout-ms=30000",
+            "outbox.kafka.retry.request-timeout-ms=3000")
+        .run(
+            context -> {
+              @SuppressWarnings("unchecked")
+              DefaultKafkaProducerFactory<String, String> producerFactory =
+                  (DefaultKafkaProducerFactory<String, String>)
+                      context.getBean("outboxKafkaProducerFactory", ProducerFactory.class);
+
+              assertInstanceOf(
+                  Integer.class,
+                  producerFactory
+                      .getConfigurationProperties()
+                      .get(ProducerConfig.RETRY_BACKOFF_MS_CONFIG));
+              assertInstanceOf(
+                  Integer.class,
+                  producerFactory
+                      .getConfigurationProperties()
+                      .get(ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG));
+              assertInstanceOf(
+                  Integer.class,
+                  producerFactory
+                      .getConfigurationProperties()
+                      .get(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG));
+            });
   }
 }

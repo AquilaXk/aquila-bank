@@ -155,13 +155,28 @@ public class OutboxConfiguration {
         outboxKafkaProperties.producer().maxInFlightRequestsPerConnection());
     config.put(ProducerConfig.RETRIES_CONFIG, outboxKafkaProperties.retry().retries());
     config.put(
-        ProducerConfig.RETRY_BACKOFF_MS_CONFIG, outboxKafkaProperties.retry().retryBackoffMs());
+        ProducerConfig.RETRY_BACKOFF_MS_CONFIG,
+        toKafkaInt(
+            "outbox.kafka.retry.retry-backoff-ms", outboxKafkaProperties.retry().retryBackoffMs()));
     config.put(
         ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG,
-        outboxKafkaProperties.retry().deliveryTimeoutMs());
+        toKafkaInt(
+            "outbox.kafka.retry.delivery-timeout-ms",
+            outboxKafkaProperties.retry().deliveryTimeoutMs()));
     config.put(
-        ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, outboxKafkaProperties.retry().requestTimeoutMs());
+        ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG,
+        toKafkaInt(
+            "outbox.kafka.retry.request-timeout-ms",
+            outboxKafkaProperties.retry().requestTimeoutMs()));
     return config;
+  }
+
+  private int toKafkaInt(String propertyName, long value) {
+    // env 바인딩은 long 으로 받고, Kafka client 직전만 int 계약으로 맞춰 설정 오류를 막습니다.
+    if (value < 0 || value > Integer.MAX_VALUE) {
+      throw new IllegalArgumentException(propertyName + " must fit into Kafka int config range");
+    }
+    return (int) value;
   }
 
   @SuppressWarnings("unchecked")
