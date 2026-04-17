@@ -1,17 +1,17 @@
 ## 🔗 Related Issue
-- 필수: `close #<issue-number>`
-- 예시: `close #12`
+- `close #<issue-number>`를 적었음.
+- 예시: `close #12`를 적었음.
 
 ## 🌿 Base Branch
 - `main`
 
 ## 📝 Summary
-- 이 PR이 무엇을 해결하는지 2~3줄로 적어주세요.
+- 이 PR이 무엇을 해결했는지 2~3줄로 적었음.
 
 ## 🛠 Changes
-- 주요 변경 사항 1
-- 주요 변경 사항 2
-- 주요 변경 사항 3
+- 주요 변경 사항 1을 적었음.
+- 주요 변경 사항 2를 적었음.
+- 주요 변경 사항 3을 적었음.
 
 ## 🎯 Scope
 - [ ] Frontend
@@ -28,16 +28,16 @@
 - [ ] 로그 / 메트릭 확인
 
 ### 실행한 검증
-- 예) `./back/gradlew -p back check`
-- 예) `yarn --cwd front lint`
-- 예) 대량 거래 조회 수동 확인
+- 예) `./back/gradlew -p back check`를 실행했음.
+- 예) `yarn --cwd front lint`를 실행했음.
+- 예) 대량 거래 조회를 수동 확인했음.
 
 ## 📸 Screenshot / API Example
-- UI 변경 또는 응답 예시가 있으면 첨부해 주세요.
+- UI 변경 또는 응답 예시를 첨부했음. 없으면 `없음`으로 적었음.
 
 ## ⚠️ Risk & Rollback
-- 예상 리스크:
-- 롤백 방법:
+- 예상 리스크를 적었음.
+- 롤백 방법을 적었음.
 
 ## ☑️ Checklist
 - [ ] base branch가 `main`인지 확인했다.
