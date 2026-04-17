@@ -61,6 +61,48 @@ final class OutboxOpsScriptSmokeSupport {
               "stale `SENDING` row 를 `PENDING` 으로 되돌리는",
               "`OUTBOX_OPS_ENABLED=false`"));
 
+  static final ScriptSpec NOTIFICATION_SUMMARY_SPEC =
+      new ScriptSpec(
+          "notification-consumer-summary",
+          repoRoot().resolve("tools/ops/notification-get-consumer-summary.sh"),
+          "usage: tools/ops/notification-get-consumer-summary.sh",
+          List.of("http://localhost:8080", "test-outbox-ops-token"),
+          List.of(
+              "--fail-with-body",
+              "--silent",
+              "--show-error",
+              "--get",
+              "--header",
+              "X-Outbox-Ops-Token: test-outbox-ops-token",
+              "http://localhost:8080/internal/api/v1/outbox/notification/summary"),
+          List.of(
+              "tools/ops/notification-get-consumer-summary.sh \\",
+              "\"X-Outbox-Ops-Token: ${OUTBOX_OPS_TOKEN}\"",
+              "\"http://localhost:8080/internal/api/v1/outbox/notification/summary\"",
+              "consumer lag 와 DLQ count"));
+
+  static final ScriptSpec NOTIFICATION_DLQ_EVENTS_SPEC =
+      new ScriptSpec(
+          "notification-dlq-events",
+          repoRoot().resolve("tools/ops/notification-find-dlq-events.sh"),
+          "usage: tools/ops/notification-find-dlq-events.sh",
+          List.of("http://localhost:8080", "test-outbox-ops-token", "20"),
+          List.of(
+              "--fail-with-body",
+              "--silent",
+              "--show-error",
+              "--get",
+              "--header",
+              "X-Outbox-Ops-Token: test-outbox-ops-token",
+              "--data-urlencode",
+              "limit=20",
+              "http://localhost:8080/internal/api/v1/outbox/notification/dlq-events"),
+          List.of(
+              "tools/ops/notification-find-dlq-events.sh \\",
+              "\"X-Outbox-Ops-Token: ${OUTBOX_OPS_TOKEN}\"",
+              "\"http://localhost:8080/internal/api/v1/outbox/notification/dlq-events\"",
+              "poison message 최근 항목"));
+
   private static final Duration SCRIPT_TIMEOUT = Duration.ofSeconds(5);
 
   private OutboxOpsScriptSmokeSupport() {}
