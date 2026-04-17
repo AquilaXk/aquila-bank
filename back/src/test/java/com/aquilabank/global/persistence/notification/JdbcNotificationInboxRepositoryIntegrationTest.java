@@ -200,6 +200,65 @@ class JdbcNotificationInboxRepositoryIntegrationTest extends PostgresContainerTe
         .containsExactlyInAnyOrder("1500 KRW 출금 · rent", "1500 KRW 입금 · rent");
   }
 
+  @Test
+  void deletesExpiredNotificationsInBatchesAndCascadesUserReadState() {
+    long[] userId = new long[1];
+    long[] accountId = new long[1];
+    long[] notificationIds = new long[3];
+    Instant base = Instant.parse("2026-04-17T00:00:00Z");
+    Instant cutoff = base.minusSeconds(90L * 24 * 60 * 60);
+    commit(
+        transactionManager,
+        () -> {
+          userId[0] = insertUser("cleanup-user");
+          accountId[0] = insertAccount("cleanup account");
+          insertMembership(userId[0], accountId[0], "OWNER", "ACTIVE");
+          notificationIds[0] =
+              insertNotification(
+                  accountId[0],
+                  "evt-cleanup-1",
+                  "TransferBooked",
+                  "old-1",
+                  "old-1",
+                  null,
+                  cutoff.minusSeconds(20));
+          notificationIds[1] =
+              insertNotification(
+                  accountId[0],
+                  "evt-cleanup-2",
+                  "TransferBooked",
+                  "old-2",
+                  "old-2",
+                  null,
+                  cutoff.minusSeconds(10));
+          notificationIds[2] =
+              insertNotification(
+                  accountId[0],
+                  "evt-cleanup-3",
+                  "TransferBooked",
+                  "fresh",
+                  "fresh",
+                  null,
+                  cutoff.plusSeconds(10));
+          insertUserReadState(userId[0], notificationIds[0], base.minusSeconds(100));
+          insertUserReadState(userId[0], notificationIds[1], base.minusSeconds(90));
+          insertUserReadState(userId[0], notificationIds[2], base.minusSeconds(80));
+        });
+
+    int firstDeleted = repository.deleteExpiredNotifications(cutoff, 1);
+
+    assertThat(firstDeleted).isEqualTo(1);
+    assertThat(findNotificationEventKeys())
+        .containsExactlyInAnyOrder("evt-cleanup-2", "evt-cleanup-3");
+    assertThat(totalUserReadStates()).isEqualTo(2L);
+
+    int secondDeleted = repository.deleteExpiredNotifications(cutoff, 10);
+
+    assertThat(secondDeleted).isEqualTo(1);
+    assertThat(findNotificationEventKeys()).containsExactly("evt-cleanup-3");
+    assertThat(totalUserReadStates()).isEqualTo(1L);
+  }
+
   private long insertUser(String loginId) {
     Long userId =
         jdbcTemplate.queryForObject(
@@ -369,5 +428,25 @@ class JdbcNotificationInboxRepositoryIntegrationTest extends PostgresContainerTe
         """,
         new MapSqlParameterSource(),
         (rs, rowNum) -> rs.getString("message"));
+  }
+
+  private List<String> findNotificationEventKeys() {
+    return jdbcTemplate.query(
+        """
+        SELECT event_key
+        FROM notification_inbox
+        ORDER BY id
+        """,
+        new MapSqlParameterSource(),
+        (rs, rowNum) -> rs.getString("event_key"));
+  }
+
+  private long totalUserReadStates() {
+    Long count =
+        jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM notification_user_read_state",
+            new MapSqlParameterSource(),
+            Long.class);
+    return count == null ? 0L : count;
   }
 }
