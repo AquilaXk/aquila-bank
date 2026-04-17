@@ -10,7 +10,11 @@ public record TransactionQuery(
     Instant to,
     int limit,
     TransactionCursor cursor,
-    TransactionStatus status) {
+    TransactionStatus status,
+    TransactionDirection direction,
+    Long minAmountMinor,
+    Long maxAmountMinor,
+    String transactionReference) {
 
   private static final Duration MAX_RANGE = Duration.ofDays(31);
 
@@ -26,6 +30,24 @@ public record TransactionQuery(
     }
     if (limit < 1 || limit > 100) {
       throw new IllegalArgumentException("limit must be between 1 and 100");
+    }
+    if (minAmountMinor != null && minAmountMinor < 0) {
+      throw new IllegalArgumentException("minAmountMinor must be zero or positive");
+    }
+    if (maxAmountMinor != null && maxAmountMinor < 0) {
+      throw new IllegalArgumentException("maxAmountMinor must be zero or positive");
+    }
+    if (minAmountMinor != null && maxAmountMinor != null && minAmountMinor > maxAmountMinor) {
+      throw new IllegalArgumentException(
+          "minAmountMinor must be less than or equal to maxAmountMinor");
+    }
+    if (transactionReference != null) {
+      if (transactionReference.isBlank()) {
+        throw new IllegalArgumentException("transactionReference must not be blank");
+      }
+      if (transactionReference.length() > 64) {
+        throw new IllegalArgumentException("transactionReference must be 64 characters or less");
+      }
     }
     // 작은 인프라에서도 예측 가능한 scan 비용 유지를 위한 조회 기간 상한
     if (Duration.between(from, to).compareTo(MAX_RANGE) > 0) {

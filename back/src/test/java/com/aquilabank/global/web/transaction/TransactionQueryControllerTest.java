@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.aquilabank.domain.transaction.model.TransactionCursor;
 import com.aquilabank.domain.transaction.model.TransactionDirection;
+import com.aquilabank.domain.transaction.model.TransactionQuery;
 import com.aquilabank.domain.transaction.model.TransactionSlice;
 import com.aquilabank.domain.transaction.model.TransactionStatus;
 import com.aquilabank.domain.transaction.model.TransactionSummary;
@@ -127,6 +128,50 @@ class TransactionQueryControllerTest {
   }
 
   @Test
+  void passesExpandedFiltersIntoQuery() throws Exception {
+    when(transactionQueryUseCase.getTransactions(argThat(this::matchesExpandedFilters)))
+        .thenReturn(new TransactionSlice(List.of(), null, false, 20));
+    when(requestAccountAuthorizationService.resolveReadableAccountId(
+            org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(101L)))
+        .thenReturn(101L);
+
+    mockMvc
+        .perform(
+            get("/api/v1/transactions")
+                .header("X-Account-Id", "101")
+                .param("accountId", "101")
+                .param("from", "2026-04-01T00:00:00Z")
+                .param("to", "2026-04-17T00:00:00Z")
+                .param("limit", "20")
+                .param("status", "BOOKED")
+                .param("direction", "DEBIT")
+                .param("minAmountMinor", "1000")
+                .param("maxAmountMinor", "2000")
+                .param("transactionReference", "TX-777"))
+        .andExpect(status().isOk());
+
+    verify(transactionQueryUseCase).getTransactions(argThat(this::matchesExpandedFilters));
+  }
+
+  @Test
+  void rejectsInvalidAmountRange() throws Exception {
+    when(requestAccountAuthorizationService.resolveReadableAccountId(
+            org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(101L)))
+        .thenReturn(101L);
+
+    mockMvc
+        .perform(
+            get("/api/v1/transactions")
+                .header("X-Account-Id", "101")
+                .param("accountId", "101")
+                .param("from", "2026-04-01T00:00:00Z")
+                .param("to", "2026-04-17T00:00:00Z")
+                .param("minAmountMinor", "2000")
+                .param("maxAmountMinor", "1000"))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
   void rejectsMissingAuthenticationHeader() throws Exception {
     mockMvc
         .perform(
@@ -136,5 +181,14 @@ class TransactionQueryControllerTest {
                 .param("to", "2026-04-17T00:00:00Z")
                 .param("limit", "20"))
         .andExpect(status().isUnauthorized());
+  }
+
+  private boolean matchesExpandedFilters(TransactionQuery query) {
+    return query.accountId() == 101L
+        && query.status() == TransactionStatus.BOOKED
+        && query.direction() == TransactionDirection.DEBIT
+        && Long.valueOf(1000L).equals(query.minAmountMinor())
+        && Long.valueOf(2000L).equals(query.maxAmountMinor())
+        && "TX-777".equals(query.transactionReference());
   }
 }
