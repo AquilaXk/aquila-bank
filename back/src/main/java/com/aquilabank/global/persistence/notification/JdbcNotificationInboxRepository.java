@@ -3,6 +3,7 @@ package com.aquilabank.global.persistence.notification;
 import com.aquilabank.domain.notification.model.NotificationCursor;
 import com.aquilabank.domain.notification.model.NotificationInboxEntry;
 import com.aquilabank.domain.notification.model.NotificationListQuery;
+import com.aquilabank.domain.notification.model.NotificationReplayQuery;
 import com.aquilabank.domain.notification.model.NotificationSlice;
 import com.aquilabank.domain.notification.model.NotificationSummary;
 import com.aquilabank.domain.notification.port.NotificationInboxAppendPort;
@@ -60,6 +61,66 @@ public class JdbcNotificationInboxRepository
             ? fetchByAccountIdFirstPage(accountId, query)
             : fetchByAccountIdNextPage(accountId, query);
     return toSlice(rows, query.limit());
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public List<NotificationSummary> fetchReplayByUserId(long userId, NotificationReplayQuery query) {
+    return jdbcTemplate.query(
+        """
+        SELECT n.id,
+               n.account_id,
+               n.event_type,
+               n.title,
+               n.message,
+               n.created_at,
+               r.read_at
+        FROM notification_inbox n
+        JOIN user_account_membership m
+          ON m.account_id = n.account_id
+        JOIN bank_user u
+          ON u.id = m.user_id
+        LEFT JOIN notification_user_read_state r
+          ON r.user_id = :userId
+         AND r.notification_id = n.id
+        WHERE m.user_id = :userId
+          AND m.membership_status = 'ACTIVE'
+          AND u.user_status = 'ACTIVE'
+          AND n.id > :lastEventId
+        ORDER BY n.id ASC
+        LIMIT :limit
+        """,
+        new MapSqlParameterSource()
+            .addValue("userId", userId)
+            .addValue("lastEventId", query.lastEventId())
+            .addValue("limit", query.limit()),
+        ROW_MAPPER);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public List<NotificationSummary> fetchReplayByAccountId(
+      long accountId, NotificationReplayQuery query) {
+    return jdbcTemplate.query(
+        """
+        SELECT id,
+               account_id,
+               event_type,
+               title,
+               message,
+               created_at,
+               read_at
+        FROM notification_inbox
+        WHERE account_id = :accountId
+          AND id > :lastEventId
+        ORDER BY id ASC
+        LIMIT :limit
+        """,
+        new MapSqlParameterSource()
+            .addValue("accountId", accountId)
+            .addValue("lastEventId", query.lastEventId())
+            .addValue("limit", query.limit()),
+        ROW_MAPPER);
   }
 
   @Override

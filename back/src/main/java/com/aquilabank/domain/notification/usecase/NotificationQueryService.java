@@ -1,8 +1,11 @@
 package com.aquilabank.domain.notification.usecase;
 
 import com.aquilabank.domain.notification.model.NotificationListQuery;
+import com.aquilabank.domain.notification.model.NotificationReplayQuery;
 import com.aquilabank.domain.notification.model.NotificationSlice;
+import com.aquilabank.domain.notification.model.NotificationSummary;
 import com.aquilabank.domain.notification.port.NotificationInboxReadPort;
+import java.util.List;
 
 /** controller 가 principal 별 inbox 조회 차이만 고르고 실제 read 는 port 로 위임합니다. */
 public final class NotificationQueryService implements NotificationQueryUseCase {
@@ -33,6 +36,30 @@ public final class NotificationQueryService implements NotificationQueryUseCase 
       throw new IllegalArgumentException("query is required");
     }
     return notificationInboxReadPort.fetchByAccountId(accountId, query);
+  }
+
+  @Override
+  public List<NotificationSummary> getReplayNotificationsForUser(
+      long userId, NotificationReplayQuery query) {
+    if (userId <= 0) {
+      throw new IllegalArgumentException("userId must be positive");
+    }
+    if (query == null) {
+      throw new IllegalArgumentException("query is required");
+    }
+    return notificationInboxReadPort.fetchReplayByUserId(userId, query);
+  }
+
+  @Override
+  public List<NotificationSummary> getReplayNotificationsForAccount(
+      long accountId, NotificationReplayQuery query) {
+    if (accountId <= 0) {
+      throw new IllegalArgumentException("accountId must be positive");
+    }
+    if (query == null) {
+      throw new IllegalArgumentException("query is required");
+    }
+    return notificationInboxReadPort.fetchReplayByAccountId(accountId, query);
   }
 
   @Override
