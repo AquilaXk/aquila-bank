@@ -11,9 +11,9 @@ import com.aquilabank.domain.auth.usecase.AuthUserQueryUseCase;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipQueryUseCase;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipStatusUpdateUseCase;
 import com.aquilabank.domain.auth.usecase.UserStatusUpdateUseCase;
-import com.aquilabank.global.security.AuthBootstrapApiProperties;
-import com.aquilabank.global.security.BootstrapHeaderAuthProperties;
-import com.aquilabank.global.security.InternalAuthTokenGuard;
+import com.aquilabank.global.security.InternalServiceScope;
+import com.aquilabank.global.security.InternalServiceTokenAuthenticationInterceptor;
+import com.aquilabank.global.security.InternalServiceTokenTestSupport;
 import com.aquilabank.global.web.ApiExceptionHandler;
 import com.aquilabank.global.web.InternalAuthStatusAuditRequestCachingFilter;
 import com.aquilabank.global.web.RequestIdFilter;
@@ -28,9 +28,6 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 class InternalAuthStatusFailureLoggingTest {
 
-  private static final String TOKEN_HEADER = "X-Auth-Bootstrap-Token";
-  private static final String TOKEN = "test-auth-bootstrap-api-token";
-  private static final String SUBJECT_HEADER = "X-Subject";
   private static final String REQUEST_ID_HEADER = "X-Request-Id";
 
   private ListAppender<ILoggingEvent> listAppender;
@@ -45,6 +42,7 @@ class InternalAuthStatusFailureLoggingTest {
         Mockito.mock(UserAccountMembershipQueryUseCase.class);
     UserAccountMembershipStatusUpdateUseCase userAccountMembershipStatusUpdateUseCase =
         Mockito.mock(UserAccountMembershipStatusUpdateUseCase.class);
+    var authorizer = InternalServiceTokenTestSupport.authorizer();
 
     mockMvc =
         MockMvcBuilders.standaloneSetup(
@@ -53,9 +51,8 @@ class InternalAuthStatusFailureLoggingTest {
                     userStatusUpdateUseCase,
                     userAccountMembershipQueryUseCase,
                     userAccountMembershipStatusUpdateUseCase,
-                    new InternalAuthTokenGuard(
-                        new AuthBootstrapApiProperties(true, TOKEN_HEADER, TOKEN)),
-                    new BootstrapHeaderAuthProperties(false, "X-Account-Id", SUBJECT_HEADER)))
+                    authorizer))
+            .addInterceptors(new InternalServiceTokenAuthenticationInterceptor(authorizer))
             .addFilters(new RequestIdFilter(), new InternalAuthStatusAuditRequestCachingFilter())
             .setControllerAdvice(new ApiExceptionHandler())
             .build();
@@ -76,15 +73,16 @@ class InternalAuthStatusFailureLoggingTest {
     mockMvc
         .perform(
             put("/internal/api/v1/auth/users/21/status")
-                .header(TOKEN_HEADER, TOKEN)
+                .header(
+                    "Authorization",
+                    InternalServiceTokenTestSupport.authorization(
+                        "ops-admin", InternalServiceScope.AUTH_ADMIN))
                 .header(REQUEST_ID_HEADER, "missing-subject-request")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     """
                     {
-                      "userStatus": "DISABLED",
-                      "reasonCode": "OPS_MANUAL",
-                      "reasonDetail": "manual-revoke"
+                      "userStatus": "DISABLED"
                     }
                     """))
         .andExpect(status().isBadRequest());
@@ -93,11 +91,11 @@ class InternalAuthStatusFailureLoggingTest {
         .contains("internal auth status update failed")
         .contains("requestId=missing-subject-request")
         .contains("httpStatus=400")
-        .contains("actorSubject=-")
+        .contains("actorSubject=ops-admin")
         .contains("requestedStatus=DISABLED")
-        .contains("reasonCode=OPS_MANUAL")
-        .contains("reasonDetail=manual-revoke")
-        .contains("error=actorSubject header is required");
+        .contains("reasonCode=-")
+        .contains("reasonDetail=-")
+        .contains("error=reasonCode is required");
   }
 
   @Test
@@ -105,7 +103,6 @@ class InternalAuthStatusFailureLoggingTest {
     mockMvc
         .perform(
             put("/internal/api/v1/auth/users/21/status")
-                .header(SUBJECT_HEADER, "ops-admin")
                 .header(REQUEST_ID_HEADER, "invalid-token-request")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
@@ -122,11 +119,11 @@ class InternalAuthStatusFailureLoggingTest {
         .contains("internal auth status update failed")
         .contains("requestId=invalid-token-request")
         .contains("httpStatus=401")
-        .contains("actorSubject=ops-admin")
-        .contains("requestedStatus=DISABLED")
-        .contains("reasonCode=FRAUD_REVIEW")
-        .contains("reasonDetail=fraud-review")
-        .contains("error=bootstrap token is invalid");
+        .contains("actorSubject=-")
+        .contains("requestedStatus=-")
+        .contains("reasonCode=-")
+        .contains("reasonDetail=-")
+        .contains("error=internal service token is invalid");
   }
 
   private String lastMessage() {

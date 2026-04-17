@@ -13,8 +13,8 @@ import com.aquilabank.domain.auth.model.AuthStatusChangeReason;
 import com.aquilabank.domain.auth.model.AuthStatusChangeReasonCode;
 import com.aquilabank.domain.auth.model.AuthStatusChangeType;
 import com.aquilabank.domain.auth.usecase.AuthStatusChangeAuditQueryUseCase;
-import com.aquilabank.global.security.AuthBootstrapApiProperties;
-import com.aquilabank.global.security.InternalAuthTokenGuard;
+import com.aquilabank.global.security.InternalServiceScope;
+import com.aquilabank.global.security.InternalServiceTokenTestSupport;
 import com.aquilabank.global.web.ApiExceptionHandler;
 import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,9 +23,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 class InternalAuthStatusChangeAuditControllerTest {
-
-  private static final String TOKEN_HEADER = "X-Auth-Bootstrap-Token";
-  private static final String TOKEN = "test-auth-bootstrap-api-token";
 
   private AuthStatusChangeAuditQueryUseCase authStatusChangeAuditQueryUseCase;
   private MockMvc mockMvc;
@@ -37,8 +34,7 @@ class InternalAuthStatusChangeAuditControllerTest {
         MockMvcBuilders.standaloneSetup(
                 new InternalAuthStatusChangeAuditController(
                     authStatusChangeAuditQueryUseCase,
-                    new InternalAuthTokenGuard(
-                        new AuthBootstrapApiProperties(true, TOKEN_HEADER, TOKEN))))
+                    InternalServiceTokenTestSupport.authorizer()))
             .setControllerAdvice(new ApiExceptionHandler())
             .build();
   }
@@ -62,7 +58,10 @@ class InternalAuthStatusChangeAuditControllerTest {
     mockMvc
         .perform(
             get("/internal/api/v1/auth/status-change-audits/by-request-id")
-                .header(TOKEN_HEADER, TOKEN)
+                .header(
+                    "Authorization",
+                    InternalServiceTokenTestSupport.authorization(
+                        "ops-admin", InternalServiceScope.AUTH_ADMIN))
                 .param("requestId", "membership-revoked-request"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.requestId").value("membership-revoked-request"))
@@ -87,19 +86,22 @@ class InternalAuthStatusChangeAuditControllerTest {
     mockMvc
         .perform(
             get("/internal/api/v1/auth/status-change-audits/by-request-id")
-                .header(TOKEN_HEADER, TOKEN)
+                .header(
+                    "Authorization",
+                    InternalServiceTokenTestSupport.authorization(
+                        "ops-admin", InternalServiceScope.AUTH_ADMIN))
                 .param("requestId", "missing-request"))
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.message").value("audit record is not found"));
   }
 
   @Test
-  void rejectsMissingOrInvalidBootstrapToken() throws Exception {
+  void rejectsMissingOrInvalidInternalServiceToken() throws Exception {
     mockMvc
         .perform(
             get("/internal/api/v1/auth/status-change-audits/by-request-id")
                 .param("requestId", "membership-revoked-request"))
         .andExpect(status().isUnauthorized())
-        .andExpect(jsonPath("$.message").value("bootstrap token is invalid"));
+        .andExpect(jsonPath("$.message").value("internal service token is invalid"));
   }
 }

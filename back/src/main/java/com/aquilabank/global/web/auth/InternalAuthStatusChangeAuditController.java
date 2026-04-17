@@ -2,7 +2,8 @@ package com.aquilabank.global.web.auth;
 
 import com.aquilabank.domain.auth.model.AuthStatusChangeAuditSummary;
 import com.aquilabank.domain.auth.usecase.AuthStatusChangeAuditQueryUseCase;
-import com.aquilabank.global.security.InternalAuthTokenGuard;
+import com.aquilabank.global.security.InternalServiceRequestAuthorizer;
+import com.aquilabank.global.security.InternalServiceScope;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.constraints.NotBlank;
 import java.time.Instant;
@@ -21,20 +22,21 @@ import org.springframework.web.bind.annotation.RestController;
 public class InternalAuthStatusChangeAuditController {
 
   private final AuthStatusChangeAuditQueryUseCase authStatusChangeAuditQueryUseCase;
-  private final InternalAuthTokenGuard internalAuthTokenGuard;
+  private final InternalServiceRequestAuthorizer internalServiceRequestAuthorizer;
 
   public InternalAuthStatusChangeAuditController(
       AuthStatusChangeAuditQueryUseCase authStatusChangeAuditQueryUseCase,
-      InternalAuthTokenGuard internalAuthTokenGuard) {
+      InternalServiceRequestAuthorizer internalServiceRequestAuthorizer) {
     this.authStatusChangeAuditQueryUseCase = authStatusChangeAuditQueryUseCase;
-    this.internalAuthTokenGuard = internalAuthTokenGuard;
+    this.internalServiceRequestAuthorizer = internalServiceRequestAuthorizer;
   }
 
   @GetMapping("/by-request-id")
   public AuthStatusChangeAuditResponse getByRequestId(
       HttpServletRequest httpServletRequest,
       @RequestParam @NotBlank(message = "requestId is required") String requestId) {
-    internalAuthTokenGuard.validate(httpServletRequest);
+    internalServiceRequestAuthorizer.requireScope(
+        httpServletRequest, InternalServiceScope.AUTH_ADMIN);
     return AuthStatusChangeAuditResponse.from(
         authStatusChangeAuditQueryUseCase.getByRequestId(requestId));
   }
