@@ -95,6 +95,10 @@ h1 {
   line-height: 1.8;
 }
 
+.lead.compact {
+  max-width: 720px;
+}
+
 .hero-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -154,6 +158,57 @@ h1 {
 }
 
 .card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.feature-flag-panel {
+  margin-top: 28px;
+}
+
+.flag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.flag-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 118, 110, 0.18);
+  background: rgba(15, 118, 110, 0.1);
+  color: var(--accent);
+  padding: 10px 14px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.flag-empty {
+  margin: 24px 0 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.preview-card {
+  margin-top: 24px;
+  border: 1px solid rgba(15, 118, 110, 0.14);
+  border-radius: 24px;
+  background:
+    linear-gradient(135deg, rgba(15, 118, 110, 0.12), rgba(20, 33, 61, 0.04)),
+    rgba(255, 255, 255, 0.82);
+  padding: 24px;
+}
+
+.preview-card h3 {
+  margin: 0 0 12px;
+  font-size: 1.4rem;
+}
+
+.preview-card p:last-child {
   margin: 0;
   color: var(--muted);
   line-height: 1.7;
