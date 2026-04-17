@@ -2,10 +2,17 @@ name: "🔧 Task"
 description: "리팩터링, 문서, 테스트, 운영, 빌드 작업을 등록합니다."
 labels: ["task"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 🔧 Task Intake
+        - 완료 조건과 실제 작업 항목을 함께 적는다.
+        - 비해당 항목은 `없음`으로 적는다.
+
   - type: dropdown
     id: task_type
     attributes:
-      label: Task Type
+      label: "🏷️ Task Type"
       options:
         - Refactor
         - Docs
@@ -20,8 +27,8 @@ body:
   - type: input
     id: domain
     attributes:
-      label: Domain
-      description: 관련 모듈이나 영역을 적어주세요.
+      label: "🧩 Domain"
+      description: 관련 모듈이나 영역을 적는다.
       placeholder: 예) back/auth, front/dashboard, github-actions
     validations:
       required: true
@@ -29,32 +36,32 @@ body:
   - type: textarea
     id: reason
     attributes:
-      label: Description
-      description: 어떤 작업인지, 왜 필요한지 적어주세요.
-      placeholder: 예) 거래 조회 서비스 책임을 분리해 유지보수성을 높입니다.
+      label: "📝 Description"
+      description: 어떤 작업인지, 왜 필요한지 적는다.
+      placeholder: 예) 거래 조회 서비스 책임을 분리해 유지보수성을 높인다.
     validations:
       required: true
 
   - type: textarea
     id: done_when
     attributes:
-      label: Done When
-      description: 완료 조건을 적어주세요.
+      label: "✅ Done When"
+      description: 완료 조건을 체크리스트로 적는다.
       placeholder: |
-        - [ ] 조건 A
-        - [ ] 조건 B
+        - [ ] 조건 A를 반영했는가?
+        - [ ] 조건 B를 검증했는가?
     validations:
       required: true
 
   - type: textarea
     id: todo
     attributes:
-      label: Todo
-      description: 실제 작업 항목을 체크리스트로 적어주세요.
+      label: "🛠 Todo"
+      description: 실제 작업 항목을 체크리스트로 적는다.
       placeholder: |
-        - [ ] 대상 파악
-        - [ ] 변경 적용
-        - [ ] 테스트 / 검증
-        - [ ] 문서 반영
+        - [ ] 대상을 파악했는가?
+        - [ ] 변경을 적용했는가?
+        - [ ] 테스트 / 검증했는가?
+        - [ ] 문서를 반영했는가?
     validations:
       required: true
