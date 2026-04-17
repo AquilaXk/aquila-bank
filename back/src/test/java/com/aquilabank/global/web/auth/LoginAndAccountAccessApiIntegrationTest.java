@@ -411,6 +411,65 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
   }
 
   @Test
+  void authSessionListReturnsOnlyCurrentUsersUnexpiredActiveSessions() throws Exception {
+    TokenPairResponseView expired = loginResult("alice", "password123!", "session-list-login-001");
+    Thread.sleep(2200L);
+    TokenPairResponseView oldest = loginResult("alice", "password123!", "session-list-login-002");
+    TokenPairResponseView middle = loginResult("alice", "password123!", "session-list-login-003");
+    TokenPairResponseView newest = loginResult("alice", "password123!", "session-list-login-004");
+    TokenPairResponseView revoked = loginResult("alice", "password123!", "session-list-login-005");
+    long otherUserId = bootstrapUser("bob", "Bob", "password123!");
+    upsertMembership(otherUserId, targetAccountId, "VIEWER", "ACTIVE");
+    TokenPairResponseView otherUser =
+        loginResult("bob", "password123!", "session-list-bob-login-001");
+    logout(newest.accessToken(), revoked.refreshToken(), "session-list-logout-001")
+        .andExpect(status().isNoContent());
+
+    refreshExpectUnauthorized(expired.refreshToken(), "session-list-expired-refresh-001");
+    refresh(otherUser.refreshToken(), "session-list-bob-refresh-001");
+
+    long newestSessionId = loadRefreshTokenSessionId(newest.refreshToken());
+    long middleSessionId = loadRefreshTokenSessionId(middle.refreshToken());
+    long oldestSessionId = loadRefreshTokenSessionId(oldest.refreshToken());
+
+    mockMvc
+        .perform(
+            get("/api/v1/auth/sessions")
+                .header("Authorization", "Bearer " + newest.accessToken())
+                .param("size", "10"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(3))
+        .andExpect(jsonPath("$.items[0].sessionId").value(newestSessionId))
+        .andExpect(jsonPath("$.items[0].sessionStatus").value("ACTIVE"))
+        .andExpect(jsonPath("$.items[1].sessionId").value(middleSessionId))
+        .andExpect(jsonPath("$.items[2].sessionId").value(oldestSessionId))
+        .andExpect(jsonPath("$.items[0].createdAt").isString());
+  }
+
+  @Test
+  void authSessionListHonorsSizeLimit() throws Exception {
+    TokenPairResponseView oldest =
+        loginResult("alice", "password123!", "session-list-size-login-001");
+    TokenPairResponseView middle =
+        loginResult("alice", "password123!", "session-list-size-login-002");
+    TokenPairResponseView newest =
+        loginResult("alice", "password123!", "session-list-size-login-003");
+    long newestSessionId = loadRefreshTokenSessionId(newest.refreshToken());
+    long middleSessionId = loadRefreshTokenSessionId(middle.refreshToken());
+    assertNotNull(loadRefreshTokenSession(oldest.refreshToken()));
+
+    mockMvc
+        .perform(
+            get("/api/v1/auth/sessions")
+                .header("Authorization", "Bearer " + newest.accessToken())
+                .param("size", "2"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(2))
+        .andExpect(jsonPath("$.items[0].sessionId").value(newestSessionId))
+        .andExpect(jsonPath("$.items[1].sessionId").value(middleSessionId));
+  }
+
+  @Test
   void expiredRefreshTokenIsRejected() throws Exception {
     TokenPairResponseView loginResult = loginResult("alice", "password123!", "refresh-expire-001");
     Thread.sleep(2200L);
@@ -468,6 +527,16 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
                     }
                     """
                         .formatted(loginResult.refreshToken())))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void bootstrapAccountPrincipalCannotGetAuthSessionList() throws Exception {
+    mockMvc
+        .perform(
+            get("/api/v1/auth/sessions")
+                .header("X-Account-Id", String.valueOf(allowedSourceAccountId))
+                .header("X-Subject", "bootstrap-account"))
         .andExpect(status().isForbidden());
   }
 
@@ -1069,6 +1138,22 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
         .stream()
         .findFirst()
         .orElseThrow(() -> new AssertionError("refresh token session is not found"));
+  }
+
+  private long loadRefreshTokenSessionId(String refreshToken) {
+    return jdbcTemplate
+        .query(
+            """
+            SELECT id
+            FROM auth_refresh_token_session
+            WHERE token_hash = :tokenHash
+            """,
+            new org.springframework.jdbc.core.namedparam.MapSqlParameterSource()
+                .addValue("tokenHash", refreshTokenSecretPort.hash(refreshToken)),
+            (rs, rowNum) -> rs.getLong("id"))
+        .stream()
+        .findFirst()
+        .orElseThrow(() -> new AssertionError("refresh token session id is not found"));
   }
 
   private TokenPairResponseView readTokenPair(MvcResult result) throws Exception {

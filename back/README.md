@@ -242,6 +242,7 @@ login 실패/잠금은 structured log 한 줄로 남습니다.
 
 - 공개 endpoint:
   - `POST /api/v1/auth/login`
+  - `GET /api/v1/auth/sessions`
   - `POST /api/v1/auth/refresh`
   - `POST /api/v1/auth/logout`
 - 응답 필드:
@@ -259,13 +260,19 @@ login 실패/잠금은 structured log 한 줄로 남습니다.
   - 저장 테이블은 `auth_refresh_token_session`
   - 성공 refresh 시 기존 row는 `ROTATED`, 새 row는 `ACTIVE`
   - 성공 logout 시 현재 사용자 `ACTIVE` session은 `REVOKED`
+- 세션 목록 조회 기준:
+  - `GET /api/v1/auth/sessions`
+  - 현재 JWT user만 호출 가능하고 bootstrap account principal은 `403`
+  - query parameter `size`는 기본 `20`, 최대 `50`
+  - 응답은 현재 user의 `ACTIVE` 이면서 아직 만료되지 않은 session만 `expires_at DESC, id DESC` 순서로 반환
+  - item 필드는 `sessionId`, `sessionStatus`, `expiresAt`, `lastUsedAt`, `createdAt`
 - 거절 기준:
   - 만료, 이미 rotation 된 token, 존재하지 않는 token은 모두 `401 refresh failed`
   - `user_status=LOCKED|DISABLED` 사용자는 refresh로 새 token pair를 발급받지 못함
 - 운영 주의:
   - logout은 access token 즉시 폐기가 아니라 refresh 재발급 차단까지만 처리
   - 다른 사용자 token, 이미 `ROTATED|REVOKED` 상태인 token, 존재하지 않는 token으로 logout 요청 시 `204` no-op 유지
-  - 최소 범위에서는 logout-all / 세션 목록 조회를 제공하지 않음
+  - 이번 범위는 logout-all, 세션별 강제 종료를 제공하지 않음
   - raw refresh token, plaintext secret은 로그/DB에 남기지 않음
 
 ## Internal Auth Admin Runbook

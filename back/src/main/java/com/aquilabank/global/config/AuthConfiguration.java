@@ -5,6 +5,7 @@ import com.aquilabank.domain.auth.model.LoginProtectionPolicy;
 import com.aquilabank.domain.auth.model.LoginResult;
 import com.aquilabank.domain.auth.model.RefreshTokenPolicy;
 import com.aquilabank.domain.auth.port.AccountAccessPort;
+import com.aquilabank.domain.auth.port.AuthSessionQueryPort;
 import com.aquilabank.domain.auth.port.AuthStatusChangeAuditQueryPort;
 import com.aquilabank.domain.auth.port.AuthTokenIssuePort;
 import com.aquilabank.domain.auth.port.LoginAttemptAuditPort;
@@ -22,6 +23,8 @@ import com.aquilabank.domain.auth.port.UserQueryPort;
 import com.aquilabank.domain.auth.port.UserStatusUpdatePort;
 import com.aquilabank.domain.auth.usecase.AccountAccessService;
 import com.aquilabank.domain.auth.usecase.AccountAccessUseCase;
+import com.aquilabank.domain.auth.usecase.AuthSessionListService;
+import com.aquilabank.domain.auth.usecase.AuthSessionListUseCase;
 import com.aquilabank.domain.auth.usecase.AuthStatusChangeAuditQueryService;
 import com.aquilabank.domain.auth.usecase.AuthStatusChangeAuditQueryUseCase;
 import com.aquilabank.domain.auth.usecase.AuthUserQueryService;
@@ -169,6 +172,12 @@ public class AuthConfiguration {
     TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
     return command ->
         transactionTemplate.executeWithoutResult(status -> logoutService.logout(command));
+  }
+
+  @Bean
+  AuthSessionListUseCase authSessionListUseCase(
+      AuthSessionQueryPort authSessionQueryPort, Clock authClock) {
+    return new AuthSessionListService(authSessionQueryPort, authClock);
   }
 
   @Bean
