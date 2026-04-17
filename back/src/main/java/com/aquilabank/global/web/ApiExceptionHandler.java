@@ -12,6 +12,7 @@ import com.aquilabank.domain.ledger.exception.CommandConflictException;
 import com.aquilabank.domain.ledger.exception.CurrencyMismatchException;
 import com.aquilabank.domain.ledger.exception.InsufficientBalanceException;
 import com.aquilabank.domain.ledger.exception.SnapshotNotFoundException;
+import com.aquilabank.domain.ledger.exception.TransferReversalNotFoundException;
 import com.aquilabank.domain.notification.exception.NotificationNotFoundException;
 import com.aquilabank.domain.transaction.exception.TransactionDetailNotFoundException;
 import com.aquilabank.global.security.BootstrapApiAccessDeniedException;
@@ -98,6 +99,7 @@ public class ApiExceptionHandler {
   @ExceptionHandler({
     AccountSummaryNotFoundException.class,
     SnapshotNotFoundException.class,
+    TransferReversalNotFoundException.class,
     AuthStatusChangeAuditNotFoundException.class,
     AuthUserNotFoundException.class,
     UserAccountMembershipNotFoundException.class,

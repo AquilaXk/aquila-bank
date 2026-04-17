@@ -69,6 +69,39 @@ set +a
 - 운영 기본 인증 방식은 bearer JWT 입니다.
 - `dev`/`test` 프로필에서는 필요 시 `X-Account-Id` 헤더 fallback을 사용할 수 있습니다.
 
+## Transfer Reversal
+
+기존 BOOKED 송금은 직접 수정하지 않고 reversal transaction을 추가해 취소/정정합니다.
+
+- 공개 endpoint:
+  - `POST /api/v1/transfers`
+  - `POST /api/v1/transfers/{transactionReference}/reversal`
+- reversal 요청 필드:
+  - `sourceAccountId`
+  - `reversalReason`: `CANCEL` | `CORRECTION`
+  - `summary`
+- reversal 응답 필드:
+  - `originalTransactionReference`
+  - `reversalTransactionReference`
+  - `sourceAccountId`
+  - `targetAccountId`
+  - `amountMinor`
+  - `currencyCode`
+  - `availableBalanceAfterMinor`
+  - `bookedAt`
+  - `status`
+- write 기준:
+  - 원본 transfer와 reversal 관계는 `transfer_reversal` 테이블로 관리
+  - 원본 ledger row는 수정하지 않고 반대 방향 ledger entry 2건을 새 transaction reference로 추가
+  - 원본 `transaction_read_model` 상태는 `REVERSED` 로 전이하고 reversal read model row 2건을 추가
+  - outbox는 `TransferReversed` event를 별도 적재
+- 충돌 기준:
+  - 같은 원본 transfer를 다시 reversal 하면 `409 transfer is already reversed`
+  - reversal 시 target 계좌 잔액이 부족하면 `409 reversal target balance is not enough`
+- 운영 주의:
+  - 이번 범위는 full reversal만 지원하고 partial reversal은 제외
+  - notification inbox consumer는 아직 `TransferReversed` fan-out을 처리하지 않음
+
 ## Public Login Protection
 
 공개 login 경로 `/api/v1/auth/login`에는 brute-force 1차 방어 기준이 기본 적용됩니다.

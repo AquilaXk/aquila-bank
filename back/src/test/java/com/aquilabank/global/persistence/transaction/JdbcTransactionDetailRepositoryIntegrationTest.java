@@ -50,6 +50,7 @@ class JdbcTransactionDetailRepositoryIntegrationTest extends PostgresContainerTe
               accountIds[0],
               "TRX-1",
               "DEBIT",
+              "BOOKED",
               1500L,
               8500L,
               "rent",
@@ -63,6 +64,7 @@ class JdbcTransactionDetailRepositoryIntegrationTest extends PostgresContainerTe
               accountIds[1],
               "TRX-1",
               "CREDIT",
+              "BOOKED",
               1500L,
               1500L,
               "rent",
@@ -97,6 +99,7 @@ class JdbcTransactionDetailRepositoryIntegrationTest extends PostgresContainerTe
               accountId[0],
               "TRX-DUP",
               "DEBIT",
+              "BOOKED",
               100L,
               900L,
               "dup",
@@ -116,6 +119,7 @@ class JdbcTransactionDetailRepositoryIntegrationTest extends PostgresContainerTe
               accountId[0],
               "TRX-DUP",
               "DEBIT",
+              "BOOKED",
               100L,
               800L,
               "dup",
@@ -126,6 +130,54 @@ class JdbcTransactionDetailRepositoryIntegrationTest extends PostgresContainerTe
     assertThatThrownBy(() -> repository.find(new TransactionDetailQuery(accountId[0], "TRX-DUP")))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("multiple rows");
+  }
+
+  @Test
+  void returnsReversedTransactionStatusWhileKeepingBookedLedgerEntryStatus() {
+    Instant bookedAt = Instant.parse("2026-04-16T09:00:00Z");
+    Instant occurredAt = Instant.parse("2026-04-16T09:00:01Z");
+    long[] accountIds = new long[2];
+    commit(
+        transactionManager,
+        () -> {
+          accountIds[0] = insertBankAccount("source account");
+          accountIds[1] = insertBankAccount("target account");
+          long sourceLedgerEntryId =
+              insertLedgerEntry(
+                  accountIds[0], "TRX-REV-1", "ENT-REV-1", "DEBIT", bookedAt, occurredAt, "rent");
+          insertReadModel(
+              sourceLedgerEntryId,
+              accountIds[0],
+              "TRX-REV-1",
+              "DEBIT",
+              "REVERSED",
+              1500L,
+              8_500L,
+              "rent",
+              "TARGET",
+              bookedAt);
+          long targetLedgerEntryId =
+              insertLedgerEntry(
+                  accountIds[1], "TRX-REV-1", "ENT-REV-2", "CREDIT", bookedAt, occurredAt, "rent");
+          insertReadModel(
+              targetLedgerEntryId,
+              accountIds[1],
+              "TRX-REV-1",
+              "CREDIT",
+              "REVERSED",
+              1500L,
+              1_500L,
+              "rent",
+              "SOURCE",
+              bookedAt);
+        });
+
+    Optional<com.aquilabank.domain.transaction.model.TransactionDetail> result =
+        repository.find(new TransactionDetailQuery(accountIds[0], "TRX-REV-1"));
+
+    assertThat(result).isPresent();
+    assertThat(result.orElseThrow().transactionStatus()).hasToString("REVERSED");
+    assertThat(result.orElseThrow().entryStatus()).hasToString("BOOKED");
   }
 
   private long insertBankAccount(String displayName) {
@@ -221,6 +273,7 @@ class JdbcTransactionDetailRepositoryIntegrationTest extends PostgresContainerTe
       long accountId,
       String transactionReference,
       String direction,
+      String transactionStatus,
       long amountMinor,
       long balanceAfterMinor,
       String summary,
@@ -247,7 +300,7 @@ class JdbcTransactionDetailRepositoryIntegrationTest extends PostgresContainerTe
             :accountId,
             :transactionReference,
             :direction,
-            'BOOKED',
+            :transactionStatus,
             :amountMinor,
             :balanceAfterMinor,
             'KRW',
@@ -262,6 +315,7 @@ class JdbcTransactionDetailRepositoryIntegrationTest extends PostgresContainerTe
             .addValue("accountId", accountId)
             .addValue("transactionReference", transactionReference)
             .addValue("direction", direction)
+            .addValue("transactionStatus", transactionStatus)
             .addValue("amountMinor", amountMinor)
             .addValue("balanceAfterMinor", balanceAfterMinor)
             .addValue("summary", summary)
