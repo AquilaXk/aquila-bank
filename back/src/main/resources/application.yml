@@ -119,6 +119,15 @@ notification:
       auto-offset-reset: ${NOTIFICATION_INBOX_CONSUMER_AUTO_OFFSET_RESET:earliest}
       transfer-booked:
         topic: ${NOTIFICATION_INBOX_CONSUMER_TRANSFER_BOOKED_TOPIC:}
+      dlq:
+        topic: ${NOTIFICATION_INBOX_CONSUMER_DLQ_TOPIC:}
+      ops:
+        enabled: ${NOTIFICATION_INBOX_CONSUMER_OPS_ENABLED:false}
+        dlq-preview-limit: ${NOTIFICATION_INBOX_CONSUMER_OPS_DLQ_PREVIEW_LIMIT:20}
+        summary-cache-seconds: ${NOTIFICATION_INBOX_CONSUMER_OPS_SUMMARY_CACHE_SECONDS:5}
+        health:
+          max-lag-messages: ${NOTIFICATION_INBOX_CONSUMER_OPS_HEALTH_MAX_LAG_MESSAGES:100}
+          max-dlq-count: ${NOTIFICATION_INBOX_CONSUMER_OPS_HEALTH_MAX_DLQ_COUNT:0}
 
 security:
   jwt:

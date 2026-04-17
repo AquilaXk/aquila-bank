@@ -46,3 +46,7 @@ notification:
       bootstrap-servers: ${NOTIFICATION_INBOX_CONSUMER_BOOTSTRAP_SERVERS:localhost:9092}
       transfer-booked:
         topic: ${NOTIFICATION_INBOX_CONSUMER_TRANSFER_BOOKED_TOPIC:bank.transfer.booked.v1}
+      dlq:
+        topic: ${NOTIFICATION_INBOX_CONSUMER_DLQ_TOPIC:bank.transfer.booked.dlq.v1}
+      ops:
+        enabled: ${NOTIFICATION_INBOX_CONSUMER_OPS_ENABLED:true}

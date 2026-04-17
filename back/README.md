@@ -551,6 +551,8 @@ Kafka producer 를 붙인 이후 outbox backlog 는 actuator health 와 내부 o
   - `GET /internal/api/v1/outbox/summary`
   - `GET /internal/api/v1/outbox/failed-events?limit=<n>`
   - `POST /internal/api/v1/outbox/recovery/stale-sending`
+  - `GET /internal/api/v1/outbox/notification/summary`
+  - `GET /internal/api/v1/outbox/notification/dlq-events?limit=<n>`
 - health endpoint:
   - `GET /actuator/health`
 
@@ -567,6 +569,10 @@ OUTBOX_OPS_FAILED_LIST_LIMIT=20
 OUTBOX_OPS_HEALTH_MAX_LAG_SECONDS=120
 OUTBOX_OPS_HEALTH_MAX_FAILED_COUNT=10
 OUTBOX_OPS_HEALTH_MAX_STALE_SENDING_COUNT=0
+NOTIFICATION_INBOX_CONSUMER_DLQ_TOPIC=bank.transfer.booked.dlq.v1
+NOTIFICATION_INBOX_CONSUMER_OPS_ENABLED=true
+NOTIFICATION_INBOX_CONSUMER_OPS_HEALTH_MAX_LAG_MESSAGES=100
+NOTIFICATION_INBOX_CONSUMER_OPS_HEALTH_MAX_DLQ_COUNT=0
 ```
 
 운영 호출용 shell에는 아래처럼 pre-generated token을 둡니다.
@@ -594,6 +600,23 @@ tools/ops/outbox-recover-stale-sending.sh \
   "$OUTBOX_OPS_SERVICE_TOKEN"
 ```
 
+consumer lag 와 DLQ count summary 조회:
+
+```bash
+tools/ops/notification-get-consumer-summary.sh \
+  http://localhost:8080 \
+  "$OUTBOX_OPS_TOKEN"
+```
+
+poison message 최근 항목 조회:
+
+```bash
+tools/ops/notification-find-dlq-events.sh \
+  http://localhost:8080 \
+  "$OUTBOX_OPS_TOKEN" \
+  20
+```
+
 ### 직접 호출 예시
 
 summary 조회:
@@ -603,6 +626,25 @@ curl --fail-with-body --silent --show-error \
   --get \
   --header "Authorization: Bearer ${OUTBOX_OPS_SERVICE_TOKEN}" \
   "http://localhost:8080/internal/api/v1/outbox/summary"
+```
+
+notification consumer summary 조회:
+
+```bash
+curl --fail-with-body --silent --show-error \
+  --get \
+  --header "X-Outbox-Ops-Token: ${OUTBOX_OPS_TOKEN}" \
+  "http://localhost:8080/internal/api/v1/outbox/notification/summary"
+```
+
+notification DLQ preview 조회:
+
+```bash
+curl --fail-with-body --silent --show-error \
+  --get \
+  --header "X-Outbox-Ops-Token: ${OUTBOX_OPS_TOKEN}" \
+  --data-urlencode "limit=20" \
+  "http://localhost:8080/internal/api/v1/outbox/notification/dlq-events"
 ```
 
 health 확인:
@@ -615,16 +657,19 @@ curl --fail-with-body --silent --show-error \
 
 ### health 상태 해석
 
-- `UP`: `lagSeconds`, `failedCount`, `staleSendingCount` 가 모두 설정 임계값 이하다.
-- `OUT_OF_SERVICE`: outbox backlog 가 임계값을 넘었고 `/actuator/health` 는 `503`으로 내려간다.
-- `OUT_OF_SERVICE` 여도 앱 전체 장애와 동일시하지 말고 먼저 `/internal/api/v1/outbox/summary` 로 lag/failure/stale 축 중 어떤 값이 넘었는지 확인한다.
+- `UP`: outbox `lagSeconds`, `failedCount`, `staleSendingCount` 와 notification `lagCount`, `dlqCount` 가 모두 설정 임계값 이하다.
+- `OUT_OF_SERVICE`: outbox backlog 또는 notification consumer lag/DLQ 적재가 임계값을 넘었고 `/actuator/health` 는 `503`으로 내려간다.
+- `DOWN`: Kafka admin query 자체가 실패해 lag/DLQ 상태를 계산하지 못한 경우다. broker metadata, topic 존재 여부, group offset 조회 실패를 먼저 본다.
+- `OUT_OF_SERVICE` 또는 `DOWN` 이어도 앱 전체 장애와 동일시하지 말고 먼저 `/internal/api/v1/outbox/summary` 와 `/internal/api/v1/outbox/notification/summary` 로 어떤 축이 넘었는지 분리한다.
 
 ### 기본 triage 순서
 
-1. `/actuator/health` 가 `503`이면 `/internal/api/v1/outbox/summary` 를 조회해 `lagSeconds`, `failedCount`, `staleSendingCount` 중 초과 축을 확인합니다.
-2. `failedCount` 가 크면 `tools/ops/outbox-find-failed-events.sh` 로 bounded failed list 를 보고 `eventKey`, `retryCount`, `lastError` 를 먼저 확인합니다.
-3. `staleSendingCount` 가 0보다 크면 `tools/ops/outbox-recover-stale-sending.sh` 를 한 번만 호출하고, 응답의 `recoveredCount` 와 이후 summary 변화를 확인합니다.
-4. recovery 이후에도 `lagSeconds` 또는 `failedCount` 가 계속 증가하면 broker 연결, Kafka topic 설정, consumer 적재 지연을 별도 incident 로 분리합니다.
+1. `/actuator/health` 가 `503`이면 `/internal/api/v1/outbox/summary` 를 먼저 조회해 `lagSeconds`, `failedCount`, `producerTimeoutFailedCount`, `staleSendingCount` 중 초과 축을 확인합니다.
+2. `producerTimeoutFailedCount` 또는 `failedCount` 가 크면 `tools/ops/outbox-find-failed-events.sh` 로 bounded failed list 를 보고 `eventKey`, `retryCount`, `lastError` 를 먼저 확인합니다.
+3. `/internal/api/v1/outbox/notification/summary` 또는 `tools/ops/notification-get-consumer-summary.sh` 로 consumer lag 와 DLQ count 를 확인합니다.
+4. `dlqCount` 가 0보다 크면 `tools/ops/notification-find-dlq-events.sh` 로 poison message 최근 항목을 보고 `eventKey`, `originalTopic`, `errorClass`, `errorMessage`, `payloadPreview` 를 먼저 확인합니다.
+5. `staleSendingCount` 가 0보다 크면 `tools/ops/outbox-recover-stale-sending.sh` 를 한 번만 호출하고, 응답의 `recoveredCount` 와 이후 summary 변화를 확인합니다.
+6. recovery 이후에도 `lagSeconds`, `lagCount`, `failedCount` 가 계속 증가하면 producer timeout, consumer 중단, broker 연결 문제를 별도 incident 로 분리합니다.
 
 ### 운영 주의사항
 
@@ -632,10 +677,14 @@ curl --fail-with-body --silent --show-error \
 - recovery 대상은 `outbox.poller.stale-after-seconds` 를 넘긴 row 만 포함합니다.
 - failed list 는 `availableAt ASC, id ASC` 순서의 bounded query 이므로, 대량 backlog 에서도 즉시 재시도 대상부터 확인할 수 있습니다.
 - `lastError` 는 outbox table 의 짧은 힌트만 남기므로, 상세 stack trace 는 앱 로그와 Kafka client 로그를 같이 봐야 합니다.
+- consumer poison message 만 DLQ 로 격리하고, broker/DB 같은 transient failure 는 main topic retry failure 로 남깁니다.
+- DLQ preview 는 최근 bounded item 만 보여주므로, 전문 payload/stack trace 가 필요하면 앱 로그와 Kafka client 로그를 같이 확인합니다.
+- DLQ 항목은 자동 재발행하지 않으므로, payload 수정이나 redrive 는 후속 작업으로 분리합니다.
 
 ### rollback 기준
 
 - 운영에서 내부 ops 경로를 임시 차단해야 하면 `OUTBOX_OPS_ENABLED=false` 로 내려 endpoint 노출만 끕니다.
+- notification consumer ops surface 만 끄려면 `NOTIFICATION_INBOX_CONSUMER_OPS_ENABLED=false` 로 내려 summary/DLQ preview와 health contributor를 함께 끕니다.
 - 수동 recovery 가 과도하게 반복되면 더 이상 반복 호출하지 말고 poller 자동 reclaim 과 broker 장애 복구를 먼저 확인합니다.
 - 이 runbook 경로는 outbox schema 나 payload 를 수정하지 않으므로, rollback 은 endpoint 비활성화와 PR revert 로 제한합니다.
 

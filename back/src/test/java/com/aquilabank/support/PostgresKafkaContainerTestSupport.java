@@ -22,6 +22,7 @@ public abstract class PostgresKafkaContainerTestSupport extends PostgresContaine
 
   protected static final String OUTBOX_DEFAULT_TOPIC = "bank.notification.outbox.v1";
   protected static final String TRANSFER_BOOKED_TOPIC = "bank.transfer.booked.v1";
+  protected static final String TRANSFER_BOOKED_DLQ_TOPIC = "bank.transfer.booked.dlq.v1";
   protected static final String TRANSFER_REVERSED_TOPIC = "bank.transfer.reversed.v1";
 
   private static final DockerImageName KAFKA_IMAGE =
@@ -45,6 +46,7 @@ public abstract class PostgresKafkaContainerTestSupport extends PostgresContaine
     registry.add("notification.inbox.consumer.bootstrap-servers", KAFKA::getBootstrapServers);
     registry.add("notification.inbox.consumer.group-id", () -> "aquila-bank-notification-e2e");
     registry.add("notification.inbox.consumer.transfer-booked.topic", () -> TRANSFER_BOOKED_TOPIC);
+    registry.add("notification.inbox.consumer.dlq.topic", () -> TRANSFER_BOOKED_DLQ_TOPIC);
   }
 
   protected void awaitCondition(
@@ -80,6 +82,7 @@ public abstract class PostgresKafkaContainerTestSupport extends PostgresContaine
               Map.of(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, KAFKA.getBootstrapServers()))) {
         createTopic(adminClient, OUTBOX_DEFAULT_TOPIC);
         createTopic(adminClient, TRANSFER_BOOKED_TOPIC);
+        createTopic(adminClient, TRANSFER_BOOKED_DLQ_TOPIC);
         createTopic(adminClient, TRANSFER_REVERSED_TOPIC);
       }
       KAFKA_TOPICS_READY.set(true);

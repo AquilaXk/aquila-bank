@@ -9,6 +9,7 @@ public record OutboxOpsSummary(
     Instant oldestDispatchableAt,
     Duration oldestDispatchLag,
     long failedCount,
+    long producerTimeoutFailedCount,
     long staleSendingCount) {
 
   public OutboxOpsSummary {
@@ -20,6 +21,9 @@ public record OutboxOpsSummary(
     }
     if (failedCount < 0) {
       throw new IllegalArgumentException("failedCount must not be negative");
+    }
+    if (producerTimeoutFailedCount < 0) {
+      throw new IllegalArgumentException("producerTimeoutFailedCount must not be negative");
     }
     if (staleSendingCount < 0) {
       throw new IllegalArgumentException("staleSendingCount must not be negative");

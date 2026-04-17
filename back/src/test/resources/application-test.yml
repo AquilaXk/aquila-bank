@@ -31,6 +31,19 @@ outbox:
       max-failed-count: 10
       max-stale-sending-count: 0
 
+notification:
+  inbox:
+    consumer:
+      dlq:
+        topic: ""
+      ops:
+        enabled: false
+        dlq-preview-limit: 20
+        summary-cache-seconds: 5
+        health:
+          max-lag-messages: 100
+          max-dlq-count: 0
+
 security:
   jwt:
     secret: test-local-jwt-secret-test-local-jwt-secret
