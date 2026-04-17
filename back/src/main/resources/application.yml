@@ -81,6 +81,7 @@ outbox:
       default-name: ${OUTBOX_KAFKA_TOPIC_DEFAULT:}
       event-type-overrides:
         TransferBooked: ${OUTBOX_KAFKA_TOPIC_TRANSFER_BOOKED:}
+        TransferReversed: ${OUTBOX_KAFKA_TOPIC_TRANSFER_REVERSED:}
     serializer:
       key-class: ${OUTBOX_KAFKA_KEY_SERIALIZER:org.apache.kafka.common.serialization.StringSerializer}
       value-class: ${OUTBOX_KAFKA_VALUE_SERIALIZER:org.apache.kafka.common.serialization.StringSerializer}
