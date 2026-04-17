@@ -10,6 +10,7 @@ import com.aquilabank.domain.auth.model.AuthUserSummary;
 import com.aquilabank.domain.auth.model.LoginFailureUpdateCommand;
 import com.aquilabank.domain.auth.model.LoginSuccessUpdateCommand;
 import com.aquilabank.domain.auth.model.RefreshTokenSessionCreateCommand;
+import com.aquilabank.domain.auth.model.RefreshTokenSessionRevokeCommand;
 import com.aquilabank.domain.auth.model.RefreshTokenSessionRotateCommand;
 import com.aquilabank.domain.auth.model.UserAccountMembership;
 import com.aquilabank.domain.auth.model.UserAccountMembershipStatusUpdateCommand;
@@ -195,6 +196,27 @@ public class JdbcAuthWriteRepository
                 .addValue("sessionId", command.sessionId())
                 .addValue("replacedBySessionId", command.replacedBySessionId())
                 .addValue("rotatedAt", Timestamp.from(command.rotatedAt())));
+    if (updated != 1) {
+      throw new IllegalStateException("refresh token session is not active");
+    }
+  }
+
+  @Override
+  @Transactional
+  public void revoke(RefreshTokenSessionRevokeCommand command) {
+    int updated =
+        jdbcTemplate.update(
+            """
+            UPDATE auth_refresh_token_session
+            SET session_status = 'REVOKED',
+                last_used_at = :revokedAt,
+                updated_at = :revokedAt
+            WHERE id = :sessionId
+              AND session_status = 'ACTIVE'
+            """,
+            new MapSqlParameterSource()
+                .addValue("sessionId", command.sessionId())
+                .addValue("revokedAt", Timestamp.from(command.revokedAt())));
     if (updated != 1) {
       throw new IllegalStateException("refresh token session is not active");
     }
