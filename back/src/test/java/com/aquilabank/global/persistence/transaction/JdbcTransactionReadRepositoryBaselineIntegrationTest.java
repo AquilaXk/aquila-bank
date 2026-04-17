@@ -2,6 +2,7 @@ package com.aquilabank.global.persistence.transaction;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.aquilabank.domain.transaction.model.TransactionDirection;
 import com.aquilabank.domain.transaction.model.TransactionQuery;
 import com.aquilabank.domain.transaction.model.TransactionSlice;
 import com.aquilabank.domain.transaction.model.TransactionStatus;
@@ -66,6 +67,10 @@ class JdbcTransactionReadRepositoryBaselineIntegrationTest extends PostgresConta
             baselineWindow.to(),
             50,
             null,
+            null,
+            null,
+            null,
+            null,
             null);
 
     TransactionSlice slice = repository.fetch(query);
@@ -89,6 +94,10 @@ class JdbcTransactionReadRepositoryBaselineIntegrationTest extends PostgresConta
             baselineWindow.to(),
             50,
             null,
+            null,
+            null,
+            null,
+            null,
             null);
     TransactionSlice firstSlice = repository.fetch(firstPageQuery);
 
@@ -99,6 +108,10 @@ class JdbcTransactionReadRepositoryBaselineIntegrationTest extends PostgresConta
             baselineWindow.to(),
             50,
             firstSlice.nextCursor(),
+            null,
+            null,
+            null,
+            null,
             null);
 
     TransactionSlice nextSlice = repository.fetch(nextPageQuery);
@@ -122,7 +135,11 @@ class JdbcTransactionReadRepositoryBaselineIntegrationTest extends PostgresConta
             baselineWindow.to(),
             50,
             null,
-            TransactionStatus.BOOKED);
+            TransactionStatus.BOOKED,
+            null,
+            null,
+            null,
+            null);
     TransactionSlice firstSlice = repository.fetch(firstPageQuery);
 
     TransactionQuery nextPageQuery =
@@ -132,7 +149,11 @@ class JdbcTransactionReadRepositoryBaselineIntegrationTest extends PostgresConta
             baselineWindow.to(),
             50,
             firstSlice.nextCursor(),
-            TransactionStatus.BOOKED);
+            TransactionStatus.BOOKED,
+            null,
+            null,
+            null,
+            null);
 
     TransactionSlice nextSlice = repository.fetch(nextPageQuery);
     TransactionExplainPlan plan = explain(nextPageQuery);
@@ -141,6 +162,81 @@ class JdbcTransactionReadRepositoryBaselineIntegrationTest extends PostgresConta
     assertThat(nextSlice.items()).hasSize(50);
     assertThat(nextSlice.items()).allMatch(item -> item.status() == TransactionStatus.BOOKED);
     assertThat(plan.usesIndex("idx_transaction_read_model_account_status_cursor")).isTrue();
+    assertThat(plan.hasNodeType("Seq Scan")).isFalse();
+    assertThat(plan.hasNodeType("Sort")).isFalse();
+  }
+
+  @Test
+  void directionFilteredPageUsesAccountCursorIndex() {
+    TransactionQuery query =
+        new TransactionQuery(
+            baselineWindow.hotAccountId(),
+            baselineWindow.from(),
+            baselineWindow.to(),
+            50,
+            null,
+            null,
+            TransactionDirection.DEBIT,
+            null,
+            null,
+            null);
+
+    TransactionSlice slice = repository.fetch(query);
+    TransactionExplainPlan plan = explain(query);
+
+    assertThat(slice.items()).hasSize(50);
+    assertThat(slice.items()).allMatch(item -> item.direction() == TransactionDirection.DEBIT);
+    assertThat(plan.usesIndex("idx_transaction_read_model_account_cursor")).isTrue();
+    assertThat(plan.hasNodeType("Seq Scan")).isFalse();
+    assertThat(plan.hasNodeType("Sort")).isFalse();
+  }
+
+  @Test
+  void amountRangeFilteredPageUsesAccountCursorIndex() {
+    TransactionQuery query =
+        new TransactionQuery(
+            baselineWindow.hotAccountId(),
+            baselineWindow.from(),
+            baselineWindow.to(),
+            50,
+            null,
+            null,
+            null,
+            1700L,
+            1700L,
+            null);
+
+    TransactionSlice slice = repository.fetch(query);
+    TransactionExplainPlan plan = explain(query);
+
+    assertThat(slice.items()).hasSize(50);
+    assertThat(slice.items()).allMatch(item -> item.amountMinor() == 1700L);
+    assertThat(plan.usesIndex("idx_transaction_read_model_account_cursor")).isTrue();
+    assertThat(plan.hasNodeType("Seq Scan")).isFalse();
+    assertThat(plan.hasNodeType("Sort")).isFalse();
+  }
+
+  @Test
+  void transactionReferenceExactLookupUsesReferenceCursorIndex() {
+    TransactionQuery query =
+        new TransactionQuery(
+            baselineWindow.hotAccountId(),
+            baselineWindow.from(),
+            baselineWindow.to(),
+            20,
+            null,
+            null,
+            null,
+            null,
+            null,
+            "hot-account-trx-40000");
+
+    TransactionSlice slice = repository.fetch(query);
+    TransactionExplainPlan plan = explain(query);
+
+    assertThat(slice.items()).hasSize(1);
+    assertThat(slice.items().getFirst().transactionReference()).isEqualTo("hot-account-trx-40000");
+    assertThat(plan.usesIndex("idx_transaction_read_model_account_reference_cursor")).isTrue();
     assertThat(plan.hasNodeType("Seq Scan")).isFalse();
     assertThat(plan.hasNodeType("Sort")).isFalse();
   }

@@ -93,6 +93,53 @@ class TransactionJwtSecurityIntegrationTest {
   }
 
   @Test
+  void passesExpandedFiltersThroughJwtProtectedQuery() throws Exception {
+    when(transactionReadPort.fetch(
+            argThat(
+                query ->
+                    query.accountId() == 555L
+                        && query.status() == TransactionStatus.BOOKED
+                        && query.direction() == TransactionDirection.CREDIT
+                        && Long.valueOf(4000L).equals(query.minAmountMinor())
+                        && Long.valueOf(6000L).equals(query.maxAmountMinor())
+                        && "TX-1".equals(query.transactionReference()))))
+        .thenReturn(
+            new TransactionSlice(
+                List.of(
+                    new TransactionSummary(
+                        1L,
+                        555L,
+                        "TX-1",
+                        TransactionDirection.CREDIT,
+                        TransactionStatus.BOOKED,
+                        5000L,
+                        15000L,
+                        "KRW",
+                        "salary",
+                        "COMPANY",
+                        Instant.parse("2026-04-16T09:00:00Z"))),
+                null,
+                false,
+                20));
+    when(accountAccessUseCase.verify(55L, 555L, AccountAccessScope.READ)).thenReturn(555L);
+
+    mockMvc
+        .perform(
+            get("/api/v1/transactions")
+                .header("Authorization", "Bearer " + issueToken("user-555", 55L))
+                .param("accountId", "555")
+                .param("from", "2026-04-01T00:00:00Z")
+                .param("to", "2026-04-17T00:00:00Z")
+                .param("status", "BOOKED")
+                .param("direction", "CREDIT")
+                .param("minAmountMinor", "4000")
+                .param("maxAmountMinor", "6000")
+                .param("transactionReference", "TX-1"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items[0].transactionReference").value("TX-1"));
+  }
+
+  @Test
   void rejectsRequestWithoutJwtOrBootstrapHeader() throws Exception {
     mockMvc
         .perform(
