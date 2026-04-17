@@ -2,7 +2,8 @@ package com.aquilabank.global.web.notification;
 
 import com.aquilabank.domain.notification.usecase.NotificationOpsQueryUseCase;
 import com.aquilabank.global.config.NotificationInboxConsumerProperties;
-import com.aquilabank.global.security.OutboxOpsTokenGuard;
+import com.aquilabank.global.security.InternalServiceRequestAuthorizer;
+import com.aquilabank.global.security.InternalServiceScope;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.constraints.Positive;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
@@ -20,21 +21,21 @@ import org.springframework.web.bind.annotation.RestController;
 public class NotificationOpsController {
 
   private final NotificationOpsQueryUseCase notificationOpsQueryUseCase;
-  private final OutboxOpsTokenGuard outboxOpsTokenGuard;
+  private final InternalServiceRequestAuthorizer internalServiceRequestAuthorizer;
   private final NotificationInboxConsumerProperties notificationInboxConsumerProperties;
 
   public NotificationOpsController(
       NotificationOpsQueryUseCase notificationOpsQueryUseCase,
-      OutboxOpsTokenGuard outboxOpsTokenGuard,
+      InternalServiceRequestAuthorizer internalServiceRequestAuthorizer,
       NotificationInboxConsumerProperties notificationInboxConsumerProperties) {
     this.notificationOpsQueryUseCase = notificationOpsQueryUseCase;
-    this.outboxOpsTokenGuard = outboxOpsTokenGuard;
+    this.internalServiceRequestAuthorizer = internalServiceRequestAuthorizer;
     this.notificationInboxConsumerProperties = notificationInboxConsumerProperties;
   }
 
   @GetMapping("/summary")
   public NotificationOpsSummaryResponse getSummary(HttpServletRequest request) {
-    outboxOpsTokenGuard.validate(request);
+    internalServiceRequestAuthorizer.requireScope(request, InternalServiceScope.OUTBOX_OPS);
     return NotificationOpsSummaryResponse.from(notificationOpsQueryUseCase.getSummary());
   }
 
@@ -42,7 +43,7 @@ public class NotificationOpsController {
   public NotificationDlqEventListResponse getDlqEvents(
       HttpServletRequest request,
       @RequestParam(required = false) @Positive(message = "limit must be positive") Integer limit) {
-    outboxOpsTokenGuard.validate(request);
+    internalServiceRequestAuthorizer.requireScope(request, InternalServiceScope.OUTBOX_OPS);
     int configuredLimit = notificationInboxConsumerProperties.ops().dlqPreviewLimit();
     int resolvedLimit = limit == null ? configuredLimit : Math.min(limit, configuredLimit);
     return NotificationDlqEventListResponse.from(

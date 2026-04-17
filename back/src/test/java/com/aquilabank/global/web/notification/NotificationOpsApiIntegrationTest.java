@@ -7,9 +7,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.aquilabank.domain.notification.usecase.NotificationOpsQueryUseCase;
+import com.aquilabank.global.security.InternalServiceScope;
+import com.aquilabank.global.security.InternalServiceTokenIssuer;
 import com.aquilabank.support.PostgresKafkaContainerTestSupport;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,10 +47,17 @@ import org.springframework.web.context.WebApplicationContext;
     })
 class NotificationOpsApiIntegrationTest extends PostgresKafkaContainerTestSupport {
 
+  private static final Duration OPS_QUERY_TIMEOUT = Duration.ofSeconds(5);
+  private static final Duration OPS_QUERY_INTERVAL = Duration.ofMillis(200);
+
   @Autowired private WebApplicationContext context;
 
   @Autowired
   @Qualifier("notificationInboxDlqKafkaTemplate") private KafkaTemplate<String, String> kafkaTemplate;
+
+  @Autowired private NotificationOpsQueryUseCase notificationOpsQueryUseCase;
+
+  @Autowired private InternalServiceTokenIssuer internalServiceTokenIssuer;
 
   private MockMvc mockMvc;
 
@@ -65,10 +76,20 @@ class NotificationOpsApiIntegrationTest extends PostgresKafkaContainerTestSuppor
         .get(5, TimeUnit.SECONDS);
     kafkaTemplate.send(dlqRecord(dlqEventKey)).get(5, TimeUnit.SECONDS);
 
+    awaitCondition(
+        "notification ops summary",
+        OPS_QUERY_TIMEOUT,
+        OPS_QUERY_INTERVAL,
+        () ->
+            notificationOpsQueryUseCase.getSummary().lagCount() >= 1
+                && notificationOpsQueryUseCase.getSummary().dlqCount() >= 1
+                && notificationOpsQueryUseCase.getDlqEvents(5).stream()
+                    .anyMatch(item -> dlqEventKey.equals(item.eventKey())));
+
     mockMvc
         .perform(
             get("/internal/api/v1/outbox/notification/summary")
-                .header("X-Outbox-Ops-Token", "test-outbox-ops-token"))
+                .header("Authorization", outboxOpsAuthorization()))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.consumerGroupId").isString())
         .andExpect(jsonPath("$.lagCount", greaterThanOrEqualTo(1)))
@@ -77,7 +98,7 @@ class NotificationOpsApiIntegrationTest extends PostgresKafkaContainerTestSuppor
     mockMvc
         .perform(
             get("/internal/api/v1/outbox/notification/dlq-events")
-                .header("X-Outbox-Ops-Token", "test-outbox-ops-token")
+                .header("Authorization", outboxOpsAuthorization())
                 .param("limit", "5"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.limit").value(5))
@@ -125,5 +146,11 @@ class NotificationOpsApiIntegrationTest extends PostgresKafkaContainerTestSuppor
             KafkaHeaders.DLT_EXCEPTION_MESSAGE,
             "TransferBooked payload is invalid".getBytes(StandardCharsets.UTF_8));
     return record;
+  }
+
+  private String outboxOpsAuthorization() {
+    return "Bearer "
+        + internalServiceTokenIssuer.issue(
+            "outbox-ops", java.util.Set.of(InternalServiceScope.OUTBOX_OPS));
   }
 }
