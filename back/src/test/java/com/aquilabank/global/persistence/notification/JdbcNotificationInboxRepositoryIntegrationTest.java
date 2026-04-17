@@ -2,11 +2,13 @@ package com.aquilabank.global.persistence.notification;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.aquilabank.domain.notification.model.NotificationInboxEntry;
 import com.aquilabank.domain.notification.model.NotificationListQuery;
 import com.aquilabank.domain.notification.model.NotificationSlice;
 import com.aquilabank.support.PostgresContainerTestSupport;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -109,6 +111,54 @@ class JdbcNotificationInboxRepositoryIntegrationTest extends PostgresContainerTe
         .isTrue();
     assertThat(repository.countUnreadByUserId(userId[0])).isEqualTo(1L);
     assertThat(repository.markAsReadByUserId(userId[0], 99999L, base.plusSeconds(50))).isFalse();
+  }
+
+  @Test
+  void appendsTransferBookedRowsIdempotently() {
+    long[] accountIds = new long[2];
+    Instant createdAt = Instant.parse("2026-04-17T00:00:00Z");
+    commit(
+        transactionManager,
+        () -> {
+          accountIds[0] = insertAccount("source account");
+          accountIds[1] = insertAccount("target account");
+          repository.appendAllIfAbsent(
+              List.of(
+                  new NotificationInboxEntry(
+                      accountIds[0],
+                      "transfer-booked:TRX-200:ACCOUNT-" + accountIds[0],
+                      "TransferBooked",
+                      "이체 완료",
+                      "1500 KRW 출금 · rent",
+                      createdAt),
+                  new NotificationInboxEntry(
+                      accountIds[1],
+                      "transfer-booked:TRX-200:ACCOUNT-" + accountIds[1],
+                      "TransferBooked",
+                      "이체 완료",
+                      "1500 KRW 입금 · rent",
+                      createdAt)));
+          repository.appendAllIfAbsent(
+              List.of(
+                  new NotificationInboxEntry(
+                      accountIds[0],
+                      "transfer-booked:TRX-200:ACCOUNT-" + accountIds[0],
+                      "TransferBooked",
+                      "이체 완료",
+                      "1500 KRW 출금 · rent",
+                      createdAt),
+                  new NotificationInboxEntry(
+                      accountIds[1],
+                      "transfer-booked:TRX-200:ACCOUNT-" + accountIds[1],
+                      "TransferBooked",
+                      "이체 완료",
+                      "1500 KRW 입금 · rent",
+                      createdAt)));
+        });
+
+    assertThat(totalNotifications()).isEqualTo(2L);
+    assertThat(findNotificationMessages())
+        .containsExactlyInAnyOrder("1500 KRW 출금 · rent", "1500 KRW 입금 · rent");
   }
 
   private long insertUser(String loginId) {
@@ -242,5 +292,23 @@ class JdbcNotificationInboxRepositoryIntegrationTest extends PostgresContainerTe
       throw new IllegalStateException("notification_inbox insert did not return id");
     }
     return notificationId;
+  }
+
+  private long totalNotifications() {
+    Long count =
+        jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM notification_inbox", new MapSqlParameterSource(), Long.class);
+    return count == null ? 0L : count;
+  }
+
+  private List<String> findNotificationMessages() {
+    return jdbcTemplate.query(
+        """
+        SELECT message
+        FROM notification_inbox
+        ORDER BY id
+        """,
+        new MapSqlParameterSource(),
+        (rs, rowNum) -> rs.getString("message"));
   }
 }
