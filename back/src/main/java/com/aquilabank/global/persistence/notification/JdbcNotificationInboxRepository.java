@@ -1,9 +1,11 @@
 package com.aquilabank.global.persistence.notification;
 
 import com.aquilabank.domain.notification.model.NotificationCursor;
+import com.aquilabank.domain.notification.model.NotificationInboxEntry;
 import com.aquilabank.domain.notification.model.NotificationListQuery;
 import com.aquilabank.domain.notification.model.NotificationSlice;
 import com.aquilabank.domain.notification.model.NotificationSummary;
+import com.aquilabank.domain.notification.port.NotificationInboxAppendPort;
 import com.aquilabank.domain.notification.port.NotificationInboxReadPort;
 import com.aquilabank.domain.notification.port.NotificationInboxWritePort;
 import java.sql.ResultSet;
@@ -22,7 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 /** JWT user inbox join 과 bootstrap account inbox exact lookup 을 한 adapter 로 묶습니다. */
 @Repository
 public class JdbcNotificationInboxRepository
-    implements NotificationInboxReadPort, NotificationInboxWritePort {
+    implements NotificationInboxReadPort, NotificationInboxWritePort, NotificationInboxAppendPort {
 
   private static final RowMapper<NotificationSummary> ROW_MAPPER = (rs, rowNum) -> mapRow(rs);
 
@@ -176,6 +178,44 @@ public class JdbcNotificationInboxRepository
             .addValue("notificationId", notificationId)
             .addValue("accountId", accountId));
     return true;
+  }
+
+  @Override
+  @Transactional
+  public void appendAllIfAbsent(List<NotificationInboxEntry> items) {
+    List<NotificationInboxEntry> entries = List.copyOf(items);
+    if (entries.isEmpty()) {
+      throw new IllegalArgumentException("items must not be empty");
+    }
+    for (NotificationInboxEntry item : entries) {
+      jdbcTemplate.update(
+          """
+          INSERT INTO notification_inbox (
+              account_id,
+              event_key,
+              event_type,
+              title,
+              message,
+              created_at
+          )
+          VALUES (
+              :accountId,
+              :eventKey,
+              :eventType,
+              :title,
+              :message,
+              :createdAt
+          )
+          ON CONFLICT (event_key) DO NOTHING
+          """,
+          new MapSqlParameterSource()
+              .addValue("accountId", item.accountId())
+              .addValue("eventKey", item.eventKey())
+              .addValue("eventType", item.eventType())
+              .addValue("title", item.title())
+              .addValue("message", item.message())
+              .addValue("createdAt", Timestamp.from(item.createdAt())));
+    }
   }
 
   private NotificationSlice toSlice(List<NotificationSummary> rows, int limit) {
