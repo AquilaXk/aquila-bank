@@ -64,7 +64,8 @@ public class AuthConfiguration {
 
   @Bean
   RefreshTokenPolicy refreshTokenPolicy(SecurityJwtProperties securityJwtProperties) {
-    return new RefreshTokenPolicy(Duration.ofSeconds(securityJwtProperties.refreshTokenTtlSeconds()));
+    return new RefreshTokenPolicy(
+        Duration.ofSeconds(securityJwtProperties.refreshTokenTtlSeconds()));
   }
 
   @Bean
@@ -141,7 +142,8 @@ public class AuthConfiguration {
             authClock);
     TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
     return command -> {
-      LoginResult result = transactionTemplate.execute(status -> refreshTokenService.refresh(command));
+      LoginResult result =
+          transactionTemplate.execute(status -> refreshTokenService.refresh(command));
       if (result == null) {
         throw new IllegalStateException("refresh transaction returned null result");
       }

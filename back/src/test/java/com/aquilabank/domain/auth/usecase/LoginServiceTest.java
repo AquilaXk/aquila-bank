@@ -64,7 +64,8 @@ class LoginServiceTest {
     verify(loginAttemptUpdatePort, never()).recordLoginFailure(Mockito.any());
     verify(loginAttemptUpdatePort, never()).recordLoginSuccess(Mockito.any());
     verify(refreshTokenSessionWritePort, never()).create(Mockito.any());
-    verify(authTokenIssuePort, never()).issue(Mockito.anyLong(), Mockito.anyString(), Mockito.any());
+    verify(authTokenIssuePort, never())
+        .issue(Mockito.anyLong(), Mockito.anyString(), Mockito.any());
     verify(userCredentialLoadPort).findByLoginIdForUpdate(eq("missing-user"));
   }
 }

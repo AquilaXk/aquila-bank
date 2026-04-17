@@ -114,6 +114,34 @@ login 실패/잠금은 structured log 한 줄로 남습니다.
 | `previousLockedUntil` | reset 전 잠금 만료 시각 |
 | `path` | 현재 요청 path |
 
+## Refresh Token Session
+
+공개 인증 경로는 access token JWT와 함께 refresh token rotation을 기본 지원합니다.
+
+- 공개 endpoint:
+  - `POST /api/v1/auth/login`
+  - `POST /api/v1/auth/refresh`
+- 응답 필드:
+  - `accessToken`
+  - `refreshToken`
+  - `tokenType`
+  - `expiresAt`
+  - `refreshExpiresAt`
+  - `userId`
+- 기본값:
+  - `SECURITY_JWT_ACCESS_TOKEN_TTL_SECONDS=900`
+  - `SECURITY_JWT_REFRESH_TOKEN_TTL_SECONDS=1209600`
+- 저장 기준:
+  - raw refresh token은 응답으로만 한 번 내려가고 DB에는 `SHA-256 token_hash`만 저장
+  - 저장 테이블은 `auth_refresh_token_session`
+  - 성공 refresh 시 기존 row는 `ROTATED`, 새 row는 `ACTIVE`
+- 거절 기준:
+  - 만료, 이미 rotation 된 token, 존재하지 않는 token은 모두 `401 refresh failed`
+  - `user_status=LOCKED|DISABLED` 사용자는 refresh로 새 token pair를 발급받지 못함
+- 운영 주의:
+  - 최소 범위에서는 logout / logout-all / 세션 목록 조회를 제공하지 않음
+  - raw refresh token, plaintext secret은 로그/DB에 남기지 않음
+
 ## Internal Auth Admin Runbook
 
 내부 auth status update는 공개 로그인 경로와 분리된 내부 운영 surface 입니다.
