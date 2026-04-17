@@ -4,17 +4,15 @@ on:
   pull_request:
     branches:
       - main
-      - develop
     paths:
       - "front/**"
-      - ".github/workflows/frontend-ci.yml"
+      - ".github/workflows/**"
   push:
     branches:
       - main
-      - develop
     paths:
       - "front/**"
-      - ".github/workflows/frontend-ci.yml"
+      - ".github/workflows/**"
 
 permissions:
   contents: read

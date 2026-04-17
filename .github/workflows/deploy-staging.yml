@@ -1,0 +1,62 @@
+name: Deploy Staging
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  deployments: write
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy-staging:
+    name: Deploy Staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: staging
+    steps:
+      - name: Checkout target SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Validate staging webhook configuration
+        env:
+          DEPLOY_WEBHOOK_URL: ${{ secrets.DEPLOY_WEBHOOK_URL }}
+        run: |
+          if [[ -z "${DEPLOY_WEBHOOK_URL}" ]]; then
+            echo "::error::staging environment에 DEPLOY_WEBHOOK_URL secret을 설정하세요." >&2
+            exit 1
+          fi
+
+      - name: Trigger staging deploy
+        env:
+          DEPLOY_WEBHOOK_URL: ${{ secrets.DEPLOY_WEBHOOK_URL }}
+          DEPLOY_WEBHOOK_TOKEN: ${{ secrets.DEPLOY_WEBHOOK_TOKEN }}
+          TARGET_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          auth_headers=()
+          if [[ -n "${DEPLOY_WEBHOOK_TOKEN}" ]]; then
+            auth_headers=(-H "Authorization: Bearer ${DEPLOY_WEBHOOK_TOKEN}")
+          fi
+
+          payload="$(jq -n \
+            --arg sha "${TARGET_SHA}" \
+            --arg ref "${GITHUB_REF}" \
+            --arg repository "${GITHUB_REPOSITORY}" \
+            --arg environment "staging" \
+            '{sha: $sha, ref: $ref, repository: $repository, environment: $environment}')"
+
+          curl --fail --show-error --silent --location \
+            -H "Content-Type: application/json" \
+            "${auth_headers[@]}" \
+            -d "${payload}" \
+            "${DEPLOY_WEBHOOK_URL}"
