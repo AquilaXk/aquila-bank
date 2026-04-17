@@ -28,6 +28,8 @@ import com.aquilabank.domain.auth.usecase.AuthUserQueryService;
 import com.aquilabank.domain.auth.usecase.AuthUserQueryUseCase;
 import com.aquilabank.domain.auth.usecase.LoginService;
 import com.aquilabank.domain.auth.usecase.LoginUseCase;
+import com.aquilabank.domain.auth.usecase.LogoutService;
+import com.aquilabank.domain.auth.usecase.LogoutUseCase;
 import com.aquilabank.domain.auth.usecase.RefreshTokenService;
 import com.aquilabank.domain.auth.usecase.RefreshTokenUseCase;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipQueryService;
@@ -149,6 +151,24 @@ public class AuthConfiguration {
       }
       return result;
     };
+  }
+
+  @Bean
+  LogoutUseCase logoutUseCase(
+      RefreshTokenSessionLoadPort refreshTokenSessionLoadPort,
+      RefreshTokenSessionWritePort refreshTokenSessionWritePort,
+      RefreshTokenSecretPort refreshTokenSecretPort,
+      Clock authClock,
+      PlatformTransactionManager platformTransactionManager) {
+    LogoutService logoutService =
+        new LogoutService(
+            refreshTokenSessionLoadPort,
+            refreshTokenSessionWritePort,
+            refreshTokenSecretPort,
+            authClock);
+    TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
+    return command ->
+        transactionTemplate.executeWithoutResult(status -> logoutService.logout(command));
   }
 
   @Bean
