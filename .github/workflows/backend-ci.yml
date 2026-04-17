@@ -4,17 +4,15 @@ on:
   pull_request:
     branches:
       - main
-      - develop
     paths:
       - "back/**"
-      - ".github/workflows/backend-ci.yml"
+      - ".github/workflows/**"
   push:
     branches:
       - main
-      - develop
     paths:
       - "back/**"
-      - ".github/workflows/backend-ci.yml"
+      - ".github/workflows/**"
 
 permissions:
   contents: read

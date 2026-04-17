@@ -35,6 +35,17 @@
 - local environment: `PostgreSQL 18`
 - deployed environment: `PostgreSQL 18`
 
+## Delivery Flow
+
+- feature 작업은 `main`에서 짧게 분기한 `feature/*`, `fix/*`, `ci/*` 브랜치에서 진행합니다.
+- PR 리뷰와 backend/frontend CI 통과 후 `main`에 병합합니다.
+- `main`에 병합된 같은 SHA를 GitHub Actions가 `staging` environment로 자동 배포합니다.
+- production은 staging 성공 같은 SHA만 `workflow_dispatch` 또는 `prod-*` 태그로 승격합니다.
+- GitHub `production` environment에 required reviewers를 걸면 수동 승인 경로를 강제할 수 있습니다.
+- GitHub `staging`, `production` environment에는 `DEPLOY_WEBHOOK_URL`과 선택형 `DEPLOY_WEBHOOK_TOKEN` secret을 같은 이름으로 둡니다.
+- 미완성 기능은 장기 `develop` 브랜치 대신 feature flag로 기본 비노출 처리합니다.
+- 상세 운영 규칙은 [docs/delivery-flow.md](/Users/aquila/Custom/GitProjects/aquila-bank/docs/delivery-flow.md)에서 확인합니다.
+
 ## Backend Package Structure
 
 ```text

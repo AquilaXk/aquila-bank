@@ -1,3 +1,9 @@
+import {
+  featureFlagKeys,
+  getEnabledFeatureFlags,
+  isFeatureFlagEnabled,
+} from "../lib/feature-flags";
+
 // 카드 내용을 데이터로 분리해 초기 랜딩 화면을 나중에 쉽게 교체하거나 확장할 수 있게 합니다.
 const highlights = [
   {
@@ -15,6 +21,11 @@ const highlights = [
 ];
 
 export default function HomePage() {
+  const enabledFeatureFlags = getEnabledFeatureFlags();
+  const showOpsConsolePreview = isFeatureFlagEnabled(
+    featureFlagKeys.opsConsolePreview,
+  );
+
   return (
     <main className="shell">
       <section className="hero">
@@ -56,6 +67,40 @@ export default function HomePage() {
             </article>
           ))}
         </div>
+      </section>
+
+      <section className="panel feature-flag-panel">
+        <div className="panel-header">
+          <p className="eyebrow">Feature Flags</p>
+          <h2>미완성 기능은 기본 비노출</h2>
+        </div>
+        <p className="lead compact">
+          장기 `develop` 브랜치 대신 `NEXT_PUBLIC_FEATURE_FLAGS`로 preview 기능을
+          노출합니다. flag가 없으면 merge된 코드도 사용자 화면에서는 숨겨집니다.
+        </p>
+        {enabledFeatureFlags.length > 0 ? (
+          <div className="flag-list" aria-label="enabled feature flags">
+            {enabledFeatureFlags.map((flag) => (
+              <span className="flag-chip" key={flag}>
+                {flag}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className="flag-empty">
+            현재 활성화된 preview flag가 없어 미완성 기능은 노출되지 않습니다.
+          </p>
+        )}
+        {showOpsConsolePreview ? (
+          <article className="preview-card">
+            <p className="eyebrow">Preview Enabled</p>
+            <h3>Operations Console Preview</h3>
+            <p>
+              staging, production 같은-SHA 승격 이력과 운영 배포 버튼을 노출하는
+              실험 UI를 여기서 이어서 붙일 수 있습니다.
+            </p>
+          </article>
+        ) : null}
       </section>
     </main>
   );

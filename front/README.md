@@ -27,3 +27,11 @@ PORT=3002 yarn dev
 ## Environment
 
 `NEXT_PUBLIC_API_BASE_URL`로 백엔드 API 주소를 주입합니다.
+
+`NEXT_PUBLIC_FEATURE_FLAGS`에는 쉼표 구분 flag key를 넣습니다.
+
+```bash
+NEXT_PUBLIC_FEATURE_FLAGS=ops-console-preview,transfer-reversal
+```
+
+미완성 기능은 이 값에 flag가 없으면 기본 비노출 상태로 유지합니다.

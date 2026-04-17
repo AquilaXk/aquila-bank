@@ -1,0 +1,148 @@
+name: Deploy Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "staging 성공 SHA"
+        required: true
+        type: string
+  push:
+    tags:
+      - "prod-*"
+
+permissions:
+  contents: read
+  deployments: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  verify-target:
+    name: Verify Production Target
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      target_sha: ${{ steps.verify.outputs.target_sha }}
+      trigger_mode: ${{ steps.verify.outputs.trigger_mode }}
+      source_ref: ${{ steps.verify.outputs.source_ref }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch main branch
+        run: git fetch origin main --depth=1
+
+      - name: Resolve and verify target SHA
+        id: verify
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_SHA: ${{ github.event.inputs.sha || '' }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            candidate="${INPUT_SHA}"
+            trigger_mode="manual"
+            source_ref="workflow_dispatch"
+          else
+            candidate="${GITHUB_SHA}"
+            trigger_mode="tag"
+            source_ref="${GITHUB_REF}"
+          fi
+
+          if [[ -z "${candidate}" ]]; then
+            echo "::error::production 승격 대상 SHA가 비어 있습니다." >&2
+            exit 1
+          fi
+
+          target_sha="$(git rev-parse "${candidate}^{commit}")"
+
+          if ! git merge-base --is-ancestor "${target_sha}" origin/main; then
+            echo "::error::production 승격은 main에 포함된 SHA만 허용합니다: ${target_sha}" >&2
+            exit 1
+          fi
+
+          # prod 승격 전 staging에서 같은 SHA가 성공했는지 확인합니다.
+          deployment_id="$(gh api "repos/${GITHUB_REPOSITORY}/deployments" \
+            -f environment=staging \
+            -f sha="${target_sha}" \
+            --jq '.[0].id' || true)"
+
+          if [[ -z "${deployment_id}" || "${deployment_id}" == "null" ]]; then
+            echo "::error::staging 성공 기록이 없는 SHA는 production으로 승격할 수 없습니다: ${target_sha}" >&2
+            exit 1
+          fi
+
+          success_count="$(gh api "repos/${GITHUB_REPOSITORY}/deployments/${deployment_id}/statuses" \
+            --jq 'map(select(.state == "success")) | length' || true)"
+
+          if [[ -z "${success_count}" || "${success_count}" == "0" ]]; then
+            echo "::error::staging 성공 상태가 확인되지 않았습니다: ${target_sha}" >&2
+            exit 1
+          fi
+
+          {
+            echo "target_sha=${target_sha}"
+            echo "trigger_mode=${trigger_mode}"
+            echo "source_ref=${source_ref}"
+          } >> "$GITHUB_OUTPUT"
+
+  deploy-production:
+    name: Deploy Production
+    runs-on: ubuntu-latest
+    needs:
+      - verify-target
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      deployments: write
+    environment:
+      name: production
+    steps:
+      - name: Checkout target SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.verify-target.outputs.target_sha }}
+
+      - name: Validate production webhook configuration
+        env:
+          DEPLOY_WEBHOOK_URL: ${{ secrets.DEPLOY_WEBHOOK_URL }}
+        run: |
+          if [[ -z "${DEPLOY_WEBHOOK_URL}" ]]; then
+            echo "::error::production environment에 DEPLOY_WEBHOOK_URL secret을 설정하세요." >&2
+            exit 1
+          fi
+
+      - name: Trigger production deploy
+        env:
+          DEPLOY_WEBHOOK_URL: ${{ secrets.DEPLOY_WEBHOOK_URL }}
+          DEPLOY_WEBHOOK_TOKEN: ${{ secrets.DEPLOY_WEBHOOK_TOKEN }}
+          TARGET_SHA: ${{ needs.verify-target.outputs.target_sha }}
+          TRIGGER_MODE: ${{ needs.verify-target.outputs.trigger_mode }}
+          SOURCE_REF: ${{ needs.verify-target.outputs.source_ref }}
+        run: |
+          set -euo pipefail
+
+          auth_headers=()
+          if [[ -n "${DEPLOY_WEBHOOK_TOKEN}" ]]; then
+            auth_headers=(-H "Authorization: Bearer ${DEPLOY_WEBHOOK_TOKEN}")
+          fi
+
+          payload="$(jq -n \
+            --arg sha "${TARGET_SHA}" \
+            --arg ref "${SOURCE_REF}" \
+            --arg repository "${GITHUB_REPOSITORY}" \
+            --arg environment "production" \
+            --arg triggerMode "${TRIGGER_MODE}" \
+            '{sha: $sha, ref: $ref, repository: $repository, environment: $environment, triggerMode: $triggerMode}')"
+
+          curl --fail --show-error --silent --location \
+            -H "Content-Type: application/json" \
+            "${auth_headers[@]}" \
+            -d "${payload}" \
+            "${DEPLOY_WEBHOOK_URL}"
