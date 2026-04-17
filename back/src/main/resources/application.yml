@@ -120,6 +120,7 @@ security:
     secret: ${SECURITY_JWT_SECRET}
     issuer: ${SECURITY_JWT_ISSUER:}
     access-token-ttl-seconds: ${SECURITY_JWT_ACCESS_TOKEN_TTL_SECONDS:900}
+    refresh-token-ttl-seconds: ${SECURITY_JWT_REFRESH_TOKEN_TTL_SECONDS:1209600}
   login-protection:
     max-failures: ${SECURITY_LOGIN_PROTECTION_MAX_FAILURES:5}
     lock-seconds: ${SECURITY_LOGIN_PROTECTION_LOCK_SECONDS:900}

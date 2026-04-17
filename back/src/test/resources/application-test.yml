@@ -34,6 +34,7 @@ outbox:
 security:
   jwt:
     secret: test-local-jwt-secret-test-local-jwt-secret
+    refresh-token-ttl-seconds: 1209600
   login-protection:
     max-failures: 5
     lock-seconds: 900
