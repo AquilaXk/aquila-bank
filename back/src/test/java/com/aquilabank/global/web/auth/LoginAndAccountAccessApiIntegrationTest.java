@@ -127,6 +127,37 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
         .andExpect(jsonPath("$.currencyCode").value("KRW"))
         .andExpect(jsonPath("$.availableBalanceMinor").value(8500L))
         .andExpect(jsonPath("$.pendingBalanceMinor").value(0));
+
+    mockMvc
+        .perform(get("/api/v1/accounts").header("Authorization", "Bearer " + token))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(1))
+        .andExpect(jsonPath("$.items[0].accountId").value(allowedSourceAccountId))
+        .andExpect(jsonPath("$.items[0].availableBalanceMinor").value(8500L));
+  }
+
+  @Test
+  void accountListReturnsOnlyActiveAccessibleAccountsAndBootstrapAccount() throws Exception {
+    upsertMembership(userId, targetAccountId, "VIEWER", "ACTIVE");
+    upsertMembership(userId, deniedAccountId, "OWNER", "REVOKED");
+    String token = login("alice", "password123!");
+
+    mockMvc
+        .perform(get("/api/v1/accounts").header("Authorization", "Bearer " + token))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(2))
+        .andExpect(jsonPath("$.items[0].accountId").value(allowedSourceAccountId))
+        .andExpect(jsonPath("$.items[1].accountId").value(targetAccountId));
+
+    mockMvc
+        .perform(
+            get("/api/v1/accounts")
+                .header("X-Account-Id", String.valueOf(targetAccountId))
+                .header("X-Subject", "bootstrap-account"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(1))
+        .andExpect(jsonPath("$.items[0].accountId").value(targetAccountId))
+        .andExpect(jsonPath("$.items[0].availableBalanceMinor").value(0L));
   }
 
   @Test
@@ -526,6 +557,11 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
                         .formatted(allowedSourceAccountId, targetAccountId)))
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.message").value("account access is denied"));
+
+    mockMvc
+        .perform(get("/api/v1/accounts").header("Authorization", "Bearer " + token))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(0));
   }
 
   @Test
