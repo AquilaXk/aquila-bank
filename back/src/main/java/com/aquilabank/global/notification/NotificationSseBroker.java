@@ -19,7 +19,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.LongFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -83,19 +82,12 @@ public class NotificationSseBroker {
                     replayLastEventId, notificationSseProperties.replayLimit())));
   }
 
-  @Scheduled(fixedDelayString = "${notification.sse.heartbeat-interval-ms:25000}")
-  void sendHeartbeats() {
-    sendHeartbeats(accountSessions, "account");
-    sendHeartbeats(userSessions, "user");
-  }
-
-  @EventListener
-  public void handleNotificationInboxInserted(NotificationInboxInsertedEvent event) {
-    publishInsertedItems(event.items());
+  public boolean hasActiveSessions() {
+    return !accountSessions.isEmpty() || !userSessions.isEmpty();
   }
 
   public void publishInsertedItems(List<NotificationSummary> items) {
-    if (accountSessions.isEmpty() && userSessions.isEmpty()) {
+    if (items.isEmpty() || !hasActiveSessions()) {
       return;
     }
     Map<Long, List<NotificationSummary>> itemsByAccountId = groupByAccountId(items);
@@ -105,6 +97,12 @@ public class NotificationSseBroker {
       publishToAccountSessions(accountId, accountItems);
       publishToUserSessions(accountId, accountItems);
     }
+  }
+
+  @Scheduled(fixedDelayString = "${notification.sse.heartbeat-interval-ms:25000}")
+  void sendHeartbeats() {
+    sendHeartbeats(accountSessions, "account");
+    sendHeartbeats(userSessions, "user");
   }
 
   private SseEmitter subscribe(

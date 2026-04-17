@@ -2,6 +2,10 @@ package com.aquilabank.global.web.notification;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.aquilabank.global.config.NotificationSseProperties;
+import com.aquilabank.global.notification.NotificationSseFanoutInstanceId;
+import com.aquilabank.global.notification.NotificationSseFanoutSignal;
+import com.aquilabank.global.notification.NotificationSseFanoutSignalCodec;
 import com.aquilabank.global.notification.TransferBookedNotificationConsumer;
 import com.aquilabank.support.PostgresContainerTestSupport;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -22,6 +26,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.sql.PreparedStatement;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -68,6 +73,12 @@ class NotificationSseIntegrationTest extends PostgresContainerTestSupport {
   @Autowired private PlatformTransactionManager transactionManager;
 
   @Autowired private ObjectMapper objectMapper;
+
+  @Autowired private NotificationSseProperties notificationSseProperties;
+
+  @Autowired private NotificationSseFanoutInstanceId notificationSseFanoutInstanceId;
+
+  @Autowired private NotificationSseFanoutSignalCodec notificationSseFanoutSignalCodec;
 
   @BeforeEach
   void setUp() {
@@ -213,6 +224,7 @@ class NotificationSseIntegrationTest extends PostgresContainerTestSupport {
 
     String token = issueToken("replay-user-subject", userId[0]);
     long lastEventId;
+
     try (NotificationSseStream stream = openJwtStream(token)) {
       assertThat(stream.awaitEvent("connected", Duration.ofSeconds(3)).name())
           .isEqualTo("connected");
@@ -256,6 +268,74 @@ class NotificationSseIntegrationTest extends PostgresContainerTestSupport {
       assertThat(payload.get("accountId").asLong()).isEqualTo(visibleAccountId[0]);
       assertThat(payload.get("message").asText()).contains("jwt-replay");
       replayStream.assertNoEvent("notification", Duration.ofMillis(800));
+    }
+  }
+
+  @Test
+  @Timeout(15)
+  void pushesNotificationToJwtUserStreamAfterRemoteFanoutSignal() throws Exception {
+    long[] userId = new long[1];
+    long[] accountId = new long[1];
+    commit(
+        transactionManager,
+        () -> {
+          userId[0] = insertUser("remote-stream-user");
+          accountId[0] = insertAccount("remote visible account");
+          insertMembership(userId[0], accountId[0], "OWNER", "ACTIVE");
+        });
+
+    String token = issueToken("remote-stream-subject", userId[0]);
+    try (NotificationSseStream stream = openJwtStream(token)) {
+      assertThat(stream.awaitEvent("connected", Duration.ofSeconds(3)).name())
+          .isEqualTo("connected");
+
+      long[] notificationId = new long[1];
+      commit(
+          transactionManager,
+          () ->
+              notificationId[0] =
+                  insertNotification(
+                      accountId[0],
+                      "remote-fanout:TRX-SSE-300",
+                      "TransferBooked",
+                      "이체 완료",
+                      "3200 KRW 입금 · remote"));
+      publishFanoutSignal("remote-instance", notificationId[0]);
+
+      SseEvent notification = stream.awaitEvent("notification", Duration.ofSeconds(3));
+      JsonNode payload = objectMapper.readTree(notification.data());
+      assertThat(payload.get("accountId").asLong()).isEqualTo(accountId[0]);
+      assertThat(payload.get("eventType").asText()).isEqualTo("TransferBooked");
+      assertThat(payload.get("title").asText()).isEqualTo("이체 완료");
+      assertThat(payload.get("message").asText()).contains("remote");
+      assertThat(payload.get("read").asBoolean()).isFalse();
+    }
+  }
+
+  @Test
+  @Timeout(15)
+  void ignoresSameInstanceFanoutSignalToPreventDuplicatePush() throws Exception {
+    long[] accountId = new long[1];
+    commit(transactionManager, () -> accountId[0] = insertAccount("same-instance account"));
+
+    try (NotificationSseStream stream = openAccountStream(accountId[0])) {
+      assertThat(stream.awaitEvent("connected", Duration.ofSeconds(3)).name())
+          .isEqualTo("connected");
+
+      long[] notificationId = new long[1];
+      commit(
+          transactionManager,
+          () ->
+              notificationId[0] =
+                  insertNotification(
+                      accountId[0],
+                      "same-instance:TRX-SSE-400",
+                      "TransferBooked",
+                      "이체 완료",
+                      "1100 KRW 입금 · same-instance"));
+      publishFanoutSignal(notificationSseFanoutInstanceId.value(), notificationId[0]);
+
+      stream.assertNoEvent("notification", Duration.ofMillis(800));
     }
   }
 
@@ -566,6 +646,27 @@ class NotificationSseIntegrationTest extends PostgresContainerTestSupport {
           }
         });
     return result[0];
+  }
+
+  private void publishFanoutSignal(String originInstanceId, long... notificationIds) {
+    String payload =
+        notificationSseFanoutSignalCodec.encode(
+            new NotificationSseFanoutSignal(
+                originInstanceId, java.util.Arrays.stream(notificationIds).boxed().toList()));
+    jdbcTemplate
+        .getJdbcTemplate()
+        .execute(
+            (org.springframework.jdbc.core.ConnectionCallback<Void>)
+                connection -> {
+                  connection.setAutoCommit(true);
+                  try (PreparedStatement statement =
+                      connection.prepareStatement("SELECT pg_notify(?, ?)")) {
+                    statement.setString(1, notificationSseProperties.fanoutChannel());
+                    statement.setString(2, payload);
+                    statement.execute();
+                  }
+                  return null;
+                });
   }
 
   private String issueToken(String subject, long userId) throws JOSEException {

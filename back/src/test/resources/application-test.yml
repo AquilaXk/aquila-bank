@@ -32,6 +32,10 @@ outbox:
       max-stale-sending-count: 0
 
 notification:
+  sse:
+    fanout-channel: notification_sse_fanout
+    fanout-listen-timeout-ms: 200
+    fanout-retry-delay-ms: 200
   inbox:
     consumer:
       dlq:
