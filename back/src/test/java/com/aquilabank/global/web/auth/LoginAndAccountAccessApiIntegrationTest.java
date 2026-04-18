@@ -658,6 +658,52 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
   }
 
   @Test
+  void disableRevokesOnlyActiveRefreshSessionsAndOldRefreshStaysBlockedAfterReactivate()
+      throws Exception {
+    TokenPairResponseView rotatedSource =
+        loginResult("alice", "password123!", "disable-session-login-001");
+    TokenPairResponseView rotatedTarget =
+        refresh(rotatedSource.refreshToken(), "disable-session-rotate-001");
+    TokenPairResponseView parallelSession =
+        loginResult("alice", "password123!", "disable-session-login-002");
+
+    RefreshTokenSessionView rotatedBeforeDisable =
+        loadRefreshTokenSession(rotatedSource.refreshToken());
+    RefreshTokenSessionView refreshedBeforeDisable =
+        loadRefreshTokenSession(rotatedTarget.refreshToken());
+    RefreshTokenSessionView parallelBeforeDisable =
+        loadRefreshTokenSession(parallelSession.refreshToken());
+    assertEquals("ROTATED", rotatedBeforeDisable.sessionStatus());
+    assertEquals("ACTIVE", refreshedBeforeDisable.sessionStatus());
+    assertEquals("ACTIVE", parallelBeforeDisable.sessionStatus());
+
+    updateLegacyUserStatus(userId, "DISABLED", "fraud-review", "disable-session-disable-001");
+
+    RefreshTokenSessionView rotatedAfterDisable =
+        loadRefreshTokenSession(rotatedSource.refreshToken());
+    RefreshTokenSessionView refreshedAfterDisable =
+        loadRefreshTokenSession(rotatedTarget.refreshToken());
+    RefreshTokenSessionView parallelAfterDisable =
+        loadRefreshTokenSession(parallelSession.refreshToken());
+    assertEquals("ROTATED", rotatedAfterDisable.sessionStatus());
+    assertNotNull(rotatedAfterDisable.rotatedAt());
+    assertNotNull(rotatedAfterDisable.replacedBySessionId());
+    assertEquals("REVOKED", refreshedAfterDisable.sessionStatus());
+    assertNotNull(refreshedAfterDisable.lastUsedAt());
+    assertNull(refreshedAfterDisable.rotatedAt());
+    assertNull(refreshedAfterDisable.replacedBySessionId());
+    assertEquals("REVOKED", parallelAfterDisable.sessionStatus());
+    assertNotNull(parallelAfterDisable.lastUsedAt());
+    assertNull(parallelAfterDisable.rotatedAt());
+    assertNull(parallelAfterDisable.replacedBySessionId());
+
+    updateLegacyUserStatus(userId, "ACTIVE", "manual-reactivate", "disable-session-reactivate-001");
+
+    refreshExpectUnauthorized(rotatedTarget.refreshToken(), "disable-session-old-refresh-001");
+    refreshExpectUnauthorized(parallelSession.refreshToken(), "disable-session-old-refresh-002");
+  }
+
+  @Test
   void revokedMembershipBlocksExistingJwtAccess() throws Exception {
     String token = login("alice", "password123!");
     updateMembershipStatus(
