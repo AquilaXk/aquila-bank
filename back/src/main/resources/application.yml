@@ -73,6 +73,12 @@ outbox:
     batch-size: ${OUTBOX_POLLER_BATCH_SIZE:20}
     stale-after-seconds: ${OUTBOX_POLLER_STALE_AFTER_SECONDS:30}
     max-retry-delay-seconds: ${OUTBOX_POLLER_MAX_RETRY_DELAY_SECONDS:60}
+  cleanup:
+    enabled: ${OUTBOX_CLEANUP_ENABLED:true}
+    fixed-delay-ms: ${OUTBOX_CLEANUP_FIXED_DELAY_MS:300000}
+    initial-delay-ms: ${OUTBOX_CLEANUP_INITIAL_DELAY_MS:60000}
+    batch-size: ${OUTBOX_CLEANUP_BATCH_SIZE:500}
+    retention-days: ${OUTBOX_CLEANUP_RETENTION_DAYS:30}
   kafka:
     enabled: ${OUTBOX_KAFKA_ENABLED:false}
     bootstrap-servers: ${OUTBOX_KAFKA_BOOTSTRAP_SERVERS:}
