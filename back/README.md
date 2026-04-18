@@ -71,6 +71,36 @@ tools/test/with-resource-lock.sh back-transaction-baseline \
   tools/test/run-transaction-query-baseline.sh
 ```
 
+## Transaction Read Model Partition / Archive Fit
+
+partition/archive 는 `GET /api/v1/transactions` read path를 실제로 줄여줄 때만 고려합니다.
+
+- committed 검증 fixture:
+  - recent window `8만 건`
+  - history window `12개월 x 1.2만 건`
+  - 같은 hot account 에 누적
+- committed 검증 query:
+  - 최근 31일 첫 page
+  - 1년 전 31일 첫 page
+  - 1년 전 31일 `status` 필터 page
+- 현재 결론:
+  - 현재 API는 `accountId + from/to(최대 31일) + keyset cursor`로 강하게 bounded 되어 있습니다.
+  - committed partition-fit 테스트에서 최근 창과 과거 창 모두 `idx_transaction_read_model_account_cursor` 또는 `idx_transaction_read_model_account_status_cursor`를 유지하고 `Seq Scan`/`Sort`가 나오지 않습니다.
+  - 따라서 현재 계약 기준에서는 partition 이 read latency의 첫 레버가 아닙니다.
+  - archive 역시 현재 read latency 최적화 목적만으로는 근거가 부족하고, 보존/백업/autovacuum 비용이 커질 때 재검토하는 편이 맞습니다.
+- 재검토 트리거:
+  - 31일 초과 조회 또는 account scope 없는 조회가 필요해질 때
+  - 최근 31일 hot account 조회가 baseline p95/timeout 기준을 깨기 시작할 때
+  - `transaction_read_model`의 historical row 때문에 autovacuum lag, index bloat, backup 시간이 운영 병목이 될 때
+  - cold history와 hot path의 보존/SLA가 달라 separate archive tier가 필요해질 때
+
+재현 명령:
+
+```bash
+tools/test/with-resource-lock.sh back-transaction-partition-fit \
+  tools/test/run-transaction-read-model-partition-fit.sh
+```
+
 ## Run
 
 ```bash
