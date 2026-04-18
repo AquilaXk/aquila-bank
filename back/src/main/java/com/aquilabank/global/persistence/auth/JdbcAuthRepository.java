@@ -123,6 +123,33 @@ public class JdbcAuthRepository
   }
 
   @Override
+  public Optional<RefreshTokenSession> findBySessionIdForUpdate(long sessionId) {
+    return jdbcTemplate
+        .query(
+            """
+            SELECT s.id,
+                   s.user_id,
+                   u.login_id,
+                   u.user_status,
+                   s.token_hash,
+                   s.session_status,
+                   s.expires_at,
+                   s.last_used_at,
+                   s.rotated_at,
+                   s.replaced_by_session_id
+            FROM auth_refresh_token_session s
+            JOIN bank_user u
+              ON u.id = s.user_id
+            WHERE s.id = :sessionId
+            FOR UPDATE OF s, u
+            """,
+            new MapSqlParameterSource().addValue("sessionId", sessionId),
+            (rs, rowNum) -> mapRefreshTokenSession(rs))
+        .stream()
+        .findFirst();
+  }
+
+  @Override
   public List<AuthSessionSummary> findActiveSessionsByUserId(long userId, Instant now, int size) {
     // user_id + session_status + expires_at DESC index 경로를 그대로 쓰려고 조건과 정렬을 고정합니다.
     return jdbcTemplate.query(

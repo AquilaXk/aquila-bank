@@ -25,6 +25,10 @@ import com.aquilabank.domain.auth.usecase.AccountAccessService;
 import com.aquilabank.domain.auth.usecase.AccountAccessUseCase;
 import com.aquilabank.domain.auth.usecase.AuthSessionListService;
 import com.aquilabank.domain.auth.usecase.AuthSessionListUseCase;
+import com.aquilabank.domain.auth.usecase.AuthSessionRevokeAllService;
+import com.aquilabank.domain.auth.usecase.AuthSessionRevokeAllUseCase;
+import com.aquilabank.domain.auth.usecase.AuthSessionRevokeService;
+import com.aquilabank.domain.auth.usecase.AuthSessionRevokeUseCase;
 import com.aquilabank.domain.auth.usecase.AuthStatusChangeAuditQueryService;
 import com.aquilabank.domain.auth.usecase.AuthStatusChangeAuditQueryUseCase;
 import com.aquilabank.domain.auth.usecase.AuthUserQueryService;
@@ -178,6 +182,34 @@ public class AuthConfiguration {
   AuthSessionListUseCase authSessionListUseCase(
       AuthSessionQueryPort authSessionQueryPort, Clock authClock) {
     return new AuthSessionListService(authSessionQueryPort, authClock);
+  }
+
+  @Bean
+  AuthSessionRevokeUseCase authSessionRevokeUseCase(
+      RefreshTokenSessionLoadPort refreshTokenSessionLoadPort,
+      RefreshTokenSessionWritePort refreshTokenSessionWritePort,
+      Clock authClock,
+      PlatformTransactionManager platformTransactionManager) {
+    AuthSessionRevokeService authSessionRevokeService =
+        new AuthSessionRevokeService(
+            refreshTokenSessionLoadPort, refreshTokenSessionWritePort, authClock);
+    TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
+    return command ->
+        transactionTemplate.executeWithoutResult(
+            status -> authSessionRevokeService.revoke(command));
+  }
+
+  @Bean
+  AuthSessionRevokeAllUseCase authSessionRevokeAllUseCase(
+      RefreshTokenSessionWritePort refreshTokenSessionWritePort,
+      Clock authClock,
+      PlatformTransactionManager platformTransactionManager) {
+    AuthSessionRevokeAllService authSessionRevokeAllService =
+        new AuthSessionRevokeAllService(refreshTokenSessionWritePort, authClock);
+    TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
+    return command ->
+        transactionTemplate.executeWithoutResult(
+            status -> authSessionRevokeAllService.revokeAll(command));
   }
 
   @Bean

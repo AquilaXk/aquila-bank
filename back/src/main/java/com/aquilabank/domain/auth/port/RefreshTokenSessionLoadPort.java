@@ -7,4 +7,6 @@ import java.util.Optional;
 public interface RefreshTokenSessionLoadPort {
 
   Optional<RefreshTokenSession> findByTokenHashForUpdate(String tokenHash);
+
+  Optional<RefreshTokenSession> findBySessionIdForUpdate(long sessionId);
 }

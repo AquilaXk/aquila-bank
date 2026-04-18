@@ -363,6 +363,8 @@ login 실패/잠금은 structured log 한 줄로 남습니다.
 - 공개 endpoint:
   - `POST /api/v1/auth/login`
   - `GET /api/v1/auth/sessions`
+  - `DELETE /api/v1/auth/sessions/{sessionId}`
+  - `DELETE /api/v1/auth/sessions`
   - `POST /api/v1/auth/refresh`
   - `POST /api/v1/auth/logout`
 - 응답 필드:
@@ -390,13 +392,17 @@ login 실패/잠금은 structured log 한 줄로 남습니다.
   - query parameter `size`는 기본 `20`, 최대 `50`
   - 응답은 현재 user의 `ACTIVE` 이면서 아직 만료되지 않은 session만 `expires_at DESC, id DESC` 순서로 반환
   - item 필드는 `sessionId`, `sessionStatus`, `expiresAt`, `lastUsedAt`, `createdAt`
+- 세션 종료 기준:
+  - `DELETE /api/v1/auth/sessions/{sessionId}`는 현재 user 소유의 `ACTIVE` session 하나만 `REVOKED`로 바꾼다.
+  - `DELETE /api/v1/auth/sessions`는 현재 user의 `ACTIVE` session 전체를 `REVOKED`로 바꾼다.
+  - 두 endpoint 모두 다른 사용자 session, 이미 `ROTATED|REVOKED` 상태, 존재하지 않는 session에 대해 `204` no-op을 유지한다.
 - 거절 기준:
   - 만료, 이미 rotation 된 token, 존재하지 않는 token은 모두 `401 refresh failed`
   - `user_status=LOCKED|DISABLED` 사용자는 refresh로 새 token pair를 발급받지 못함
 - 운영 주의:
   - logout은 access token 즉시 폐기가 아니라 refresh 재발급 차단까지만 처리
   - 다른 사용자 token, 이미 `ROTATED|REVOKED` 상태인 token, 존재하지 않는 token으로 logout 요청 시 `204` no-op 유지
-  - 이번 범위는 logout-all, 세션별 강제 종료를 제공하지 않음
+  - 선택 revoke와 전체 revoke도 access token 즉시 폐기가 아니라 refresh 재발급 차단까지만 처리
   - raw refresh token, plaintext secret은 로그/DB에 남기지 않음
 
 ## Internal Auth Admin Runbook

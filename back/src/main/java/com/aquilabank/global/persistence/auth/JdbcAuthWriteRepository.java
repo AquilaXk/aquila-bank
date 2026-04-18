@@ -226,6 +226,12 @@ public class JdbcAuthWriteRepository
 
   @Override
   @Transactional
+  public void revokeActiveSessionsByUserId(long userId, Instant revokedAt) {
+    revokeActiveRefreshTokenSessions(userId, revokedAt);
+  }
+
+  @Override
+  @Transactional
   public int deleteExpiredSessions(Instant cutoff, int batchSize) {
     // ACTIVE 만료와 비활성 세션 retention 기준이 달라 상태별 index cursor를 따로 태웁니다.
     Integer deleted =
