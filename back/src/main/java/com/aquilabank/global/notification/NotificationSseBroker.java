@@ -16,6 +16,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.LongFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,6 +30,8 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 public class NotificationSseBroker {
 
   private static final Logger log = LoggerFactory.getLogger(NotificationSseBroker.class);
+  private static final String OVERLOAD_MESSAGE =
+      "notification SSE stream is temporarily overloaded";
 
   private final NotificationSseProperties notificationSseProperties;
   private final NotificationSseTargetResolver notificationSseTargetResolver;
@@ -36,6 +40,9 @@ public class NotificationSseBroker {
       new ConcurrentHashMap<>();
   private final Map<Long, Map<String, NotificationSseSession>> userSessions =
       new ConcurrentHashMap<>();
+  private final AtomicInteger activeSessionCount = new AtomicInteger();
+  private final AtomicLong rejectedSubscriptionCount = new AtomicLong();
+  private final AtomicLong backpressureDropCount = new AtomicLong();
 
   public NotificationSseBroker(
       NotificationSseProperties notificationSseProperties,
@@ -83,7 +90,7 @@ public class NotificationSseBroker {
   }
 
   public boolean hasActiveSessions() {
-    return !accountSessions.isEmpty() || !userSessions.isEmpty();
+    return activeSessionCount.get() > 0;
   }
 
   public int accountSessionCount() {
@@ -95,7 +102,15 @@ public class NotificationSseBroker {
   }
 
   public int totalSessionCount() {
-    return accountSessionCount() + userSessionCount();
+    return activeSessionCount.get();
+  }
+
+  long rejectedSubscriptionCount() {
+    return rejectedSubscriptionCount.get();
+  }
+
+  long backpressureDropCount() {
+    return backpressureDropCount.get();
   }
 
   public void publishInsertedItems(List<NotificationSummary> items) {
@@ -124,24 +139,46 @@ public class NotificationSseBroker {
       String principalType,
       Long lastEventId,
       LongFunction<List<NotificationSummary>> replayLoader) {
+    if (!reserveSessionSlot()) {
+      long rejectedCount = rejectedSubscriptionCount.incrementAndGet();
+      log.warn(
+          "notification SSE subscribe rejected principalType={} principalId={} activeSessions={} limit={} rejectedCount={}",
+          principalType,
+          principalId,
+          activeSessionCount.get(),
+          notificationSseProperties.maxTotalSessions(),
+          rejectedCount);
+      throw new NotificationSseOverloadException(OVERLOAD_MESSAGE);
+    }
     String sessionId = UUID.randomUUID().toString();
-    SseEmitter emitter = new SseEmitter(notificationSseProperties.connectionTimeoutMs());
-    NotificationSseSession session =
-        new NotificationSseSession(sessionId, subject, emitter, lastEventId);
-    sessionsByPrincipalId
-        .computeIfAbsent(principalId, ignored -> new ConcurrentHashMap<>())
-        .put(sessionId, session);
-    emitter.onCompletion(() -> removeSession(sessionsByPrincipalId, principalId, sessionId));
-    emitter.onTimeout(() -> removeSession(sessionsByPrincipalId, principalId, sessionId));
-    emitter.onError(error -> removeSession(sessionsByPrincipalId, principalId, sessionId));
-    scheduleConnectedEvent(
-        sessionsByPrincipalId, principalId, principalType, session, lastEventId, replayLoader);
-    log.debug(
-        "notification SSE subscribed principalType={} principalId={} sessionId={}",
-        principalType,
-        principalId,
-        sessionId);
-    return emitter;
+    boolean registered = false;
+    try {
+      SseEmitter emitter = new SseEmitter(notificationSseProperties.connectionTimeoutMs());
+      NotificationSseSession session =
+          new NotificationSseSession(sessionId, subject, emitter, lastEventId);
+      sessionsByPrincipalId
+          .computeIfAbsent(principalId, ignored -> new ConcurrentHashMap<>())
+          .put(sessionId, session);
+      registered = true;
+      emitter.onCompletion(() -> removeSession(sessionsByPrincipalId, principalId, sessionId));
+      emitter.onTimeout(() -> removeSession(sessionsByPrincipalId, principalId, sessionId));
+      emitter.onError(error -> removeSession(sessionsByPrincipalId, principalId, sessionId));
+      scheduleConnectedEvent(
+          sessionsByPrincipalId, principalId, principalType, session, lastEventId, replayLoader);
+      log.debug(
+          "notification SSE subscribed principalType={} principalId={} sessionId={}",
+          principalType,
+          principalId,
+          sessionId);
+      return emitter;
+    } catch (RuntimeException ex) {
+      if (registered) {
+        removeSession(sessionsByPrincipalId, principalId, sessionId);
+      } else {
+        releaseSessionSlot();
+      }
+      throw ex;
+    }
   }
 
   private void sendConnectedEvent(NotificationSseSession session) throws IOException {
@@ -176,7 +213,7 @@ public class NotificationSseBroker {
                 session.sessionId(),
                 session.subject(),
                 ex);
-            removeSession(sessionsByPrincipalId, principalId, session.sessionId());
+            closeSession(sessionsByPrincipalId, principalId, session);
           }
         });
   }
@@ -206,7 +243,7 @@ public class NotificationSseBroker {
               principalId,
               session.sessionId(),
               ex);
-          removeSession(sessionsByPrincipalId, principalId, session.sessionId());
+          closeSession(sessionsByPrincipalId, principalId, session);
         }
       }
     }
@@ -221,6 +258,13 @@ public class NotificationSseBroker {
       for (NotificationSseSession session : sessions.values()) {
         try {
           queueOrSendNotification(session, item);
+        } catch (NotificationSseSessionBackpressureException ex) {
+          dropSessionDueToBackpressure(
+              accountSessions,
+              accountId,
+              "account",
+              session,
+              notificationSseProperties.maxPendingEventsPerSession());
         } catch (IOException ex) {
           log.debug(
               "notification SSE push failed principalType=account accountId={} sessionId={} subject={}",
@@ -228,7 +272,7 @@ public class NotificationSseBroker {
               session.sessionId(),
               session.subject(),
               ex);
-          removeSession(accountSessions, accountId, session.sessionId());
+          closeSession(accountSessions, accountId, session);
         }
       }
     }
@@ -251,6 +295,13 @@ public class NotificationSseBroker {
         for (NotificationSseSession session : sessions.values()) {
           try {
             queueOrSendNotification(session, item);
+          } catch (NotificationSseSessionBackpressureException ex) {
+            dropSessionDueToBackpressure(
+                userSessions,
+                userId,
+                "user",
+                session,
+                notificationSseProperties.maxPendingEventsPerSession());
           } catch (IOException ex) {
             log.debug(
                 "notification SSE push failed principalType=user userId={} sessionId={} subject={}",
@@ -258,7 +309,7 @@ public class NotificationSseBroker {
                 session.sessionId(),
                 session.subject(),
                 ex);
-            removeSession(userSessions, userId, session.sessionId());
+            closeSession(userSessions, userId, session);
           }
         }
       }
@@ -275,6 +326,9 @@ public class NotificationSseBroker {
     }
     List<NotificationSummary> replayItems = replayLoader.apply(lastEventId);
     synchronized (session.monitor()) {
+      if (session.isClosed()) {
+        return;
+      }
       // replay 중 새 live event는 pendingItems 에 모았다가 같은 세션 lock 안에서 이어 보냅니다.
       for (NotificationSummary item : replayItems) {
         sendNotification(session, item);
@@ -287,10 +341,17 @@ public class NotificationSseBroker {
   private void queueOrSendNotification(NotificationSseSession session, NotificationSummary item)
       throws IOException {
     synchronized (session.monitor()) {
+      if (session.isClosed()) {
+        return;
+      }
       if (item.id() <= session.lastDeliveredEventId()) {
         return;
       }
       if (session.isReplaying()) {
+        // replay gap 동안 live event를 무제한 적재하면 heap이 커지므로 session 단위로 끊습니다.
+        if (session.pendingItemCount() >= notificationSseProperties.maxPendingEventsPerSession()) {
+          throw new NotificationSseSessionBackpressureException();
+        }
         session.addPendingItem(item);
         return;
       }
@@ -308,6 +369,9 @@ public class NotificationSseBroker {
 
   private void sendNotification(NotificationSseSession session, NotificationSummary item)
       throws IOException {
+    if (session.isClosed()) {
+      return;
+    }
     if (item.id() <= session.lastDeliveredEventId()) {
       return;
     }
@@ -339,18 +403,72 @@ public class NotificationSseBroker {
     return count;
   }
 
-  private void removeSession(
+  private boolean reserveSessionSlot() {
+    int limit = notificationSseProperties.maxTotalSessions();
+    while (true) {
+      int current = activeSessionCount.get();
+      if (current >= limit) {
+        return false;
+      }
+      if (activeSessionCount.compareAndSet(current, current + 1)) {
+        return true;
+      }
+    }
+  }
+
+  private void releaseSessionSlot() {
+    activeSessionCount.updateAndGet(current -> current > 0 ? current - 1 : 0);
+  }
+
+  private void dropSessionDueToBackpressure(
+      Map<Long, Map<String, NotificationSseSession>> sessionsByPrincipalId,
+      long principalId,
+      String principalType,
+      NotificationSseSession session,
+      int pendingLimit) {
+    if (!closeSession(sessionsByPrincipalId, principalId, session)) {
+      return;
+    }
+    long droppedCount = backpressureDropCount.incrementAndGet();
+    log.warn(
+        "notification SSE session dropped due to pending overflow principalType={} principalId={} sessionId={} subject={} pendingLimit={} droppedCount={}",
+        principalType,
+        principalId,
+        session.sessionId(),
+        session.subject(),
+        pendingLimit,
+        droppedCount);
+  }
+
+  private boolean closeSession(
+      Map<Long, Map<String, NotificationSseSession>> sessionsByPrincipalId,
+      long principalId,
+      NotificationSseSession session) {
+    boolean removed = removeSession(sessionsByPrincipalId, principalId, session.sessionId());
+    if (removed) {
+      session.complete();
+    }
+    return removed;
+  }
+
+  private boolean removeSession(
       Map<Long, Map<String, NotificationSseSession>> sessionsByPrincipalId,
       long principalId,
       String sessionId) {
     Map<String, NotificationSseSession> sessions = sessionsByPrincipalId.get(principalId);
     if (sessions == null) {
-      return;
+      return false;
     }
-    sessions.remove(sessionId);
+    NotificationSseSession removedSession = sessions.remove(sessionId);
+    if (removedSession == null) {
+      return false;
+    }
+    removedSession.markClosed();
+    releaseSessionSlot();
     if (sessions.isEmpty()) {
       sessionsByPrincipalId.remove(principalId, sessions);
     }
+    return true;
   }
 
   private static final class NotificationSseSession {
@@ -362,6 +480,7 @@ public class NotificationSseBroker {
     private final List<NotificationSummary> pendingItems = new ArrayList<>();
     private long lastDeliveredEventId;
     private boolean replaying;
+    private volatile boolean closed;
 
     private NotificationSseSession(
         String sessionId, String subject, SseEmitter emitter, Long lastEventId) {
@@ -370,6 +489,7 @@ public class NotificationSseBroker {
       this.emitter = emitter;
       this.lastDeliveredEventId = lastEventId == null ? 0L : lastEventId;
       this.replaying = lastEventId != null;
+      this.closed = false;
     }
 
     private String sessionId() {
@@ -400,8 +520,16 @@ public class NotificationSseBroker {
       return replaying;
     }
 
+    private boolean isClosed() {
+      return closed;
+    }
+
     private void addPendingItem(NotificationSummary item) {
       pendingItems.add(item);
+    }
+
+    private int pendingItemCount() {
+      return pendingItems.size();
     }
 
     private void markDelivered(long notificationId) {
@@ -411,5 +539,15 @@ public class NotificationSseBroker {
     private void finishReplay() {
       replaying = false;
     }
+
+    private void markClosed() {
+      closed = true;
+    }
+
+    private void complete() {
+      emitter.complete();
+    }
   }
+
+  private static final class NotificationSseSessionBackpressureException extends RuntimeException {}
 }

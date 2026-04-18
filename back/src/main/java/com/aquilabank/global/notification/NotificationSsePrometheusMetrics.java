@@ -38,5 +38,19 @@ public final class NotificationSsePrometheusMetrics implements MeterBinder {
         .tag("principal_type", "total")
         .description("active notification SSE session count")
         .register(registry);
+    Gauge.builder(
+            "aquila.notification.sse.subscription.rejected.count",
+            notificationSseBroker,
+            broker -> broker.rejectedSubscriptionCount())
+        .tag("reason", "session_limit")
+        .description("rejected notification SSE subscription count")
+        .register(registry);
+    Gauge.builder(
+            "aquila.notification.sse.session.dropped.count",
+            notificationSseBroker,
+            broker -> broker.backpressureDropCount())
+        .tag("reason", "pending_overflow")
+        .description("dropped notification SSE session count")
+        .register(registry);
   }
 }

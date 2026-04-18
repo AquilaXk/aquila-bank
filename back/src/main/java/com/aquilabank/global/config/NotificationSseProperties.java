@@ -10,6 +10,8 @@ public record NotificationSseProperties(
     long heartbeatIntervalMs,
     long reconnectDelayMs,
     int replayLimit,
+    int maxTotalSessions,
+    int maxPendingEventsPerSession,
     String fanoutChannel,
     long fanoutListenTimeoutMs,
     long fanoutRetryDelayMs) {
@@ -27,6 +29,13 @@ public record NotificationSseProperties(
     }
     if (replayLimit < 1 || replayLimit > NotificationReplayQuery.MAX_LIMIT) {
       throw new IllegalArgumentException("notification.sse.replay-limit must be between 1 and 100");
+    }
+    if (maxTotalSessions <= 0) {
+      throw new IllegalArgumentException("notification.sse.max-total-sessions must be positive");
+    }
+    if (maxPendingEventsPerSession <= 0) {
+      throw new IllegalArgumentException(
+          "notification.sse.max-pending-events-per-session must be positive");
     }
     if (fanoutChannel == null || fanoutChannel.isBlank()) {
       throw new IllegalArgumentException("notification.sse.fanout-channel must not be blank");

@@ -1,6 +1,7 @@
 package com.aquilabank.global.notification;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
@@ -37,6 +38,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
     properties = {
       "spring.flyway.enabled=true",
       "management.health.db.enabled=true",
+      "notification.sse.max-total-sessions=1",
       "notification.inbox.consumer.enabled=true",
       "notification.inbox.consumer.auto-startup=false",
       "notification.inbox.consumer.group-id=aquila-bank-prometheus-metrics",
@@ -86,6 +88,10 @@ class PrometheusMetricsIntegrationTest extends PostgresKafkaContainerTestSupport
 
     SseEmitter emitter = notificationSseBroker.subscribeAccount(1L, "metrics");
     try {
+      assertThatThrownBy(() -> notificationSseBroker.subscribeAccount(2L, "metrics-overload"))
+          .isInstanceOf(NotificationSseOverloadException.class)
+          .hasMessage("notification SSE stream is temporarily overloaded");
+
       jdbcTransactionReadRepository.fetch(
           new TransactionQuery(
               1L,
@@ -140,6 +146,12 @@ class PrometheusMetricsIntegrationTest extends PostgresKafkaContainerTestSupport
       assertThat(body)
           .containsPattern(
               "aquila_notification_sse_sessions\\{[^\\n]*principal_type=\"total\"[^\\n]*\\}\\s+1\\.0");
+      assertThat(body)
+          .containsPattern(
+              "aquila_notification_sse_subscription_rejected_count\\{[^\\n]*reason=\"session_limit\"[^\\n]*\\}\\s+1\\.0");
+      assertThat(body)
+          .containsPattern(
+              "aquila_notification_sse_session_dropped_count\\{[^\\n]*reason=\"pending_overflow\"[^\\n]*\\}\\s+0\\.0");
       assertThat(body)
           .containsPattern(
               "aquila_transaction_query_latency_seconds_count\\{[^\\n]*outcome=\"success\"[^\\n]*query_shape=\"first_page\"[^\\n]*\\}\\s+1");

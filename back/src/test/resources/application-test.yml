@@ -33,6 +33,8 @@ outbox:
 
 notification:
   sse:
+    max-total-sessions: 64
+    max-pending-events-per-session: 32
     fanout-channel: notification_sse_fanout
     fanout-listen-timeout-ms: 200
     fanout-retry-delay-ms: 200
