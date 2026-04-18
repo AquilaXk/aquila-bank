@@ -1,6 +1,7 @@
 package com.aquilabank.global.persistence.notification;
 
 import com.aquilabank.domain.notification.model.OutboxEvent;
+import com.aquilabank.domain.notification.port.OutboxCleanupPort;
 import com.aquilabank.domain.notification.port.OutboxEventStore;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -17,7 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** PostgreSQL에서 outbox claim과 retry 상태를 관리하는 JDBC adapter */
 @Repository
-public class JdbcOutboxEventRepository implements OutboxEventStore {
+public class JdbcOutboxEventRepository implements OutboxEventStore, OutboxCleanupPort {
 
   private static final RowMapper<OutboxEvent> ROW_MAPPER = (rs, rowNum) -> mapRow(rs);
 
@@ -114,6 +115,38 @@ public class JdbcOutboxEventRepository implements OutboxEventStore {
         WHERE id = :id
         """,
         params);
+  }
+
+  @Override
+  @Transactional
+  public int deletePublishedEvents(Instant cutoff, int batchSize) {
+    // dispatch 중/실패 row를 건드리지 않게 PUBLISHED + published_at index 경로만 정리합니다.
+    Integer deleted =
+        jdbcTemplate.queryForObject(
+            """
+            WITH published AS (
+                SELECT id
+                FROM outbox_event
+                WHERE publish_status = 'PUBLISHED'
+                  AND published_at < :cutoff
+                ORDER BY published_at ASC, id ASC
+                FOR UPDATE SKIP LOCKED
+                LIMIT :batchSize
+            ),
+            deleted AS (
+                DELETE FROM outbox_event o
+                USING published p
+                WHERE o.id = p.id
+                RETURNING o.id
+            )
+            SELECT COUNT(*)
+            FROM deleted
+            """,
+            new MapSqlParameterSource()
+                .addValue("cutoff", Timestamp.from(cutoff))
+                .addValue("batchSize", batchSize),
+            Integer.class);
+    return deleted == null ? 0 : deleted;
   }
 
   private static OutboxEvent mapRow(ResultSet rs) throws SQLException {
