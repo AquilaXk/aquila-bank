@@ -37,6 +37,7 @@ import org.springframework.security.web.authentication.HttpStatusEntryPoint;
   SecurityJwtProperties.class,
   SecurityTotpProperties.class,
   LoginProtectionProperties.class,
+  LoginThrottlingProperties.class,
   BootstrapHeaderAuthProperties.class,
   AccountBootstrapApiProperties.class,
   AuthBootstrapApiProperties.class

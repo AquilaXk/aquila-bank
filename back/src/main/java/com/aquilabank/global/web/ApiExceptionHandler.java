@@ -20,6 +20,7 @@ import com.aquilabank.global.notification.NotificationSseOverloadException;
 import com.aquilabank.global.security.BootstrapApiAccessDeniedException;
 import com.aquilabank.global.security.InternalServiceRequestAuthorizer;
 import com.aquilabank.global.security.InternalServiceTokenClaims;
+import com.aquilabank.global.security.LoginThrottledException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import java.nio.charset.StandardCharsets;
@@ -79,6 +80,21 @@ public class ApiExceptionHandler {
   ResponseEntity<ApiErrorResponse> handleUnauthorized(
       InvalidCredentialsException ex, HttpServletRequest request) {
     return response(HttpStatus.UNAUTHORIZED, ex.getMessage(), request);
+  }
+
+  @ExceptionHandler(LoginThrottledException.class)
+  ResponseEntity<ApiErrorResponse> handleTooManyRequests(
+      LoginThrottledException ex, HttpServletRequest request) {
+    logInternalAuthStatusFailure(HttpStatus.TOO_MANY_REQUESTS, request, ex.getMessage());
+    return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+        .header("Retry-After", Long.toString(ex.retryAfterSeconds()))
+        .body(
+            new ApiErrorResponse(
+                Instant.now(),
+                HttpStatus.TOO_MANY_REQUESTS.value(),
+                HttpStatus.TOO_MANY_REQUESTS.getReasonPhrase(),
+                ex.getMessage(),
+                request.getRequestURI()));
   }
 
   @ExceptionHandler(AccountAccessDeniedException.class)
