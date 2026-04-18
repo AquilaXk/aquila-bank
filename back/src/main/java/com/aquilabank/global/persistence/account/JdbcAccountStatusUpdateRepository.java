@@ -1,6 +1,8 @@
 package com.aquilabank.global.persistence.account;
 
 import com.aquilabank.domain.account.exception.AccountSummaryNotFoundException;
+import com.aquilabank.domain.account.model.AccountStatus;
+import com.aquilabank.domain.account.model.AccountStatusChangeAuditEntry;
 import com.aquilabank.domain.account.model.AccountStatusUpdateCommand;
 import com.aquilabank.domain.account.model.AccountSummary;
 import com.aquilabank.domain.account.port.AccountStatusUpdatePort;
@@ -27,9 +29,11 @@ public class JdbcAccountStatusUpdateRepository implements AccountStatusUpdatePor
   @Transactional
   public AccountSummary updateStatus(AccountStatusUpdateCommand command) {
     Instant updatedAt = Instant.now();
-    return jdbcTemplate
-        .query(
-            """
+    AccountStatus beforeStatus = loadCurrentAccountStatusForUpdate(command.accountId());
+    AccountSummary summary =
+        jdbcTemplate
+            .query(
+                """
             WITH updated_account AS (
                 UPDATE bank_account
                 SET account_status = :accountStatus,
@@ -56,14 +60,69 @@ public class JdbcAccountStatusUpdateRepository implements AccountStatusUpdatePor
             JOIN account_balance_snapshot snapshot
               ON snapshot.account_id = updated_account.id
             """,
-            new MapSqlParameterSource()
-                .addValue("accountId", command.accountId())
-                .addValue("accountStatus", command.status().name())
-                .addValue("updatedAt", Timestamp.from(updatedAt)),
-            (rs, rowNum) -> mapAccountSummary(rs))
+                new MapSqlParameterSource()
+                    .addValue("accountId", command.accountId())
+                    .addValue("accountStatus", command.status().name())
+                    .addValue("updatedAt", Timestamp.from(updatedAt)),
+                (rs, rowNum) -> mapAccountSummary(rs))
+            .stream()
+            .findFirst()
+            .orElseThrow(() -> new AccountSummaryNotFoundException("account summary is not found"));
+    insertStatusChangeAudit(
+        new AccountStatusChangeAuditEntry(
+            command.requestId(),
+            command.actorSubject(),
+            command.accountId(),
+            beforeStatus.name(),
+            summary.accountStatus(),
+            updatedAt));
+    return summary;
+  }
+
+  private AccountStatus loadCurrentAccountStatusForUpdate(long accountId) {
+    return jdbcTemplate
+        .query(
+            """
+            SELECT account_status
+            FROM bank_account
+            WHERE id = :accountId
+            FOR UPDATE
+            """,
+            new MapSqlParameterSource().addValue("accountId", accountId),
+            (rs, rowNum) -> AccountStatus.valueOf(rs.getString("account_status")))
         .stream()
         .findFirst()
         .orElseThrow(() -> new AccountSummaryNotFoundException("account summary is not found"));
+  }
+
+  private void insertStatusChangeAudit(AccountStatusChangeAuditEntry entry) {
+    // 상태 변경과 audit row를 같은 transaction에 묶어 운영 추적 누락을 막습니다.
+    jdbcTemplate.update(
+        """
+        INSERT INTO account_status_change_audit (
+            request_id,
+            actor_subject,
+            target_account_id,
+            before_status,
+            after_status,
+            created_at
+        )
+        VALUES (
+            :requestId,
+            :actorSubject,
+            :targetAccountId,
+            :beforeStatus,
+            :afterStatus,
+            :createdAt
+        )
+        """,
+        new MapSqlParameterSource()
+            .addValue("requestId", entry.requestId())
+            .addValue("actorSubject", entry.actorSubject())
+            .addValue("targetAccountId", entry.targetAccountId())
+            .addValue("beforeStatus", entry.beforeStatus())
+            .addValue("afterStatus", entry.afterStatus())
+            .addValue("createdAt", Timestamp.from(entry.createdAt())));
   }
 
   private AccountSummary mapAccountSummary(ResultSet rs) throws SQLException {

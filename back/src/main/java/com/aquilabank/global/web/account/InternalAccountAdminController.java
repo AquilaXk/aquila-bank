@@ -6,6 +6,8 @@ import com.aquilabank.domain.account.model.AccountSummary;
 import com.aquilabank.domain.account.usecase.AccountStatusUpdateUseCase;
 import com.aquilabank.global.security.InternalServiceRequestAuthorizer;
 import com.aquilabank.global.security.InternalServiceScope;
+import com.aquilabank.global.security.InternalServiceTokenClaims;
+import com.aquilabank.global.web.RequestTraceContext;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -40,16 +42,34 @@ public class InternalAccountAdminController {
       HttpServletRequest httpServletRequest,
       @PathVariable @Positive(message = "accountId must be positive") long accountId,
       @Valid @RequestBody AccountStatusRequest request) {
-    internalServiceRequestAuthorizer.requireScope(
-        httpServletRequest, InternalServiceScope.ACCOUNT_ADMIN);
+    InternalServiceTokenClaims claims =
+        internalServiceRequestAuthorizer.requireScope(
+            httpServletRequest, InternalServiceScope.ACCOUNT_ADMIN);
     return AccountResponse.from(
         accountStatusUpdateUseCase.update(
-            new AccountStatusUpdateCommand(accountId, request.accountStatus())));
+            new AccountStatusUpdateCommand(
+                accountId,
+                request.accountStatus(),
+                claims.subject(),
+                resolveRequestId(httpServletRequest))));
   }
 
   /** 내부 계좌 상태 변경 요청 body */
   public record AccountStatusRequest(
       @NotNull(message = "accountStatus is required") AccountStatus accountStatus) {}
+
+  private String resolveRequestId(HttpServletRequest httpServletRequest) {
+    return RequestTraceContext.currentRequestId()
+        .orElseGet(
+            () -> {
+              String requestId =
+                  httpServletRequest.getHeader(RequestTraceContext.REQUEST_ID_HEADER);
+              if (requestId == null || requestId.isBlank()) {
+                throw new IllegalStateException("requestId is not initialized");
+              }
+              return requestId;
+            });
+  }
 
   /** 내부 계좌 상태 변경 응답 */
   public record AccountResponse(
