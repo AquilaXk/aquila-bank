@@ -21,6 +21,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 class InternalAccountAdminControllerTest {
+  private static final String SUBJECT = "account-admin-test";
+  private static final String REQUEST_ID_HEADER = "X-Request-Id";
 
   private AccountStatusUpdateUseCase accountStatusUpdateUseCase;
   private MockMvc mockMvc;
@@ -41,7 +43,10 @@ class InternalAccountAdminControllerTest {
     when(accountStatusUpdateUseCase.update(
             argThat(
                 command ->
-                    command.accountId() == 101L && command.status().name().equals("LOCKED"))))
+                    command.accountId() == 101L
+                        && command.status().name().equals("LOCKED")
+                        && command.actorSubject().equals(SUBJECT)
+                        && command.requestId().equals("account-lock-request"))))
         .thenReturn(
             new AccountSummary(
                 101L,
@@ -60,7 +65,8 @@ class InternalAccountAdminControllerTest {
                 .header(
                     "Authorization",
                     InternalServiceTokenTestSupport.authorization(
-                        "account-admin-test", InternalServiceScope.ACCOUNT_ADMIN))
+                        SUBJECT, InternalServiceScope.ACCOUNT_ADMIN))
+                .header(REQUEST_ID_HEADER, "account-lock-request")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     """
@@ -77,7 +83,10 @@ class InternalAccountAdminControllerTest {
         .update(
             argThat(
                 command ->
-                    command.accountId() == 101L && command.status().name().equals("LOCKED")));
+                    command.accountId() == 101L
+                        && command.status().name().equals("LOCKED")
+                        && command.actorSubject().equals(SUBJECT)
+                        && command.requestId().equals("account-lock-request")));
   }
 
   @Test
@@ -101,7 +110,7 @@ class InternalAccountAdminControllerTest {
                 .header(
                     "Authorization",
                     InternalServiceTokenTestSupport.authorization(
-                        "account-bootstrap-test", InternalServiceScope.ACCOUNT_BOOTSTRAP))
+                        SUBJECT, InternalServiceScope.ACCOUNT_BOOTSTRAP))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     """
@@ -121,7 +130,8 @@ class InternalAccountAdminControllerTest {
                 .header(
                     "Authorization",
                     InternalServiceTokenTestSupport.authorization(
-                        "account-admin-test", InternalServiceScope.ACCOUNT_ADMIN))
+                        SUBJECT, InternalServiceScope.ACCOUNT_ADMIN))
+                .header(REQUEST_ID_HEADER, "account-invalid-body-request")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     """

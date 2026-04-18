@@ -72,6 +72,8 @@ public class SecurityConfiguration {
                     // 내부 운영 API는 public JWT resolver에서 제외하고 전용 service JWT로만 검증합니다.
                     .requestMatchers("/internal/api/v1/accounts/bootstrap")
                     .permitAll()
+                    .requestMatchers("/internal/api/v1/accounts/status-change-audits/**")
+                    .permitAll()
                     .requestMatchers("/internal/api/v1/accounts/*/status")
                     .permitAll()
                     .requestMatchers("/internal/api/v1/outbox/**")

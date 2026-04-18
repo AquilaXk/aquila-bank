@@ -36,6 +36,7 @@ public class WebMvcSecurityConfiguration implements WebMvcConfigurer {
         .addInterceptor(internalServiceTokenAuthenticationInterceptor)
         .addPathPatterns(
             "/internal/api/v1/accounts/bootstrap",
+            "/internal/api/v1/accounts/status-change-audits/**",
             "/internal/api/v1/accounts/*/status",
             "/internal/api/v1/auth/**",
             "/internal/api/v1/outbox/**");

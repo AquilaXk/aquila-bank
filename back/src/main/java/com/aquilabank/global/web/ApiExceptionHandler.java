@@ -1,5 +1,6 @@
 package com.aquilabank.global.web;
 
+import com.aquilabank.domain.account.exception.AccountStatusChangeAuditNotFoundException;
 import com.aquilabank.domain.account.exception.AccountSummaryNotFoundException;
 import com.aquilabank.domain.auth.exception.AccountAccessDeniedException;
 import com.aquilabank.domain.auth.exception.AuthStatusChangeAuditNotFoundException;
@@ -94,6 +95,7 @@ public class ApiExceptionHandler {
 
   @ExceptionHandler({
     AccountSummaryNotFoundException.class,
+    AccountStatusChangeAuditNotFoundException.class,
     SnapshotNotFoundException.class,
     TransferReversalNotFoundException.class,
     AuthStatusChangeAuditNotFoundException.class,
