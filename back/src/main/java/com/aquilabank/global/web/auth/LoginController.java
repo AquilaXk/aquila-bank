@@ -19,6 +19,7 @@ import com.aquilabank.global.security.AuthenticatedAccountPrincipal;
 import com.aquilabank.global.security.AuthenticatedRequestPrincipal;
 import com.aquilabank.global.security.AuthenticatedUserPrincipal;
 import com.aquilabank.global.web.security.CurrentAuthenticatedPrincipal;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -51,6 +52,7 @@ public class LoginController {
   private final AuthSessionRevokeAllUseCase authSessionRevokeAllUseCase;
   private final RefreshTokenUseCase refreshTokenUseCase;
   private final LogoutUseCase logoutUseCase;
+  private final AuthSessionMetadataResolver authSessionMetadataResolver;
 
   public LoginController(
       LoginUseCase loginUseCase,
@@ -58,19 +60,26 @@ public class LoginController {
       AuthSessionRevokeUseCase authSessionRevokeUseCase,
       AuthSessionRevokeAllUseCase authSessionRevokeAllUseCase,
       RefreshTokenUseCase refreshTokenUseCase,
-      LogoutUseCase logoutUseCase) {
+      LogoutUseCase logoutUseCase,
+      AuthSessionMetadataResolver authSessionMetadataResolver) {
     this.loginUseCase = loginUseCase;
     this.authSessionListUseCase = authSessionListUseCase;
     this.authSessionRevokeUseCase = authSessionRevokeUseCase;
     this.authSessionRevokeAllUseCase = authSessionRevokeAllUseCase;
     this.refreshTokenUseCase = refreshTokenUseCase;
     this.logoutUseCase = logoutUseCase;
+    this.authSessionMetadataResolver = authSessionMetadataResolver;
   }
 
   @PostMapping("/login")
-  public LoginResponse login(@Valid @RequestBody LoginRequest request) {
+  public LoginResponse login(
+      HttpServletRequest httpServletRequest, @Valid @RequestBody LoginRequest request) {
     LoginResult result =
-        loginUseCase.login(new LoginCommand(request.loginId(), request.password()));
+        loginUseCase.login(
+            new LoginCommand(
+                request.loginId(),
+                request.password(),
+                authSessionMetadataResolver.resolve(httpServletRequest)));
     return LoginResponse.from(result);
   }
 
@@ -102,9 +111,12 @@ public class LoginController {
   }
 
   @PostMapping("/refresh")
-  public LoginResponse refresh(@Valid @RequestBody RefreshRequest request) {
+  public LoginResponse refresh(
+      HttpServletRequest httpServletRequest, @Valid @RequestBody RefreshRequest request) {
     LoginResult result =
-        refreshTokenUseCase.refresh(new RefreshTokenCommand(request.refreshToken()));
+        refreshTokenUseCase.refresh(
+            new RefreshTokenCommand(
+                request.refreshToken(), authSessionMetadataResolver.resolve(httpServletRequest)));
     return LoginResponse.from(result);
   }
 
@@ -164,7 +176,9 @@ public class LoginController {
       String sessionStatus,
       Instant expiresAt,
       Instant lastUsedAt,
-      Instant createdAt) {
+      Instant createdAt,
+      String deviceName,
+      String ipAddress) {
 
     private static AuthSessionItemResponse from(AuthSessionSummary summary) {
       return new AuthSessionItemResponse(
@@ -172,7 +186,9 @@ public class LoginController {
           summary.sessionStatus().name(),
           summary.expiresAt(),
           summary.lastUsedAt(),
-          summary.createdAt());
+          summary.createdAt(),
+          summary.deviceName(),
+          summary.ipAddress());
     }
   }
 

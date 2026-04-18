@@ -4,7 +4,7 @@ Spring Boot 4 기반 백엔드 애플리케이션입니다.
 
 ## Goal
 
-- 실시간 알림과 1억 건 규모의 거래 조회를 `t3.micro` 환경에서도 원활하게 처리하는 구조를 목표로 합니다.
+- 초대량 트래픽, 실시간 알림, 1억 건 규모의 거래 조회를 `t3.micro` 환경에서도 원활하게 처리하는 구조를 목표로 합니다.
 - 로컬/배포 환경 모두 `PostgreSQL 18`을 표준 DB 버전으로 사용합니다.
 
 ## Package Structure
@@ -383,6 +383,9 @@ login 실패/잠금은 structured log 한 줄로 남습니다.
 - 저장 기준:
   - raw refresh token은 응답으로만 한 번 내려가고 DB에는 `SHA-256 token_hash`만 저장
   - 저장 테이블은 `auth_refresh_token_session`
+  - login/refresh 시 session row에 `device_name`, `ip_address`를 함께 저장
+  - `device_name`은 request `User-Agent`를 경량 규칙으로 정리한 `OS / Browser` 값 우선 사용
+  - `ip_address`는 `X-Forwarded-For` 첫 값, `Forwarded for=`, `X-Real-IP`, `remoteAddr` 순서로 해석
   - 성공 refresh 시 기존 row는 `ROTATED`, 새 row는 `ACTIVE`
   - 성공 logout 시 현재 사용자 `ACTIVE` session은 `REVOKED`
   - cleanup batch는 `ACTIVE`는 `expires_at`, `ROTATED|REVOKED`는 `updated_at` 기준으로 retention cutoff 밖 row만 작은 batch로 삭제
@@ -391,7 +394,7 @@ login 실패/잠금은 structured log 한 줄로 남습니다.
   - 현재 JWT user만 호출 가능하고 bootstrap account principal은 `403`
   - query parameter `size`는 기본 `20`, 최대 `50`
   - 응답은 현재 user의 `ACTIVE` 이면서 아직 만료되지 않은 session만 `expires_at DESC, id DESC` 순서로 반환
-  - item 필드는 `sessionId`, `sessionStatus`, `expiresAt`, `lastUsedAt`, `createdAt`
+  - item 필드는 `sessionId`, `sessionStatus`, `expiresAt`, `lastUsedAt`, `createdAt`, `deviceName`, `ipAddress`
 - 세션 종료 기준:
   - `DELETE /api/v1/auth/sessions/{sessionId}`는 현재 user 소유의 `ACTIVE` session 하나만 `REVOKED`로 바꾼다.
   - `DELETE /api/v1/auth/sessions`는 현재 user의 `ACTIVE` session 전체를 `REVOKED`로 바꾼다.

@@ -1,6 +1,7 @@
 package com.aquilabank.domain.auth.usecase;
 
 import com.aquilabank.domain.auth.exception.InvalidCredentialsException;
+import com.aquilabank.domain.auth.model.AuthSessionClientMetadata;
 import com.aquilabank.domain.auth.model.IssuedAccessToken;
 import com.aquilabank.domain.auth.model.LoginCommand;
 import com.aquilabank.domain.auth.model.LoginFailureAuditEntry;
@@ -119,7 +120,7 @@ public final class LoginService implements LoginUseCase {
           new LoginResetAuditEntry(
               command.loginId(), user.userId(), user.failedLoginCount(), user.loginLockedUntil()));
     }
-    return issueTokenPair(user.userId(), user.loginId(), now);
+    return issueTokenPair(user.userId(), user.loginId(), command.sessionClientMetadata(), now);
   }
 
   private LoginUser consumeMissingUserPath(String loginId, String password) {
@@ -178,12 +179,17 @@ public final class LoginService implements LoginUseCase {
     return user.failedLoginCount() > 0 || user.loginLockedUntil() != null;
   }
 
-  private LoginResult issueTokenPair(long userId, String loginId, Instant now) {
+  private LoginResult issueTokenPair(
+      long userId, String loginId, AuthSessionClientMetadata sessionClientMetadata, Instant now) {
     String refreshToken = refreshTokenSecretPort.createToken();
     Instant refreshExpiresAt = now.plus(refreshTokenPolicy.ttl());
     refreshTokenSessionWritePort.create(
         new RefreshTokenSessionCreateCommand(
-            userId, refreshTokenSecretPort.hash(refreshToken), refreshExpiresAt, now));
+            userId,
+            refreshTokenSecretPort.hash(refreshToken),
+            refreshExpiresAt,
+            now,
+            sessionClientMetadata));
     IssuedAccessToken issuedAccessToken = authTokenIssuePort.issue(userId, loginId, now);
     return new LoginResult(
         issuedAccessToken.accessToken(),

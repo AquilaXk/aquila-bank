@@ -29,7 +29,9 @@ class AuthSessionListServiceTest {
             RefreshTokenSessionStatus.ACTIVE,
             NOW.plusSeconds(30),
             NOW.minusSeconds(5),
-            NOW.minusSeconds(10));
+            NOW.minusSeconds(10),
+            "Windows / Chrome",
+            "203.0.113.10");
     when(authSessionQueryPort.findActiveSessionsByUserId(7L, NOW, 20)).thenReturn(List.of(summary));
 
     AuthSessionListService authSessionListService =

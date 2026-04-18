@@ -152,6 +152,8 @@ public class JdbcAuthWriteRepository
             INSERT INTO auth_refresh_token_session (
                 user_id,
                 token_hash,
+                device_name,
+                ip_address,
                 session_status,
                 expires_at,
                 created_at,
@@ -160,6 +162,8 @@ public class JdbcAuthWriteRepository
             VALUES (
                 :userId,
                 :tokenHash,
+                :deviceName,
+                :ipAddress,
                 'ACTIVE',
                 :expiresAt,
                 :createdAt,
@@ -170,6 +174,8 @@ public class JdbcAuthWriteRepository
             new MapSqlParameterSource()
                 .addValue("userId", command.userId())
                 .addValue("tokenHash", command.tokenHash())
+                .addValue("deviceName", command.sessionClientMetadata().deviceName())
+                .addValue("ipAddress", command.sessionClientMetadata().ipAddress())
                 .addValue("expiresAt", Timestamp.from(command.expiresAt()))
                 .addValue("createdAt", Timestamp.from(command.createdAt())),
             Long.class);

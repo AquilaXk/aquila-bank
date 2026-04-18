@@ -51,6 +51,27 @@ import org.springframework.web.context.WebApplicationContext;
 class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSupport {
 
   private static final String AUTH_ADMIN_SUBJECT = "ops-admin";
+  private static final RequestClientMetadata WINDOWS_CHROME =
+      new RequestClientMetadata(
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+              + "(KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+          "203.0.113.10, 10.0.0.1",
+          "Windows / Chrome",
+          "203.0.113.10");
+  private static final RequestClientMetadata IPHONE_SAFARI =
+      new RequestClientMetadata(
+          "Mozilla/5.0 (iPhone; CPU iPhone OS 18_3 like Mac OS X) AppleWebKit/605.1.15 "
+              + "(KHTML, like Gecko) Version/18.3 Mobile/15E148 Safari/604.1",
+          "198.51.100.24, 10.0.0.2",
+          "iPhone / Safari",
+          "198.51.100.24");
+  private static final RequestClientMetadata WINDOWS_EDGE =
+      new RequestClientMetadata(
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+              + "(KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0",
+          "192.0.2.77, 10.0.0.3",
+          "Windows / Edge",
+          "192.0.2.77");
 
   @Autowired private WebApplicationContext context;
 
@@ -385,14 +406,18 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
 
   @Test
   void refreshRotatesTokenAndRejectsReusedToken() throws Exception {
-    TokenPairResponseView loginResult = loginResult("alice", "password123!", "refresh-login-001");
+    TokenPairResponseView loginResult =
+        loginResult("alice", "password123!", "refresh-login-001", WINDOWS_CHROME);
     assertNotNull(loginResult.refreshToken());
     assertNotNull(loginResult.refreshExpiresAt());
 
     RefreshTokenSessionView initialSession = loadRefreshTokenSession(loginResult.refreshToken());
     assertEquals("ACTIVE", initialSession.sessionStatus());
+    assertEquals(WINDOWS_CHROME.expectedDeviceName(), initialSession.deviceName());
+    assertEquals(WINDOWS_CHROME.expectedIpAddress(), initialSession.ipAddress());
 
-    TokenPairResponseView refreshed = refresh(loginResult.refreshToken(), "refresh-rotate-001");
+    TokenPairResponseView refreshed =
+        refresh(loginResult.refreshToken(), "refresh-rotate-001", WINDOWS_EDGE);
     assertNotNull(refreshed.accessToken());
     assertNotNull(refreshed.refreshToken());
     assertNotEquals(loginResult.refreshToken(), refreshed.refreshToken());
@@ -407,18 +432,25 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
     assertEquals("ACTIVE", newSession.sessionStatus());
     assertNull(newSession.lastUsedAt());
     assertNull(newSession.rotatedAt());
+    assertEquals(WINDOWS_EDGE.expectedDeviceName(), newSession.deviceName());
+    assertEquals(WINDOWS_EDGE.expectedIpAddress(), newSession.ipAddress());
 
     refreshExpectUnauthorized(loginResult.refreshToken(), "refresh-reuse-001");
   }
 
   @Test
   void authSessionListReturnsOnlyCurrentUsersUnexpiredActiveSessions() throws Exception {
-    TokenPairResponseView expired = loginResult("alice", "password123!", "session-list-login-001");
+    TokenPairResponseView expired =
+        loginResult("alice", "password123!", "session-list-login-001", WINDOWS_CHROME);
     Thread.sleep(2200L);
-    TokenPairResponseView oldest = loginResult("alice", "password123!", "session-list-login-002");
-    TokenPairResponseView middle = loginResult("alice", "password123!", "session-list-login-003");
-    TokenPairResponseView newest = loginResult("alice", "password123!", "session-list-login-004");
-    TokenPairResponseView revoked = loginResult("alice", "password123!", "session-list-login-005");
+    TokenPairResponseView oldest =
+        loginResult("alice", "password123!", "session-list-login-002", WINDOWS_CHROME);
+    TokenPairResponseView middle =
+        loginResult("alice", "password123!", "session-list-login-003", IPHONE_SAFARI);
+    TokenPairResponseView newest =
+        loginResult("alice", "password123!", "session-list-login-004", WINDOWS_EDGE);
+    TokenPairResponseView revoked =
+        loginResult("alice", "password123!", "session-list-login-005", WINDOWS_CHROME);
     long otherUserId = bootstrapUser("bob", "Bob", "password123!");
     upsertMembership(otherUserId, targetAccountId, "VIEWER", "ACTIVE");
     TokenPairResponseView otherUser =
@@ -442,8 +474,14 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
         .andExpect(jsonPath("$.items.length()").value(3))
         .andExpect(jsonPath("$.items[0].sessionId").value(newestSessionId))
         .andExpect(jsonPath("$.items[0].sessionStatus").value("ACTIVE"))
+        .andExpect(jsonPath("$.items[0].deviceName").value(WINDOWS_EDGE.expectedDeviceName()))
+        .andExpect(jsonPath("$.items[0].ipAddress").value(WINDOWS_EDGE.expectedIpAddress()))
         .andExpect(jsonPath("$.items[1].sessionId").value(middleSessionId))
+        .andExpect(jsonPath("$.items[1].deviceName").value(IPHONE_SAFARI.expectedDeviceName()))
+        .andExpect(jsonPath("$.items[1].ipAddress").value(IPHONE_SAFARI.expectedIpAddress()))
         .andExpect(jsonPath("$.items[2].sessionId").value(oldestSessionId))
+        .andExpect(jsonPath("$.items[2].deviceName").value(WINDOWS_CHROME.expectedDeviceName()))
+        .andExpect(jsonPath("$.items[2].ipAddress").value(WINDOWS_CHROME.expectedIpAddress()))
         .andExpect(jsonPath("$.items[0].createdAt").isString());
   }
 
@@ -951,6 +989,16 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
     return readTokenPair(result);
   }
 
+  private TokenPairResponseView loginResult(
+      String loginId, String password, String requestId, RequestClientMetadata clientMetadata)
+      throws Exception {
+    MvcResult result =
+        performLogin(loginId, password, requestId, clientMetadata)
+            .andExpect(status().isOk())
+            .andReturn();
+    return readTokenPair(result);
+  }
+
   private void loginExpectUnauthorized(String loginId, String password, String requestId)
       throws Exception {
     performLogin(loginId, password, requestId)
@@ -960,6 +1008,12 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
 
   private org.springframework.test.web.servlet.ResultActions performLogin(
       String loginId, String password, String requestId) throws Exception {
+    return performLogin(loginId, password, requestId, null);
+  }
+
+  private org.springframework.test.web.servlet.ResultActions performLogin(
+      String loginId, String password, String requestId, RequestClientMetadata clientMetadata)
+      throws Exception {
     MockHttpServletRequestBuilder requestBuilder =
         post("/api/v1/auth/login")
             .contentType(MediaType.APPLICATION_JSON)
@@ -974,12 +1028,23 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
     if (requestId != null && !requestId.isBlank()) {
       requestBuilder.header("X-Request-Id", requestId);
     }
+    applyClientMetadata(requestBuilder, clientMetadata);
     return mockMvc.perform(requestBuilder);
   }
 
   private TokenPairResponseView refresh(String refreshToken, String requestId) throws Exception {
     MvcResult result =
         performRefresh(refreshToken, requestId).andExpect(status().isOk()).andReturn();
+    return readTokenPair(result);
+  }
+
+  private TokenPairResponseView refresh(
+      String refreshToken, String requestId, RequestClientMetadata clientMetadata)
+      throws Exception {
+    MvcResult result =
+        performRefresh(refreshToken, requestId, clientMetadata)
+            .andExpect(status().isOk())
+            .andReturn();
     return readTokenPair(result);
   }
 
@@ -991,6 +1056,12 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
 
   private org.springframework.test.web.servlet.ResultActions performRefresh(
       String refreshToken, String requestId) throws Exception {
+    return performRefresh(refreshToken, requestId, null);
+  }
+
+  private org.springframework.test.web.servlet.ResultActions performRefresh(
+      String refreshToken, String requestId, RequestClientMetadata clientMetadata)
+      throws Exception {
     MockHttpServletRequestBuilder requestBuilder =
         post("/api/v1/auth/refresh")
             .contentType(MediaType.APPLICATION_JSON)
@@ -1004,7 +1075,17 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
     if (requestId != null && !requestId.isBlank()) {
       requestBuilder.header("X-Request-Id", requestId);
     }
+    applyClientMetadata(requestBuilder, clientMetadata);
     return mockMvc.perform(requestBuilder);
+  }
+
+  private void applyClientMetadata(
+      MockHttpServletRequestBuilder requestBuilder, RequestClientMetadata clientMetadata) {
+    if (clientMetadata == null) {
+      return;
+    }
+    requestBuilder.header("User-Agent", clientMetadata.userAgent());
+    requestBuilder.header("X-Forwarded-For", clientMetadata.forwardedFor());
   }
 
   private org.springframework.test.web.servlet.ResultActions logout(
@@ -1288,7 +1369,9 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
                    expires_at,
                    last_used_at,
                    rotated_at,
-                   replaced_by_session_id
+                   replaced_by_session_id,
+                   device_name,
+                   ip_address
             FROM auth_refresh_token_session
             WHERE token_hash = :tokenHash
             """,
@@ -1300,7 +1383,9 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
                     toInstant(rs.getTimestamp("expires_at")),
                     toInstant(rs.getTimestamp("last_used_at")),
                     toInstant(rs.getTimestamp("rotated_at")),
-                    rs.getObject("replaced_by_session_id", Long.class)))
+                    rs.getObject("replaced_by_session_id", Long.class),
+                    rs.getString("device_name"),
+                    rs.getString("ip_address")))
         .stream()
         .findFirst()
         .orElseThrow(() -> new AssertionError("refresh token session is not found"));
@@ -1380,5 +1465,10 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
       Instant expiresAt,
       Instant lastUsedAt,
       Instant rotatedAt,
-      Long replacedBySessionId) {}
+      Long replacedBySessionId,
+      String deviceName,
+      String ipAddress) {}
+
+  private record RequestClientMetadata(
+      String userAgent, String forwardedFor, String expectedDeviceName, String expectedIpAddress) {}
 }

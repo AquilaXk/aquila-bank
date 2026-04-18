@@ -158,7 +158,9 @@ public class JdbcAuthRepository
                session_status,
                expires_at,
                last_used_at,
-               created_at
+               created_at,
+               device_name,
+               ip_address
         FROM auth_refresh_token_session
         WHERE user_id = :userId
           AND session_status = 'ACTIVE'
@@ -318,7 +320,9 @@ public class JdbcAuthRepository
         RefreshTokenSessionStatus.valueOf(rs.getString("session_status")),
         toInstant(rs.getTimestamp("expires_at")),
         toNullableInstant(rs.getTimestamp("last_used_at")),
-        toInstant(rs.getTimestamp("created_at")));
+        toInstant(rs.getTimestamp("created_at")),
+        rs.getString("device_name"),
+        rs.getString("ip_address"));
   }
 
   private UserAccountMembership mapMembership(ResultSet rs) throws SQLException {

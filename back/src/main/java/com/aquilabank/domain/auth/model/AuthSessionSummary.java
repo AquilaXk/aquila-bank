@@ -8,7 +8,9 @@ public record AuthSessionSummary(
     RefreshTokenSessionStatus sessionStatus,
     Instant expiresAt,
     Instant lastUsedAt,
-    Instant createdAt) {
+    Instant createdAt,
+    String deviceName,
+    String ipAddress) {
 
   public AuthSessionSummary {
     if (sessionId <= 0) {
@@ -23,5 +25,14 @@ public record AuthSessionSummary(
     if (createdAt == null) {
       throw new IllegalArgumentException("createdAt is required");
     }
+  }
+
+  public AuthSessionSummary(
+      long sessionId,
+      RefreshTokenSessionStatus sessionStatus,
+      Instant expiresAt,
+      Instant lastUsedAt,
+      Instant createdAt) {
+    this(sessionId, sessionStatus, expiresAt, lastUsedAt, createdAt, null, null);
   }
 }

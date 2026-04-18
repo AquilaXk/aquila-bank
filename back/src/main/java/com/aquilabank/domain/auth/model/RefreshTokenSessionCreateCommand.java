@@ -4,7 +4,11 @@ import java.time.Instant;
 
 /** 새 refresh token session 저장에 필요한 최소 write 모델입니다. */
 public record RefreshTokenSessionCreateCommand(
-    long userId, String tokenHash, Instant expiresAt, Instant createdAt) {
+    long userId,
+    String tokenHash,
+    Instant expiresAt,
+    Instant createdAt,
+    AuthSessionClientMetadata sessionClientMetadata) {
 
   public RefreshTokenSessionCreateCommand {
     if (userId <= 0) {
@@ -18,6 +22,9 @@ public record RefreshTokenSessionCreateCommand(
     }
     if (createdAt == null) {
       throw new IllegalArgumentException("createdAt is required");
+    }
+    if (sessionClientMetadata == null) {
+      throw new IllegalArgumentException("sessionClientMetadata is required");
     }
   }
 }
