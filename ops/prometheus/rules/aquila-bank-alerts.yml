@@ -1,0 +1,122 @@
+# baseline threshold는 현재 back/README.md와 env 기본값 기준입니다.
+# 운영 적용 전 scrape interval, traffic, SSE max session, query volume에 맞게 재조정합니다.
+groups:
+  - name: aquila-bank-outbox
+    interval: 30s
+    rules:
+      - alert: AquilaOutboxDispatchLagHigh
+        expr: max(aquila_outbox_dispatch_lag_seconds) > 120
+        for: 10m
+        labels:
+          severity: warning
+          service: aquila-bank
+          domain: outbox
+          baseline: "true"
+        annotations:
+          summary: "Aquila Bank outbox dispatch lag is high"
+          description: "outbox dispatch lag seconds가 10분 이상 120초를 초과했습니다. backlog와 producer publish path를 같이 확인합니다."
+          runbook_path: "back/README.md#outbox-ops-runbook"
+
+      - alert: AquilaOutboxFailedBacklogHigh
+        expr: max(aquila_outbox_failed_count) > 10
+        for: 10m
+        labels:
+          severity: warning
+          service: aquila-bank
+          domain: outbox
+          baseline: "true"
+        annotations:
+          summary: "Aquila Bank outbox failed backlog is high"
+          description: "outbox failed count가 10분 이상 10건을 초과했습니다. failed event list와 lastError를 먼저 확인합니다."
+          runbook_path: "back/README.md#outbox-ops-runbook"
+
+      - alert: AquilaOutboxProducerTimeoutFailedDetected
+        expr: max(aquila_outbox_failed_producer_timeout_count) > 0
+        for: 15m
+        labels:
+          severity: warning
+          service: aquila-bank
+          domain: outbox
+          baseline: "true"
+        annotations:
+          summary: "Aquila Bank producer timeout failures detected"
+          description: "producer timeout 기반 outbox failure가 15분 이상 0건 초과 상태입니다. broker/connection timeout을 먼저 점검합니다."
+          runbook_path: "back/README.md#outbox-ops-runbook"
+
+      - alert: AquilaOutboxStaleSendingDetected
+        expr: max(aquila_outbox_sending_stale_count) > 0
+        for: 5m
+        labels:
+          severity: critical
+          service: aquila-bank
+          domain: outbox
+          baseline: "true"
+        annotations:
+          summary: "Aquila Bank stale outbox sending rows detected"
+          description: "stale sending row가 5분 이상 남아 있습니다. stale recovery와 dispatch health를 즉시 확인합니다."
+          runbook_path: "back/README.md#outbox-ops-runbook"
+
+  - name: aquila-bank-notification
+    interval: 30s
+    rules:
+      - alert: AquilaNotificationConsumerLagHigh
+        expr: max(aquila_notification_consumer_lag_count) > 100
+        for: 10m
+        labels:
+          severity: warning
+          service: aquila-bank
+          domain: notification
+          baseline: "true"
+        annotations:
+          summary: "Aquila Bank notification consumer lag is high"
+          description: "notification consumer lagCount가 10분 이상 100건을 초과했습니다. consumer summary와 DLQ 상태를 같이 확인합니다."
+          runbook_path: "back/README.md#outbox-ops-runbook"
+
+      - alert: AquilaNotificationConsumerDlqDetected
+        expr: max(aquila_notification_consumer_dlq_count) > 0
+        for: 5m
+        labels:
+          severity: critical
+          service: aquila-bank
+          domain: notification
+          baseline: "true"
+        annotations:
+          summary: "Aquila Bank notification DLQ messages detected"
+          description: "notification DLQ count가 5분 이상 0건 초과 상태입니다. poison message preview와 redrive 대상 여부를 확인합니다."
+          runbook_path: "back/README.md#outbox-ops-runbook"
+
+      - alert: AquilaNotificationSseSessionPressureHigh
+        expr: max(aquila_notification_sse_sessions{principal_type="total"}) > 56
+        for: 10m
+        labels:
+          severity: warning
+          service: aquila-bank
+          domain: notification
+          baseline: "true"
+        annotations:
+          summary: "Aquila Bank SSE session pressure is high"
+          description: "SSE total session이 10분 이상 56을 초과했습니다. 기본 max-total-sessions=64 기준 87.5% 사용률 baseline입니다."
+          runbook_path: "back/README.md#prometheus-metrics"
+
+  - name: aquila-bank-transaction
+    interval: 30s
+    rules:
+      - alert: AquilaTransactionQueryLatencyHigh
+        expr: |
+          (
+            sum(rate(aquila_transaction_query_latency_seconds_sum{outcome="success"}[5m]))
+            /
+            clamp_min(sum(rate(aquila_transaction_query_latency_seconds_count{outcome="success"}[5m])), 0.001)
+          ) > 0.75
+          and
+          sum(rate(aquila_transaction_query_latency_seconds_count{outcome="success"}[5m])) > 0.1
+        for: 15m
+        labels:
+          severity: warning
+          service: aquila-bank
+          domain: transaction
+          baseline: "true"
+        annotations:
+          summary: "Aquila Bank transaction query latency is high"
+          description: "transaction query 평균 latency가 15분 이상 750ms를 초과했습니다. baseline 값이므로 실제 traffic 분포에 맞게 재조정합니다."
+          runbook_path: "back/README.md#prometheus-metrics"
