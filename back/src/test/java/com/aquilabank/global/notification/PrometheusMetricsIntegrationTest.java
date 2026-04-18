@@ -133,7 +133,7 @@ class PrometheusMetricsIntegrationTest extends PostgresKafkaContainerTestSupport
       assertThat(body)
           .containsPattern(
               "aquila_notification_consumer_lag_count\\{[^\\n]*topic=\""
-                  + Pattern.quote(TRANSFER_BOOKED_TOPIC)
+                  + Pattern.quote(TRANSFER_BOOKED_TOPIC + "," + TRANSFER_REVERSED_TOPIC)
                   + "\"[^\\n]*\\}\\s+[1-9][0-9]*\\.0");
       assertThat(body)
           .containsPattern(

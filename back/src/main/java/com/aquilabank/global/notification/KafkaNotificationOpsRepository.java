@@ -96,7 +96,7 @@ public final class KafkaNotificationOpsRepository implements NotificationOpsRead
   }
 
   private NotificationOpsSummary loadSummary(Instant observedAt) {
-    List<TopicPartition> mainPartitions = topicPartitions(properties.transferBooked().topic());
+    List<TopicPartition> mainPartitions = topicPartitions(properties.mainTopics());
     List<TopicPartition> dlqPartitions = topicPartitions(properties.dlq().topic());
     try (AdminClient adminClient = adminClient()) {
       Map<TopicPartition, Long> latestMainOffsets = latestOffsets(adminClient, mainPartitions);
@@ -107,11 +107,21 @@ public final class KafkaNotificationOpsRepository implements NotificationOpsRead
       return new NotificationOpsSummary(
           observedAt,
           properties.groupId(),
-          properties.transferBooked().topic(),
+          properties.mainTopicLabel(),
           properties.dlq().topic(),
           lagCount,
           dlqCount);
     }
+  }
+
+  private List<TopicPartition> topicPartitions(List<String> topics) {
+    List<TopicPartition> partitions = new ArrayList<>();
+    try (AdminClient adminClient = adminClient()) {
+      for (String topic : topics) {
+        partitions.addAll(topicPartitions(adminClient, topic));
+      }
+    }
+    return partitions;
   }
 
   private List<TopicPartition> topicPartitions(String topic) {
