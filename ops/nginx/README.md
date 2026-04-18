@@ -1,6 +1,6 @@
 # Nginx Reverse Proxy Baseline
 
-`ops/nginx/nginx.conf`는 단일 EC2 인스턴스에서 frontend(`3000`)와 backend(`8080`)를 함께 reverse proxy 하는 기준 파일입니다. 이번 baseline은 HTTPS 종료, exact `server_name`, API rate limit까지 포함합니다.
+`ops/nginx/nginx.conf`는 frontend(`3000`)와 backend(`8080`)를 reverse proxy 하는 기준 파일입니다. 이번 baseline은 HTTPS 종료, exact `server_name`, API rate limit, multi-node load balancer와 SSE 라우팅 기준까지 포함합니다.
 
 ## 포함 범위
 
@@ -11,6 +11,8 @@
 - `80 -> 443`: 일반 요청 HTTPS redirect
 - `443 ssl`: TLS termination
 - API 단기 burst 보호용 rate limit
+- API/SSE upstream 분리
+- multi-node backend pool placeholder
 
 ## TLS / `server_name` 기준
 
@@ -28,6 +30,23 @@
 - `429`는 Nginx에서 바로 반환해 backend thread/connection 소비를 줄이는 1차 가드로 둡니다.
 - 실제 서비스 트래픽 특성에 따라 `rate`와 `burst`는 조정하되, 로그인/토큰 재발급/SSE 재연결 패턴을 같이 확인합니다.
 
+## Multi-Node Load Balancer 기준
+
+- backend upstream은 `aquila_bank_backend_api`, `aquila_bank_backend_sse` 두 개로 분리합니다.
+- multi-node에서는 두 upstream의 `server` 목록을 같은 backend pool로 유지합니다.
+- API upstream은 기본 round-robin으로 짧은 요청을 처리하고, SSE upstream은 `least_conn`으로 장기 연결을 분산합니다.
+- 각 backend server는 `max_fails=3 fail_timeout=5s` passive failure 기준을 둡니다.
+- Nginx OSS 기본선에서는 active health check 대신 passive failure detection + `/actuator/health` probe를 함께 사용합니다.
+- 배포/드레인 시에는 대상 인스턴스를 두 upstream에서 먼저 제거하고 `nginx -s reload` 후 SSE reconnect 여유를 둔 다음 종료합니다.
+
+## SSE 라우팅 기준
+
+- `/api/v1/notifications/stream`은 exact location과 `aquila_bank_backend_sse` 전용 upstream으로 분리합니다.
+- sticky session은 기본값으로 강제하지 않습니다. 한 번 붙은 SSE 연결은 같은 app instance에 유지되고, 재연결은 어느 노드로 가도 `Last-Event-ID` replay로 복구합니다.
+- backend는 같은 인스턴스 안에서는 local publish, 다른 인스턴스에는 PostgreSQL `LISTEN/NOTIFY` fan-out을 사용하므로 LB는 backend pool 전체에 연결을 분산해도 됩니다.
+- `proxy_next_upstream off`로 SSE를 투명 재시도하지 않고, 실패는 client reconnect + pull API 재동기화 계약으로 넘깁니다.
+- SSE upstream server 목록은 API upstream과 다르게 유지하지 말고 동일 backend pool을 써야 fan-out 대상과 라우팅 해석이 단순합니다.
+
 ## SSE 기준
 
 - `proxy_buffering off`
@@ -41,10 +60,11 @@
 
 ## 운영 적용 전 확인
 
-- frontend/backend 포트가 기본값과 다르면 upstream `server` 주소를 같이 수정합니다.
+- frontend/backend 포트가 기본값과 다르면 API/SSE upstream `server` 주소를 같이 수정합니다.
 - `bank.example.com`, `/etc/letsencrypt/live/...` placeholder는 실제 운영값으로 교체합니다.
 - HTTP health probe가 필요 없으면 `listen 80`의 `/actuator/health` 예외도 HTTPS로 통일합니다.
-- multi-node load balancer 정책은 이번 baseline 밖입니다.
+- multi-node로 확장할 때는 `aquila_bank_backend_api`와 `aquila_bank_backend_sse` 두 upstream에 같은 backend node 집합을 반영합니다.
+- 인스턴스 drain 시에는 대상 node를 upstream에서 제거한 뒤 reload 하고, client reconnect/pull 재동기화가 끝날 시간을 둡니다.
 - backend는 이미 `X-Accel-Buffering: no` 헤더를 내려주므로 Nginx도 같은 방향으로 buffering을 끈 상태를 유지합니다.
 
 ## 검증
