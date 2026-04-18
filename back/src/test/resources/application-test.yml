@@ -19,6 +19,12 @@ outbox:
   poller:
     # scheduled dispatch는 끄고 테스트가 retry 타이밍을 직접 제어하게 합니다.
     enabled: false
+  cleanup:
+    enabled: false
+    fixed-delay-ms: 300000
+    initial-delay-ms: 60000
+    batch-size: 500
+    retention-days: 30
   kafka:
     enabled: false
   ops:

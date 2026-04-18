@@ -189,6 +189,13 @@ set +a
   - outbox/notification gauge는 scrape 한 번에 같은 summary를 여러 번 다시 조회하지 않게 `5초` cache 안에서 재사용합니다.
   - SSE session metric은 현재 app instance 메모리의 active session 수만 보여주므로 multi-instance 전체 합계는 Prometheus 쿼리에서 합산합니다.
 
+## Outbox Retention Cleanup
+
+- outbox retention cleanup은 `publish_status = 'PUBLISHED'` 이고 `published_at` 이 retention cutoff 밖인 row만 정리합니다.
+- `PENDING`, `FAILED`, `SENDING` row는 dispatch 복구와 ops 확인 대상이라 cleanup에서 제외합니다.
+- cleanup batch는 `published_at ASC, id ASC` 순서의 작은 batch delete만 수행해 `t3.micro`에서 lock/vacuum 충격을 낮춥니다.
+- 기본 설정은 `OUTBOX_CLEANUP_ENABLED=true`, `OUTBOX_CLEANUP_RETENTION_DAYS=30`, `OUTBOX_CLEANUP_BATCH_SIZE=500`, `OUTBOX_CLEANUP_FIXED_DELAY_MS=300000` 입니다.
+
 ### Local Notification E2E
 
 실제 broker를 통과하는 알림 검증은 transfer write path와 outbox dispatch를 같이 봐야 합니다.
