@@ -369,6 +369,7 @@ login 실패/잠금은 structured log 한 줄로 남습니다.
   - `POST /api/v1/auth/refresh`
   - `POST /api/v1/auth/logout`
 - 응답 필드:
+  - `status`
   - `accessToken`
   - `refreshToken`
   - `tokenType`
@@ -416,6 +417,40 @@ login 실패/잠금은 structured log 한 줄로 남습니다.
   - 다른 사용자 token, 이미 `ROTATED|REVOKED` 상태인 token, 존재하지 않는 token으로 logout 요청 시 `204` no-op 유지
   - 선택 revoke와 전체 revoke도 access token 즉시 폐기가 아니라 refresh 재발급 차단까지만 처리
   - raw refresh token, plaintext secret은 로그/DB에 남기지 않음
+
+## TOTP MFA
+
+TOTP MFA는 `login -> challenge -> verify` 2단계 경로로만 token pair를 발급합니다.
+
+- 공개 endpoint:
+  - `POST /api/v1/auth/mfa/totp/enroll`
+  - `POST /api/v1/auth/mfa/totp/enroll/verify`
+  - `POST /api/v1/auth/mfa/totp/challenge/verify`
+- 등록 기준:
+  - enrollment start/verify는 현재 JWT user만 호출 가능하고 bootstrap account principal은 `403`
+  - start 응답은 `status=PENDING`, `secretKey`, `otpauthUri`, `expiresAt`
+  - verify request body는 `totpCode`
+  - verify 성공 시 credential 상태는 `ACTIVE`, 응답은 `status=ACTIVE`, `verifiedAt`
+- 로그인 challenge 기준:
+  - `ACTIVE` TOTP credential이 있는 사용자의 `POST /api/v1/auth/login` 응답은 `status=MFA_REQUIRED`
+  - 이때 `challengeId`, `challengeType=TOTP`, `challengeExpiresAt`만 내려가고 token pair는 비어 있다
+  - challenge verify 성공 시에만 `status=SUCCESS`와 token pair가 발급된다
+  - challenge verify는 로그인 시점의 `device_name`, `ip_address` 메타데이터를 그대로 session row에 저장한다
+- 기본값:
+  - `SECURITY_TOTP_ISSUER=Aquila Bank`
+  - `SECURITY_TOTP_SECRET_ENCRYPTION_KEY` 필수
+  - `SECURITY_TOTP_ENROLLMENT_TTL_SECONDS=300`
+  - `SECURITY_TOTP_CHALLENGE_TTL_SECONDS=300`
+  - `SECURITY_TOTP_CHALLENGE_MAX_ATTEMPTS=5`
+- 저장 기준:
+  - TOTP secret raw/base32 값은 응답으로만 내려가고 DB에는 AES-GCM 보호 값만 저장
+  - credential 테이블은 `auth_totp_credential`
+  - login challenge 테이블은 `auth_totp_login_challenge`
+  - challenge row는 `user_id` 기준 1행만 유지해 user별 현재 pending state만 덮어쓴다
+- 거절 기준:
+  - wrong TOTP code, 만료 challenge, 사용 완료 challenge는 `401 mfa challenge failed`
+  - challenge 시도 횟수가 상한에 도달하면 상태를 `FAILED`로 바꾸고 같은 challenge는 더 이상 성공하지 못한다
+  - pending enrollment가 없거나 이미 만료된 enrollment verify는 `400`
 
 ## Internal Auth Admin Runbook
 

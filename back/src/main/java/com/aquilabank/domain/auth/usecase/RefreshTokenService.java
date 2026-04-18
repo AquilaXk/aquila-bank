@@ -77,7 +77,7 @@ public final class RefreshTokenService implements RefreshTokenUseCase {
 
     IssuedAccessToken issuedAccessToken =
         authTokenIssuePort.issue(session.userId(), session.loginId(), now);
-    return new LoginResult(
+    return LoginResult.success(
         issuedAccessToken.accessToken(),
         nextRefreshToken,
         issuedAccessToken.tokenType(),

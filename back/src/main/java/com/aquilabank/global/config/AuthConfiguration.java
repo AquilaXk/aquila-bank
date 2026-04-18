@@ -14,6 +14,11 @@ import com.aquilabank.domain.auth.port.PasswordHashPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSecretPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionLoadPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionWritePort;
+import com.aquilabank.domain.auth.port.TotpCredentialLoadPort;
+import com.aquilabank.domain.auth.port.TotpCredentialWritePort;
+import com.aquilabank.domain.auth.port.TotpLoginChallengeLoadPort;
+import com.aquilabank.domain.auth.port.TotpLoginChallengeWritePort;
+import com.aquilabank.domain.auth.port.TotpSecretPort;
 import com.aquilabank.domain.auth.port.UserAccountMembershipQueryPort;
 import com.aquilabank.domain.auth.port.UserAccountMembershipStatusUpdatePort;
 import com.aquilabank.domain.auth.port.UserAccountMembershipUpsertPort;
@@ -42,6 +47,10 @@ import com.aquilabank.domain.auth.usecase.PasswordResetService;
 import com.aquilabank.domain.auth.usecase.PasswordResetUseCase;
 import com.aquilabank.domain.auth.usecase.RefreshTokenService;
 import com.aquilabank.domain.auth.usecase.RefreshTokenUseCase;
+import com.aquilabank.domain.auth.usecase.TotpChallengeVerifyService;
+import com.aquilabank.domain.auth.usecase.TotpChallengeVerifyUseCase;
+import com.aquilabank.domain.auth.usecase.TotpEnrollmentService;
+import com.aquilabank.domain.auth.usecase.TotpEnrollmentUseCase;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipQueryService;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipQueryUseCase;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipStatusUpdateService;
@@ -54,6 +63,7 @@ import com.aquilabank.domain.auth.usecase.UserStatusUpdateService;
 import com.aquilabank.domain.auth.usecase.UserStatusUpdateUseCase;
 import com.aquilabank.global.security.LoginProtectionProperties;
 import com.aquilabank.global.security.SecurityJwtProperties;
+import com.aquilabank.global.security.SecurityTotpProperties;
 import com.aquilabank.global.security.StructuredLoginAttemptAuditLogger;
 import java.time.Clock;
 import java.time.Duration;
@@ -91,11 +101,14 @@ public class AuthConfiguration {
       LoginAttemptUpdatePort loginAttemptUpdatePort,
       LoginAttemptAuditPort loginAttemptAuditPort,
       PasswordHashPort passwordHashPort,
+      TotpCredentialLoadPort totpCredentialLoadPort,
+      TotpLoginChallengeWritePort totpLoginChallengeWritePort,
       RefreshTokenSessionWritePort refreshTokenSessionWritePort,
       RefreshTokenSecretPort refreshTokenSecretPort,
       AuthTokenIssuePort authTokenIssuePort,
       LoginProtectionPolicy loginProtectionPolicy,
       RefreshTokenPolicy refreshTokenPolicy,
+      SecurityTotpProperties securityTotpProperties,
       Clock authClock,
       PlatformTransactionManager platformTransactionManager) {
     LoginService loginService =
@@ -104,11 +117,14 @@ public class AuthConfiguration {
             loginAttemptUpdatePort,
             loginAttemptAuditPort,
             passwordHashPort,
+            totpCredentialLoadPort,
+            totpLoginChallengeWritePort,
             refreshTokenSessionWritePort,
             refreshTokenSecretPort,
             authTokenIssuePort,
             loginProtectionPolicy,
             refreshTokenPolicy,
+            Duration.ofSeconds(securityTotpProperties.challengeTtlSeconds()),
             passwordHashPort.encode("login-dummy-password"),
             authClock);
     TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
@@ -160,6 +176,101 @@ public class AuthConfiguration {
         throw new IllegalStateException("refresh transaction returned null result");
       }
       return result;
+    };
+  }
+
+  @Bean
+  TotpEnrollmentUseCase totpEnrollmentUseCase(
+      UserCredentialLoadPort userCredentialLoadPort,
+      TotpCredentialLoadPort totpCredentialLoadPort,
+      TotpCredentialWritePort totpCredentialWritePort,
+      TotpSecretPort totpSecretPort,
+      SecurityTotpProperties securityTotpProperties,
+      Clock authClock,
+      PlatformTransactionManager platformTransactionManager) {
+    TotpEnrollmentService totpEnrollmentService =
+        new TotpEnrollmentService(
+            userCredentialLoadPort,
+            totpCredentialLoadPort,
+            totpCredentialWritePort,
+            totpSecretPort,
+            Duration.ofSeconds(securityTotpProperties.enrollmentTtlSeconds()),
+            authClock);
+    TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
+    return new TotpEnrollmentUseCase() {
+      @Override
+      public com.aquilabank.domain.auth.model.TotpEnrollmentStartResult start(
+          com.aquilabank.domain.auth.model.TotpEnrollmentStartCommand command) {
+        com.aquilabank.domain.auth.model.TotpEnrollmentStartResult result =
+            transactionTemplate.execute(status -> totpEnrollmentService.start(command));
+        if (result == null) {
+          throw new IllegalStateException("totp enrollment start transaction returned null result");
+        }
+        return result;
+      }
+
+      @Override
+      public com.aquilabank.domain.auth.model.TotpEnrollmentVerifyResult verify(
+          com.aquilabank.domain.auth.model.TotpEnrollmentVerifyCommand command) {
+        com.aquilabank.domain.auth.model.TotpEnrollmentVerifyResult result =
+            transactionTemplate.execute(status -> totpEnrollmentService.verify(command));
+        if (result == null) {
+          throw new IllegalStateException(
+              "totp enrollment verify transaction returned null result");
+        }
+        return result;
+      }
+    };
+  }
+
+  @Bean
+  TotpChallengeVerifyUseCase totpChallengeVerifyUseCase(
+      TotpLoginChallengeLoadPort totpLoginChallengeLoadPort,
+      TotpLoginChallengeWritePort totpLoginChallengeWritePort,
+      TotpCredentialLoadPort totpCredentialLoadPort,
+      TotpCredentialWritePort totpCredentialWritePort,
+      RefreshTokenSessionWritePort refreshTokenSessionWritePort,
+      RefreshTokenSecretPort refreshTokenSecretPort,
+      TotpSecretPort totpSecretPort,
+      AuthTokenIssuePort authTokenIssuePort,
+      RefreshTokenPolicy refreshTokenPolicy,
+      SecurityTotpProperties securityTotpProperties,
+      Clock authClock,
+      PlatformTransactionManager platformTransactionManager) {
+    TotpChallengeVerifyService totpChallengeVerifyService =
+        new TotpChallengeVerifyService(
+            totpLoginChallengeLoadPort,
+            totpLoginChallengeWritePort,
+            totpCredentialLoadPort,
+            totpCredentialWritePort,
+            refreshTokenSessionWritePort,
+            refreshTokenSecretPort,
+            totpSecretPort,
+            authTokenIssuePort,
+            refreshTokenPolicy,
+            securityTotpProperties.challengeMaxAttempts(),
+            authClock);
+    TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
+    return command -> {
+      LoginTransactionResult transactionResult =
+          transactionTemplate.execute(
+              status -> {
+                try {
+                  return LoginTransactionResult.success(totpChallengeVerifyService.verify(command));
+                } catch (InvalidCredentialsException ex) {
+                  return LoginTransactionResult.failure(ex);
+                }
+              });
+      if (transactionResult == null) {
+        throw new IllegalStateException("totp challenge verify transaction result is null");
+      }
+      if (transactionResult.exception() != null) {
+        throw transactionResult.exception();
+      }
+      if (transactionResult.result() == null) {
+        throw new IllegalStateException("totp challenge verify transaction returned null result");
+      }
+      return transactionResult.result();
     };
   }
 

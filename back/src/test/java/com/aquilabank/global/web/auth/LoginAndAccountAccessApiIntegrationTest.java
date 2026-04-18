@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -15,11 +16,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.aquilabank.domain.auth.port.RefreshTokenSecretPort;
 import com.aquilabank.global.security.InternalServiceScope;
 import com.aquilabank.global.security.InternalServiceTokenIssuer;
+import com.aquilabank.standard.util.Base32Codec;
 import com.aquilabank.support.PostgresContainerTestSupport;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.time.Instant;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -46,7 +51,8 @@ import org.springframework.web.context.WebApplicationContext;
       "security.login-protection.max-failures=3",
       "security.login-protection.lock-seconds=1",
       "security.login-protection.reset-window-seconds=900",
-      "security.jwt.refresh-token-ttl-seconds=2"
+      "security.jwt.refresh-token-ttl-seconds=2",
+      "security.totp.secret-encryption-key=test-local-totp-secret-encryption-key"
     })
 class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSupport {
 
@@ -1044,6 +1050,103 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
     assertEquals("SUCCESS", audit.outcome());
   }
 
+  @Test
+  void totpEnrollmentActivatesCredentialAndStoresProtectedSecret() throws Exception {
+    TokenPairResponseView loginResult =
+        loginResult("alice", "password123!", "totp-enroll-login-001", WINDOWS_CHROME);
+
+    TotpEnrollmentStartResponseView enrollment =
+        startTotpEnrollment(loginResult.accessToken(), "totp-enroll-start-001");
+    TotpCredentialView pendingCredential = loadTotpCredential(userId);
+
+    assertEquals("PENDING", enrollment.status());
+    assertTrue(enrollment.otpauthUri().contains("otpauth://totp/"));
+    assertEquals("PENDING", pendingCredential.credentialStatus());
+    assertNotEquals(enrollment.secretKey(), pendingCredential.secretCiphertext());
+    assertNotNull(pendingCredential.pendingExpiresAt());
+    assertNull(pendingCredential.verifiedAt());
+
+    TotpEnrollmentVerifyResponseView verified =
+        verifyTotpEnrollment(
+            loginResult.accessToken(),
+            currentTotpCode(enrollment.secretKey()),
+            "totp-enroll-verify-001");
+    TotpCredentialView activeCredential = loadTotpCredential(userId);
+
+    assertEquals("ACTIVE", verified.status());
+    assertEquals("ACTIVE", activeCredential.credentialStatus());
+    assertNotNull(activeCredential.verifiedAt());
+  }
+
+  @Test
+  void mfaActiveUserLoginReturnsChallengeAndVerifyIssuesTokenPair() throws Exception {
+    TokenPairResponseView initialSession =
+        loginResult("alice", "password123!", "totp-mfa-login-001", WINDOWS_CHROME);
+    TotpEnrollmentStartResponseView enrollment =
+        startTotpEnrollment(initialSession.accessToken(), "totp-mfa-start-001");
+    verifyTotpEnrollment(
+        initialSession.accessToken(),
+        currentTotpCode(enrollment.secretKey()),
+        "totp-mfa-verify-001");
+
+    LoginChallengeResponseView challenge =
+        loginChallenge("alice", "password123!", "totp-mfa-login-002", WINDOWS_EDGE);
+
+    assertEquals("MFA_REQUIRED", challenge.status());
+    assertEquals("TOTP", challenge.challengeType());
+    assertEquals(1, countActiveRefreshSessions(userId));
+
+    TokenPairResponseView verifiedSession =
+        verifyTotpChallenge(
+            challenge.challengeId(),
+            currentTotpCode(enrollment.secretKey()),
+            "totp-mfa-challenge-verify-001",
+            IPHONE_SAFARI);
+    RefreshTokenSessionView challengeSession =
+        loadRefreshTokenSession(verifiedSession.refreshToken());
+    TotpLoginChallengeView verifiedChallenge = loadTotpLoginChallenge(challenge.challengeId());
+
+    assertEquals("SUCCESS", verifiedSession.status());
+    assertEquals("Windows / Edge", challengeSession.deviceName());
+    assertEquals("192.0.2.77", challengeSession.ipAddress());
+    assertEquals("VERIFIED", verifiedChallenge.challengeStatus());
+    assertEquals(2, countActiveRefreshSessions(userId));
+
+    verifyTotpChallengeExpectUnauthorized(
+        challenge.challengeId(),
+        currentTotpCode(enrollment.secretKey()),
+        "totp-mfa-challenge-reuse-001");
+  }
+
+  @Test
+  void totpChallengeStopsAfterMaxAttempts() throws Exception {
+    TokenPairResponseView initialSession =
+        loginResult("alice", "password123!", "totp-limit-login-001", WINDOWS_CHROME);
+    TotpEnrollmentStartResponseView enrollment =
+        startTotpEnrollment(initialSession.accessToken(), "totp-limit-start-001");
+    verifyTotpEnrollment(
+        initialSession.accessToken(),
+        currentTotpCode(enrollment.secretKey()),
+        "totp-limit-verify-001");
+
+    LoginChallengeResponseView challenge =
+        loginChallenge("alice", "password123!", "totp-limit-login-002", WINDOWS_CHROME);
+
+    for (int attempt = 1; attempt <= 5; attempt++) {
+      verifyTotpChallengeExpectUnauthorized(
+          challenge.challengeId(), "000000", "totp-limit-challenge-attempt-%d".formatted(attempt));
+    }
+
+    TotpLoginChallengeView failedChallenge = loadTotpLoginChallenge(challenge.challengeId());
+    assertEquals("FAILED", failedChallenge.challengeStatus());
+    assertEquals(5, failedChallenge.attemptCount());
+
+    verifyTotpChallengeExpectUnauthorized(
+        challenge.challengeId(),
+        currentTotpCode(enrollment.secretKey()),
+        "totp-limit-challenge-after-failed");
+  }
+
   private String login(String loginId, String password) throws Exception {
     return login(loginId, password, null);
   }
@@ -1072,6 +1175,16 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
             .andExpect(status().isOk())
             .andReturn();
     return readTokenPair(result);
+  }
+
+  private LoginChallengeResponseView loginChallenge(
+      String loginId, String password, String requestId, RequestClientMetadata clientMetadata)
+      throws Exception {
+    MvcResult result =
+        performLogin(loginId, password, requestId, clientMetadata)
+            .andExpect(status().isOk())
+            .andReturn();
+    return readLoginChallenge(result);
   }
 
   private void loginExpectUnauthorized(String loginId, String password, String requestId)
@@ -1147,6 +1260,96 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
                 }
                 """
                     .formatted(refreshToken));
+    if (requestId != null && !requestId.isBlank()) {
+      requestBuilder.header("X-Request-Id", requestId);
+    }
+    applyClientMetadata(requestBuilder, clientMetadata);
+    return mockMvc.perform(requestBuilder);
+  }
+
+  private TotpEnrollmentStartResponseView startTotpEnrollment(String accessToken, String requestId)
+      throws Exception {
+    MvcResult result =
+        performStartTotpEnrollment(accessToken, requestId).andExpect(status().isOk()).andReturn();
+    JsonNode body = objectMapper.readTree(result.getResponse().getContentAsByteArray());
+    return new TotpEnrollmentStartResponseView(
+        body.get("status").asText(),
+        body.get("secretKey").asText(),
+        body.get("otpauthUri").asText(),
+        Instant.parse(body.get("expiresAt").asText()));
+  }
+
+  private TotpEnrollmentVerifyResponseView verifyTotpEnrollment(
+      String accessToken, String totpCode, String requestId) throws Exception {
+    MvcResult result =
+        performVerifyTotpEnrollment(accessToken, totpCode, requestId)
+            .andExpect(status().isOk())
+            .andReturn();
+    JsonNode body = objectMapper.readTree(result.getResponse().getContentAsByteArray());
+    return new TotpEnrollmentVerifyResponseView(
+        body.get("status").asText(), Instant.parse(body.get("verifiedAt").asText()));
+  }
+
+  private TokenPairResponseView verifyTotpChallenge(
+      String challengeId, String totpCode, String requestId, RequestClientMetadata clientMetadata)
+      throws Exception {
+    MvcResult result =
+        performVerifyTotpChallenge(challengeId, totpCode, requestId, clientMetadata)
+            .andExpect(status().isOk())
+            .andReturn();
+    return readTokenPair(result);
+  }
+
+  private void verifyTotpChallengeExpectUnauthorized(
+      String challengeId, String totpCode, String requestId) throws Exception {
+    performVerifyTotpChallenge(challengeId, totpCode, requestId, null)
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.message").value("mfa challenge failed"));
+  }
+
+  private org.springframework.test.web.servlet.ResultActions performStartTotpEnrollment(
+      String accessToken, String requestId) throws Exception {
+    MockHttpServletRequestBuilder requestBuilder =
+        post("/api/v1/auth/mfa/totp/enroll").header("Authorization", "Bearer " + accessToken);
+    if (requestId != null && !requestId.isBlank()) {
+      requestBuilder.header("X-Request-Id", requestId);
+    }
+    return mockMvc.perform(requestBuilder);
+  }
+
+  private org.springframework.test.web.servlet.ResultActions performVerifyTotpEnrollment(
+      String accessToken, String totpCode, String requestId) throws Exception {
+    MockHttpServletRequestBuilder requestBuilder =
+        post("/api/v1/auth/mfa/totp/enroll/verify")
+            .header("Authorization", "Bearer " + accessToken)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(
+                """
+                {
+                  "totpCode": "%s"
+                }
+                """
+                    .formatted(totpCode));
+    if (requestId != null && !requestId.isBlank()) {
+      requestBuilder.header("X-Request-Id", requestId);
+    }
+    return mockMvc.perform(requestBuilder);
+  }
+
+  private org.springframework.test.web.servlet.ResultActions performVerifyTotpChallenge(
+      String challengeId, String totpCode, String requestId, RequestClientMetadata clientMetadata)
+      throws Exception {
+    MockHttpServletRequestBuilder requestBuilder =
+        post("/api/v1/auth/mfa/totp/challenge/verify")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(
+                """
+                {
+                  "challengeId": "%s",
+                  "totpCode": "%s"
+                }
+                """
+                    .formatted(challengeId, totpCode));
     if (requestId != null && !requestId.isBlank()) {
       requestBuilder.header("X-Request-Id", requestId);
     }
@@ -1511,18 +1714,127 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
         .orElseThrow(() -> new AssertionError("refresh token session id is not found"));
   }
 
+  private TotpCredentialView loadTotpCredential(long userId) {
+    return jdbcTemplate
+        .query(
+            """
+            SELECT credential_status,
+                   secret_ciphertext,
+                   secret_nonce,
+                   pending_expires_at,
+                   verified_at,
+                   last_used_at
+            FROM auth_totp_credential
+            WHERE user_id = :userId
+            """,
+            new org.springframework.jdbc.core.namedparam.MapSqlParameterSource()
+                .addValue("userId", userId),
+            (rs, rowNum) ->
+                new TotpCredentialView(
+                    rs.getString("credential_status"),
+                    rs.getString("secret_ciphertext"),
+                    rs.getString("secret_nonce"),
+                    toInstant(rs.getTimestamp("pending_expires_at")),
+                    toInstant(rs.getTimestamp("verified_at")),
+                    toInstant(rs.getTimestamp("last_used_at"))))
+        .stream()
+        .findFirst()
+        .orElseThrow(() -> new AssertionError("totp credential is not found"));
+  }
+
+  private TotpLoginChallengeView loadTotpLoginChallenge(String challengeId) {
+    return jdbcTemplate
+        .query(
+            """
+            SELECT challenge_status,
+                   attempt_count,
+                   expires_at,
+                   verified_at,
+                   device_name,
+                   ip_address
+            FROM auth_totp_login_challenge
+            WHERE challenge_id = :challengeId
+            """,
+            new org.springframework.jdbc.core.namedparam.MapSqlParameterSource()
+                .addValue("challengeId", challengeId),
+            (rs, rowNum) ->
+                new TotpLoginChallengeView(
+                    rs.getString("challenge_status"),
+                    rs.getInt("attempt_count"),
+                    toInstant(rs.getTimestamp("expires_at")),
+                    toInstant(rs.getTimestamp("verified_at")),
+                    rs.getString("device_name"),
+                    rs.getString("ip_address")))
+        .stream()
+        .findFirst()
+        .orElseThrow(() -> new AssertionError("totp login challenge is not found"));
+  }
+
+  private int countActiveRefreshSessions(long userId) {
+    Integer count =
+        jdbcTemplate.queryForObject(
+            """
+            SELECT COUNT(*)
+            FROM auth_refresh_token_session
+            WHERE user_id = :userId
+              AND session_status = 'ACTIVE'
+            """,
+            new org.springframework.jdbc.core.namedparam.MapSqlParameterSource()
+                .addValue("userId", userId),
+            Integer.class);
+    return count == null ? 0 : count;
+  }
+
   private TokenPairResponseView readTokenPair(MvcResult result) throws Exception {
     JsonNode body = objectMapper.readTree(result.getResponse().getContentAsByteArray());
+    assertEquals("SUCCESS", body.get("status").asText());
     assertEquals("Bearer", body.get("tokenType").asText());
     assertNotNull(body.get("expiresAt"));
     assertNotNull(body.get("refreshExpiresAt"));
     return new TokenPairResponseView(
+        body.get("status").asText(),
         body.get("accessToken").asText(),
         body.get("refreshToken").asText(),
         body.get("tokenType").asText(),
         Instant.parse(body.get("expiresAt").asText()),
         Instant.parse(body.get("refreshExpiresAt").asText()),
         body.get("userId").asLong());
+  }
+
+  private LoginChallengeResponseView readLoginChallenge(MvcResult result) throws Exception {
+    JsonNode body = objectMapper.readTree(result.getResponse().getContentAsByteArray());
+    assertEquals("MFA_REQUIRED", body.get("status").asText());
+    assertTrue(body.get("accessToken").isNull());
+    assertTrue(body.get("refreshToken").isNull());
+    assertTrue(body.get("userId").isNull());
+    return new LoginChallengeResponseView(
+        body.get("status").asText(),
+        body.get("challengeId").asText(),
+        body.get("challengeType").asText(),
+        Instant.parse(body.get("challengeExpiresAt").asText()));
+  }
+
+  private String currentTotpCode(String secretKey) {
+    byte[] rawSecret = Base32Codec.decode(secretKey);
+    long counter = Instant.now().getEpochSecond() / 30L;
+    return generateTotpCode(rawSecret, counter);
+  }
+
+  private String generateTotpCode(byte[] rawSecret, long counter) {
+    try {
+      Mac mac = Mac.getInstance("HmacSHA1");
+      mac.init(new SecretKeySpec(rawSecret, "HmacSHA1"));
+      byte[] digest = mac.doFinal(ByteBuffer.allocate(Long.BYTES).putLong(counter).array());
+      int offset = digest[digest.length - 1] & 0x0f;
+      int binary =
+          ((digest[offset] & 0x7f) << 24)
+              | ((digest[offset + 1] & 0xff) << 16)
+              | ((digest[offset + 2] & 0xff) << 8)
+              | (digest[offset + 3] & 0xff);
+      return String.format(java.util.Locale.ROOT, "%06d", binary % 1_000_000);
+    } catch (Exception ex) {
+      throw new AssertionError("failed to generate TOTP code", ex);
+    }
   }
 
   private Instant toInstant(java.sql.Timestamp timestamp) {
@@ -1557,12 +1869,37 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
       Instant lastLoginSucceededAt) {}
 
   private record TokenPairResponseView(
+      String status,
       String accessToken,
       String refreshToken,
       String tokenType,
       Instant expiresAt,
       Instant refreshExpiresAt,
       long userId) {}
+
+  private record LoginChallengeResponseView(
+      String status, String challengeId, String challengeType, Instant challengeExpiresAt) {}
+
+  private record TotpEnrollmentStartResponseView(
+      String status, String secretKey, String otpauthUri, Instant expiresAt) {}
+
+  private record TotpEnrollmentVerifyResponseView(String status, Instant verifiedAt) {}
+
+  private record TotpCredentialView(
+      String credentialStatus,
+      String secretCiphertext,
+      String secretNonce,
+      Instant pendingExpiresAt,
+      Instant verifiedAt,
+      Instant lastUsedAt) {}
+
+  private record TotpLoginChallengeView(
+      String challengeStatus,
+      int attemptCount,
+      Instant expiresAt,
+      Instant verifiedAt,
+      String deviceName,
+      String ipAddress) {}
 
   private record RefreshTokenSessionView(
       String sessionStatus,

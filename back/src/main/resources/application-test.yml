@@ -1,0 +1,5 @@
+security:
+  jwt:
+    secret: ${SECURITY_JWT_SECRET:test-local-jwt-secret-test-local-jwt-secret}
+  totp:
+    secret-encryption-key: ${SECURITY_TOTP_SECRET_ENCRYPTION_KEY:test-local-totp-secret-encryption-key}

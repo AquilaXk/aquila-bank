@@ -35,6 +35,7 @@ import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 @Configuration
 @EnableConfigurationProperties({
   SecurityJwtProperties.class,
+  SecurityTotpProperties.class,
   LoginProtectionProperties.class,
   BootstrapHeaderAuthProperties.class,
   AccountBootstrapApiProperties.class,
@@ -68,6 +69,8 @@ public class SecurityConfiguration {
                     .requestMatchers("/api/v1/auth/login")
                     .permitAll()
                     .requestMatchers("/api/v1/auth/refresh")
+                    .permitAll()
+                    .requestMatchers("/api/v1/auth/mfa/totp/challenge/verify")
                     .permitAll()
                     // 내부 운영 API는 public JWT resolver에서 제외하고 전용 service JWT로만 검증합니다.
                     .requestMatchers("/internal/api/v1/accounts/bootstrap")
@@ -179,6 +182,12 @@ public class SecurityConfiguration {
         secretKeySpec(securityJwtProperties),
         securityJwtProperties.issuer(),
         securityJwtProperties.accessTokenTtlSeconds());
+  }
+
+  @Bean
+  com.aquilabank.domain.auth.port.TotpSecretPort totpSecretPort(
+      SecurityTotpProperties securityTotpProperties, SecurityJwtProperties securityJwtProperties) {
+    return new AesTotpSecretManager(securityTotpProperties, securityJwtProperties.secret());
   }
 
   private SecretKeySpec secretKeySpec(SecurityJwtProperties securityJwtProperties) {
