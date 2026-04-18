@@ -21,6 +21,7 @@ import com.aquilabank.domain.notification.model.NotificationSummary;
 import com.aquilabank.domain.notification.usecase.NotificationQueryUseCase;
 import com.aquilabank.domain.notification.usecase.NotificationReadUseCase;
 import com.aquilabank.global.notification.NotificationSseBroker;
+import com.aquilabank.global.notification.NotificationSseOverloadException;
 import com.aquilabank.global.security.BootstrapHeaderAuthenticationFilter;
 import com.aquilabank.global.web.ApiExceptionHandler;
 import com.aquilabank.global.web.security.CurrentAuthenticatedPrincipalArgumentResolver;
@@ -149,6 +150,20 @@ class NotificationControllerTest {
         .andExpect(header().string("X-Accel-Buffering", "no"));
 
     verify(notificationSseBroker).subscribeAccount(101L, "bootstrap", 7L);
+  }
+
+  @Test
+  void rejectsNotificationStreamWhenBrokerIsOverloaded() throws Exception {
+    when(notificationSseBroker.subscribeAccount(101L, "bootstrap", null))
+        .thenThrow(
+            new NotificationSseOverloadException(
+                "notification SSE stream is temporarily overloaded"));
+
+    mockMvc
+        .perform(get("/api/v1/notifications/stream").header("X-Account-Id", "101"))
+        .andExpect(status().isServiceUnavailable())
+        .andExpect(
+            jsonPath("$.message").value("notification SSE stream is temporarily overloaded"));
   }
 
   @Test

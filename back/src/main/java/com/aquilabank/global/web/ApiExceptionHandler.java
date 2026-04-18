@@ -15,6 +15,7 @@ import com.aquilabank.domain.ledger.exception.SnapshotNotFoundException;
 import com.aquilabank.domain.ledger.exception.TransferReversalNotFoundException;
 import com.aquilabank.domain.notification.exception.NotificationNotFoundException;
 import com.aquilabank.domain.transaction.exception.TransactionDetailNotFoundException;
+import com.aquilabank.global.notification.NotificationSseOverloadException;
 import com.aquilabank.global.security.BootstrapApiAccessDeniedException;
 import com.aquilabank.global.security.InternalServiceRequestAuthorizer;
 import com.aquilabank.global.security.InternalServiceTokenClaims;
@@ -83,6 +84,12 @@ public class ApiExceptionHandler {
   ResponseEntity<ApiErrorResponse> handleForbidden(
       AccountAccessDeniedException ex, HttpServletRequest request) {
     return response(HttpStatus.FORBIDDEN, ex.getMessage(), request);
+  }
+
+  @ExceptionHandler(NotificationSseOverloadException.class)
+  ResponseEntity<ApiErrorResponse> handleServiceUnavailable(
+      NotificationSseOverloadException ex, HttpServletRequest request) {
+    return response(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage(), request);
   }
 
   @ExceptionHandler({
