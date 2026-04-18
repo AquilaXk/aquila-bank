@@ -27,13 +27,19 @@
 - `front`: 고객/운영 웹 애플리케이션
 - `back`: API, 도메인, 배치, 어댑터
 - `.github`: 이슈/PR 템플릿과 협업 메타 설정
-- `compose.yml`: 로컬 개발용 PostgreSQL 18 실행 기준
+- `compose.yml`: 로컬 개발용 Docker Compose 인프라 실행 기준
 
 ## Runtime Baseline
 
 - database: `PostgreSQL 18`
-- local environment: `PostgreSQL 18`
-- deployed environment: `PostgreSQL 18`
+- local environment: `Docker Compose + PostgreSQL 18`
+- deployed environment: `EC2 + RDS PostgreSQL 18`
+
+## Environment Split
+
+- 로컬 개발: `Docker Compose + PostgreSQL 18 + Kafka`
+- 배포 환경: `EC2 + RDS PostgreSQL 18`
+- `compose.yml`은 로컬 개발 전용이며, 배포용 인프라 정의는 포함하지 않습니다.
 
 ## Delivery Flow
 
