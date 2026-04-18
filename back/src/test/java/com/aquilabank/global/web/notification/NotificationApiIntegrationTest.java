@@ -195,6 +195,213 @@ class NotificationApiIntegrationTest extends PostgresContainerTestSupport {
         .andExpect(jsonPath("$.unreadCount").value(1));
   }
 
+  @Test
+  void supportsBulkReadArchiveAndDeleteForJwtUser() throws Exception {
+    long[] userIds = new long[2];
+    long[] accountId = new long[1];
+    long[] notificationIds = new long[3];
+    Instant base = Instant.parse("2026-04-17T00:00:00Z");
+    commit(
+        transactionManager,
+        () -> {
+          userIds[0] = insertUser("bulk-user-a");
+          userIds[1] = insertUser("bulk-user-b");
+          accountId[0] = insertAccount("bulk user account");
+          insertMembership(userIds[0], accountId[0], "OWNER", "ACTIVE");
+          insertMembership(userIds[1], accountId[0], "VIEWER", "ACTIVE");
+          notificationIds[0] =
+              insertNotification(
+                  accountId[0], "evt-user-bulk-1", "TransferBooked", "첫 알림", "A", null, base);
+          notificationIds[1] =
+              insertNotification(
+                  accountId[0],
+                  "evt-user-bulk-2",
+                  "TransferBooked",
+                  "둘째 알림",
+                  "B",
+                  null,
+                  base.plusSeconds(5));
+          notificationIds[2] =
+              insertNotification(
+                  accountId[0],
+                  "evt-user-bulk-3",
+                  "TransferBooked",
+                  "셋째 알림",
+                  "C",
+                  null,
+                  base.plusSeconds(10));
+        });
+
+    String tokenA = issueToken("bulk-user-a-subject", userIds[0]);
+    String tokenB = issueToken("bulk-user-b-subject", userIds[1]);
+
+    mockMvc
+        .perform(
+            post("/api/v1/notifications/read")
+                .header("Authorization", "Bearer " + tokenA)
+                .contentType("application/json")
+                .content(
+                    """
+                    {"notificationIds":[%d,%d]}
+                    """
+                        .formatted(notificationIds[0], notificationIds[1])))
+        .andExpect(status().isNoContent());
+
+    mockMvc
+        .perform(get("/api/v1/notifications").header("Authorization", "Bearer " + tokenA))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(3))
+        .andExpect(jsonPath("$.items[1].notificationId").value(notificationIds[1]))
+        .andExpect(jsonPath("$.items[1].read").value(true))
+        .andExpect(jsonPath("$.items[2].notificationId").value(notificationIds[0]))
+        .andExpect(jsonPath("$.items[2].read").value(true));
+
+    mockMvc
+        .perform(
+            post("/api/v1/notifications/archive")
+                .header("Authorization", "Bearer " + tokenA)
+                .contentType("application/json")
+                .content(
+                    """
+                    {"notificationIds":[%d]}
+                    """
+                        .formatted(notificationIds[0])))
+        .andExpect(status().isNoContent());
+
+    mockMvc
+        .perform(
+            post("/api/v1/notifications/delete")
+                .header("Authorization", "Bearer " + tokenA)
+                .contentType("application/json")
+                .content(
+                    """
+                    {"notificationIds":[%d]}
+                    """
+                        .formatted(notificationIds[1])))
+        .andExpect(status().isNoContent());
+
+    mockMvc
+        .perform(get("/api/v1/notifications").header("Authorization", "Bearer " + tokenA))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(1))
+        .andExpect(jsonPath("$.items[0].notificationId").value(notificationIds[2]))
+        .andExpect(jsonPath("$.items[0].read").value(false));
+
+    mockMvc
+        .perform(
+            get("/api/v1/notifications/unread-count").header("Authorization", "Bearer " + tokenA))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.unreadCount").value(1));
+
+    mockMvc
+        .perform(get("/api/v1/notifications").header("Authorization", "Bearer " + tokenB))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(3))
+        .andExpect(jsonPath("$.items[0].read").value(false))
+        .andExpect(jsonPath("$.items[1].read").value(false))
+        .andExpect(jsonPath("$.items[2].read").value(false));
+
+    mockMvc
+        .perform(
+            get("/api/v1/notifications/unread-count").header("Authorization", "Bearer " + tokenB))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.unreadCount").value(3));
+  }
+
+  @Test
+  void supportsBulkReadArchiveAndDeleteForAccountPrincipal() throws Exception {
+    long[] accountId = new long[1];
+    long[] notificationIds = new long[3];
+    Instant base = Instant.parse("2026-04-17T00:00:00Z");
+    commit(
+        transactionManager,
+        () -> {
+          accountId[0] = insertAccount("bulk account principal");
+          notificationIds[0] =
+              insertNotification(
+                  accountId[0], "evt-account-bulk-1", "TransferBooked", "첫 알림", "A", null, base);
+          notificationIds[1] =
+              insertNotification(
+                  accountId[0],
+                  "evt-account-bulk-2",
+                  "TransferBooked",
+                  "둘째 알림",
+                  "B",
+                  null,
+                  base.plusSeconds(5));
+          notificationIds[2] =
+              insertNotification(
+                  accountId[0],
+                  "evt-account-bulk-3",
+                  "TransferBooked",
+                  "셋째 알림",
+                  "C",
+                  null,
+                  base.plusSeconds(10));
+        });
+
+    mockMvc
+        .perform(
+            post("/api/v1/notifications/read")
+                .header("X-Account-Id", Long.toString(accountId[0]))
+                .contentType("application/json")
+                .content(
+                    """
+                    {"notificationIds":[%d,%d]}
+                    """
+                        .formatted(notificationIds[0], notificationIds[1])))
+        .andExpect(status().isNoContent());
+
+    mockMvc
+        .perform(get("/api/v1/notifications/unread-count").header("X-Account-Id", accountId[0]))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.unreadCount").value(1));
+
+    mockMvc
+        .perform(
+            post("/api/v1/notifications/archive")
+                .header("X-Account-Id", Long.toString(accountId[0]))
+                .contentType("application/json")
+                .content(
+                    """
+                    {"notificationIds":[%d]}
+                    """
+                        .formatted(notificationIds[0])))
+        .andExpect(status().isNoContent());
+
+    mockMvc
+        .perform(get("/api/v1/notifications").header("X-Account-Id", accountId[0]))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(2))
+        .andExpect(jsonPath("$.items[0].notificationId").value(notificationIds[2]))
+        .andExpect(jsonPath("$.items[1].notificationId").value(notificationIds[1]))
+        .andExpect(jsonPath("$.items[1].read").value(true));
+
+    mockMvc
+        .perform(
+            post("/api/v1/notifications/delete")
+                .header("X-Account-Id", Long.toString(accountId[0]))
+                .contentType("application/json")
+                .content(
+                    """
+                    {"notificationIds":[%d]}
+                    """
+                        .formatted(notificationIds[2])))
+        .andExpect(status().isNoContent());
+
+    mockMvc
+        .perform(get("/api/v1/notifications").header("X-Account-Id", accountId[0]))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(1))
+        .andExpect(jsonPath("$.items[0].notificationId").value(notificationIds[1]))
+        .andExpect(jsonPath("$.items[0].read").value(true));
+
+    mockMvc
+        .perform(get("/api/v1/notifications/unread-count").header("X-Account-Id", accountId[0]))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.unreadCount").value(0));
+  }
+
   private long insertUser(String loginId) {
     Long userId =
         jdbcTemplate.queryForObject(

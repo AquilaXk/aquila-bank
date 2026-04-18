@@ -11,6 +11,9 @@ CREATE INDEX idx_notification_inbox_account_visible_unread
     WHERE archived_at IS NULL;
 
 ALTER TABLE notification_user_read_state
+    ALTER COLUMN read_at DROP NOT NULL;
+
+ALTER TABLE notification_user_read_state
     ADD COLUMN archived_at TIMESTAMPTZ;
 
 ALTER TABLE notification_user_read_state

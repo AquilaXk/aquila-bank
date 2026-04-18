@@ -15,6 +15,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.aquilabank.domain.notification.exception.NotificationNotFoundException;
+import com.aquilabank.domain.notification.model.NotificationBulkActionCommand;
 import com.aquilabank.domain.notification.model.NotificationCursor;
 import com.aquilabank.domain.notification.model.NotificationSlice;
 import com.aquilabank.domain.notification.model.NotificationSummary;
@@ -110,6 +111,57 @@ class NotificationControllerTest {
   }
 
   @Test
+  void marksNotificationsAsReadInBulk() throws Exception {
+    mockMvc
+        .perform(
+            post("/api/v1/notifications/read")
+                .header("X-Account-Id", "101")
+                .contentType("application/json")
+                .content(
+                    """
+                    {"notificationIds":[10,11]}
+                    """))
+        .andExpect(status().isNoContent());
+
+    verify(notificationBulkActionUseCase)
+        .markAsReadForAccount(eq(101L), eq(new NotificationBulkActionCommand(List.of(10L, 11L))));
+  }
+
+  @Test
+  void archivesNotificationsInBulk() throws Exception {
+    mockMvc
+        .perform(
+            post("/api/v1/notifications/archive")
+                .header("X-Account-Id", "101")
+                .contentType("application/json")
+                .content(
+                    """
+                    {"notificationIds":[10,12]}
+                    """))
+        .andExpect(status().isNoContent());
+
+    verify(notificationBulkActionUseCase)
+        .archiveForAccount(eq(101L), eq(new NotificationBulkActionCommand(List.of(10L, 12L))));
+  }
+
+  @Test
+  void deletesNotificationsInBulk() throws Exception {
+    mockMvc
+        .perform(
+            post("/api/v1/notifications/delete")
+                .header("X-Account-Id", "101")
+                .contentType("application/json")
+                .content(
+                    """
+                    {"notificationIds":[10,13]}
+                    """))
+        .andExpect(status().isNoContent());
+
+    verify(notificationBulkActionUseCase)
+        .deleteForAccount(eq(101L), eq(new NotificationBulkActionCommand(List.of(10L, 13L))));
+  }
+
+  @Test
   void returnsNotFoundWhenNotificationIsMissing() throws Exception {
     doThrow(new NotificationNotFoundException("notification is not found"))
         .when(notificationReadUseCase)
@@ -126,6 +178,20 @@ class NotificationControllerTest {
     mockMvc
         .perform(
             get("/api/v1/notifications").header("X-Account-Id", "101").param("cursor", "broken"))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  void rejectsEmptyBulkRequest() throws Exception {
+    mockMvc
+        .perform(
+            post("/api/v1/notifications/archive")
+                .header("X-Account-Id", "101")
+                .contentType("application/json")
+                .content(
+                    """
+                    {"notificationIds":[]}
+                    """))
         .andExpect(status().isBadRequest());
   }
 

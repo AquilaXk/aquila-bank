@@ -117,6 +117,48 @@ class JdbcNotificationInboxRepositoryIntegrationTest extends PostgresContainerTe
   }
 
   @Test
+  void marksNotificationsAsReadInBulkPerUserWithoutAffectingSharedUsers() {
+    long[] userIds = new long[2];
+    long[] accountId = new long[1];
+    long[] notificationIds = new long[2];
+    Instant base = Instant.parse("2026-04-17T00:00:00Z");
+    commit(
+        transactionManager,
+        () -> {
+          userIds[0] = insertUser("user-bulk-read-a");
+          userIds[1] = insertUser("user-bulk-read-b");
+          accountId[0] = insertAccount("bulk read account");
+          insertMembership(userIds[0], accountId[0], "OWNER", "ACTIVE");
+          insertMembership(userIds[1], accountId[0], "VIEWER", "ACTIVE");
+          notificationIds[0] =
+              insertNotification(
+                  accountId[0], "evt-bulk-read-1", "TransferBooked", "A", "A", null, base);
+          notificationIds[1] =
+              insertNotification(
+                  accountId[0],
+                  "evt-bulk-read-2",
+                  "TransferBooked",
+                  "B",
+                  "B",
+                  null,
+                  base.plusSeconds(5));
+        });
+
+    assertThat(
+            repository.markAllAsReadByUserId(
+                userIds[0], List.of(notificationIds[0], notificationIds[1]), base.plusSeconds(30)))
+        .isEqualTo(2);
+    assertThat(repository.countUnreadByUserId(userIds[0])).isEqualTo(0L);
+    assertThat(repository.countUnreadByUserId(userIds[1])).isEqualTo(2L);
+    assertThat(repository.fetchByUserId(userIds[0], new NotificationListQuery(10, null)).items())
+        .extracting("readAt")
+        .allMatch(item -> item != null);
+    assertThat(repository.fetchByUserId(userIds[1], new NotificationListQuery(10, null)).items())
+        .extracting("readAt")
+        .containsExactly(null, null);
+  }
+
+  @Test
   void keepsAccountScopedReadPathOnNotificationInbox() {
     long[] accountId = new long[1];
     long[] notificationIds = new long[2];
@@ -150,6 +192,75 @@ class JdbcNotificationInboxRepositoryIntegrationTest extends PostgresContainerTe
         .isTrue();
     assertThat(repository.markAsReadByAccountId(accountId[0], 99999L, base.plusSeconds(50)))
         .isFalse();
+  }
+
+  @Test
+  void archivesAndDeletesNotificationsPerPrincipalScope() {
+    long[] userIds = new long[2];
+    long[] accountId = new long[1];
+    long[] notificationIds = new long[3];
+    Instant base = Instant.parse("2026-04-17T00:00:00Z");
+    commit(
+        transactionManager,
+        () -> {
+          userIds[0] = insertUser("user-bulk-hide-a");
+          userIds[1] = insertUser("user-bulk-hide-b");
+          accountId[0] = insertAccount("bulk hide account");
+          insertMembership(userIds[0], accountId[0], "OWNER", "ACTIVE");
+          insertMembership(userIds[1], accountId[0], "VIEWER", "ACTIVE");
+          notificationIds[0] =
+              insertNotification(
+                  accountId[0], "evt-bulk-hide-1", "TransferBooked", "A", "A", null, base);
+          notificationIds[1] =
+              insertNotification(
+                  accountId[0],
+                  "evt-bulk-hide-2",
+                  "TransferBooked",
+                  "B",
+                  "B",
+                  null,
+                  base.plusSeconds(5));
+          notificationIds[2] =
+              insertNotification(
+                  accountId[0],
+                  "evt-bulk-hide-3",
+                  "TransferBooked",
+                  "C",
+                  "C",
+                  null,
+                  base.plusSeconds(10));
+        });
+
+    assertThat(
+            repository.archiveByUserId(
+                userIds[0], List.of(notificationIds[0]), base.plusSeconds(20)))
+        .isEqualTo(1);
+    assertThat(
+            repository.deleteByUserId(
+                userIds[0], List.of(notificationIds[1]), base.plusSeconds(30)))
+        .isEqualTo(1);
+    assertThat(
+            repository.archiveByAccountId(
+                accountId[0], List.of(notificationIds[2]), base.plusSeconds(40)))
+        .isEqualTo(1);
+
+    assertThat(repository.fetchByUserId(userIds[0], new NotificationListQuery(10, null)).items())
+        .isEmpty();
+    assertThat(repository.fetchByUserId(userIds[1], new NotificationListQuery(10, null)).items())
+        .extracting("title")
+        .containsExactly("B", "A");
+    assertThat(
+            repository.fetchByAccountId(accountId[0], new NotificationListQuery(10, null)).items())
+        .extracting("title")
+        .containsExactly("B", "A");
+    assertThat(repository.countUnreadByUserId(userIds[0])).isEqualTo(0L);
+    assertThat(repository.countUnreadByUserId(userIds[1])).isEqualTo(2L);
+    assertThat(repository.countUnreadByAccountId(accountId[0])).isEqualTo(2L);
+
+    assertThat(repository.deleteByAccountId(accountId[0], List.of(notificationIds[1])))
+        .isEqualTo(1);
+    assertThat(findNotificationEventKeys())
+        .containsExactlyInAnyOrder("evt-bulk-hide-1", "evt-bulk-hide-3");
   }
 
   @Test
