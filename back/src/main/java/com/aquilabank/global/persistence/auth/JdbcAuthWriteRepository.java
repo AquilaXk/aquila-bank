@@ -13,6 +13,11 @@ import com.aquilabank.domain.auth.model.PasswordResetWriteCommand;
 import com.aquilabank.domain.auth.model.RefreshTokenSessionCreateCommand;
 import com.aquilabank.domain.auth.model.RefreshTokenSessionRevokeCommand;
 import com.aquilabank.domain.auth.model.RefreshTokenSessionRotateCommand;
+import com.aquilabank.domain.auth.model.TotpCredentialActivateCommand;
+import com.aquilabank.domain.auth.model.TotpCredentialTouchCommand;
+import com.aquilabank.domain.auth.model.TotpCredentialUpsertCommand;
+import com.aquilabank.domain.auth.model.TotpLoginChallengeUpdateCommand;
+import com.aquilabank.domain.auth.model.TotpLoginChallengeUpsertCommand;
 import com.aquilabank.domain.auth.model.UserAccountMembership;
 import com.aquilabank.domain.auth.model.UserAccountMembershipStatusUpdateCommand;
 import com.aquilabank.domain.auth.model.UserAccountMembershipSummary;
@@ -24,6 +29,8 @@ import com.aquilabank.domain.auth.model.UserStatusUpdateCommand;
 import com.aquilabank.domain.auth.port.LoginAttemptUpdatePort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionCleanupPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionWritePort;
+import com.aquilabank.domain.auth.port.TotpCredentialWritePort;
+import com.aquilabank.domain.auth.port.TotpLoginChallengeWritePort;
 import com.aquilabank.domain.auth.port.UserAccountMembershipStatusUpdatePort;
 import com.aquilabank.domain.auth.port.UserAccountMembershipUpsertPort;
 import com.aquilabank.domain.auth.port.UserBootstrapPort;
@@ -47,6 +54,8 @@ public class JdbcAuthWriteRepository
         UserCredentialUpdatePort,
         RefreshTokenSessionCleanupPort,
         RefreshTokenSessionWritePort,
+        TotpCredentialWritePort,
+        TotpLoginChallengeWritePort,
         UserAccountMembershipUpsertPort,
         UserStatusUpdatePort,
         UserAccountMembershipStatusUpdatePort {
@@ -251,6 +260,175 @@ public class JdbcAuthWriteRepository
                 .addValue("revokedAt", Timestamp.from(command.revokedAt())));
     if (updated != 1) {
       throw new IllegalStateException("refresh token session is not active");
+    }
+  }
+
+  @Override
+  @Transactional
+  public void upsertPending(TotpCredentialUpsertCommand command) {
+    int updated =
+        jdbcTemplate.update(
+            """
+            INSERT INTO auth_totp_credential (
+                user_id,
+                credential_status,
+                secret_nonce,
+                secret_ciphertext,
+                pending_expires_at,
+                verified_at,
+                last_used_at,
+                created_at,
+                updated_at
+            )
+            VALUES (
+                :userId,
+                'PENDING',
+                :secretNonce,
+                :secretCiphertext,
+                :pendingExpiresAt,
+                NULL,
+                NULL,
+                :createdAt,
+                :createdAt
+            )
+            ON CONFLICT (user_id)
+            DO UPDATE
+            SET credential_status = 'PENDING',
+                secret_nonce = EXCLUDED.secret_nonce,
+                secret_ciphertext = EXCLUDED.secret_ciphertext,
+                pending_expires_at = EXCLUDED.pending_expires_at,
+                verified_at = NULL,
+                updated_at = EXCLUDED.updated_at
+            WHERE auth_totp_credential.credential_status = 'PENDING'
+            """,
+            new MapSqlParameterSource()
+                .addValue("userId", command.userId())
+                .addValue("secretNonce", command.secretNonce())
+                .addValue("secretCiphertext", command.secretCiphertext())
+                .addValue("pendingExpiresAt", Timestamp.from(command.pendingExpiresAt()))
+                .addValue("createdAt", Timestamp.from(command.createdAt())));
+    if (updated != 1) {
+      throw new IllegalStateException("totp credential is already active");
+    }
+  }
+
+  @Override
+  @Transactional
+  public void activate(TotpCredentialActivateCommand command) {
+    int updated =
+        jdbcTemplate.update(
+            """
+            UPDATE auth_totp_credential
+            SET credential_status = 'ACTIVE',
+                pending_expires_at = NULL,
+                verified_at = :verifiedAt,
+                updated_at = :verifiedAt
+            WHERE user_id = :userId
+              AND credential_status = 'PENDING'
+            """,
+            new MapSqlParameterSource()
+                .addValue("userId", command.userId())
+                .addValue("verifiedAt", Timestamp.from(command.verifiedAt())));
+    if (updated != 1) {
+      throw new IllegalStateException("totp credential is not pending");
+    }
+  }
+
+  @Override
+  @Transactional
+  public void touchLastUsed(TotpCredentialTouchCommand command) {
+    int updated =
+        jdbcTemplate.update(
+            """
+            UPDATE auth_totp_credential
+            SET last_used_at = :lastUsedAt,
+                updated_at = :lastUsedAt
+            WHERE user_id = :userId
+              AND credential_status = 'ACTIVE'
+            """,
+            new MapSqlParameterSource()
+                .addValue("userId", command.userId())
+                .addValue("lastUsedAt", Timestamp.from(command.lastUsedAt())));
+    if (updated != 1) {
+      throw new IllegalStateException("totp credential is not active");
+    }
+  }
+
+  @Override
+  @Transactional
+  public void upsert(TotpLoginChallengeUpsertCommand command) {
+    jdbcTemplate.update(
+        """
+        INSERT INTO auth_totp_login_challenge (
+            user_id,
+            challenge_id,
+            challenge_status,
+            attempt_count,
+            device_name,
+            ip_address,
+            expires_at,
+            verified_at,
+            created_at,
+            updated_at
+        )
+        VALUES (
+            :userId,
+            :challengeId,
+            'PENDING',
+            0,
+            :deviceName,
+            :ipAddress,
+            :expiresAt,
+            NULL,
+            :createdAt,
+            :createdAt
+        )
+        ON CONFLICT (user_id)
+        DO UPDATE
+        SET challenge_id = EXCLUDED.challenge_id,
+            challenge_status = EXCLUDED.challenge_status,
+            attempt_count = EXCLUDED.attempt_count,
+            device_name = EXCLUDED.device_name,
+            ip_address = EXCLUDED.ip_address,
+            expires_at = EXCLUDED.expires_at,
+            verified_at = NULL,
+            created_at = EXCLUDED.created_at,
+            updated_at = EXCLUDED.updated_at
+        """,
+        new MapSqlParameterSource()
+            .addValue("userId", command.userId())
+            .addValue("challengeId", command.challengeId())
+            .addValue("deviceName", command.deviceName())
+            .addValue("ipAddress", command.ipAddress())
+            .addValue("expiresAt", Timestamp.from(command.expiresAt()))
+            .addValue("createdAt", Timestamp.from(command.createdAt())));
+  }
+
+  @Override
+  @Transactional
+  public void update(TotpLoginChallengeUpdateCommand command) {
+    int updated =
+        jdbcTemplate.update(
+            """
+            UPDATE auth_totp_login_challenge
+            SET challenge_status = :challengeStatus,
+                attempt_count = :attemptCount,
+                verified_at = CASE
+                    WHEN :challengeStatus = 'VERIFIED' THEN :updatedAt
+                    ELSE verified_at
+                END,
+                updated_at = :updatedAt
+            WHERE user_id = :userId
+              AND challenge_id = :challengeId
+            """,
+            new MapSqlParameterSource()
+                .addValue("userId", command.userId())
+                .addValue("challengeId", command.challengeId())
+                .addValue("challengeStatus", command.challengeStatus().name())
+                .addValue("attemptCount", command.attemptCount())
+                .addValue("updatedAt", Timestamp.from(command.updatedAt())));
+    if (updated != 1) {
+      throw new IllegalStateException("totp login challenge is not found");
     }
   }
 

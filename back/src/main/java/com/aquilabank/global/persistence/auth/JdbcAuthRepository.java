@@ -13,6 +13,10 @@ import com.aquilabank.domain.auth.model.MembershipRole;
 import com.aquilabank.domain.auth.model.MembershipStatus;
 import com.aquilabank.domain.auth.model.RefreshTokenSession;
 import com.aquilabank.domain.auth.model.RefreshTokenSessionStatus;
+import com.aquilabank.domain.auth.model.TotpCredential;
+import com.aquilabank.domain.auth.model.TotpCredentialStatus;
+import com.aquilabank.domain.auth.model.TotpLoginChallenge;
+import com.aquilabank.domain.auth.model.TotpLoginChallengeStatus;
 import com.aquilabank.domain.auth.model.UserAccountMembership;
 import com.aquilabank.domain.auth.model.UserAccountMembershipSummary;
 import com.aquilabank.domain.auth.model.UserStatus;
@@ -20,6 +24,8 @@ import com.aquilabank.domain.auth.port.AccountAccessPort;
 import com.aquilabank.domain.auth.port.AuthSessionQueryPort;
 import com.aquilabank.domain.auth.port.AuthStatusChangeAuditQueryPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionLoadPort;
+import com.aquilabank.domain.auth.port.TotpCredentialLoadPort;
+import com.aquilabank.domain.auth.port.TotpLoginChallengeLoadPort;
 import com.aquilabank.domain.auth.port.UserAccountMembershipQueryPort;
 import com.aquilabank.domain.auth.port.UserCredentialLoadPort;
 import com.aquilabank.domain.auth.port.UserQueryPort;
@@ -38,6 +44,8 @@ import org.springframework.stereotype.Repository;
 public class JdbcAuthRepository
     implements UserCredentialLoadPort,
         RefreshTokenSessionLoadPort,
+        TotpCredentialLoadPort,
+        TotpLoginChallengeLoadPort,
         AuthSessionQueryPort,
         AccountAccessPort,
         UserQueryPort,
@@ -114,6 +122,75 @@ public class JdbcAuthRepository
             """,
             new MapSqlParameterSource().addValue("userId", userId),
             (rs, rowNum) -> mapLoginUser(rs))
+        .stream()
+        .findFirst();
+  }
+
+  @Override
+  public Optional<TotpCredential> findCredentialByUserId(long userId) {
+    return jdbcTemplate
+        .query(
+            """
+            SELECT user_id,
+                   credential_status,
+                   secret_ciphertext,
+                   secret_nonce,
+                   pending_expires_at,
+                   verified_at,
+                   last_used_at
+            FROM auth_totp_credential
+            WHERE user_id = :userId
+            """,
+            new MapSqlParameterSource().addValue("userId", userId),
+            (rs, rowNum) -> mapTotpCredential(rs))
+        .stream()
+        .findFirst();
+  }
+
+  @Override
+  public Optional<TotpCredential> findCredentialByUserIdForUpdate(long userId) {
+    return jdbcTemplate
+        .query(
+            """
+            SELECT user_id,
+                   credential_status,
+                   secret_ciphertext,
+                   secret_nonce,
+                   pending_expires_at,
+                   verified_at,
+                   last_used_at
+            FROM auth_totp_credential
+            WHERE user_id = :userId
+            FOR UPDATE
+            """,
+            new MapSqlParameterSource().addValue("userId", userId),
+            (rs, rowNum) -> mapTotpCredential(rs))
+        .stream()
+        .findFirst();
+  }
+
+  @Override
+  public Optional<TotpLoginChallenge> findByChallengeIdForUpdate(String challengeId) {
+    return jdbcTemplate
+        .query(
+            """
+            SELECT c.user_id,
+                   u.login_id,
+                   u.user_status,
+                   c.challenge_id,
+                   c.challenge_status,
+                   c.attempt_count,
+                   c.expires_at,
+                   c.device_name,
+                   c.ip_address
+            FROM auth_totp_login_challenge c
+            JOIN bank_user u
+              ON u.id = c.user_id
+            WHERE c.challenge_id = :challengeId
+            FOR UPDATE OF c, u
+            """,
+            new MapSqlParameterSource().addValue("challengeId", challengeId),
+            (rs, rowNum) -> mapTotpLoginChallenge(rs))
         .stream()
         .findFirst();
   }
@@ -321,6 +398,30 @@ public class JdbcAuthRepository
         toNullableInstant(rs.getTimestamp("last_login_failed_at")),
         toNullableInstant(rs.getTimestamp("login_locked_until")),
         toNullableInstant(rs.getTimestamp("last_login_succeeded_at")));
+  }
+
+  private TotpCredential mapTotpCredential(ResultSet rs) throws SQLException {
+    return new TotpCredential(
+        rs.getLong("user_id"),
+        TotpCredentialStatus.valueOf(rs.getString("credential_status")),
+        rs.getString("secret_ciphertext"),
+        rs.getString("secret_nonce"),
+        toNullableInstant(rs.getTimestamp("pending_expires_at")),
+        toNullableInstant(rs.getTimestamp("verified_at")),
+        toNullableInstant(rs.getTimestamp("last_used_at")));
+  }
+
+  private TotpLoginChallenge mapTotpLoginChallenge(ResultSet rs) throws SQLException {
+    return new TotpLoginChallenge(
+        rs.getLong("user_id"),
+        rs.getString("login_id"),
+        UserStatus.valueOf(rs.getString("user_status")),
+        rs.getString("challenge_id"),
+        TotpLoginChallengeStatus.valueOf(rs.getString("challenge_status")),
+        rs.getInt("attempt_count"),
+        toInstant(rs.getTimestamp("expires_at")),
+        rs.getString("device_name"),
+        rs.getString("ip_address"));
   }
 
   private RefreshTokenSession mapRefreshTokenSession(ResultSet rs) throws SQLException {
