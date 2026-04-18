@@ -162,6 +162,12 @@ security:
     issuer: ${SECURITY_JWT_ISSUER:}
     access-token-ttl-seconds: ${SECURITY_JWT_ACCESS_TOKEN_TTL_SECONDS:900}
     refresh-token-ttl-seconds: ${SECURITY_JWT_REFRESH_TOKEN_TTL_SECONDS:1209600}
+  totp:
+    issuer: ${SECURITY_TOTP_ISSUER:Aquila Bank}
+    secret-encryption-key: ${SECURITY_TOTP_SECRET_ENCRYPTION_KEY:${SECURITY_JWT_SECRET:}}
+    enrollment-ttl-seconds: ${SECURITY_TOTP_ENROLLMENT_TTL_SECONDS:300}
+    challenge-ttl-seconds: ${SECURITY_TOTP_CHALLENGE_TTL_SECONDS:300}
+    challenge-max-attempts: ${SECURITY_TOTP_CHALLENGE_MAX_ATTEMPTS:5}
   internal-service-token:
     issuer: ${SECURITY_INTERNAL_SERVICE_TOKEN_ISSUER:}
     audience: ${SECURITY_INTERNAL_SERVICE_TOKEN_AUDIENCE:}
