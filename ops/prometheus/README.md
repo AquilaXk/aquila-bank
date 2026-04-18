@@ -73,6 +73,18 @@ cp ops/prometheus/rules/aquila-bank-alerts.yml /etc/prometheus/rules/
 
 그 다음 `promtool check rules` 또는 동등한 검증 후 Prometheus reload를 수행합니다.
 
+## Validation
+
+로컬 baseline 자산 문법 확인은 아래 스크립트로 먼저 닫습니다.
+
+```bash
+bash tools/ops/validate-prometheus-assets.sh
+```
+
+- dashboard JSON은 `uid`, panel 개수, JSON syntax를 같이 확인합니다.
+- alert rule YAML은 group/rule/expr 존재 여부와 YAML syntax를 같이 확인합니다.
+- 실제 Prometheus 적용 전에는 여기에 더해 `promtool check rules`를 추가로 수행합니다.
+
 ## Threshold Tuning
 
 - outbox/notification threshold는 현재 README와 actuator health 기본값을 기준으로 둔 값입니다.

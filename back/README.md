@@ -191,6 +191,11 @@ set +a
 - 운영 메모:
   - outbox/notification gauge는 scrape 한 번에 같은 summary를 여러 번 다시 조회하지 않게 `5초` cache 안에서 재사용합니다.
   - SSE session metric은 현재 app instance 메모리의 active session 수만 보여주므로 multi-instance 전체 합계는 Prometheus 쿼리에서 합산합니다.
+  - baseline 자산은 `ops/prometheus/` 아래에 두고 dashboard import, alert rule apply, tuning 가이드는 `ops/prometheus/README.md`를 기준으로 봅니다.
+- baseline 파일:
+  - dashboard: `ops/prometheus/grafana/aquila-bank-overview.json`
+  - alert rule: `ops/prometheus/rules/aquila-bank-alerts.yml`
+  - validation: `bash tools/ops/validate-prometheus-assets.sh`
 
 ## Outbox Retention Cleanup
 
