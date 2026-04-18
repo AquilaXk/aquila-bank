@@ -3,6 +3,7 @@ package com.aquilabank.domain.auth.usecase;
 import com.aquilabank.domain.auth.exception.InvalidCredentialsException;
 import com.aquilabank.domain.auth.model.AuthSessionClientMetadata;
 import com.aquilabank.domain.auth.model.IssuedAccessToken;
+import com.aquilabank.domain.auth.model.LoginChallengeType;
 import com.aquilabank.domain.auth.model.LoginCommand;
 import com.aquilabank.domain.auth.model.LoginFailureAuditEntry;
 import com.aquilabank.domain.auth.model.LoginFailureReason;
@@ -14,6 +15,9 @@ import com.aquilabank.domain.auth.model.LoginSuccessUpdateCommand;
 import com.aquilabank.domain.auth.model.LoginUser;
 import com.aquilabank.domain.auth.model.RefreshTokenPolicy;
 import com.aquilabank.domain.auth.model.RefreshTokenSessionCreateCommand;
+import com.aquilabank.domain.auth.model.TotpCredential;
+import com.aquilabank.domain.auth.model.TotpCredentialStatus;
+import com.aquilabank.domain.auth.model.TotpLoginChallengeUpsertCommand;
 import com.aquilabank.domain.auth.model.UserStatus;
 import com.aquilabank.domain.auth.port.AuthTokenIssuePort;
 import com.aquilabank.domain.auth.port.LoginAttemptAuditPort;
@@ -21,9 +25,13 @@ import com.aquilabank.domain.auth.port.LoginAttemptUpdatePort;
 import com.aquilabank.domain.auth.port.PasswordHashPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSecretPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionWritePort;
+import com.aquilabank.domain.auth.port.TotpCredentialLoadPort;
+import com.aquilabank.domain.auth.port.TotpLoginChallengeWritePort;
 import com.aquilabank.domain.auth.port.UserCredentialLoadPort;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
+import java.util.UUID;
 
 /** loginId/password 검증에 실패 누적과 임시 잠금 기준을 함께 적용합니다. */
 public final class LoginService implements LoginUseCase {
@@ -32,11 +40,14 @@ public final class LoginService implements LoginUseCase {
   private final LoginAttemptUpdatePort loginAttemptUpdatePort;
   private final LoginAttemptAuditPort loginAttemptAuditPort;
   private final PasswordHashPort passwordHashPort;
+  private final TotpCredentialLoadPort totpCredentialLoadPort;
+  private final TotpLoginChallengeWritePort totpLoginChallengeWritePort;
   private final RefreshTokenSessionWritePort refreshTokenSessionWritePort;
   private final RefreshTokenSecretPort refreshTokenSecretPort;
   private final AuthTokenIssuePort authTokenIssuePort;
   private final LoginProtectionPolicy loginProtectionPolicy;
   private final RefreshTokenPolicy refreshTokenPolicy;
+  private final Duration totpChallengeTtl;
   private final String dummyPasswordHash;
   private final Clock clock;
 
@@ -45,22 +56,28 @@ public final class LoginService implements LoginUseCase {
       LoginAttemptUpdatePort loginAttemptUpdatePort,
       LoginAttemptAuditPort loginAttemptAuditPort,
       PasswordHashPort passwordHashPort,
+      TotpCredentialLoadPort totpCredentialLoadPort,
+      TotpLoginChallengeWritePort totpLoginChallengeWritePort,
       RefreshTokenSessionWritePort refreshTokenSessionWritePort,
       RefreshTokenSecretPort refreshTokenSecretPort,
       AuthTokenIssuePort authTokenIssuePort,
       LoginProtectionPolicy loginProtectionPolicy,
       RefreshTokenPolicy refreshTokenPolicy,
+      Duration totpChallengeTtl,
       String dummyPasswordHash,
       Clock clock) {
     this.userCredentialLoadPort = userCredentialLoadPort;
     this.loginAttemptUpdatePort = loginAttemptUpdatePort;
     this.loginAttemptAuditPort = loginAttemptAuditPort;
     this.passwordHashPort = passwordHashPort;
+    this.totpCredentialLoadPort = totpCredentialLoadPort;
+    this.totpLoginChallengeWritePort = totpLoginChallengeWritePort;
     this.refreshTokenSessionWritePort = refreshTokenSessionWritePort;
     this.refreshTokenSecretPort = refreshTokenSecretPort;
     this.authTokenIssuePort = authTokenIssuePort;
     this.loginProtectionPolicy = loginProtectionPolicy;
     this.refreshTokenPolicy = refreshTokenPolicy;
+    this.totpChallengeTtl = totpChallengeTtl;
     this.dummyPasswordHash = dummyPasswordHash;
     this.clock = clock;
   }
@@ -119,6 +136,11 @@ public final class LoginService implements LoginUseCase {
       loginAttemptAuditPort.logReset(
           new LoginResetAuditEntry(
               command.loginId(), user.userId(), user.failedLoginCount(), user.loginLockedUntil()));
+    }
+    TotpCredential credential =
+        totpCredentialLoadPort.findCredentialByUserId(user.userId()).orElse(null);
+    if (credential != null && credential.credentialStatus() == TotpCredentialStatus.ACTIVE) {
+      return issueTotpChallenge(user.userId(), command.sessionClientMetadata(), now);
     }
     return issueTokenPair(user.userId(), user.loginId(), command.sessionClientMetadata(), now);
   }
@@ -191,12 +213,28 @@ public final class LoginService implements LoginUseCase {
             now,
             sessionClientMetadata));
     IssuedAccessToken issuedAccessToken = authTokenIssuePort.issue(userId, loginId, now);
-    return new LoginResult(
+    return LoginResult.success(
         issuedAccessToken.accessToken(),
         refreshToken,
         issuedAccessToken.tokenType(),
         issuedAccessToken.expiresAt(),
         refreshExpiresAt,
         issuedAccessToken.userId());
+  }
+
+  private LoginResult issueTotpChallenge(
+      long userId, AuthSessionClientMetadata sessionClientMetadata, Instant now) {
+    String challengeId = UUID.randomUUID().toString();
+    Instant challengeExpiresAt = now.plus(totpChallengeTtl);
+    // challenge row 한 개만 덮어써 one-time MFA 상태를 user별로 작게 유지합니다.
+    totpLoginChallengeWritePort.upsert(
+        new TotpLoginChallengeUpsertCommand(
+            userId,
+            challengeId,
+            sessionClientMetadata.deviceName(),
+            sessionClientMetadata.ipAddress(),
+            challengeExpiresAt,
+            now));
+    return LoginResult.mfaRequired(challengeId, LoginChallengeType.TOTP, challengeExpiresAt);
   }
 }

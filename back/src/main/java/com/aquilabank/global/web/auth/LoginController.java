@@ -10,6 +10,11 @@ import com.aquilabank.domain.auth.model.LoginResult;
 import com.aquilabank.domain.auth.model.LogoutCommand;
 import com.aquilabank.domain.auth.model.PasswordResetCommand;
 import com.aquilabank.domain.auth.model.RefreshTokenCommand;
+import com.aquilabank.domain.auth.model.TotpChallengeVerifyCommand;
+import com.aquilabank.domain.auth.model.TotpEnrollmentStartCommand;
+import com.aquilabank.domain.auth.model.TotpEnrollmentStartResult;
+import com.aquilabank.domain.auth.model.TotpEnrollmentVerifyCommand;
+import com.aquilabank.domain.auth.model.TotpEnrollmentVerifyResult;
 import com.aquilabank.domain.auth.usecase.AuthSessionListUseCase;
 import com.aquilabank.domain.auth.usecase.AuthSessionRevokeAllUseCase;
 import com.aquilabank.domain.auth.usecase.AuthSessionRevokeUseCase;
@@ -17,6 +22,8 @@ import com.aquilabank.domain.auth.usecase.LoginUseCase;
 import com.aquilabank.domain.auth.usecase.LogoutUseCase;
 import com.aquilabank.domain.auth.usecase.PasswordResetUseCase;
 import com.aquilabank.domain.auth.usecase.RefreshTokenUseCase;
+import com.aquilabank.domain.auth.usecase.TotpChallengeVerifyUseCase;
+import com.aquilabank.domain.auth.usecase.TotpEnrollmentUseCase;
 import com.aquilabank.global.security.AuthenticatedAccountPrincipal;
 import com.aquilabank.global.security.AuthenticatedRequestPrincipal;
 import com.aquilabank.global.security.AuthenticatedUserPrincipal;
@@ -26,6 +33,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import java.util.List;
@@ -53,6 +61,8 @@ public class LoginController {
   private final AuthSessionRevokeUseCase authSessionRevokeUseCase;
   private final AuthSessionRevokeAllUseCase authSessionRevokeAllUseCase;
   private final RefreshTokenUseCase refreshTokenUseCase;
+  private final TotpEnrollmentUseCase totpEnrollmentUseCase;
+  private final TotpChallengeVerifyUseCase totpChallengeVerifyUseCase;
   private final LogoutUseCase logoutUseCase;
   private final PasswordResetUseCase passwordResetUseCase;
   private final AuthSessionMetadataResolver authSessionMetadataResolver;
@@ -63,6 +73,8 @@ public class LoginController {
       AuthSessionRevokeUseCase authSessionRevokeUseCase,
       AuthSessionRevokeAllUseCase authSessionRevokeAllUseCase,
       RefreshTokenUseCase refreshTokenUseCase,
+      TotpEnrollmentUseCase totpEnrollmentUseCase,
+      TotpChallengeVerifyUseCase totpChallengeVerifyUseCase,
       LogoutUseCase logoutUseCase,
       PasswordResetUseCase passwordResetUseCase,
       AuthSessionMetadataResolver authSessionMetadataResolver) {
@@ -71,6 +83,8 @@ public class LoginController {
     this.authSessionRevokeUseCase = authSessionRevokeUseCase;
     this.authSessionRevokeAllUseCase = authSessionRevokeAllUseCase;
     this.refreshTokenUseCase = refreshTokenUseCase;
+    this.totpEnrollmentUseCase = totpEnrollmentUseCase;
+    this.totpChallengeVerifyUseCase = totpChallengeVerifyUseCase;
     this.logoutUseCase = logoutUseCase;
     this.passwordResetUseCase = passwordResetUseCase;
     this.authSessionMetadataResolver = authSessionMetadataResolver;
@@ -85,6 +99,35 @@ public class LoginController {
                 request.loginId(),
                 request.password(),
                 authSessionMetadataResolver.resolve(httpServletRequest)));
+    return LoginResponse.from(result);
+  }
+
+  @PostMapping("/mfa/totp/enroll")
+  public TotpEnrollmentStartResponse startTotpEnrollment(
+      @CurrentAuthenticatedPrincipal AuthenticatedRequestPrincipal principal) {
+    AuthenticatedUserPrincipal userPrincipal = requireUserPrincipal(principal);
+    TotpEnrollmentStartResult result =
+        totpEnrollmentUseCase.start(
+            new TotpEnrollmentStartCommand(userPrincipal.userId(), userPrincipal.subject()));
+    return TotpEnrollmentStartResponse.from(result);
+  }
+
+  @PostMapping("/mfa/totp/enroll/verify")
+  public TotpEnrollmentVerifyResponse verifyTotpEnrollment(
+      @CurrentAuthenticatedPrincipal AuthenticatedRequestPrincipal principal,
+      @Valid @RequestBody TotpCodeRequest request) {
+    AuthenticatedUserPrincipal userPrincipal = requireUserPrincipal(principal);
+    TotpEnrollmentVerifyResult result =
+        totpEnrollmentUseCase.verify(
+            new TotpEnrollmentVerifyCommand(userPrincipal.userId(), request.totpCode()));
+    return TotpEnrollmentVerifyResponse.from(result);
+  }
+
+  @PostMapping("/mfa/totp/challenge/verify")
+  public LoginResponse verifyTotpChallenge(@Valid @RequestBody TotpChallengeVerifyRequest request) {
+    LoginResult result =
+        totpChallengeVerifyUseCase.verify(
+            new TotpChallengeVerifyCommand(request.challengeId(), request.totpCode()));
     return LoginResponse.from(result);
   }
 
@@ -161,23 +204,59 @@ public class LoginController {
       @NotBlank(message = "currentPassword is required") @Size(max = 120, message = "currentPassword must be 120 characters or less") String currentPassword,
       @NotBlank(message = "newPassword is required") @Size(max = 120, message = "newPassword must be 120 characters or less") String newPassword) {}
 
+  /** TOTP code 입력 body */
+  public record TotpCodeRequest(
+      @NotBlank(message = "totpCode is required") @Pattern(regexp = "\\d{6}", message = "totpCode must be 6 digits") String totpCode) {}
+
+  /** MFA challenge verify 요청 body */
+  public record TotpChallengeVerifyRequest(
+      @NotBlank(message = "challengeId is required") @Size(max = 64, message = "challengeId must be 64 characters or less") String challengeId,
+      @NotBlank(message = "totpCode is required") @Pattern(regexp = "\\d{6}", message = "totpCode must be 6 digits") String totpCode) {}
+
   /** access/refresh token 발급 응답 */
   public record LoginResponse(
+      String status,
       String accessToken,
       String refreshToken,
       String tokenType,
       Instant expiresAt,
       Instant refreshExpiresAt,
-      long userId) {
+      Long userId,
+      String challengeId,
+      String challengeType,
+      Instant challengeExpiresAt) {
 
     private static LoginResponse from(LoginResult result) {
       return new LoginResponse(
+          result.status().name(),
           result.accessToken(),
           result.refreshToken(),
           result.tokenType(),
           result.expiresAt(),
           result.refreshExpiresAt(),
-          result.userId());
+          result.userId(),
+          result.challengeId(),
+          result.challengeType() == null ? null : result.challengeType().name(),
+          result.challengeExpiresAt());
+    }
+  }
+
+  /** TOTP enrollment 시작 응답 */
+  public record TotpEnrollmentStartResponse(
+      String status, String secretKey, String otpauthUri, Instant expiresAt) {
+
+    private static TotpEnrollmentStartResponse from(TotpEnrollmentStartResult result) {
+      return new TotpEnrollmentStartResponse(
+          "PENDING", result.secretKey(), result.otpauthUri(), result.expiresAt());
+    }
+  }
+
+  /** TOTP enrollment 활성화 응답 */
+  public record TotpEnrollmentVerifyResponse(String status, Instant verifiedAt) {
+
+    private static TotpEnrollmentVerifyResponse from(TotpEnrollmentVerifyResult result) {
+      return new TotpEnrollmentVerifyResponse(
+          result.credentialStatus().name(), result.verifiedAt());
     }
   }
 
@@ -213,8 +292,12 @@ public class LoginController {
   }
 
   private long resolveUserId(AuthenticatedRequestPrincipal principal) {
+    return requireUserPrincipal(principal).userId();
+  }
+
+  private AuthenticatedUserPrincipal requireUserPrincipal(AuthenticatedRequestPrincipal principal) {
     if (principal instanceof AuthenticatedUserPrincipal userPrincipal) {
-      return userPrincipal.userId();
+      return userPrincipal;
     }
     if (principal instanceof AuthenticatedAccountPrincipal) {
       throw new ResponseStatusException(HttpStatus.FORBIDDEN, "user authentication is required");
