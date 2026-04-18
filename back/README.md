@@ -255,11 +255,15 @@ login 실패/잠금은 structured log 한 줄로 남습니다.
 - 기본값:
   - `SECURITY_JWT_ACCESS_TOKEN_TTL_SECONDS=900`
   - `SECURITY_JWT_REFRESH_TOKEN_TTL_SECONDS=1209600`
+  - `AUTH_REFRESH_TOKEN_SESSION_CLEANUP_ENABLED=true`
+  - `AUTH_REFRESH_TOKEN_SESSION_CLEANUP_RETENTION_DAYS=30`
+  - `AUTH_REFRESH_TOKEN_SESSION_CLEANUP_BATCH_SIZE=500`
 - 저장 기준:
   - raw refresh token은 응답으로만 한 번 내려가고 DB에는 `SHA-256 token_hash`만 저장
   - 저장 테이블은 `auth_refresh_token_session`
   - 성공 refresh 시 기존 row는 `ROTATED`, 새 row는 `ACTIVE`
   - 성공 logout 시 현재 사용자 `ACTIVE` session은 `REVOKED`
+  - cleanup batch는 `ACTIVE`는 `expires_at`, `ROTATED|REVOKED`는 `updated_at` 기준으로 retention cutoff 밖 row만 작은 batch로 삭제
 - 세션 목록 조회 기준:
   - `GET /api/v1/auth/sessions`
   - 현재 JWT user만 호출 가능하고 bootstrap account principal은 `403`
