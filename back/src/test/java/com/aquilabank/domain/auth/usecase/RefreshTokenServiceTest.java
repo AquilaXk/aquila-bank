@@ -2,11 +2,13 @@ package com.aquilabank.domain.auth.usecase;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.aquilabank.domain.auth.exception.InvalidCredentialsException;
+import com.aquilabank.domain.auth.model.AuthSessionClientMetadata;
 import com.aquilabank.domain.auth.model.IssuedAccessToken;
 import com.aquilabank.domain.auth.model.RefreshTokenCommand;
 import com.aquilabank.domain.auth.model.RefreshTokenPolicy;
@@ -31,6 +33,8 @@ class RefreshTokenServiceTest {
 
   private static final Instant NOW = Instant.parse("2026-04-17T01:00:00Z");
   private static final Clock CLOCK = Clock.fixed(NOW, ZoneOffset.UTC);
+  private static final AuthSessionClientMetadata SESSION_CLIENT_METADATA =
+      new AuthSessionClientMetadata("Windows / Chrome", "203.0.113.10");
 
   @Test
   void rotatesActiveRefreshTokenAndIssuesNewTokenPair() {
@@ -46,9 +50,7 @@ class RefreshTokenServiceTest {
         .thenReturn(Optional.of(activeSession()));
     when(refreshTokenSecretPort.createToken()).thenReturn("next-refresh-token");
     when(refreshTokenSecretPort.hash("next-refresh-token")).thenReturn("next-token-hash");
-    when(refreshTokenSessionWritePort.create(
-            new RefreshTokenSessionCreateCommand(
-                7L, "next-token-hash", NOW.plus(Duration.ofDays(14)), NOW)))
+    when(refreshTokenSessionWritePort.create(any(RefreshTokenSessionCreateCommand.class)))
         .thenReturn(33L);
     when(authTokenIssuePort.issue(7L, "alice", NOW))
         .thenReturn(new IssuedAccessToken("access-token", "Bearer", NOW.plusSeconds(900), 7L));
@@ -62,7 +64,9 @@ class RefreshTokenServiceTest {
             new RefreshTokenPolicy(Duration.ofDays(14)),
             CLOCK);
 
-    var result = refreshTokenService.refresh(new RefreshTokenCommand("refresh-token"));
+    var result =
+        refreshTokenService.refresh(
+            new RefreshTokenCommand("refresh-token", SESSION_CLIENT_METADATA));
 
     assertEquals("access-token", result.accessToken());
     assertEquals("next-refresh-token", result.refreshToken());
@@ -70,6 +74,14 @@ class RefreshTokenServiceTest {
     assertEquals(NOW.plusSeconds(900), result.expiresAt());
     assertEquals(NOW.plus(Duration.ofDays(14)), result.refreshExpiresAt());
     assertEquals(7L, result.userId());
+    verify(refreshTokenSessionWritePort)
+        .create(
+            new RefreshTokenSessionCreateCommand(
+                7L,
+                "next-token-hash",
+                NOW.plus(Duration.ofDays(14)),
+                NOW,
+                SESSION_CLIENT_METADATA));
     verify(refreshTokenSessionWritePort)
         .rotate(new RefreshTokenSessionRotateCommand(11L, 33L, NOW));
   }
@@ -110,7 +122,9 @@ class RefreshTokenServiceTest {
 
     assertThrows(
         InvalidCredentialsException.class,
-        () -> refreshTokenService.refresh(new RefreshTokenCommand("refresh-token")));
+        () ->
+            refreshTokenService.refresh(
+                new RefreshTokenCommand("refresh-token", SESSION_CLIENT_METADATA)));
 
     verify(refreshTokenSessionWritePort, never()).create(Mockito.any());
     verify(refreshTokenSessionWritePort, never()).rotate(Mockito.any());
@@ -154,7 +168,9 @@ class RefreshTokenServiceTest {
 
     assertThrows(
         InvalidCredentialsException.class,
-        () -> refreshTokenService.refresh(new RefreshTokenCommand("refresh-token")));
+        () ->
+            refreshTokenService.refresh(
+                new RefreshTokenCommand("refresh-token", SESSION_CLIENT_METADATA)));
 
     verify(refreshTokenSessionWritePort, never()).create(Mockito.any());
     verify(refreshTokenSessionWritePort, never()).rotate(Mockito.any());

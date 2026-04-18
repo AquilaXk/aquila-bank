@@ -67,7 +67,11 @@ public final class RefreshTokenService implements RefreshTokenUseCase {
     long newSessionId =
         refreshTokenSessionWritePort.create(
             new RefreshTokenSessionCreateCommand(
-                session.userId(), nextTokenHash, refreshExpiresAt, now));
+                session.userId(),
+                nextTokenHash,
+                refreshExpiresAt,
+                now,
+                command.sessionClientMetadata()));
     refreshTokenSessionWritePort.rotate(
         new RefreshTokenSessionRotateCommand(session.sessionId(), newSessionId, now));
 

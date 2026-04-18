@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.aquilabank.domain.auth.exception.InvalidCredentialsException;
+import com.aquilabank.domain.auth.model.AuthSessionClientMetadata;
 import com.aquilabank.domain.auth.model.LoginCommand;
 import com.aquilabank.domain.auth.model.LoginProtectionPolicy;
 import com.aquilabank.domain.auth.model.RefreshTokenPolicy;
@@ -26,6 +27,9 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
 class LoginServiceTest {
+
+  private static final AuthSessionClientMetadata SESSION_CLIENT_METADATA =
+      new AuthSessionClientMetadata("Windows / Chrome", "203.0.113.10");
 
   @Test
   void usesDummyHashWhenLoginIdIsMissing() {
@@ -58,7 +62,9 @@ class LoginServiceTest {
 
     assertThrows(
         InvalidCredentialsException.class,
-        () -> loginService.login(new LoginCommand("missing-user", "wrong-password")));
+        () ->
+            loginService.login(
+                new LoginCommand("missing-user", "wrong-password", SESSION_CLIENT_METADATA)));
 
     verify(passwordHashPort).matches("wrong-password", "dummy-hash");
     verify(loginAttemptUpdatePort, never()).recordLoginFailure(Mockito.any());
