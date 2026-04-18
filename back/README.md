@@ -157,6 +157,38 @@ set +a
 - `dev` 프로필은 `OUTBOX_KAFKA_ENABLED=true`, `NOTIFICATION_INBOX_CONSUMER_ENABLED=true`만 주면 `localhost:9092`와 기본 topic 이름을 자동 사용합니다.
 - Kafka 포트를 바꾸면 `OUTBOX_KAFKA_BOOTSTRAP_SERVERS`, `NOTIFICATION_INBOX_CONSUMER_BOOTSTRAP_SERVERS`를 같은 값으로 같이 넘깁니다.
 
+## Prometheus Metrics
+
+- export endpoint:
+  - `GET /actuator/prometheus`
+- 보안 기준:
+  - application security는 `/actuator/prometheus`를 permitAll 로 열어 Prometheus scrape를 단순화합니다.
+  - 운영에서는 security group, private subnet, Nginx allowlist 같은 네트워크 경계로 외부 공개를 막는 것을 기본값으로 둡니다.
+- custom metric:
+  - `aquila_outbox_dispatch_lag_seconds`
+  - `aquila_outbox_failed_count`
+  - `aquila_outbox_failed_producer_timeout_count`
+  - `aquila_outbox_sending_stale_count`
+  - `aquila_notification_consumer_lag_count`
+  - `aquila_notification_consumer_dlq_count`
+  - `aquila_notification_sse_sessions{principal_type="account|user|total"}`
+  - `aquila_transaction_query_latency_seconds`
+- 활성화 조건:
+  - outbox metric은 기본 wiring만 있으면 항상 export 됩니다.
+  - notification consumer lag/DLQ metric은 `NOTIFICATION_INBOX_CONSUMER_OPS_ENABLED=true` 와 DLQ topic 설정이 있어야 export 됩니다.
+  - transaction latency timer는 `GET /api/v1/transactions` query path가 한 번이라도 호출되면 `query_shape` tag 기준으로 누적됩니다.
+- transaction `query_shape` 기준:
+  - `first_page`
+  - `cursor`
+  - `status_first`, `status_cursor`
+  - `direction_first`, `direction_cursor`
+  - `amount_first`, `amount_cursor`
+  - `mixed_first`, `mixed_cursor`
+  - `reference_exact`
+- 운영 메모:
+  - outbox/notification gauge는 scrape 한 번에 같은 summary를 여러 번 다시 조회하지 않게 `5초` cache 안에서 재사용합니다.
+  - SSE session metric은 현재 app instance 메모리의 active session 수만 보여주므로 multi-instance 전체 합계는 Prometheus 쿼리에서 합산합니다.
+
 ### Local Notification E2E
 
 실제 broker를 통과하는 알림 검증은 transfer write path와 outbox dispatch를 같이 봐야 합니다.
