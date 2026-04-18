@@ -21,6 +21,7 @@ import com.aquilabank.domain.auth.model.UserBootstrapWriteCommand;
 import com.aquilabank.domain.auth.model.UserStatus;
 import com.aquilabank.domain.auth.model.UserStatusUpdateCommand;
 import com.aquilabank.domain.auth.port.LoginAttemptUpdatePort;
+import com.aquilabank.domain.auth.port.RefreshTokenSessionCleanupPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionWritePort;
 import com.aquilabank.domain.auth.port.UserAccountMembershipStatusUpdatePort;
 import com.aquilabank.domain.auth.port.UserAccountMembershipUpsertPort;
@@ -41,6 +42,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class JdbcAuthWriteRepository
     implements UserBootstrapPort,
         LoginAttemptUpdatePort,
+        RefreshTokenSessionCleanupPort,
         RefreshTokenSessionWritePort,
         UserAccountMembershipUpsertPort,
         UserStatusUpdatePort,
@@ -220,6 +222,58 @@ public class JdbcAuthWriteRepository
     if (updated != 1) {
       throw new IllegalStateException("refresh token session is not active");
     }
+  }
+
+  @Override
+  @Transactional
+  public int deleteExpiredSessions(Instant cutoff, int batchSize) {
+    // ACTIVE 만료와 비활성 세션 retention 기준이 달라 상태별 index cursor를 따로 태웁니다.
+    Integer deleted =
+        jdbcTemplate.queryForObject(
+            """
+            WITH candidates AS (
+                SELECT id, cleanup_at
+                FROM (
+                    SELECT id, expires_at AS cleanup_at
+                    FROM auth_refresh_token_session
+                    WHERE session_status = 'ACTIVE'
+                      AND expires_at < :cutoff
+                    ORDER BY expires_at ASC, id ASC
+                    FOR UPDATE SKIP LOCKED
+                    LIMIT :batchSize
+                ) active_candidates
+                UNION ALL
+                SELECT id, cleanup_at
+                FROM (
+                    SELECT id, updated_at AS cleanup_at
+                    FROM auth_refresh_token_session
+                    WHERE session_status IN ('ROTATED', 'REVOKED')
+                      AND updated_at < :cutoff
+                    ORDER BY updated_at ASC, id ASC
+                    FOR UPDATE SKIP LOCKED
+                    LIMIT :batchSize
+                ) inactive_candidates
+            ),
+            limited AS (
+                SELECT id
+                FROM candidates
+                ORDER BY cleanup_at ASC, id ASC
+                LIMIT :batchSize
+            ),
+            deleted AS (
+                DELETE FROM auth_refresh_token_session s
+                USING limited l
+                WHERE s.id = l.id
+                RETURNING s.id
+            )
+            SELECT COUNT(*)
+            FROM deleted
+            """,
+            new MapSqlParameterSource()
+                .addValue("cutoff", Timestamp.from(cutoff))
+                .addValue("batchSize", batchSize),
+            Integer.class);
+    return deleted == null ? 0 : deleted;
   }
 
   @Override
