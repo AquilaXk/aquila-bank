@@ -134,6 +134,7 @@ docker compose up -d postgres kafka
 
 - 백엔드 런타임: `EC2`
 - 데이터베이스: `RDS PostgreSQL 18`
+- EC2 reverse proxy baseline: [ops/nginx/nginx.conf](/Users/aquila/Custom/GitProjects/aquila-bank/ops/nginx/nginx.conf)
 - prod profile은 `DB_URL`, `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD` 환경변수를 받아 EC2에서 외부 PostgreSQL에 연결합니다.
 - `compose.yml`은 배포 인프라를 대체하지 않으며, 운영 DB는 local Docker volume이 아니라 관리형 PostgreSQL 기준으로 봅니다.
 
@@ -203,6 +204,32 @@ tools/test/with-resource-lock.sh back-gradle-check \
   - `NOTIFICATION_SSE_RECONNECT_DELAY_MS=3000`
   - `NOTIFICATION_SSE_REPLAY_LIMIT=100`
   - `NOTIFICATION_SSE_FANOUT_CHANNEL=notification_sse_fanout`
+
+### Nginx Reverse Proxy Baseline
+
+- 기준 파일: [ops/nginx/nginx.conf](/Users/aquila/Custom/GitProjects/aquila-bank/ops/nginx/nginx.conf)
+- upstream 기본값:
+  - frontend `127.0.0.1:3000`
+  - backend `127.0.0.1:8080`
+- SSE location 운영 기준:
+  - `proxy_buffering off`
+  - `proxy_request_buffering off`
+  - `proxy_cache off`
+  - `gzip off`
+  - `proxy_read_timeout 1900s`
+  - `proxy_send_timeout 1900s`
+- 일반 proxy 기준:
+  - `/api/` 는 `30s`
+  - `/actuator/health` 는 `5s`
+  - `/` frontend 는 `60s`
+- 검증 명령:
+
+```bash
+bash tools/test/check-nginx-sse-proxy.sh
+```
+
+- backend가 이미 `X-Accel-Buffering: no` 헤더를 응답하므로 Nginx도 buffering off 상태를 같이 유지합니다.
+- `NOTIFICATION_SSE_CONNECTION_TIMEOUT_MS` 또는 upstream 포트를 바꾸면 Nginx timeout/upstream도 같이 맞춥니다.
 
 ## Transfer Reversal
 
