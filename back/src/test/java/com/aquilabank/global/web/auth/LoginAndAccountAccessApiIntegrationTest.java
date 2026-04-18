@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -510,6 +511,84 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
   }
 
   @Test
+  void revokeSelectedSessionBySessionIdRevokesOnlyThatSession() throws Exception {
+    TokenPairResponseView oldest =
+        loginResult("alice", "password123!", "session-revoke-select-login-001");
+    TokenPairResponseView target =
+        loginResult("alice", "password123!", "session-revoke-select-login-002");
+    TokenPairResponseView newest =
+        loginResult("alice", "password123!", "session-revoke-select-login-003");
+    long targetSessionId = loadRefreshTokenSessionId(target.refreshToken());
+
+    revokeSession(newest.accessToken(), targetSessionId, "session-revoke-select-001")
+        .andExpect(status().isNoContent());
+
+    RefreshTokenSessionView oldestSession = loadRefreshTokenSession(oldest.refreshToken());
+    RefreshTokenSessionView targetSession = loadRefreshTokenSession(target.refreshToken());
+    RefreshTokenSessionView newestSession = loadRefreshTokenSession(newest.refreshToken());
+    assertEquals("ACTIVE", oldestSession.sessionStatus());
+    assertEquals("REVOKED", targetSession.sessionStatus());
+    assertNotNull(targetSession.lastUsedAt());
+    assertNull(targetSession.rotatedAt());
+    assertNull(targetSession.replacedBySessionId());
+    assertEquals("ACTIVE", newestSession.sessionStatus());
+
+    refreshExpectUnauthorized(target.refreshToken(), "session-revoke-select-refresh-001");
+  }
+
+  @Test
+  void revokeSelectedSessionKeepsOtherUsersSessionUntouched() throws Exception {
+    TokenPairResponseView alice =
+        loginResult("alice", "password123!", "session-revoke-other-login-001");
+    long otherUserId = bootstrapUser("bob", "Bob", "password123!");
+    upsertMembership(otherUserId, targetAccountId, "VIEWER", "ACTIVE");
+    TokenPairResponseView bob =
+        loginResult("bob", "password123!", "session-revoke-other-login-002");
+    long bobSessionId = loadRefreshTokenSessionId(bob.refreshToken());
+
+    revokeSession(alice.accessToken(), bobSessionId, "session-revoke-other-001")
+        .andExpect(status().isNoContent());
+
+    RefreshTokenSessionView bobSession = loadRefreshTokenSession(bob.refreshToken());
+    assertEquals("ACTIVE", bobSession.sessionStatus());
+    assertNull(bobSession.lastUsedAt());
+    refresh(bob.refreshToken(), "session-revoke-other-refresh-001");
+  }
+
+  @Test
+  void revokeAllSessionsRevokesOnlyCurrentUsersActiveSessions() throws Exception {
+    TokenPairResponseView oldest =
+        loginResult("alice", "password123!", "session-revoke-all-login-001");
+    TokenPairResponseView middle =
+        loginResult("alice", "password123!", "session-revoke-all-login-002");
+    TokenPairResponseView newest =
+        loginResult("alice", "password123!", "session-revoke-all-login-003");
+    long otherUserId = bootstrapUser("bob", "Bob", "password123!");
+    upsertMembership(otherUserId, targetAccountId, "VIEWER", "ACTIVE");
+    TokenPairResponseView bob = loginResult("bob", "password123!", "session-revoke-all-login-004");
+
+    revokeAllSessions(newest.accessToken(), "session-revoke-all-001")
+        .andExpect(status().isNoContent());
+
+    RefreshTokenSessionView oldestSession = loadRefreshTokenSession(oldest.refreshToken());
+    RefreshTokenSessionView middleSession = loadRefreshTokenSession(middle.refreshToken());
+    RefreshTokenSessionView newestSession = loadRefreshTokenSession(newest.refreshToken());
+    RefreshTokenSessionView bobSession = loadRefreshTokenSession(bob.refreshToken());
+    assertEquals("REVOKED", oldestSession.sessionStatus());
+    assertEquals("REVOKED", middleSession.sessionStatus());
+    assertEquals("REVOKED", newestSession.sessionStatus());
+    assertNotNull(oldestSession.lastUsedAt());
+    assertNotNull(middleSession.lastUsedAt());
+    assertNotNull(newestSession.lastUsedAt());
+    assertEquals("ACTIVE", bobSession.sessionStatus());
+
+    refreshExpectUnauthorized(oldest.refreshToken(), "session-revoke-all-refresh-001");
+    refreshExpectUnauthorized(middle.refreshToken(), "session-revoke-all-refresh-002");
+    refreshExpectUnauthorized(newest.refreshToken(), "session-revoke-all-refresh-003");
+    refresh(bob.refreshToken(), "session-revoke-all-refresh-004");
+  }
+
+  @Test
   void bootstrapAccountPrincipalCannotCallLogout() throws Exception {
     TokenPairResponseView loginResult =
         loginResult("alice", "password123!", "logout-bootstrap-001");
@@ -527,6 +606,26 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
                     }
                     """
                         .formatted(loginResult.refreshToken())))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void bootstrapAccountPrincipalCannotRevokeAuthSession() throws Exception {
+    mockMvc
+        .perform(
+            delete("/api/v1/auth/sessions/1")
+                .header("X-Account-Id", String.valueOf(allowedSourceAccountId))
+                .header("X-Subject", "bootstrap-account"))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void bootstrapAccountPrincipalCannotRevokeAllAuthSessions() throws Exception {
+    mockMvc
+        .perform(
+            delete("/api/v1/auth/sessions")
+                .header("X-Account-Id", String.valueOf(allowedSourceAccountId))
+                .header("X-Subject", "bootstrap-account"))
         .andExpect(status().isForbidden());
   }
 
@@ -921,6 +1020,27 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
                 }
                 """
                     .formatted(refreshToken));
+    if (requestId != null && !requestId.isBlank()) {
+      requestBuilder.header("X-Request-Id", requestId);
+    }
+    return mockMvc.perform(requestBuilder);
+  }
+
+  private org.springframework.test.web.servlet.ResultActions revokeSession(
+      String accessToken, long sessionId, String requestId) throws Exception {
+    MockHttpServletRequestBuilder requestBuilder =
+        delete("/api/v1/auth/sessions/{sessionId}", sessionId)
+            .header("Authorization", "Bearer " + accessToken);
+    if (requestId != null && !requestId.isBlank()) {
+      requestBuilder.header("X-Request-Id", requestId);
+    }
+    return mockMvc.perform(requestBuilder);
+  }
+
+  private org.springframework.test.web.servlet.ResultActions revokeAllSessions(
+      String accessToken, String requestId) throws Exception {
+    MockHttpServletRequestBuilder requestBuilder =
+        delete("/api/v1/auth/sessions").header("Authorization", "Bearer " + accessToken);
     if (requestId != null && !requestId.isBlank()) {
       requestBuilder.header("X-Request-Id", requestId);
     }
