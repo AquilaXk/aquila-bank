@@ -176,7 +176,9 @@ public class LoginController {
       String sessionStatus,
       Instant expiresAt,
       Instant lastUsedAt,
-      Instant createdAt) {
+      Instant createdAt,
+      String deviceName,
+      String ipAddress) {
 
     private static AuthSessionItemResponse from(AuthSessionSummary summary) {
       return new AuthSessionItemResponse(
@@ -184,7 +186,9 @@ public class LoginController {
           summary.sessionStatus().name(),
           summary.expiresAt(),
           summary.lastUsedAt(),
-          summary.createdAt());
+          summary.createdAt(),
+          summary.deviceName(),
+          summary.ipAddress());
     }
   }
 
