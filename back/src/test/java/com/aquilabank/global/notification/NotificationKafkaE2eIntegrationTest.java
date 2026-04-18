@@ -92,6 +92,45 @@ class NotificationKafkaE2eIntegrationTest extends PostgresKafkaContainerTestSupp
         .containsExactlyInAnyOrder("1500 KRW 출금 · rent", "1500 KRW 입금 · rent");
   }
 
+  @Test
+  void deliversTransferReversedEventToNotificationInboxThroughKafka() throws Exception {
+    TransferResponseBody booked =
+        invokeTransfer("notification-e2e-reversal-001", targetAccountId, 1500L, "rent");
+    assertThat(outboxDispatchUseCase.dispatchPendingEvents()).isEqualTo(1);
+
+    TransferReversalResponseBody reversed =
+        invokeReversal(
+            booked.transactionReference(),
+            "notification-e2e-reversal-002",
+            "CANCEL",
+            "cancel rent");
+    OutboxEventRow outboxEvent = findOutboxEvent(reversed.reversalTransactionReference());
+
+    int dispatched = outboxDispatchUseCase.dispatchPendingEvents();
+    OutboxEventRow publishedEvent = findOutboxEvent(reversed.reversalTransactionReference());
+
+    assertThat(dispatched).isEqualTo(1);
+    assertThat(publishedEvent.publishStatus())
+        .withFailMessage("outbox lastError=%s", publishedEvent.lastError())
+        .isEqualTo("PUBLISHED");
+
+    awaitCondition(
+        "transfer reversed notification inbox rows",
+        NOTIFICATION_TIMEOUT,
+        POLL_INTERVAL,
+        () -> countNotificationRows(outboxEvent.eventKey()) == 2L);
+
+    List<NotificationInboxRow> items = findNotificationRows(outboxEvent.eventKey());
+    assertThat(items)
+        .extracting(NotificationInboxRow::accountId)
+        .containsExactlyInAnyOrder(sourceAccountId, targetAccountId);
+    assertThat(items).extracting(NotificationInboxRow::eventType).containsOnly("TransferReversed");
+    assertThat(items).extracting(NotificationInboxRow::title).containsOnly("이체 취소 완료");
+    assertThat(items)
+        .extracting(NotificationInboxRow::message)
+        .containsExactlyInAnyOrder("1500 KRW 출금 취소", "1500 KRW 입금 취소");
+  }
+
   private AccountBootstrapResponseBody bootstrapAccount(
       String displayName, long initialBalanceMinor) throws Exception {
     MvcResult result =
@@ -149,6 +188,36 @@ class NotificationKafkaE2eIntegrationTest extends PostgresKafkaContainerTestSupp
     assertThat(result.getResponse().getStatus()).isEqualTo(200);
     return objectMapper.readValue(
         result.getResponse().getContentAsByteArray(), TransferResponseBody.class);
+  }
+
+  private TransferReversalResponseBody invokeReversal(
+      String originalTransactionReference,
+      String idempotencyKey,
+      String reversalReason,
+      String summary)
+      throws Exception {
+    MvcResult result =
+        mockMvc
+            .perform(
+                post("/api/v1/transfers/%s/reversal".formatted(originalTransactionReference))
+                    .header("X-Account-Id", String.valueOf(sourceAccountId))
+                    .header("X-Request-Id", idempotencyKey + "-request")
+                    .header("Idempotency-Key", idempotencyKey)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                          "sourceAccountId": %d,
+                          "reversalReason": "%s",
+                          "summary": "%s"
+                        }
+                        """
+                            .formatted(sourceAccountId, reversalReason, summary)))
+            .andReturn();
+
+    assertThat(result.getResponse().getStatus()).isEqualTo(200);
+    return objectMapper.readValue(
+        result.getResponse().getContentAsByteArray(), TransferReversalResponseBody.class);
   }
 
   private OutboxEventRow findOutboxEvent(String transactionReference) {
@@ -224,6 +293,17 @@ class NotificationKafkaE2eIntegrationTest extends PostgresKafkaContainerTestSupp
 
   private record TransferResponseBody(
       String transactionReference,
+      long sourceAccountId,
+      long targetAccountId,
+      long amountMinor,
+      String currencyCode,
+      long availableBalanceAfterMinor,
+      Instant bookedAt,
+      String status) {}
+
+  private record TransferReversalResponseBody(
+      String originalTransactionReference,
+      String reversalTransactionReference,
       long sourceAccountId,
       long targetAccountId,
       long amountMinor,

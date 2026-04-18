@@ -330,7 +330,7 @@ bash tools/test/check-nginx-sse-proxy.sh
   - reversal 시 target 계좌 잔액이 부족하면 `409 reversal target balance is not enough`
 - 운영 주의:
   - 이번 범위는 full reversal만 지원하고 partial reversal은 제외
-  - notification inbox consumer는 아직 `TransferReversed` fan-out을 처리하지 않음
+  - notification inbox consumer는 `TransferBooked`, `TransferReversed` fan-out을 모두 처리하고 DLQ/ops 집계는 두 topic 합산 기준으로 본다
 
 ## Public Login Protection
 

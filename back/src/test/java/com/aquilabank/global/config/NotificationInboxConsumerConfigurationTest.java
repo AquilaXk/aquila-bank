@@ -29,6 +29,7 @@ class NotificationInboxConsumerConfigurationTest {
                           .class);
               assertThat(context).doesNotHaveBean("notificationInboxConsumerFactory");
               assertThat(context).doesNotHaveBean("transferBookedNotificationConsumer");
+              assertThat(context).doesNotHaveBean("transferReversedNotificationConsumer");
             });
   }
 
@@ -44,6 +45,23 @@ class NotificationInboxConsumerConfigurationTest {
               assertThat(context).hasBean("notificationInboxConsumerFactory");
               assertThat(context).hasBean("notificationInboxKafkaListenerContainerFactory");
               assertThat(context).hasBean("transferBookedNotificationConsumer");
+              assertThat(context).doesNotHaveBean("transferReversedNotificationConsumer");
+            });
+  }
+
+  @Test
+  void createsTransferReversedConsumerWhenOnlyReversalTopicIsPresent() {
+    contextRunner
+        .withPropertyValues(
+            "notification.inbox.consumer.enabled=true",
+            "notification.inbox.consumer.bootstrap-servers=localhost:9092",
+            "notification.inbox.consumer.transfer-reversed.topic=bank.transfer.reversed.v1")
+        .run(
+            context -> {
+              assertThat(context).hasBean("notificationInboxConsumerFactory");
+              assertThat(context).hasBean("notificationInboxKafkaListenerContainerFactory");
+              assertThat(context).doesNotHaveBean("transferBookedNotificationConsumer");
+              assertThat(context).hasBean("transferReversedNotificationConsumer");
             });
   }
 
