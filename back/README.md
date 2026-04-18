@@ -211,11 +211,29 @@ tools/test/with-resource-lock.sh back-gradle-check \
 ## Notification Read State
 
 - JWT user 경로의 읽음 상태는 `notification_user_read_state`에 user별로 저장됩니다.
+- JWT user 경로의 bulk archive/delete 도 같은 테이블의 `archived_at`, `deleted_at` 으로 user별 상태를 분리해 공동 사용자 inbox를 보존합니다.
 - `notification_inbox`는 account-scoped read model 본체를 유지하고, `read_at`은 account principal/internal 경로 의미로 분리됩니다.
+- account principal/internal 경로의 bulk archive 는 `notification_inbox.archived_at` 으로 숨기고, bulk delete 는 inbox row 자체를 제거합니다.
 - 기존 shared `read_at` 값은 user read state로 자동 backfill 하지 않으므로, 배포 이전 알림은 JWT user 기준에서 다시 unread로 보일 수 있습니다.
+- archived/deleted 상태는 `GET /api/v1/notifications`, unread count, SSE replay pull 경로에서 기본 제외됩니다.
 - notification inbox retention cleanup은 `notification_inbox.created_at` 기준으로만 동작해 account/user 경로의 read 의미를 따로 해석하지 않습니다.
 - 오래된 inbox row를 지울 때 연결된 `notification_user_read_state`도 FK cascade로 함께 정리해 read state orphan과 unread 회귀를 막습니다.
 - 기본 설정은 `NOTIFICATION_INBOX_CLEANUP_ENABLED=true`, `NOTIFICATION_INBOX_CLEANUP_RETENTION_DAYS=90`, `NOTIFICATION_INBOX_CLEANUP_BATCH_SIZE=500`, `NOTIFICATION_INBOX_CLEANUP_FIXED_DELAY_MS=300000` 입니다.
+
+## Notification Bulk Actions
+
+- endpoint:
+  - `POST /api/v1/notifications/read`
+  - `POST /api/v1/notifications/archive`
+  - `POST /api/v1/notifications/delete`
+- request body:
+  - `{"notificationIds":[10,11,12]}`
+- 계약:
+  - `notificationIds` 는 1건 이상 100건 이하만 허용합니다.
+  - 범위 밖 id 는 not found 로 드러내지 않고 무시합니다.
+  - JWT user bulk delete 는 shared `notification_inbox` row hard delete 대신 per-user `deleted_at` 숨김으로 처리합니다.
+  - account principal bulk delete 만 `notification_inbox` row hard delete 를 수행합니다.
+  - bulk archive/delete 대상은 후속 list/unread-count/replay 조회에서 기본 제외됩니다.
 
 ## Notification SSE Stream
 

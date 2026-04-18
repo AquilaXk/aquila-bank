@@ -27,7 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-/** JWT user/account inbox 조회, read 처리, retention cleanup 을 한 JDBC adapter로 묶습니다. */
+/** JWT user/account inbox 조회, read/archive/delete 처리, retention cleanup 을 한 JDBC adapter로 묶습니다. */
 @Repository
 public class JdbcNotificationInboxRepository
     implements NotificationInboxReadPort,
@@ -90,6 +90,9 @@ public class JdbcNotificationInboxRepository
         WHERE m.user_id = :userId
           AND m.membership_status = 'ACTIVE'
           AND u.user_status = 'ACTIVE'
+          AND n.archived_at IS NULL
+          AND r.archived_at IS NULL
+          AND r.deleted_at IS NULL
           AND n.id > :lastEventId
         ORDER BY n.id ASC
         LIMIT :limit
@@ -116,6 +119,7 @@ public class JdbcNotificationInboxRepository
                read_at
         FROM notification_inbox
         WHERE account_id = :accountId
+          AND archived_at IS NULL
           AND id > :lastEventId
         ORDER BY id ASC
         LIMIT :limit
@@ -145,7 +149,10 @@ public class JdbcNotificationInboxRepository
             WHERE m.user_id = :userId
               AND m.membership_status = 'ACTIVE'
               AND u.user_status = 'ACTIVE'
-              AND r.notification_id IS NULL
+              AND n.archived_at IS NULL
+              AND r.read_at IS NULL
+              AND r.archived_at IS NULL
+              AND r.deleted_at IS NULL
             """,
             new MapSqlParameterSource().addValue("userId", userId),
             Long.class);
@@ -161,6 +168,7 @@ public class JdbcNotificationInboxRepository
             SELECT COUNT(*)
             FROM notification_inbox
             WHERE account_id = :accountId
+              AND archived_at IS NULL
               AND read_at IS NULL
             """,
             new MapSqlParameterSource().addValue("accountId", accountId),
@@ -171,81 +179,80 @@ public class JdbcNotificationInboxRepository
   @Override
   @Transactional
   public boolean markAsReadByUserId(long userId, long notificationId, Instant readAt) {
-    Boolean accessible =
-        jdbcTemplate.queryForObject(
-            """
-            WITH accessible_notification AS (
-                SELECT n.id
-                FROM notification_inbox n
-                JOIN user_account_membership m
-                  ON m.account_id = n.account_id
-                JOIN bank_user u
-                  ON u.id = m.user_id
-                WHERE n.id = :notificationId
-                  AND m.user_id = :userId
-                  AND m.membership_status = 'ACTIVE'
-                  AND u.user_status = 'ACTIVE'
-                LIMIT 1
-            ),
-            inserted_read_state AS (
-                INSERT INTO notification_user_read_state (
-                    user_id,
-                    notification_id,
-                    read_at
-                )
-                SELECT :userId, id, :readAt
-                FROM accessible_notification
-                ON CONFLICT (user_id, notification_id) DO NOTHING
-            )
-            SELECT EXISTS(SELECT 1 FROM accessible_notification)
-            """,
-            new MapSqlParameterSource()
-                .addValue("notificationId", notificationId)
-                .addValue("userId", userId)
-                .addValue("readAt", Timestamp.from(readAt)),
-            Boolean.class);
-    return Boolean.TRUE.equals(accessible);
+    return markAllAsReadByUserId(userId, List.of(notificationId), readAt) > 0;
   }
 
   @Override
   @Transactional
   public boolean markAsReadByAccountId(long accountId, long notificationId, Instant readAt) {
-    AccessibleNotification notification =
-        jdbcTemplate
-            .query(
-                """
-                SELECT account_id, read_at
-                FROM notification_inbox
-                WHERE id = :notificationId
-                  AND account_id = :accountId
-                LIMIT 1
-                """,
-                new MapSqlParameterSource()
-                    .addValue("notificationId", notificationId)
-                    .addValue("accountId", accountId),
-                (rs, rowNum) -> accessibleNotification(rs))
-            .stream()
-            .findFirst()
-            .orElse(null);
-    if (notification == null) {
-      return false;
-    }
-    if (notification.readAt() != null) {
-      return true;
-    }
-    jdbcTemplate.update(
+    return markAllAsReadByAccountId(accountId, List.of(notificationId), readAt) > 0;
+  }
+
+  @Override
+  @Transactional
+  public int markAllAsReadByUserId(long userId, List<Long> notificationIds, Instant readAt) {
+    return upsertUserNotificationState(userId, notificationIds, readAt, null, null);
+  }
+
+  @Override
+  @Transactional
+  public int markAllAsReadByAccountId(long accountId, List<Long> notificationIds, Instant readAt) {
+    return jdbcTemplate.update(
         """
         UPDATE notification_inbox
-        SET read_at = :readAt
-        WHERE id = :notificationId
-          AND account_id = :accountId
-          AND read_at IS NULL
+        SET read_at = COALESCE(read_at, :readAt)
+        WHERE account_id = :accountId
+          AND archived_at IS NULL
+          AND id IN (:notificationIds)
         """,
         new MapSqlParameterSource()
-            .addValue("readAt", Timestamp.from(readAt))
-            .addValue("notificationId", notificationId)
-            .addValue("accountId", accountId));
-    return true;
+            .addValue("accountId", accountId)
+            .addValue("notificationIds", notificationIds)
+            .addValue("readAt", Timestamp.from(readAt)));
+  }
+
+  @Override
+  @Transactional
+  public int archiveByUserId(long userId, List<Long> notificationIds, Instant archivedAt) {
+    return upsertUserNotificationState(userId, notificationIds, null, archivedAt, null);
+  }
+
+  @Override
+  @Transactional
+  public int archiveByAccountId(long accountId, List<Long> notificationIds, Instant archivedAt) {
+    return jdbcTemplate.update(
+        """
+        UPDATE notification_inbox
+        SET archived_at = COALESCE(archived_at, :archivedAt)
+        WHERE account_id = :accountId
+          AND archived_at IS NULL
+          AND id IN (:notificationIds)
+        """,
+        new MapSqlParameterSource()
+            .addValue("accountId", accountId)
+            .addValue("notificationIds", notificationIds)
+            .addValue("archivedAt", Timestamp.from(archivedAt)));
+  }
+
+  @Override
+  @Transactional
+  public int deleteByUserId(long userId, List<Long> notificationIds, Instant deletedAt) {
+    // JWT user delete 는 shared inbox row 삭제 대신 per-user deleted_at 으로 숨겨 다른 공동 사용자 inbox를 보존합니다.
+    return upsertUserNotificationState(userId, notificationIds, null, null, deletedAt);
+  }
+
+  @Override
+  @Transactional
+  public int deleteByAccountId(long accountId, List<Long> notificationIds) {
+    return jdbcTemplate.update(
+        """
+        DELETE FROM notification_inbox
+        WHERE account_id = :accountId
+          AND id IN (:notificationIds)
+        """,
+        new MapSqlParameterSource()
+            .addValue("accountId", accountId)
+            .addValue("notificationIds", notificationIds));
   }
 
   @Override
@@ -364,10 +371,6 @@ public class JdbcNotificationInboxRepository
         nullableInstant(rs, "read_at"));
   }
 
-  private AccessibleNotification accessibleNotification(ResultSet rs) throws SQLException {
-    return new AccessibleNotification(rs.getLong("account_id"), nullableInstant(rs, "read_at"));
-  }
-
   private static NotificationCursor toCursor(NotificationSummary item) {
     return new NotificationCursor(item.createdAt(), item.id());
   }
@@ -375,6 +378,55 @@ public class JdbcNotificationInboxRepository
   private static Instant nullableInstant(ResultSet rs, String columnName) throws SQLException {
     OffsetDateTime value = rs.getObject(columnName, OffsetDateTime.class);
     return value == null ? null : value.toInstant();
+  }
+
+  private Timestamp nullableTimestamp(Instant value) {
+    return value == null ? null : Timestamp.from(value);
+  }
+
+  // JWT user 경로는 shared inbox 원본 row를 건드리지 않고 user별 상태만 upsert 해야 공동 사용자 간 정리 동작이 섞이지 않습니다.
+  private int upsertUserNotificationState(
+      long userId,
+      List<Long> notificationIds,
+      Instant readAt,
+      Instant archivedAt,
+      Instant deletedAt) {
+    return jdbcTemplate.update(
+        """
+        WITH accessible_notification AS (
+            SELECT n.id
+            FROM notification_inbox n
+            JOIN user_account_membership m
+              ON m.account_id = n.account_id
+            JOIN bank_user u
+              ON u.id = m.user_id
+            WHERE m.user_id = :userId
+              AND m.membership_status = 'ACTIVE'
+              AND u.user_status = 'ACTIVE'
+              AND n.archived_at IS NULL
+              AND n.id IN (:notificationIds)
+        )
+        INSERT INTO notification_user_read_state (
+            user_id,
+            notification_id,
+            read_at,
+            archived_at,
+            deleted_at
+        )
+        SELECT :userId, id, :readAt, :archivedAt, :deletedAt
+        FROM accessible_notification
+        ON CONFLICT (user_id, notification_id)
+        DO UPDATE
+        SET read_at = COALESCE(notification_user_read_state.read_at, EXCLUDED.read_at),
+            archived_at = COALESCE(notification_user_read_state.archived_at, EXCLUDED.archived_at),
+            deleted_at = COALESCE(notification_user_read_state.deleted_at, EXCLUDED.deleted_at)
+        """,
+        new MapSqlParameterSource()
+            .addValue("userId", userId)
+            .addValue("notificationIds", notificationIds)
+            .addValue("readAt", nullableTimestamp(readAt))
+            .addValue("archivedAt", nullableTimestamp(archivedAt))
+            .addValue("deletedAt", nullableTimestamp(deletedAt)));
   }
 
   private List<NotificationSummary> fetchByUserIdFirstPage(
@@ -399,6 +451,9 @@ public class JdbcNotificationInboxRepository
         WHERE m.user_id = :userId
           AND m.membership_status = 'ACTIVE'
           AND u.user_status = 'ACTIVE'
+          AND n.archived_at IS NULL
+          AND r.archived_at IS NULL
+          AND r.deleted_at IS NULL
         ORDER BY n.created_at DESC, n.id DESC
         LIMIT :limitPlusOne
         """,
@@ -430,6 +485,9 @@ public class JdbcNotificationInboxRepository
         WHERE m.user_id = :userId
           AND m.membership_status = 'ACTIVE'
           AND u.user_status = 'ACTIVE'
+          AND n.archived_at IS NULL
+          AND r.archived_at IS NULL
+          AND r.deleted_at IS NULL
           AND (
                 n.created_at < :cursorCreatedAt
              OR (n.created_at = :cursorCreatedAt AND n.id < :cursorId)
@@ -458,6 +516,7 @@ public class JdbcNotificationInboxRepository
                read_at
         FROM notification_inbox
         WHERE account_id = :accountId
+          AND archived_at IS NULL
         ORDER BY created_at DESC, id DESC
         LIMIT :limitPlusOne
         """,
@@ -480,6 +539,7 @@ public class JdbcNotificationInboxRepository
                read_at
         FROM notification_inbox
         WHERE account_id = :accountId
+          AND archived_at IS NULL
           AND (
                 created_at < :cursorCreatedAt
              OR (created_at = :cursorCreatedAt AND id < :cursorId)
@@ -494,6 +554,4 @@ public class JdbcNotificationInboxRepository
             .addValue("cursorId", query.cursor().id()),
         ROW_MAPPER);
   }
-
-  private record AccessibleNotification(long accountId, Instant readAt) {}
 }

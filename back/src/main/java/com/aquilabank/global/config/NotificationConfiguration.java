@@ -2,6 +2,8 @@ package com.aquilabank.global.config;
 
 import com.aquilabank.domain.notification.port.NotificationInboxReadPort;
 import com.aquilabank.domain.notification.port.NotificationInboxWritePort;
+import com.aquilabank.domain.notification.usecase.NotificationBulkActionService;
+import com.aquilabank.domain.notification.usecase.NotificationBulkActionUseCase;
 import com.aquilabank.domain.notification.usecase.NotificationQueryService;
 import com.aquilabank.domain.notification.usecase.NotificationQueryUseCase;
 import com.aquilabank.domain.notification.usecase.NotificationReadService;
@@ -27,6 +29,12 @@ public class NotificationConfiguration {
   NotificationReadUseCase notificationReadUseCase(
       NotificationInboxWritePort notificationInboxWritePort) {
     return new NotificationReadService(notificationInboxWritePort);
+  }
+
+  @Bean
+  NotificationBulkActionUseCase notificationBulkActionUseCase(
+      NotificationInboxWritePort notificationInboxWritePort) {
+    return new NotificationBulkActionService(notificationInboxWritePort);
   }
 
   @Bean
