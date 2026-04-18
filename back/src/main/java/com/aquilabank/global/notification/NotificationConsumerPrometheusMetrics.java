@@ -37,14 +37,21 @@ public final class NotificationConsumerPrometheusMetrics implements MeterBinder 
     this.lagTags =
         java.util.List.of(
             Tag.of("group_id", notificationInboxConsumerProperties.groupId()),
-            Tag.of("topic", notificationInboxConsumerProperties.transferBooked().topic()));
+            Tag.of("topic", notificationInboxConsumerProperties.mainTopicLabel()));
     this.dlqTags =
         java.util.List.of(
             Tag.of("group_id", notificationInboxConsumerProperties.groupId()),
             Tag.of("topic", notificationInboxConsumerProperties.dlq().topic()));
     this.cachedSummary =
         new CachedSummary(
-            new NotificationOpsSummary(Instant.EPOCH, "-", "-", "-", 0L, 0L), Instant.EPOCH);
+            new NotificationOpsSummary(
+                Instant.EPOCH,
+                notificationInboxConsumerProperties.groupId(),
+                notificationInboxConsumerProperties.mainTopicLabel(),
+                notificationInboxConsumerProperties.dlq().topic(),
+                0L,
+                0L),
+            Instant.EPOCH);
   }
 
   @Override

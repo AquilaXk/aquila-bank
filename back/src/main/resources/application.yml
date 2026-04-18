@@ -146,6 +146,8 @@ notification:
       auto-offset-reset: ${NOTIFICATION_INBOX_CONSUMER_AUTO_OFFSET_RESET:earliest}
       transfer-booked:
         topic: ${NOTIFICATION_INBOX_CONSUMER_TRANSFER_BOOKED_TOPIC:}
+      transfer-reversed:
+        topic: ${NOTIFICATION_INBOX_CONSUMER_TRANSFER_REVERSED_TOPIC:}
       dlq:
         topic: ${NOTIFICATION_INBOX_CONSUMER_DLQ_TOPIC:}
       ops:

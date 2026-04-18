@@ -196,7 +196,9 @@ final class KafkaTopicTopologyResolver {
             bootstrapServers,
             notificationInboxConsumerProperties.bootstrapServers(),
             "notification.inbox.consumer.bootstrap-servers");
-    addTopic(topics, notificationInboxConsumerProperties.transferBooked().topic());
+    for (String topicName : notificationInboxConsumerProperties.mainTopics()) {
+      addTopic(topics, topicName);
+    }
     addTopic(topics, notificationInboxConsumerProperties.dlq().topic());
     return resolvedBootstrapServers;
   }
@@ -265,10 +267,14 @@ final class KafkaTopicAdministrationCondition implements Condition {
         && usesNotificationKafkaRuntime(context)
         && StringUtils.hasText(
             context.getEnvironment().getProperty("notification.inbox.consumer.bootstrap-servers"))
-        && StringUtils.hasText(
-            context
-                .getEnvironment()
-                .getProperty("notification.inbox.consumer.transfer-booked.topic"));
+        && (StringUtils.hasText(
+                context
+                    .getEnvironment()
+                    .getProperty("notification.inbox.consumer.transfer-booked.topic"))
+            || StringUtils.hasText(
+                context
+                    .getEnvironment()
+                    .getProperty("notification.inbox.consumer.transfer-reversed.topic")));
   }
 
   private boolean usesNotificationKafkaRuntime(ConditionContext context) {

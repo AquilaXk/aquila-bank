@@ -13,6 +13,7 @@ import com.aquilabank.global.notification.KafkaNotificationOpsRecoveryRepository
 import com.aquilabank.global.notification.KafkaNotificationOpsRepository;
 import com.aquilabank.global.notification.NotificationInboxHealthIndicator;
 import com.aquilabank.global.notification.TransferBookedNotificationConsumer;
+import com.aquilabank.global.notification.TransferReversedNotificationConsumer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.HashMap;
 import java.util.Map;
@@ -112,16 +113,29 @@ public class NotificationInboxConsumerConfiguration {
   }
 
   @Bean
-  @ConditionalOnBean(name = "notificationInboxKafkaListenerContainerFactory")
+  @Conditional(NotificationTransferBookedConsumerCondition.class)
   TransferBookedNotificationConsumer transferBookedNotificationConsumer(
       NotificationInboxIngestUseCase notificationInboxIngestUseCase,
       ObjectMapper objectMapper,
       NotificationInboxConsumerProperties properties) {
     log.info(
-        "notification inbox consumer enabled. groupId={}, topic={}",
+        "notification inbox transfer-booked consumer enabled. groupId={}, topic={}",
         properties.groupId(),
         properties.transferBooked().topic());
     return new TransferBookedNotificationConsumer(notificationInboxIngestUseCase, objectMapper);
+  }
+
+  @Bean
+  @Conditional(NotificationTransferReversedConsumerCondition.class)
+  TransferReversedNotificationConsumer transferReversedNotificationConsumer(
+      NotificationInboxIngestUseCase notificationInboxIngestUseCase,
+      ObjectMapper objectMapper,
+      NotificationInboxConsumerProperties properties) {
+    log.info(
+        "notification inbox transfer-reversed consumer enabled. groupId={}, topic={}",
+        properties.groupId(),
+        properties.transferReversed().topic());
+    return new TransferReversedNotificationConsumer(notificationInboxIngestUseCase, objectMapper);
   }
 
   @Bean

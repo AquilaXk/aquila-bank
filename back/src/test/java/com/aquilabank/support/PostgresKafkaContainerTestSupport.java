@@ -46,6 +46,8 @@ public abstract class PostgresKafkaContainerTestSupport extends PostgresContaine
     registry.add("notification.inbox.consumer.bootstrap-servers", KAFKA::getBootstrapServers);
     registry.add("notification.inbox.consumer.group-id", () -> "aquila-bank-notification-e2e");
     registry.add("notification.inbox.consumer.transfer-booked.topic", () -> TRANSFER_BOOKED_TOPIC);
+    registry.add(
+        "notification.inbox.consumer.transfer-reversed.topic", () -> TRANSFER_REVERSED_TOPIC);
     registry.add("notification.inbox.consumer.dlq.topic", () -> TRANSFER_BOOKED_DLQ_TOPIC);
   }
 
