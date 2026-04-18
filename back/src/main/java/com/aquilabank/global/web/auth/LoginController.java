@@ -27,6 +27,7 @@ import com.aquilabank.domain.auth.usecase.TotpEnrollmentUseCase;
 import com.aquilabank.global.security.AuthenticatedAccountPrincipal;
 import com.aquilabank.global.security.AuthenticatedRequestPrincipal;
 import com.aquilabank.global.security.AuthenticatedUserPrincipal;
+import com.aquilabank.global.security.LoginThrottleGuard;
 import com.aquilabank.global.web.security.CurrentAuthenticatedPrincipal;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -66,6 +67,7 @@ public class LoginController {
   private final LogoutUseCase logoutUseCase;
   private final PasswordResetUseCase passwordResetUseCase;
   private final AuthSessionMetadataResolver authSessionMetadataResolver;
+  private final LoginThrottleGuard loginThrottleGuard;
 
   public LoginController(
       LoginUseCase loginUseCase,
@@ -77,7 +79,8 @@ public class LoginController {
       TotpChallengeVerifyUseCase totpChallengeVerifyUseCase,
       LogoutUseCase logoutUseCase,
       PasswordResetUseCase passwordResetUseCase,
-      AuthSessionMetadataResolver authSessionMetadataResolver) {
+      AuthSessionMetadataResolver authSessionMetadataResolver,
+      LoginThrottleGuard loginThrottleGuard) {
     this.loginUseCase = loginUseCase;
     this.authSessionListUseCase = authSessionListUseCase;
     this.authSessionRevokeUseCase = authSessionRevokeUseCase;
@@ -88,17 +91,17 @@ public class LoginController {
     this.logoutUseCase = logoutUseCase;
     this.passwordResetUseCase = passwordResetUseCase;
     this.authSessionMetadataResolver = authSessionMetadataResolver;
+    this.loginThrottleGuard = loginThrottleGuard;
   }
 
   @PostMapping("/login")
   public LoginResponse login(
       HttpServletRequest httpServletRequest, @Valid @RequestBody LoginRequest request) {
+    var sessionClientMetadata = authSessionMetadataResolver.resolve(httpServletRequest);
+    loginThrottleGuard.check(sessionClientMetadata.ipAddress());
     LoginResult result =
         loginUseCase.login(
-            new LoginCommand(
-                request.loginId(),
-                request.password(),
-                authSessionMetadataResolver.resolve(httpServletRequest)));
+            new LoginCommand(request.loginId(), request.password(), sessionClientMetadata));
     return LoginResponse.from(result);
   }
 

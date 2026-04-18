@@ -16,6 +16,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.aquilabank.domain.auth.port.RefreshTokenSecretPort;
 import com.aquilabank.global.security.InternalServiceScope;
 import com.aquilabank.global.security.InternalServiceTokenIssuer;
+import com.aquilabank.global.security.LoginThrottleGuard;
 import com.aquilabank.standard.util.Base32Codec;
 import com.aquilabank.support.PostgresContainerTestSupport;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -87,6 +88,8 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
 
   @Autowired private RefreshTokenSecretPort refreshTokenSecretPort;
 
+  @Autowired private LoginThrottleGuard loginThrottleGuard;
+
   @Autowired private InternalServiceTokenIssuer internalServiceTokenIssuer;
 
   private MockMvc mockMvc;
@@ -99,6 +102,7 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
   void setUpDatabase() throws Exception {
     mockMvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
     resetBankingTables(jdbcTemplate);
+    loginThrottleGuard.clear();
 
     allowedSourceAccountId = bootstrapAccount("allowed source", 10_000L);
     targetAccountId = bootstrapAccount("allowed target", 0L);

@@ -340,14 +340,23 @@ bash tools/test/check-nginx-sse-proxy.sh
   - `SECURITY_LOGIN_PROTECTION_MAX_FAILURES=5`
   - `SECURITY_LOGIN_PROTECTION_LOCK_SECONDS=900`
   - `SECURITY_LOGIN_PROTECTION_RESET_WINDOW_SECONDS=900`
+  - `SECURITY_LOGIN_THROTTLING_IP_MAX_ATTEMPTS=20`
+  - `SECURITY_LOGIN_THROTTLING_IP_WINDOW_SECONDS=60`
+  - `SECURITY_LOGIN_THROTTLING_GLOBAL_MAX_ATTEMPTS=40`
+  - `SECURITY_LOGIN_THROTTLING_GLOBAL_WINDOW_SECONDS=10`
+  - `SECURITY_LOGIN_THROTTLING_MAX_TRACKED_IPS=1024`
 - 동작 기준:
   - 같은 `loginId`에서 연속 `5회` 실패하면 `15분` 임시 잠금
   - 마지막 실패 후 `15분`이 지나면 실패 카운트는 다시 `1`부터 계산
+  - 같은 IP에서 `1분` 동안 `20회`를 넘기면 `429 too many login attempts`로 fail-fast
+  - 단일 app instance 기준 전체 login 시도가 `10초` 동안 `40회`를 넘기면 동일하게 `429`로 shed
   - 성공 login 시 `failed_login_count`, `last_login_failed_at`, `login_locked_until`은 reset
-  - 외부 응답은 존재 여부/잠금 여부를 드러내지 않도록 항상 `401 login failed` 유지
+  - `loginId` 잠금은 존재 여부/잠금 여부를 드러내지 않도록 계속 `401 login failed` 유지
+  - request-level throttling은 `Retry-After` 헤더와 함께 `429 too many login attempts`를 반환
 - 상태 우선순위:
   - 수동 운영 상태 `user_status=LOCKED|DISABLED`가 임시 잠금보다 우선
   - 임시 brute-force 잠금은 `login_locked_until`로만 관리하고 `user_status`는 직접 바꾸지 않음
+  - IP/global throttling은 per-instance in-memory 기준이며 multi-node 전체 합산 limit는 보장하지 않음
 
 ### login 실패 감사 로그
 
