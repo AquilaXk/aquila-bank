@@ -2,12 +2,16 @@ package com.aquilabank.global.web.auth;
 
 import com.aquilabank.domain.auth.model.AuthSessionList;
 import com.aquilabank.domain.auth.model.AuthSessionListQuery;
+import com.aquilabank.domain.auth.model.AuthSessionRevokeAllCommand;
+import com.aquilabank.domain.auth.model.AuthSessionRevokeCommand;
 import com.aquilabank.domain.auth.model.AuthSessionSummary;
 import com.aquilabank.domain.auth.model.LoginCommand;
 import com.aquilabank.domain.auth.model.LoginResult;
 import com.aquilabank.domain.auth.model.LogoutCommand;
 import com.aquilabank.domain.auth.model.RefreshTokenCommand;
 import com.aquilabank.domain.auth.usecase.AuthSessionListUseCase;
+import com.aquilabank.domain.auth.usecase.AuthSessionRevokeAllUseCase;
+import com.aquilabank.domain.auth.usecase.AuthSessionRevokeUseCase;
 import com.aquilabank.domain.auth.usecase.LoginUseCase;
 import com.aquilabank.domain.auth.usecase.LogoutUseCase;
 import com.aquilabank.domain.auth.usecase.RefreshTokenUseCase;
@@ -22,9 +26,12 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import java.util.List;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -40,16 +47,22 @@ public class LoginController {
 
   private final LoginUseCase loginUseCase;
   private final AuthSessionListUseCase authSessionListUseCase;
+  private final AuthSessionRevokeUseCase authSessionRevokeUseCase;
+  private final AuthSessionRevokeAllUseCase authSessionRevokeAllUseCase;
   private final RefreshTokenUseCase refreshTokenUseCase;
   private final LogoutUseCase logoutUseCase;
 
   public LoginController(
       LoginUseCase loginUseCase,
       AuthSessionListUseCase authSessionListUseCase,
+      AuthSessionRevokeUseCase authSessionRevokeUseCase,
+      AuthSessionRevokeAllUseCase authSessionRevokeAllUseCase,
       RefreshTokenUseCase refreshTokenUseCase,
       LogoutUseCase logoutUseCase) {
     this.loginUseCase = loginUseCase;
     this.authSessionListUseCase = authSessionListUseCase;
+    this.authSessionRevokeUseCase = authSessionRevokeUseCase;
+    this.authSessionRevokeAllUseCase = authSessionRevokeAllUseCase;
     this.refreshTokenUseCase = refreshTokenUseCase;
     this.logoutUseCase = logoutUseCase;
   }
@@ -69,6 +82,23 @@ public class LoginController {
     AuthSessionList result =
         authSessionListUseCase.get(new AuthSessionListQuery(resolveUserId(principal), size));
     return AuthSessionListResponse.from(result);
+  }
+
+  @DeleteMapping("/sessions/{sessionId}")
+  public ResponseEntity<Void> revokeSession(
+      @CurrentAuthenticatedPrincipal AuthenticatedRequestPrincipal principal,
+      @PathVariable @jakarta.validation.constraints.Positive(message = "sessionId must be positive") long sessionId) {
+    authSessionRevokeUseCase.revoke(
+        new AuthSessionRevokeCommand(resolveUserId(principal), sessionId));
+    return ResponseEntity.noContent().build();
+  }
+
+  @DeleteMapping("/sessions")
+  public ResponseEntity<Void> revokeAllSessions(
+      @CurrentAuthenticatedPrincipal AuthenticatedRequestPrincipal principal) {
+    authSessionRevokeAllUseCase.revokeAll(
+        new AuthSessionRevokeAllCommand(resolveUserId(principal)));
+    return ResponseEntity.noContent().build();
   }
 
   @PostMapping("/refresh")
@@ -151,10 +181,8 @@ public class LoginController {
       return userPrincipal.userId();
     }
     if (principal instanceof AuthenticatedAccountPrincipal) {
-      throw new ResponseStatusException(
-          org.springframework.http.HttpStatus.FORBIDDEN, "user authentication is required");
+      throw new ResponseStatusException(HttpStatus.FORBIDDEN, "user authentication is required");
     }
-    throw new ResponseStatusException(
-        org.springframework.http.HttpStatus.UNAUTHORIZED, "authentication required");
+    throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "authentication required");
   }
 }
