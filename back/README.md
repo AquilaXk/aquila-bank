@@ -128,6 +128,14 @@ docker compose up -d postgres kafka
 - PostgreSQL 기본 포트: `localhost:5432`
 - Kafka 기본 포트: `localhost:9092`
 - Kafka topic은 broker 기본 auto-create를 사용하되, app 설정은 `TransferBooked`/`TransferReversed`를 분리해 consumer 충돌을 막습니다.
+- 이 경로는 로컬 개발 전용입니다.
+
+## Deployment Baseline
+
+- 백엔드 런타임: `EC2`
+- 데이터베이스: `RDS PostgreSQL 18`
+- prod profile은 `DB_URL`, `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD` 환경변수를 받아 EC2에서 외부 PostgreSQL에 연결합니다.
+- `compose.yml`은 배포 인프라를 대체하지 않으며, 운영 DB는 local Docker volume이 아니라 관리형 PostgreSQL 기준으로 봅니다.
 
 백엔드는 [back/.env.example](/Users/aquila/Custom/GitProjects/aquila-bank/back/.env.example)를 복사한 뒤 실행합니다.
 
