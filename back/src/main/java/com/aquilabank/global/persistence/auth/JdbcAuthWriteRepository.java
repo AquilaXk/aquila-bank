@@ -9,6 +9,7 @@ import com.aquilabank.domain.auth.model.AuthStatusChangeType;
 import com.aquilabank.domain.auth.model.AuthUserSummary;
 import com.aquilabank.domain.auth.model.LoginFailureUpdateCommand;
 import com.aquilabank.domain.auth.model.LoginSuccessUpdateCommand;
+import com.aquilabank.domain.auth.model.PasswordResetWriteCommand;
 import com.aquilabank.domain.auth.model.RefreshTokenSessionCreateCommand;
 import com.aquilabank.domain.auth.model.RefreshTokenSessionRevokeCommand;
 import com.aquilabank.domain.auth.model.RefreshTokenSessionRotateCommand;
@@ -26,6 +27,7 @@ import com.aquilabank.domain.auth.port.RefreshTokenSessionWritePort;
 import com.aquilabank.domain.auth.port.UserAccountMembershipStatusUpdatePort;
 import com.aquilabank.domain.auth.port.UserAccountMembershipUpsertPort;
 import com.aquilabank.domain.auth.port.UserBootstrapPort;
+import com.aquilabank.domain.auth.port.UserCredentialUpdatePort;
 import com.aquilabank.domain.auth.port.UserStatusUpdatePort;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -42,6 +44,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class JdbcAuthWriteRepository
     implements UserBootstrapPort,
         LoginAttemptUpdatePort,
+        UserCredentialUpdatePort,
         RefreshTokenSessionCleanupPort,
         RefreshTokenSessionWritePort,
         UserAccountMembershipUpsertPort,
@@ -140,6 +143,27 @@ public class JdbcAuthWriteRepository
             new MapSqlParameterSource()
                 .addValue("userId", command.userId())
                 .addValue("succeededAt", Timestamp.from(command.succeededAt())));
+    assertUserUpdated(updated);
+  }
+
+  @Override
+  @Transactional
+  public void resetPassword(PasswordResetWriteCommand command) {
+    int updated =
+        jdbcTemplate.update(
+            """
+            UPDATE bank_user
+            SET password_hash = :passwordHash,
+                failed_login_count = 0,
+                last_login_failed_at = NULL,
+                login_locked_until = NULL,
+                updated_at = :changedAt
+            WHERE id = :userId
+            """,
+            new MapSqlParameterSource()
+                .addValue("userId", command.userId())
+                .addValue("passwordHash", command.passwordHash())
+                .addValue("changedAt", Timestamp.from(command.changedAt())));
     assertUserUpdated(updated);
   }
 
