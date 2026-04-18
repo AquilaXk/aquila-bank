@@ -8,12 +8,14 @@ import com.aquilabank.domain.auth.model.AuthSessionSummary;
 import com.aquilabank.domain.auth.model.LoginCommand;
 import com.aquilabank.domain.auth.model.LoginResult;
 import com.aquilabank.domain.auth.model.LogoutCommand;
+import com.aquilabank.domain.auth.model.PasswordResetCommand;
 import com.aquilabank.domain.auth.model.RefreshTokenCommand;
 import com.aquilabank.domain.auth.usecase.AuthSessionListUseCase;
 import com.aquilabank.domain.auth.usecase.AuthSessionRevokeAllUseCase;
 import com.aquilabank.domain.auth.usecase.AuthSessionRevokeUseCase;
 import com.aquilabank.domain.auth.usecase.LoginUseCase;
 import com.aquilabank.domain.auth.usecase.LogoutUseCase;
+import com.aquilabank.domain.auth.usecase.PasswordResetUseCase;
 import com.aquilabank.domain.auth.usecase.RefreshTokenUseCase;
 import com.aquilabank.global.security.AuthenticatedAccountPrincipal;
 import com.aquilabank.global.security.AuthenticatedRequestPrincipal;
@@ -52,6 +54,7 @@ public class LoginController {
   private final AuthSessionRevokeAllUseCase authSessionRevokeAllUseCase;
   private final RefreshTokenUseCase refreshTokenUseCase;
   private final LogoutUseCase logoutUseCase;
+  private final PasswordResetUseCase passwordResetUseCase;
   private final AuthSessionMetadataResolver authSessionMetadataResolver;
 
   public LoginController(
@@ -61,6 +64,7 @@ public class LoginController {
       AuthSessionRevokeAllUseCase authSessionRevokeAllUseCase,
       RefreshTokenUseCase refreshTokenUseCase,
       LogoutUseCase logoutUseCase,
+      PasswordResetUseCase passwordResetUseCase,
       AuthSessionMetadataResolver authSessionMetadataResolver) {
     this.loginUseCase = loginUseCase;
     this.authSessionListUseCase = authSessionListUseCase;
@@ -68,6 +72,7 @@ public class LoginController {
     this.authSessionRevokeAllUseCase = authSessionRevokeAllUseCase;
     this.refreshTokenUseCase = refreshTokenUseCase;
     this.logoutUseCase = logoutUseCase;
+    this.passwordResetUseCase = passwordResetUseCase;
     this.authSessionMetadataResolver = authSessionMetadataResolver;
   }
 
@@ -128,6 +133,16 @@ public class LoginController {
     return ResponseEntity.noContent().build();
   }
 
+  @PostMapping("/password-reset")
+  public ResponseEntity<Void> resetPassword(
+      @CurrentAuthenticatedPrincipal AuthenticatedRequestPrincipal principal,
+      @Valid @RequestBody PasswordResetRequest request) {
+    passwordResetUseCase.reset(
+        new PasswordResetCommand(
+            resolveUserId(principal), request.currentPassword(), request.newPassword()));
+    return ResponseEntity.noContent().build();
+  }
+
   /** 로그인 요청 body */
   public record LoginRequest(
       @NotBlank(message = "loginId is required") @Size(max = 80, message = "loginId must be 80 characters or less") String loginId,
@@ -140,6 +155,11 @@ public class LoginController {
   /** logout 요청 body */
   public record LogoutRequest(
       @NotBlank(message = "refreshToken is required") @Size(max = 160, message = "refreshToken must be 160 characters or less") String refreshToken) {}
+
+  /** password reset 요청 body */
+  public record PasswordResetRequest(
+      @NotBlank(message = "currentPassword is required") @Size(max = 120, message = "currentPassword must be 120 characters or less") String currentPassword,
+      @NotBlank(message = "newPassword is required") @Size(max = 120, message = "newPassword must be 120 characters or less") String newPassword) {}
 
   /** access/refresh token 발급 응답 */
   public record LoginResponse(
