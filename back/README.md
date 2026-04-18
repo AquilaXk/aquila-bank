@@ -115,6 +115,14 @@ cd ..
 docker compose up -d postgres kafka
 ```
 
+PostgreSQL 18로 올린 뒤 기존 local named volume 때문에 `aquila-bank-postgres`가 `Restarting (1)` 상태면 Postgres volume을 한 번 재생성해야 합니다.
+
+```bash
+docker compose down
+docker volume rm aquila-bank_aquila-bank-postgres-data
+docker compose up -d postgres kafka
+```
+
 루트 [compose.yml](/Users/aquila/Custom/GitProjects/aquila-bank/compose.yml)은 `postgres:18`과 단일 노드 Kafka broker를 함께 올립니다.
 
 - PostgreSQL 기본 포트: `localhost:5432`

@@ -11,7 +11,8 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
       TZ: Asia/Seoul
     volumes:
-      - aquila-bank-postgres-data:/var/lib/postgresql/data
+      # Postgres 18+는 major-version 디렉터리를 내부에서 관리하므로 상위 경로 mount가 필요합니다.
+      - aquila-bank-postgres-data:/var/lib/postgresql
     healthcheck:
       test:
         [
