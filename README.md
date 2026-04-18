@@ -20,12 +20,14 @@
 .
 ├── front
 ├── back
+├── ops
 ├── .github
 └── compose.yml
 ```
 
 - `front`: 고객/운영 웹 애플리케이션
 - `back`: API, 도메인, 배치, 어댑터
+- `ops`: reverse proxy 같은 운영 baseline 파일
 - `.github`: 이슈/PR 템플릿과 협업 메타 설정
 - `compose.yml`: 로컬 개발용 Docker Compose 인프라 실행 기준
 
@@ -39,6 +41,7 @@
 
 - 로컬 개발: `Docker Compose + PostgreSQL 18 + Kafka`
 - 배포 환경: `EC2 + RDS PostgreSQL 18`
+- EC2 reverse proxy baseline은 [ops/nginx/nginx.conf](/Users/aquila/Custom/GitProjects/aquila-bank/ops/nginx/nginx.conf)에 둡니다.
 - `compose.yml`은 로컬 개발 전용이며, 배포용 인프라 정의는 포함하지 않습니다.
 
 ## Delivery Flow
