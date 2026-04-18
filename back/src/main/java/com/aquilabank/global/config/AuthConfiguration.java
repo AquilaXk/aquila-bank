@@ -19,6 +19,7 @@ import com.aquilabank.domain.auth.port.UserAccountMembershipStatusUpdatePort;
 import com.aquilabank.domain.auth.port.UserAccountMembershipUpsertPort;
 import com.aquilabank.domain.auth.port.UserBootstrapPort;
 import com.aquilabank.domain.auth.port.UserCredentialLoadPort;
+import com.aquilabank.domain.auth.port.UserCredentialUpdatePort;
 import com.aquilabank.domain.auth.port.UserQueryPort;
 import com.aquilabank.domain.auth.port.UserStatusUpdatePort;
 import com.aquilabank.domain.auth.usecase.AccountAccessService;
@@ -37,6 +38,8 @@ import com.aquilabank.domain.auth.usecase.LoginService;
 import com.aquilabank.domain.auth.usecase.LoginUseCase;
 import com.aquilabank.domain.auth.usecase.LogoutService;
 import com.aquilabank.domain.auth.usecase.LogoutUseCase;
+import com.aquilabank.domain.auth.usecase.PasswordResetService;
+import com.aquilabank.domain.auth.usecase.PasswordResetUseCase;
 import com.aquilabank.domain.auth.usecase.RefreshTokenService;
 import com.aquilabank.domain.auth.usecase.RefreshTokenUseCase;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipQueryService;
@@ -176,6 +179,26 @@ public class AuthConfiguration {
     TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
     return command ->
         transactionTemplate.executeWithoutResult(status -> logoutService.logout(command));
+  }
+
+  @Bean
+  PasswordResetUseCase passwordResetUseCase(
+      UserCredentialLoadPort userCredentialLoadPort,
+      UserCredentialUpdatePort userCredentialUpdatePort,
+      PasswordHashPort passwordHashPort,
+      RefreshTokenSessionWritePort refreshTokenSessionWritePort,
+      Clock authClock,
+      PlatformTransactionManager platformTransactionManager) {
+    PasswordResetService passwordResetService =
+        new PasswordResetService(
+            userCredentialLoadPort,
+            userCredentialUpdatePort,
+            passwordHashPort,
+            refreshTokenSessionWritePort,
+            authClock);
+    TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
+    return command ->
+        transactionTemplate.executeWithoutResult(status -> passwordResetService.reset(command));
   }
 
   @Bean

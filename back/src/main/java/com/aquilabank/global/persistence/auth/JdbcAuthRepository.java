@@ -96,6 +96,29 @@ public class JdbcAuthRepository
   }
 
   @Override
+  public Optional<LoginUser> findByUserIdForUpdate(long userId) {
+    return jdbcTemplate
+        .query(
+            """
+            SELECT id,
+                   login_id,
+                   password_hash,
+                   user_status,
+                   failed_login_count,
+                   last_login_failed_at,
+                   login_locked_until,
+                   last_login_succeeded_at
+            FROM bank_user
+            WHERE id = :userId
+            FOR UPDATE
+            """,
+            new MapSqlParameterSource().addValue("userId", userId),
+            (rs, rowNum) -> mapLoginUser(rs))
+        .stream()
+        .findFirst();
+  }
+
+  @Override
   public Optional<RefreshTokenSession> findByTokenHashForUpdate(String tokenHash) {
     return jdbcTemplate
         .query(

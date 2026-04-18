@@ -439,6 +439,63 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
   }
 
   @Test
+  void passwordResetChangesPasswordAndRevokesActiveRefreshSessions() throws Exception {
+    TokenPairResponseView currentSession =
+        loginResult("alice", "password123!", "password-reset-login-001");
+    TokenPairResponseView parallelSession =
+        loginResult("alice", "password123!", "password-reset-login-002");
+
+    passwordReset(
+            currentSession.accessToken(),
+            "password123!",
+            "newPassword456!",
+            "password-reset-request-001")
+        .andExpect(status().isNoContent());
+
+    RefreshTokenSessionView currentRefresh = loadRefreshTokenSession(currentSession.refreshToken());
+    RefreshTokenSessionView parallelRefresh =
+        loadRefreshTokenSession(parallelSession.refreshToken());
+    assertEquals("REVOKED", currentRefresh.sessionStatus());
+    assertEquals("REVOKED", parallelRefresh.sessionStatus());
+    assertNotNull(currentRefresh.lastUsedAt());
+    assertNotNull(parallelRefresh.lastUsedAt());
+
+    refreshExpectUnauthorized(currentSession.refreshToken(), "password-reset-refresh-001");
+    refreshExpectUnauthorized(parallelSession.refreshToken(), "password-reset-refresh-002");
+    loginExpectUnauthorized("alice", "password123!", "password-reset-old-login-001");
+    assertNotNull(login("alice", "newPassword456!", "password-reset-new-login-001"));
+  }
+
+  @Test
+  void passwordResetRejectsWrongCurrentPassword() throws Exception {
+    TokenPairResponseView currentSession =
+        loginResult("alice", "password123!", "password-reset-wrong-login-001");
+
+    passwordResetExpectUnauthorized(
+        currentSession.accessToken(),
+        "wrong-password",
+        "newPassword456!",
+        "password-reset-wrong-request-001");
+
+    RefreshTokenSessionView currentRefresh = loadRefreshTokenSession(currentSession.refreshToken());
+    assertEquals("ACTIVE", currentRefresh.sessionStatus());
+    assertNotNull(login("alice", "password123!", "password-reset-wrong-old-login-001"));
+  }
+
+  @Test
+  void disabledUserCannotResetPassword() throws Exception {
+    TokenPairResponseView currentSession =
+        loginResult("alice", "password123!", "password-reset-disabled-login-001");
+    updateLegacyUserStatus(userId, "DISABLED", "fraud-review", "password-reset-disabled-ops-001");
+
+    passwordResetExpectUnauthorized(
+        currentSession.accessToken(),
+        "password123!",
+        "newPassword456!",
+        "password-reset-disabled-request-001");
+  }
+
+  @Test
   void authSessionListReturnsOnlyCurrentUsersUnexpiredActiveSessions() throws Exception {
     TokenPairResponseView expired =
         loginResult("alice", "password123!", "session-list-login-001", WINDOWS_CHROME);
@@ -674,6 +731,24 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
             get("/api/v1/auth/sessions")
                 .header("X-Account-Id", String.valueOf(allowedSourceAccountId))
                 .header("X-Subject", "bootstrap-account"))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void bootstrapAccountPrincipalCannotResetPassword() throws Exception {
+    mockMvc
+        .perform(
+            post("/api/v1/auth/password-reset")
+                .header("X-Account-Id", String.valueOf(allowedSourceAccountId))
+                .header("X-Subject", "bootstrap-account")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "currentPassword": "password123!",
+                      "newPassword": "newPassword456!"
+                    }
+                    """))
         .andExpect(status().isForbidden());
   }
 
@@ -1105,6 +1180,35 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
       requestBuilder.header("X-Request-Id", requestId);
     }
     return mockMvc.perform(requestBuilder);
+  }
+
+  private org.springframework.test.web.servlet.ResultActions passwordReset(
+      String accessToken, String currentPassword, String newPassword, String requestId)
+      throws Exception {
+    MockHttpServletRequestBuilder requestBuilder =
+        post("/api/v1/auth/password-reset")
+            .header("Authorization", "Bearer " + accessToken)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(
+                """
+                {
+                  "currentPassword": "%s",
+                  "newPassword": "%s"
+                }
+                """
+                    .formatted(currentPassword, newPassword));
+    if (requestId != null && !requestId.isBlank()) {
+      requestBuilder.header("X-Request-Id", requestId);
+    }
+    return mockMvc.perform(requestBuilder);
+  }
+
+  private void passwordResetExpectUnauthorized(
+      String accessToken, String currentPassword, String newPassword, String requestId)
+      throws Exception {
+    passwordReset(accessToken, currentPassword, newPassword, requestId)
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.message").value("password reset failed"));
   }
 
   private org.springframework.test.web.servlet.ResultActions revokeSession(

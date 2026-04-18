@@ -362,6 +362,7 @@ login 실패/잠금은 structured log 한 줄로 남습니다.
 
 - 공개 endpoint:
   - `POST /api/v1/auth/login`
+  - `POST /api/v1/auth/password-reset`
   - `GET /api/v1/auth/sessions`
   - `DELETE /api/v1/auth/sessions/{sessionId}`
   - `DELETE /api/v1/auth/sessions`
@@ -399,11 +400,19 @@ login 실패/잠금은 structured log 한 줄로 남습니다.
   - `DELETE /api/v1/auth/sessions/{sessionId}`는 현재 user 소유의 `ACTIVE` session 하나만 `REVOKED`로 바꾼다.
   - `DELETE /api/v1/auth/sessions`는 현재 user의 `ACTIVE` session 전체를 `REVOKED`로 바꾼다.
   - 두 endpoint 모두 다른 사용자 session, 이미 `ROTATED|REVOKED` 상태, 존재하지 않는 session에 대해 `204` no-op을 유지한다.
+- 비밀번호 재설정 기준:
+  - `POST /api/v1/auth/password-reset`
+  - 현재 JWT user만 호출 가능하고 bootstrap account principal은 `403`
+  - request body는 `currentPassword`, `newPassword`
+  - `currentPassword`가 맞고 `user_status = ACTIVE`일 때만 비밀번호를 새 `BCrypt password_hash`로 교체한다.
+  - 성공 시 현재 user의 `ACTIVE` refresh session 전체를 `REVOKED`로 바꾼다.
 - 거절 기준:
   - 만료, 이미 rotation 된 token, 존재하지 않는 token은 모두 `401 refresh failed`
   - `user_status=LOCKED|DISABLED` 사용자는 refresh로 새 token pair를 발급받지 못함
+  - wrong `currentPassword` 또는 `user_status != ACTIVE`는 `401 password reset failed`
 - 운영 주의:
   - logout은 access token 즉시 폐기가 아니라 refresh 재발급 차단까지만 처리
+  - password reset도 access token 즉시 폐기가 아니라 refresh 재발급 차단까지만 처리
   - 다른 사용자 token, 이미 `ROTATED|REVOKED` 상태인 token, 존재하지 않는 token으로 logout 요청 시 `204` no-op 유지
   - 선택 revoke와 전체 revoke도 access token 즉시 폐기가 아니라 refresh 재발급 차단까지만 처리
   - raw refresh token, plaintext secret은 로그/DB에 남기지 않음
