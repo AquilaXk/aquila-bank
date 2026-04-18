@@ -18,6 +18,7 @@ import com.aquilabank.domain.notification.exception.NotificationNotFoundExceptio
 import com.aquilabank.domain.notification.model.NotificationCursor;
 import com.aquilabank.domain.notification.model.NotificationSlice;
 import com.aquilabank.domain.notification.model.NotificationSummary;
+import com.aquilabank.domain.notification.usecase.NotificationBulkActionUseCase;
 import com.aquilabank.domain.notification.usecase.NotificationQueryUseCase;
 import com.aquilabank.domain.notification.usecase.NotificationReadUseCase;
 import com.aquilabank.global.notification.NotificationSseBroker;
@@ -37,6 +38,7 @@ class NotificationControllerTest {
 
   private NotificationQueryUseCase notificationQueryUseCase;
   private NotificationReadUseCase notificationReadUseCase;
+  private NotificationBulkActionUseCase notificationBulkActionUseCase;
   private NotificationSseBroker notificationSseBroker;
   private MockMvc mockMvc;
 
@@ -44,11 +46,15 @@ class NotificationControllerTest {
   void setUp() {
     notificationQueryUseCase = mock(NotificationQueryUseCase.class);
     notificationReadUseCase = mock(NotificationReadUseCase.class);
+    notificationBulkActionUseCase = mock(NotificationBulkActionUseCase.class);
     notificationSseBroker = mock(NotificationSseBroker.class);
     mockMvc =
         MockMvcBuilders.standaloneSetup(
                 new NotificationController(
-                    notificationQueryUseCase, notificationReadUseCase, notificationSseBroker))
+                    notificationQueryUseCase,
+                    notificationReadUseCase,
+                    notificationBulkActionUseCase,
+                    notificationSseBroker))
             .setControllerAdvice(new ApiExceptionHandler())
             .addFilters(new BootstrapHeaderAuthenticationFilter("X-Account-Id", "X-Subject"))
             .setCustomArgumentResolvers(new CurrentAuthenticatedPrincipalArgumentResolver())

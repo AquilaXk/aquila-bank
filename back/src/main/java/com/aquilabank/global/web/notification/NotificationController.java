@@ -1,7 +1,9 @@
 package com.aquilabank.global.web.notification;
 
+import com.aquilabank.domain.notification.model.NotificationBulkActionCommand;
 import com.aquilabank.domain.notification.model.NotificationCursor;
 import com.aquilabank.domain.notification.model.NotificationListQuery;
+import com.aquilabank.domain.notification.usecase.NotificationBulkActionUseCase;
 import com.aquilabank.domain.notification.usecase.NotificationQueryUseCase;
 import com.aquilabank.domain.notification.usecase.NotificationReadUseCase;
 import com.aquilabank.global.notification.NotificationSseBroker;
@@ -9,7 +11,11 @@ import com.aquilabank.global.security.AuthenticatedAccountPrincipal;
 import com.aquilabank.global.security.AuthenticatedRequestPrincipal;
 import com.aquilabank.global.security.AuthenticatedUserPrincipal;
 import com.aquilabank.global.web.security.CurrentAuthenticatedPrincipal;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
+import java.util.List;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -18,6 +24,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -34,14 +41,17 @@ public class NotificationController {
 
   private final NotificationQueryUseCase notificationQueryUseCase;
   private final NotificationReadUseCase notificationReadUseCase;
+  private final NotificationBulkActionUseCase notificationBulkActionUseCase;
   private final NotificationSseBroker notificationSseBroker;
 
   public NotificationController(
       NotificationQueryUseCase notificationQueryUseCase,
       NotificationReadUseCase notificationReadUseCase,
+      NotificationBulkActionUseCase notificationBulkActionUseCase,
       NotificationSseBroker notificationSseBroker) {
     this.notificationQueryUseCase = notificationQueryUseCase;
     this.notificationReadUseCase = notificationReadUseCase;
+    this.notificationBulkActionUseCase = notificationBulkActionUseCase;
     this.notificationSseBroker = notificationSseBroker;
   }
 
@@ -96,6 +106,42 @@ public class NotificationController {
     }
   }
 
+  @PostMapping("/read")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  public void markAllAsRead(
+      @CurrentAuthenticatedPrincipal AuthenticatedRequestPrincipal principal,
+      @Valid @RequestBody NotificationBulkActionRequest request) {
+    try {
+      dispatchBulkRead(principal, new NotificationBulkActionCommand(request.notificationIds()));
+    } catch (IllegalArgumentException ex) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage(), ex);
+    }
+  }
+
+  @PostMapping("/archive")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  public void archiveNotifications(
+      @CurrentAuthenticatedPrincipal AuthenticatedRequestPrincipal principal,
+      @Valid @RequestBody NotificationBulkActionRequest request) {
+    try {
+      dispatchBulkArchive(principal, new NotificationBulkActionCommand(request.notificationIds()));
+    } catch (IllegalArgumentException ex) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage(), ex);
+    }
+  }
+
+  @PostMapping("/delete")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  public void deleteNotifications(
+      @CurrentAuthenticatedPrincipal AuthenticatedRequestPrincipal principal,
+      @Valid @RequestBody NotificationBulkActionRequest request) {
+    try {
+      dispatchBulkDelete(principal, new NotificationBulkActionCommand(request.notificationIds()));
+    } catch (IllegalArgumentException ex) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage(), ex);
+    }
+  }
+
   private com.aquilabank.domain.notification.model.NotificationSlice resolveNotifications(
       AuthenticatedRequestPrincipal principal, NotificationListQuery query) {
     if (principal instanceof AuthenticatedUserPrincipal userPrincipal) {
@@ -130,6 +176,45 @@ public class NotificationController {
     throw new IllegalArgumentException("unsupported principal type");
   }
 
+  private void dispatchBulkRead(
+      AuthenticatedRequestPrincipal principal, NotificationBulkActionCommand command) {
+    if (principal instanceof AuthenticatedUserPrincipal userPrincipal) {
+      notificationBulkActionUseCase.markAsReadForUser(userPrincipal.userId(), command);
+      return;
+    }
+    if (principal instanceof AuthenticatedAccountPrincipal accountPrincipal) {
+      notificationBulkActionUseCase.markAsReadForAccount(accountPrincipal.accountId(), command);
+      return;
+    }
+    throw new IllegalArgumentException("unsupported principal type");
+  }
+
+  private void dispatchBulkArchive(
+      AuthenticatedRequestPrincipal principal, NotificationBulkActionCommand command) {
+    if (principal instanceof AuthenticatedUserPrincipal userPrincipal) {
+      notificationBulkActionUseCase.archiveForUser(userPrincipal.userId(), command);
+      return;
+    }
+    if (principal instanceof AuthenticatedAccountPrincipal accountPrincipal) {
+      notificationBulkActionUseCase.archiveForAccount(accountPrincipal.accountId(), command);
+      return;
+    }
+    throw new IllegalArgumentException("unsupported principal type");
+  }
+
+  private void dispatchBulkDelete(
+      AuthenticatedRequestPrincipal principal, NotificationBulkActionCommand command) {
+    if (principal instanceof AuthenticatedUserPrincipal userPrincipal) {
+      notificationBulkActionUseCase.deleteForUser(userPrincipal.userId(), command);
+      return;
+    }
+    if (principal instanceof AuthenticatedAccountPrincipal accountPrincipal) {
+      notificationBulkActionUseCase.deleteForAccount(accountPrincipal.accountId(), command);
+      return;
+    }
+    throw new IllegalArgumentException("unsupported principal type");
+  }
+
   private SseEmitter openStream(AuthenticatedRequestPrincipal principal, Long lastEventId) {
     if (principal instanceof AuthenticatedUserPrincipal userPrincipal) {
       return notificationSseBroker.subscribeUser(
@@ -156,4 +241,9 @@ public class NotificationController {
       throw new IllegalArgumentException("Last-Event-ID must be numeric", ex);
     }
   }
+
+  /** bulk action body 는 작은 id 목록만 허용해 notification inbox SQL 범위를 고정합니다. */
+  public record NotificationBulkActionRequest(
+      @NotEmpty(message = "notificationIds must not be empty") @Size(max = 100, message = "notificationIds size must be 100 or less") List<@Positive(message = "notificationIds must contain only positive values") Long>
+              notificationIds) {}
 }
