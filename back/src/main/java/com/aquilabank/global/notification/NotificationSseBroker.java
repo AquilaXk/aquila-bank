@@ -86,6 +86,18 @@ public class NotificationSseBroker {
     return !accountSessions.isEmpty() || !userSessions.isEmpty();
   }
 
+  public int accountSessionCount() {
+    return sessionCount(accountSessions);
+  }
+
+  public int userSessionCount() {
+    return sessionCount(userSessions);
+  }
+
+  public int totalSessionCount() {
+    return accountSessionCount() + userSessionCount();
+  }
+
   public void publishInsertedItems(List<NotificationSummary> items) {
     if (items.isEmpty() || !hasActiveSessions()) {
       return;
@@ -317,6 +329,14 @@ public class NotificationSseBroker {
           .add(item);
     }
     return itemsByAccountId;
+  }
+
+  private int sessionCount(Map<Long, Map<String, NotificationSseSession>> sessionsByPrincipalId) {
+    int count = 0;
+    for (Map<String, NotificationSseSession> sessions : sessionsByPrincipalId.values()) {
+      count += sessions.size();
+    }
+    return count;
   }
 
   private void removeSession(

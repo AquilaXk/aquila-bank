@@ -23,6 +23,7 @@ dependencies {
     testImplementation(platform("org.testcontainers:testcontainers-bom:1.21.3"))
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
+    runtimeOnly("io.micrometer:micrometer-registry-prometheus")
     implementation("org.springframework.boot:spring-boot-flyway")
     implementation("org.springframework.boot:spring-boot-starter-jdbc")
     implementation("org.springframework.kafka:spring-kafka")
