@@ -127,7 +127,9 @@ docker compose up -d postgres kafka
 
 - PostgreSQL 기본 포트: `localhost:5432`
 - Kafka 기본 포트: `localhost:9092`
-- Kafka topic은 broker 기본 auto-create를 사용하되, app 설정은 `TransferBooked`/`TransferReversed`를 분리해 consumer 충돌을 막습니다.
+- 로컬 Kafka broker는 topic auto-create를 끄고, app startup provisioning이 configured topic을 명시적으로 준비합니다.
+- 기본 topic 이름은 `bank.notification.outbox.v1`, `bank.transfer.booked.v1`, `bank.transfer.reversed.v1`, `bank.transfer.booked.dlq.v1` 입니다.
+- startup validation은 configured topic 존재와 최소 partition 수를 확인하고, outbox/consumer bootstrap server가 다르면 fail-fast 합니다.
 - 이 경로는 로컬 개발 전용입니다.
 
 ## Deployment Baseline
@@ -154,8 +156,9 @@ set +a
 - 기본값은 `t3.micro`를 전제로 작은 커넥션 풀과 짧은 DB 타임아웃을 사용합니다.
 - 운영 기본 인증 방식은 bearer JWT 입니다.
 - `dev`/`test` 프로필에서는 필요 시 `X-Account-Id` 헤더 fallback을 사용할 수 있습니다.
-- `dev` 프로필은 `OUTBOX_KAFKA_ENABLED=true`, `NOTIFICATION_INBOX_CONSUMER_ENABLED=true`만 주면 `localhost:9092`와 기본 topic 이름을 자동 사용합니다.
+- `dev` 프로필은 `OUTBOX_KAFKA_ENABLED=true`, `NOTIFICATION_INBOX_CONSUMER_ENABLED=true`만 주면 `localhost:9092`, 기본 topic 이름, provisioning/validation 기본값을 자동 사용합니다.
 - Kafka 포트를 바꾸면 `OUTBOX_KAFKA_BOOTSTRAP_SERVERS`, `NOTIFICATION_INBOX_CONSUMER_BOOTSTRAP_SERVERS`를 같은 값으로 같이 넘깁니다.
+- provisioning/validation을 끄려면 `KAFKA_TOPIC_PROVISIONING_ENABLED=false`, `KAFKA_TOPIC_STARTUP_VALIDATION_ENABLED=false`를 함께 조정합니다.
 
 ## Prometheus Metrics
 
