@@ -39,6 +39,7 @@ import org.springframework.web.context.WebApplicationContext;
     properties = {
       "spring.flyway.enabled=true",
       "management.health.db.enabled=true",
+      "security.login-throttling.store=memory",
       "security.login-protection.max-failures=3",
       "security.login-protection.lock-seconds=1",
       "security.login-protection.reset-window-seconds=900",

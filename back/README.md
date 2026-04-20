@@ -28,6 +28,12 @@ com.aquilabank
 - inbound/outbound adapter, config, filter, interceptor, repository 구현체는 `global`에 둡니다.
 - 공통 helper는 `standard/util`에 두되, 도메인 규칙이나 유스케이스 판단은 넣지 않습니다.
 
+## Login Throttling Storage
+
+- 기본 저장소는 `memory`입니다.
+- `redis`는 분산 login throttling 이 필요할 때만 opt-in 으로 사용합니다.
+- Redis 경로는 login throttling counter 에만 쓰고, SSE fan-out 은 계속 PostgreSQL `LISTEN/NOTIFY` 를 사용합니다.
+
 ## Stack
 
 - Java 21
