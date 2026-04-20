@@ -11,6 +11,7 @@ public record NotificationSseProperties(
     long reconnectDelayMs,
     int replayLimit,
     int maxTotalSessions,
+    int maxUserSessions,
     int maxPendingEventsPerSession,
     String fanoutChannel,
     long fanoutListenTimeoutMs,
@@ -32,6 +33,13 @@ public record NotificationSseProperties(
     }
     if (maxTotalSessions <= 0) {
       throw new IllegalArgumentException("notification.sse.max-total-sessions must be positive");
+    }
+    if (maxUserSessions <= 0) {
+      throw new IllegalArgumentException("notification.sse.max-user-sessions must be positive");
+    }
+    if (maxUserSessions > maxTotalSessions) {
+      throw new IllegalArgumentException(
+          "notification.sse.max-user-sessions must not exceed notification.sse.max-total-sessions");
     }
     if (maxPendingEventsPerSession <= 0) {
       throw new IllegalArgumentException(

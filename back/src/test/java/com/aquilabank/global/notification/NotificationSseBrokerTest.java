@@ -41,7 +41,7 @@ class NotificationSseBrokerTest {
 
   @Test
   void rejectsSubscriptionWhenTotalSessionLimitIsReached() throws Exception {
-    NotificationSseBroker notificationSseBroker = createBroker(1, 2);
+    NotificationSseBroker notificationSseBroker = createBroker(1, 1, 2);
 
     SseEmitter firstEmitter = notificationSseBroker.subscribeAccount(101L, "first-session");
 
@@ -65,7 +65,7 @@ class NotificationSseBrokerTest {
               assertThat(releaseReplay.await(3, TimeUnit.SECONDS)).isTrue();
               return List.of();
             });
-    NotificationSseBroker notificationSseBroker = createBroker(4, 2);
+    NotificationSseBroker notificationSseBroker = createBroker(4, 2, 2);
 
     notificationSseBroker.subscribeAccount(101L, "replay-session", 10L);
     assertThat(replayEntered.await(3, TimeUnit.SECONDS)).isTrue();
@@ -82,7 +82,48 @@ class NotificationSseBrokerTest {
     releaseReplay.countDown();
   }
 
-  private NotificationSseBroker createBroker(int maxTotalSessions, int maxPendingEventsPerSession) {
+  @Test
+  void rejectsSubscriptionWhenUserSessionLimitIsReached() throws Exception {
+    NotificationSseBroker notificationSseBroker = createBroker(4, 2, 2);
+
+    SseEmitter firstEmitter = notificationSseBroker.subscribeUser(202L, "first-user-session");
+    SseEmitter secondEmitter = notificationSseBroker.subscribeUser(202L, "second-user-session");
+
+    assertThatThrownBy(() -> notificationSseBroker.subscribeUser(202L, "third-user-session"))
+        .isInstanceOf(NotificationSseOverloadException.class)
+        .hasMessage("notification SSE stream is temporarily overloaded");
+    assertThat(notificationSseBroker.rejectedSubscriptionCount()).isEqualTo(1L);
+
+    SseEmitter otherUserEmitter = notificationSseBroker.subscribeUser(303L, "other-user-session");
+    assertThat(otherUserEmitter).isNotNull();
+
+    firstEmitter.complete();
+    secondEmitter.complete();
+    otherUserEmitter.complete();
+  }
+
+  @Test
+  void rejectsConfigurationWhenUserSessionLimitExceedsTotalLimit() {
+    assertThatThrownBy(
+            () ->
+                new NotificationSseProperties(
+                    60_000L,
+                    10_000L,
+                    3_000L,
+                    100,
+                    4,
+                    5,
+                    32,
+                    "notification_sse_fanout",
+                    1_000L,
+                    2_000L))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage(
+            "notification.sse.max-user-sessions must not exceed notification.sse.max-total-sessions");
+  }
+
+  private NotificationSseBroker createBroker(
+      int maxTotalSessions, int maxUserSessions, int maxPendingEventsPerSession) {
     return new NotificationSseBroker(
         new NotificationSseProperties(
             60_000L,
@@ -90,6 +131,7 @@ class NotificationSseBrokerTest {
             3_000L,
             100,
             maxTotalSessions,
+            maxUserSessions,
             maxPendingEventsPerSession,
             "notification_sse_fanout",
             1_000L,

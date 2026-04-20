@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.LongFunction;
@@ -32,6 +33,8 @@ public class NotificationSseBroker {
   private static final Logger log = LoggerFactory.getLogger(NotificationSseBroker.class);
   private static final String OVERLOAD_MESSAGE =
       "notification SSE stream is temporarily overloaded";
+  private static final String TOTAL_SESSION_LIMIT_REASON = "total_session_limit";
+  private static final String USER_SESSION_LIMIT_REASON = "user_session_limit";
 
   private final NotificationSseProperties notificationSseProperties;
   private final NotificationSseTargetResolver notificationSseTargetResolver;
@@ -64,6 +67,7 @@ public class NotificationSseBroker {
         subject,
         "account",
         lastEventId,
+        0,
         replayLastEventId ->
             notificationQueryUseCase.getReplayNotificationsForAccount(
                 accountId,
@@ -82,6 +86,7 @@ public class NotificationSseBroker {
         subject,
         "user",
         lastEventId,
+        notificationSseProperties.maxUserSessions(),
         replayLastEventId ->
             notificationQueryUseCase.getReplayNotificationsForUser(
                 userId,
@@ -138,16 +143,15 @@ public class NotificationSseBroker {
       String subject,
       String principalType,
       Long lastEventId,
+      int maxPrincipalSessions,
       LongFunction<List<NotificationSummary>> replayLoader) {
     if (!reserveSessionSlot()) {
-      long rejectedCount = rejectedSubscriptionCount.incrementAndGet();
-      log.warn(
-          "notification SSE subscribe rejected principalType={} principalId={} activeSessions={} limit={} rejectedCount={}",
-          principalType,
+      rejectSubscription(
+          sessionsByPrincipalId,
           principalId,
-          activeSessionCount.get(),
-          notificationSseProperties.maxTotalSessions(),
-          rejectedCount);
+          principalType,
+          TOTAL_SESSION_LIMIT_REASON,
+          notificationSseProperties.maxTotalSessions());
       throw new NotificationSseOverloadException(OVERLOAD_MESSAGE);
     }
     String sessionId = UUID.randomUUID().toString();
@@ -156,9 +160,16 @@ public class NotificationSseBroker {
       SseEmitter emitter = new SseEmitter(notificationSseProperties.connectionTimeoutMs());
       NotificationSseSession session =
           new NotificationSseSession(sessionId, subject, emitter, lastEventId);
-      sessionsByPrincipalId
-          .computeIfAbsent(principalId, ignored -> new ConcurrentHashMap<>())
-          .put(sessionId, session);
+      if (!registerSession(sessionsByPrincipalId, principalId, session, maxPrincipalSessions)) {
+        releaseSessionSlot();
+        rejectSubscription(
+            sessionsByPrincipalId,
+            principalId,
+            principalType,
+            USER_SESSION_LIMIT_REASON,
+            maxPrincipalSessions);
+        throw new NotificationSseOverloadException(OVERLOAD_MESSAGE);
+      }
       registered = true;
       emitter.onCompletion(() -> removeSession(sessionsByPrincipalId, principalId, sessionId));
       emitter.onTimeout(() -> removeSession(sessionsByPrincipalId, principalId, sessionId));
@@ -401,6 +412,54 @@ public class NotificationSseBroker {
       count += sessions.size();
     }
     return count;
+  }
+
+  private int sessionCount(
+      Map<Long, Map<String, NotificationSseSession>> sessionsByPrincipalId, long principalId) {
+    Map<String, NotificationSseSession> sessions = sessionsByPrincipalId.get(principalId);
+    return sessions == null ? 0 : sessions.size();
+  }
+
+  private void rejectSubscription(
+      Map<Long, Map<String, NotificationSseSession>> sessionsByPrincipalId,
+      long principalId,
+      String principalType,
+      String reason,
+      int limit) {
+    long rejectedCount = rejectedSubscriptionCount.incrementAndGet();
+    log.warn(
+        "notification SSE subscribe rejected principalType={} principalId={} reason={} activeSessions={} principalSessions={} limit={} rejectedCount={}",
+        principalType,
+        principalId,
+        reason,
+        activeSessionCount.get(),
+        sessionCount(sessionsByPrincipalId, principalId),
+        limit,
+        rejectedCount);
+  }
+
+  private boolean registerSession(
+      Map<Long, Map<String, NotificationSseSession>> sessionsByPrincipalId,
+      long principalId,
+      NotificationSseSession session,
+      int maxPrincipalSessions) {
+    AtomicBoolean registered = new AtomicBoolean(false);
+    sessionsByPrincipalId.compute(
+        principalId,
+        (ignored, currentSessions) -> {
+          if (maxPrincipalSessions > 0
+              && currentSessions != null
+              && currentSessions.size() >= maxPrincipalSessions) {
+            return currentSessions;
+          }
+          // 동일 user reconnect burst가 전체 cap을 잠식하지 않게 user registry 안에서 등록을 직렬화합니다.
+          Map<String, NotificationSseSession> nextSessions =
+              currentSessions == null ? new ConcurrentHashMap<>() : currentSessions;
+          nextSessions.put(session.sessionId(), session);
+          registered.set(true);
+          return nextSessions;
+        });
+    return registered.get();
   }
 
   private boolean reserveSessionSlot() {

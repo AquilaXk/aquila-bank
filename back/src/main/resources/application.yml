@@ -127,6 +127,7 @@ notification:
     reconnect-delay-ms: ${NOTIFICATION_SSE_RECONNECT_DELAY_MS:3000}
     replay-limit: ${NOTIFICATION_SSE_REPLAY_LIMIT:100}
     max-total-sessions: ${NOTIFICATION_SSE_MAX_TOTAL_SESSIONS:64}
+    max-user-sessions: ${NOTIFICATION_SSE_MAX_USER_SESSIONS:4}
     max-pending-events-per-session: ${NOTIFICATION_SSE_MAX_PENDING_EVENTS_PER_SESSION:32}
     fanout-channel: ${NOTIFICATION_SSE_FANOUT_CHANNEL:notification_sse_fanout}
     fanout-listen-timeout-ms: ${NOTIFICATION_SSE_FANOUT_LISTEN_TIMEOUT_MS:1000}
