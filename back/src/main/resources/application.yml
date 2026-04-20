@@ -185,12 +185,15 @@ security:
     reset-window-seconds: ${SECURITY_LOGIN_PROTECTION_RESET_WINDOW_SECONDS:900}
   login-throttling:
     max-tracked-ips: ${SECURITY_LOGIN_THROTTLING_MAX_TRACKED_IPS:1024}
+    store: ${SECURITY_LOGIN_THROTTLING_STORE:memory}
     ip:
       max-attempts: ${SECURITY_LOGIN_THROTTLING_IP_MAX_ATTEMPTS:20}
       window-seconds: ${SECURITY_LOGIN_THROTTLING_IP_WINDOW_SECONDS:60}
     global:
       max-attempts: ${SECURITY_LOGIN_THROTTLING_GLOBAL_MAX_ATTEMPTS:40}
       window-seconds: ${SECURITY_LOGIN_THROTTLING_GLOBAL_WINDOW_SECONDS:10}
+    redis:
+      key-prefix: ${SECURITY_LOGIN_THROTTLING_REDIS_KEY_PREFIX:auth:login:throttle:}
   bootstrap-header-auth:
     enabled: ${SECURITY_BOOTSTRAP_HEADER_AUTH_ENABLED:false}
     account-id-header: ${SECURITY_BOOTSTRAP_ACCOUNT_ID_HEADER:X-Account-Id}
