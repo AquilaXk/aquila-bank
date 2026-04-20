@@ -187,6 +187,7 @@ public class AuthConfiguration {
       RefreshTokenSessionLoadPort refreshTokenSessionLoadPort,
       RefreshTokenSessionWritePort refreshTokenSessionWritePort,
       RefreshTokenSecretPort refreshTokenSecretPort,
+      RefreshDeviceBindingSecretPort refreshDeviceBindingSecretPort,
       AuthTokenIssuePort authTokenIssuePort,
       RefreshTokenPolicy refreshTokenPolicy,
       Clock authClock,
@@ -196,6 +197,7 @@ public class AuthConfiguration {
             refreshTokenSessionLoadPort,
             refreshTokenSessionWritePort,
             refreshTokenSecretPort,
+            refreshDeviceBindingSecretPort,
             authTokenIssuePort,
             refreshTokenPolicy,
             authClock);

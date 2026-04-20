@@ -175,7 +175,7 @@ public class LoginController {
       @Valid @RequestBody TotpCodeRequest request) {
     AuthenticatedUserPrincipal userPrincipal = requireUserPrincipal(principal);
     totpDisableUseCase.disable(new TotpDisableCommand(userPrincipal.userId(), request.totpCode()));
-    return ResponseEntity.noContent().build();
+    return noContentResponseClearingBindingCookie();
   }
 
   @PostMapping("/mfa/backup-codes")
@@ -222,17 +222,19 @@ public class LoginController {
       @CurrentAuthenticatedPrincipal AuthenticatedRequestPrincipal principal) {
     authSessionRevokeAllUseCase.revokeAll(
         new AuthSessionRevokeAllCommand(resolveUserId(principal)));
-    return ResponseEntity.noContent().build();
+    return noContentResponseClearingBindingCookie();
   }
 
   @PostMapping("/refresh")
-  public LoginResponse refresh(
+  public ResponseEntity<LoginResponse> refresh(
       HttpServletRequest httpServletRequest, @Valid @RequestBody RefreshRequest request) {
     LoginResult result =
         refreshTokenUseCase.refresh(
             new RefreshTokenCommand(
-                request.refreshToken(), authSessionMetadataResolver.resolve(httpServletRequest)));
-    return LoginResponse.from(result);
+                request.refreshToken(),
+                refreshDeviceBindingCookieManager.resolve(httpServletRequest),
+                authSessionMetadataResolver.resolve(httpServletRequest)));
+    return loginResponse(result);
   }
 
   @PostMapping("/logout")
@@ -240,7 +242,7 @@ public class LoginController {
       @CurrentAuthenticatedPrincipal AuthenticatedRequestPrincipal principal,
       @Valid @RequestBody LogoutRequest request) {
     logoutUseCase.logout(new LogoutCommand(resolveUserId(principal), request.refreshToken()));
-    return ResponseEntity.noContent().build();
+    return noContentResponseClearingBindingCookie();
   }
 
   @PostMapping("/password-reset")
@@ -250,7 +252,7 @@ public class LoginController {
     passwordResetUseCase.reset(
         new PasswordResetCommand(
             resolveUserId(principal), request.currentPassword(), request.newPassword()));
-    return ResponseEntity.noContent().build();
+    return noContentResponseClearingBindingCookie();
   }
 
   @PostMapping("/password-recovery/request")
@@ -281,6 +283,12 @@ public class LoginController {
     HttpHeaders headers = new HttpHeaders();
     refreshDeviceBindingCookieManager.addBindingCookie(headers, result.refreshDeviceBindingToken());
     return ResponseEntity.ok().headers(headers).body(response);
+  }
+
+  private ResponseEntity<Void> noContentResponseClearingBindingCookie() {
+    HttpHeaders headers = new HttpHeaders();
+    refreshDeviceBindingCookieManager.addClearCookie(headers);
+    return ResponseEntity.noContent().headers(headers).build();
   }
 
   /** 로그인 요청 body */

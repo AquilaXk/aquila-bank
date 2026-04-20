@@ -21,10 +21,13 @@ import com.aquilabank.standard.util.Base32Codec;
 import com.aquilabank.support.PostgresContainerTestSupport;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.http.Cookie;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.junit.jupiter.api.BeforeEach;
@@ -60,6 +63,7 @@ import org.springframework.web.context.WebApplicationContext;
 class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSupport {
 
   private static final String AUTH_ADMIN_SUBJECT = "ops-admin";
+  private static final String REFRESH_DEVICE_COOKIE_NAME = "ab_refresh_device";
   private static final RequestClientMetadata WINDOWS_CHROME =
       new RequestClientMetadata(
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -101,12 +105,14 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
   private long allowedSourceAccountId;
   private long targetAccountId;
   private long deniedAccountId;
+  private final Map<String, String> refreshDeviceBindingTokenByRefreshToken = new HashMap<>();
 
   @BeforeEach
   void setUpDatabase() throws Exception {
     mockMvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
     resetBankingTables(jdbcTemplate);
     loginThrottleGuard.clear();
+    refreshDeviceBindingTokenByRefreshToken.clear();
 
     allowedSourceAccountId = bootstrapAccount("allowed source", 10_000L);
     targetAccountId = bootstrapAccount("allowed target", 0L);
@@ -664,6 +670,16 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
     assertEquals(WINDOWS_EDGE.expectedIpAddress(), newSession.ipAddress());
 
     refreshExpectUnauthorized(loginResult.refreshToken(), "refresh-reuse-001");
+  }
+
+  @Test
+  void refreshRejectsMissingDeviceBindingCookie() throws Exception {
+    TokenPairResponseView loginResult =
+        loginResult("alice", "password123!", "refresh-missing-cookie-login-001", WINDOWS_CHROME);
+
+    refreshDeviceBindingTokenByRefreshToken.remove(loginResult.refreshToken());
+
+    refreshExpectUnauthorized(loginResult.refreshToken(), "refresh-missing-cookie-001");
   }
 
   @Test
@@ -1765,6 +1781,10 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
     if (requestId != null && !requestId.isBlank()) {
       requestBuilder.header("X-Request-Id", requestId);
     }
+    String refreshDeviceBindingToken = refreshDeviceBindingTokenByRefreshToken.get(refreshToken);
+    if (refreshDeviceBindingToken != null) {
+      requestBuilder.cookie(new Cookie(REFRESH_DEVICE_COOKIE_NAME, refreshDeviceBindingToken));
+    }
     applyClientMetadata(requestBuilder, clientMetadata);
     return mockMvc.perform(requestBuilder);
   }
@@ -2532,14 +2552,29 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
     assertEquals("Bearer", body.get("tokenType").asText());
     assertNotNull(body.get("expiresAt"));
     assertNotNull(body.get("refreshExpiresAt"));
+    String refreshToken = body.get("refreshToken").asText();
+    String refreshDeviceBindingToken = readRefreshDeviceBindingToken(result);
+    refreshDeviceBindingTokenByRefreshToken.put(refreshToken, refreshDeviceBindingToken);
     return new TokenPairResponseView(
         body.get("status").asText(),
         body.get("accessToken").asText(),
-        body.get("refreshToken").asText(),
+        refreshToken,
         body.get("tokenType").asText(),
         Instant.parse(body.get("expiresAt").asText()),
         Instant.parse(body.get("refreshExpiresAt").asText()),
-        body.get("userId").asLong());
+        body.get("userId").asLong(),
+        refreshDeviceBindingToken);
+  }
+
+  private String readRefreshDeviceBindingToken(MvcResult result) {
+    String setCookie = result.getResponse().getHeader("Set-Cookie");
+    assertNotNull(setCookie);
+    assertTrue(setCookie.startsWith(REFRESH_DEVICE_COOKIE_NAME + "="));
+    int valueStartIndex = (REFRESH_DEVICE_COOKIE_NAME + "=").length();
+    int valueEndIndex = setCookie.indexOf(';');
+    return valueEndIndex >= 0
+        ? setCookie.substring(valueStartIndex, valueEndIndex)
+        : setCookie.substring(valueStartIndex);
   }
 
   private LoginChallengeResponseView readLoginChallenge(MvcResult result) throws Exception {
@@ -2616,7 +2651,8 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
       String tokenType,
       Instant expiresAt,
       Instant refreshExpiresAt,
-      long userId) {}
+      long userId,
+      String refreshDeviceBindingToken) {}
 
   private record LoginChallengeResponseView(
       String status, String challengeId, String challengeType, Instant challengeExpiresAt) {}
