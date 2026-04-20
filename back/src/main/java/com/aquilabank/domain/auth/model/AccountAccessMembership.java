@@ -1,12 +1,15 @@
 package com.aquilabank.domain.auth.model;
 
+import com.aquilabank.domain.account.model.AccountStatus;
+
 /** access 검증이 membership 상태와 user 상태를 한 번에 판단하도록 묶은 조회 모델입니다. */
 public record AccountAccessMembership(
     long userId,
     long accountId,
     MembershipRole role,
     MembershipStatus membershipStatus,
-    UserStatus userStatus) {
+    UserStatus userStatus,
+    AccountStatus accountStatus) {
 
   public AccountAccessMembership {
     if (userId <= 0) {
@@ -23,6 +26,9 @@ public record AccountAccessMembership(
     }
     if (userStatus == null) {
       throw new IllegalArgumentException("userStatus is required");
+    }
+    if (accountStatus == null) {
+      throw new IllegalArgumentException("accountStatus is required");
     }
   }
 }

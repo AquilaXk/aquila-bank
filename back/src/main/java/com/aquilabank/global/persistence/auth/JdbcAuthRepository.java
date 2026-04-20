@@ -1,5 +1,6 @@
 package com.aquilabank.global.persistence.auth;
 
+import com.aquilabank.domain.account.model.AccountStatus;
 import com.aquilabank.domain.auth.model.AccountAccessMembership;
 import com.aquilabank.domain.auth.model.AuthSessionSummary;
 import com.aquilabank.domain.auth.model.AuthStatusChangeAuditSummary;
@@ -21,6 +22,7 @@ import com.aquilabank.domain.auth.model.UserAccountMembership;
 import com.aquilabank.domain.auth.model.UserAccountMembershipSummary;
 import com.aquilabank.domain.auth.model.UserStatus;
 import com.aquilabank.domain.auth.port.AccountAccessPort;
+import com.aquilabank.domain.auth.port.AccountStatusAccessPort;
 import com.aquilabank.domain.auth.port.AuthSessionQueryPort;
 import com.aquilabank.domain.auth.port.AuthStatusChangeAuditQueryPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionLoadPort;
@@ -48,6 +50,7 @@ public class JdbcAuthRepository
         TotpLoginChallengeLoadPort,
         AuthSessionQueryPort,
         AccountAccessPort,
+        AccountStatusAccessPort,
         UserQueryPort,
         UserAccountMembershipQueryPort,
         AuthStatusChangeAuditQueryPort {
@@ -330,15 +333,33 @@ public class JdbcAuthRepository
                    m.account_id,
                    m.membership_role,
                    m.membership_status,
-                   u.user_status
+                   u.user_status,
+                   a.account_status
             FROM user_account_membership m
             JOIN bank_user u
               ON u.id = m.user_id
+            JOIN bank_account a
+              ON a.id = m.account_id
             WHERE m.user_id = :userId
               AND m.account_id = :accountId
             """,
             new MapSqlParameterSource().addValue("userId", userId).addValue("accountId", accountId),
             (rs, rowNum) -> mapAccessMembership(rs))
+        .stream()
+        .findFirst();
+  }
+
+  @Override
+  public Optional<AccountStatus> findAccountStatus(long accountId) {
+    return jdbcTemplate
+        .query(
+            """
+            SELECT account_status
+            FROM bank_account
+            WHERE id = :accountId
+            """,
+            new MapSqlParameterSource().addValue("accountId", accountId),
+            (rs, rowNum) -> AccountStatus.valueOf(rs.getString("account_status")))
         .stream()
         .findFirst();
   }
@@ -463,7 +484,8 @@ public class JdbcAuthRepository
         rs.getLong("account_id"),
         MembershipRole.valueOf(rs.getString("membership_role")),
         MembershipStatus.valueOf(rs.getString("membership_status")),
-        UserStatus.valueOf(rs.getString("user_status")));
+        UserStatus.valueOf(rs.getString("user_status")),
+        AccountStatus.valueOf(rs.getString("account_status")));
   }
 
   private AuthUserSummary mapUserSummary(ResultSet rs) throws SQLException {
