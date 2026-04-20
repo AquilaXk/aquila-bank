@@ -16,6 +16,8 @@ import com.aquilabank.domain.auth.model.MembershipRole;
 import com.aquilabank.domain.auth.model.MembershipStatus;
 import com.aquilabank.domain.auth.model.RefreshTokenSession;
 import com.aquilabank.domain.auth.model.RefreshTokenSessionStatus;
+import com.aquilabank.domain.auth.model.RememberDevice;
+import com.aquilabank.domain.auth.model.RememberDeviceStatus;
 import com.aquilabank.domain.auth.model.TotpCredential;
 import com.aquilabank.domain.auth.model.TotpCredentialStatus;
 import com.aquilabank.domain.auth.model.TotpLoginChallenge;
@@ -29,6 +31,7 @@ import com.aquilabank.domain.auth.port.AuthSessionQueryPort;
 import com.aquilabank.domain.auth.port.AuthStatusChangeAuditQueryPort;
 import com.aquilabank.domain.auth.port.BackupCodeLoadPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionLoadPort;
+import com.aquilabank.domain.auth.port.RememberDeviceLoadPort;
 import com.aquilabank.domain.auth.port.TotpCredentialLoadPort;
 import com.aquilabank.domain.auth.port.TotpLoginChallengeLoadPort;
 import com.aquilabank.domain.auth.port.UserAccountMembershipQueryPort;
@@ -49,6 +52,7 @@ import org.springframework.stereotype.Repository;
 public class JdbcAuthRepository
     implements UserCredentialLoadPort,
         BackupCodeLoadPort,
+        RememberDeviceLoadPort,
         RefreshTokenSessionLoadPort,
         TotpCredentialLoadPort,
         TotpLoginChallengeLoadPort,
@@ -222,6 +226,32 @@ public class JdbcAuthRepository
             """,
             new MapSqlParameterSource().addValue("userId", userId).addValue("codeHash", codeHash),
             (rs, rowNum) -> mapBackupCodeRecord(rs))
+        .stream()
+        .findFirst();
+  }
+
+  @Override
+  public Optional<RememberDevice> findActiveByUserIdAndTokenHashForUpdate(
+      long userId, String tokenHash) {
+    return jdbcTemplate
+        .query(
+            """
+            SELECT id,
+                   user_id,
+                   token_hash,
+                   device_status,
+                   device_name,
+                   last_used_at,
+                   expires_at,
+                   created_at
+            FROM auth_mfa_remember_device
+            WHERE user_id = :userId
+              AND token_hash = :tokenHash
+              AND device_status = 'ACTIVE'
+            FOR UPDATE
+            """,
+            new MapSqlParameterSource().addValue("userId", userId).addValue("tokenHash", tokenHash),
+            (rs, rowNum) -> mapRememberDevice(rs))
         .stream()
         .findFirst();
   }
@@ -495,6 +525,18 @@ public class JdbcAuthRepository
         toNullableInstant(rs.getTimestamp("last_used_at")),
         toNullableInstant(rs.getTimestamp("rotated_at")),
         rs.getObject("replaced_by_session_id", Long.class));
+  }
+
+  private RememberDevice mapRememberDevice(ResultSet rs) throws SQLException {
+    return new RememberDevice(
+        rs.getLong("id"),
+        rs.getLong("user_id"),
+        rs.getString("token_hash"),
+        RememberDeviceStatus.valueOf(rs.getString("device_status")),
+        rs.getString("device_name"),
+        toNullableInstant(rs.getTimestamp("last_used_at")),
+        toInstant(rs.getTimestamp("expires_at")),
+        toInstant(rs.getTimestamp("created_at")));
   }
 
   private AuthSessionSummary mapAuthSessionSummary(ResultSet rs) throws SQLException {

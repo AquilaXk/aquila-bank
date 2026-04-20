@@ -9,6 +9,8 @@ import com.aquilabank.domain.auth.model.IssuedAccessToken;
 import com.aquilabank.domain.auth.model.LoginResult;
 import com.aquilabank.domain.auth.model.RefreshTokenPolicy;
 import com.aquilabank.domain.auth.model.RefreshTokenSessionCreateCommand;
+import com.aquilabank.domain.auth.model.RememberDeviceIssueCommand;
+import com.aquilabank.domain.auth.model.RememberDevicePolicy;
 import com.aquilabank.domain.auth.model.TotpCredential;
 import com.aquilabank.domain.auth.model.TotpCredentialStatus;
 import com.aquilabank.domain.auth.model.TotpLoginChallenge;
@@ -21,6 +23,8 @@ import com.aquilabank.domain.auth.port.BackupCodeSecretPort;
 import com.aquilabank.domain.auth.port.BackupCodeWritePort;
 import com.aquilabank.domain.auth.port.RefreshTokenSecretPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionWritePort;
+import com.aquilabank.domain.auth.port.RememberDeviceSecretPort;
+import com.aquilabank.domain.auth.port.RememberDeviceWritePort;
 import com.aquilabank.domain.auth.port.TotpCredentialLoadPort;
 import com.aquilabank.domain.auth.port.TotpLoginChallengeLoadPort;
 import com.aquilabank.domain.auth.port.TotpLoginChallengeWritePort;
@@ -36,10 +40,13 @@ public final class BackupCodeChallengeVerifyService implements BackupCodeChallen
   private final BackupCodeLoadPort backupCodeLoadPort;
   private final BackupCodeWritePort backupCodeWritePort;
   private final BackupCodeSecretPort backupCodeSecretPort;
+  private final RememberDeviceWritePort rememberDeviceWritePort;
+  private final RememberDeviceSecretPort rememberDeviceSecretPort;
   private final RefreshTokenSessionWritePort refreshTokenSessionWritePort;
   private final RefreshTokenSecretPort refreshTokenSecretPort;
   private final AuthTokenIssuePort authTokenIssuePort;
   private final RefreshTokenPolicy refreshTokenPolicy;
+  private final RememberDevicePolicy rememberDevicePolicy;
   private final int challengeMaxAttempts;
   private final Clock clock;
 
@@ -50,10 +57,13 @@ public final class BackupCodeChallengeVerifyService implements BackupCodeChallen
       BackupCodeLoadPort backupCodeLoadPort,
       BackupCodeWritePort backupCodeWritePort,
       BackupCodeSecretPort backupCodeSecretPort,
+      RememberDeviceWritePort rememberDeviceWritePort,
+      RememberDeviceSecretPort rememberDeviceSecretPort,
       RefreshTokenSessionWritePort refreshTokenSessionWritePort,
       RefreshTokenSecretPort refreshTokenSecretPort,
       AuthTokenIssuePort authTokenIssuePort,
       RefreshTokenPolicy refreshTokenPolicy,
+      RememberDevicePolicy rememberDevicePolicy,
       int challengeMaxAttempts,
       Clock clock) {
     this.totpLoginChallengeLoadPort = totpLoginChallengeLoadPort;
@@ -62,10 +72,13 @@ public final class BackupCodeChallengeVerifyService implements BackupCodeChallen
     this.backupCodeLoadPort = backupCodeLoadPort;
     this.backupCodeWritePort = backupCodeWritePort;
     this.backupCodeSecretPort = backupCodeSecretPort;
+    this.rememberDeviceWritePort = rememberDeviceWritePort;
+    this.rememberDeviceSecretPort = rememberDeviceSecretPort;
     this.refreshTokenSessionWritePort = refreshTokenSessionWritePort;
     this.refreshTokenSecretPort = refreshTokenSecretPort;
     this.authTokenIssuePort = authTokenIssuePort;
     this.refreshTokenPolicy = refreshTokenPolicy;
+    this.rememberDevicePolicy = rememberDevicePolicy;
     this.challengeMaxAttempts = challengeMaxAttempts;
     this.clock = clock;
   }
@@ -107,7 +120,7 @@ public final class BackupCodeChallengeVerifyService implements BackupCodeChallen
 
     updateChallenge(challenge, TotpLoginChallengeStatus.VERIFIED, challenge.attemptCount(), now);
     backupCodeWritePort.markUsed(new BackupCodeUseCommand(backupCode.codeId(), now));
-    return issueTokenPair(challenge, now);
+    return issueTokenPair(challenge, now, command.rememberDevice());
   }
 
   private BackupCodeRecord loadBackupCode(long userId, String backupCode) {
@@ -130,9 +143,11 @@ public final class BackupCodeChallengeVerifyService implements BackupCodeChallen
     updateChallenge(challenge, nextStatus, nextAttemptCount, now);
   }
 
-  private LoginResult issueTokenPair(TotpLoginChallenge challenge, Instant now) {
+  private LoginResult issueTokenPair(
+      TotpLoginChallenge challenge, Instant now, boolean rememberDevice) {
     String refreshToken = refreshTokenSecretPort.createToken();
     Instant refreshExpiresAt = now.plus(refreshTokenPolicy.ttl());
+    String rememberDeviceToken = issueRememberDevice(challenge, now, rememberDevice);
     refreshTokenSessionWritePort.create(
         new RefreshTokenSessionCreateCommand(
             challenge.userId(),
@@ -148,7 +163,24 @@ public final class BackupCodeChallengeVerifyService implements BackupCodeChallen
         issuedAccessToken.tokenType(),
         issuedAccessToken.expiresAt(),
         refreshExpiresAt,
-        issuedAccessToken.userId());
+        issuedAccessToken.userId(),
+        rememberDeviceToken);
+  }
+
+  private String issueRememberDevice(
+      TotpLoginChallenge challenge, Instant now, boolean rememberDevice) {
+    if (!rememberDevice) {
+      return null;
+    }
+    String rememberDeviceToken = rememberDeviceSecretPort.createToken();
+    rememberDeviceWritePort.issue(
+        new RememberDeviceIssueCommand(
+            challenge.userId(),
+            rememberDeviceSecretPort.hash(rememberDeviceToken),
+            challenge.deviceName(),
+            now.plus(rememberDevicePolicy.ttl()),
+            now));
+    return rememberDeviceToken;
   }
 
   private void updateChallenge(

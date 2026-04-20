@@ -15,6 +15,10 @@ import com.aquilabank.domain.auth.model.LoginSuccessUpdateCommand;
 import com.aquilabank.domain.auth.model.LoginUser;
 import com.aquilabank.domain.auth.model.RefreshTokenPolicy;
 import com.aquilabank.domain.auth.model.RefreshTokenSessionCreateCommand;
+import com.aquilabank.domain.auth.model.RememberDevice;
+import com.aquilabank.domain.auth.model.RememberDevicePolicy;
+import com.aquilabank.domain.auth.model.RememberDeviceRevokeCommand;
+import com.aquilabank.domain.auth.model.RememberDeviceRotateCommand;
 import com.aquilabank.domain.auth.model.TotpCredential;
 import com.aquilabank.domain.auth.model.TotpCredentialStatus;
 import com.aquilabank.domain.auth.model.TotpLoginChallengeUpsertCommand;
@@ -25,6 +29,9 @@ import com.aquilabank.domain.auth.port.LoginAttemptUpdatePort;
 import com.aquilabank.domain.auth.port.PasswordHashPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSecretPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionWritePort;
+import com.aquilabank.domain.auth.port.RememberDeviceLoadPort;
+import com.aquilabank.domain.auth.port.RememberDeviceSecretPort;
+import com.aquilabank.domain.auth.port.RememberDeviceWritePort;
 import com.aquilabank.domain.auth.port.TotpCredentialLoadPort;
 import com.aquilabank.domain.auth.port.TotpLoginChallengeWritePort;
 import com.aquilabank.domain.auth.port.UserCredentialLoadPort;
@@ -42,11 +49,15 @@ public final class LoginService implements LoginUseCase {
   private final PasswordHashPort passwordHashPort;
   private final TotpCredentialLoadPort totpCredentialLoadPort;
   private final TotpLoginChallengeWritePort totpLoginChallengeWritePort;
+  private final RememberDeviceLoadPort rememberDeviceLoadPort;
+  private final RememberDeviceWritePort rememberDeviceWritePort;
+  private final RememberDeviceSecretPort rememberDeviceSecretPort;
   private final RefreshTokenSessionWritePort refreshTokenSessionWritePort;
   private final RefreshTokenSecretPort refreshTokenSecretPort;
   private final AuthTokenIssuePort authTokenIssuePort;
   private final LoginProtectionPolicy loginProtectionPolicy;
   private final RefreshTokenPolicy refreshTokenPolicy;
+  private final RememberDevicePolicy rememberDevicePolicy;
   private final Duration totpChallengeTtl;
   private final String dummyPasswordHash;
   private final Clock clock;
@@ -58,11 +69,15 @@ public final class LoginService implements LoginUseCase {
       PasswordHashPort passwordHashPort,
       TotpCredentialLoadPort totpCredentialLoadPort,
       TotpLoginChallengeWritePort totpLoginChallengeWritePort,
+      RememberDeviceLoadPort rememberDeviceLoadPort,
+      RememberDeviceWritePort rememberDeviceWritePort,
+      RememberDeviceSecretPort rememberDeviceSecretPort,
       RefreshTokenSessionWritePort refreshTokenSessionWritePort,
       RefreshTokenSecretPort refreshTokenSecretPort,
       AuthTokenIssuePort authTokenIssuePort,
       LoginProtectionPolicy loginProtectionPolicy,
       RefreshTokenPolicy refreshTokenPolicy,
+      RememberDevicePolicy rememberDevicePolicy,
       Duration totpChallengeTtl,
       String dummyPasswordHash,
       Clock clock) {
@@ -72,11 +87,15 @@ public final class LoginService implements LoginUseCase {
     this.passwordHashPort = passwordHashPort;
     this.totpCredentialLoadPort = totpCredentialLoadPort;
     this.totpLoginChallengeWritePort = totpLoginChallengeWritePort;
+    this.rememberDeviceLoadPort = rememberDeviceLoadPort;
+    this.rememberDeviceWritePort = rememberDeviceWritePort;
+    this.rememberDeviceSecretPort = rememberDeviceSecretPort;
     this.refreshTokenSessionWritePort = refreshTokenSessionWritePort;
     this.refreshTokenSecretPort = refreshTokenSecretPort;
     this.authTokenIssuePort = authTokenIssuePort;
     this.loginProtectionPolicy = loginProtectionPolicy;
     this.refreshTokenPolicy = refreshTokenPolicy;
+    this.rememberDevicePolicy = rememberDevicePolicy;
     this.totpChallengeTtl = totpChallengeTtl;
     this.dummyPasswordHash = dummyPasswordHash;
     this.clock = clock;
@@ -140,9 +159,59 @@ public final class LoginService implements LoginUseCase {
     TotpCredential credential =
         totpCredentialLoadPort.findCredentialByUserId(user.userId()).orElse(null);
     if (credential != null && credential.credentialStatus() == TotpCredentialStatus.ACTIVE) {
+      LoginResult rememberDeviceResult =
+          tryRememberDeviceLogin(
+              user.userId(),
+              user.loginId(),
+              command.sessionClientMetadata(),
+              command.rememberDeviceToken(),
+              now);
+      if (rememberDeviceResult != null) {
+        return rememberDeviceResult;
+      }
       return issueTotpChallenge(user.userId(), command.sessionClientMetadata(), now);
     }
     return issueTokenPair(user.userId(), user.loginId(), command.sessionClientMetadata(), now);
+  }
+
+  private LoginResult tryRememberDeviceLogin(
+      long userId,
+      String loginId,
+      AuthSessionClientMetadata sessionClientMetadata,
+      String rememberDeviceToken,
+      Instant now) {
+    if (rememberDeviceToken == null) {
+      return null;
+    }
+    String tokenHash;
+    try {
+      tokenHash = rememberDeviceSecretPort.hash(rememberDeviceToken);
+    } catch (IllegalArgumentException ex) {
+      return null;
+    }
+
+    RememberDevice rememberDevice =
+        rememberDeviceLoadPort
+            .findActiveByUserIdAndTokenHashForUpdate(userId, tokenHash)
+            .orElse(null);
+    if (rememberDevice == null) {
+      return null;
+    }
+    if (!rememberDevice.expiresAt().isAfter(now)) {
+      rememberDeviceWritePort.revoke(
+          new RememberDeviceRevokeCommand(rememberDevice.deviceId(), now));
+      return null;
+    }
+
+    String nextRememberDeviceToken = rememberDeviceSecretPort.createToken();
+    rememberDeviceWritePort.rotate(
+        new RememberDeviceRotateCommand(
+            rememberDevice.deviceId(),
+            rememberDeviceSecretPort.hash(nextRememberDeviceToken),
+            sessionClientMetadata.deviceName(),
+            now,
+            now.plus(rememberDevicePolicy.ttl())));
+    return issueTokenPair(userId, loginId, sessionClientMetadata, now, nextRememberDeviceToken);
   }
 
   private LoginUser consumeMissingUserPath(String loginId, String password) {
@@ -203,6 +272,15 @@ public final class LoginService implements LoginUseCase {
 
   private LoginResult issueTokenPair(
       long userId, String loginId, AuthSessionClientMetadata sessionClientMetadata, Instant now) {
+    return issueTokenPair(userId, loginId, sessionClientMetadata, now, null);
+  }
+
+  private LoginResult issueTokenPair(
+      long userId,
+      String loginId,
+      AuthSessionClientMetadata sessionClientMetadata,
+      Instant now,
+      String rememberDeviceToken) {
     String refreshToken = refreshTokenSecretPort.createToken();
     Instant refreshExpiresAt = now.plus(refreshTokenPolicy.ttl());
     refreshTokenSessionWritePort.create(
@@ -219,7 +297,8 @@ public final class LoginService implements LoginUseCase {
         issuedAccessToken.tokenType(),
         issuedAccessToken.expiresAt(),
         refreshExpiresAt,
-        issuedAccessToken.userId());
+        issuedAccessToken.userId(),
+        rememberDeviceToken);
   }
 
   private LoginResult issueTotpChallenge(

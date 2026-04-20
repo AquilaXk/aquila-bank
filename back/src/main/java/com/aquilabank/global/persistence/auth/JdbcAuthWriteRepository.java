@@ -17,6 +17,9 @@ import com.aquilabank.domain.auth.model.PasswordResetWriteCommand;
 import com.aquilabank.domain.auth.model.RefreshTokenSessionCreateCommand;
 import com.aquilabank.domain.auth.model.RefreshTokenSessionRevokeCommand;
 import com.aquilabank.domain.auth.model.RefreshTokenSessionRotateCommand;
+import com.aquilabank.domain.auth.model.RememberDeviceIssueCommand;
+import com.aquilabank.domain.auth.model.RememberDeviceRevokeCommand;
+import com.aquilabank.domain.auth.model.RememberDeviceRotateCommand;
 import com.aquilabank.domain.auth.model.TotpCredentialActivateCommand;
 import com.aquilabank.domain.auth.model.TotpCredentialTouchCommand;
 import com.aquilabank.domain.auth.model.TotpCredentialUpsertCommand;
@@ -35,6 +38,7 @@ import com.aquilabank.domain.auth.port.LoginAttemptUpdatePort;
 import com.aquilabank.domain.auth.port.PasswordRecoveryTokenWritePort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionCleanupPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionWritePort;
+import com.aquilabank.domain.auth.port.RememberDeviceWritePort;
 import com.aquilabank.domain.auth.port.TotpCredentialWritePort;
 import com.aquilabank.domain.auth.port.TotpLoginChallengeWritePort;
 import com.aquilabank.domain.auth.port.UserAccountMembershipStatusUpdatePort;
@@ -58,6 +62,7 @@ public class JdbcAuthWriteRepository
     implements UserBootstrapPort,
         LoginAttemptUpdatePort,
         BackupCodeWritePort,
+        RememberDeviceWritePort,
         PasswordRecoveryTokenWritePort,
         UserCredentialUpdatePort,
         RefreshTokenSessionCleanupPort,
@@ -137,6 +142,104 @@ public class JdbcAuthWriteRepository
     if (updated != 1) {
       throw new IllegalStateException("backup code is not active");
     }
+  }
+
+  @Override
+  @Transactional
+  public void issue(RememberDeviceIssueCommand command) {
+    jdbcTemplate.update(
+        """
+        INSERT INTO auth_mfa_remember_device (
+            user_id,
+            token_hash,
+            device_status,
+            device_name,
+            last_used_at,
+            expires_at,
+            created_at,
+            updated_at
+        )
+        VALUES (
+            :userId,
+            :tokenHash,
+            'ACTIVE',
+            :deviceName,
+            NULL,
+            :expiresAt,
+            :issuedAt,
+            :issuedAt
+        )
+        """,
+        new MapSqlParameterSource()
+            .addValue("userId", command.userId())
+            .addValue("tokenHash", command.tokenHash())
+            .addValue("deviceName", command.deviceName())
+            .addValue("expiresAt", Timestamp.from(command.expiresAt()))
+            .addValue("issuedAt", Timestamp.from(command.issuedAt())));
+  }
+
+  @Override
+  @Transactional
+  public void rotate(RememberDeviceRotateCommand command) {
+    int updated =
+        jdbcTemplate.update(
+            """
+            UPDATE auth_mfa_remember_device
+            SET token_hash = :nextTokenHash,
+                device_name = :deviceName,
+                last_used_at = :lastUsedAt,
+                expires_at = :expiresAt,
+                updated_at = :lastUsedAt
+            WHERE id = :deviceId
+              AND device_status = 'ACTIVE'
+            """,
+            new MapSqlParameterSource()
+                .addValue("deviceId", command.deviceId())
+                .addValue("nextTokenHash", command.nextTokenHash())
+                .addValue("deviceName", command.deviceName())
+                .addValue("lastUsedAt", Timestamp.from(command.lastUsedAt()))
+                .addValue("expiresAt", Timestamp.from(command.expiresAt())));
+    if (updated != 1) {
+      throw new IllegalStateException("remember device is not active");
+    }
+  }
+
+  @Override
+  @Transactional
+  public void revoke(RememberDeviceRevokeCommand command) {
+    int updated =
+        jdbcTemplate.update(
+            """
+            UPDATE auth_mfa_remember_device
+            SET device_status = 'REVOKED',
+                last_used_at = :revokedAt,
+                updated_at = :revokedAt
+            WHERE id = :deviceId
+              AND device_status = 'ACTIVE'
+            """,
+            new MapSqlParameterSource()
+                .addValue("deviceId", command.deviceId())
+                .addValue("revokedAt", Timestamp.from(command.revokedAt())));
+    if (updated != 1) {
+      throw new IllegalStateException("remember device is not active");
+    }
+  }
+
+  @Override
+  @Transactional
+  public void revokeActiveByUserId(long userId, Instant revokedAt) {
+    jdbcTemplate.update(
+        """
+        UPDATE auth_mfa_remember_device
+        SET device_status = 'REVOKED',
+            last_used_at = :revokedAt,
+            updated_at = :revokedAt
+        WHERE user_id = :userId
+          AND device_status = 'ACTIVE'
+        """,
+        new MapSqlParameterSource()
+            .addValue("userId", userId)
+            .addValue("revokedAt", Timestamp.from(revokedAt)));
   }
 
   @Override

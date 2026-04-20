@@ -4,6 +4,7 @@ import com.aquilabank.domain.auth.exception.InvalidCredentialsException;
 import com.aquilabank.domain.auth.model.LoginProtectionPolicy;
 import com.aquilabank.domain.auth.model.LoginResult;
 import com.aquilabank.domain.auth.model.RefreshTokenPolicy;
+import com.aquilabank.domain.auth.model.RememberDevicePolicy;
 import com.aquilabank.domain.auth.port.AccountAccessPort;
 import com.aquilabank.domain.auth.port.AccountStatusAccessPort;
 import com.aquilabank.domain.auth.port.AuthSessionQueryPort;
@@ -21,6 +22,9 @@ import com.aquilabank.domain.auth.port.PasswordRecoveryTokenQueryPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSecretPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionLoadPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionWritePort;
+import com.aquilabank.domain.auth.port.RememberDeviceLoadPort;
+import com.aquilabank.domain.auth.port.RememberDeviceSecretPort;
+import com.aquilabank.domain.auth.port.RememberDeviceWritePort;
 import com.aquilabank.domain.auth.port.TotpCredentialLoadPort;
 import com.aquilabank.domain.auth.port.TotpCredentialWritePort;
 import com.aquilabank.domain.auth.port.TotpLoginChallengeLoadPort;
@@ -84,6 +88,7 @@ import com.aquilabank.global.persistence.auth.JdbcPasswordRecoveryRepository;
 import com.aquilabank.global.security.LoginProtectionProperties;
 import com.aquilabank.global.security.PasswordRecoveryProperties;
 import com.aquilabank.global.security.SecurityJwtProperties;
+import com.aquilabank.global.security.SecurityRememberDeviceProperties;
 import com.aquilabank.global.security.SecurityTotpProperties;
 import com.aquilabank.global.security.StructuredLoginAttemptAuditLogger;
 import java.time.Clock;
@@ -113,6 +118,13 @@ public class AuthConfiguration {
   }
 
   @Bean
+  RememberDevicePolicy rememberDevicePolicy(
+      SecurityRememberDeviceProperties securityRememberDeviceProperties) {
+    return new RememberDevicePolicy(
+        Duration.ofSeconds(securityRememberDeviceProperties.ttlSeconds()));
+  }
+
+  @Bean
   Clock authClock() {
     return Clock.systemUTC();
   }
@@ -131,11 +143,15 @@ public class AuthConfiguration {
       PasswordHashPort passwordHashPort,
       TotpCredentialLoadPort totpCredentialLoadPort,
       TotpLoginChallengeWritePort totpLoginChallengeWritePort,
+      RememberDeviceLoadPort rememberDeviceLoadPort,
+      RememberDeviceWritePort rememberDeviceWritePort,
+      RememberDeviceSecretPort rememberDeviceSecretPort,
       RefreshTokenSessionWritePort refreshTokenSessionWritePort,
       RefreshTokenSecretPort refreshTokenSecretPort,
       AuthTokenIssuePort authTokenIssuePort,
       LoginProtectionPolicy loginProtectionPolicy,
       RefreshTokenPolicy refreshTokenPolicy,
+      RememberDevicePolicy rememberDevicePolicy,
       SecurityTotpProperties securityTotpProperties,
       Clock authClock,
       PlatformTransactionManager platformTransactionManager) {
@@ -147,11 +163,15 @@ public class AuthConfiguration {
             passwordHashPort,
             totpCredentialLoadPort,
             totpLoginChallengeWritePort,
+            rememberDeviceLoadPort,
+            rememberDeviceWritePort,
+            rememberDeviceSecretPort,
             refreshTokenSessionWritePort,
             refreshTokenSecretPort,
             authTokenIssuePort,
             loginProtectionPolicy,
             refreshTokenPolicy,
+            rememberDevicePolicy,
             Duration.ofSeconds(securityTotpProperties.challengeTtlSeconds()),
             passwordHashPort.encode("login-dummy-password"),
             authClock);
@@ -257,11 +277,14 @@ public class AuthConfiguration {
       TotpLoginChallengeWritePort totpLoginChallengeWritePort,
       TotpCredentialLoadPort totpCredentialLoadPort,
       TotpCredentialWritePort totpCredentialWritePort,
+      RememberDeviceWritePort rememberDeviceWritePort,
+      RememberDeviceSecretPort rememberDeviceSecretPort,
       RefreshTokenSessionWritePort refreshTokenSessionWritePort,
       RefreshTokenSecretPort refreshTokenSecretPort,
       TotpSecretPort totpSecretPort,
       AuthTokenIssuePort authTokenIssuePort,
       RefreshTokenPolicy refreshTokenPolicy,
+      RememberDevicePolicy rememberDevicePolicy,
       SecurityTotpProperties securityTotpProperties,
       Clock authClock,
       PlatformTransactionManager platformTransactionManager) {
@@ -271,11 +294,14 @@ public class AuthConfiguration {
             totpLoginChallengeWritePort,
             totpCredentialLoadPort,
             totpCredentialWritePort,
+            rememberDeviceWritePort,
+            rememberDeviceSecretPort,
             refreshTokenSessionWritePort,
             refreshTokenSecretPort,
             totpSecretPort,
             authTokenIssuePort,
             refreshTokenPolicy,
+            rememberDevicePolicy,
             securityTotpProperties.challengeMaxAttempts(),
             authClock);
     TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
@@ -363,10 +389,13 @@ public class AuthConfiguration {
       BackupCodeLoadPort backupCodeLoadPort,
       BackupCodeWritePort backupCodeWritePort,
       BackupCodeSecretPort backupCodeSecretPort,
+      RememberDeviceWritePort rememberDeviceWritePort,
+      RememberDeviceSecretPort rememberDeviceSecretPort,
       RefreshTokenSessionWritePort refreshTokenSessionWritePort,
       RefreshTokenSecretPort refreshTokenSecretPort,
       AuthTokenIssuePort authTokenIssuePort,
       RefreshTokenPolicy refreshTokenPolicy,
+      RememberDevicePolicy rememberDevicePolicy,
       SecurityTotpProperties securityTotpProperties,
       Clock authClock,
       PlatformTransactionManager platformTransactionManager) {
@@ -378,10 +407,13 @@ public class AuthConfiguration {
             backupCodeLoadPort,
             backupCodeWritePort,
             backupCodeSecretPort,
+            rememberDeviceWritePort,
+            rememberDeviceSecretPort,
             refreshTokenSessionWritePort,
             refreshTokenSecretPort,
             authTokenIssuePort,
             refreshTokenPolicy,
+            rememberDevicePolicy,
             securityTotpProperties.challengeMaxAttempts(),
             authClock);
     TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
