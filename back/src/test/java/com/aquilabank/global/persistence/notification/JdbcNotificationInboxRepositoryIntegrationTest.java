@@ -4,6 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.aquilabank.domain.notification.model.NotificationInboxEntry;
 import com.aquilabank.domain.notification.model.NotificationListQuery;
+import com.aquilabank.domain.notification.model.NotificationReadStatusFilter;
+import com.aquilabank.domain.notification.model.NotificationSearchQuery;
+import com.aquilabank.domain.notification.model.NotificationSearchSlice;
 import com.aquilabank.domain.notification.model.NotificationSlice;
 import com.aquilabank.support.PostgresContainerTestSupport;
 import java.sql.Timestamp;
@@ -192,6 +195,194 @@ class JdbcNotificationInboxRepositoryIntegrationTest extends PostgresContainerTe
         .isTrue();
     assertThat(repository.markAsReadByAccountId(accountId[0], 99999L, base.plusSeconds(50)))
         .isFalse();
+  }
+
+  @Test
+  void searchesAccountNotificationsByEventTypeReadStatusAndWindow() {
+    long[] accountId = new long[1];
+    long[] matchingIds = new long[3];
+    Instant appliedFrom = Instant.parse("2026-04-17T00:00:00Z");
+    Instant appliedTo = Instant.parse("2026-04-17T00:01:00Z");
+    commit(
+        transactionManager,
+        () -> {
+          accountId[0] = insertAccount("search account");
+          insertNotification(
+              accountId[0],
+              "evt-search-account-read",
+              "TransferBooked",
+              "read",
+              "read",
+              appliedFrom.plusSeconds(5),
+              appliedFrom.plusSeconds(5));
+          insertNotification(
+              accountId[0],
+              "evt-search-account-other-type",
+              "TransferReversed",
+              "other-type",
+              "other-type",
+              null,
+              appliedFrom.plusSeconds(10));
+          insertArchivedNotification(
+              accountId[0],
+              "evt-search-account-archived",
+              "TransferBooked",
+              "archived",
+              "archived",
+              appliedFrom.plusSeconds(15),
+              appliedFrom.plusSeconds(15));
+          insertNotification(
+              accountId[0],
+              "evt-search-account-outside-window",
+              "TransferBooked",
+              "outside-window",
+              "outside-window",
+              null,
+              appliedFrom.minusSeconds(1));
+          matchingIds[0] =
+              insertNotification(
+                  accountId[0],
+                  "evt-search-account-match-1",
+                  "TransferBooked",
+                  "match-1",
+                  "match-1",
+                  null,
+                  appliedFrom.plusSeconds(20));
+          matchingIds[1] =
+              insertNotification(
+                  accountId[0],
+                  "evt-search-account-match-2",
+                  "TransferBooked",
+                  "match-2",
+                  "match-2",
+                  null,
+                  appliedFrom.plusSeconds(30));
+          matchingIds[2] =
+              insertNotification(
+                  accountId[0],
+                  "evt-search-account-match-3",
+                  "TransferBooked",
+                  "match-3",
+                  "match-3",
+                  null,
+                  appliedFrom.plusSeconds(40));
+        });
+
+    NotificationSearchSlice slice =
+        repository.searchByAccountId(
+            accountId[0],
+            new NotificationSearchQuery(
+                2,
+                null,
+                NotificationReadStatusFilter.UNREAD,
+                "TransferBooked",
+                appliedFrom,
+                appliedTo));
+
+    assertThat(slice.items()).extracting("title").containsExactly("match-3", "match-2");
+    assertThat(slice.items()).extracting("id").containsExactly(matchingIds[2], matchingIds[1]);
+    assertThat(slice.hasNext()).isTrue();
+    assertThat(slice.limit()).isEqualTo(2);
+    assertThat(slice.appliedFrom()).isEqualTo(appliedFrom);
+    assertThat(slice.appliedTo()).isEqualTo(appliedTo);
+    assertThat(slice.nextCursor()).isNotNull();
+    assertThat(slice.nextCursor().createdAt()).isEqualTo(appliedFrom.plusSeconds(30));
+    assertThat(slice.nextCursor().id()).isEqualTo(matchingIds[1]);
+    assertThat(slice.nextCursor().appliedFrom()).isEqualTo(appliedFrom);
+    assertThat(slice.nextCursor().appliedTo()).isEqualTo(appliedTo);
+    assertThat(slice.nextCursor().filterFingerprint())
+        .isEqualTo("UNREAD|TransferBooked|2026-04-17T00:00:00Z|2026-04-17T00:01:00Z");
+  }
+
+  @Test
+  void searchesUserNotificationsWithoutLeakingArchivedDeletedOrRevokedRows() {
+    long[] userId = new long[1];
+    long[] accountIds = new long[2];
+    Instant appliedFrom = Instant.parse("2026-04-17T00:00:00Z");
+    Instant appliedTo = Instant.parse("2026-04-17T00:01:00Z");
+    commit(
+        transactionManager,
+        () -> {
+          userId[0] = insertUser("user-search-scope");
+          accountIds[0] = insertAccount("active search account");
+          accountIds[1] = insertAccount("revoked search account");
+          insertMembership(userId[0], accountIds[0], "OWNER", "ACTIVE");
+          insertMembership(userId[0], accountIds[1], "VIEWER", "REVOKED");
+
+          long visibleUnreadId =
+              insertNotification(
+                  accountIds[0],
+                  "evt-search-user-visible-unread",
+                  "TransferBooked",
+                  "visible-unread",
+                  "visible-unread",
+                  null,
+                  appliedFrom.plusSeconds(10));
+          long visibleReadId =
+              insertNotification(
+                  accountIds[0],
+                  "evt-search-user-visible-read",
+                  "TransferBooked",
+                  "visible-read",
+                  "visible-read",
+                  null,
+                  appliedFrom.plusSeconds(20));
+          long archivedStateId =
+              insertNotification(
+                  accountIds[0],
+                  "evt-search-user-archived",
+                  "TransferBooked",
+                  "archived-state",
+                  "archived-state",
+                  null,
+                  appliedFrom.plusSeconds(30));
+          long deletedStateId =
+              insertNotification(
+                  accountIds[0],
+                  "evt-search-user-deleted",
+                  "TransferBooked",
+                  "deleted-state",
+                  "deleted-state",
+                  null,
+                  appliedFrom.plusSeconds(40));
+          insertNotification(
+              accountIds[1],
+              "evt-search-user-revoked",
+              "TransferBooked",
+              "revoked-membership",
+              "revoked-membership",
+              null,
+              appliedFrom.plusSeconds(50));
+
+          insertUserNotificationState(userId[0], visibleUnreadId, null, null, null);
+          insertUserNotificationState(
+              userId[0], visibleReadId, appliedFrom.plusSeconds(21), null, null);
+          insertUserNotificationState(
+              userId[0], archivedStateId, null, appliedFrom.plusSeconds(31), null);
+          insertUserNotificationState(
+              userId[0], deletedStateId, null, null, appliedFrom.plusSeconds(41));
+        });
+
+    NotificationSearchSlice slice =
+        repository.searchByUserId(
+            userId[0],
+            new NotificationSearchQuery(
+                10,
+                null,
+                NotificationReadStatusFilter.ALL,
+                "TransferBooked",
+                appliedFrom,
+                appliedTo));
+
+    assertThat(slice.items()).extracting("title").containsExactly("visible-read", "visible-unread");
+    assertThat(slice.items()).extracting("accountId").containsExactly(accountIds[0], accountIds[0]);
+    assertThat(slice.items())
+        .extracting("readAt")
+        .containsExactly(appliedFrom.plusSeconds(21), null);
+    assertThat(slice.hasNext()).isFalse();
+    assertThat(slice.nextCursor()).isNull();
+    assertThat(slice.appliedFrom()).isEqualTo(appliedFrom);
+    assertThat(slice.appliedTo()).isEqualTo(appliedTo);
   }
 
   @Test
@@ -503,24 +694,81 @@ class JdbcNotificationInboxRepositoryIntegrationTest extends PostgresContainerTe
     return notificationId;
   }
 
+  private long insertArchivedNotification(
+      long accountId,
+      String eventKey,
+      String eventType,
+      String title,
+      String message,
+      Instant archivedAt,
+      Instant createdAt) {
+    Long notificationId =
+        jdbcTemplate.queryForObject(
+            """
+            INSERT INTO notification_inbox (
+                account_id,
+                event_key,
+                event_type,
+                title,
+                message,
+                archived_at,
+                created_at
+            )
+            VALUES (
+                :accountId,
+                :eventKey,
+                :eventType,
+                :title,
+                :message,
+                :archivedAt,
+                :createdAt
+            )
+            RETURNING id
+            """,
+            new MapSqlParameterSource()
+                .addValue("accountId", accountId)
+                .addValue("eventKey", eventKey)
+                .addValue("eventType", eventType)
+                .addValue("title", title)
+                .addValue("message", message)
+                .addValue("archivedAt", Timestamp.from(archivedAt))
+                .addValue("createdAt", Timestamp.from(createdAt)),
+            Long.class);
+    if (notificationId == null) {
+      throw new IllegalStateException("notification_inbox insert did not return id");
+    }
+    return notificationId;
+  }
+
   private void insertUserReadState(long userId, long notificationId, Instant readAt) {
+    insertUserNotificationState(userId, notificationId, readAt, null, null);
+  }
+
+  private void insertUserNotificationState(
+      long userId, long notificationId, Instant readAt, Instant archivedAt, Instant deletedAt) {
     jdbcTemplate.update(
         """
         INSERT INTO notification_user_read_state (
             user_id,
             notification_id,
-            read_at
+            read_at,
+            archived_at,
+            deleted_at
         )
         VALUES (
             :userId,
             :notificationId,
-            :readAt
+            :readAt,
+            :archivedAt,
+            :deletedAt
         )
         """,
         new MapSqlParameterSource()
             .addValue("userId", userId)
             .addValue("notificationId", notificationId)
-            .addValue("readAt", Timestamp.from(readAt)));
+            .addValue("readAt", readAt == null ? null : Timestamp.from(readAt))
+            .addValue("archivedAt", archivedAt == null ? null : Timestamp.from(archivedAt))
+            .addValue("deletedAt", deletedAt == null ? null : Timestamp.from(deletedAt)));
   }
 
   private long totalNotifications() {
