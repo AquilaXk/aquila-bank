@@ -466,6 +466,22 @@ public class JdbcAuthWriteRepository
 
   @Override
   @Transactional
+  public void deleteByUserId(long userId) {
+    int updated =
+        jdbcTemplate.update(
+            """
+            DELETE FROM auth_totp_credential
+            WHERE user_id = :userId
+              AND credential_status = 'ACTIVE'
+            """,
+            new MapSqlParameterSource().addValue("userId", userId));
+    if (updated != 1) {
+      throw new IllegalStateException("totp credential is not active");
+    }
+  }
+
+  @Override
+  @Transactional
   public void upsert(TotpLoginChallengeUpsertCommand command) {
     jdbcTemplate.update(
         """
