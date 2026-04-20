@@ -6,6 +6,13 @@
 - 모든 변경은 GitHub issue를 먼저 만들고 `main` 대상 PR로만 병합합니다.
 - 보호 브랜치 직접 push는 금지하고, 리뷰 가능한 한 가지 목적 단위로 PR을 유지합니다.
 
+## GitHub Connector Fallback
+
+- GitHub issue/PR write에서 `403 Resource not accessible by integration`가 나오면 flaky 재시도보다 connector 권한 차이를 먼저 의심합니다.
+- 이 저장소에서는 같은 세션에서 write 성공이 확인된 connector를 표준 경로로 계속 사용합니다.
+- 표준 경로가 아닌 connector에서 403이 나면 blind retry 없이 즉시 표준 write 경로로 fallback 합니다.
+- 표준 write 경로도 실패하면 작업을 멈추고 권한 또는 사용할 connector를 확인합니다.
+
 ## CI Gate
 
 - backend/frontend CI는 `main` 대상 PR에서 실행합니다.
