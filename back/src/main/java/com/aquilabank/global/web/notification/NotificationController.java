@@ -95,18 +95,22 @@ public class NotificationController {
       @RequestParam(required = false) String eventType,
       @RequestParam(required = false) String from,
       @RequestParam(required = false) String to) {
-    NotificationSearchCursor decodedCursor =
-        cursor == null || cursor.isBlank() ? null : NotificationSearchCursorCodec.decode(cursor);
-    NotificationSearchWindow appliedWindow = resolveSearchWindow(decodedCursor, from, to);
-    NotificationSearchQuery query =
-        new NotificationSearchQuery(
-            limit,
-            decodedCursor,
-            parseReadStatus(readStatus),
-            normalizeEventType(eventType),
-            appliedWindow.appliedFrom(),
-            appliedWindow.appliedTo());
-    return NotificationSearchResponse.from(resolveSearchNotifications(principal, query));
+    try {
+      NotificationSearchCursor decodedCursor =
+          cursor == null || cursor.isBlank() ? null : NotificationSearchCursorCodec.decode(cursor);
+      NotificationSearchWindow appliedWindow = resolveSearchWindow(decodedCursor, from, to);
+      NotificationSearchQuery query =
+          new NotificationSearchQuery(
+              limit,
+              decodedCursor,
+              parseReadStatus(readStatus),
+              normalizeEventType(eventType),
+              appliedWindow.appliedFrom(),
+              appliedWindow.appliedTo());
+      return NotificationSearchResponse.from(resolveSearchNotifications(principal, query));
+    } catch (IllegalArgumentException ex) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage(), ex);
+    }
   }
 
   @GetMapping(path = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -306,8 +310,7 @@ public class NotificationController {
         return validateSearchWindow(cursor.appliedFrom(), cursor.appliedTo());
       }
       Instant appliedTo = Instant.now(notificationSearchClock);
-      return validateSearchWindow(
-          appliedTo.minusSeconds(SEARCH_WINDOW_SECONDS), appliedTo);
+      return validateSearchWindow(appliedTo.minusSeconds(SEARCH_WINDOW_SECONDS), appliedTo);
     }
     Instant appliedFrom = parseInstant(from, "from");
     Instant appliedTo = parseInstant(to, "to");
@@ -316,7 +319,7 @@ public class NotificationController {
 
   private NotificationReadStatusFilter parseReadStatus(String rawReadStatus) {
     try {
-      return NotificationReadStatusFilter.valueOf(rawReadStatus.toUpperCase(Locale.ROOT));
+      return NotificationReadStatusFilter.valueOf(rawReadStatus.trim().toUpperCase(Locale.ROOT));
     } catch (RuntimeException ex) {
       throw new IllegalArgumentException("readStatus is invalid", ex);
     }
@@ -344,7 +347,7 @@ public class NotificationController {
     if (eventType == null || eventType.isBlank()) {
       return null;
     }
-    return eventType;
+    return eventType.trim();
   }
 
   /** bulk action body 는 작은 id 목록만 허용해 notification inbox SQL 범위를 고정합니다. */

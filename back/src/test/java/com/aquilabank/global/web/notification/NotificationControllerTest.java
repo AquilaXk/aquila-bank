@@ -256,6 +256,137 @@ class NotificationControllerTest {
   }
 
   @Test
+  void rejectsMalformedSearchCursor() throws Exception {
+    mockMvc
+        .perform(
+            get("/api/v1/notifications/search")
+                .header("X-Account-Id", "101")
+                .param("cursor", "broken"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message").value("cursor format is invalid"))
+        .andExpect(jsonPath("$.path").value("/api/v1/notifications/search"));
+  }
+
+  @Test
+  void rejectsSearchWhenFromIsInvalidIsoInstant() throws Exception {
+    mockMvc
+        .perform(
+            get("/api/v1/notifications/search")
+                .header("X-Account-Id", "101")
+                .param("from", "broken")
+                .param("to", "2026-04-21T12:00:00Z"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message").value("from must be a valid ISO-8601 instant"))
+        .andExpect(jsonPath("$.path").value("/api/v1/notifications/search"));
+  }
+
+  @Test
+  void rejectsSearchWhenToIsInvalidIsoInstant() throws Exception {
+    mockMvc
+        .perform(
+            get("/api/v1/notifications/search")
+                .header("X-Account-Id", "101")
+                .param("from", "2026-04-01T00:00:00Z")
+                .param("to", "broken"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message").value("to must be a valid ISO-8601 instant"))
+        .andExpect(jsonPath("$.path").value("/api/v1/notifications/search"));
+  }
+
+  @Test
+  void rejectsSearchWhenFromIsAfterTo() throws Exception {
+    mockMvc
+        .perform(
+            get("/api/v1/notifications/search")
+                .header("X-Account-Id", "101")
+                .param("from", "2026-04-21T12:00:01Z")
+                .param("to", "2026-04-21T12:00:00Z"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message").value("from must be before or equal to to"))
+        .andExpect(jsonPath("$.path").value("/api/v1/notifications/search"));
+  }
+
+  @Test
+  void rejectsSearchWhenExplicitRangeExceedsThirtyOneDays() throws Exception {
+    mockMvc
+        .perform(
+            get("/api/v1/notifications/search")
+                .header("X-Account-Id", "101")
+                .param("from", "2026-03-01T00:00:00Z")
+                .param("to", "2026-04-21T12:00:00Z"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message").value("search window must be 31 days or less"))
+        .andExpect(jsonPath("$.path").value("/api/v1/notifications/search"));
+  }
+
+  @Test
+  void reusesCursorWindowWhenOnlyCursorIsProvided() throws Exception {
+    NotificationSearchCursor cursor =
+        new NotificationSearchCursor(
+            Instant.parse("2026-04-20T10:00:00Z"),
+            20L,
+            Instant.parse("2026-04-01T00:00:00Z"),
+            Instant.parse("2026-04-21T12:00:00Z"),
+            "ALL|TransferBooked|2026-04-01T00:00:00Z|2026-04-21T12:00:00Z");
+    when(notificationSearchUseCase.searchForAccount(eq(101L), any(NotificationSearchQuery.class)))
+        .thenReturn(
+            new NotificationSearchSlice(
+                List.of(), null, false, 20, cursor.appliedFrom(), cursor.appliedTo()));
+
+    mockMvc
+        .perform(
+            get("/api/v1/notifications/search")
+                .header("X-Account-Id", "101")
+                .param("cursor", NotificationSearchCursorCodec.encode(cursor)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.appliedFrom").value(cursor.appliedFrom().toString()))
+        .andExpect(jsonPath("$.appliedTo").value(cursor.appliedTo().toString()));
+
+    verify(notificationSearchUseCase)
+        .searchForAccount(
+            eq(101L),
+            eq(
+                new NotificationSearchQuery(
+                    20,
+                    cursor,
+                    NotificationReadStatusFilter.ALL,
+                    null,
+                    cursor.appliedFrom(),
+                    cursor.appliedTo())));
+  }
+
+  @Test
+  void trimsReadStatusAndEventTypeBeforeSearchQueryResolution() throws Exception {
+    Instant appliedFrom = Instant.parse("2026-04-01T00:00:00Z");
+    Instant appliedTo = Instant.parse("2026-04-21T12:00:00Z");
+    when(notificationSearchUseCase.searchForAccount(eq(101L), any(NotificationSearchQuery.class)))
+        .thenReturn(
+            new NotificationSearchSlice(List.of(), null, false, 20, appliedFrom, appliedTo));
+
+    mockMvc
+        .perform(
+            get("/api/v1/notifications/search")
+                .header("X-Account-Id", "101")
+                .param("readStatus", " UNREAD ")
+                .param("eventType", " TransferBooked ")
+                .param("from", appliedFrom.toString())
+                .param("to", appliedTo.toString()))
+        .andExpect(status().isOk());
+
+    verify(notificationSearchUseCase)
+        .searchForAccount(
+            eq(101L),
+            eq(
+                new NotificationSearchQuery(
+                    20,
+                    null,
+                    NotificationReadStatusFilter.UNREAD,
+                    "TransferBooked",
+                    appliedFrom,
+                    appliedTo)));
+  }
+
+  @Test
   void rejectsSearchWhenReusedCursorWindowExceedsThirtyOneDays() throws Exception {
     NotificationSearchCursor cursor =
         new NotificationSearchCursor(

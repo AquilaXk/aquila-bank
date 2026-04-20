@@ -584,6 +584,83 @@ class NotificationApiIntegrationTest extends PostgresContainerTestSupport {
         .andExpect(jsonPath("$.message").value("readStatus is invalid"));
   }
 
+  @Test
+  void continuesSearchNextPageWithCursorOnlyUsingSameWindow() throws Exception {
+    long[] userId = new long[1];
+    long[] accountId = new long[1];
+    Instant from = Instant.parse("2026-04-01T00:00:00Z");
+    Instant to = Instant.parse("2026-04-30T23:59:59Z");
+    commit(
+        transactionManager,
+        () -> {
+          userId[0] = insertUser("cursor-window-user");
+          accountId[0] = insertAccount("cursor window account");
+          insertMembership(userId[0], accountId[0], "OWNER", "ACTIVE");
+          insertNotification(
+              accountId[0],
+              "evt-window-1",
+              "TransferBooked",
+              "첫 페이지 A",
+              "A",
+              null,
+              Instant.parse("2026-04-21T10:00:00Z"));
+          insertNotification(
+              accountId[0],
+              "evt-window-2",
+              "TransferBooked",
+              "첫 페이지 B",
+              "B",
+              null,
+              Instant.parse("2026-04-21T09:00:00Z"));
+          insertNotification(
+              accountId[0],
+              "evt-window-3",
+              "TransferBooked",
+              "둘째 페이지",
+              "C",
+              null,
+              Instant.parse("2026-04-21T08:00:00Z"));
+        });
+
+    String token = issueToken("cursor-window-subject", userId[0]);
+
+    MvcResult pageOne =
+        mockMvc
+            .perform(
+                get("/api/v1/notifications/search")
+                    .header("Authorization", "Bearer " + token)
+                    .param("limit", "2")
+                    .param("from", from.toString())
+                    .param("to", to.toString()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items.length()").value(2))
+            .andExpect(jsonPath("$.items[0].title").value("첫 페이지 A"))
+            .andExpect(jsonPath("$.items[1].title").value("첫 페이지 B"))
+            .andExpect(jsonPath("$.appliedFrom").value(from.toString()))
+            .andExpect(jsonPath("$.appliedTo").value(to.toString()))
+            .andExpect(jsonPath("$.hasNext").value(true))
+            .andReturn();
+
+    String cursor =
+        OBJECT_MAPPER
+            .readTree(pageOne.getResponse().getContentAsString())
+            .get("nextCursor")
+            .asText();
+
+    mockMvc
+        .perform(
+            get("/api/v1/notifications/search")
+                .header("Authorization", "Bearer " + token)
+                .param("limit", "2")
+                .param("cursor", cursor))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(1))
+        .andExpect(jsonPath("$.items[0].title").value("둘째 페이지"))
+        .andExpect(jsonPath("$.appliedFrom").value(from.toString()))
+        .andExpect(jsonPath("$.appliedTo").value(to.toString()))
+        .andExpect(jsonPath("$.hasNext").value(false));
+  }
+
   private long insertUser(String loginId) {
     Long userId =
         jdbcTemplate.queryForObject(
