@@ -24,6 +24,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.junit.jupiter.api.BeforeEach;
@@ -1483,6 +1484,97 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
   }
 
   @Test
+  void backupCodeIssueAndChallengeVerifyConsumeCode() throws Exception {
+    TokenPairResponseView initialSession =
+        loginResult("alice", "password123!", "backup-code-login-001", WINDOWS_CHROME);
+    TotpEnrollmentStartResponseView enrollment =
+        startTotpEnrollment(initialSession.accessToken(), "backup-code-start-001");
+    verifyTotpEnrollment(
+        initialSession.accessToken(),
+        currentTotpCode(enrollment.secretKey()),
+        "backup-code-enroll-verify-001");
+
+    BackupCodeIssueResponseView issued =
+        issueBackupCodes(
+            initialSession.accessToken(),
+            currentTotpCode(enrollment.secretKey()),
+            "backup-code-issue-001");
+
+    assertEquals(10, issued.codeCount());
+    assertEquals(10, issued.backupCodes().size());
+    assertEquals(10, countBackupCodesByStatus(userId, "ACTIVE"));
+    assertEquals(0, countBackupCodeRowsMatchingPlainValue(issued.backupCodes().get(0)));
+
+    LoginChallengeResponseView challenge =
+        loginChallenge("alice", "password123!", "backup-code-login-002", WINDOWS_EDGE);
+
+    TokenPairResponseView verifiedSession =
+        verifyBackupCodeChallenge(
+            challenge.challengeId(),
+            issued.backupCodes().get(0),
+            "backup-code-challenge-verify-001",
+            IPHONE_SAFARI);
+    RefreshTokenSessionView challengeSession =
+        loadRefreshTokenSession(verifiedSession.refreshToken());
+    TotpLoginChallengeView verifiedChallenge = loadTotpLoginChallenge(challenge.challengeId());
+
+    assertEquals("SUCCESS", verifiedSession.status());
+    assertEquals("Windows / Edge", challengeSession.deviceName());
+    assertEquals("192.0.2.77", challengeSession.ipAddress());
+    assertEquals("VERIFIED", verifiedChallenge.challengeStatus());
+    assertEquals(9, countBackupCodesByStatus(userId, "ACTIVE"));
+    assertEquals(1, countBackupCodesByStatus(userId, "USED"));
+
+    verifyBackupCodeChallengeExpectUnauthorized(
+        challenge.challengeId(), issued.backupCodes().get(0), "backup-code-reuse-001");
+  }
+
+  @Test
+  void backupCodeReissueSupersedesPreviousSet() throws Exception {
+    TokenPairResponseView initialSession =
+        loginResult("alice", "password123!", "backup-reissue-login-001", WINDOWS_CHROME);
+    TotpEnrollmentStartResponseView enrollment =
+        startTotpEnrollment(initialSession.accessToken(), "backup-reissue-start-001");
+    verifyTotpEnrollment(
+        initialSession.accessToken(),
+        currentTotpCode(enrollment.secretKey()),
+        "backup-reissue-enroll-verify-001");
+
+    BackupCodeIssueResponseView firstIssued =
+        issueBackupCodes(
+            initialSession.accessToken(),
+            currentTotpCode(enrollment.secretKey()),
+            "backup-reissue-issue-001");
+    BackupCodeIssueResponseView secondIssued =
+        issueBackupCodes(
+            initialSession.accessToken(),
+            currentTotpCode(enrollment.secretKey()),
+            "backup-reissue-issue-002");
+
+    assertEquals(10, countBackupCodesByStatus(userId, "ACTIVE"));
+    assertEquals(10, countBackupCodesByStatus(userId, "SUPERSEDED"));
+
+    LoginChallengeResponseView failedChallenge =
+        loginChallenge("alice", "password123!", "backup-reissue-login-002", WINDOWS_EDGE);
+    verifyBackupCodeChallengeExpectUnauthorized(
+        failedChallenge.challengeId(),
+        firstIssued.backupCodes().get(0),
+        "backup-reissue-old-code-001");
+
+    LoginChallengeResponseView successChallenge =
+        loginChallenge("alice", "password123!", "backup-reissue-login-003", WINDOWS_CHROME);
+    verifyBackupCodeChallenge(
+        successChallenge.challengeId(),
+        secondIssued.backupCodes().get(0),
+        "backup-reissue-new-code-001",
+        WINDOWS_EDGE);
+
+    assertEquals(9, countBackupCodesByStatus(userId, "ACTIVE"));
+    assertEquals(1, countBackupCodesByStatus(userId, "USED"));
+    assertEquals(10, countBackupCodesByStatus(userId, "SUPERSEDED"));
+  }
+
+  @Test
   void totpChallengeStopsAfterMaxAttempts() throws Exception {
     TokenPairResponseView initialSession =
         loginResult("alice", "password123!", "totp-limit-login-001", WINDOWS_CHROME);
@@ -1521,6 +1613,10 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
         initialSession.accessToken(),
         currentTotpCode(enrollment.secretKey()),
         "totp-disable-verify-001");
+    issueBackupCodes(
+        initialSession.accessToken(),
+        currentTotpCode(enrollment.secretKey()),
+        "totp-disable-backup-issue-001");
 
     disableTotp(
         initialSession.accessToken(),
@@ -1528,6 +1624,8 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
         "totp-disable-request-001");
 
     assertEquals(0, countTotpCredentialRows(userId));
+    assertEquals(0, countBackupCodesByStatus(userId, "ACTIVE"));
+    assertEquals(10, countBackupCodesByStatus(userId, "SUPERSEDED"));
     assertEquals(0, countActiveRefreshSessions(userId));
 
     loginResult("alice", "password123!", "totp-disable-login-002", WINDOWS_EDGE);
@@ -1711,6 +1809,37 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
         .andExpect(jsonPath("$.message").value("mfa challenge failed"));
   }
 
+  private BackupCodeIssueResponseView issueBackupCodes(
+      String accessToken, String totpCode, String requestId) throws Exception {
+    MvcResult result =
+        performIssueBackupCodes(accessToken, totpCode, requestId)
+            .andExpect(status().isOk())
+            .andReturn();
+    JsonNode body = objectMapper.readTree(result.getResponse().getContentAsByteArray());
+    List<String> backupCodes = new java.util.ArrayList<>();
+    for (JsonNode item : body.get("backupCodes")) {
+      backupCodes.add(item.asText());
+    }
+    return new BackupCodeIssueResponseView(body.get("codeCount").asInt(), backupCodes);
+  }
+
+  private TokenPairResponseView verifyBackupCodeChallenge(
+      String challengeId, String backupCode, String requestId, RequestClientMetadata clientMetadata)
+      throws Exception {
+    MvcResult result =
+        performVerifyBackupCodeChallenge(challengeId, backupCode, requestId, clientMetadata)
+            .andReturn();
+    assertEquals(200, result.getResponse().getStatus(), result.getResponse().getContentAsString());
+    return readTokenPair(result);
+  }
+
+  private void verifyBackupCodeChallengeExpectUnauthorized(
+      String challengeId, String backupCode, String requestId) throws Exception {
+    performVerifyBackupCodeChallenge(challengeId, backupCode, requestId, null)
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.message").value("mfa challenge failed"));
+  }
+
   private void disableTotp(String accessToken, String totpCode, String requestId) throws Exception {
     performDisableTotp(accessToken, totpCode, requestId).andExpect(status().isNoContent());
   }
@@ -1788,6 +1917,46 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
     if (requestId != null && !requestId.isBlank()) {
       requestBuilder.header("X-Request-Id", requestId);
     }
+    return mockMvc.perform(requestBuilder);
+  }
+
+  private org.springframework.test.web.servlet.ResultActions performIssueBackupCodes(
+      String accessToken, String totpCode, String requestId) throws Exception {
+    MockHttpServletRequestBuilder requestBuilder =
+        post("/api/v1/auth/mfa/backup-codes")
+            .header("Authorization", "Bearer " + accessToken)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(
+                """
+                {
+                  "totpCode": "%s"
+                }
+                """
+                    .formatted(totpCode));
+    if (requestId != null && !requestId.isBlank()) {
+      requestBuilder.header("X-Request-Id", requestId);
+    }
+    return mockMvc.perform(requestBuilder);
+  }
+
+  private org.springframework.test.web.servlet.ResultActions performVerifyBackupCodeChallenge(
+      String challengeId, String backupCode, String requestId, RequestClientMetadata clientMetadata)
+      throws Exception {
+    MockHttpServletRequestBuilder requestBuilder =
+        post("/api/v1/auth/mfa/backup-codes/challenge/verify")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(
+                """
+                {
+                  "challengeId": "%s",
+                  "backupCode": "%s"
+                }
+                """
+                    .formatted(challengeId, backupCode));
+    if (requestId != null && !requestId.isBlank()) {
+      requestBuilder.header("X-Request-Id", requestId);
+    }
+    applyClientMetadata(requestBuilder, clientMetadata);
     return mockMvc.perform(requestBuilder);
   }
 
@@ -2298,6 +2467,36 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
         .orElseThrow(() -> new AssertionError("totp login challenge is not found"));
   }
 
+  private int countBackupCodesByStatus(long userId, String codeStatus) {
+    Integer count =
+        jdbcTemplate.queryForObject(
+            """
+            SELECT COUNT(*)
+            FROM auth_mfa_backup_code
+            WHERE user_id = :userId
+              AND code_status = :codeStatus
+            """,
+            new org.springframework.jdbc.core.namedparam.MapSqlParameterSource()
+                .addValue("userId", userId)
+                .addValue("codeStatus", codeStatus),
+            Integer.class);
+    return count == null ? 0 : count;
+  }
+
+  private int countBackupCodeRowsMatchingPlainValue(String plainCode) {
+    Integer count =
+        jdbcTemplate.queryForObject(
+            """
+            SELECT COUNT(*)
+            FROM auth_mfa_backup_code
+            WHERE code_hash = :plainCode
+            """,
+            new org.springframework.jdbc.core.namedparam.MapSqlParameterSource()
+                .addValue("plainCode", plainCode),
+            Integer.class);
+    return count == null ? 0 : count;
+  }
+
   private int countActiveRefreshSessions(long userId) {
     Integer count =
         jdbcTemplate.queryForObject(
@@ -2426,6 +2625,8 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
       String status, String secretKey, String otpauthUri, Instant expiresAt) {}
 
   private record TotpEnrollmentVerifyResponseView(String status, Instant verifiedAt) {}
+
+  private record BackupCodeIssueResponseView(int codeCount, List<String> backupCodes) {}
 
   private record TotpCredentialView(
       String credentialStatus,

@@ -479,7 +479,7 @@ public class JdbcAuthRepository
         rs.getLong("user_id"),
         rs.getString("code_hash"),
         BackupCodeStatus.valueOf(rs.getString("code_status")),
-        toInstant(rs.getTimestamp("used_at")),
+        toNullableInstant(rs.getTimestamp("used_at")),
         toInstant(rs.getTimestamp("created_at")));
   }
 

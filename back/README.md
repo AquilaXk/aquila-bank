@@ -479,6 +479,8 @@ TOTP MFA는 `login -> challenge -> verify` 2단계 경로로만 token pair를 �
   - `POST /api/v1/auth/mfa/totp/enroll`
   - `POST /api/v1/auth/mfa/totp/enroll/verify`
   - `POST /api/v1/auth/mfa/totp/disable`
+  - `POST /api/v1/auth/mfa/backup-codes`
+  - `POST /api/v1/auth/mfa/backup-codes/challenge/verify`
   - `POST /api/v1/auth/mfa/totp/challenge/verify`
 - 등록 기준:
   - enrollment start/verify는 현재 JWT user만 호출 가능하고 bootstrap account principal은 `403`
@@ -489,11 +491,19 @@ TOTP MFA는 `login -> challenge -> verify` 2단계 경로로만 token pair를 �
   - disable request body는 `totpCode`
   - 현재 JWT user와 현재 `ACTIVE` credential, 유효한 현재 TOTP code가 모두 맞을 때만 `204 No Content`
   - disable 성공 시 `auth_totp_credential` row는 삭제되고 해당 user의 active refresh session은 전부 `REVOKED`
+  - disable 성공 시 active backup code도 전부 `SUPERSEDED` 처리돼 이전 복구 수단이 남지 않는다
   - wrong code, 활성 credential 없음, 비활성 user는 `401 mfa disable failed`
+- backup code 발급 기준:
+  - request body는 `totpCode`
+  - 발급/재발급은 현재 JWT user, 현재 `ACTIVE` TOTP credential, 유효한 현재 TOTP code가 모두 맞을 때만 성공한다
+  - 응답은 `codeCount`, `backupCodes[]`이고 plain backup code는 이 응답에서만 1회 노출된다
+  - 재발급 시 기존 active backup code는 전부 `SUPERSEDED`로 바뀌고 새 묶음만 `ACTIVE`로 남는다
+  - wrong code, 활성 credential 없음, 비활성 user는 `401 backup code issue failed`
 - 로그인 challenge 기준:
   - `ACTIVE` TOTP credential이 있는 사용자의 `POST /api/v1/auth/login` 응답은 `status=MFA_REQUIRED`
   - 이때 `challengeId`, `challengeType=TOTP`, `challengeExpiresAt`만 내려가고 token pair는 비어 있다
   - challenge verify 성공 시에만 `status=SUCCESS`와 token pair가 발급된다
+  - challenge verify는 `totpCode` 또는 `backupCode` 중 하나를 사용하며 backup code 성공 시 해당 row는 즉시 `USED` 처리된다
   - challenge verify는 로그인 시점의 `device_name`, `ip_address` 메타데이터를 그대로 session row에 저장한다
 - 기본값:
   - `SECURITY_TOTP_ISSUER=Aquila Bank`
@@ -505,9 +515,12 @@ TOTP MFA는 `login -> challenge -> verify` 2단계 경로로만 token pair를 �
   - TOTP secret raw/base32 값은 응답으로만 내려가고 DB에는 AES-GCM 보호 값만 저장
   - credential 테이블은 `auth_totp_credential`
   - login challenge 테이블은 `auth_totp_login_challenge`
+  - backup code 테이블은 `auth_mfa_backup_code`
+  - backup code는 plain 값이나 복호화 가능한 ciphertext 없이 `SHA-256` hash만 저장한다
   - challenge row는 `user_id` 기준 1행만 유지해 user별 현재 pending state만 덮어쓴다
 - 거절 기준:
   - wrong TOTP code, 만료 challenge, 사용 완료 challenge는 `401 mfa challenge failed`
+  - wrong backup code, 이미 `USED|SUPERSEDED` 된 backup code도 `401 mfa challenge failed`
   - challenge 시도 횟수가 상한에 도달하면 상태를 `FAILED`로 바꾸고 같은 challenge는 더 이상 성공하지 못한다
   - pending enrollment가 없거나 이미 만료된 enrollment verify는 `400`
 
