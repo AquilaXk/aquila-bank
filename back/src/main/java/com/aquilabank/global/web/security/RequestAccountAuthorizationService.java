@@ -54,7 +54,7 @@ public class RequestAccountAuthorizationService {
             requestedAccountId);
         throw new AccountAccessDeniedException("account access is denied");
       }
-      return requestedAccountId;
+      return accountAccessUseCase.verifyBootstrapAccount(requestedAccountId, scope);
     }
 
     throw new IllegalArgumentException("unsupported principal type");

@@ -6,4 +6,6 @@ import com.aquilabank.domain.auth.model.AccountAccessScope;
 public interface AccountAccessUseCase {
 
   long verify(long userId, long accountId, AccountAccessScope scope);
+
+  long verifyBootstrapAccount(long accountId, AccountAccessScope scope);
 }

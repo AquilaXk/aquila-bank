@@ -5,6 +5,7 @@ import com.aquilabank.domain.auth.model.LoginProtectionPolicy;
 import com.aquilabank.domain.auth.model.LoginResult;
 import com.aquilabank.domain.auth.model.RefreshTokenPolicy;
 import com.aquilabank.domain.auth.port.AccountAccessPort;
+import com.aquilabank.domain.auth.port.AccountStatusAccessPort;
 import com.aquilabank.domain.auth.port.AuthSessionQueryPort;
 import com.aquilabank.domain.auth.port.AuthStatusChangeAuditQueryPort;
 import com.aquilabank.domain.auth.port.AuthTokenIssuePort;
@@ -352,8 +353,9 @@ public class AuthConfiguration {
   }
 
   @Bean
-  AccountAccessUseCase accountAccessUseCase(AccountAccessPort accountAccessPort) {
-    return new AccountAccessService(accountAccessPort);
+  AccountAccessUseCase accountAccessUseCase(
+      AccountAccessPort accountAccessPort, AccountStatusAccessPort accountStatusAccessPort) {
+    return new AccountAccessService(accountAccessPort, accountStatusAccessPort);
   }
 
   @Bean
