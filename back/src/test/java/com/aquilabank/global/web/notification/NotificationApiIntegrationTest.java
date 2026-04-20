@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.aquilabank.support.PostgresContainerTestSupport;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.JOSEObjectType;
 import com.nimbusds.jose.JWSAlgorithm;
@@ -26,6 +27,7 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.web.context.WebApplicationContext;
@@ -37,6 +39,7 @@ import org.springframework.web.context.WebApplicationContext;
 class NotificationApiIntegrationTest extends PostgresContainerTestSupport {
 
   private static final String TEST_SECRET = "test-local-jwt-secret-test-local-jwt-secret";
+  private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
   @Autowired private WebApplicationContext context;
 
@@ -400,6 +403,158 @@ class NotificationApiIntegrationTest extends PostgresContainerTestSupport {
         .perform(get("/api/v1/notifications/unread-count").header("X-Account-Id", accountId[0]))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.unreadCount").value(0));
+  }
+
+  @Test
+  void searchesNotificationsForJwtUserWithExplicitFilters() throws Exception {
+    long[] userId = new long[1];
+    long[] accountIds = new long[2];
+    long[] notificationIds = new long[4];
+    Instant from = Instant.parse("2026-04-01T00:00:00Z");
+    Instant to = Instant.parse("2026-04-30T23:59:59Z");
+    commit(
+        transactionManager,
+        () -> {
+          userId[0] = insertUser("search-user");
+          accountIds[0] = insertAccount("search account");
+          accountIds[1] = insertAccount("search hidden account");
+          insertMembership(userId[0], accountIds[0], "OWNER", "ACTIVE");
+          insertMembership(userId[0], accountIds[1], "OWNER", "REVOKED");
+          notificationIds[0] =
+              insertNotification(
+                  accountIds[0],
+                  "evt-search-1",
+                  "TransferBooked",
+                  "읽지 않은 검색 알림",
+                  "A",
+                  null,
+                  Instant.parse("2026-04-18T10:00:00Z"));
+          notificationIds[1] =
+              insertNotification(
+                  accountIds[0],
+                  "evt-search-2",
+                  "TransferBooked",
+                  "읽은 검색 알림",
+                  "B",
+                  null,
+                  Instant.parse("2026-04-19T10:00:00Z"));
+          notificationIds[2] =
+              insertNotification(
+                  accountIds[0],
+                  "evt-search-3",
+                  "CardApproved",
+                  "다른 eventType",
+                  "C",
+                  null,
+                  Instant.parse("2026-04-20T10:00:00Z"));
+          notificationIds[3] =
+              insertNotification(
+                  accountIds[1],
+                  "evt-search-4",
+                  "TransferBooked",
+                  "권한 없는 알림",
+                  "D",
+                  null,
+                  Instant.parse("2026-04-21T10:00:00Z"));
+        });
+
+    String token = issueToken("search-user-subject", userId[0]);
+
+    mockMvc
+        .perform(
+            post("/api/v1/notifications/" + notificationIds[1] + "/read")
+                .header("Authorization", "Bearer " + token))
+        .andExpect(status().isNoContent());
+
+    mockMvc
+        .perform(
+            get("/api/v1/notifications/search")
+                .header("Authorization", "Bearer " + token)
+                .param("readStatus", "UNREAD")
+                .param("eventType", "TransferBooked")
+                .param("from", from.toString())
+                .param("to", to.toString()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(1))
+        .andExpect(jsonPath("$.items[0].title").value("읽지 않은 검색 알림"))
+        .andExpect(jsonPath("$.items[0].eventType").value("TransferBooked"))
+        .andExpect(jsonPath("$.items[0].read").value(false))
+        .andExpect(jsonPath("$.appliedFrom").value(from.toString()))
+        .andExpect(jsonPath("$.appliedTo").value(to.toString()));
+  }
+
+  @Test
+  void rejectsSearchCursorWhenRequestedFiltersDoNotMatch() throws Exception {
+    long[] userId = new long[1];
+    long[] accountId = new long[1];
+    Instant from = Instant.parse("2026-04-01T00:00:00Z");
+    Instant to = Instant.parse("2026-04-30T23:59:59Z");
+    commit(
+        transactionManager,
+        () -> {
+          userId[0] = insertUser("cursor-user");
+          accountId[0] = insertAccount("cursor account");
+          insertMembership(userId[0], accountId[0], "OWNER", "ACTIVE");
+          insertNotification(
+              accountId[0],
+              "evt-cursor-1",
+              "TransferBooked",
+              "첫 페이지 알림 A",
+              "A",
+              null,
+              Instant.parse("2026-04-21T10:00:00Z"));
+          insertNotification(
+              accountId[0],
+              "evt-cursor-2",
+              "TransferBooked",
+              "첫 페이지 알림 B",
+              "B",
+              null,
+              Instant.parse("2026-04-21T09:00:00Z"));
+          insertNotification(
+              accountId[0],
+              "evt-cursor-3",
+              "TransferBooked",
+              "둘째 페이지 알림",
+              "C",
+              null,
+              Instant.parse("2026-04-21T08:00:00Z"));
+        });
+
+    String token = issueToken("cursor-user-subject", userId[0]);
+
+    MvcResult pageOne =
+        mockMvc
+            .perform(
+                get("/api/v1/notifications/search")
+                    .header("Authorization", "Bearer " + token)
+                    .param("limit", "2")
+                    .param("readStatus", "ALL")
+                    .param("eventType", "TransferBooked")
+                    .param("from", from.toString())
+                    .param("to", to.toString()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items.length()").value(2))
+            .andExpect(jsonPath("$.hasNext").value(true))
+            .andReturn();
+
+    String cursor =
+        OBJECT_MAPPER
+            .readTree(pageOne.getResponse().getContentAsString())
+            .get("nextCursor")
+            .asText();
+
+    mockMvc
+        .perform(
+            get("/api/v1/notifications/search")
+                .header("Authorization", "Bearer " + token)
+                .param("limit", "2")
+                .param("cursor", cursor)
+                .param("readStatus", "UNREAD")
+                .param("eventType", "TransferBooked")
+                .param("from", from.toString())
+                .param("to", to.toString()))
+        .andExpect(status().isBadRequest());
   }
 
   private long insertUser(String loginId) {

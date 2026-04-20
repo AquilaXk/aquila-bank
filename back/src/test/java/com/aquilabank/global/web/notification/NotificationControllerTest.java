@@ -17,17 +17,24 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.aquilabank.domain.notification.exception.NotificationNotFoundException;
 import com.aquilabank.domain.notification.model.NotificationBulkActionCommand;
 import com.aquilabank.domain.notification.model.NotificationCursor;
+import com.aquilabank.domain.notification.model.NotificationListQuery;
+import com.aquilabank.domain.notification.model.NotificationReadStatusFilter;
+import com.aquilabank.domain.notification.model.NotificationSearchQuery;
+import com.aquilabank.domain.notification.model.NotificationSearchSlice;
 import com.aquilabank.domain.notification.model.NotificationSlice;
 import com.aquilabank.domain.notification.model.NotificationSummary;
 import com.aquilabank.domain.notification.usecase.NotificationBulkActionUseCase;
 import com.aquilabank.domain.notification.usecase.NotificationQueryUseCase;
 import com.aquilabank.domain.notification.usecase.NotificationReadUseCase;
+import com.aquilabank.domain.notification.usecase.NotificationSearchUseCase;
 import com.aquilabank.global.notification.NotificationSseBroker;
 import com.aquilabank.global.notification.NotificationSseOverloadException;
 import com.aquilabank.global.security.BootstrapHeaderAuthenticationFilter;
 import com.aquilabank.global.web.ApiExceptionHandler;
 import com.aquilabank.global.web.security.CurrentAuthenticatedPrincipalArgumentResolver;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -40,6 +47,7 @@ class NotificationControllerTest {
   private NotificationQueryUseCase notificationQueryUseCase;
   private NotificationReadUseCase notificationReadUseCase;
   private NotificationBulkActionUseCase notificationBulkActionUseCase;
+  private NotificationSearchUseCase notificationSearchUseCase;
   private NotificationSseBroker notificationSseBroker;
   private MockMvc mockMvc;
 
@@ -48,14 +56,19 @@ class NotificationControllerTest {
     notificationQueryUseCase = mock(NotificationQueryUseCase.class);
     notificationReadUseCase = mock(NotificationReadUseCase.class);
     notificationBulkActionUseCase = mock(NotificationBulkActionUseCase.class);
+    notificationSearchUseCase = mock(NotificationSearchUseCase.class);
     notificationSseBroker = mock(NotificationSseBroker.class);
+    Clock notificationSearchClock =
+        Clock.fixed(Instant.parse("2026-04-21T12:00:00Z"), ZoneOffset.UTC);
     mockMvc =
         MockMvcBuilders.standaloneSetup(
                 new NotificationController(
                     notificationQueryUseCase,
                     notificationReadUseCase,
                     notificationBulkActionUseCase,
-                    notificationSseBroker))
+                    notificationSearchUseCase,
+                    notificationSseBroker,
+                    notificationSearchClock))
             .setControllerAdvice(new ApiExceptionHandler())
             .addFilters(new BootstrapHeaderAuthenticationFilter("X-Account-Id", "X-Subject"))
             .setCustomArgumentResolvers(new CurrentAuthenticatedPrincipalArgumentResolver())
@@ -179,6 +192,71 @@ class NotificationControllerTest {
         .perform(
             get("/api/v1/notifications").header("X-Account-Id", "101").param("cursor", "broken"))
         .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  void searchesNotificationsForAccountWithDefaultWindow() throws Exception {
+    Instant appliedTo = Instant.parse("2026-04-21T12:00:00Z");
+    Instant appliedFrom = appliedTo.minusSeconds(31L * 24 * 60 * 60);
+    when(notificationSearchUseCase.searchForAccount(eq(101L), any(NotificationSearchQuery.class)))
+        .thenReturn(
+            new NotificationSearchSlice(
+                List.of(
+                    new NotificationSummary(
+                        20L,
+                        101L,
+                        "TransferBooked",
+                        "검색 알림",
+                        "검색 본문",
+                        Instant.parse("2026-04-20T10:00:00Z"),
+                        null)),
+                null,
+                false,
+                20,
+                appliedFrom,
+                appliedTo));
+
+    mockMvc
+        .perform(get("/api/v1/notifications/search").header("X-Account-Id", "101"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items[0].notificationId").value(20L))
+        .andExpect(jsonPath("$.appliedFrom").value(appliedFrom.toString()))
+        .andExpect(jsonPath("$.appliedTo").value(appliedTo.toString()))
+        .andExpect(jsonPath("$.hasNext").value(false));
+
+    verify(notificationSearchUseCase)
+        .searchForAccount(
+            eq(101L),
+            eq(
+                new NotificationSearchQuery(
+                    20, null, NotificationReadStatusFilter.ALL, null, appliedFrom, appliedTo)));
+  }
+
+  @Test
+  void rejectsSearchWhenOnlyFromIsProvided() throws Exception {
+    mockMvc
+        .perform(
+            get("/api/v1/notifications/search")
+                .header("X-Account-Id", "101")
+                .param("from", "2026-04-01T00:00:00Z"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message").value("from and to must be provided together"));
+  }
+
+  @Test
+  void keepsExistingNotificationListPathUnchanged() throws Exception {
+    when(notificationQueryUseCase.getNotificationsForAccount(anyLong(), any()))
+        .thenReturn(new NotificationSlice(List.of(), null, false, 20));
+
+    mockMvc
+        .perform(get("/api/v1/notifications").header("X-Account-Id", "101"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(0))
+        .andExpect(jsonPath("$.limit").value(20))
+        .andExpect(jsonPath("$.nextCursor").isEmpty());
+
+    verify(notificationQueryUseCase)
+        .getNotificationsForAccount(eq(101L), eq(new NotificationListQuery(20, null)));
   }
 
   @Test
