@@ -27,7 +27,7 @@ public class LoginThrottlingConfiguration {
         throw new IllegalStateException(
             "security.login-throttling.store=redis requires StringRedisTemplate");
       }
-      return new RedisLoginThrottleStore(properties, stringRedisTemplate);
+      return new RedisLoginThrottleStore(properties, stringRedisTemplate, authClock);
     }
     return new MemoryLoginThrottleStore(properties, authClock);
   }

@@ -1,7 +1,6 @@
 package com.aquilabank.global.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
 import com.aquilabank.global.security.LoginThrottleGuard;
@@ -73,20 +72,19 @@ class LoginThrottlingConfigurationTest {
   }
 
   @Test
-  void failsClosedWhenRedisThrottleCounterIsNotImplementedYet() {
-    RedisLoginThrottleStore loginThrottleStore =
-        new RedisLoginThrottleStore(
-            new LoginThrottlingProperties(
-                16,
-                new LoginThrottlingProperties.ScopeProperties(2, 60),
-                new LoginThrottlingProperties.ScopeProperties(4, 10),
-                LoginThrottlingProperties.StoreType.REDIS,
-                new LoginThrottlingProperties.RedisProperties("auth:login:throttle:")),
-            mock(org.springframework.data.redis.core.StringRedisTemplate.class));
-
-    assertThatThrownBy(() -> loginThrottleStore.check("203.0.113.10"))
-        .isInstanceOf(IllegalStateException.class)
-        .hasMessage("redis login throttling counter is not implemented yet");
+  void rejectsBlankRedisKeyPrefix() {
+    contextRunner
+        .withPropertyValues(
+            "security.login-throttling.store=redis", "security.login-throttling.redis.key-prefix= ")
+        .run(
+            context -> {
+              assertThat(context).hasFailed();
+              assertThat(context.getStartupFailure())
+                  .isInstanceOf(org.springframework.beans.factory.BeanCreationException.class)
+                  .hasRootCauseInstanceOf(IllegalArgumentException.class)
+                  .hasRootCauseMessage(
+                      "security.login-throttling.redis.key-prefix must not be blank");
+            });
   }
 
   @Configuration(proxyBeanMethods = false)
