@@ -19,6 +19,7 @@ import com.aquilabank.domain.notification.model.NotificationBulkActionCommand;
 import com.aquilabank.domain.notification.model.NotificationCursor;
 import com.aquilabank.domain.notification.model.NotificationListQuery;
 import com.aquilabank.domain.notification.model.NotificationReadStatusFilter;
+import com.aquilabank.domain.notification.model.NotificationSearchCursor;
 import com.aquilabank.domain.notification.model.NotificationSearchQuery;
 import com.aquilabank.domain.notification.model.NotificationSearchSlice;
 import com.aquilabank.domain.notification.model.NotificationSlice;
@@ -241,6 +242,36 @@ class NotificationControllerTest {
                 .param("from", "2026-04-01T00:00:00Z"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.message").value("from and to must be provided together"));
+  }
+
+  @Test
+  void rejectsSearchWhenReadStatusIsInvalid() throws Exception {
+    mockMvc
+        .perform(
+            get("/api/v1/notifications/search")
+                .header("X-Account-Id", "101")
+                .param("readStatus", "BROKEN"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message").value("readStatus is invalid"));
+  }
+
+  @Test
+  void rejectsSearchWhenReusedCursorWindowExceedsThirtyOneDays() throws Exception {
+    NotificationSearchCursor cursor =
+        new NotificationSearchCursor(
+            Instant.parse("2026-04-21T10:00:00Z"),
+            41L,
+            Instant.parse("2026-03-01T00:00:00Z"),
+            Instant.parse("2026-04-21T12:00:00Z"),
+            "ALL||2026-03-01T00:00:00Z|2026-04-21T12:00:00Z");
+
+    mockMvc
+        .perform(
+            get("/api/v1/notifications/search")
+                .header("X-Account-Id", "101")
+                .param("cursor", NotificationSearchCursorCodec.encode(cursor)))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message").value("search window must be 31 days or less"));
   }
 
   @Test

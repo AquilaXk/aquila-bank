@@ -557,6 +557,33 @@ class NotificationApiIntegrationTest extends PostgresContainerTestSupport {
         .andExpect(status().isBadRequest());
   }
 
+  @Test
+  void rejectsSearchWhenReadStatusIsInvalid() throws Exception {
+    long[] userId = new long[1];
+    long[] accountId = new long[1];
+    Instant from = Instant.parse("2026-04-01T00:00:00Z");
+    Instant to = Instant.parse("2026-04-30T23:59:59Z");
+    commit(
+        transactionManager,
+        () -> {
+          userId[0] = insertUser("invalid-status-user");
+          accountId[0] = insertAccount("invalid status account");
+          insertMembership(userId[0], accountId[0], "OWNER", "ACTIVE");
+        });
+
+    String token = issueToken("invalid-status-user-subject", userId[0]);
+
+    mockMvc
+        .perform(
+            get("/api/v1/notifications/search")
+                .header("Authorization", "Bearer " + token)
+                .param("readStatus", "BROKEN")
+                .param("from", from.toString())
+                .param("to", to.toString()))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message").value("readStatus is invalid"));
+  }
+
   private long insertUser(String loginId) {
     Long userId =
         jdbcTemplate.queryForObject(

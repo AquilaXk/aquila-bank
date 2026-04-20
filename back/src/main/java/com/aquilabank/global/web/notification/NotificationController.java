@@ -303,20 +303,15 @@ public class NotificationController {
     }
     if (!hasFrom) {
       if (cursor != null) {
-        return new NotificationSearchWindow(cursor.appliedFrom(), cursor.appliedTo());
+        return validateSearchWindow(cursor.appliedFrom(), cursor.appliedTo());
       }
       Instant appliedTo = Instant.now(notificationSearchClock);
-      return new NotificationSearchWindow(appliedTo.minusSeconds(SEARCH_WINDOW_SECONDS), appliedTo);
+      return validateSearchWindow(
+          appliedTo.minusSeconds(SEARCH_WINDOW_SECONDS), appliedTo);
     }
     Instant appliedFrom = parseInstant(from, "from");
     Instant appliedTo = parseInstant(to, "to");
-    if (appliedFrom.isAfter(appliedTo)) {
-      throw new IllegalArgumentException("from must be before or equal to to");
-    }
-    if (appliedFrom.plusSeconds(SEARCH_WINDOW_SECONDS).isBefore(appliedTo)) {
-      throw new IllegalArgumentException("search window must be 31 days or less");
-    }
-    return new NotificationSearchWindow(appliedFrom, appliedTo);
+    return validateSearchWindow(appliedFrom, appliedTo);
   }
 
   private NotificationReadStatusFilter parseReadStatus(String rawReadStatus) {
@@ -333,6 +328,16 @@ public class NotificationController {
     } catch (RuntimeException ex) {
       throw new IllegalArgumentException(fieldName + " must be a valid ISO-8601 instant", ex);
     }
+  }
+
+  private NotificationSearchWindow validateSearchWindow(Instant appliedFrom, Instant appliedTo) {
+    if (appliedFrom.isAfter(appliedTo)) {
+      throw new IllegalArgumentException("from must be before or equal to to");
+    }
+    if (appliedFrom.plusSeconds(SEARCH_WINDOW_SECONDS).isBefore(appliedTo)) {
+      throw new IllegalArgumentException("search window must be 31 days or less");
+    }
+    return new NotificationSearchWindow(appliedFrom, appliedTo);
   }
 
   private String normalizeEventType(String eventType) {
