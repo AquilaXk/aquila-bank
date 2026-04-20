@@ -7,8 +7,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.aquilabank.domain.auth.model.BackupCodeGenerateCommand;
-import com.aquilabank.domain.auth.model.BackupCodeIssueResult;
+import com.aquilabank.domain.auth.model.BackupCodeChallengeVerifyCommand;
+import com.aquilabank.domain.auth.model.LoginResult;
 import com.aquilabank.domain.auth.usecase.AuthSessionListUseCase;
 import com.aquilabank.domain.auth.usecase.AuthSessionRevokeAllUseCase;
 import com.aquilabank.domain.auth.usecase.AuthSessionRevokeUseCase;
@@ -23,28 +23,23 @@ import com.aquilabank.domain.auth.usecase.RefreshTokenUseCase;
 import com.aquilabank.domain.auth.usecase.TotpChallengeVerifyUseCase;
 import com.aquilabank.domain.auth.usecase.TotpDisableUseCase;
 import com.aquilabank.domain.auth.usecase.TotpEnrollmentUseCase;
-import com.aquilabank.global.security.AuthenticatedUserPrincipal;
 import com.aquilabank.global.security.LoginThrottleGuard;
 import com.aquilabank.global.web.ApiExceptionHandler;
-import com.aquilabank.global.web.security.CurrentAuthenticatedPrincipalArgumentResolver;
-import java.util.List;
-import org.junit.jupiter.api.AfterEach;
+import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
-class LoginControllerBackupCodeTest {
+class LoginControllerBackupCodeChallengeTest {
 
-  private BackupCodeGenerateUseCase backupCodeGenerateUseCase;
+  private BackupCodeChallengeVerifyUseCase backupCodeChallengeVerifyUseCase;
   private MockMvc mockMvc;
 
   @BeforeEach
   void setUp() {
-    backupCodeGenerateUseCase = mock(BackupCodeGenerateUseCase.class);
+    backupCodeChallengeVerifyUseCase = mock(BackupCodeChallengeVerifyUseCase.class);
     mockMvc =
         MockMvcBuilders.standaloneSetup(
                 new LoginController(
@@ -56,8 +51,8 @@ class LoginControllerBackupCodeTest {
                     mock(TotpEnrollmentUseCase.class),
                     mock(TotpChallengeVerifyUseCase.class),
                     mock(TotpDisableUseCase.class),
-                    backupCodeGenerateUseCase,
-                    mock(BackupCodeChallengeVerifyUseCase.class),
+                    mock(BackupCodeGenerateUseCase.class),
+                    backupCodeChallengeVerifyUseCase,
                     mock(LogoutUseCase.class),
                     mock(PasswordResetUseCase.class),
                     mock(PasswordRecoveryRequestUseCase.class),
@@ -65,40 +60,39 @@ class LoginControllerBackupCodeTest {
                     mock(AuthSessionMetadataResolver.class),
                     mock(LoginThrottleGuard.class)))
             .setControllerAdvice(new ApiExceptionHandler())
-            .setCustomArgumentResolvers(new CurrentAuthenticatedPrincipalArgumentResolver())
             .build();
   }
 
-  @AfterEach
-  void tearDown() {
-    SecurityContextHolder.clearContext();
-  }
-
   @Test
-  void issuesBackupCodesForAuthenticatedUser() throws Exception {
-    SecurityContextHolder.getContext()
-        .setAuthentication(
-            UsernamePasswordAuthenticationToken.authenticated(
-                new AuthenticatedUserPrincipal(7L, "alice"), null, List.of()));
-    when(backupCodeGenerateUseCase.issue(
+  void verifiesBackupCodeChallengeAndReturnsTokenPair() throws Exception {
+    when(backupCodeChallengeVerifyUseCase.verify(
             argThat(
-                (BackupCodeGenerateCommand command) ->
-                    command.userId() == 7L && "123456".equals(command.totpCode()))))
-        .thenReturn(new BackupCodeIssueResult(List.of("ABCD-EFGH", "JKLM-NPQR"), 2));
+                (BackupCodeChallengeVerifyCommand command) ->
+                    "challenge-1".equals(command.challengeId())
+                        && "ABCD-EFGH".equals(command.backupCode()))))
+        .thenReturn(
+            LoginResult.success(
+                "access-token",
+                "refresh-token",
+                "Bearer",
+                Instant.parse("2026-04-20T11:00:00Z"),
+                Instant.parse("2026-05-04T10:30:00Z"),
+                7L));
 
     mockMvc
         .perform(
-            post("/api/v1/auth/mfa/backup-codes")
+            post("/api/v1/auth/mfa/backup-codes/challenge/verify")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     """
                     {
-                      "totpCode": "123456"
+                      "challengeId": "challenge-1",
+                      "backupCode": "ABCD-EFGH"
                     }
                     """))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.codeCount").value(2))
-        .andExpect(jsonPath("$.backupCodes[0]").value("ABCD-EFGH"))
-        .andExpect(jsonPath("$.backupCodes[1]").value("JKLM-NPQR"));
+        .andExpect(jsonPath("$.status").value("SUCCESS"))
+        .andExpect(jsonPath("$.accessToken").value("access-token"))
+        .andExpect(jsonPath("$.refreshToken").value("refresh-token"));
   }
 }

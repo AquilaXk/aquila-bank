@@ -6,6 +6,7 @@ import com.aquilabank.domain.auth.model.TotpCredential;
 import com.aquilabank.domain.auth.model.TotpCredentialStatus;
 import com.aquilabank.domain.auth.model.TotpDisableCommand;
 import com.aquilabank.domain.auth.model.UserStatus;
+import com.aquilabank.domain.auth.port.BackupCodeWritePort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionWritePort;
 import com.aquilabank.domain.auth.port.TotpCredentialLoadPort;
 import com.aquilabank.domain.auth.port.TotpCredentialWritePort;
@@ -21,6 +22,7 @@ public final class TotpDisableService implements TotpDisableUseCase {
   private final TotpCredentialLoadPort totpCredentialLoadPort;
   private final TotpCredentialWritePort totpCredentialWritePort;
   private final TotpSecretPort totpSecretPort;
+  private final BackupCodeWritePort backupCodeWritePort;
   private final RefreshTokenSessionWritePort refreshTokenSessionWritePort;
   private final Clock clock;
 
@@ -29,12 +31,14 @@ public final class TotpDisableService implements TotpDisableUseCase {
       TotpCredentialLoadPort totpCredentialLoadPort,
       TotpCredentialWritePort totpCredentialWritePort,
       TotpSecretPort totpSecretPort,
+      BackupCodeWritePort backupCodeWritePort,
       RefreshTokenSessionWritePort refreshTokenSessionWritePort,
       Clock clock) {
     this.userCredentialLoadPort = userCredentialLoadPort;
     this.totpCredentialLoadPort = totpCredentialLoadPort;
     this.totpCredentialWritePort = totpCredentialWritePort;
     this.totpSecretPort = totpSecretPort;
+    this.backupCodeWritePort = backupCodeWritePort;
     this.refreshTokenSessionWritePort = refreshTokenSessionWritePort;
     this.clock = clock;
   }
@@ -56,6 +60,7 @@ public final class TotpDisableService implements TotpDisableUseCase {
     }
 
     totpCredentialWritePort.deleteByUserId(command.userId());
+    backupCodeWritePort.supersedeActiveByUserId(command.userId(), now);
     refreshTokenSessionWritePort.revokeActiveSessionsByUserId(command.userId(), now);
   }
 

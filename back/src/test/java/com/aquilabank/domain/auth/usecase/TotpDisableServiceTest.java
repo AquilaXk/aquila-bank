@@ -13,6 +13,7 @@ import com.aquilabank.domain.auth.model.TotpCredential;
 import com.aquilabank.domain.auth.model.TotpCredentialStatus;
 import com.aquilabank.domain.auth.model.TotpDisableCommand;
 import com.aquilabank.domain.auth.model.UserStatus;
+import com.aquilabank.domain.auth.port.BackupCodeWritePort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionWritePort;
 import com.aquilabank.domain.auth.port.TotpCredentialLoadPort;
 import com.aquilabank.domain.auth.port.TotpCredentialWritePort;
@@ -36,6 +37,7 @@ class TotpDisableServiceTest {
     TotpCredentialLoadPort totpCredentialLoadPort = Mockito.mock(TotpCredentialLoadPort.class);
     TotpCredentialWritePort totpCredentialWritePort = Mockito.mock(TotpCredentialWritePort.class);
     TotpSecretPort totpSecretPort = Mockito.mock(TotpSecretPort.class);
+    BackupCodeWritePort backupCodeWritePort = Mockito.mock(BackupCodeWritePort.class);
     RefreshTokenSessionWritePort refreshTokenSessionWritePort =
         Mockito.mock(RefreshTokenSessionWritePort.class);
 
@@ -50,12 +52,14 @@ class TotpDisableServiceTest {
             totpCredentialLoadPort,
             totpCredentialWritePort,
             totpSecretPort,
+            backupCodeWritePort,
             refreshTokenSessionWritePort,
             Clock.fixed(NOW, ZoneOffset.UTC));
 
     service.disable(new TotpDisableCommand(7L, "123456"));
 
     verify(totpCredentialWritePort).deleteByUserId(7L);
+    verify(backupCodeWritePort).supersedeActiveByUserId(7L, NOW);
     verify(refreshTokenSessionWritePort).revokeActiveSessionsByUserId(7L, NOW);
   }
 
@@ -65,6 +69,7 @@ class TotpDisableServiceTest {
     TotpCredentialLoadPort totpCredentialLoadPort = Mockito.mock(TotpCredentialLoadPort.class);
     TotpCredentialWritePort totpCredentialWritePort = Mockito.mock(TotpCredentialWritePort.class);
     TotpSecretPort totpSecretPort = Mockito.mock(TotpSecretPort.class);
+    BackupCodeWritePort backupCodeWritePort = Mockito.mock(BackupCodeWritePort.class);
     RefreshTokenSessionWritePort refreshTokenSessionWritePort =
         Mockito.mock(RefreshTokenSessionWritePort.class);
 
@@ -79,6 +84,7 @@ class TotpDisableServiceTest {
             totpCredentialLoadPort,
             totpCredentialWritePort,
             totpSecretPort,
+            backupCodeWritePort,
             refreshTokenSessionWritePort,
             Clock.fixed(NOW, ZoneOffset.UTC));
 
@@ -87,6 +93,7 @@ class TotpDisableServiceTest {
         () -> service.disable(new TotpDisableCommand(7L, "123456")));
 
     verify(totpCredentialWritePort, never()).deleteByUserId(anyLong());
+    verify(backupCodeWritePort, never()).supersedeActiveByUserId(anyLong(), any(Instant.class));
     verify(refreshTokenSessionWritePort, never())
         .revokeActiveSessionsByUserId(anyLong(), any(Instant.class));
   }
