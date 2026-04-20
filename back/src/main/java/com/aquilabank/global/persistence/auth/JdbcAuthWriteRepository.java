@@ -7,6 +7,8 @@ import com.aquilabank.domain.auth.model.AuthStatusChangeAuditEntry;
 import com.aquilabank.domain.auth.model.AuthStatusChangeOutcome;
 import com.aquilabank.domain.auth.model.AuthStatusChangeType;
 import com.aquilabank.domain.auth.model.AuthUserSummary;
+import com.aquilabank.domain.auth.model.BackupCodeIssueCommand;
+import com.aquilabank.domain.auth.model.BackupCodeUseCommand;
 import com.aquilabank.domain.auth.model.LoginFailureUpdateCommand;
 import com.aquilabank.domain.auth.model.LoginSuccessUpdateCommand;
 import com.aquilabank.domain.auth.model.PasswordRecoveryTokenIssueCommand;
@@ -28,6 +30,7 @@ import com.aquilabank.domain.auth.model.UserBootstrapResult;
 import com.aquilabank.domain.auth.model.UserBootstrapWriteCommand;
 import com.aquilabank.domain.auth.model.UserStatus;
 import com.aquilabank.domain.auth.model.UserStatusUpdateCommand;
+import com.aquilabank.domain.auth.port.BackupCodeWritePort;
 import com.aquilabank.domain.auth.port.LoginAttemptUpdatePort;
 import com.aquilabank.domain.auth.port.PasswordRecoveryTokenWritePort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionCleanupPort;
@@ -54,6 +57,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class JdbcAuthWriteRepository
     implements UserBootstrapPort,
         LoginAttemptUpdatePort,
+        BackupCodeWritePort,
         PasswordRecoveryTokenWritePort,
         UserCredentialUpdatePort,
         RefreshTokenSessionCleanupPort,
@@ -68,6 +72,71 @@ public class JdbcAuthWriteRepository
 
   public JdbcAuthWriteRepository(NamedParameterJdbcTemplate jdbcTemplate) {
     this.jdbcTemplate = jdbcTemplate;
+  }
+
+  @Override
+  @Transactional
+  public void supersedeActiveByUserId(long userId, Instant supersededAt) {
+    jdbcTemplate.update(
+        """
+        UPDATE auth_mfa_backup_code
+        SET code_status = 'SUPERSEDED',
+            updated_at = :supersededAt
+        WHERE user_id = :userId
+          AND code_status = 'ACTIVE'
+        """,
+        new MapSqlParameterSource()
+            .addValue("userId", userId)
+            .addValue("supersededAt", Timestamp.from(supersededAt)));
+  }
+
+  @Override
+  @Transactional
+  public void issue(BackupCodeIssueCommand command) {
+    jdbcTemplate.update(
+        """
+        INSERT INTO auth_mfa_backup_code (
+            user_id,
+            code_hash,
+            code_status,
+            used_at,
+            created_at,
+            updated_at
+        )
+        VALUES (
+            :userId,
+            :codeHash,
+            'ACTIVE',
+            NULL,
+            :createdAt,
+            :createdAt
+        )
+        """,
+        new MapSqlParameterSource()
+            .addValue("userId", command.userId())
+            .addValue("codeHash", command.codeHash())
+            .addValue("createdAt", Timestamp.from(command.createdAt())));
+  }
+
+  @Override
+  @Transactional
+  public void markUsed(BackupCodeUseCommand command) {
+    int updated =
+        jdbcTemplate.update(
+            """
+            UPDATE auth_mfa_backup_code
+            SET code_status = 'USED',
+                used_at = :usedAt,
+                updated_at = :usedAt
+            WHERE id = :codeId
+              AND code_status = 'ACTIVE'
+            """,
+            new MapSqlParameterSource()
+                .addValue("codeId", command.codeId())
+                .addValue("usedAt", Timestamp.from(command.usedAt())));
+    if (updated != 1) {
+      throw new IllegalStateException("backup code is not active");
+    }
   }
 
   @Override

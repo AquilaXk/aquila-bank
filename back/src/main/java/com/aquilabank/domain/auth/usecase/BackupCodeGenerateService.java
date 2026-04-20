@@ -1,79 +1,88 @@
 package com.aquilabank.domain.auth.usecase;
 
 import com.aquilabank.domain.auth.exception.InvalidCredentialsException;
+import com.aquilabank.domain.auth.model.BackupCodeGenerateCommand;
+import com.aquilabank.domain.auth.model.BackupCodeIssueCommand;
+import com.aquilabank.domain.auth.model.BackupCodeIssueResult;
+import com.aquilabank.domain.auth.model.GeneratedBackupCode;
 import com.aquilabank.domain.auth.model.LoginUser;
 import com.aquilabank.domain.auth.model.TotpCredential;
 import com.aquilabank.domain.auth.model.TotpCredentialStatus;
-import com.aquilabank.domain.auth.model.TotpDisableCommand;
 import com.aquilabank.domain.auth.model.UserStatus;
+import com.aquilabank.domain.auth.port.BackupCodeSecretPort;
 import com.aquilabank.domain.auth.port.BackupCodeWritePort;
-import com.aquilabank.domain.auth.port.RefreshTokenSessionWritePort;
 import com.aquilabank.domain.auth.port.TotpCredentialLoadPort;
-import com.aquilabank.domain.auth.port.TotpCredentialWritePort;
 import com.aquilabank.domain.auth.port.TotpSecretPort;
 import com.aquilabank.domain.auth.port.UserCredentialLoadPort;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.List;
 
-/** 현재 TOTP code 재검증 뒤 credential 제거와 session 정리를 같은 tx에 묶습니다. */
-public final class TotpDisableService implements TotpDisableUseCase {
+/** backup code 묶음 교체는 현재 TOTP 재검증 뒤 같은 tx 안에서만 허용합니다. */
+public final class BackupCodeGenerateService implements BackupCodeGenerateUseCase {
 
   private final UserCredentialLoadPort userCredentialLoadPort;
   private final TotpCredentialLoadPort totpCredentialLoadPort;
-  private final TotpCredentialWritePort totpCredentialWritePort;
   private final TotpSecretPort totpSecretPort;
+  private final BackupCodeSecretPort backupCodeSecretPort;
   private final BackupCodeWritePort backupCodeWritePort;
-  private final RefreshTokenSessionWritePort refreshTokenSessionWritePort;
+  private final int backupCodeCount;
   private final Clock clock;
 
-  public TotpDisableService(
+  public BackupCodeGenerateService(
       UserCredentialLoadPort userCredentialLoadPort,
       TotpCredentialLoadPort totpCredentialLoadPort,
-      TotpCredentialWritePort totpCredentialWritePort,
       TotpSecretPort totpSecretPort,
+      BackupCodeSecretPort backupCodeSecretPort,
       BackupCodeWritePort backupCodeWritePort,
-      RefreshTokenSessionWritePort refreshTokenSessionWritePort,
+      int backupCodeCount,
       Clock clock) {
     this.userCredentialLoadPort = userCredentialLoadPort;
     this.totpCredentialLoadPort = totpCredentialLoadPort;
-    this.totpCredentialWritePort = totpCredentialWritePort;
     this.totpSecretPort = totpSecretPort;
+    this.backupCodeSecretPort = backupCodeSecretPort;
     this.backupCodeWritePort = backupCodeWritePort;
-    this.refreshTokenSessionWritePort = refreshTokenSessionWritePort;
+    this.backupCodeCount = backupCodeCount;
     this.clock = clock;
   }
 
   @Override
-  public void disable(TotpDisableCommand command) {
+  public BackupCodeIssueResult issue(BackupCodeGenerateCommand command) {
     Instant now = Instant.now(clock);
     loadActiveUser(command.userId());
     TotpCredential credential =
         totpCredentialLoadPort
             .findCredentialByUserIdForUpdate(command.userId())
-            .orElseThrow(this::invalidDisable);
+            .orElseThrow(this::invalidIssue);
     if (credential.credentialStatus() != TotpCredentialStatus.ACTIVE) {
-      throw invalidDisable();
+      throw invalidIssue();
     }
     if (!totpSecretPort.matches(
         credential.secretCiphertext(), credential.secretNonce(), command.totpCode(), now)) {
-      throw invalidDisable();
+      throw invalidIssue();
     }
 
-    totpCredentialWritePort.deleteByUserId(command.userId());
+    List<GeneratedBackupCode> generatedItems = backupCodeSecretPort.generate(backupCodeCount);
+    // 재발급 race에서도 active 묶음이 한 세트만 남도록 이전 code를 먼저 supersede 합니다.
     backupCodeWritePort.supersedeActiveByUserId(command.userId(), now);
-    refreshTokenSessionWritePort.revokeActiveSessionsByUserId(command.userId(), now);
+    for (GeneratedBackupCode item : generatedItems) {
+      backupCodeWritePort.issue(new BackupCodeIssueCommand(command.userId(), item.codeHash(), now));
+    }
+    return new BackupCodeIssueResult(
+        generatedItems.stream().map(GeneratedBackupCode::plainCode).toList(),
+        generatedItems.size());
   }
 
   private LoginUser loadActiveUser(long userId) {
     LoginUser user =
-        userCredentialLoadPort.findByUserIdForUpdate(userId).orElseThrow(this::invalidDisable);
+        userCredentialLoadPort.findByUserIdForUpdate(userId).orElseThrow(this::invalidIssue);
     if (user.status() != UserStatus.ACTIVE) {
-      throw invalidDisable();
+      throw invalidIssue();
     }
     return user;
   }
 
-  private InvalidCredentialsException invalidDisable() {
-    return new InvalidCredentialsException("mfa disable failed");
+  private InvalidCredentialsException invalidIssue() {
+    return new InvalidCredentialsException("backup code issue failed");
   }
 }

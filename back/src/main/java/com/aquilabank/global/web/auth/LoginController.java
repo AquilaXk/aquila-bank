@@ -5,6 +5,9 @@ import com.aquilabank.domain.auth.model.AuthSessionListQuery;
 import com.aquilabank.domain.auth.model.AuthSessionRevokeAllCommand;
 import com.aquilabank.domain.auth.model.AuthSessionRevokeCommand;
 import com.aquilabank.domain.auth.model.AuthSessionSummary;
+import com.aquilabank.domain.auth.model.BackupCodeChallengeVerifyCommand;
+import com.aquilabank.domain.auth.model.BackupCodeGenerateCommand;
+import com.aquilabank.domain.auth.model.BackupCodeIssueResult;
 import com.aquilabank.domain.auth.model.LoginCommand;
 import com.aquilabank.domain.auth.model.LoginResult;
 import com.aquilabank.domain.auth.model.LogoutCommand;
@@ -22,6 +25,8 @@ import com.aquilabank.domain.auth.model.TotpEnrollmentVerifyResult;
 import com.aquilabank.domain.auth.usecase.AuthSessionListUseCase;
 import com.aquilabank.domain.auth.usecase.AuthSessionRevokeAllUseCase;
 import com.aquilabank.domain.auth.usecase.AuthSessionRevokeUseCase;
+import com.aquilabank.domain.auth.usecase.BackupCodeChallengeVerifyUseCase;
+import com.aquilabank.domain.auth.usecase.BackupCodeGenerateUseCase;
 import com.aquilabank.domain.auth.usecase.LoginUseCase;
 import com.aquilabank.domain.auth.usecase.LogoutUseCase;
 import com.aquilabank.domain.auth.usecase.PasswordRecoveryConfirmUseCase;
@@ -75,6 +80,8 @@ public class LoginController {
   private final TotpEnrollmentUseCase totpEnrollmentUseCase;
   private final TotpChallengeVerifyUseCase totpChallengeVerifyUseCase;
   private final TotpDisableUseCase totpDisableUseCase;
+  private final BackupCodeGenerateUseCase backupCodeGenerateUseCase;
+  private final BackupCodeChallengeVerifyUseCase backupCodeChallengeVerifyUseCase;
   private final LogoutUseCase logoutUseCase;
   private final PasswordResetUseCase passwordResetUseCase;
   private final PasswordRecoveryRequestUseCase passwordRecoveryRequestUseCase;
@@ -91,6 +98,8 @@ public class LoginController {
       TotpEnrollmentUseCase totpEnrollmentUseCase,
       TotpChallengeVerifyUseCase totpChallengeVerifyUseCase,
       TotpDisableUseCase totpDisableUseCase,
+      BackupCodeGenerateUseCase backupCodeGenerateUseCase,
+      BackupCodeChallengeVerifyUseCase backupCodeChallengeVerifyUseCase,
       LogoutUseCase logoutUseCase,
       PasswordResetUseCase passwordResetUseCase,
       PasswordRecoveryRequestUseCase passwordRecoveryRequestUseCase,
@@ -105,6 +114,8 @@ public class LoginController {
     this.totpEnrollmentUseCase = totpEnrollmentUseCase;
     this.totpChallengeVerifyUseCase = totpChallengeVerifyUseCase;
     this.totpDisableUseCase = totpDisableUseCase;
+    this.backupCodeGenerateUseCase = backupCodeGenerateUseCase;
+    this.backupCodeChallengeVerifyUseCase = backupCodeChallengeVerifyUseCase;
     this.logoutUseCase = logoutUseCase;
     this.passwordResetUseCase = passwordResetUseCase;
     this.passwordRecoveryRequestUseCase = passwordRecoveryRequestUseCase;
@@ -160,6 +171,26 @@ public class LoginController {
     AuthenticatedUserPrincipal userPrincipal = requireUserPrincipal(principal);
     totpDisableUseCase.disable(new TotpDisableCommand(userPrincipal.userId(), request.totpCode()));
     return ResponseEntity.noContent().build();
+  }
+
+  @PostMapping("/mfa/backup-codes")
+  public BackupCodeIssueResponse issueBackupCodes(
+      @CurrentAuthenticatedPrincipal AuthenticatedRequestPrincipal principal,
+      @Valid @RequestBody TotpCodeRequest request) {
+    AuthenticatedUserPrincipal userPrincipal = requireUserPrincipal(principal);
+    BackupCodeIssueResult result =
+        backupCodeGenerateUseCase.issue(
+            new BackupCodeGenerateCommand(userPrincipal.userId(), request.totpCode()));
+    return BackupCodeIssueResponse.from(result);
+  }
+
+  @PostMapping("/mfa/backup-codes/challenge/verify")
+  public LoginResponse verifyBackupCodeChallenge(
+      @Valid @RequestBody BackupCodeChallengeVerifyRequest request) {
+    LoginResult result =
+        backupCodeChallengeVerifyUseCase.verify(
+            new BackupCodeChallengeVerifyCommand(request.challengeId(), request.backupCode()));
+    return LoginResponse.from(result);
   }
 
   @GetMapping("/sessions")
@@ -273,6 +304,11 @@ public class LoginController {
       @NotBlank(message = "challengeId is required") @Size(max = 64, message = "challengeId must be 64 characters or less") String challengeId,
       @NotBlank(message = "totpCode is required") @Pattern(regexp = "\\d{6}", message = "totpCode must be 6 digits") String totpCode) {}
 
+  /** backup code challenge verify 요청 body */
+  public record BackupCodeChallengeVerifyRequest(
+      @NotBlank(message = "challengeId is required") @Size(max = 64, message = "challengeId must be 64 characters or less") String challengeId,
+      @NotBlank(message = "backupCode is required") @Size(max = 16, message = "backupCode must be 16 characters or less") String backupCode) {}
+
   /** access/refresh token 발급 응답 */
   public record LoginResponse(
       String status,
@@ -317,6 +353,14 @@ public class LoginController {
     private static TotpEnrollmentVerifyResponse from(TotpEnrollmentVerifyResult result) {
       return new TotpEnrollmentVerifyResponse(
           result.credentialStatus().name(), result.verifiedAt());
+    }
+  }
+
+  /** backup code 발급 응답 */
+  public record BackupCodeIssueResponse(int codeCount, List<String> backupCodes) {
+
+    private static BackupCodeIssueResponse from(BackupCodeIssueResult result) {
+      return new BackupCodeIssueResponse(result.codeCount(), result.backupCodes());
     }
   }
 

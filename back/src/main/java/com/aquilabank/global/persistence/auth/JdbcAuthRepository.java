@@ -9,6 +9,8 @@ import com.aquilabank.domain.auth.model.AuthStatusChangeReason;
 import com.aquilabank.domain.auth.model.AuthStatusChangeReasonCode;
 import com.aquilabank.domain.auth.model.AuthStatusChangeType;
 import com.aquilabank.domain.auth.model.AuthUserSummary;
+import com.aquilabank.domain.auth.model.BackupCodeRecord;
+import com.aquilabank.domain.auth.model.BackupCodeStatus;
 import com.aquilabank.domain.auth.model.LoginUser;
 import com.aquilabank.domain.auth.model.MembershipRole;
 import com.aquilabank.domain.auth.model.MembershipStatus;
@@ -25,6 +27,7 @@ import com.aquilabank.domain.auth.port.AccountAccessPort;
 import com.aquilabank.domain.auth.port.AccountStatusAccessPort;
 import com.aquilabank.domain.auth.port.AuthSessionQueryPort;
 import com.aquilabank.domain.auth.port.AuthStatusChangeAuditQueryPort;
+import com.aquilabank.domain.auth.port.BackupCodeLoadPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionLoadPort;
 import com.aquilabank.domain.auth.port.TotpCredentialLoadPort;
 import com.aquilabank.domain.auth.port.TotpLoginChallengeLoadPort;
@@ -45,6 +48,7 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class JdbcAuthRepository
     implements UserCredentialLoadPort,
+        BackupCodeLoadPort,
         RefreshTokenSessionLoadPort,
         TotpCredentialLoadPort,
         TotpLoginChallengeLoadPort,
@@ -194,6 +198,30 @@ public class JdbcAuthRepository
             """,
             new MapSqlParameterSource().addValue("challengeId", challengeId),
             (rs, rowNum) -> mapTotpLoginChallenge(rs))
+        .stream()
+        .findFirst();
+  }
+
+  @Override
+  public Optional<BackupCodeRecord> findActiveByUserIdAndCodeHashForUpdate(
+      long userId, String codeHash) {
+    return jdbcTemplate
+        .query(
+            """
+            SELECT id,
+                   user_id,
+                   code_hash,
+                   code_status,
+                   used_at,
+                   created_at
+            FROM auth_mfa_backup_code
+            WHERE user_id = :userId
+              AND code_hash = :codeHash
+              AND code_status = 'ACTIVE'
+            FOR UPDATE
+            """,
+            new MapSqlParameterSource().addValue("userId", userId).addValue("codeHash", codeHash),
+            (rs, rowNum) -> mapBackupCodeRecord(rs))
         .stream()
         .findFirst();
   }
@@ -443,6 +471,16 @@ public class JdbcAuthRepository
         toInstant(rs.getTimestamp("expires_at")),
         rs.getString("device_name"),
         rs.getString("ip_address"));
+  }
+
+  private BackupCodeRecord mapBackupCodeRecord(ResultSet rs) throws SQLException {
+    return new BackupCodeRecord(
+        rs.getLong("id"),
+        rs.getLong("user_id"),
+        rs.getString("code_hash"),
+        BackupCodeStatus.valueOf(rs.getString("code_status")),
+        toNullableInstant(rs.getTimestamp("used_at")),
+        toInstant(rs.getTimestamp("created_at")));
   }
 
   private RefreshTokenSession mapRefreshTokenSession(ResultSet rs) throws SQLException {

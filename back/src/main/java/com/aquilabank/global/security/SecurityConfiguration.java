@@ -1,6 +1,7 @@
 package com.aquilabank.global.security;
 
 import com.aquilabank.domain.auth.port.AuthTokenIssuePort;
+import com.aquilabank.domain.auth.port.BackupCodeSecretPort;
 import com.aquilabank.domain.auth.port.PasswordHashPort;
 import com.aquilabank.domain.auth.port.PasswordRecoverySecretPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSecretPort;
@@ -78,6 +79,8 @@ public class SecurityConfiguration {
                     .requestMatchers("/api/v1/auth/password-recovery/confirm")
                     .permitAll()
                     .requestMatchers("/api/v1/auth/mfa/totp/challenge/verify")
+                    .permitAll()
+                    .requestMatchers("/api/v1/auth/mfa/backup-codes/challenge/verify")
                     .permitAll()
                     // 내부 운영 API는 public JWT resolver에서 제외하고 전용 service JWT로만 검증합니다.
                     .requestMatchers("/internal/api/v1/accounts/bootstrap")
@@ -181,6 +184,11 @@ public class SecurityConfiguration {
   @Bean
   RefreshTokenSecretPort refreshTokenSecretPort() {
     return new Sha256RefreshTokenManager();
+  }
+
+  @Bean
+  BackupCodeSecretPort backupCodeSecretPort() {
+    return new Sha256BackupCodeManager();
   }
 
   @Bean

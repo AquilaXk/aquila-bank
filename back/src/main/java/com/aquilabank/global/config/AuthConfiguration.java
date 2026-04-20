@@ -9,6 +9,9 @@ import com.aquilabank.domain.auth.port.AccountStatusAccessPort;
 import com.aquilabank.domain.auth.port.AuthSessionQueryPort;
 import com.aquilabank.domain.auth.port.AuthStatusChangeAuditQueryPort;
 import com.aquilabank.domain.auth.port.AuthTokenIssuePort;
+import com.aquilabank.domain.auth.port.BackupCodeLoadPort;
+import com.aquilabank.domain.auth.port.BackupCodeSecretPort;
+import com.aquilabank.domain.auth.port.BackupCodeWritePort;
 import com.aquilabank.domain.auth.port.LoginAttemptAuditPort;
 import com.aquilabank.domain.auth.port.LoginAttemptUpdatePort;
 import com.aquilabank.domain.auth.port.PasswordHashPort;
@@ -43,6 +46,10 @@ import com.aquilabank.domain.auth.usecase.AuthStatusChangeAuditQueryService;
 import com.aquilabank.domain.auth.usecase.AuthStatusChangeAuditQueryUseCase;
 import com.aquilabank.domain.auth.usecase.AuthUserQueryService;
 import com.aquilabank.domain.auth.usecase.AuthUserQueryUseCase;
+import com.aquilabank.domain.auth.usecase.BackupCodeChallengeVerifyService;
+import com.aquilabank.domain.auth.usecase.BackupCodeChallengeVerifyUseCase;
+import com.aquilabank.domain.auth.usecase.BackupCodeGenerateService;
+import com.aquilabank.domain.auth.usecase.BackupCodeGenerateUseCase;
 import com.aquilabank.domain.auth.usecase.LoginService;
 import com.aquilabank.domain.auth.usecase.LoginUseCase;
 import com.aquilabank.domain.auth.usecase.LogoutService;
@@ -301,6 +308,7 @@ public class AuthConfiguration {
       TotpCredentialLoadPort totpCredentialLoadPort,
       TotpCredentialWritePort totpCredentialWritePort,
       TotpSecretPort totpSecretPort,
+      BackupCodeWritePort backupCodeWritePort,
       RefreshTokenSessionWritePort refreshTokenSessionWritePort,
       Clock authClock,
       PlatformTransactionManager platformTransactionManager) {
@@ -310,11 +318,96 @@ public class AuthConfiguration {
             totpCredentialLoadPort,
             totpCredentialWritePort,
             totpSecretPort,
+            backupCodeWritePort,
             refreshTokenSessionWritePort,
             authClock);
     TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
     return command ->
         transactionTemplate.executeWithoutResult(status -> totpDisableService.disable(command));
+  }
+
+  @Bean
+  BackupCodeGenerateUseCase backupCodeGenerateUseCase(
+      UserCredentialLoadPort userCredentialLoadPort,
+      TotpCredentialLoadPort totpCredentialLoadPort,
+      TotpSecretPort totpSecretPort,
+      BackupCodeSecretPort backupCodeSecretPort,
+      BackupCodeWritePort backupCodeWritePort,
+      Clock authClock,
+      PlatformTransactionManager platformTransactionManager) {
+    BackupCodeGenerateService backupCodeGenerateService =
+        new BackupCodeGenerateService(
+            userCredentialLoadPort,
+            totpCredentialLoadPort,
+            totpSecretPort,
+            backupCodeSecretPort,
+            backupCodeWritePort,
+            10,
+            authClock);
+    TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
+    return command -> {
+      com.aquilabank.domain.auth.model.BackupCodeIssueResult result =
+          transactionTemplate.execute(status -> backupCodeGenerateService.issue(command));
+      if (result == null) {
+        throw new IllegalStateException("backup code issue transaction returned null result");
+      }
+      return result;
+    };
+  }
+
+  @Bean
+  BackupCodeChallengeVerifyUseCase backupCodeChallengeVerifyUseCase(
+      TotpLoginChallengeLoadPort totpLoginChallengeLoadPort,
+      TotpLoginChallengeWritePort totpLoginChallengeWritePort,
+      TotpCredentialLoadPort totpCredentialLoadPort,
+      BackupCodeLoadPort backupCodeLoadPort,
+      BackupCodeWritePort backupCodeWritePort,
+      BackupCodeSecretPort backupCodeSecretPort,
+      RefreshTokenSessionWritePort refreshTokenSessionWritePort,
+      RefreshTokenSecretPort refreshTokenSecretPort,
+      AuthTokenIssuePort authTokenIssuePort,
+      RefreshTokenPolicy refreshTokenPolicy,
+      SecurityTotpProperties securityTotpProperties,
+      Clock authClock,
+      PlatformTransactionManager platformTransactionManager) {
+    BackupCodeChallengeVerifyService backupCodeChallengeVerifyService =
+        new BackupCodeChallengeVerifyService(
+            totpLoginChallengeLoadPort,
+            totpLoginChallengeWritePort,
+            totpCredentialLoadPort,
+            backupCodeLoadPort,
+            backupCodeWritePort,
+            backupCodeSecretPort,
+            refreshTokenSessionWritePort,
+            refreshTokenSecretPort,
+            authTokenIssuePort,
+            refreshTokenPolicy,
+            securityTotpProperties.challengeMaxAttempts(),
+            authClock);
+    TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
+    return command -> {
+      LoginTransactionResult transactionResult =
+          transactionTemplate.execute(
+              status -> {
+                try {
+                  return LoginTransactionResult.success(
+                      backupCodeChallengeVerifyService.verify(command));
+                } catch (InvalidCredentialsException ex) {
+                  return LoginTransactionResult.failure(ex);
+                }
+              });
+      if (transactionResult == null) {
+        throw new IllegalStateException("backup code challenge verify transaction result is null");
+      }
+      if (transactionResult.exception() != null) {
+        throw transactionResult.exception();
+      }
+      if (transactionResult.result() == null) {
+        throw new IllegalStateException(
+            "backup code challenge verify transaction returned null result");
+      }
+      return transactionResult.result();
+    };
   }
 
   @Bean
