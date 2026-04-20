@@ -432,6 +432,7 @@ login 실패/잠금은 structured log 한 줄로 남습니다.
   - raw refresh token은 응답으로만 한 번 내려가고 DB에는 `SHA-256 token_hash`만 저장
   - raw binding token도 cookie로만 한 번 내려가고 DB에는 `SHA-256 device_binding_hash`만 저장
   - 저장 테이블은 `auth_refresh_token_session`
+  - access token JWT는 `user_id`와 함께 현재 refresh token session의 `session_id` claim도 포함한다
   - login/refresh 시 session row에 `device_name`, `ip_address`를 함께 저장
   - `device_name`은 request `User-Agent`를 경량 규칙으로 정리한 `OS / Browser` 값 우선 사용
   - `ip_address`는 `X-Forwarded-For` 첫 값, `Forwarded for=`, `X-Real-IP`, `remoteAddr` 순서로 해석
@@ -447,7 +448,9 @@ login 실패/잠금은 structured log 한 줄로 남습니다.
   - 현재 JWT user만 호출 가능하고 bootstrap account principal은 `403`
   - query parameter `size`는 기본 `20`, 최대 `50`
   - 응답은 현재 user의 `ACTIVE` 이면서 아직 만료되지 않은 session만 `expires_at DESC, id DESC` 순서로 반환
-  - item 필드는 `sessionId`, `sessionStatus`, `expiresAt`, `lastUsedAt`, `createdAt`, `deviceName`, `ipAddress`
+  - item 필드는 `sessionId`, `sessionStatus`, `expiresAt`, `lastUsedAt`, `createdAt`, `deviceName`, `ipAddress`, `currentSession`
+  - `currentSession=true` 기준은 현재 access token의 `session_id` claim과 item `sessionId` 일치 여부다
+  - deploy 직후 TTL 내에 남는 구 access token처럼 `session_id` claim이 없으면 인증은 유지하고 `currentSession`은 전부 `false`다
 - 세션 종료 기준:
   - `DELETE /api/v1/auth/sessions/{sessionId}`는 현재 user 소유의 `ACTIVE` session 하나만 `REVOKED`로 바꾼다.
   - `DELETE /api/v1/auth/sessions`는 현재 user의 `ACTIVE` session 전체를 `REVOKED`로 바꾸고 `ab_refresh_device` cookie도 clear 한다.
