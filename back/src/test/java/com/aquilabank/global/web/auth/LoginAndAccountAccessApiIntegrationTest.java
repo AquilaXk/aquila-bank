@@ -22,10 +22,18 @@ import com.aquilabank.standard.util.Base32Codec;
 import com.aquilabank.support.PostgresContainerTestSupport;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nimbusds.jose.JOSEObjectType;
+import com.nimbusds.jose.JWSAlgorithm;
+import com.nimbusds.jose.JWSHeader;
+import com.nimbusds.jose.crypto.MACSigner;
+import com.nimbusds.jwt.JWTClaimsSet;
+import com.nimbusds.jwt.SignedJWT;
 import jakarta.servlet.http.Cookie;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -64,6 +72,7 @@ import org.springframework.web.context.WebApplicationContext;
 class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSupport {
 
   private static final String AUTH_ADMIN_SUBJECT = "ops-admin";
+  private static final String TEST_SECRET = "test-local-jwt-secret-test-local-jwt-secret";
   private static final String REFRESH_DEVICE_COOKIE_NAME = "ab_refresh_device";
   private static final String REMEMBER_DEVICE_COOKIE_NAME = "ab_mfa_remember_device";
   private static final RequestClientMetadata WINDOWS_CHROME =
@@ -778,16 +787,67 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.items.length()").value(3))
         .andExpect(jsonPath("$.items[0].sessionId").value(newestSessionId))
+        .andExpect(jsonPath("$.items[0].currentSession").value(true))
         .andExpect(jsonPath("$.items[0].sessionStatus").value("ACTIVE"))
         .andExpect(jsonPath("$.items[0].deviceName").value(WINDOWS_EDGE.expectedDeviceName()))
         .andExpect(jsonPath("$.items[0].ipAddress").value(WINDOWS_EDGE.expectedIpAddress()))
         .andExpect(jsonPath("$.items[1].sessionId").value(middleSessionId))
+        .andExpect(jsonPath("$.items[1].currentSession").value(false))
         .andExpect(jsonPath("$.items[1].deviceName").value(IPHONE_SAFARI.expectedDeviceName()))
         .andExpect(jsonPath("$.items[1].ipAddress").value(IPHONE_SAFARI.expectedIpAddress()))
         .andExpect(jsonPath("$.items[2].sessionId").value(oldestSessionId))
+        .andExpect(jsonPath("$.items[2].currentSession").value(false))
         .andExpect(jsonPath("$.items[2].deviceName").value(WINDOWS_CHROME.expectedDeviceName()))
         .andExpect(jsonPath("$.items[2].ipAddress").value(WINDOWS_CHROME.expectedIpAddress()))
         .andExpect(jsonPath("$.items[0].createdAt").isString());
+  }
+
+  @Test
+  void authSessionListMarksRefreshedSessionAsCurrent() throws Exception {
+    TokenPairResponseView oldest =
+        loginResult("alice", "password123!", "session-current-refresh-login-001", WINDOWS_CHROME);
+    TokenPairResponseView current =
+        loginResult("alice", "password123!", "session-current-refresh-login-002", WINDOWS_EDGE);
+    TokenPairResponseView refreshed =
+        refresh(current.refreshToken(), "session-current-refresh-refresh-001", IPHONE_SAFARI);
+
+    long refreshedSessionId = loadRefreshTokenSessionId(refreshed.refreshToken());
+    long oldestSessionId = loadRefreshTokenSessionId(oldest.refreshToken());
+
+    mockMvc
+        .perform(
+            get("/api/v1/auth/sessions")
+                .header("Authorization", "Bearer " + refreshed.accessToken())
+                .param("size", "10"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(2))
+        .andExpect(jsonPath("$.items[0].sessionId").value(refreshedSessionId))
+        .andExpect(jsonPath("$.items[0].currentSession").value(true))
+        .andExpect(jsonPath("$.items[1].sessionId").value(oldestSessionId))
+        .andExpect(jsonPath("$.items[1].currentSession").value(false));
+  }
+
+  @Test
+  void authSessionListAllowsLegacyJwtWithoutSessionIdAndMarksNoCurrentSession() throws Exception {
+    TokenPairResponseView oldest =
+        loginResult("alice", "password123!", "session-legacy-login-001", WINDOWS_CHROME);
+    TokenPairResponseView newest =
+        loginResult("alice", "password123!", "session-legacy-login-002", WINDOWS_EDGE);
+    long newestSessionId = loadRefreshTokenSessionId(newest.refreshToken());
+    long oldestSessionId = loadRefreshTokenSessionId(oldest.refreshToken());
+    String legacyAccessToken = issueLegacyAccessToken("alice", userId);
+
+    mockMvc
+        .perform(
+            get("/api/v1/auth/sessions")
+                .header("Authorization", "Bearer " + legacyAccessToken)
+                .param("size", "10"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(2))
+        .andExpect(jsonPath("$.items[0].sessionId").value(newestSessionId))
+        .andExpect(jsonPath("$.items[0].currentSession").value(false))
+        .andExpect(jsonPath("$.items[1].sessionId").value(oldestSessionId))
+        .andExpect(jsonPath("$.items[1].currentSession").value(false));
   }
 
   @Test
@@ -2578,6 +2638,22 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
 
   private String internalServiceAuthorization(String subject, InternalServiceScope scope) {
     return "Bearer " + internalServiceTokenIssuer.issue(subject, java.util.Set.of(scope));
+  }
+
+  private String issueLegacyAccessToken(String subject, long userId) throws Exception {
+    Instant issuedAt = Instant.now();
+    JWTClaimsSet claimsSet =
+        new JWTClaimsSet.Builder()
+            .subject(subject)
+            .issueTime(Date.from(issuedAt))
+            .expirationTime(Date.from(issuedAt.plusSeconds(900)))
+            .claim("user_id", userId)
+            .build();
+    SignedJWT signedJwt =
+        new SignedJWT(
+            new JWSHeader.Builder(JWSAlgorithm.HS256).type(JOSEObjectType.JWT).build(), claimsSet);
+    signedJwt.sign(new MACSigner(TEST_SECRET.getBytes(StandardCharsets.UTF_8)));
+    return signedJwt.serialize();
   }
 
   private LoginProtectionState loadLoginProtectionState(long userId) {
