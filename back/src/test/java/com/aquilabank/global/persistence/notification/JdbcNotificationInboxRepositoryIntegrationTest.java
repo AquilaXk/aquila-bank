@@ -294,6 +294,21 @@ class JdbcNotificationInboxRepositoryIntegrationTest extends PostgresContainerTe
     assertThat(slice.nextCursor().appliedTo()).isEqualTo(appliedTo);
     assertThat(slice.nextCursor().filterFingerprint())
         .isEqualTo("UNREAD|TransferBooked|2026-04-17T00:00:00Z|2026-04-17T00:01:00Z");
+
+    NotificationSearchSlice nextSlice =
+        repository.searchByAccountId(
+            accountId[0],
+            new NotificationSearchQuery(
+                2,
+                slice.nextCursor(),
+                NotificationReadStatusFilter.UNREAD,
+                "TransferBooked",
+                appliedFrom,
+                appliedTo));
+
+    assertThat(nextSlice.items()).extracting("title").containsExactly("match-1");
+    assertThat(nextSlice.hasNext()).isFalse();
+    assertThat(nextSlice.nextCursor()).isNull();
   }
 
   @Test
@@ -385,6 +400,36 @@ class JdbcNotificationInboxRepositoryIntegrationTest extends PostgresContainerTe
     assertThat(slice.nextCursor()).isNull();
     assertThat(slice.appliedFrom()).isEqualTo(appliedFrom);
     assertThat(slice.appliedTo()).isEqualTo(appliedTo);
+
+    NotificationSearchSlice readSlice =
+        repository.searchByUserId(
+            userId[0],
+            new NotificationSearchQuery(
+                10,
+                null,
+                NotificationReadStatusFilter.READ,
+                "TransferBooked",
+                appliedFrom,
+                appliedTo));
+
+    assertThat(readSlice.items()).extracting("title").containsExactly("visible-read");
+    assertThat(readSlice.items())
+        .extracting("readAt")
+        .containsExactly(appliedFrom.plusSeconds(21));
+
+    NotificationSearchSlice unreadSlice =
+        repository.searchByUserId(
+            userId[0],
+            new NotificationSearchQuery(
+                10,
+                null,
+                NotificationReadStatusFilter.UNREAD,
+                "TransferBooked",
+                appliedFrom,
+                appliedTo));
+
+    assertThat(unreadSlice.items()).extracting("title").containsExactly("visible-unread");
+    assertThat(unreadSlice.items()).extracting("readAt").containsExactly((Instant) null);
   }
 
   @Test
