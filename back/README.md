@@ -652,7 +652,15 @@ requestId drill-down:
 - `actorSubject=-`인 `400`은 헤더 누락 성격이므로 운영 스크립트 drift 또는 수동 호출 오류로 분류합니다.
 - `404`, `409`, `500`은 최소 alert 기본값에서는 제외하고, 아래 후속 운영 기준으로 별도 판단합니다.
 
-### 404/409/500 후속 수집 패턴
+### 404/409/500 후속 운영 기준
+
+| 상태 | 기본 처리 | 승격 트리거 | 우선 확인 |
+| --- | --- | --- | --- |
+| `404 Not Found` | 단발 오호출/대상 불일치 후보로 먼저 분류 | 같은 `actorSubject + path` 반복, 여러 target miss 확산 | `targetUserId`/`targetAccountId` 식별자 drift |
+| `409 Conflict` | 단발 중복 호출/재시도 충돌 후보로 먼저 분류 | 같은 `actorSubject + path + requestedStatus` 반복, 다른 actor 간 충돌 | success audit row 인접 존재 여부 |
+| `500 Internal Server Error` | 단건이어도 incident 후보로 즉시 triage | 같은 시간대 반복 또는 여러 actor/path 확산 | `requestId` 기준 로그 타임라인과 서버 측 오류 확산 |
+
+아래 상세 섹션에서 `수집 패턴`, `제외/승격 조건`, `requestId` 추적 차이를 status별로 이어 봅니다.
 
 #### 404 운영 기준
 
@@ -716,8 +724,13 @@ requestId 우선 drill-down:
 
 ### 404/409/500 제외/승격 조건
 
+- `404`, `409`는 단발 실패를 바로 alert로 승격하지 않고 대상 drift, 중복 호출, 재시도 충돌을 먼저 분리합니다.
+- `500`은 제외보다 incident triage가 우선이므로 단건이어도 즉시 조사 대상으로 둡니다.
+
 #### 404 운영 기준
 
+- 기본 처리:
+  - 단발 `404`는 warning 전송보다 stale target 또는 수동 오입력 여부를 먼저 확인합니다.
 - 제외 조건:
   - 단발 `404`이고 같은 actor가 직후 대상 식별자를 수정해 성공 호출로 전환한 경우
   - 수동 점검 과정에서 잘못된 `userId`/`accountId`를 한 번 입력한 경우
@@ -727,6 +740,8 @@ requestId 우선 drill-down:
 
 #### 409 운영 기준
 
+- 기본 처리:
+  - 단발 `409`는 warning 전송보다 중복 호출, caller retry, 상태 전이 충돌 후보를 먼저 분리합니다.
 - 제외 조건:
   - 같은 actor의 단발 중복 호출이고, 인접 시간대에 성공 감사 row가 확인되는 경우
   - 수동 재실행이나 caller retry가 이미 적용된 상태로 보이는 경우
@@ -736,13 +751,18 @@ requestId 우선 drill-down:
 
 #### 500 운영 기준
 
+- 기본 처리:
+  - 단발 `500`도 caller 오입력보다 서버 측 장애 후보로 먼저 triage 합니다.
 - 제외 조건:
   - 기본적으로 제외하지 않습니다.
 - 승격 조건:
   - `500` 한 건만으로도 incident 후보로 triage 합니다.
   - 같은 시간대에 `500`이 2회 이상 반복되거나 여러 actor/path로 확산되면 critical 후보로 봅니다.
 
-### 404/409/500 requestId 추적 차이
+### 404/409/500 requestId 추적 차이와 triage 순서
+
+- `404`, `409`는 `requestId`를 찾은 뒤 대상 식별자 drift 또는 중복 호출 정황을 먼저 분리합니다.
+- `500`은 `requestId`를 찾는 즉시 같은 시간대 확산 여부와 서버 측 오류 타임라인을 먼저 확인합니다.
 
 - `404`:
   - `requestId`로 실패 로그 한 줄을 찾은 뒤, 같은 `targetUserId`/`targetAccountId`가 실제로 존재했는지 먼저 확인합니다.
