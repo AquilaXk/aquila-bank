@@ -3,12 +3,17 @@ package com.aquilabank.global.persistence.notification;
 import com.aquilabank.domain.notification.model.NotificationCursor;
 import com.aquilabank.domain.notification.model.NotificationInboxEntry;
 import com.aquilabank.domain.notification.model.NotificationListQuery;
+import com.aquilabank.domain.notification.model.NotificationReadStatusFilter;
 import com.aquilabank.domain.notification.model.NotificationReplayQuery;
+import com.aquilabank.domain.notification.model.NotificationSearchCursor;
+import com.aquilabank.domain.notification.model.NotificationSearchQuery;
+import com.aquilabank.domain.notification.model.NotificationSearchSlice;
 import com.aquilabank.domain.notification.model.NotificationSlice;
 import com.aquilabank.domain.notification.model.NotificationSummary;
 import com.aquilabank.domain.notification.port.NotificationInboxAppendPort;
 import com.aquilabank.domain.notification.port.NotificationInboxCleanupPort;
 import com.aquilabank.domain.notification.port.NotificationInboxReadPort;
+import com.aquilabank.domain.notification.port.NotificationInboxSearchPort;
 import com.aquilabank.domain.notification.port.NotificationInboxWritePort;
 import com.aquilabank.global.notification.NotificationInboxInsertedEvent;
 import java.sql.ResultSet;
@@ -31,6 +36,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @Repository
 public class JdbcNotificationInboxRepository
     implements NotificationInboxReadPort,
+        NotificationInboxSearchPort,
         NotificationInboxWritePort,
         NotificationInboxAppendPort,
         NotificationInboxCleanupPort {
@@ -65,6 +71,20 @@ public class JdbcNotificationInboxRepository
             ? fetchByAccountIdFirstPage(accountId, query)
             : fetchByAccountIdNextPage(accountId, query);
     return toSlice(rows, query.limit());
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public NotificationSearchSlice searchByUserId(long userId, NotificationSearchQuery query) {
+    validateSearchCursor(query);
+    return toSearchSlice(fetchSearchByUserId(userId, query), query);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public NotificationSearchSlice searchByAccountId(long accountId, NotificationSearchQuery query) {
+    validateSearchCursor(query);
+    return toSearchSlice(fetchSearchByAccountId(accountId, query), query);
   }
 
   @Override
@@ -360,6 +380,16 @@ public class JdbcNotificationInboxRepository
     return new NotificationSlice(items, nextCursor, hasNext, limit);
   }
 
+  private NotificationSearchSlice toSearchSlice(
+      List<NotificationSummary> rows, NotificationSearchQuery query) {
+    boolean hasNext = rows.size() > query.limit();
+    List<NotificationSummary> items =
+        hasNext ? new ArrayList<>(rows.subList(0, query.limit())) : rows;
+    NotificationSearchCursor nextCursor = hasNext ? toSearchCursor(items.getLast(), query) : null;
+    return new NotificationSearchSlice(
+        items, nextCursor, hasNext, query.limit(), query.appliedFrom(), query.appliedTo());
+  }
+
   private static NotificationSummary mapRow(ResultSet rs) throws SQLException {
     return new NotificationSummary(
         rs.getLong("id"),
@@ -373,6 +403,30 @@ public class JdbcNotificationInboxRepository
 
   private static NotificationCursor toCursor(NotificationSummary item) {
     return new NotificationCursor(item.createdAt(), item.id());
+  }
+
+  private NotificationSearchCursor toSearchCursor(
+      NotificationSummary item, NotificationSearchQuery query) {
+    return new NotificationSearchCursor(
+        item.createdAt(),
+        item.id(),
+        query.appliedFrom(),
+        query.appliedTo(),
+        searchFingerprint(query));
+  }
+
+  private void validateSearchCursor(NotificationSearchQuery query) {
+    NotificationSearchCursor cursor = query.cursor();
+    if (cursor == null) {
+      return;
+    }
+    if (!cursor.appliedFrom().equals(query.appliedFrom())
+        || !cursor.appliedTo().equals(query.appliedTo())) {
+      throw new IllegalArgumentException("search cursor window must match query");
+    }
+    if (!cursor.filterFingerprint().equals(searchFingerprint(query))) {
+      throw new IllegalArgumentException("search cursor fingerprint must match query");
+    }
   }
 
   private static Instant nullableInstant(ResultSet rs, String columnName) throws SQLException {
@@ -553,5 +607,177 @@ public class JdbcNotificationInboxRepository
             .addValue("cursorCreatedAt", Timestamp.from(query.cursor().createdAt()))
             .addValue("cursorId", query.cursor().id()),
         ROW_MAPPER);
+  }
+
+  private List<NotificationSummary> fetchSearchByAccountId(
+      long accountId, NotificationSearchQuery query) {
+    String normalizedEventType = normalizeEventType(query.eventType());
+    StringBuilder sql =
+        new StringBuilder(
+            """
+            SELECT id,
+                   account_id,
+                   event_type,
+                   title,
+                   message,
+                   created_at,
+                   read_at
+            FROM notification_inbox
+            WHERE account_id = :accountId
+              AND archived_at IS NULL
+              AND created_at >= :appliedFrom
+              AND created_at <= :appliedTo
+            """);
+    MapSqlParameterSource params =
+        new MapSqlParameterSource()
+            .addValue("accountId", accountId)
+            .addValue("appliedFrom", Timestamp.from(query.appliedFrom()))
+            .addValue("appliedTo", Timestamp.from(query.appliedTo()))
+            .addValue("limitPlusOne", query.limit() + 1);
+    if (normalizedEventType != null) {
+      sql.append(
+          """
+              AND event_type = :eventType
+          """);
+      params.addValue("eventType", normalizedEventType);
+    }
+    appendAccountReadStatusFilter(sql, query.readStatus());
+    appendCursorFilter(sql, params, query.cursor(), "created_at", "id");
+    sql.append(
+        """
+            ORDER BY created_at DESC, id DESC
+            LIMIT :limitPlusOne
+        """);
+    return jdbcTemplate.query(sql.toString(), params, ROW_MAPPER);
+  }
+
+  private List<NotificationSummary> fetchSearchByUserId(
+      long userId, NotificationSearchQuery query) {
+    String normalizedEventType = normalizeEventType(query.eventType());
+    StringBuilder sql =
+        new StringBuilder(
+            """
+            SELECT n.id,
+                   n.account_id,
+                   n.event_type,
+                   n.title,
+                   n.message,
+                   n.created_at,
+                   r.read_at
+            FROM notification_inbox n
+            JOIN user_account_membership m
+              ON m.account_id = n.account_id
+            JOIN bank_user u
+              ON u.id = m.user_id
+            LEFT JOIN notification_user_read_state r
+              ON r.user_id = :userId
+             AND r.notification_id = n.id
+            WHERE m.user_id = :userId
+              AND m.membership_status = 'ACTIVE'
+              AND u.user_status = 'ACTIVE'
+              AND n.archived_at IS NULL
+              AND r.archived_at IS NULL
+              AND r.deleted_at IS NULL
+              AND n.created_at >= :appliedFrom
+              AND n.created_at <= :appliedTo
+            """);
+    MapSqlParameterSource params =
+        new MapSqlParameterSource()
+            .addValue("userId", userId)
+            .addValue("appliedFrom", Timestamp.from(query.appliedFrom()))
+            .addValue("appliedTo", Timestamp.from(query.appliedTo()))
+            .addValue("limitPlusOne", query.limit() + 1);
+    if (normalizedEventType != null) {
+      sql.append(
+          """
+              AND n.event_type = :eventType
+          """);
+      params.addValue("eventType", normalizedEventType);
+    }
+    appendUserReadStatusFilter(sql, query.readStatus());
+    appendCursorFilter(sql, params, query.cursor(), "n.created_at", "n.id");
+    sql.append(
+        """
+            ORDER BY n.created_at DESC, n.id DESC
+            LIMIT :limitPlusOne
+        """);
+    return jdbcTemplate.query(sql.toString(), params, ROW_MAPPER);
+  }
+
+  private void appendAccountReadStatusFilter(
+      StringBuilder sql, NotificationReadStatusFilter readStatus) {
+    if (readStatus == NotificationReadStatusFilter.UNREAD) {
+      sql.append(
+          """
+              AND read_at IS NULL
+          """);
+      return;
+    }
+    if (readStatus == NotificationReadStatusFilter.READ) {
+      sql.append(
+          """
+              AND read_at IS NOT NULL
+          """);
+    }
+  }
+
+  private void appendUserReadStatusFilter(
+      StringBuilder sql, NotificationReadStatusFilter readStatus) {
+    if (readStatus == NotificationReadStatusFilter.UNREAD) {
+      sql.append(
+          """
+              AND r.read_at IS NULL
+          """);
+      return;
+    }
+    if (readStatus == NotificationReadStatusFilter.READ) {
+      sql.append(
+          """
+              AND r.read_at IS NOT NULL
+          """);
+    }
+  }
+
+  private void appendCursorFilter(
+      StringBuilder sql,
+      MapSqlParameterSource params,
+      NotificationSearchCursor cursor,
+      String createdAtColumn,
+      String idColumn) {
+    if (cursor == null) {
+      return;
+    }
+    sql.append("AND (")
+        .append(createdAtColumn)
+        .append(" < :cursorCreatedAt OR (")
+        .append(createdAtColumn)
+        .append(" = :cursorCreatedAt AND ")
+        .append(idColumn)
+        .append(
+            """
+             < :cursorId))
+            """);
+    params
+        .addValue("cursorCreatedAt", Timestamp.from(cursor.createdAt()))
+        .addValue("cursorId", cursor.id());
+  }
+
+  private String normalizeEventType(String eventType) {
+    if (eventType == null) {
+      return null;
+    }
+    String normalized = eventType.trim();
+    return normalized.isEmpty() ? null : normalized;
+  }
+
+  private String searchFingerprint(NotificationSearchQuery query) {
+    String normalizedEventType = normalizeEventType(query.eventType());
+    return query.readStatus()
+        + "|"
+        + (normalizedEventType == null ? "" : normalizedEventType)
+        + "|"
+        + query.appliedFrom()
+        + "|"
+        + query.appliedTo();
   }
 }
