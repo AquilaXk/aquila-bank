@@ -169,6 +169,7 @@ security:
     issuer: ${SECURITY_JWT_ISSUER:}
     access-token-ttl-seconds: ${SECURITY_JWT_ACCESS_TOKEN_TTL_SECONDS:900}
     refresh-token-ttl-seconds: ${SECURITY_JWT_REFRESH_TOKEN_TTL_SECONDS:1209600}
+    refresh-device-cookie-name: ${SECURITY_JWT_REFRESH_DEVICE_COOKIE_NAME:ab_refresh_device}
   totp:
     issuer: ${SECURITY_TOTP_ISSUER:Aquila Bank}
     secret-encryption-key: ${SECURITY_TOTP_SECRET_ENCRYPTION_KEY:${SECURITY_JWT_SECRET:}}

@@ -6,9 +6,19 @@ import java.time.Instant;
 public record RefreshTokenSessionCreateCommand(
     long userId,
     String tokenHash,
+    String deviceBindingHash,
     Instant expiresAt,
     Instant createdAt,
     AuthSessionClientMetadata sessionClientMetadata) {
+
+  public RefreshTokenSessionCreateCommand(
+      long userId,
+      String tokenHash,
+      Instant expiresAt,
+      Instant createdAt,
+      AuthSessionClientMetadata sessionClientMetadata) {
+    this(userId, tokenHash, null, expiresAt, createdAt, sessionClientMetadata);
+  }
 
   public RefreshTokenSessionCreateCommand {
     if (userId <= 0) {
@@ -16,6 +26,9 @@ public record RefreshTokenSessionCreateCommand(
     }
     if (tokenHash == null || tokenHash.isBlank()) {
       throw new IllegalArgumentException("tokenHash is required");
+    }
+    if (deviceBindingHash != null && deviceBindingHash.isBlank()) {
+      deviceBindingHash = null;
     }
     if (expiresAt == null) {
       throw new IllegalArgumentException("expiresAt is required");
