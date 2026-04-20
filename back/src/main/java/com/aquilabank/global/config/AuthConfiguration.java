@@ -59,6 +59,8 @@ import com.aquilabank.domain.auth.usecase.RefreshTokenService;
 import com.aquilabank.domain.auth.usecase.RefreshTokenUseCase;
 import com.aquilabank.domain.auth.usecase.TotpChallengeVerifyService;
 import com.aquilabank.domain.auth.usecase.TotpChallengeVerifyUseCase;
+import com.aquilabank.domain.auth.usecase.TotpDisableService;
+import com.aquilabank.domain.auth.usecase.TotpDisableUseCase;
 import com.aquilabank.domain.auth.usecase.TotpEnrollmentService;
 import com.aquilabank.domain.auth.usecase.TotpEnrollmentUseCase;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipQueryService;
@@ -291,6 +293,28 @@ public class AuthConfiguration {
       }
       return transactionResult.result();
     };
+  }
+
+  @Bean
+  TotpDisableUseCase totpDisableUseCase(
+      UserCredentialLoadPort userCredentialLoadPort,
+      TotpCredentialLoadPort totpCredentialLoadPort,
+      TotpCredentialWritePort totpCredentialWritePort,
+      TotpSecretPort totpSecretPort,
+      RefreshTokenSessionWritePort refreshTokenSessionWritePort,
+      Clock authClock,
+      PlatformTransactionManager platformTransactionManager) {
+    TotpDisableService totpDisableService =
+        new TotpDisableService(
+            userCredentialLoadPort,
+            totpCredentialLoadPort,
+            totpCredentialWritePort,
+            totpSecretPort,
+            refreshTokenSessionWritePort,
+            authClock);
+    TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
+    return command ->
+        transactionTemplate.executeWithoutResult(status -> totpDisableService.disable(command));
   }
 
   @Bean
