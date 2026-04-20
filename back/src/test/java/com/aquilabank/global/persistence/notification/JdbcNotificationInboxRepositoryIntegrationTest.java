@@ -1,10 +1,12 @@
 package com.aquilabank.global.persistence.notification;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.aquilabank.domain.notification.model.NotificationInboxEntry;
 import com.aquilabank.domain.notification.model.NotificationListQuery;
 import com.aquilabank.domain.notification.model.NotificationReadStatusFilter;
+import com.aquilabank.domain.notification.model.NotificationSearchCursor;
 import com.aquilabank.domain.notification.model.NotificationSearchQuery;
 import com.aquilabank.domain.notification.model.NotificationSearchSlice;
 import com.aquilabank.domain.notification.model.NotificationSlice;
@@ -383,6 +385,95 @@ class JdbcNotificationInboxRepositoryIntegrationTest extends PostgresContainerTe
     assertThat(slice.nextCursor()).isNull();
     assertThat(slice.appliedFrom()).isEqualTo(appliedFrom);
     assertThat(slice.appliedTo()).isEqualTo(appliedTo);
+  }
+
+  @Test
+  void rejectsAccountSearchWhenCursorWindowDoesNotMatchQuery() {
+    long[] accountId = new long[1];
+    Instant appliedFrom = Instant.parse("2026-04-17T00:00:00Z");
+    Instant appliedTo = Instant.parse("2026-04-17T00:01:00Z");
+    commit(
+        transactionManager,
+        () -> {
+          accountId[0] = insertAccount("search account mismatch");
+          insertNotification(
+              accountId[0],
+              "evt-search-account-mismatch",
+              "TransferBooked",
+              "match",
+              "match",
+              null,
+              appliedFrom.plusSeconds(10));
+        });
+
+    NotificationSearchCursor cursor =
+        new NotificationSearchCursor(
+            appliedFrom.plusSeconds(10),
+            1L,
+            appliedFrom.minusSeconds(10),
+            appliedTo.plusSeconds(10),
+            "ALL|TransferBooked|2026-04-16T23:59:50Z|2026-04-17T00:01:10Z");
+
+    assertThatThrownBy(
+            () ->
+                repository.searchByAccountId(
+                    accountId[0],
+                    new NotificationSearchQuery(
+                        10,
+                        cursor,
+                        NotificationReadStatusFilter.ALL,
+                        "TransferBooked",
+                        appliedFrom,
+                        appliedTo)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("search cursor window must match query");
+  }
+
+  @Test
+  void rejectsUserSearchWhenCursorFingerprintDoesNotMatchQuery() {
+    long[] userId = new long[1];
+    long[] accountId = new long[1];
+    long[] notificationId = new long[1];
+    Instant appliedFrom = Instant.parse("2026-04-17T00:00:00Z");
+    Instant appliedTo = Instant.parse("2026-04-17T00:01:00Z");
+    commit(
+        transactionManager,
+        () -> {
+          userId[0] = insertUser("user-search-fingerprint");
+          accountId[0] = insertAccount("active search fingerprint account");
+          insertMembership(userId[0], accountId[0], "OWNER", "ACTIVE");
+          notificationId[0] =
+              insertNotification(
+                  accountId[0],
+                  "evt-search-user-fingerprint",
+                  "TransferBooked",
+                  "visible",
+                  "visible",
+                  null,
+                  appliedFrom.plusSeconds(10));
+        });
+
+    NotificationSearchCursor cursor =
+        new NotificationSearchCursor(
+            appliedFrom.plusSeconds(10),
+            notificationId[0],
+            appliedFrom,
+            appliedTo,
+            "READ|TransferBooked|2026-04-17T00:00:00Z|2026-04-17T00:01:00Z");
+
+    assertThatThrownBy(
+            () ->
+                repository.searchByUserId(
+                    userId[0],
+                    new NotificationSearchQuery(
+                        10,
+                        cursor,
+                        NotificationReadStatusFilter.ALL,
+                        "TransferBooked",
+                        appliedFrom,
+                        appliedTo)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("search cursor fingerprint must match query");
   }
 
   @Test

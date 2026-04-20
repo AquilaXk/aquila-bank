@@ -76,12 +76,14 @@ public class JdbcNotificationInboxRepository
   @Override
   @Transactional(readOnly = true)
   public NotificationSearchSlice searchByUserId(long userId, NotificationSearchQuery query) {
+    validateSearchCursor(query);
     return toSearchSlice(fetchSearchByUserId(userId, query), query);
   }
 
   @Override
   @Transactional(readOnly = true)
   public NotificationSearchSlice searchByAccountId(long accountId, NotificationSearchQuery query) {
+    validateSearchCursor(query);
     return toSearchSlice(fetchSearchByAccountId(accountId, query), query);
   }
 
@@ -411,6 +413,20 @@ public class JdbcNotificationInboxRepository
         query.appliedFrom(),
         query.appliedTo(),
         searchFingerprint(query));
+  }
+
+  private void validateSearchCursor(NotificationSearchQuery query) {
+    NotificationSearchCursor cursor = query.cursor();
+    if (cursor == null) {
+      return;
+    }
+    if (!cursor.appliedFrom().equals(query.appliedFrom())
+        || !cursor.appliedTo().equals(query.appliedTo())) {
+      throw new IllegalArgumentException("search cursor window must match query");
+    }
+    if (!cursor.filterFingerprint().equals(searchFingerprint(query))) {
+      throw new IllegalArgumentException("search cursor fingerprint must match query");
+    }
   }
 
   private static Instant nullableInstant(ResultSet rs, String columnName) throws SQLException {
