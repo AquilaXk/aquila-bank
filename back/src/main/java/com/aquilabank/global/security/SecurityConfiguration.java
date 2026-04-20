@@ -1,6 +1,7 @@
 package com.aquilabank.global.security;
 
 import com.aquilabank.domain.auth.port.AuthTokenIssuePort;
+import com.aquilabank.domain.auth.port.BackupCodeSecretPort;
 import com.aquilabank.domain.auth.port.PasswordHashPort;
 import com.aquilabank.domain.auth.port.PasswordRecoverySecretPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSecretPort;
@@ -181,6 +182,11 @@ public class SecurityConfiguration {
   @Bean
   RefreshTokenSecretPort refreshTokenSecretPort() {
     return new Sha256RefreshTokenManager();
+  }
+
+  @Bean
+  BackupCodeSecretPort backupCodeSecretPort() {
+    return new Sha256BackupCodeManager();
   }
 
   @Bean
