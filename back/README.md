@@ -652,7 +652,15 @@ requestId drill-down:
 - `actorSubject=-`인 `400`은 헤더 누락 성격이므로 운영 스크립트 drift 또는 수동 호출 오류로 분류합니다.
 - `404`, `409`, `500`은 최소 alert 기본값에서는 제외하고, 아래 후속 운영 기준으로 별도 판단합니다.
 
-### 404/409/500 후속 수집 패턴
+### 404/409/500 후속 운영 기준
+
+| 상태 | 기본 처리 | 승격 트리거 | 우선 확인 |
+| --- | --- | --- | --- |
+| `404 Not Found` | 단발 오호출/대상 불일치 후보로 먼저 분류 | 같은 `actorSubject + path` 반복, 여러 target miss 확산 | `targetUserId`/`targetAccountId` 식별자 drift |
+| `409 Conflict` | 단발 중복 호출/재시도 충돌 후보로 먼저 분류 | 같은 `actorSubject + path + requestedStatus` 반복, 다른 actor 간 충돌 | success audit row 인접 존재 여부 |
+| `500 Internal Server Error` | 단건이어도 incident 후보로 즉시 triage | 같은 시간대 반복 또는 여러 actor/path 확산 | `requestId` 기준 로그 타임라인과 서버 측 오류 확산 |
+
+아래 상세 섹션에서 `수집 패턴`, `제외/승격 조건`, `requestId` 추적 차이를 status별로 이어 봅니다.
 
 #### 404 운영 기준
 
