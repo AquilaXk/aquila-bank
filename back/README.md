@@ -448,6 +448,18 @@ login 실패/잠금은 structured log 한 줄로 남습니다.
   - request body는 `currentPassword`, `newPassword`
   - `currentPassword`가 맞고 `user_status = ACTIVE`일 때만 비밀번호를 새 `BCrypt password_hash`로 교체한다.
   - 성공 시 현재 user의 `ACTIVE` refresh session 전체를 `REVOKED`로 바꾼다.
+- forgot-password 복구 기준:
+  - `POST /api/v1/auth/password-recovery/request`
+  - 인증 없이 `loginId`만 받고 항상 `204 No Content`를 반환한다.
+  - 응답에는 trace용 `X-Request-Id`와 별도로 internal handoff용 `X-Password-Recovery-Request-Id`가 내려간다.
+  - active user가 있으면 같은 user의 기존 `PENDING` recovery token을 `SUPERSEDED`로 바꾸고 새 token을 발급한다.
+  - `POST /api/v1/auth/password-recovery/confirm`
+  - 인증 없이 `recoveryToken`, `newPassword`를 받고 성공 시 `204 No Content`
+  - wrong/expired/used token, `user_status != ACTIVE`는 모두 `401 password recovery failed`
+  - recovery token 값은 public 응답에 직접 노출하지 않고
+    `GET /internal/api/v1/auth/password-recovery-tokens/by-request-id?requestId=...` 에서만 확인한다.
+  - internal lookup은 `internal:auth-admin` scope가 필요하고, missing/blank `requestId`는 `400`, unknown `requestId`는 `404`
+  - forgot-password confirm 성공도 기존 self-service reset과 동일하게 현재 user의 `ACTIVE` refresh session 전체를 `REVOKED`로 바꾼다.
 - 거절 기준:
   - 만료, 이미 rotation 된 token, 존재하지 않는 token은 모두 `401 refresh failed`
   - `user_status=LOCKED|DISABLED` 사용자는 refresh로 새 token pair를 발급받지 못함

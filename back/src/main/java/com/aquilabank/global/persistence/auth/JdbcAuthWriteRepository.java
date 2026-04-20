@@ -9,6 +9,8 @@ import com.aquilabank.domain.auth.model.AuthStatusChangeType;
 import com.aquilabank.domain.auth.model.AuthUserSummary;
 import com.aquilabank.domain.auth.model.LoginFailureUpdateCommand;
 import com.aquilabank.domain.auth.model.LoginSuccessUpdateCommand;
+import com.aquilabank.domain.auth.model.PasswordRecoveryTokenIssueCommand;
+import com.aquilabank.domain.auth.model.PasswordRecoveryTokenUseCommand;
 import com.aquilabank.domain.auth.model.PasswordResetWriteCommand;
 import com.aquilabank.domain.auth.model.RefreshTokenSessionCreateCommand;
 import com.aquilabank.domain.auth.model.RefreshTokenSessionRevokeCommand;
@@ -27,6 +29,7 @@ import com.aquilabank.domain.auth.model.UserBootstrapWriteCommand;
 import com.aquilabank.domain.auth.model.UserStatus;
 import com.aquilabank.domain.auth.model.UserStatusUpdateCommand;
 import com.aquilabank.domain.auth.port.LoginAttemptUpdatePort;
+import com.aquilabank.domain.auth.port.PasswordRecoveryTokenWritePort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionCleanupPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionWritePort;
 import com.aquilabank.domain.auth.port.TotpCredentialWritePort;
@@ -51,6 +54,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class JdbcAuthWriteRepository
     implements UserBootstrapPort,
         LoginAttemptUpdatePort,
+        PasswordRecoveryTokenWritePort,
         UserCredentialUpdatePort,
         RefreshTokenSessionCleanupPort,
         RefreshTokenSessionWritePort,
@@ -174,6 +178,112 @@ public class JdbcAuthWriteRepository
                 .addValue("passwordHash", command.passwordHash())
                 .addValue("changedAt", Timestamp.from(command.changedAt())));
     assertUserUpdated(updated);
+  }
+
+  @Override
+  @Transactional
+  public void supersedePendingTokens(long userId, Instant updatedAt) {
+    jdbcTemplate.update(
+        """
+        UPDATE auth_password_recovery_token
+        SET token_status = 'SUPERSEDED',
+            updated_at = :updatedAt
+        WHERE user_id = :userId
+          AND token_status = 'PENDING'
+        """,
+        new MapSqlParameterSource()
+            .addValue("userId", userId)
+            .addValue("updatedAt", Timestamp.from(updatedAt)));
+  }
+
+  @Override
+  @Transactional
+  public void issue(PasswordRecoveryTokenIssueCommand command) {
+    Long tokenId =
+        jdbcTemplate.queryForObject(
+            """
+            INSERT INTO auth_password_recovery_token (
+                request_id,
+                user_id,
+                login_id,
+                token_hash,
+                token_ciphertext,
+                token_nonce,
+                token_status,
+                expires_at,
+                used_at,
+                created_at,
+                updated_at
+            )
+            VALUES (
+                :requestId,
+                :userId,
+                :loginId,
+                :tokenHash,
+                :tokenCiphertext,
+                :tokenNonce,
+                'PENDING',
+                :expiresAt,
+                NULL,
+                :createdAt,
+                :createdAt
+            )
+            RETURNING id
+            """,
+            new MapSqlParameterSource()
+                .addValue("requestId", command.requestId())
+                .addValue("userId", command.userId())
+                .addValue("loginId", command.loginId())
+                .addValue("tokenHash", command.tokenHash())
+                .addValue("tokenCiphertext", command.tokenCiphertext())
+                .addValue("tokenNonce", command.tokenNonce())
+                .addValue("expiresAt", Timestamp.from(command.expiresAt()))
+                .addValue("createdAt", Timestamp.from(command.createdAt())),
+            Long.class);
+    if (tokenId == null) {
+      throw new IllegalStateException("password recovery token insert did not return an id");
+    }
+  }
+
+  @Override
+  @Transactional
+  public void markUsed(PasswordRecoveryTokenUseCommand command) {
+    int updated =
+        jdbcTemplate.update(
+            """
+            UPDATE auth_password_recovery_token
+            SET token_status = 'USED',
+                used_at = :usedAt,
+                updated_at = :usedAt
+            WHERE id = :tokenId
+              AND token_status = 'PENDING'
+            """,
+            new MapSqlParameterSource()
+                .addValue("tokenId", command.tokenId())
+                .addValue("usedAt", Timestamp.from(command.usedAt())));
+    if (updated != 1) {
+      throw new IllegalStateException("password recovery token is not pending");
+    }
+  }
+
+  @Override
+  @Transactional
+  public void markExpired(long tokenId, Instant expiredAt) {
+    int updated =
+        jdbcTemplate.update(
+            """
+            UPDATE auth_password_recovery_token
+            SET token_status = 'EXPIRED',
+                updated_at = :expiredAt
+            WHERE id = :tokenId
+              AND token_status = 'PENDING'
+            """,
+            new MapSqlParameterSource()
+                .addValue("tokenId", tokenId)
+                .addValue("expiredAt", Timestamp.from(expiredAt)));
+    if (updated != 1) {
+      throw new IllegalStateException("password recovery token is not pending");
+    }
   }
 
   @Override

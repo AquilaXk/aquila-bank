@@ -10,12 +10,16 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.aquilabank.domain.auth.exception.PasswordRecoveryTokenNotFoundException;
 import com.aquilabank.domain.auth.model.AuthUserSummary;
 import com.aquilabank.domain.auth.model.MembershipRole;
 import com.aquilabank.domain.auth.model.MembershipStatus;
+import com.aquilabank.domain.auth.model.PasswordRecoveryTokenLookupView;
+import com.aquilabank.domain.auth.model.PasswordRecoveryTokenStatus;
 import com.aquilabank.domain.auth.model.UserAccountMembershipSummary;
 import com.aquilabank.domain.auth.model.UserStatus;
 import com.aquilabank.domain.auth.usecase.AuthUserQueryUseCase;
+import com.aquilabank.domain.auth.usecase.PasswordRecoveryTokenQueryUseCase;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipQueryUseCase;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipStatusUpdateUseCase;
 import com.aquilabank.domain.auth.usecase.UserStatusUpdateUseCase;
@@ -37,6 +41,7 @@ class InternalAuthAdminControllerTest {
   private UserStatusUpdateUseCase userStatusUpdateUseCase;
   private UserAccountMembershipQueryUseCase userAccountMembershipQueryUseCase;
   private UserAccountMembershipStatusUpdateUseCase userAccountMembershipStatusUpdateUseCase;
+  private PasswordRecoveryTokenQueryUseCase passwordRecoveryTokenQueryUseCase;
   private MockMvc mockMvc;
 
   @BeforeEach
@@ -45,6 +50,7 @@ class InternalAuthAdminControllerTest {
     userStatusUpdateUseCase = mock(UserStatusUpdateUseCase.class);
     userAccountMembershipQueryUseCase = mock(UserAccountMembershipQueryUseCase.class);
     userAccountMembershipStatusUpdateUseCase = mock(UserAccountMembershipStatusUpdateUseCase.class);
+    passwordRecoveryTokenQueryUseCase = mock(PasswordRecoveryTokenQueryUseCase.class);
 
     mockMvc =
         MockMvcBuilders.standaloneSetup(
@@ -53,6 +59,7 @@ class InternalAuthAdminControllerTest {
                     userStatusUpdateUseCase,
                     userAccountMembershipQueryUseCase,
                     userAccountMembershipStatusUpdateUseCase,
+                    passwordRecoveryTokenQueryUseCase,
                     InternalServiceTokenTestSupport.authorizer()))
             .setControllerAdvice(new ApiExceptionHandler())
             .build();
@@ -94,6 +101,100 @@ class InternalAuthAdminControllerTest {
                 .param("loginId", "alice"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.displayName").value("Alice"));
+  }
+
+  @Test
+  void getsPasswordRecoveryTokenByRequestId() throws Exception {
+    when(passwordRecoveryTokenQueryUseCase.getByHandoffRequestId("handoff-request-001"))
+        .thenReturn(
+            new PasswordRecoveryTokenLookupView(
+                "handoff-request-001",
+                21L,
+                "alice",
+                "recovery-token",
+                PasswordRecoveryTokenStatus.USED,
+                Instant.parse("2026-04-16T12:00:00Z"),
+                Instant.parse("2026-04-16T12:05:00Z"),
+                Instant.parse("2026-04-16T11:00:00Z")));
+
+    mockMvc
+        .perform(
+            get("/internal/api/v1/auth/password-recovery-tokens/by-request-id")
+                .header(
+                    "Authorization",
+                    InternalServiceTokenTestSupport.authorization(
+                        SUBJECT, InternalServiceScope.AUTH_ADMIN))
+                .param("requestId", "handoff-request-001"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.requestId").value("handoff-request-001"))
+        .andExpect(jsonPath("$.userId").value(21))
+        .andExpect(jsonPath("$.loginId").value("alice"))
+        .andExpect(jsonPath("$.recoveryToken").value("recovery-token"))
+        .andExpect(jsonPath("$.tokenStatus").value("USED"))
+        .andExpect(jsonPath("$.expiresAt").value("2026-04-16T12:00:00Z"))
+        .andExpect(jsonPath("$.usedAt").value("2026-04-16T12:05:00Z"))
+        .andExpect(jsonPath("$.createdAt").value("2026-04-16T11:00:00Z"));
+  }
+
+  @Test
+  void rejectsMissingOrBlankRequestIdForPasswordRecoveryLookup() throws Exception {
+    when(passwordRecoveryTokenQueryUseCase.getByHandoffRequestId(" "))
+        .thenThrow(new IllegalArgumentException("handoffRequestId is required"));
+
+    mockMvc
+        .perform(
+            get("/internal/api/v1/auth/password-recovery-tokens/by-request-id")
+                .header(
+                    "Authorization",
+                    InternalServiceTokenTestSupport.authorization(
+                        SUBJECT, InternalServiceScope.AUTH_ADMIN)))
+        .andExpect(status().isBadRequest());
+
+    mockMvc
+        .perform(
+            get("/internal/api/v1/auth/password-recovery-tokens/by-request-id")
+                .header(
+                    "Authorization",
+                    InternalServiceTokenTestSupport.authorization(
+                        SUBJECT, InternalServiceScope.AUTH_ADMIN))
+                .param("requestId", " "))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  void rejectsMissingOrInvalidInternalServiceTokenForPasswordRecoveryLookup() throws Exception {
+    mockMvc
+        .perform(
+            get("/internal/api/v1/auth/password-recovery-tokens/by-request-id")
+                .param("requestId", "handoff-request-001"))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.message").value("internal service token is invalid"));
+
+    mockMvc
+        .perform(
+            get("/internal/api/v1/auth/password-recovery-tokens/by-request-id")
+                .header("Authorization", "Bearer invalid-token")
+                .param("requestId", "handoff-request-001"))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.message").value("internal service token is invalid"));
+  }
+
+  @Test
+  void returnsNotFoundWhenPasswordRecoveryTokenRequestIdIsUnknown() throws Exception {
+    when(passwordRecoveryTokenQueryUseCase.getByHandoffRequestId("missing-handoff-request"))
+        .thenThrow(
+            new PasswordRecoveryTokenNotFoundException("password recovery token is not found"));
+
+    mockMvc
+        .perform(
+            get("/internal/api/v1/auth/password-recovery-tokens/by-request-id")
+                .header(
+                    "Authorization",
+                    InternalServiceTokenTestSupport.authorization(
+                        SUBJECT, InternalServiceScope.AUTH_ADMIN))
+                .param("requestId", "missing-handoff-request"))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.message").value("password recovery token is not found"));
   }
 
   @Test

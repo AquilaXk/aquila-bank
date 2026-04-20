@@ -12,6 +12,9 @@ import com.aquilabank.domain.auth.port.AuthTokenIssuePort;
 import com.aquilabank.domain.auth.port.LoginAttemptAuditPort;
 import com.aquilabank.domain.auth.port.LoginAttemptUpdatePort;
 import com.aquilabank.domain.auth.port.PasswordHashPort;
+import com.aquilabank.domain.auth.port.PasswordRecoverySecretPort;
+import com.aquilabank.domain.auth.port.PasswordRecoveryTokenLoadPort;
+import com.aquilabank.domain.auth.port.PasswordRecoveryTokenQueryPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSecretPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionLoadPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionWritePort;
@@ -44,6 +47,12 @@ import com.aquilabank.domain.auth.usecase.LoginService;
 import com.aquilabank.domain.auth.usecase.LoginUseCase;
 import com.aquilabank.domain.auth.usecase.LogoutService;
 import com.aquilabank.domain.auth.usecase.LogoutUseCase;
+import com.aquilabank.domain.auth.usecase.PasswordRecoveryConfirmService;
+import com.aquilabank.domain.auth.usecase.PasswordRecoveryConfirmUseCase;
+import com.aquilabank.domain.auth.usecase.PasswordRecoveryRequestService;
+import com.aquilabank.domain.auth.usecase.PasswordRecoveryRequestUseCase;
+import com.aquilabank.domain.auth.usecase.PasswordRecoveryTokenQueryService;
+import com.aquilabank.domain.auth.usecase.PasswordRecoveryTokenQueryUseCase;
 import com.aquilabank.domain.auth.usecase.PasswordResetService;
 import com.aquilabank.domain.auth.usecase.PasswordResetUseCase;
 import com.aquilabank.domain.auth.usecase.RefreshTokenService;
@@ -62,7 +71,9 @@ import com.aquilabank.domain.auth.usecase.UserBootstrapService;
 import com.aquilabank.domain.auth.usecase.UserBootstrapUseCase;
 import com.aquilabank.domain.auth.usecase.UserStatusUpdateService;
 import com.aquilabank.domain.auth.usecase.UserStatusUpdateUseCase;
+import com.aquilabank.global.persistence.auth.JdbcPasswordRecoveryRepository;
 import com.aquilabank.global.security.LoginProtectionProperties;
+import com.aquilabank.global.security.PasswordRecoveryProperties;
 import com.aquilabank.global.security.SecurityJwtProperties;
 import com.aquilabank.global.security.SecurityTotpProperties;
 import com.aquilabank.global.security.StructuredLoginAttemptAuditLogger;
@@ -70,6 +81,7 @@ import java.time.Clock;
 import java.time.Duration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -94,6 +106,12 @@ public class AuthConfiguration {
   @Bean
   Clock authClock() {
     return Clock.systemUTC();
+  }
+
+  @Bean
+  JdbcPasswordRecoveryRepository jdbcPasswordRecoveryRepository(
+      NamedParameterJdbcTemplate namedParameterJdbcTemplate) {
+    return new JdbcPasswordRecoveryRepository(namedParameterJdbcTemplate);
   }
 
   @Bean
@@ -311,6 +329,83 @@ public class AuthConfiguration {
     TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
     return command ->
         transactionTemplate.executeWithoutResult(status -> passwordResetService.reset(command));
+  }
+
+  @Bean
+  PasswordRecoveryRequestUseCase passwordRecoveryRequestUseCase(
+      UserQueryPort userQueryPort,
+      UserCredentialLoadPort userCredentialLoadPort,
+      PasswordRecoverySecretPort passwordRecoverySecretPort,
+      com.aquilabank.domain.auth.port.PasswordRecoveryTokenWritePort passwordRecoveryTokenWritePort,
+      PasswordRecoveryProperties passwordRecoveryProperties,
+      Clock authClock,
+      PlatformTransactionManager platformTransactionManager) {
+    PasswordRecoveryRequestService passwordRecoveryRequestService =
+        new PasswordRecoveryRequestService(
+            userQueryPort,
+            userCredentialLoadPort,
+            passwordRecoverySecretPort,
+            passwordRecoveryTokenWritePort,
+            Duration.ofSeconds(passwordRecoveryProperties.ttlSeconds()),
+            authClock);
+    TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
+    return command -> {
+      com.aquilabank.domain.auth.model.PasswordRecoveryRequestResult result =
+          transactionTemplate.execute(status -> passwordRecoveryRequestService.request(command));
+      if (result == null) {
+        throw new IllegalStateException(
+            "password recovery request transaction returned null result");
+      }
+      return result;
+    };
+  }
+
+  @Bean
+  PasswordRecoveryConfirmUseCase passwordRecoveryConfirmUseCase(
+      PasswordRecoverySecretPort passwordRecoverySecretPort,
+      PasswordRecoveryTokenLoadPort passwordRecoveryTokenLoadPort,
+      com.aquilabank.domain.auth.port.PasswordRecoveryTokenWritePort passwordRecoveryTokenWritePort,
+      UserCredentialLoadPort userCredentialLoadPort,
+      UserCredentialUpdatePort userCredentialUpdatePort,
+      PasswordHashPort passwordHashPort,
+      RefreshTokenSessionWritePort refreshTokenSessionWritePort,
+      Clock authClock,
+      PlatformTransactionManager platformTransactionManager) {
+    PasswordRecoveryConfirmService passwordRecoveryConfirmService =
+        new PasswordRecoveryConfirmService(
+            passwordRecoverySecretPort,
+            passwordRecoveryTokenLoadPort,
+            passwordRecoveryTokenWritePort,
+            userCredentialLoadPort,
+            userCredentialUpdatePort,
+            passwordHashPort,
+            refreshTokenSessionWritePort,
+            authClock);
+    TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
+    return command ->
+        transactionTemplate.executeWithoutResult(
+            status -> passwordRecoveryConfirmService.confirm(command));
+  }
+
+  @Bean
+  PasswordRecoveryTokenQueryUseCase passwordRecoveryTokenQueryUseCase(
+      PasswordRecoveryTokenQueryPort passwordRecoveryTokenQueryPort,
+      PasswordRecoverySecretPort passwordRecoverySecretPort,
+      PlatformTransactionManager platformTransactionManager) {
+    PasswordRecoveryTokenQueryService passwordRecoveryTokenQueryService =
+        new PasswordRecoveryTokenQueryService(
+            passwordRecoveryTokenQueryPort, passwordRecoverySecretPort);
+    TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
+    return handoffRequestId -> {
+      com.aquilabank.domain.auth.model.PasswordRecoveryTokenLookupView result =
+          transactionTemplate.execute(
+              status -> passwordRecoveryTokenQueryService.getByHandoffRequestId(handoffRequestId));
+      if (result == null) {
+        throw new IllegalStateException(
+            "password recovery token query transaction returned null result");
+      }
+      return result;
+    };
   }
 
   @Bean

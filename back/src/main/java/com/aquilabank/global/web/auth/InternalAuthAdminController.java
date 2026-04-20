@@ -4,11 +4,13 @@ import com.aquilabank.domain.auth.model.AuthStatusChangeReason;
 import com.aquilabank.domain.auth.model.AuthStatusChangeReasonCode;
 import com.aquilabank.domain.auth.model.AuthStatusChangeReasonNormalizer;
 import com.aquilabank.domain.auth.model.AuthUserSummary;
+import com.aquilabank.domain.auth.model.PasswordRecoveryTokenLookupView;
 import com.aquilabank.domain.auth.model.UserAccountMembershipStatusUpdateCommand;
 import com.aquilabank.domain.auth.model.UserAccountMembershipSummary;
 import com.aquilabank.domain.auth.model.UserStatus;
 import com.aquilabank.domain.auth.model.UserStatusUpdateCommand;
 import com.aquilabank.domain.auth.usecase.AuthUserQueryUseCase;
+import com.aquilabank.domain.auth.usecase.PasswordRecoveryTokenQueryUseCase;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipQueryUseCase;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipStatusUpdateUseCase;
 import com.aquilabank.domain.auth.usecase.UserStatusUpdateUseCase;
@@ -44,6 +46,7 @@ public class InternalAuthAdminController {
   private final UserStatusUpdateUseCase userStatusUpdateUseCase;
   private final UserAccountMembershipQueryUseCase userAccountMembershipQueryUseCase;
   private final UserAccountMembershipStatusUpdateUseCase userAccountMembershipStatusUpdateUseCase;
+  private final PasswordRecoveryTokenQueryUseCase passwordRecoveryTokenQueryUseCase;
   private final InternalServiceRequestAuthorizer internalServiceRequestAuthorizer;
 
   public InternalAuthAdminController(
@@ -51,11 +54,13 @@ public class InternalAuthAdminController {
       UserStatusUpdateUseCase userStatusUpdateUseCase,
       UserAccountMembershipQueryUseCase userAccountMembershipQueryUseCase,
       UserAccountMembershipStatusUpdateUseCase userAccountMembershipStatusUpdateUseCase,
+      PasswordRecoveryTokenQueryUseCase passwordRecoveryTokenQueryUseCase,
       InternalServiceRequestAuthorizer internalServiceRequestAuthorizer) {
     this.authUserQueryUseCase = authUserQueryUseCase;
     this.userStatusUpdateUseCase = userStatusUpdateUseCase;
     this.userAccountMembershipQueryUseCase = userAccountMembershipQueryUseCase;
     this.userAccountMembershipStatusUpdateUseCase = userAccountMembershipStatusUpdateUseCase;
+    this.passwordRecoveryTokenQueryUseCase = passwordRecoveryTokenQueryUseCase;
     this.internalServiceRequestAuthorizer = internalServiceRequestAuthorizer;
   }
 
@@ -86,6 +91,18 @@ public class InternalAuthAdminController {
         httpServletRequest, InternalServiceScope.AUTH_ADMIN);
     return UserAccountMembershipResponse.from(
         userAccountMembershipQueryUseCase.getByUserIdAndAccountId(userId, accountId));
+  }
+
+  /** 내부 운영용 recovery handoff requestId exact lookup endpoint입니다. */
+  @GetMapping("/password-recovery-tokens/by-request-id")
+  public PasswordRecoveryTokenResponse getPasswordRecoveryToken(
+      HttpServletRequest httpServletRequest,
+      @RequestParam("requestId")
+          @NotBlank(message = "requestId is required") @Size(max = 64, message = "requestId must be 64 characters or less") String handoffRequestId) {
+    internalServiceRequestAuthorizer.requireScope(
+        httpServletRequest, InternalServiceScope.AUTH_ADMIN);
+    return PasswordRecoveryTokenResponse.from(
+        passwordRecoveryTokenQueryUseCase.getByHandoffRequestId(handoffRequestId));
   }
 
   @PutMapping("/users/{userId}/status")
@@ -207,6 +224,30 @@ public class InternalAuthAdminController {
           summary.status().name(),
           summary.createdAt(),
           summary.updatedAt());
+    }
+  }
+
+  /** 내부 password recovery handoff requestId exact lookup 응답 */
+  public record PasswordRecoveryTokenResponse(
+      String requestId,
+      long userId,
+      String loginId,
+      String recoveryToken,
+      String tokenStatus,
+      Instant expiresAt,
+      Instant usedAt,
+      Instant createdAt) {
+
+    static PasswordRecoveryTokenResponse from(PasswordRecoveryTokenLookupView view) {
+      return new PasswordRecoveryTokenResponse(
+          view.requestId(),
+          view.userId(),
+          view.loginId(),
+          view.recoveryToken(),
+          view.tokenStatus().name(),
+          view.expiresAt(),
+          view.usedAt(),
+          view.createdAt());
     }
   }
 }

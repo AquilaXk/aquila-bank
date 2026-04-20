@@ -7,6 +7,7 @@ import com.aquilabank.domain.auth.exception.AuthStatusChangeAuditNotFoundExcepti
 import com.aquilabank.domain.auth.exception.AuthUserNotFoundException;
 import com.aquilabank.domain.auth.exception.DuplicateLoginIdException;
 import com.aquilabank.domain.auth.exception.InvalidCredentialsException;
+import com.aquilabank.domain.auth.exception.PasswordRecoveryTokenNotFoundException;
 import com.aquilabank.domain.auth.exception.UserAccountMembershipNotFoundException;
 import com.aquilabank.domain.auth.model.AuthStatusChangeReasonCode;
 import com.aquilabank.domain.ledger.exception.CommandConflictException;
@@ -116,6 +117,7 @@ public class ApiExceptionHandler {
     TransferReversalNotFoundException.class,
     AuthStatusChangeAuditNotFoundException.class,
     AuthUserNotFoundException.class,
+    PasswordRecoveryTokenNotFoundException.class,
     UserAccountMembershipNotFoundException.class,
     NotificationNotFoundException.class,
     TransactionDetailNotFoundException.class

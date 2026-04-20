@@ -175,6 +175,9 @@ security:
     enrollment-ttl-seconds: ${SECURITY_TOTP_ENROLLMENT_TTL_SECONDS:300}
     challenge-ttl-seconds: ${SECURITY_TOTP_CHALLENGE_TTL_SECONDS:300}
     challenge-max-attempts: ${SECURITY_TOTP_CHALLENGE_MAX_ATTEMPTS:5}
+  password-recovery:
+    ttl-seconds: ${SECURITY_PASSWORD_RECOVERY_TTL_SECONDS:900}
+    secret-encryption-key: ${SECURITY_PASSWORD_RECOVERY_SECRET_ENCRYPTION_KEY:${SECURITY_JWT_SECRET:}}
   internal-service-token:
     issuer: ${SECURITY_INTERNAL_SERVICE_TOKEN_ISSUER:}
     audience: ${SECURITY_INTERNAL_SERVICE_TOKEN_AUDIENCE:}

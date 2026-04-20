@@ -40,6 +40,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.web.context.WebApplicationContext;
 
 @ActiveProfiles("test")
@@ -91,6 +92,8 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
   @Autowired private LoginThrottleGuard loginThrottleGuard;
 
   @Autowired private InternalServiceTokenIssuer internalServiceTokenIssuer;
+
+  @Autowired private PlatformTransactionManager transactionManager;
 
   private MockMvc mockMvc;
   private long userId;
@@ -972,8 +975,134 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
                       "currentPassword": "password123!",
                       "newPassword": "newPassword456!"
                     }
-                    """))
+                """))
         .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void passwordRecoveryRequestReturnsGenericNoContentWithSeparateHandoffRequestId()
+      throws Exception {
+    MvcResult existingResult =
+        performPasswordRecoveryRequest("alice", "password-recovery-request-existing")
+            .andExpect(status().isNoContent())
+            .andReturn();
+    MvcResult missingResult =
+        performPasswordRecoveryRequest("missing-user", "password-recovery-request-missing")
+            .andExpect(status().isNoContent())
+            .andReturn();
+
+    assertEquals(
+        "password-recovery-request-existing",
+        existingResult.getResponse().getHeader("X-Request-Id"));
+    assertEquals(
+        "password-recovery-request-missing", missingResult.getResponse().getHeader("X-Request-Id"));
+    String existingHandoffRequestId =
+        existingResult.getResponse().getHeader("X-Password-Recovery-Request-Id");
+    String missingHandoffRequestId =
+        missingResult.getResponse().getHeader("X-Password-Recovery-Request-Id");
+
+    assertNotNull(existingHandoffRequestId);
+    assertNotNull(missingHandoffRequestId);
+    assertNotEquals("password-recovery-request-existing", existingHandoffRequestId);
+    assertNotEquals("password-recovery-request-missing", missingHandoffRequestId);
+    assertNotEquals(existingHandoffRequestId, missingHandoffRequestId);
+
+    mockMvc
+        .perform(
+            get("/internal/api/v1/auth/password-recovery-tokens/by-request-id")
+                .header(
+                    "Authorization",
+                    internalServiceAuthorization(
+                        AUTH_ADMIN_SUBJECT, InternalServiceScope.AUTH_ADMIN))
+                .param("requestId", missingHandoffRequestId))
+        .andExpect(status().isNotFound());
+  }
+
+  @Test
+  void passwordRecoveryConfirmChangesPasswordAndRevokesRefreshSessions() throws Exception {
+    TokenPairResponseView loginResult = loginResult("alice", "password123!", "recovery-login-001");
+    MvcResult requestResult =
+        performPasswordRecoveryRequest("alice", "recovery-request-001")
+            .andExpect(status().isNoContent())
+            .andReturn();
+    String requestId = requestResult.getResponse().getHeader("X-Password-Recovery-Request-Id");
+    JsonNode tokenView = lookupPasswordRecoveryTokenByRequestId(requestId);
+    assertEquals("recovery-request-001", requestResult.getResponse().getHeader("X-Request-Id"));
+    assertEquals(requestId, tokenView.get("requestId").asText());
+    assertEquals("alice", tokenView.get("loginId").asText());
+    assertEquals("PENDING", tokenView.get("tokenStatus").asText());
+
+    performPasswordRecoveryConfirm(
+            tokenView.get("recoveryToken").asText(), "newPassword456!", "recovery-confirm-001")
+        .andExpect(status().isNoContent());
+
+    loginExpectUnauthorized("alice", "password123!", "recovery-old-login-001");
+    refreshExpectUnauthorized(loginResult.refreshToken(), "recovery-old-refresh-001");
+    login("alice", "newPassword456!", "recovery-new-login-001");
+  }
+
+  @Test
+  void passwordRecoveryConfirmRejectsWrongTokenWithGenericUnauthorized() throws Exception {
+    performPasswordRecoveryConfirm(
+            "invalid-recovery-token", "newPassword456!", "recovery-wrong-001")
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.message").value("password recovery failed"));
+  }
+
+  @Test
+  void passwordRecoveryConfirmRejectsExpiredTokenWithGenericUnauthorized() throws Exception {
+    MvcResult requestResult =
+        performPasswordRecoveryRequest("alice", "recovery-expired-request-001")
+            .andExpect(status().isNoContent())
+            .andReturn();
+    String requestId = requestResult.getResponse().getHeader("X-Password-Recovery-Request-Id");
+    JsonNode tokenView = lookupPasswordRecoveryTokenByRequestId(requestId);
+    expirePasswordRecoveryToken(requestId);
+    assertEquals(
+        "EXPIRED", lookupPasswordRecoveryTokenByRequestId(requestId).get("tokenStatus").asText());
+
+    performPasswordRecoveryConfirm(
+            tokenView.get("recoveryToken").asText(),
+            "newPassword456!",
+            "recovery-expired-confirm-001")
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.message").value("password recovery failed"));
+  }
+
+  @Test
+  void passwordRecoveryConfirmRejectsUsedTokenReuseWithGenericUnauthorized() throws Exception {
+    MvcResult requestResult =
+        performPasswordRecoveryRequest("alice", "recovery-used-request-001")
+            .andExpect(status().isNoContent())
+            .andReturn();
+    String requestId = requestResult.getResponse().getHeader("X-Password-Recovery-Request-Id");
+    JsonNode tokenView = lookupPasswordRecoveryTokenByRequestId(requestId);
+    String recoveryToken = tokenView.get("recoveryToken").asText();
+
+    performPasswordRecoveryConfirm(recoveryToken, "newPassword456!", "recovery-used-confirm-001")
+        .andExpect(status().isNoContent());
+
+    performPasswordRecoveryConfirm(recoveryToken, "nextPassword789!", "recovery-used-confirm-002")
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.message").value("password recovery failed"));
+  }
+
+  @Test
+  void passwordRecoveryConfirmRejectsInactiveUserWithGenericUnauthorized() throws Exception {
+    MvcResult requestResult =
+        performPasswordRecoveryRequest("alice", "recovery-inactive-request-001")
+            .andExpect(status().isNoContent())
+            .andReturn();
+    String requestId = requestResult.getResponse().getHeader("X-Password-Recovery-Request-Id");
+    JsonNode tokenView = lookupPasswordRecoveryTokenByRequestId(requestId);
+    updateLegacyUserStatus(userId, "DISABLED", "fraud-review", "recovery-inactive-disable-001");
+
+    performPasswordRecoveryConfirm(
+            tokenView.get("recoveryToken").asText(),
+            "newPassword456!",
+            "recovery-inactive-confirm-001")
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.message").value("password recovery failed"));
   }
 
   @Test
@@ -1622,6 +1751,77 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
       requestBuilder.header("X-Request-Id", requestId);
     }
     return mockMvc.perform(requestBuilder);
+  }
+
+  private org.springframework.test.web.servlet.ResultActions performPasswordRecoveryRequest(
+      String loginId, String requestId) throws Exception {
+    MockHttpServletRequestBuilder requestBuilder =
+        post("/api/v1/auth/password-recovery/request")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(
+                """
+                {
+                  "loginId": "%s"
+                }
+                """
+                    .formatted(loginId));
+    if (requestId != null && !requestId.isBlank()) {
+      requestBuilder.header("X-Request-Id", requestId);
+    }
+    return mockMvc.perform(requestBuilder);
+  }
+
+  private org.springframework.test.web.servlet.ResultActions performPasswordRecoveryConfirm(
+      String recoveryToken, String newPassword, String requestId) throws Exception {
+    MockHttpServletRequestBuilder requestBuilder =
+        post("/api/v1/auth/password-recovery/confirm")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(
+                """
+                {
+                  "recoveryToken": "%s",
+                  "newPassword": "%s"
+                }
+                """
+                    .formatted(recoveryToken, newPassword));
+    if (requestId != null && !requestId.isBlank()) {
+      requestBuilder.header("X-Request-Id", requestId);
+    }
+    return mockMvc.perform(requestBuilder);
+  }
+
+  private JsonNode lookupPasswordRecoveryTokenByRequestId(String requestId) throws Exception {
+    MvcResult result =
+        mockMvc
+            .perform(
+                get("/internal/api/v1/auth/password-recovery-tokens/by-request-id")
+                    .header(
+                        "Authorization",
+                        internalServiceAuthorization(
+                            AUTH_ADMIN_SUBJECT, InternalServiceScope.AUTH_ADMIN))
+                    .param("requestId", requestId))
+            .andExpect(status().isOk())
+            .andReturn();
+    return objectMapper.readTree(result.getResponse().getContentAsByteArray());
+  }
+
+  private void expirePasswordRecoveryToken(String requestId) {
+    commit(
+        transactionManager,
+        () -> {
+          int updated =
+              jdbcTemplate.update(
+                  """
+                  UPDATE auth_password_recovery_token
+                  SET token_status = 'EXPIRED',
+                      expires_at = CURRENT_TIMESTAMP - INTERVAL '1 minute',
+                      updated_at = CURRENT_TIMESTAMP
+                  WHERE request_id = :requestId
+                  """,
+                  new org.springframework.jdbc.core.namedparam.MapSqlParameterSource()
+                      .addValue("requestId", requestId));
+          assertEquals(1, updated);
+        });
   }
 
   private void passwordResetExpectUnauthorized(
