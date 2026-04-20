@@ -413,9 +413,7 @@ class JdbcNotificationInboxRepositoryIntegrationTest extends PostgresContainerTe
                 appliedTo));
 
     assertThat(readSlice.items()).extracting("title").containsExactly("visible-read");
-    assertThat(readSlice.items())
-        .extracting("readAt")
-        .containsExactly(appliedFrom.plusSeconds(21));
+    assertThat(readSlice.items()).extracting("readAt").containsExactly(appliedFrom.plusSeconds(21));
 
     NotificationSearchSlice unreadSlice =
         repository.searchByUserId(

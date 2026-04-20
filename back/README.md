@@ -234,6 +234,22 @@ tools/test/with-resource-lock.sh back-gradle-check \
 - 오래된 inbox row를 지울 때 연결된 `notification_user_read_state`도 FK cascade로 함께 정리해 read state orphan과 unread 회귀를 막습니다.
 - 기본 설정은 `NOTIFICATION_INBOX_CLEANUP_ENABLED=true`, `NOTIFICATION_INBOX_CLEANUP_RETENTION_DAYS=90`, `NOTIFICATION_INBOX_CLEANUP_BATCH_SIZE=500`, `NOTIFICATION_INBOX_CLEANUP_FIXED_DELAY_MS=300000` 입니다.
 
+## Notification Search API
+
+- endpoint:
+  - `GET /api/v1/notifications/search`
+- query param:
+  - `limit`, `cursor`
+  - `readStatus=ALL|UNREAD|READ` 기본값 `ALL`
+  - `eventType` exact match
+  - `from`, `to`는 ISO-8601 UTC instant 두 값이 함께 와야 합니다.
+- 계약:
+  - 기존 `GET /api/v1/notifications` 목록 API는 그대로 유지하고, 검색은 별도 endpoint로 분리합니다.
+  - `from/to`를 생략하면 최근 31일 window를 자동 적용하고, 응답 `appliedFrom`, `appliedTo`에 실제 window를 반환합니다.
+  - 다음 page는 `cursor`만 보내도 같은 `appliedFrom/appliedTo`를 재사용합니다.
+  - 검색 cursor는 `readStatus`, `eventType`, `appliedFrom`, `appliedTo` fingerprint를 포함하므로 요청 필터가 달라지면 `400`을 반환합니다.
+  - `from > to` 또는 31일 초과 window는 허용하지 않습니다.
+
 ## Notification Bulk Actions
 
 - endpoint:
