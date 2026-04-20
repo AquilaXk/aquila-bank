@@ -13,5 +13,17 @@ public record NotificationSearchSlice(
 
   public NotificationSearchSlice {
     items = List.copyOf(items);
+    if (limit < 1 || limit > 100) {
+      throw new IllegalArgumentException("limit must be between 1 and 100");
+    }
+    if (appliedFrom == null || appliedTo == null) {
+      throw new IllegalArgumentException("applied window is required");
+    }
+    if (appliedFrom.isAfter(appliedTo)) {
+      throw new IllegalArgumentException("appliedFrom must be before or equal to appliedTo");
+    }
+    if (!hasNext && nextCursor != null) {
+      throw new IllegalArgumentException("nextCursor must be null when hasNext is false");
+    }
   }
 }

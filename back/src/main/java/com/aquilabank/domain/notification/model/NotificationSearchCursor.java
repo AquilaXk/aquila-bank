@@ -19,6 +19,9 @@ public record NotificationSearchCursor(
     if (appliedFrom.isAfter(appliedTo)) {
       throw new IllegalArgumentException("appliedFrom must be before or equal to appliedTo");
     }
+    if (createdAt.isBefore(appliedFrom) || createdAt.isAfter(appliedTo)) {
+      throw new IllegalArgumentException("createdAt must be within applied window");
+    }
     if (filterFingerprint == null || filterFingerprint.isBlank()) {
       throw new IllegalArgumentException("filterFingerprint is required");
     }
