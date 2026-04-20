@@ -335,6 +335,7 @@ public class AuthConfiguration {
       TotpCredentialWritePort totpCredentialWritePort,
       TotpSecretPort totpSecretPort,
       BackupCodeWritePort backupCodeWritePort,
+      RememberDeviceWritePort rememberDeviceWritePort,
       RefreshTokenSessionWritePort refreshTokenSessionWritePort,
       Clock authClock,
       PlatformTransactionManager platformTransactionManager) {
@@ -345,6 +346,7 @@ public class AuthConfiguration {
             totpCredentialWritePort,
             totpSecretPort,
             backupCodeWritePort,
+            rememberDeviceWritePort,
             refreshTokenSessionWritePort,
             authClock);
     TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
@@ -447,6 +449,9 @@ public class AuthConfiguration {
       RefreshTokenSessionLoadPort refreshTokenSessionLoadPort,
       RefreshTokenSessionWritePort refreshTokenSessionWritePort,
       RefreshTokenSecretPort refreshTokenSecretPort,
+      RememberDeviceLoadPort rememberDeviceLoadPort,
+      RememberDeviceWritePort rememberDeviceWritePort,
+      RememberDeviceSecretPort rememberDeviceSecretPort,
       Clock authClock,
       PlatformTransactionManager platformTransactionManager) {
     LogoutService logoutService =
@@ -454,6 +459,9 @@ public class AuthConfiguration {
             refreshTokenSessionLoadPort,
             refreshTokenSessionWritePort,
             refreshTokenSecretPort,
+            rememberDeviceLoadPort,
+            rememberDeviceWritePort,
+            rememberDeviceSecretPort,
             authClock);
     TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
     return command ->
@@ -465,6 +473,7 @@ public class AuthConfiguration {
       UserCredentialLoadPort userCredentialLoadPort,
       UserCredentialUpdatePort userCredentialUpdatePort,
       PasswordHashPort passwordHashPort,
+      RememberDeviceWritePort rememberDeviceWritePort,
       RefreshTokenSessionWritePort refreshTokenSessionWritePort,
       Clock authClock,
       PlatformTransactionManager platformTransactionManager) {
@@ -473,6 +482,7 @@ public class AuthConfiguration {
             userCredentialLoadPort,
             userCredentialUpdatePort,
             passwordHashPort,
+            rememberDeviceWritePort,
             refreshTokenSessionWritePort,
             authClock);
     TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
@@ -581,10 +591,12 @@ public class AuthConfiguration {
   @Bean
   AuthSessionRevokeAllUseCase authSessionRevokeAllUseCase(
       RefreshTokenSessionWritePort refreshTokenSessionWritePort,
+      RememberDeviceWritePort rememberDeviceWritePort,
       Clock authClock,
       PlatformTransactionManager platformTransactionManager) {
     AuthSessionRevokeAllService authSessionRevokeAllService =
-        new AuthSessionRevokeAllService(refreshTokenSessionWritePort, authClock);
+        new AuthSessionRevokeAllService(
+            refreshTokenSessionWritePort, rememberDeviceWritePort, authClock);
     TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
     return command ->
         transactionTemplate.executeWithoutResult(

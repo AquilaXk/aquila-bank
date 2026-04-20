@@ -7,6 +7,7 @@ import com.aquilabank.domain.auth.model.PasswordResetWriteCommand;
 import com.aquilabank.domain.auth.model.UserStatus;
 import com.aquilabank.domain.auth.port.PasswordHashPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionWritePort;
+import com.aquilabank.domain.auth.port.RememberDeviceWritePort;
 import com.aquilabank.domain.auth.port.UserCredentialLoadPort;
 import com.aquilabank.domain.auth.port.UserCredentialUpdatePort;
 import java.time.Clock;
@@ -18,6 +19,7 @@ public final class PasswordResetService implements PasswordResetUseCase {
   private final UserCredentialLoadPort userCredentialLoadPort;
   private final UserCredentialUpdatePort userCredentialUpdatePort;
   private final PasswordHashPort passwordHashPort;
+  private final RememberDeviceWritePort rememberDeviceWritePort;
   private final RefreshTokenSessionWritePort refreshTokenSessionWritePort;
   private final Clock clock;
 
@@ -25,11 +27,13 @@ public final class PasswordResetService implements PasswordResetUseCase {
       UserCredentialLoadPort userCredentialLoadPort,
       UserCredentialUpdatePort userCredentialUpdatePort,
       PasswordHashPort passwordHashPort,
+      RememberDeviceWritePort rememberDeviceWritePort,
       RefreshTokenSessionWritePort refreshTokenSessionWritePort,
       Clock clock) {
     this.userCredentialLoadPort = userCredentialLoadPort;
     this.userCredentialUpdatePort = userCredentialUpdatePort;
     this.passwordHashPort = passwordHashPort;
+    this.rememberDeviceWritePort = rememberDeviceWritePort;
     this.refreshTokenSessionWritePort = refreshTokenSessionWritePort;
     this.clock = clock;
   }
@@ -52,6 +56,7 @@ public final class PasswordResetService implements PasswordResetUseCase {
         new PasswordResetWriteCommand(
             command.userId(), passwordHashPort.encode(command.newPassword()), changedAt));
     // access token 즉시 폐기가 없으므로 남아 있는 refresh session 전체 revoke로 장기 세션 연장을 막습니다.
+    rememberDeviceWritePort.revokeActiveByUserId(command.userId(), changedAt);
     refreshTokenSessionWritePort.revokeActiveSessionsByUserId(command.userId(), changedAt);
   }
 }
