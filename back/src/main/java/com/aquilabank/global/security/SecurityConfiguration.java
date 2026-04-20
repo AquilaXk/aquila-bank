@@ -2,6 +2,7 @@ package com.aquilabank.global.security;
 
 import com.aquilabank.domain.auth.port.AuthTokenIssuePort;
 import com.aquilabank.domain.auth.port.PasswordHashPort;
+import com.aquilabank.domain.auth.port.PasswordRecoverySecretPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSecretPort;
 import com.aquilabank.global.web.InternalAuthStatusAuditRequestCachingFilter;
 import com.aquilabank.global.web.RequestIdFilter;
@@ -38,6 +39,7 @@ import org.springframework.security.web.authentication.HttpStatusEntryPoint;
   SecurityTotpProperties.class,
   LoginProtectionProperties.class,
   LoginThrottlingProperties.class,
+  PasswordRecoveryProperties.class,
   BootstrapHeaderAuthProperties.class,
   AccountBootstrapApiProperties.class,
   AuthBootstrapApiProperties.class
@@ -70,6 +72,10 @@ public class SecurityConfiguration {
                     .requestMatchers("/api/v1/auth/login")
                     .permitAll()
                     .requestMatchers("/api/v1/auth/refresh")
+                    .permitAll()
+                    .requestMatchers("/api/v1/auth/password-recovery/request")
+                    .permitAll()
+                    .requestMatchers("/api/v1/auth/password-recovery/confirm")
                     .permitAll()
                     .requestMatchers("/api/v1/auth/mfa/totp/challenge/verify")
                     .permitAll()
@@ -175,6 +181,14 @@ public class SecurityConfiguration {
   @Bean
   RefreshTokenSecretPort refreshTokenSecretPort() {
     return new Sha256RefreshTokenManager();
+  }
+
+  @Bean
+  PasswordRecoverySecretPort passwordRecoverySecretPort(
+      PasswordRecoveryProperties passwordRecoveryProperties,
+      SecurityJwtProperties securityJwtProperties) {
+    return new AesPasswordRecoveryTokenManager(
+        passwordRecoveryProperties, securityJwtProperties.secret());
   }
 
   @Bean

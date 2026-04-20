@@ -4,6 +4,7 @@ import com.aquilabank.domain.auth.model.AuthUserSummary;
 import com.aquilabank.domain.auth.model.GeneratedPasswordRecoveryToken;
 import com.aquilabank.domain.auth.model.LoginUser;
 import com.aquilabank.domain.auth.model.PasswordRecoveryRequestCommand;
+import com.aquilabank.domain.auth.model.PasswordRecoveryRequestResult;
 import com.aquilabank.domain.auth.model.PasswordRecoveryTokenIssueCommand;
 import com.aquilabank.domain.auth.model.UserStatus;
 import com.aquilabank.domain.auth.port.PasswordRecoverySecretPort;
@@ -13,6 +14,7 @@ import com.aquilabank.domain.auth.port.UserQueryPort;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.UUID;
 
 /** 사용자 존재 노출 없이 recovery token 발급과 pending supersede를 묶습니다. */
 public final class PasswordRecoveryRequestService implements PasswordRecoveryRequestUseCase {
@@ -40,16 +42,17 @@ public final class PasswordRecoveryRequestService implements PasswordRecoveryReq
   }
 
   @Override
-  public void request(PasswordRecoveryRequestCommand command) {
+  public PasswordRecoveryRequestResult request(PasswordRecoveryRequestCommand command) {
+    String handoffRequestId = UUID.randomUUID().toString();
     AuthUserSummary user = userQueryPort.findSummaryByLoginId(command.loginId()).orElse(null);
     if (user == null || user.status() != UserStatus.ACTIVE) {
-      return;
+      return new PasswordRecoveryRequestResult(handoffRequestId);
     }
 
     LoginUser lockedUser =
         userCredentialLoadPort.findByLoginIdForUpdate(command.loginId()).orElse(null);
     if (lockedUser == null || lockedUser.status() != UserStatus.ACTIVE) {
-      return;
+      return new PasswordRecoveryRequestResult(handoffRequestId);
     }
 
     GeneratedPasswordRecoveryToken generatedToken = passwordRecoverySecretPort.generate();
@@ -59,7 +62,7 @@ public final class PasswordRecoveryRequestService implements PasswordRecoveryReq
     passwordRecoveryTokenWritePort.supersedePendingTokens(lockedUser.userId(), issuedAt);
     passwordRecoveryTokenWritePort.issue(
         new PasswordRecoveryTokenIssueCommand(
-            command.requestId(),
+            handoffRequestId,
             lockedUser.userId(),
             lockedUser.loginId(),
             generatedToken.tokenHash(),
@@ -67,5 +70,6 @@ public final class PasswordRecoveryRequestService implements PasswordRecoveryReq
             generatedToken.tokenNonce(),
             expiresAt,
             issuedAt));
+    return new PasswordRecoveryRequestResult(handoffRequestId);
   }
 }

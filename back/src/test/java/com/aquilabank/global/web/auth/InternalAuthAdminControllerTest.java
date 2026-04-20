@@ -16,6 +16,7 @@ import com.aquilabank.domain.auth.model.MembershipStatus;
 import com.aquilabank.domain.auth.model.UserAccountMembershipSummary;
 import com.aquilabank.domain.auth.model.UserStatus;
 import com.aquilabank.domain.auth.usecase.AuthUserQueryUseCase;
+import com.aquilabank.domain.auth.usecase.PasswordRecoveryTokenQueryUseCase;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipQueryUseCase;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipStatusUpdateUseCase;
 import com.aquilabank.domain.auth.usecase.UserStatusUpdateUseCase;
@@ -37,6 +38,7 @@ class InternalAuthAdminControllerTest {
   private UserStatusUpdateUseCase userStatusUpdateUseCase;
   private UserAccountMembershipQueryUseCase userAccountMembershipQueryUseCase;
   private UserAccountMembershipStatusUpdateUseCase userAccountMembershipStatusUpdateUseCase;
+  private PasswordRecoveryTokenQueryUseCase passwordRecoveryTokenQueryUseCase;
   private MockMvc mockMvc;
 
   @BeforeEach
@@ -45,6 +47,7 @@ class InternalAuthAdminControllerTest {
     userStatusUpdateUseCase = mock(UserStatusUpdateUseCase.class);
     userAccountMembershipQueryUseCase = mock(UserAccountMembershipQueryUseCase.class);
     userAccountMembershipStatusUpdateUseCase = mock(UserAccountMembershipStatusUpdateUseCase.class);
+    passwordRecoveryTokenQueryUseCase = mock(PasswordRecoveryTokenQueryUseCase.class);
 
     mockMvc =
         MockMvcBuilders.standaloneSetup(
@@ -53,6 +56,7 @@ class InternalAuthAdminControllerTest {
                     userStatusUpdateUseCase,
                     userAccountMembershipQueryUseCase,
                     userAccountMembershipStatusUpdateUseCase,
+                    passwordRecoveryTokenQueryUseCase,
                     InternalServiceTokenTestSupport.authorizer()))
             .setControllerAdvice(new ApiExceptionHandler())
             .build();

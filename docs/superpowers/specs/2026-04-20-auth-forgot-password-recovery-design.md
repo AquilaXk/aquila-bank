@@ -25,7 +25,7 @@
 - `bank_user`는 `login_id`, `password_hash`, status와 login protection 메타데이터만 가진다.
 - 메일/문자/이메일 컬럼이나 외부 연락 채널이 없다.
 - refresh session revoke는 기존 `RefreshTokenSessionWritePort`로 이미 지원된다.
-- `RequestIdFilter`가 있으므로 public request 뒤 internal exact lookup을 `requestId` 기준으로 연결할 수 있다.
+- `RequestIdFilter`의 `X-Request-Id`는 trace 전용으로 유지하고, password recovery handoff id는 별도로 발급해 internal exact lookup과 연결할 수 있다.
 
 ## Approaches Considered
 
@@ -43,7 +43,7 @@
 
 ## Selected Design
 
-권장안 1을 채택한다. public request와 confirm은 일반 사용자 경로로 제공하고, recovery token 값 자체는 internal exact lookup에서만 확인한다. 이렇게 하면 현재 연락 채널이 없어도 로컬/운영 검증이 가능하고, 후속 메일/문자 채널을 붙일 때 public API 계약을 바꾸지 않아도 된다.
+권장안 1을 채택한다. public request와 confirm은 일반 사용자 경로로 제공하고, recovery token 값 자체는 internal exact lookup에서만 확인한다. public request는 trace용 `X-Request-Id`와 분리된 서버 발급 handoff requestId를 별도 response header로 반환한다. handoff requestId 생성 책임은 controller가 아니라 password recovery use case 안에 둔다. 이렇게 하면 현재 연락 채널이 없어도 로컬/운영 검증이 가능하고, 후속 메일/문자 채널을 붙일 때 public API 계약을 바꾸지 않아도 된다.
 
 ## API Contract
 
@@ -54,8 +54,11 @@
   - `loginId`
 - response:
   - 항상 `204 No Content`
-  - `X-Request-Id` 헤더는 기존 필터가 채운다.
+  - `X-Request-Id` 헤더는 기존 필터가 trace 용도로 채운다.
+  - `X-Password-Recovery-Request-Id` 헤더에 서버가 발급한 handoff requestId를 반환한다.
 - 동작:
+  - caller가 보낸 `X-Request-Id` 값은 recovery token `request_id`로 저장하지 않는다.
+  - password recovery use case가 새 handoff requestId를 생성해 `auth_password_recovery_token.request_id`에 저장한다.
   - active user가 존재하면 새 recovery token을 발급한다.
   - 같은 user의 기존 `PENDING` token은 `SUPERSEDED` 상태로 바꾼다.
   - unknown user, non-active user여도 응답은 동일하게 유지한다.
@@ -74,7 +77,7 @@
   - `PENDING` + `expires_at > now` + user `ACTIVE` 확인
   - 성공 시 password hash 교체, token `USED`, active refresh session revoke
 
-### `GET /internal/api/v1/auth/password-recovery-tokens/{requestId}`
+### `GET /internal/api/v1/auth/password-recovery-tokens/by-request-id?requestId=...`
 
 - 인증: internal service token + `AUTH_ADMIN`
 - response:
@@ -88,7 +91,8 @@
   - `createdAt`
 - 실패:
   - wrong scope/missing token: `401`
-  - missing requestId: `404`
+  - missing/blank requestId: `400`
+  - unknown requestId: `404`
 
 ## Data Model
 
@@ -163,6 +167,7 @@ public 응답은 항상 동일하게 `204`다.
   - wrong/expired/used token, inactive user는 모두 `401 password recovery failed`
 - internal lookup:
   - missing/wrong scope `401`
+  - missing/blank requestId `400`
   - unknown requestId `404`
 
 ## Security Notes
@@ -170,7 +175,7 @@ public 응답은 항상 동일하게 `204`다.
 - public request 응답으로 token을 직접 노출하지 않는다.
 - generic failure를 유지해 loginId 존재 여부와 token 상태를 외부에서 추정하지 못하게 한다.
 - access token 즉시 폐기는 하지 않고, 기존 self-service reset과 동일하게 refresh revoke까지만 보장한다.
-- internal lookup은 운영/로컬 검증용 임시 handoff 채널이다. 메일/문자 채널이 붙으면 plain token 전달 책임은 그 채널로 이동한다.
+- internal lookup은 운영/로컬 검증용 임시 handoff 채널이다. 조회 키는 trace request-id가 아니라 password recovery handoff requestId다. 메일/문자 채널이 붙으면 plain token 전달 책임은 그 채널로 이동한다.
 
 ## Testing Strategy
 

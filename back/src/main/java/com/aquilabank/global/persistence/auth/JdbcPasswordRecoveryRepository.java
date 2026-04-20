@@ -13,7 +13,7 @@ import java.util.Optional;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 
-/** password recovery token exact lookup과 requestId 조회를 전용 JDBC adapter로 분리합니다. */
+/** password recovery token exact lookup과 handoff requestId 조회를 전용 JDBC adapter로 분리합니다. */
 public class JdbcPasswordRecoveryRepository
     implements PasswordRecoveryTokenLoadPort, PasswordRecoveryTokenQueryPort {
 
@@ -47,7 +47,7 @@ public class JdbcPasswordRecoveryRepository
   }
 
   @Override
-  public Optional<PasswordRecoveryTokenQueryRecord> findByRequestId(String requestId) {
+  public Optional<PasswordRecoveryTokenQueryRecord> findByRequestId(String handoffRequestId) {
     return jdbcTemplate
         .query(
             """
@@ -63,7 +63,7 @@ public class JdbcPasswordRecoveryRepository
             FROM auth_password_recovery_token
             WHERE request_id = :requestId
             """,
-            new MapSqlParameterSource().addValue("requestId", requestId),
+            new MapSqlParameterSource().addValue("requestId", handoffRequestId),
             (rs, rowNum) -> mapPasswordRecoveryTokenQueryRecord(rs))
         .stream()
         .findFirst();

@@ -8,6 +8,7 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.aquilabank.domain.auth.usecase.AuthUserQueryUseCase;
+import com.aquilabank.domain.auth.usecase.PasswordRecoveryTokenQueryUseCase;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipQueryUseCase;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipStatusUpdateUseCase;
 import com.aquilabank.domain.auth.usecase.UserStatusUpdateUseCase;
@@ -42,6 +43,8 @@ class InternalAuthStatusFailureLoggingTest {
         Mockito.mock(UserAccountMembershipQueryUseCase.class);
     UserAccountMembershipStatusUpdateUseCase userAccountMembershipStatusUpdateUseCase =
         Mockito.mock(UserAccountMembershipStatusUpdateUseCase.class);
+    PasswordRecoveryTokenQueryUseCase passwordRecoveryTokenQueryUseCase =
+        Mockito.mock(PasswordRecoveryTokenQueryUseCase.class);
     var authorizer = InternalServiceTokenTestSupport.authorizer();
 
     mockMvc =
@@ -51,6 +54,7 @@ class InternalAuthStatusFailureLoggingTest {
                     userStatusUpdateUseCase,
                     userAccountMembershipQueryUseCase,
                     userAccountMembershipStatusUpdateUseCase,
+                    passwordRecoveryTokenQueryUseCase,
                     authorizer))
             .addInterceptors(new InternalServiceTokenAuthenticationInterceptor(authorizer))
             .addFilters(new RequestIdFilter(), new InternalAuthStatusAuditRequestCachingFilter())

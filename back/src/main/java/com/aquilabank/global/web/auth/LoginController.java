@@ -8,6 +8,9 @@ import com.aquilabank.domain.auth.model.AuthSessionSummary;
 import com.aquilabank.domain.auth.model.LoginCommand;
 import com.aquilabank.domain.auth.model.LoginResult;
 import com.aquilabank.domain.auth.model.LogoutCommand;
+import com.aquilabank.domain.auth.model.PasswordRecoveryConfirmCommand;
+import com.aquilabank.domain.auth.model.PasswordRecoveryRequestCommand;
+import com.aquilabank.domain.auth.model.PasswordRecoveryRequestResult;
 import com.aquilabank.domain.auth.model.PasswordResetCommand;
 import com.aquilabank.domain.auth.model.RefreshTokenCommand;
 import com.aquilabank.domain.auth.model.TotpChallengeVerifyCommand;
@@ -20,6 +23,8 @@ import com.aquilabank.domain.auth.usecase.AuthSessionRevokeAllUseCase;
 import com.aquilabank.domain.auth.usecase.AuthSessionRevokeUseCase;
 import com.aquilabank.domain.auth.usecase.LoginUseCase;
 import com.aquilabank.domain.auth.usecase.LogoutUseCase;
+import com.aquilabank.domain.auth.usecase.PasswordRecoveryConfirmUseCase;
+import com.aquilabank.domain.auth.usecase.PasswordRecoveryRequestUseCase;
 import com.aquilabank.domain.auth.usecase.PasswordResetUseCase;
 import com.aquilabank.domain.auth.usecase.RefreshTokenUseCase;
 import com.aquilabank.domain.auth.usecase.TotpChallengeVerifyUseCase;
@@ -57,6 +62,9 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/v1/auth")
 public class LoginController {
 
+  private static final String PASSWORD_RECOVERY_HANDOFF_REQUEST_ID_HEADER =
+      "X-Password-Recovery-Request-Id";
+
   private final LoginUseCase loginUseCase;
   private final AuthSessionListUseCase authSessionListUseCase;
   private final AuthSessionRevokeUseCase authSessionRevokeUseCase;
@@ -66,6 +74,8 @@ public class LoginController {
   private final TotpChallengeVerifyUseCase totpChallengeVerifyUseCase;
   private final LogoutUseCase logoutUseCase;
   private final PasswordResetUseCase passwordResetUseCase;
+  private final PasswordRecoveryRequestUseCase passwordRecoveryRequestUseCase;
+  private final PasswordRecoveryConfirmUseCase passwordRecoveryConfirmUseCase;
   private final AuthSessionMetadataResolver authSessionMetadataResolver;
   private final LoginThrottleGuard loginThrottleGuard;
 
@@ -79,6 +89,8 @@ public class LoginController {
       TotpChallengeVerifyUseCase totpChallengeVerifyUseCase,
       LogoutUseCase logoutUseCase,
       PasswordResetUseCase passwordResetUseCase,
+      PasswordRecoveryRequestUseCase passwordRecoveryRequestUseCase,
+      PasswordRecoveryConfirmUseCase passwordRecoveryConfirmUseCase,
       AuthSessionMetadataResolver authSessionMetadataResolver,
       LoginThrottleGuard loginThrottleGuard) {
     this.loginUseCase = loginUseCase;
@@ -90,6 +102,8 @@ public class LoginController {
     this.totpChallengeVerifyUseCase = totpChallengeVerifyUseCase;
     this.logoutUseCase = logoutUseCase;
     this.passwordResetUseCase = passwordResetUseCase;
+    this.passwordRecoveryRequestUseCase = passwordRecoveryRequestUseCase;
+    this.passwordRecoveryConfirmUseCase = passwordRecoveryConfirmUseCase;
     this.authSessionMetadataResolver = authSessionMetadataResolver;
     this.loginThrottleGuard = loginThrottleGuard;
   }
@@ -189,6 +203,26 @@ public class LoginController {
     return ResponseEntity.noContent().build();
   }
 
+  @PostMapping("/password-recovery/request")
+  public ResponseEntity<Void> requestPasswordRecovery(
+      @Valid @RequestBody PasswordRecoveryRequest request) {
+    PasswordRecoveryRequestResult result =
+        passwordRecoveryRequestUseCase.request(
+            new PasswordRecoveryRequestCommand(request.loginId()));
+    return ResponseEntity.noContent()
+        // trace용 X-Request-Id와 분리된 handoff requestId만 별도 header로 반환합니다.
+        .header(PASSWORD_RECOVERY_HANDOFF_REQUEST_ID_HEADER, result.handoffRequestId())
+        .build();
+  }
+
+  @PostMapping("/password-recovery/confirm")
+  public ResponseEntity<Void> confirmPasswordRecovery(
+      @Valid @RequestBody PasswordRecoveryConfirmRequest request) {
+    passwordRecoveryConfirmUseCase.confirm(
+        new PasswordRecoveryConfirmCommand(request.recoveryToken(), request.newPassword()));
+    return ResponseEntity.noContent().build();
+  }
+
   /** 로그인 요청 body */
   public record LoginRequest(
       @NotBlank(message = "loginId is required") @Size(max = 80, message = "loginId must be 80 characters or less") String loginId,
@@ -205,6 +239,15 @@ public class LoginController {
   /** password reset 요청 body */
   public record PasswordResetRequest(
       @NotBlank(message = "currentPassword is required") @Size(max = 120, message = "currentPassword must be 120 characters or less") String currentPassword,
+      @NotBlank(message = "newPassword is required") @Size(max = 120, message = "newPassword must be 120 characters or less") String newPassword) {}
+
+  /** password recovery 요청 body */
+  public record PasswordRecoveryRequest(
+      @NotBlank(message = "loginId is required") @Size(max = 80, message = "loginId must be 80 characters or less") String loginId) {}
+
+  /** password recovery 확정 요청 body */
+  public record PasswordRecoveryConfirmRequest(
+      @NotBlank(message = "recoveryToken is required") @Size(max = 160, message = "recoveryToken must be 160 characters or less") String recoveryToken,
       @NotBlank(message = "newPassword is required") @Size(max = 120, message = "newPassword must be 120 characters or less") String newPassword) {}
 
   /** TOTP code 입력 body */
