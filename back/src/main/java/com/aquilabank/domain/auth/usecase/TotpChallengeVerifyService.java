@@ -4,6 +4,8 @@ import com.aquilabank.domain.auth.exception.InvalidCredentialsException;
 import com.aquilabank.domain.auth.model.AuthSessionClientMetadata;
 import com.aquilabank.domain.auth.model.IssuedAccessToken;
 import com.aquilabank.domain.auth.model.LoginResult;
+import com.aquilabank.domain.auth.model.RememberDeviceIssueCommand;
+import com.aquilabank.domain.auth.model.RememberDevicePolicy;
 import com.aquilabank.domain.auth.model.TotpChallengeVerifyCommand;
 import com.aquilabank.domain.auth.model.TotpCredential;
 import com.aquilabank.domain.auth.model.TotpCredentialStatus;
@@ -16,6 +18,8 @@ import com.aquilabank.domain.auth.port.AuthTokenIssuePort;
 import com.aquilabank.domain.auth.port.RefreshDeviceBindingSecretPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSecretPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionWritePort;
+import com.aquilabank.domain.auth.port.RememberDeviceSecretPort;
+import com.aquilabank.domain.auth.port.RememberDeviceWritePort;
 import com.aquilabank.domain.auth.port.TotpCredentialLoadPort;
 import com.aquilabank.domain.auth.port.TotpCredentialWritePort;
 import com.aquilabank.domain.auth.port.TotpLoginChallengeLoadPort;
@@ -31,12 +35,15 @@ public final class TotpChallengeVerifyService implements TotpChallengeVerifyUseC
   private final TotpLoginChallengeWritePort totpLoginChallengeWritePort;
   private final TotpCredentialLoadPort totpCredentialLoadPort;
   private final TotpCredentialWritePort totpCredentialWritePort;
+  private final RememberDeviceWritePort rememberDeviceWritePort;
+  private final RememberDeviceSecretPort rememberDeviceSecretPort;
   private final RefreshTokenSessionWritePort refreshTokenSessionWritePort;
   private final RefreshTokenSecretPort refreshTokenSecretPort;
   private final RefreshDeviceBindingSecretPort refreshDeviceBindingSecretPort;
   private final TotpSecretPort totpSecretPort;
   private final AuthTokenIssuePort authTokenIssuePort;
   private final com.aquilabank.domain.auth.model.RefreshTokenPolicy refreshTokenPolicy;
+  private final RememberDevicePolicy rememberDevicePolicy;
   private final int challengeMaxAttempts;
   private final Clock clock;
 
@@ -45,24 +52,30 @@ public final class TotpChallengeVerifyService implements TotpChallengeVerifyUseC
       TotpLoginChallengeWritePort totpLoginChallengeWritePort,
       TotpCredentialLoadPort totpCredentialLoadPort,
       TotpCredentialWritePort totpCredentialWritePort,
+      RememberDeviceWritePort rememberDeviceWritePort,
+      RememberDeviceSecretPort rememberDeviceSecretPort,
       RefreshTokenSessionWritePort refreshTokenSessionWritePort,
       RefreshTokenSecretPort refreshTokenSecretPort,
       RefreshDeviceBindingSecretPort refreshDeviceBindingSecretPort,
       TotpSecretPort totpSecretPort,
       AuthTokenIssuePort authTokenIssuePort,
       com.aquilabank.domain.auth.model.RefreshTokenPolicy refreshTokenPolicy,
+      RememberDevicePolicy rememberDevicePolicy,
       int challengeMaxAttempts,
       Clock clock) {
     this.totpLoginChallengeLoadPort = totpLoginChallengeLoadPort;
     this.totpLoginChallengeWritePort = totpLoginChallengeWritePort;
     this.totpCredentialLoadPort = totpCredentialLoadPort;
     this.totpCredentialWritePort = totpCredentialWritePort;
+    this.rememberDeviceWritePort = rememberDeviceWritePort;
+    this.rememberDeviceSecretPort = rememberDeviceSecretPort;
     this.refreshTokenSessionWritePort = refreshTokenSessionWritePort;
     this.refreshTokenSecretPort = refreshTokenSecretPort;
     this.refreshDeviceBindingSecretPort = refreshDeviceBindingSecretPort;
     this.totpSecretPort = totpSecretPort;
     this.authTokenIssuePort = authTokenIssuePort;
     this.refreshTokenPolicy = refreshTokenPolicy;
+    this.rememberDevicePolicy = rememberDevicePolicy;
     this.challengeMaxAttempts = challengeMaxAttempts;
     this.clock = clock;
   }
@@ -109,10 +122,11 @@ public final class TotpChallengeVerifyService implements TotpChallengeVerifyUseC
 
     updateChallenge(challenge, TotpLoginChallengeStatus.VERIFIED, challenge.attemptCount(), now);
     totpCredentialWritePort.touchLastUsed(new TotpCredentialTouchCommand(challenge.userId(), now));
-    return issueTokenPair(challenge, now);
+    return issueTokenPair(challenge, now, command.rememberDevice());
   }
 
-  private LoginResult issueTokenPair(TotpLoginChallenge challenge, Instant now) {
+  private LoginResult issueTokenPair(
+      TotpLoginChallenge challenge, Instant now, boolean rememberDevice) {
     String refreshToken = refreshTokenSecretPort.createToken();
     String refreshTokenHash = refreshTokenSecretPort.hash(refreshToken);
     String refreshDeviceBindingToken = refreshDeviceBindingSecretPort.createToken();
@@ -120,6 +134,7 @@ public final class TotpChallengeVerifyService implements TotpChallengeVerifyUseC
         refreshDeviceBindingSecretPort.hash(refreshDeviceBindingToken);
     Instant refreshExpiresAt = now.plus(refreshTokenPolicy.ttl());
     // refresh token 단독 탈취 재사용을 막기 위해 device binding hash를 session에 함께 저장합니다.
+    String rememberDeviceToken = issueRememberDevice(challenge, now, rememberDevice);
     refreshTokenSessionWritePort.create(
         new com.aquilabank.domain.auth.model.RefreshTokenSessionCreateCommand(
             challenge.userId(),
@@ -137,7 +152,24 @@ public final class TotpChallengeVerifyService implements TotpChallengeVerifyUseC
         issuedAccessToken.expiresAt(),
         refreshExpiresAt,
         issuedAccessToken.userId(),
-        refreshDeviceBindingToken);
+        refreshDeviceBindingToken,
+        rememberDeviceToken);
+  }
+
+  private String issueRememberDevice(
+      TotpLoginChallenge challenge, Instant now, boolean rememberDevice) {
+    if (!rememberDevice) {
+      return null;
+    }
+    String rememberDeviceToken = rememberDeviceSecretPort.createToken();
+    rememberDeviceWritePort.issue(
+        new RememberDeviceIssueCommand(
+            challenge.userId(),
+            rememberDeviceSecretPort.hash(rememberDeviceToken),
+            challenge.deviceName(),
+            now.plus(rememberDevicePolicy.ttl()),
+            now));
+    return rememberDeviceToken;
   }
 
   private void updateChallenge(

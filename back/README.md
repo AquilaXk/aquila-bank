@@ -515,6 +515,13 @@ TOTP MFA는 `login -> challenge -> verify` 2단계 경로로만 token pair를 �
   - challenge verify 성공 시에만 `status=SUCCESS`와 token pair가 발급되고 `ab_refresh_device` cookie도 함께 내려간다
   - challenge verify는 `totpCode` 또는 `backupCode` 중 하나를 사용하며 backup code 성공 시 해당 row는 즉시 `USED` 처리된다
   - challenge verify는 로그인 시점의 `device_name`, `ip_address` 메타데이터를 그대로 session row에 저장한다
+- remember device 기준:
+  - TOTP/backup code challenge verify request body는 선택 필드 `rememberDevice=true` 를 받을 수 있다
+  - `rememberDevice=true` 로 challenge verify 성공 시 응답 body가 아니라 `Set-Cookie: ab_mfa_remember_device=...` 로만 raw token을 내려준다
+  - cookie는 `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/`, `Max-Age=2592000(30일)` 기준을 사용한다
+  - active TOTP credential이 있는 사용자도 유효한 remember device cookie가 있으면 다음 `POST /api/v1/auth/login` 에서 challenge 없이 바로 token pair를 받는다
+  - remember device bypass 성공 시 token은 즉시 rotate 되고 새 cookie로 다시 내려가며, 만료/무효/stale cookie는 MFA bypass 없이 `MFA_REQUIRED` 로 돌아가고 응답에서 clear 된다
+  - 현재 cookie logout, `DELETE /api/v1/auth/sessions`, `POST /api/v1/auth/password-reset`, `POST /api/v1/auth/mfa/totp/disable` 성공 시 remember device도 함께 revoke 되고 cookie도 clear 된다
 - 기본값:
   - `SECURITY_TOTP_ISSUER=Aquila Bank`
   - `SECURITY_TOTP_SECRET_ENCRYPTION_KEY` 필수
@@ -526,7 +533,9 @@ TOTP MFA는 `login -> challenge -> verify` 2단계 경로로만 token pair를 �
   - credential 테이블은 `auth_totp_credential`
   - login challenge 테이블은 `auth_totp_login_challenge`
   - backup code 테이블은 `auth_mfa_backup_code`
+  - remember device 테이블은 `auth_mfa_remember_device`
   - backup code는 plain 값이나 복호화 가능한 ciphertext 없이 `SHA-256` hash만 저장한다
+  - remember device도 raw token 없이 `SHA-256` hash만 저장하고, lookup은 `user_id + token_hash` exact match로만 수행한다
   - challenge row는 `user_id` 기준 1행만 유지해 user별 현재 pending state만 덮어쓴다
 - 거절 기준:
   - wrong TOTP code, 만료 challenge, 사용 완료 challenge는 `401 mfa challenge failed`

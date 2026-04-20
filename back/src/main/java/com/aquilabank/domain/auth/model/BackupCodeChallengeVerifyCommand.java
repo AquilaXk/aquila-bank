@@ -1,7 +1,12 @@
 package com.aquilabank.domain.auth.model;
 
 /** backup code 기반 MFA challenge confirm 요청 최소 입력값입니다. */
-public record BackupCodeChallengeVerifyCommand(String challengeId, String backupCode) {
+public record BackupCodeChallengeVerifyCommand(
+    String challengeId, String backupCode, boolean rememberDevice) {
+
+  public BackupCodeChallengeVerifyCommand(String challengeId, String backupCode) {
+    this(challengeId, backupCode, false);
+  }
 
   public BackupCodeChallengeVerifyCommand {
     if (challengeId == null || challengeId.isBlank()) {

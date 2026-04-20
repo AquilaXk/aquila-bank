@@ -6,6 +6,7 @@ import com.aquilabank.domain.auth.port.PasswordHashPort;
 import com.aquilabank.domain.auth.port.PasswordRecoverySecretPort;
 import com.aquilabank.domain.auth.port.RefreshDeviceBindingSecretPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSecretPort;
+import com.aquilabank.domain.auth.port.RememberDeviceSecretPort;
 import com.aquilabank.global.web.InternalAuthStatusAuditRequestCachingFilter;
 import com.aquilabank.global.web.RequestIdFilter;
 import jakarta.servlet.http.HttpServletRequest;
@@ -39,6 +40,7 @@ import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 @EnableConfigurationProperties({
   SecurityJwtProperties.class,
   SecurityTotpProperties.class,
+  SecurityRememberDeviceProperties.class,
   LoginProtectionProperties.class,
   LoginThrottlingProperties.class,
   PasswordRecoveryProperties.class,
@@ -195,6 +197,11 @@ public class SecurityConfiguration {
   @Bean
   BackupCodeSecretPort backupCodeSecretPort() {
     return new Sha256BackupCodeManager();
+  }
+
+  @Bean
+  RememberDeviceSecretPort rememberDeviceSecretPort() {
+    return new Sha256RememberDeviceManager();
   }
 
   @Bean

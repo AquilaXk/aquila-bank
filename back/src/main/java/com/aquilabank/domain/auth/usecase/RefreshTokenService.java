@@ -101,6 +101,7 @@ public final class RefreshTokenService implements RefreshTokenUseCase {
         issuedAccessToken.expiresAt(),
         refreshExpiresAt,
         issuedAccessToken.userId(),
-        nextRefreshDeviceBindingToken);
+        nextRefreshDeviceBindingToken,
+        null);
   }
 }

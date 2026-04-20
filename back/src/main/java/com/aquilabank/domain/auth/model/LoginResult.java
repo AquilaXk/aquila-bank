@@ -14,7 +14,8 @@ public record LoginResult(
     String refreshDeviceBindingToken,
     String challengeId,
     LoginChallengeType challengeType,
-    Instant challengeExpiresAt) {
+    Instant challengeExpiresAt,
+    String rememberDeviceToken) {
 
   public LoginResult {
     if (status == null) {
@@ -22,6 +23,9 @@ public record LoginResult(
     }
     if (refreshDeviceBindingToken != null && refreshDeviceBindingToken.isBlank()) {
       refreshDeviceBindingToken = null;
+    }
+    if (rememberDeviceToken != null && rememberDeviceToken.isBlank()) {
+      throw new IllegalArgumentException("rememberDeviceToken must not be blank");
     }
     if (status == LoginResultStatus.SUCCESS) {
       if (accessToken == null || accessToken.isBlank()) {
@@ -61,7 +65,8 @@ public record LoginResult(
           || expiresAt != null
           || refreshExpiresAt != null
           || userId != null
-          || refreshDeviceBindingToken != null) {
+          || refreshDeviceBindingToken != null
+          || rememberDeviceToken != null) {
         throw new IllegalArgumentException("token fields are not allowed for mfa challenge");
       }
     }
@@ -74,18 +79,8 @@ public record LoginResult(
       Instant expiresAt,
       Instant refreshExpiresAt,
       long userId) {
-    return new LoginResult(
-        LoginResultStatus.SUCCESS,
-        accessToken,
-        refreshToken,
-        tokenType,
-        expiresAt,
-        refreshExpiresAt,
-        userId,
-        null,
-        null,
-        null,
-        null);
+    return success(
+        accessToken, refreshToken, tokenType, expiresAt, refreshExpiresAt, userId, null, null);
   }
 
   public static LoginResult success(
@@ -95,7 +90,8 @@ public record LoginResult(
       Instant expiresAt,
       Instant refreshExpiresAt,
       long userId,
-      String refreshDeviceBindingToken) {
+      String refreshDeviceBindingToken,
+      String rememberDeviceToken) {
     return new LoginResult(
         LoginResultStatus.SUCCESS,
         accessToken,
@@ -107,7 +103,8 @@ public record LoginResult(
         refreshDeviceBindingToken,
         null,
         null,
-        null);
+        null,
+        rememberDeviceToken);
   }
 
   public static LoginResult mfaRequired(
@@ -123,6 +120,7 @@ public record LoginResult(
         null,
         challengeId,
         challengeType,
-        challengeExpiresAt);
+        challengeExpiresAt,
+        null);
   }
 }

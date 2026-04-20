@@ -14,6 +14,7 @@ import com.aquilabank.domain.auth.model.BackupCodeStatus;
 import com.aquilabank.domain.auth.model.IssuedAccessToken;
 import com.aquilabank.domain.auth.model.LoginResultStatus;
 import com.aquilabank.domain.auth.model.RefreshTokenPolicy;
+import com.aquilabank.domain.auth.model.RememberDevicePolicy;
 import com.aquilabank.domain.auth.model.TotpCredential;
 import com.aquilabank.domain.auth.model.TotpCredentialStatus;
 import com.aquilabank.domain.auth.model.TotpLoginChallenge;
@@ -26,6 +27,8 @@ import com.aquilabank.domain.auth.port.BackupCodeWritePort;
 import com.aquilabank.domain.auth.port.RefreshDeviceBindingSecretPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSecretPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionWritePort;
+import com.aquilabank.domain.auth.port.RememberDeviceSecretPort;
+import com.aquilabank.domain.auth.port.RememberDeviceWritePort;
 import com.aquilabank.domain.auth.port.TotpCredentialLoadPort;
 import com.aquilabank.domain.auth.port.TotpLoginChallengeLoadPort;
 import com.aquilabank.domain.auth.port.TotpLoginChallengeWritePort;
@@ -51,6 +54,9 @@ class BackupCodeChallengeVerifyServiceTest {
     BackupCodeLoadPort backupCodeLoadPort = Mockito.mock(BackupCodeLoadPort.class);
     BackupCodeWritePort backupCodeWritePort = Mockito.mock(BackupCodeWritePort.class);
     BackupCodeSecretPort backupCodeSecretPort = Mockito.mock(BackupCodeSecretPort.class);
+    RememberDeviceWritePort rememberDeviceWritePort = Mockito.mock(RememberDeviceWritePort.class);
+    RememberDeviceSecretPort rememberDeviceSecretPort =
+        Mockito.mock(RememberDeviceSecretPort.class);
     RefreshTokenSessionWritePort refreshTokenSessionWritePort =
         Mockito.mock(RefreshTokenSessionWritePort.class);
     RefreshTokenSecretPort refreshTokenSecretPort = Mockito.mock(RefreshTokenSecretPort.class);
@@ -80,15 +86,19 @@ class BackupCodeChallengeVerifyServiceTest {
             backupCodeLoadPort,
             backupCodeWritePort,
             backupCodeSecretPort,
+            rememberDeviceWritePort,
+            rememberDeviceSecretPort,
             refreshTokenSessionWritePort,
             refreshTokenSecretPort,
             refreshDeviceBindingSecretPort,
             authTokenIssuePort,
             new RefreshTokenPolicy(Duration.ofDays(14)),
+            new RememberDevicePolicy(Duration.ofDays(30)),
             5,
             Clock.fixed(NOW, ZoneOffset.UTC));
 
-    var result = service.verify(new BackupCodeChallengeVerifyCommand("challenge-1", "ABCD-EFGH"));
+    var result =
+        service.verify(new BackupCodeChallengeVerifyCommand("challenge-1", "ABCD-EFGH", false));
 
     assertEquals(LoginResultStatus.SUCCESS, result.status());
     assertEquals("access-token", result.accessToken());
@@ -96,6 +106,7 @@ class BackupCodeChallengeVerifyServiceTest {
     verify(totpLoginChallengeWritePort).update(any());
     verify(backupCodeWritePort).markUsed(any());
     verify(refreshTokenSessionWritePort).create(any());
+    verify(rememberDeviceWritePort, never()).issue(any());
   }
 
   @Test
@@ -108,6 +119,9 @@ class BackupCodeChallengeVerifyServiceTest {
     BackupCodeLoadPort backupCodeLoadPort = Mockito.mock(BackupCodeLoadPort.class);
     BackupCodeWritePort backupCodeWritePort = Mockito.mock(BackupCodeWritePort.class);
     BackupCodeSecretPort backupCodeSecretPort = Mockito.mock(BackupCodeSecretPort.class);
+    RememberDeviceWritePort rememberDeviceWritePort = Mockito.mock(RememberDeviceWritePort.class);
+    RememberDeviceSecretPort rememberDeviceSecretPort =
+        Mockito.mock(RememberDeviceSecretPort.class);
     RefreshTokenSessionWritePort refreshTokenSessionWritePort =
         Mockito.mock(RefreshTokenSessionWritePort.class);
     RefreshTokenSecretPort refreshTokenSecretPort = Mockito.mock(RefreshTokenSecretPort.class);
@@ -131,21 +145,89 @@ class BackupCodeChallengeVerifyServiceTest {
             backupCodeLoadPort,
             backupCodeWritePort,
             backupCodeSecretPort,
+            rememberDeviceWritePort,
+            rememberDeviceSecretPort,
             refreshTokenSessionWritePort,
             refreshTokenSecretPort,
             refreshDeviceBindingSecretPort,
             authTokenIssuePort,
             new RefreshTokenPolicy(Duration.ofDays(14)),
+            new RememberDevicePolicy(Duration.ofDays(30)),
             5,
             Clock.fixed(NOW, ZoneOffset.UTC));
 
     assertThrows(
         InvalidCredentialsException.class,
-        () -> service.verify(new BackupCodeChallengeVerifyCommand("challenge-1", "WRONG-CODE")));
+        () ->
+            service.verify(
+                new BackupCodeChallengeVerifyCommand("challenge-1", "WRONG-CODE", false)));
 
     verify(totpLoginChallengeWritePort).update(any());
     verify(backupCodeWritePort, never()).markUsed(any());
     verify(refreshTokenSessionWritePort, never()).create(any());
+  }
+
+  @Test
+  void issuesRememberDeviceTokenWhenRequested() {
+    TotpLoginChallengeLoadPort totpLoginChallengeLoadPort =
+        Mockito.mock(TotpLoginChallengeLoadPort.class);
+    TotpLoginChallengeWritePort totpLoginChallengeWritePort =
+        Mockito.mock(TotpLoginChallengeWritePort.class);
+    TotpCredentialLoadPort totpCredentialLoadPort = Mockito.mock(TotpCredentialLoadPort.class);
+    BackupCodeLoadPort backupCodeLoadPort = Mockito.mock(BackupCodeLoadPort.class);
+    BackupCodeWritePort backupCodeWritePort = Mockito.mock(BackupCodeWritePort.class);
+    BackupCodeSecretPort backupCodeSecretPort = Mockito.mock(BackupCodeSecretPort.class);
+    RememberDeviceWritePort rememberDeviceWritePort = Mockito.mock(RememberDeviceWritePort.class);
+    RememberDeviceSecretPort rememberDeviceSecretPort =
+        Mockito.mock(RememberDeviceSecretPort.class);
+    RefreshTokenSessionWritePort refreshTokenSessionWritePort =
+        Mockito.mock(RefreshTokenSessionWritePort.class);
+    RefreshTokenSecretPort refreshTokenSecretPort = Mockito.mock(RefreshTokenSecretPort.class);
+    RefreshDeviceBindingSecretPort refreshDeviceBindingSecretPort =
+        Mockito.mock(RefreshDeviceBindingSecretPort.class);
+    AuthTokenIssuePort authTokenIssuePort = Mockito.mock(AuthTokenIssuePort.class);
+
+    when(totpLoginChallengeLoadPort.findByChallengeIdForUpdate("challenge-1"))
+        .thenReturn(Optional.of(activeChallenge()));
+    when(totpCredentialLoadPort.findCredentialByUserIdForUpdate(7L))
+        .thenReturn(Optional.of(activeCredential()));
+    when(backupCodeSecretPort.hash("ABCD-EFGH")).thenReturn("backup-hash");
+    when(backupCodeLoadPort.findActiveByUserIdAndCodeHashForUpdate(7L, "backup-hash"))
+        .thenReturn(Optional.of(activeBackupCode()));
+    when(rememberDeviceSecretPort.createToken()).thenReturn("remember-device-token");
+    when(rememberDeviceSecretPort.hash("remember-device-token")).thenReturn("remember-hash");
+    when(refreshTokenSecretPort.createToken()).thenReturn("refresh-token");
+    when(refreshTokenSecretPort.hash("refresh-token")).thenReturn("refresh-hash");
+    when(refreshDeviceBindingSecretPort.createToken()).thenReturn("binding-token");
+    when(refreshDeviceBindingSecretPort.hash("binding-token")).thenReturn("binding-hash");
+    when(authTokenIssuePort.issue(7L, "alice", NOW))
+        .thenReturn(new IssuedAccessToken("access-token", "Bearer", NOW.plusSeconds(900), 7L));
+
+    BackupCodeChallengeVerifyService service =
+        new BackupCodeChallengeVerifyService(
+            totpLoginChallengeLoadPort,
+            totpLoginChallengeWritePort,
+            totpCredentialLoadPort,
+            backupCodeLoadPort,
+            backupCodeWritePort,
+            backupCodeSecretPort,
+            rememberDeviceWritePort,
+            rememberDeviceSecretPort,
+            refreshTokenSessionWritePort,
+            refreshTokenSecretPort,
+            refreshDeviceBindingSecretPort,
+            authTokenIssuePort,
+            new RefreshTokenPolicy(Duration.ofDays(14)),
+            new RememberDevicePolicy(Duration.ofDays(30)),
+            5,
+            Clock.fixed(NOW, ZoneOffset.UTC));
+
+    var result =
+        service.verify(new BackupCodeChallengeVerifyCommand("challenge-1", "ABCD-EFGH", true));
+
+    assertEquals("binding-token", result.refreshDeviceBindingToken());
+    assertEquals("remember-device-token", result.rememberDeviceToken());
+    verify(rememberDeviceWritePort).issue(any());
   }
 
   private TotpLoginChallenge activeChallenge() {

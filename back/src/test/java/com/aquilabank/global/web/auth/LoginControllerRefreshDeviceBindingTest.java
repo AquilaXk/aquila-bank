@@ -32,6 +32,7 @@ import com.aquilabank.domain.auth.usecase.TotpEnrollmentUseCase;
 import com.aquilabank.global.security.AuthenticatedUserPrincipal;
 import com.aquilabank.global.security.LoginThrottleGuard;
 import com.aquilabank.global.security.SecurityJwtProperties;
+import com.aquilabank.global.security.SecurityRememberDeviceProperties;
 import com.aquilabank.global.web.ApiExceptionHandler;
 import com.aquilabank.global.web.security.CurrentAuthenticatedPrincipalArgumentResolver;
 import jakarta.servlet.http.Cookie;
@@ -92,6 +93,8 @@ class LoginControllerRefreshDeviceBindingTest {
                     mock(PasswordRecoveryConfirmUseCase.class),
                     authSessionMetadataResolver,
                     mock(LoginThrottleGuard.class),
+                    new RememberDeviceCookieManager(
+                        new SecurityRememberDeviceProperties("ab_mfa_remember_device", 2_592_000L)),
                     new RefreshDeviceBindingCookieManager(
                         new SecurityJwtProperties(
                             "secret", "issuer", 900L, 1_209_600L, COOKIE_NAME))))
@@ -120,7 +123,8 @@ class LoginControllerRefreshDeviceBindingTest {
                 Instant.parse("2026-04-20T12:00:00Z"),
                 Instant.parse("2026-05-04T11:45:00Z"),
                 7L,
-                "binding-token"));
+                "binding-token",
+                null));
 
     mockMvc
         .perform(
@@ -157,7 +161,8 @@ class LoginControllerRefreshDeviceBindingTest {
                 Instant.parse("2026-04-20T12:00:00Z"),
                 Instant.parse("2026-05-04T11:45:00Z"),
                 7L,
-                "binding-token"));
+                "binding-token",
+                null));
 
     mockMvc
         .perform(
@@ -194,7 +199,8 @@ class LoginControllerRefreshDeviceBindingTest {
                 Instant.parse("2026-04-20T12:00:00Z"),
                 Instant.parse("2026-05-04T11:45:00Z"),
                 7L,
-                "next-binding-token"));
+                "next-binding-token",
+                null));
 
     mockMvc
         .perform(
@@ -232,9 +238,13 @@ class LoginControllerRefreshDeviceBindingTest {
                     """))
         .andExpect(status().isNoContent())
         .andExpect(
-            header().string("Set-Cookie", org.hamcrest.Matchers.containsString(COOKIE_NAME + "=")))
-        .andExpect(
-            header().string("Set-Cookie", org.hamcrest.Matchers.containsString("Max-Age=0")));
+            header()
+                .stringValues(
+                    "Set-Cookie",
+                    org.hamcrest.Matchers.hasItem(
+                        org.hamcrest.Matchers.allOf(
+                            org.hamcrest.Matchers.containsString(COOKIE_NAME + "="),
+                            org.hamcrest.Matchers.containsString("Max-Age=0")))));
   }
 
   @Test
@@ -245,9 +255,13 @@ class LoginControllerRefreshDeviceBindingTest {
         .perform(delete("/api/v1/auth/sessions"))
         .andExpect(status().isNoContent())
         .andExpect(
-            header().string("Set-Cookie", org.hamcrest.Matchers.containsString(COOKIE_NAME + "=")))
-        .andExpect(
-            header().string("Set-Cookie", org.hamcrest.Matchers.containsString("Max-Age=0")));
+            header()
+                .stringValues(
+                    "Set-Cookie",
+                    org.hamcrest.Matchers.hasItem(
+                        org.hamcrest.Matchers.allOf(
+                            org.hamcrest.Matchers.containsString(COOKIE_NAME + "="),
+                            org.hamcrest.Matchers.containsString("Max-Age=0")))));
   }
 
   @Test
@@ -267,9 +281,13 @@ class LoginControllerRefreshDeviceBindingTest {
                     """))
         .andExpect(status().isNoContent())
         .andExpect(
-            header().string("Set-Cookie", org.hamcrest.Matchers.containsString(COOKIE_NAME + "=")))
-        .andExpect(
-            header().string("Set-Cookie", org.hamcrest.Matchers.containsString("Max-Age=0")));
+            header()
+                .stringValues(
+                    "Set-Cookie",
+                    org.hamcrest.Matchers.hasItem(
+                        org.hamcrest.Matchers.allOf(
+                            org.hamcrest.Matchers.containsString(COOKIE_NAME + "="),
+                            org.hamcrest.Matchers.containsString("Max-Age=0")))));
   }
 
   @Test
@@ -288,9 +306,13 @@ class LoginControllerRefreshDeviceBindingTest {
                     """))
         .andExpect(status().isNoContent())
         .andExpect(
-            header().string("Set-Cookie", org.hamcrest.Matchers.containsString(COOKIE_NAME + "=")))
-        .andExpect(
-            header().string("Set-Cookie", org.hamcrest.Matchers.containsString("Max-Age=0")));
+            header()
+                .stringValues(
+                    "Set-Cookie",
+                    org.hamcrest.Matchers.hasItem(
+                        org.hamcrest.Matchers.allOf(
+                            org.hamcrest.Matchers.containsString(COOKIE_NAME + "="),
+                            org.hamcrest.Matchers.containsString("Max-Age=0")))));
   }
 
   private void authenticate() {

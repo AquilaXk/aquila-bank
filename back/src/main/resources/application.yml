@@ -176,6 +176,10 @@ security:
     enrollment-ttl-seconds: ${SECURITY_TOTP_ENROLLMENT_TTL_SECONDS:300}
     challenge-ttl-seconds: ${SECURITY_TOTP_CHALLENGE_TTL_SECONDS:300}
     challenge-max-attempts: ${SECURITY_TOTP_CHALLENGE_MAX_ATTEMPTS:5}
+  mfa:
+    remember-device:
+      cookie-name: ${SECURITY_MFA_REMEMBER_DEVICE_COOKIE_NAME:ab_mfa_remember_device}
+      ttl-seconds: ${SECURITY_MFA_REMEMBER_DEVICE_TTL_SECONDS:2592000}
   password-recovery:
     ttl-seconds: ${SECURITY_PASSWORD_RECOVERY_TTL_SECONDS:900}
     secret-encryption-key: ${SECURITY_PASSWORD_RECOVERY_SECRET_ENCRYPTION_KEY:${SECURITY_JWT_SECRET:}}

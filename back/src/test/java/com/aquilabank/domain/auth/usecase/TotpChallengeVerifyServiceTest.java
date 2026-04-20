@@ -11,6 +11,7 @@ import com.aquilabank.domain.auth.exception.InvalidCredentialsException;
 import com.aquilabank.domain.auth.model.IssuedAccessToken;
 import com.aquilabank.domain.auth.model.LoginResultStatus;
 import com.aquilabank.domain.auth.model.RefreshTokenPolicy;
+import com.aquilabank.domain.auth.model.RememberDevicePolicy;
 import com.aquilabank.domain.auth.model.TotpChallengeVerifyCommand;
 import com.aquilabank.domain.auth.model.TotpCredential;
 import com.aquilabank.domain.auth.model.TotpCredentialStatus;
@@ -21,6 +22,8 @@ import com.aquilabank.domain.auth.port.AuthTokenIssuePort;
 import com.aquilabank.domain.auth.port.RefreshDeviceBindingSecretPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSecretPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionWritePort;
+import com.aquilabank.domain.auth.port.RememberDeviceSecretPort;
+import com.aquilabank.domain.auth.port.RememberDeviceWritePort;
 import com.aquilabank.domain.auth.port.TotpCredentialLoadPort;
 import com.aquilabank.domain.auth.port.TotpCredentialWritePort;
 import com.aquilabank.domain.auth.port.TotpLoginChallengeLoadPort;
@@ -46,6 +49,9 @@ class TotpChallengeVerifyServiceTest {
         Mockito.mock(TotpLoginChallengeWritePort.class);
     TotpCredentialLoadPort totpCredentialLoadPort = Mockito.mock(TotpCredentialLoadPort.class);
     TotpCredentialWritePort totpCredentialWritePort = Mockito.mock(TotpCredentialWritePort.class);
+    RememberDeviceWritePort rememberDeviceWritePort = Mockito.mock(RememberDeviceWritePort.class);
+    RememberDeviceSecretPort rememberDeviceSecretPort =
+        Mockito.mock(RememberDeviceSecretPort.class);
     RefreshTokenSessionWritePort refreshTokenSessionWritePort =
         Mockito.mock(RefreshTokenSessionWritePort.class);
     RefreshTokenSecretPort refreshTokenSecretPort = Mockito.mock(RefreshTokenSecretPort.class);
@@ -72,16 +78,19 @@ class TotpChallengeVerifyServiceTest {
             totpLoginChallengeWritePort,
             totpCredentialLoadPort,
             totpCredentialWritePort,
+            rememberDeviceWritePort,
+            rememberDeviceSecretPort,
             refreshTokenSessionWritePort,
             refreshTokenSecretPort,
             refreshDeviceBindingSecretPort,
             totpSecretPort,
             authTokenIssuePort,
             new RefreshTokenPolicy(Duration.ofDays(14)),
+            new RememberDevicePolicy(Duration.ofDays(30)),
             5,
             Clock.fixed(NOW, ZoneOffset.UTC));
 
-    var result = service.verify(new TotpChallengeVerifyCommand("challenge-1", "123456"));
+    var result = service.verify(new TotpChallengeVerifyCommand("challenge-1", "123456", false));
 
     assertEquals(LoginResultStatus.SUCCESS, result.status());
     assertEquals("access-token", result.accessToken());
@@ -89,6 +98,7 @@ class TotpChallengeVerifyServiceTest {
     verify(totpLoginChallengeWritePort).update(any());
     verify(totpCredentialWritePort).touchLastUsed(any());
     verify(refreshTokenSessionWritePort).create(any());
+    verify(rememberDeviceWritePort, never()).issue(any());
   }
 
   @Test
@@ -99,6 +109,9 @@ class TotpChallengeVerifyServiceTest {
         Mockito.mock(TotpLoginChallengeWritePort.class);
     TotpCredentialLoadPort totpCredentialLoadPort = Mockito.mock(TotpCredentialLoadPort.class);
     TotpCredentialWritePort totpCredentialWritePort = Mockito.mock(TotpCredentialWritePort.class);
+    RememberDeviceWritePort rememberDeviceWritePort = Mockito.mock(RememberDeviceWritePort.class);
+    RememberDeviceSecretPort rememberDeviceSecretPort =
+        Mockito.mock(RememberDeviceSecretPort.class);
     RefreshTokenSessionWritePort refreshTokenSessionWritePort =
         Mockito.mock(RefreshTokenSessionWritePort.class);
     RefreshTokenSecretPort refreshTokenSecretPort = Mockito.mock(RefreshTokenSecretPort.class);
@@ -119,21 +132,82 @@ class TotpChallengeVerifyServiceTest {
             totpLoginChallengeWritePort,
             totpCredentialLoadPort,
             totpCredentialWritePort,
+            rememberDeviceWritePort,
+            rememberDeviceSecretPort,
             refreshTokenSessionWritePort,
             refreshTokenSecretPort,
             refreshDeviceBindingSecretPort,
             totpSecretPort,
             authTokenIssuePort,
             new RefreshTokenPolicy(Duration.ofDays(14)),
+            new RememberDevicePolicy(Duration.ofDays(30)),
             5,
             Clock.fixed(NOW, ZoneOffset.UTC));
 
     assertThrows(
         InvalidCredentialsException.class,
-        () -> service.verify(new TotpChallengeVerifyCommand("challenge-1", "999999")));
+        () -> service.verify(new TotpChallengeVerifyCommand("challenge-1", "999999", false)));
 
     verify(totpLoginChallengeWritePort).update(any());
     verify(refreshTokenSessionWritePort, never()).create(any());
+  }
+
+  @Test
+  void issuesRememberDeviceTokenWhenRequested() {
+    TotpLoginChallengeLoadPort totpLoginChallengeLoadPort =
+        Mockito.mock(TotpLoginChallengeLoadPort.class);
+    TotpLoginChallengeWritePort totpLoginChallengeWritePort =
+        Mockito.mock(TotpLoginChallengeWritePort.class);
+    TotpCredentialLoadPort totpCredentialLoadPort = Mockito.mock(TotpCredentialLoadPort.class);
+    TotpCredentialWritePort totpCredentialWritePort = Mockito.mock(TotpCredentialWritePort.class);
+    RememberDeviceWritePort rememberDeviceWritePort = Mockito.mock(RememberDeviceWritePort.class);
+    RememberDeviceSecretPort rememberDeviceSecretPort =
+        Mockito.mock(RememberDeviceSecretPort.class);
+    RefreshTokenSessionWritePort refreshTokenSessionWritePort =
+        Mockito.mock(RefreshTokenSessionWritePort.class);
+    RefreshTokenSecretPort refreshTokenSecretPort = Mockito.mock(RefreshTokenSecretPort.class);
+    RefreshDeviceBindingSecretPort refreshDeviceBindingSecretPort =
+        Mockito.mock(RefreshDeviceBindingSecretPort.class);
+    TotpSecretPort totpSecretPort = Mockito.mock(TotpSecretPort.class);
+    AuthTokenIssuePort authTokenIssuePort = Mockito.mock(AuthTokenIssuePort.class);
+
+    when(totpLoginChallengeLoadPort.findByChallengeIdForUpdate("challenge-1"))
+        .thenReturn(Optional.of(activeChallenge()));
+    when(totpCredentialLoadPort.findCredentialByUserIdForUpdate(7L))
+        .thenReturn(Optional.of(activeCredential()));
+    when(totpSecretPort.matches("cipher", "nonce", "123456", NOW)).thenReturn(true);
+    when(rememberDeviceSecretPort.createToken()).thenReturn("remember-device-token");
+    when(rememberDeviceSecretPort.hash("remember-device-token")).thenReturn("remember-hash");
+    when(refreshTokenSecretPort.createToken()).thenReturn("refresh-token");
+    when(refreshTokenSecretPort.hash("refresh-token")).thenReturn("refresh-hash");
+    when(refreshDeviceBindingSecretPort.createToken()).thenReturn("binding-token");
+    when(refreshDeviceBindingSecretPort.hash("binding-token")).thenReturn("binding-hash");
+    when(authTokenIssuePort.issue(7L, "alice", NOW))
+        .thenReturn(new IssuedAccessToken("access-token", "Bearer", NOW.plusSeconds(900), 7L));
+
+    TotpChallengeVerifyService service =
+        new TotpChallengeVerifyService(
+            totpLoginChallengeLoadPort,
+            totpLoginChallengeWritePort,
+            totpCredentialLoadPort,
+            totpCredentialWritePort,
+            rememberDeviceWritePort,
+            rememberDeviceSecretPort,
+            refreshTokenSessionWritePort,
+            refreshTokenSecretPort,
+            refreshDeviceBindingSecretPort,
+            totpSecretPort,
+            authTokenIssuePort,
+            new RefreshTokenPolicy(Duration.ofDays(14)),
+            new RememberDevicePolicy(Duration.ofDays(30)),
+            5,
+            Clock.fixed(NOW, ZoneOffset.UTC));
+
+    var result = service.verify(new TotpChallengeVerifyCommand("challenge-1", "123456", true));
+
+    assertEquals("binding-token", result.refreshDeviceBindingToken());
+    assertEquals("remember-device-token", result.rememberDeviceToken());
+    verify(rememberDeviceWritePort).issue(any());
   }
 
   private TotpLoginChallenge activeChallenge() {

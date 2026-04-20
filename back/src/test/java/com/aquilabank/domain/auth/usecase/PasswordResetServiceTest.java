@@ -13,6 +13,7 @@ import com.aquilabank.domain.auth.model.PasswordResetWriteCommand;
 import com.aquilabank.domain.auth.model.UserStatus;
 import com.aquilabank.domain.auth.port.PasswordHashPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionWritePort;
+import com.aquilabank.domain.auth.port.RememberDeviceWritePort;
 import com.aquilabank.domain.auth.port.UserCredentialLoadPort;
 import com.aquilabank.domain.auth.port.UserCredentialUpdatePort;
 import java.time.Clock;
@@ -31,6 +32,7 @@ class PasswordResetServiceTest {
     UserCredentialLoadPort userCredentialLoadPort = mock(UserCredentialLoadPort.class);
     UserCredentialUpdatePort userCredentialUpdatePort = mock(UserCredentialUpdatePort.class);
     PasswordHashPort passwordHashPort = mock(PasswordHashPort.class);
+    RememberDeviceWritePort rememberDeviceWritePort = mock(RememberDeviceWritePort.class);
     RefreshTokenSessionWritePort refreshTokenSessionWritePort =
         mock(RefreshTokenSessionWritePort.class);
 
@@ -43,6 +45,7 @@ class PasswordResetServiceTest {
             userCredentialLoadPort,
             userCredentialUpdatePort,
             passwordHashPort,
+            rememberDeviceWritePort,
             refreshTokenSessionWritePort,
             CLOCK);
 
@@ -50,6 +53,7 @@ class PasswordResetServiceTest {
 
     verify(userCredentialUpdatePort)
         .resetPassword(new PasswordResetWriteCommand(7L, "new-hash", NOW));
+    verify(rememberDeviceWritePort).revokeActiveByUserId(7L, NOW);
     verify(refreshTokenSessionWritePort).revokeActiveSessionsByUserId(7L, NOW);
   }
 
@@ -58,6 +62,7 @@ class PasswordResetServiceTest {
     UserCredentialLoadPort userCredentialLoadPort = mock(UserCredentialLoadPort.class);
     UserCredentialUpdatePort userCredentialUpdatePort = mock(UserCredentialUpdatePort.class);
     PasswordHashPort passwordHashPort = mock(PasswordHashPort.class);
+    RememberDeviceWritePort rememberDeviceWritePort = mock(RememberDeviceWritePort.class);
     RefreshTokenSessionWritePort refreshTokenSessionWritePort =
         mock(RefreshTokenSessionWritePort.class);
 
@@ -69,6 +74,7 @@ class PasswordResetServiceTest {
             userCredentialLoadPort,
             userCredentialUpdatePort,
             passwordHashPort,
+            rememberDeviceWritePort,
             refreshTokenSessionWritePort,
             CLOCK);
 
@@ -77,6 +83,7 @@ class PasswordResetServiceTest {
         () -> passwordResetService.reset(new PasswordResetCommand(7L, "wrong-password", "next")));
 
     verify(userCredentialUpdatePort, never()).resetPassword(org.mockito.Mockito.any());
+    verify(rememberDeviceWritePort, never()).revokeActiveByUserId(7L, NOW);
     verify(refreshTokenSessionWritePort, never()).revokeActiveSessionsByUserId(7L, NOW);
   }
 
@@ -85,6 +92,7 @@ class PasswordResetServiceTest {
     UserCredentialLoadPort userCredentialLoadPort = mock(UserCredentialLoadPort.class);
     UserCredentialUpdatePort userCredentialUpdatePort = mock(UserCredentialUpdatePort.class);
     PasswordHashPort passwordHashPort = mock(PasswordHashPort.class);
+    RememberDeviceWritePort rememberDeviceWritePort = mock(RememberDeviceWritePort.class);
     RefreshTokenSessionWritePort refreshTokenSessionWritePort =
         mock(RefreshTokenSessionWritePort.class);
 
@@ -95,6 +103,7 @@ class PasswordResetServiceTest {
             userCredentialLoadPort,
             userCredentialUpdatePort,
             passwordHashPort,
+            rememberDeviceWritePort,
             refreshTokenSessionWritePort,
             CLOCK);
 
@@ -105,6 +114,7 @@ class PasswordResetServiceTest {
                 new PasswordResetCommand(7L, "password123!", "newPassword456!")));
 
     verify(userCredentialUpdatePort, never()).resetPassword(org.mockito.Mockito.any());
+    verify(rememberDeviceWritePort, never()).revokeActiveByUserId(7L, NOW);
     verify(refreshTokenSessionWritePort, never()).revokeActiveSessionsByUserId(7L, NOW);
   }
 

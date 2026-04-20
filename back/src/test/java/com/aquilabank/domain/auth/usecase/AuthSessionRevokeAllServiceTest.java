@@ -5,6 +5,7 @@ import static org.mockito.Mockito.verify;
 
 import com.aquilabank.domain.auth.model.AuthSessionRevokeAllCommand;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionWritePort;
+import com.aquilabank.domain.auth.port.RememberDeviceWritePort;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -19,12 +20,15 @@ class AuthSessionRevokeAllServiceTest {
   void revokesAllActiveSessionsForCurrentUser() {
     RefreshTokenSessionWritePort refreshTokenSessionWritePort =
         mock(RefreshTokenSessionWritePort.class);
+    RememberDeviceWritePort rememberDeviceWritePort = mock(RememberDeviceWritePort.class);
 
     AuthSessionRevokeAllService authSessionRevokeAllService =
-        new AuthSessionRevokeAllService(refreshTokenSessionWritePort, CLOCK);
+        new AuthSessionRevokeAllService(
+            refreshTokenSessionWritePort, rememberDeviceWritePort, CLOCK);
 
     authSessionRevokeAllService.revokeAll(new AuthSessionRevokeAllCommand(7L));
 
     verify(refreshTokenSessionWritePort).revokeActiveSessionsByUserId(7L, NOW);
+    verify(rememberDeviceWritePort).revokeActiveByUserId(7L, NOW);
   }
 }
