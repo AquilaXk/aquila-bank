@@ -39,6 +39,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
       "spring.flyway.enabled=true",
       "management.health.db.enabled=true",
       "notification.sse.max-total-sessions=1",
+      "notification.sse.max-user-sessions=1",
       "notification.inbox.consumer.enabled=true",
       "notification.inbox.consumer.auto-startup=false",
       "notification.inbox.consumer.group-id=aquila-bank-prometheus-metrics",
