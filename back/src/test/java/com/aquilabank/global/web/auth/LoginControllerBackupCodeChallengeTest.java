@@ -58,7 +58,10 @@ class LoginControllerBackupCodeChallengeTest {
                     mock(PasswordRecoveryRequestUseCase.class),
                     mock(PasswordRecoveryConfirmUseCase.class),
                     mock(AuthSessionMetadataResolver.class),
-                    mock(LoginThrottleGuard.class)))
+                    mock(LoginThrottleGuard.class),
+                    new RememberDeviceCookieManager(
+                        new com.aquilabank.global.security.SecurityRememberDeviceProperties(
+                            "ab_mfa_remember_device", 2_592_000L))))
             .setControllerAdvice(new ApiExceptionHandler())
             .build();
   }

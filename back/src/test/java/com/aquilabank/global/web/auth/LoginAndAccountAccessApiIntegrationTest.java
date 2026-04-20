@@ -14,6 +14,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.aquilabank.domain.auth.port.RefreshTokenSecretPort;
+import com.aquilabank.domain.auth.port.RememberDeviceSecretPort;
 import com.aquilabank.global.security.InternalServiceScope;
 import com.aquilabank.global.security.InternalServiceTokenIssuer;
 import com.aquilabank.global.security.LoginThrottleGuard;
@@ -21,6 +22,7 @@ import com.aquilabank.standard.util.Base32Codec;
 import com.aquilabank.support.PostgresContainerTestSupport;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.http.Cookie;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.time.Instant;
@@ -60,6 +62,7 @@ import org.springframework.web.context.WebApplicationContext;
 class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSupport {
 
   private static final String AUTH_ADMIN_SUBJECT = "ops-admin";
+  private static final String REMEMBER_DEVICE_COOKIE_NAME = "ab_mfa_remember_device";
   private static final RequestClientMetadata WINDOWS_CHROME =
       new RequestClientMetadata(
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -89,6 +92,8 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
   @Autowired private ObjectMapper objectMapper;
 
   @Autowired private RefreshTokenSecretPort refreshTokenSecretPort;
+
+  @Autowired private RememberDeviceSecretPort rememberDeviceSecretPort;
 
   @Autowired private LoginThrottleGuard loginThrottleGuard;
 
@@ -1484,6 +1489,140 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
   }
 
   @Test
+  void rememberDeviceLoginBypassesMfaAndRotatesCookie() throws Exception {
+    RememberDeviceSessionView rememberedSession =
+        enableRememberDevice("remember-device-bypass", WINDOWS_EDGE);
+
+    assertEquals(1, countRememberDevicesByStatus(userId, "ACTIVE"));
+    assertEquals(
+        1, countActiveRememberDevicesByToken(userId, rememberedSession.rememberDeviceToken()));
+
+    MvcResult bypassResult =
+        performLogin(
+                "alice",
+                "password123!",
+                "remember-device-bypass-login-003",
+                IPHONE_SAFARI,
+                rememberedSession.rememberDeviceToken())
+            .andExpect(status().isOk())
+            .andReturn();
+    TokenPairResponseView bypassedSession = readTokenPair(bypassResult);
+    String rotatedRememberDeviceToken = readRememberDeviceToken(bypassResult);
+    RefreshTokenSessionView bypassedRefreshSession =
+        loadRefreshTokenSession(bypassedSession.refreshToken());
+
+    assertEquals("SUCCESS", bypassedSession.status());
+    assertNotEquals(rememberedSession.rememberDeviceToken(), rotatedRememberDeviceToken);
+    assertEquals(1, countRememberDevicesByStatus(userId, "ACTIVE"));
+    assertEquals(
+        0, countActiveRememberDevicesByToken(userId, rememberedSession.rememberDeviceToken()));
+    assertEquals(1, countActiveRememberDevicesByToken(userId, rotatedRememberDeviceToken));
+    assertEquals(IPHONE_SAFARI.expectedDeviceName(), bypassedRefreshSession.deviceName());
+    assertEquals(IPHONE_SAFARI.expectedIpAddress(), bypassedRefreshSession.ipAddress());
+  }
+
+  @Test
+  void logoutRevokesRememberDeviceAndStaleCookieFallsBackToMfa() throws Exception {
+    RememberDeviceSessionView rememberedSession =
+        enableRememberDevice("remember-device-logout", WINDOWS_EDGE);
+
+    MvcResult logoutResult =
+        logout(
+                rememberedSession.session().accessToken(),
+                rememberedSession.session().refreshToken(),
+                "remember-device-logout-request-001",
+                rememberedSession.rememberDeviceToken())
+            .andExpect(status().isNoContent())
+            .andReturn();
+
+    assertRememberDeviceCleared(logoutResult);
+    assertEquals(0, countRememberDevicesByStatus(userId, "ACTIVE"));
+    assertEquals(1, countRememberDevicesByStatus(userId, "REVOKED"));
+    assertEquals(
+        0, countActiveRememberDevicesByToken(userId, rememberedSession.rememberDeviceToken()));
+
+    MvcResult loginResult =
+        performLogin(
+                "alice",
+                "password123!",
+                "remember-device-logout-login-003",
+                WINDOWS_CHROME,
+                rememberedSession.rememberDeviceToken())
+            .andExpect(status().isOk())
+            .andReturn();
+    LoginChallengeResponseView challenge = readLoginChallenge(loginResult);
+
+    assertEquals("TOTP", challenge.challengeType());
+    assertRememberDeviceCleared(loginResult);
+  }
+
+  @Test
+  void revokeAllSessionsRevokesRememberDeviceAndStaleCookieFallsBackToMfa() throws Exception {
+    RememberDeviceSessionView rememberedSession =
+        enableRememberDevice("remember-device-revoke-all", WINDOWS_EDGE);
+
+    MvcResult revokeResult =
+        revokeAllSessions(
+                rememberedSession.session().accessToken(),
+                "remember-device-revoke-all-request-001",
+                rememberedSession.rememberDeviceToken())
+            .andExpect(status().isNoContent())
+            .andReturn();
+
+    assertRememberDeviceCleared(revokeResult);
+    assertEquals(0, countRememberDevicesByStatus(userId, "ACTIVE"));
+    assertEquals(1, countRememberDevicesByStatus(userId, "REVOKED"));
+
+    MvcResult loginResult =
+        performLogin(
+                "alice",
+                "password123!",
+                "remember-device-revoke-all-login-003",
+                WINDOWS_CHROME,
+                rememberedSession.rememberDeviceToken())
+            .andExpect(status().isOk())
+            .andReturn();
+    LoginChallengeResponseView challenge = readLoginChallenge(loginResult);
+
+    assertEquals("TOTP", challenge.challengeType());
+    assertRememberDeviceCleared(loginResult);
+  }
+
+  @Test
+  void passwordResetRevokesRememberDeviceAndStaleCookieFallsBackToMfa() throws Exception {
+    RememberDeviceSessionView rememberedSession =
+        enableRememberDevice("remember-device-password-reset", WINDOWS_EDGE);
+
+    MvcResult resetResult =
+        passwordReset(
+                rememberedSession.session().accessToken(),
+                "password123!",
+                "newPassword456!",
+                "remember-device-password-reset-request-001",
+                rememberedSession.rememberDeviceToken())
+            .andExpect(status().isNoContent())
+            .andReturn();
+
+    assertRememberDeviceCleared(resetResult);
+    assertEquals(0, countRememberDevicesByStatus(userId, "ACTIVE"));
+    assertEquals(1, countRememberDevicesByStatus(userId, "REVOKED"));
+
+    MvcResult loginResult =
+        performLogin(
+                "alice",
+                "newPassword456!",
+                "remember-device-password-reset-login-003",
+                WINDOWS_CHROME,
+                rememberedSession.rememberDeviceToken())
+            .andExpect(status().isOk())
+            .andReturn();
+    LoginChallengeResponseView challenge = readLoginChallenge(loginResult);
+
+    assertEquals("TOTP", challenge.challengeType());
+    assertRememberDeviceCleared(loginResult);
+  }
+
+  @Test
   void backupCodeIssueAndChallengeVerifyConsumeCode() throws Exception {
     TokenPairResponseView initialSession =
         loginResult("alice", "password123!", "backup-code-login-001", WINDOWS_CHROME);
@@ -1632,6 +1771,25 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
   }
 
   @Test
+  void totpDisableRevokesRememberDeviceAndClearsCookie() throws Exception {
+    RememberDeviceSessionView rememberedSession =
+        enableRememberDevice("remember-device-disable", WINDOWS_EDGE);
+
+    MvcResult disableResult =
+        performDisableTotp(
+                rememberedSession.session().accessToken(),
+                currentTotpCode(rememberedSession.secretKey()),
+                "remember-device-disable-request-001",
+                rememberedSession.rememberDeviceToken())
+            .andExpect(status().isNoContent())
+            .andReturn();
+
+    assertRememberDeviceCleared(disableResult);
+    assertEquals(0, countRememberDevicesByStatus(userId, "ACTIVE"));
+    assertEquals(1, countRememberDevicesByStatus(userId, "REVOKED"));
+  }
+
+  @Test
   void totpDisableRejectsWrongCodeAndKeepsCredential() throws Exception {
     TokenPairResponseView initialSession =
         loginResult("alice", "password123!", "totp-disable-wrong-login-001", WINDOWS_CHROME);
@@ -1698,11 +1856,21 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
 
   private org.springframework.test.web.servlet.ResultActions performLogin(
       String loginId, String password, String requestId) throws Exception {
-    return performLogin(loginId, password, requestId, null);
+    return performLogin(loginId, password, requestId, null, null);
   }
 
   private org.springframework.test.web.servlet.ResultActions performLogin(
       String loginId, String password, String requestId, RequestClientMetadata clientMetadata)
+      throws Exception {
+    return performLogin(loginId, password, requestId, clientMetadata, null);
+  }
+
+  private org.springframework.test.web.servlet.ResultActions performLogin(
+      String loginId,
+      String password,
+      String requestId,
+      RequestClientMetadata clientMetadata,
+      String rememberDeviceToken)
       throws Exception {
     MockHttpServletRequestBuilder requestBuilder =
         post("/api/v1/auth/login")
@@ -1719,6 +1887,7 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
       requestBuilder.header("X-Request-Id", requestId);
     }
     applyClientMetadata(requestBuilder, clientMetadata);
+    applyRememberDeviceCookie(requestBuilder, rememberDeviceToken);
     return mockMvc.perform(requestBuilder);
   }
 
@@ -1796,7 +1965,7 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
       String challengeId, String totpCode, String requestId, RequestClientMetadata clientMetadata)
       throws Exception {
     MvcResult result =
-        performVerifyTotpChallenge(challengeId, totpCode, requestId, clientMetadata)
+        performVerifyTotpChallenge(challengeId, totpCode, requestId, clientMetadata, null)
             .andExpect(status().isOk())
             .andReturn();
     return readTokenPair(result);
@@ -1804,7 +1973,7 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
 
   private void verifyTotpChallengeExpectUnauthorized(
       String challengeId, String totpCode, String requestId) throws Exception {
-    performVerifyTotpChallenge(challengeId, totpCode, requestId, null)
+    performVerifyTotpChallenge(challengeId, totpCode, requestId, null, null)
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.message").value("mfa challenge failed"));
   }
@@ -1883,6 +2052,18 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
   private org.springframework.test.web.servlet.ResultActions performVerifyTotpChallenge(
       String challengeId, String totpCode, String requestId, RequestClientMetadata clientMetadata)
       throws Exception {
+    return performVerifyTotpChallenge(challengeId, totpCode, requestId, clientMetadata, null);
+  }
+
+  private org.springframework.test.web.servlet.ResultActions performVerifyTotpChallenge(
+      String challengeId,
+      String totpCode,
+      String requestId,
+      RequestClientMetadata clientMetadata,
+      Boolean rememberDevice)
+      throws Exception {
+    String rememberDeviceField =
+        rememberDevice == null ? "" : ",\n  \"rememberDevice\": " + rememberDevice;
     MockHttpServletRequestBuilder requestBuilder =
         post("/api/v1/auth/mfa/totp/challenge/verify")
             .contentType(MediaType.APPLICATION_JSON)
@@ -1890,10 +2071,10 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
                 """
                 {
                   "challengeId": "%s",
-                  "totpCode": "%s"
+                  "totpCode": "%s"%s
                 }
                 """
-                    .formatted(challengeId, totpCode));
+                    .formatted(challengeId, totpCode, rememberDeviceField));
     if (requestId != null && !requestId.isBlank()) {
       requestBuilder.header("X-Request-Id", requestId);
     }
@@ -1903,6 +2084,12 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
 
   private org.springframework.test.web.servlet.ResultActions performDisableTotp(
       String accessToken, String totpCode, String requestId) throws Exception {
+    return performDisableTotp(accessToken, totpCode, requestId, null);
+  }
+
+  private org.springframework.test.web.servlet.ResultActions performDisableTotp(
+      String accessToken, String totpCode, String requestId, String rememberDeviceToken)
+      throws Exception {
     MockHttpServletRequestBuilder requestBuilder =
         post("/api/v1/auth/mfa/totp/disable")
             .header("Authorization", "Bearer " + accessToken)
@@ -1917,6 +2104,7 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
     if (requestId != null && !requestId.isBlank()) {
       requestBuilder.header("X-Request-Id", requestId);
     }
+    applyRememberDeviceCookie(requestBuilder, rememberDeviceToken);
     return mockMvc.perform(requestBuilder);
   }
 
@@ -1969,8 +2157,22 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
     requestBuilder.header("X-Forwarded-For", clientMetadata.forwardedFor());
   }
 
+  private void applyRememberDeviceCookie(
+      MockHttpServletRequestBuilder requestBuilder, String rememberDeviceToken) {
+    if (rememberDeviceToken == null || rememberDeviceToken.isBlank()) {
+      return;
+    }
+    requestBuilder.cookie(new Cookie(REMEMBER_DEVICE_COOKIE_NAME, rememberDeviceToken));
+  }
+
   private org.springframework.test.web.servlet.ResultActions logout(
       String accessToken, String refreshToken, String requestId) throws Exception {
+    return logout(accessToken, refreshToken, requestId, null);
+  }
+
+  private org.springframework.test.web.servlet.ResultActions logout(
+      String accessToken, String refreshToken, String requestId, String rememberDeviceToken)
+      throws Exception {
     MockHttpServletRequestBuilder requestBuilder =
         post("/api/v1/auth/logout")
             .header("Authorization", "Bearer " + accessToken)
@@ -1985,11 +2187,22 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
     if (requestId != null && !requestId.isBlank()) {
       requestBuilder.header("X-Request-Id", requestId);
     }
+    applyRememberDeviceCookie(requestBuilder, rememberDeviceToken);
     return mockMvc.perform(requestBuilder);
   }
 
   private org.springframework.test.web.servlet.ResultActions passwordReset(
       String accessToken, String currentPassword, String newPassword, String requestId)
+      throws Exception {
+    return passwordReset(accessToken, currentPassword, newPassword, requestId, null);
+  }
+
+  private org.springframework.test.web.servlet.ResultActions passwordReset(
+      String accessToken,
+      String currentPassword,
+      String newPassword,
+      String requestId,
+      String rememberDeviceToken)
       throws Exception {
     MockHttpServletRequestBuilder requestBuilder =
         post("/api/v1/auth/password-reset")
@@ -2006,6 +2219,7 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
     if (requestId != null && !requestId.isBlank()) {
       requestBuilder.header("X-Request-Id", requestId);
     }
+    applyRememberDeviceCookie(requestBuilder, rememberDeviceToken);
     return mockMvc.perform(requestBuilder);
   }
 
@@ -2101,11 +2315,17 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
 
   private org.springframework.test.web.servlet.ResultActions revokeAllSessions(
       String accessToken, String requestId) throws Exception {
+    return revokeAllSessions(accessToken, requestId, null);
+  }
+
+  private org.springframework.test.web.servlet.ResultActions revokeAllSessions(
+      String accessToken, String requestId, String rememberDeviceToken) throws Exception {
     MockHttpServletRequestBuilder requestBuilder =
         delete("/api/v1/auth/sessions").header("Authorization", "Bearer " + accessToken);
     if (requestId != null && !requestId.isBlank()) {
       requestBuilder.header("X-Request-Id", requestId);
     }
+    applyRememberDeviceCookie(requestBuilder, rememberDeviceToken);
     return mockMvc.perform(requestBuilder);
   }
 
@@ -2512,6 +2732,39 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
     return count == null ? 0 : count;
   }
 
+  private int countRememberDevicesByStatus(long userId, String deviceStatus) {
+    Integer count =
+        jdbcTemplate.queryForObject(
+            """
+            SELECT COUNT(*)
+            FROM auth_mfa_remember_device
+            WHERE user_id = :userId
+              AND device_status = :deviceStatus
+            """,
+            new org.springframework.jdbc.core.namedparam.MapSqlParameterSource()
+                .addValue("userId", userId)
+                .addValue("deviceStatus", deviceStatus),
+            Integer.class);
+    return count == null ? 0 : count;
+  }
+
+  private int countActiveRememberDevicesByToken(long userId, String rememberDeviceToken) {
+    Integer count =
+        jdbcTemplate.queryForObject(
+            """
+            SELECT COUNT(*)
+            FROM auth_mfa_remember_device
+            WHERE user_id = :userId
+              AND device_status = 'ACTIVE'
+              AND token_hash = :tokenHash
+            """,
+            new org.springframework.jdbc.core.namedparam.MapSqlParameterSource()
+                .addValue("userId", userId)
+                .addValue("tokenHash", rememberDeviceSecretPort.hash(rememberDeviceToken)),
+            Integer.class);
+    return count == null ? 0 : count;
+  }
+
   private int countTotpCredentialRows(long userId) {
     Integer count =
         jdbcTemplate.queryForObject(
@@ -2540,6 +2793,58 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
         Instant.parse(body.get("expiresAt").asText()),
         Instant.parse(body.get("refreshExpiresAt").asText()),
         body.get("userId").asLong());
+  }
+
+  private String readRememberDeviceToken(MvcResult result) {
+    String setCookieHeader = result.getResponse().getHeader("Set-Cookie");
+    assertNotNull(setCookieHeader);
+    assertTrue(setCookieHeader.contains(REMEMBER_DEVICE_COOKIE_NAME + "="));
+    assertTrue(setCookieHeader.contains("HttpOnly"));
+    assertTrue(setCookieHeader.contains("Secure"));
+    assertTrue(setCookieHeader.contains("SameSite=Lax"));
+    String cookiePrefix = REMEMBER_DEVICE_COOKIE_NAME + "=";
+    int valueStart = setCookieHeader.indexOf(cookiePrefix);
+    assertTrue(valueStart >= 0);
+    valueStart += cookiePrefix.length();
+    int valueEnd = setCookieHeader.indexOf(';', valueStart);
+    return setCookieHeader.substring(valueStart, valueEnd);
+  }
+
+  private void assertRememberDeviceCleared(MvcResult result) {
+    String setCookieHeader = result.getResponse().getHeader("Set-Cookie");
+    assertNotNull(setCookieHeader);
+    assertTrue(setCookieHeader.contains(REMEMBER_DEVICE_COOKIE_NAME + "="));
+    assertTrue(setCookieHeader.contains("Max-Age=0"));
+    assertTrue(setCookieHeader.contains("HttpOnly"));
+    assertTrue(setCookieHeader.contains("Secure"));
+    assertTrue(setCookieHeader.contains("SameSite=Lax"));
+  }
+
+  private RememberDeviceSessionView enableRememberDevice(
+      String requestPrefix, RequestClientMetadata challengeClientMetadata) throws Exception {
+    TokenPairResponseView initialSession =
+        loginResult("alice", "password123!", requestPrefix + "-login-001", WINDOWS_CHROME);
+    TotpEnrollmentStartResponseView enrollment =
+        startTotpEnrollment(initialSession.accessToken(), requestPrefix + "-start-001");
+    verifyTotpEnrollment(
+        initialSession.accessToken(),
+        currentTotpCode(enrollment.secretKey()),
+        requestPrefix + "-verify-001");
+
+    LoginChallengeResponseView challenge =
+        loginChallenge(
+            "alice", "password123!", requestPrefix + "-login-002", challengeClientMetadata);
+    MvcResult verifyResult =
+        performVerifyTotpChallenge(
+                challenge.challengeId(),
+                currentTotpCode(enrollment.secretKey()),
+                requestPrefix + "-challenge-verify-001",
+                null,
+                true)
+            .andExpect(status().isOk())
+            .andReturn();
+    return new RememberDeviceSessionView(
+        readTokenPair(verifyResult), enrollment.secretKey(), readRememberDeviceToken(verifyResult));
   }
 
   private LoginChallengeResponseView readLoginChallenge(MvcResult result) throws Exception {
@@ -2617,6 +2922,9 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
       Instant expiresAt,
       Instant refreshExpiresAt,
       long userId) {}
+
+  private record RememberDeviceSessionView(
+      TokenPairResponseView session, String secretKey, String rememberDeviceToken) {}
 
   private record LoginChallengeResponseView(
       String status, String challengeId, String challengeType, Instant challengeExpiresAt) {}

@@ -13,7 +13,8 @@ public record LoginResult(
     Long userId,
     String challengeId,
     LoginChallengeType challengeType,
-    Instant challengeExpiresAt) {
+    Instant challengeExpiresAt,
+    String rememberDeviceToken) {
 
   public LoginResult {
     if (status == null) {
@@ -41,6 +42,9 @@ public record LoginResult(
       if (challengeId != null || challengeType != null || challengeExpiresAt != null) {
         throw new IllegalArgumentException("challenge fields are not allowed for success");
       }
+      if (rememberDeviceToken != null && rememberDeviceToken.isBlank()) {
+        throw new IllegalArgumentException("rememberDeviceToken must not be blank");
+      }
     } else {
       if (challengeId == null || challengeId.isBlank()) {
         throw new IllegalArgumentException("challengeId is required");
@@ -56,7 +60,8 @@ public record LoginResult(
           || tokenType != null
           || expiresAt != null
           || refreshExpiresAt != null
-          || userId != null) {
+          || userId != null
+          || rememberDeviceToken != null) {
         throw new IllegalArgumentException("token fields are not allowed for mfa challenge");
       }
     }
@@ -69,6 +74,17 @@ public record LoginResult(
       Instant expiresAt,
       Instant refreshExpiresAt,
       long userId) {
+    return success(accessToken, refreshToken, tokenType, expiresAt, refreshExpiresAt, userId, null);
+  }
+
+  public static LoginResult success(
+      String accessToken,
+      String refreshToken,
+      String tokenType,
+      Instant expiresAt,
+      Instant refreshExpiresAt,
+      long userId,
+      String rememberDeviceToken) {
     return new LoginResult(
         LoginResultStatus.SUCCESS,
         accessToken,
@@ -79,7 +95,8 @@ public record LoginResult(
         userId,
         null,
         null,
-        null);
+        null,
+        rememberDeviceToken);
   }
 
   public static LoginResult mfaRequired(
@@ -94,6 +111,7 @@ public record LoginResult(
         null,
         challengeId,
         challengeType,
-        challengeExpiresAt);
+        challengeExpiresAt,
+        null);
   }
 }

@@ -8,6 +8,7 @@ import com.aquilabank.domain.auth.model.TotpDisableCommand;
 import com.aquilabank.domain.auth.model.UserStatus;
 import com.aquilabank.domain.auth.port.BackupCodeWritePort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionWritePort;
+import com.aquilabank.domain.auth.port.RememberDeviceWritePort;
 import com.aquilabank.domain.auth.port.TotpCredentialLoadPort;
 import com.aquilabank.domain.auth.port.TotpCredentialWritePort;
 import com.aquilabank.domain.auth.port.TotpSecretPort;
@@ -23,6 +24,7 @@ public final class TotpDisableService implements TotpDisableUseCase {
   private final TotpCredentialWritePort totpCredentialWritePort;
   private final TotpSecretPort totpSecretPort;
   private final BackupCodeWritePort backupCodeWritePort;
+  private final RememberDeviceWritePort rememberDeviceWritePort;
   private final RefreshTokenSessionWritePort refreshTokenSessionWritePort;
   private final Clock clock;
 
@@ -32,6 +34,7 @@ public final class TotpDisableService implements TotpDisableUseCase {
       TotpCredentialWritePort totpCredentialWritePort,
       TotpSecretPort totpSecretPort,
       BackupCodeWritePort backupCodeWritePort,
+      RememberDeviceWritePort rememberDeviceWritePort,
       RefreshTokenSessionWritePort refreshTokenSessionWritePort,
       Clock clock) {
     this.userCredentialLoadPort = userCredentialLoadPort;
@@ -39,6 +42,7 @@ public final class TotpDisableService implements TotpDisableUseCase {
     this.totpCredentialWritePort = totpCredentialWritePort;
     this.totpSecretPort = totpSecretPort;
     this.backupCodeWritePort = backupCodeWritePort;
+    this.rememberDeviceWritePort = rememberDeviceWritePort;
     this.refreshTokenSessionWritePort = refreshTokenSessionWritePort;
     this.clock = clock;
   }
@@ -61,6 +65,7 @@ public final class TotpDisableService implements TotpDisableUseCase {
 
     totpCredentialWritePort.deleteByUserId(command.userId());
     backupCodeWritePort.supersedeActiveByUserId(command.userId(), now);
+    rememberDeviceWritePort.revokeActiveByUserId(command.userId(), now);
     refreshTokenSessionWritePort.revokeActiveSessionsByUserId(command.userId(), now);
   }
 

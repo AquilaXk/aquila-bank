@@ -50,6 +50,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import java.util.List;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
@@ -88,6 +89,7 @@ public class LoginController {
   private final PasswordRecoveryConfirmUseCase passwordRecoveryConfirmUseCase;
   private final AuthSessionMetadataResolver authSessionMetadataResolver;
   private final LoginThrottleGuard loginThrottleGuard;
+  private final RememberDeviceCookieManager rememberDeviceCookieManager;
 
   public LoginController(
       LoginUseCase loginUseCase,
@@ -105,7 +107,8 @@ public class LoginController {
       PasswordRecoveryRequestUseCase passwordRecoveryRequestUseCase,
       PasswordRecoveryConfirmUseCase passwordRecoveryConfirmUseCase,
       AuthSessionMetadataResolver authSessionMetadataResolver,
-      LoginThrottleGuard loginThrottleGuard) {
+      LoginThrottleGuard loginThrottleGuard,
+      RememberDeviceCookieManager rememberDeviceCookieManager) {
     this.loginUseCase = loginUseCase;
     this.authSessionListUseCase = authSessionListUseCase;
     this.authSessionRevokeUseCase = authSessionRevokeUseCase;
@@ -122,17 +125,21 @@ public class LoginController {
     this.passwordRecoveryConfirmUseCase = passwordRecoveryConfirmUseCase;
     this.authSessionMetadataResolver = authSessionMetadataResolver;
     this.loginThrottleGuard = loginThrottleGuard;
+    this.rememberDeviceCookieManager = rememberDeviceCookieManager;
   }
 
   @PostMapping("/login")
-  public LoginResponse login(
+  public ResponseEntity<LoginResponse> login(
       HttpServletRequest httpServletRequest, @Valid @RequestBody LoginRequest request) {
     var sessionClientMetadata = authSessionMetadataResolver.resolve(httpServletRequest);
+    String rememberDeviceToken = rememberDeviceCookieManager.resolve(httpServletRequest);
     loginThrottleGuard.check(sessionClientMetadata.ipAddress());
     LoginResult result =
         loginUseCase.login(
-            new LoginCommand(request.loginId(), request.password(), sessionClientMetadata));
-    return LoginResponse.from(result);
+            new LoginCommand(
+                request.loginId(), request.password(), sessionClientMetadata, rememberDeviceToken));
+    return loginResponse(
+        result, rememberDeviceToken != null && result.status().name().equals("MFA_REQUIRED"));
   }
 
   @PostMapping("/mfa/totp/enroll")
@@ -157,11 +164,15 @@ public class LoginController {
   }
 
   @PostMapping("/mfa/totp/challenge/verify")
-  public LoginResponse verifyTotpChallenge(@Valid @RequestBody TotpChallengeVerifyRequest request) {
+  public ResponseEntity<LoginResponse> verifyTotpChallenge(
+      @Valid @RequestBody TotpChallengeVerifyRequest request) {
     LoginResult result =
         totpChallengeVerifyUseCase.verify(
-            new TotpChallengeVerifyCommand(request.challengeId(), request.totpCode()));
-    return LoginResponse.from(result);
+            new TotpChallengeVerifyCommand(
+                request.challengeId(),
+                request.totpCode(),
+                Boolean.TRUE.equals(request.rememberDevice())));
+    return loginResponse(result, false);
   }
 
   @PostMapping("/mfa/totp/disable")
@@ -170,7 +181,7 @@ public class LoginController {
       @Valid @RequestBody TotpCodeRequest request) {
     AuthenticatedUserPrincipal userPrincipal = requireUserPrincipal(principal);
     totpDisableUseCase.disable(new TotpDisableCommand(userPrincipal.userId(), request.totpCode()));
-    return ResponseEntity.noContent().build();
+    return noContentWithClearedRememberDeviceCookie();
   }
 
   @PostMapping("/mfa/backup-codes")
@@ -185,12 +196,15 @@ public class LoginController {
   }
 
   @PostMapping("/mfa/backup-codes/challenge/verify")
-  public LoginResponse verifyBackupCodeChallenge(
+  public ResponseEntity<LoginResponse> verifyBackupCodeChallenge(
       @Valid @RequestBody BackupCodeChallengeVerifyRequest request) {
     LoginResult result =
         backupCodeChallengeVerifyUseCase.verify(
-            new BackupCodeChallengeVerifyCommand(request.challengeId(), request.backupCode()));
-    return LoginResponse.from(result);
+            new BackupCodeChallengeVerifyCommand(
+                request.challengeId(),
+                request.backupCode(),
+                Boolean.TRUE.equals(request.rememberDevice())));
+    return loginResponse(result, false);
   }
 
   @GetMapping("/sessions")
@@ -217,7 +231,7 @@ public class LoginController {
       @CurrentAuthenticatedPrincipal AuthenticatedRequestPrincipal principal) {
     authSessionRevokeAllUseCase.revokeAll(
         new AuthSessionRevokeAllCommand(resolveUserId(principal)));
-    return ResponseEntity.noContent().build();
+    return noContentWithClearedRememberDeviceCookie();
   }
 
   @PostMapping("/refresh")
@@ -233,9 +247,14 @@ public class LoginController {
   @PostMapping("/logout")
   public ResponseEntity<Void> logout(
       @CurrentAuthenticatedPrincipal AuthenticatedRequestPrincipal principal,
+      HttpServletRequest httpServletRequest,
       @Valid @RequestBody LogoutRequest request) {
-    logoutUseCase.logout(new LogoutCommand(resolveUserId(principal), request.refreshToken()));
-    return ResponseEntity.noContent().build();
+    logoutUseCase.logout(
+        new LogoutCommand(
+            resolveUserId(principal),
+            request.refreshToken(),
+            rememberDeviceCookieManager.resolve(httpServletRequest)));
+    return noContentWithClearedRememberDeviceCookie();
   }
 
   @PostMapping("/password-reset")
@@ -245,7 +264,7 @@ public class LoginController {
     passwordResetUseCase.reset(
         new PasswordResetCommand(
             resolveUserId(principal), request.currentPassword(), request.newPassword()));
-    return ResponseEntity.noContent().build();
+    return noContentWithClearedRememberDeviceCookie();
   }
 
   @PostMapping("/password-recovery/request")
@@ -302,12 +321,14 @@ public class LoginController {
   /** MFA challenge verify 요청 body */
   public record TotpChallengeVerifyRequest(
       @NotBlank(message = "challengeId is required") @Size(max = 64, message = "challengeId must be 64 characters or less") String challengeId,
-      @NotBlank(message = "totpCode is required") @Pattern(regexp = "\\d{6}", message = "totpCode must be 6 digits") String totpCode) {}
+      @NotBlank(message = "totpCode is required") @Pattern(regexp = "\\d{6}", message = "totpCode must be 6 digits") String totpCode,
+      Boolean rememberDevice) {}
 
   /** backup code challenge verify 요청 body */
   public record BackupCodeChallengeVerifyRequest(
       @NotBlank(message = "challengeId is required") @Size(max = 64, message = "challengeId must be 64 characters or less") String challengeId,
-      @NotBlank(message = "backupCode is required") @Size(max = 16, message = "backupCode must be 16 characters or less") String backupCode) {}
+      @NotBlank(message = "backupCode is required") @Size(max = 16, message = "backupCode must be 16 characters or less") String backupCode,
+      Boolean rememberDevice) {}
 
   /** access/refresh token 발급 응답 */
   public record LoginResponse(
@@ -397,6 +418,23 @@ public class LoginController {
 
   private long resolveUserId(AuthenticatedRequestPrincipal principal) {
     return requireUserPrincipal(principal).userId();
+  }
+
+  private ResponseEntity<LoginResponse> loginResponse(
+      LoginResult result, boolean clearRememberDeviceCookie) {
+    HttpHeaders headers = new HttpHeaders();
+    if (result.rememberDeviceToken() != null) {
+      rememberDeviceCookieManager.addRememberDeviceCookie(headers, result.rememberDeviceToken());
+    } else if (clearRememberDeviceCookie) {
+      rememberDeviceCookieManager.addClearCookie(headers);
+    }
+    return ResponseEntity.ok().headers(headers).body(LoginResponse.from(result));
+  }
+
+  private ResponseEntity<Void> noContentWithClearedRememberDeviceCookie() {
+    HttpHeaders headers = new HttpHeaders();
+    rememberDeviceCookieManager.addClearCookie(headers);
+    return ResponseEntity.noContent().headers(headers).build();
   }
 
   private AuthenticatedUserPrincipal requireUserPrincipal(AuthenticatedRequestPrincipal principal) {
