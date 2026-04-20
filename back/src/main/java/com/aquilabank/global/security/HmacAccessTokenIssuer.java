@@ -16,6 +16,9 @@ import javax.crypto.spec.SecretKeySpec;
 /** resource server 검증과 같은 shared secret으로 access token을 발급합니다. */
 public class HmacAccessTokenIssuer implements AuthTokenIssuePort {
 
+  private static final String USER_ID_CLAIM = "user_id";
+  private static final String SESSION_ID_CLAIM = "session_id";
+
   private final SecretKeySpec secretKeySpec;
   private final String issuer;
   private final long accessTokenTtlSeconds;
@@ -28,7 +31,10 @@ public class HmacAccessTokenIssuer implements AuthTokenIssuePort {
   }
 
   @Override
-  public IssuedAccessToken issue(long userId, String subject, Instant issuedAt) {
+  public IssuedAccessToken issue(long userId, String subject, long sessionId, Instant issuedAt) {
+    if (sessionId <= 0) {
+      throw new IllegalArgumentException("sessionId must be positive");
+    }
     Instant expiresAt = issuedAt.plusSeconds(accessTokenTtlSeconds);
 
     JWTClaimsSet.Builder claims =
@@ -36,7 +42,8 @@ public class HmacAccessTokenIssuer implements AuthTokenIssuePort {
             .subject(subject)
             .issueTime(Date.from(issuedAt))
             .expirationTime(Date.from(expiresAt))
-            .claim("user_id", userId);
+            .claim(USER_ID_CLAIM, userId)
+            .claim(SESSION_ID_CLAIM, sessionId);
     if (issuer != null && !issuer.isBlank()) {
       claims.issuer(issuer);
     }

@@ -58,7 +58,7 @@ class RefreshTokenServiceTest {
     when(refreshDeviceBindingSecretPort.hash("next-binding-token")).thenReturn("next-binding-hash");
     when(refreshTokenSessionWritePort.create(any(RefreshTokenSessionCreateCommand.class)))
         .thenReturn(33L);
-    when(authTokenIssuePort.issue(7L, "alice", NOW))
+    when(authTokenIssuePort.issue(7L, "alice", 33L, NOW))
         .thenReturn(new IssuedAccessToken("access-token", "Bearer", NOW.plusSeconds(900), 7L));
 
     RefreshTokenService refreshTokenService =
@@ -93,6 +93,7 @@ class RefreshTokenServiceTest {
                 SESSION_CLIENT_METADATA));
     verify(refreshTokenSessionWritePort)
         .rotate(new RefreshTokenSessionRotateCommand(11L, 33L, NOW));
+    verify(authTokenIssuePort).issue(7L, "alice", 33L, NOW);
   }
 
   @Test
@@ -143,7 +144,7 @@ class RefreshTokenServiceTest {
     verify(refreshTokenSessionWritePort, never()).create(Mockito.any());
     verify(refreshTokenSessionWritePort, never()).rotate(Mockito.any());
     verify(authTokenIssuePort, never())
-        .issue(Mockito.anyLong(), Mockito.anyString(), Mockito.any());
+        .issue(Mockito.anyLong(), Mockito.anyString(), Mockito.anyLong(), Mockito.any());
   }
 
   @Test
@@ -194,7 +195,7 @@ class RefreshTokenServiceTest {
     verify(refreshTokenSessionWritePort, never()).create(Mockito.any());
     verify(refreshTokenSessionWritePort, never()).rotate(Mockito.any());
     verify(authTokenIssuePort, never())
-        .issue(Mockito.anyLong(), Mockito.anyString(), Mockito.any());
+        .issue(Mockito.anyLong(), Mockito.anyString(), Mockito.anyLong(), Mockito.any());
   }
 
   @Test
