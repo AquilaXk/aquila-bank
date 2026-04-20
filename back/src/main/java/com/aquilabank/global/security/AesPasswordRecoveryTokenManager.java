@@ -30,7 +30,8 @@ public class AesPasswordRecoveryTokenManager implements PasswordRecoverySecretPo
       secretEncryptionKey = fallbackSecret;
     }
     if (secretEncryptionKey == null || secretEncryptionKey.isBlank()) {
-      throw new IllegalStateException("security.password-recovery.secret-encryption-key is required");
+      throw new IllegalStateException(
+          "security.password-recovery.secret-encryption-key is required");
     }
     this.secretKeySpec =
         new SecretKeySpec(sha256(secretEncryptionKey.getBytes(StandardCharsets.UTF_8)), "AES");

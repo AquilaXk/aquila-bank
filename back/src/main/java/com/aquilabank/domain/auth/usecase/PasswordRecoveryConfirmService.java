@@ -79,7 +79,8 @@ public final class PasswordRecoveryConfirmService implements PasswordRecoveryCon
     userCredentialUpdatePort.resetPassword(
         new PasswordResetWriteCommand(
             user.userId(), passwordHashPort.encode(command.newPassword()), now));
-    passwordRecoveryTokenWritePort.markUsed(new PasswordRecoveryTokenUseCommand(token.tokenId(), now));
+    passwordRecoveryTokenWritePort.markUsed(
+        new PasswordRecoveryTokenUseCommand(token.tokenId(), now));
     // recovery 완료 뒤 기존 refresh session 전체 revoke로 이전 세션 재사용을 막습니다.
     refreshTokenSessionWritePort.revokeActiveSessionsByUserId(user.userId(), now);
   }
