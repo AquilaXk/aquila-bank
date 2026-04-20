@@ -23,6 +23,7 @@ import com.aquilabank.domain.auth.port.AuthTokenIssuePort;
 import com.aquilabank.domain.auth.port.LoginAttemptAuditPort;
 import com.aquilabank.domain.auth.port.LoginAttemptUpdatePort;
 import com.aquilabank.domain.auth.port.PasswordHashPort;
+import com.aquilabank.domain.auth.port.RefreshDeviceBindingSecretPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSecretPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionWritePort;
 import com.aquilabank.domain.auth.port.TotpCredentialLoadPort;
@@ -44,6 +45,7 @@ public final class LoginService implements LoginUseCase {
   private final TotpLoginChallengeWritePort totpLoginChallengeWritePort;
   private final RefreshTokenSessionWritePort refreshTokenSessionWritePort;
   private final RefreshTokenSecretPort refreshTokenSecretPort;
+  private final RefreshDeviceBindingSecretPort refreshDeviceBindingSecretPort;
   private final AuthTokenIssuePort authTokenIssuePort;
   private final LoginProtectionPolicy loginProtectionPolicy;
   private final RefreshTokenPolicy refreshTokenPolicy;
@@ -60,6 +62,7 @@ public final class LoginService implements LoginUseCase {
       TotpLoginChallengeWritePort totpLoginChallengeWritePort,
       RefreshTokenSessionWritePort refreshTokenSessionWritePort,
       RefreshTokenSecretPort refreshTokenSecretPort,
+      RefreshDeviceBindingSecretPort refreshDeviceBindingSecretPort,
       AuthTokenIssuePort authTokenIssuePort,
       LoginProtectionPolicy loginProtectionPolicy,
       RefreshTokenPolicy refreshTokenPolicy,
@@ -74,6 +77,7 @@ public final class LoginService implements LoginUseCase {
     this.totpLoginChallengeWritePort = totpLoginChallengeWritePort;
     this.refreshTokenSessionWritePort = refreshTokenSessionWritePort;
     this.refreshTokenSecretPort = refreshTokenSecretPort;
+    this.refreshDeviceBindingSecretPort = refreshDeviceBindingSecretPort;
     this.authTokenIssuePort = authTokenIssuePort;
     this.loginProtectionPolicy = loginProtectionPolicy;
     this.refreshTokenPolicy = refreshTokenPolicy;
@@ -204,11 +208,17 @@ public final class LoginService implements LoginUseCase {
   private LoginResult issueTokenPair(
       long userId, String loginId, AuthSessionClientMetadata sessionClientMetadata, Instant now) {
     String refreshToken = refreshTokenSecretPort.createToken();
+    String refreshTokenHash = refreshTokenSecretPort.hash(refreshToken);
+    String refreshDeviceBindingToken = refreshDeviceBindingSecretPort.createToken();
+    String refreshDeviceBindingHash =
+        refreshDeviceBindingSecretPort.hash(refreshDeviceBindingToken);
     Instant refreshExpiresAt = now.plus(refreshTokenPolicy.ttl());
+    // refresh token 단독 탈취 재사용을 막기 위해 device binding hash를 session에 함께 저장합니다.
     refreshTokenSessionWritePort.create(
         new RefreshTokenSessionCreateCommand(
             userId,
-            refreshTokenSecretPort.hash(refreshToken),
+            refreshTokenHash,
+            refreshDeviceBindingHash,
             refreshExpiresAt,
             now,
             sessionClientMetadata));
@@ -219,7 +229,8 @@ public final class LoginService implements LoginUseCase {
         issuedAccessToken.tokenType(),
         issuedAccessToken.expiresAt(),
         refreshExpiresAt,
-        issuedAccessToken.userId());
+        issuedAccessToken.userId(),
+        refreshDeviceBindingToken);
   }
 
   private LoginResult issueTotpChallenge(

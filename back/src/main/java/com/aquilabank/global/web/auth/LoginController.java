@@ -50,6 +50,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import java.util.List;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
@@ -88,6 +89,7 @@ public class LoginController {
   private final PasswordRecoveryConfirmUseCase passwordRecoveryConfirmUseCase;
   private final AuthSessionMetadataResolver authSessionMetadataResolver;
   private final LoginThrottleGuard loginThrottleGuard;
+  private final RefreshDeviceBindingCookieManager refreshDeviceBindingCookieManager;
 
   public LoginController(
       LoginUseCase loginUseCase,
@@ -105,7 +107,8 @@ public class LoginController {
       PasswordRecoveryRequestUseCase passwordRecoveryRequestUseCase,
       PasswordRecoveryConfirmUseCase passwordRecoveryConfirmUseCase,
       AuthSessionMetadataResolver authSessionMetadataResolver,
-      LoginThrottleGuard loginThrottleGuard) {
+      LoginThrottleGuard loginThrottleGuard,
+      RefreshDeviceBindingCookieManager refreshDeviceBindingCookieManager) {
     this.loginUseCase = loginUseCase;
     this.authSessionListUseCase = authSessionListUseCase;
     this.authSessionRevokeUseCase = authSessionRevokeUseCase;
@@ -122,17 +125,18 @@ public class LoginController {
     this.passwordRecoveryConfirmUseCase = passwordRecoveryConfirmUseCase;
     this.authSessionMetadataResolver = authSessionMetadataResolver;
     this.loginThrottleGuard = loginThrottleGuard;
+    this.refreshDeviceBindingCookieManager = refreshDeviceBindingCookieManager;
   }
 
   @PostMapping("/login")
-  public LoginResponse login(
+  public ResponseEntity<LoginResponse> login(
       HttpServletRequest httpServletRequest, @Valid @RequestBody LoginRequest request) {
     var sessionClientMetadata = authSessionMetadataResolver.resolve(httpServletRequest);
     loginThrottleGuard.check(sessionClientMetadata.ipAddress());
     LoginResult result =
         loginUseCase.login(
             new LoginCommand(request.loginId(), request.password(), sessionClientMetadata));
-    return LoginResponse.from(result);
+    return loginResponse(result);
   }
 
   @PostMapping("/mfa/totp/enroll")
@@ -157,11 +161,12 @@ public class LoginController {
   }
 
   @PostMapping("/mfa/totp/challenge/verify")
-  public LoginResponse verifyTotpChallenge(@Valid @RequestBody TotpChallengeVerifyRequest request) {
+  public ResponseEntity<LoginResponse> verifyTotpChallenge(
+      @Valid @RequestBody TotpChallengeVerifyRequest request) {
     LoginResult result =
         totpChallengeVerifyUseCase.verify(
             new TotpChallengeVerifyCommand(request.challengeId(), request.totpCode()));
-    return LoginResponse.from(result);
+    return loginResponse(result);
   }
 
   @PostMapping("/mfa/totp/disable")
@@ -185,12 +190,12 @@ public class LoginController {
   }
 
   @PostMapping("/mfa/backup-codes/challenge/verify")
-  public LoginResponse verifyBackupCodeChallenge(
+  public ResponseEntity<LoginResponse> verifyBackupCodeChallenge(
       @Valid @RequestBody BackupCodeChallengeVerifyRequest request) {
     LoginResult result =
         backupCodeChallengeVerifyUseCase.verify(
             new BackupCodeChallengeVerifyCommand(request.challengeId(), request.backupCode()));
-    return LoginResponse.from(result);
+    return loginResponse(result);
   }
 
   @GetMapping("/sessions")
@@ -266,6 +271,16 @@ public class LoginController {
     passwordRecoveryConfirmUseCase.confirm(
         new PasswordRecoveryConfirmCommand(request.recoveryToken(), request.newPassword()));
     return ResponseEntity.noContent().build();
+  }
+
+  private ResponseEntity<LoginResponse> loginResponse(LoginResult result) {
+    LoginResponse response = LoginResponse.from(result);
+    if (result.refreshDeviceBindingToken() == null) {
+      return ResponseEntity.ok(response);
+    }
+    HttpHeaders headers = new HttpHeaders();
+    refreshDeviceBindingCookieManager.addBindingCookie(headers, result.refreshDeviceBindingToken());
+    return ResponseEntity.ok().headers(headers).body(response);
   }
 
   /** 로그인 요청 body */

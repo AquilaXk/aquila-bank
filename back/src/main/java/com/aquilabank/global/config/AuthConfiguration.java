@@ -18,6 +18,7 @@ import com.aquilabank.domain.auth.port.PasswordHashPort;
 import com.aquilabank.domain.auth.port.PasswordRecoverySecretPort;
 import com.aquilabank.domain.auth.port.PasswordRecoveryTokenLoadPort;
 import com.aquilabank.domain.auth.port.PasswordRecoveryTokenQueryPort;
+import com.aquilabank.domain.auth.port.RefreshDeviceBindingSecretPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSecretPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionLoadPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionWritePort;
@@ -133,6 +134,7 @@ public class AuthConfiguration {
       TotpLoginChallengeWritePort totpLoginChallengeWritePort,
       RefreshTokenSessionWritePort refreshTokenSessionWritePort,
       RefreshTokenSecretPort refreshTokenSecretPort,
+      RefreshDeviceBindingSecretPort refreshDeviceBindingSecretPort,
       AuthTokenIssuePort authTokenIssuePort,
       LoginProtectionPolicy loginProtectionPolicy,
       RefreshTokenPolicy refreshTokenPolicy,
@@ -149,6 +151,7 @@ public class AuthConfiguration {
             totpLoginChallengeWritePort,
             refreshTokenSessionWritePort,
             refreshTokenSecretPort,
+            refreshDeviceBindingSecretPort,
             authTokenIssuePort,
             loginProtectionPolicy,
             refreshTokenPolicy,
@@ -259,6 +262,7 @@ public class AuthConfiguration {
       TotpCredentialWritePort totpCredentialWritePort,
       RefreshTokenSessionWritePort refreshTokenSessionWritePort,
       RefreshTokenSecretPort refreshTokenSecretPort,
+      RefreshDeviceBindingSecretPort refreshDeviceBindingSecretPort,
       TotpSecretPort totpSecretPort,
       AuthTokenIssuePort authTokenIssuePort,
       RefreshTokenPolicy refreshTokenPolicy,
@@ -273,6 +277,7 @@ public class AuthConfiguration {
             totpCredentialWritePort,
             refreshTokenSessionWritePort,
             refreshTokenSecretPort,
+            refreshDeviceBindingSecretPort,
             totpSecretPort,
             authTokenIssuePort,
             refreshTokenPolicy,
@@ -365,6 +370,7 @@ public class AuthConfiguration {
       BackupCodeSecretPort backupCodeSecretPort,
       RefreshTokenSessionWritePort refreshTokenSessionWritePort,
       RefreshTokenSecretPort refreshTokenSecretPort,
+      RefreshDeviceBindingSecretPort refreshDeviceBindingSecretPort,
       AuthTokenIssuePort authTokenIssuePort,
       RefreshTokenPolicy refreshTokenPolicy,
       SecurityTotpProperties securityTotpProperties,
@@ -380,6 +386,7 @@ public class AuthConfiguration {
             backupCodeSecretPort,
             refreshTokenSessionWritePort,
             refreshTokenSecretPort,
+            refreshDeviceBindingSecretPort,
             authTokenIssuePort,
             refreshTokenPolicy,
             securityTotpProperties.challengeMaxAttempts(),

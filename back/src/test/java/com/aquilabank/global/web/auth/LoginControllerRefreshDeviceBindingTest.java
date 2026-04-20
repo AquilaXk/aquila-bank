@@ -1,14 +1,18 @@
 package com.aquilabank.global.web.auth;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.aquilabank.domain.auth.model.BackupCodeChallengeVerifyCommand;
+import com.aquilabank.domain.auth.model.AuthSessionClientMetadata;
+import com.aquilabank.domain.auth.model.LoginCommand;
 import com.aquilabank.domain.auth.model.LoginResult;
+import com.aquilabank.domain.auth.model.TotpChallengeVerifyCommand;
 import com.aquilabank.domain.auth.usecase.AuthSessionListUseCase;
 import com.aquilabank.domain.auth.usecase.AuthSessionRevokeAllUseCase;
 import com.aquilabank.domain.auth.usecase.AuthSessionRevokeUseCase;
@@ -33,32 +37,39 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
-class LoginControllerBackupCodeChallengeTest {
+class LoginControllerRefreshDeviceBindingTest {
 
-  private BackupCodeChallengeVerifyUseCase backupCodeChallengeVerifyUseCase;
+  private LoginUseCase loginUseCase;
+  private TotpChallengeVerifyUseCase totpChallengeVerifyUseCase;
+  private AuthSessionMetadataResolver authSessionMetadataResolver;
   private MockMvc mockMvc;
 
   @BeforeEach
   void setUp() {
-    backupCodeChallengeVerifyUseCase = mock(BackupCodeChallengeVerifyUseCase.class);
+    loginUseCase = mock(LoginUseCase.class);
+    totpChallengeVerifyUseCase = mock(TotpChallengeVerifyUseCase.class);
+    authSessionMetadataResolver = mock(AuthSessionMetadataResolver.class);
+    when(authSessionMetadataResolver.resolve(any()))
+        .thenReturn(new AuthSessionClientMetadata("Windows / Chrome", "203.0.113.10"));
+
     mockMvc =
         MockMvcBuilders.standaloneSetup(
                 new LoginController(
-                    mock(LoginUseCase.class),
+                    loginUseCase,
                     mock(AuthSessionListUseCase.class),
                     mock(AuthSessionRevokeUseCase.class),
                     mock(AuthSessionRevokeAllUseCase.class),
                     mock(RefreshTokenUseCase.class),
                     mock(TotpEnrollmentUseCase.class),
-                    mock(TotpChallengeVerifyUseCase.class),
+                    totpChallengeVerifyUseCase,
                     mock(TotpDisableUseCase.class),
                     mock(BackupCodeGenerateUseCase.class),
-                    backupCodeChallengeVerifyUseCase,
+                    mock(BackupCodeChallengeVerifyUseCase.class),
                     mock(LogoutUseCase.class),
                     mock(PasswordResetUseCase.class),
                     mock(PasswordRecoveryRequestUseCase.class),
                     mock(PasswordRecoveryConfirmUseCase.class),
-                    mock(AuthSessionMetadataResolver.class),
+                    authSessionMetadataResolver,
                     mock(LoginThrottleGuard.class),
                     new RefreshDeviceBindingCookieManager(
                         new SecurityJwtProperties(
@@ -68,35 +79,76 @@ class LoginControllerBackupCodeChallengeTest {
   }
 
   @Test
-  void verifiesBackupCodeChallengeAndReturnsTokenPair() throws Exception {
-    when(backupCodeChallengeVerifyUseCase.verify(
+  void loginSetsRefreshDeviceBindingCookieOnSuccess() throws Exception {
+    when(loginUseCase.login(
             argThat(
-                (BackupCodeChallengeVerifyCommand command) ->
-                    "challenge-1".equals(command.challengeId())
-                        && "ABCD-EFGH".equals(command.backupCode()))))
+                (LoginCommand command) ->
+                    "alice".equals(command.loginId())
+                        && "password123!".equals(command.password()))))
         .thenReturn(
             LoginResult.success(
                 "access-token",
                 "refresh-token",
                 "Bearer",
-                Instant.parse("2026-04-20T11:00:00Z"),
-                Instant.parse("2026-05-04T10:30:00Z"),
-                7L));
+                Instant.parse("2026-04-20T12:00:00Z"),
+                Instant.parse("2026-05-04T11:45:00Z"),
+                7L,
+                "binding-token"));
 
     mockMvc
         .perform(
-            post("/api/v1/auth/mfa/backup-codes/challenge/verify")
+            post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "loginId": "alice",
+                      "password": "password123!"
+                    }
+                    """))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("SUCCESS"))
+        .andExpect(
+            header()
+                .string(
+                    "Set-Cookie",
+                    org.hamcrest.Matchers.containsString("ab_refresh_device=binding-token")));
+  }
+
+  @Test
+  void verifyTotpChallengeSetsRefreshDeviceBindingCookieOnSuccess() throws Exception {
+    when(totpChallengeVerifyUseCase.verify(
+            argThat(
+                (TotpChallengeVerifyCommand command) ->
+                    "challenge-1".equals(command.challengeId())
+                        && "123456".equals(command.totpCode()))))
+        .thenReturn(
+            LoginResult.success(
+                "access-token",
+                "refresh-token",
+                "Bearer",
+                Instant.parse("2026-04-20T12:00:00Z"),
+                Instant.parse("2026-05-04T11:45:00Z"),
+                7L,
+                "binding-token"));
+
+    mockMvc
+        .perform(
+            post("/api/v1/auth/mfa/totp/challenge/verify")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     """
                     {
                       "challengeId": "challenge-1",
-                      "backupCode": "ABCD-EFGH"
+                      "totpCode": "123456"
                     }
                     """))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.status").value("SUCCESS"))
-        .andExpect(jsonPath("$.accessToken").value("access-token"))
-        .andExpect(jsonPath("$.refreshToken").value("refresh-token"));
+        .andExpect(
+            header()
+                .string(
+                    "Set-Cookie",
+                    org.hamcrest.Matchers.containsString("ab_refresh_device=binding-token")));
   }
 }

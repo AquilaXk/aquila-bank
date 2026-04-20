@@ -11,6 +11,7 @@ public record LoginResult(
     Instant expiresAt,
     Instant refreshExpiresAt,
     Long userId,
+    String refreshDeviceBindingToken,
     String challengeId,
     LoginChallengeType challengeType,
     Instant challengeExpiresAt) {
@@ -18,6 +19,9 @@ public record LoginResult(
   public LoginResult {
     if (status == null) {
       throw new IllegalArgumentException("status is required");
+    }
+    if (refreshDeviceBindingToken != null && refreshDeviceBindingToken.isBlank()) {
+      refreshDeviceBindingToken = null;
     }
     if (status == LoginResultStatus.SUCCESS) {
       if (accessToken == null || accessToken.isBlank()) {
@@ -56,7 +60,8 @@ public record LoginResult(
           || tokenType != null
           || expiresAt != null
           || refreshExpiresAt != null
-          || userId != null) {
+          || userId != null
+          || refreshDeviceBindingToken != null) {
         throw new IllegalArgumentException("token fields are not allowed for mfa challenge");
       }
     }
@@ -79,6 +84,29 @@ public record LoginResult(
         userId,
         null,
         null,
+        null,
+        null);
+  }
+
+  public static LoginResult success(
+      String accessToken,
+      String refreshToken,
+      String tokenType,
+      Instant expiresAt,
+      Instant refreshExpiresAt,
+      long userId,
+      String refreshDeviceBindingToken) {
+    return new LoginResult(
+        LoginResultStatus.SUCCESS,
+        accessToken,
+        refreshToken,
+        tokenType,
+        expiresAt,
+        refreshExpiresAt,
+        userId,
+        refreshDeviceBindingToken,
+        null,
+        null,
         null);
   }
 
@@ -86,6 +114,7 @@ public record LoginResult(
       String challengeId, LoginChallengeType challengeType, Instant challengeExpiresAt) {
     return new LoginResult(
         LoginResultStatus.MFA_REQUIRED,
+        null,
         null,
         null,
         null,
