@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 
 import com.aquilabank.global.security.InternalServiceScope;
 import com.aquilabank.global.security.InternalServiceTokenIssuer;
@@ -211,6 +212,102 @@ class TransferCommandApiIntegrationTest extends PostgresContainerTestSupport {
     assertEquals(0L, idempotencyCount("reversal-003"));
   }
 
+  @Test
+  void rejectsTransferWhenSourceAccountIsLockedWithoutWriteSideEffects() throws Exception {
+    updateAccountStatus(sourceAccountId, "LOCKED", "transfer-locked-request");
+
+    long ledgerCountBefore = totalCount("ledger_entry");
+    long transactionCountBefore = totalCount("transaction_read_model");
+    long outboxCountBefore = totalCount("outbox_event");
+    long idempotencyCountBefore = totalCount("command_idempotency");
+    long sourceBalanceBefore = balanceOf(sourceAccountId);
+    long targetBalanceBefore = balanceOf(targetAccountId);
+
+    MvcResult result =
+        mockMvc
+            .perform(
+                post("/api/v1/transfers")
+                    .header("X-Account-Id", String.valueOf(sourceAccountId))
+                    .header("X-Request-Id", "transfer-locked-001-request")
+                    .header("Idempotency-Key", "transfer-locked-001")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                    {
+                      "sourceAccountId": %d,
+                      "targetAccountId": %d,
+                      "amountMinor": 1500,
+                      "currencyCode": "KRW",
+                      "summary": "locked"
+                    }
+                    """
+                            .formatted(sourceAccountId, targetAccountId)))
+            .andReturn();
+
+    assertEquals(403, result.getResponse().getStatus(), result.getResponse().getContentAsString());
+    assertEquals(
+        "account access is denied",
+        objectMapper
+            .readTree(result.getResponse().getContentAsByteArray())
+            .get("message")
+            .asText());
+    assertEquals(ledgerCountBefore, totalCount("ledger_entry"));
+    assertEquals(transactionCountBefore, totalCount("transaction_read_model"));
+    assertEquals(outboxCountBefore, totalCount("outbox_event"));
+    assertEquals(idempotencyCountBefore, totalCount("command_idempotency"));
+    assertEquals(sourceBalanceBefore, balanceOf(sourceAccountId));
+    assertEquals(targetBalanceBefore, balanceOf(targetAccountId));
+  }
+
+  @Test
+  void rejectsReversalWhenSourceAccountIsClosedWithoutWriteSideEffects() throws Exception {
+    TransferResponseView booked = invokeTransfer("transfer-006", targetAccountId, 1_500L, "rent");
+
+    updateAccountStatus(sourceAccountId, "CLOSED", "reversal-closed-request");
+
+    long ledgerCountBefore = totalCount("ledger_entry");
+    long transactionCountBefore = totalCount("transaction_read_model");
+    long outboxCountBefore = totalCount("outbox_event");
+    long idempotencyCountBefore = totalCount("command_idempotency");
+    long reversalCountBefore = transferReversalCount(booked.transactionReference());
+    long sourceBalanceBefore = balanceOf(sourceAccountId);
+    long targetBalanceBefore = balanceOf(targetAccountId);
+
+    MvcResult result =
+        mockMvc
+            .perform(
+                post("/api/v1/transfers/%s/reversal".formatted(booked.transactionReference()))
+                    .header("X-Account-Id", String.valueOf(sourceAccountId))
+                    .header("X-Request-Id", "reversal-closed-001-request")
+                    .header("Idempotency-Key", "reversal-closed-001")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                          "sourceAccountId": %d,
+                          "reversalReason": "CANCEL",
+                          "summary": "closed"
+                        }
+                        """
+                            .formatted(sourceAccountId)))
+            .andReturn();
+
+    assertEquals(403, result.getResponse().getStatus(), result.getResponse().getContentAsString());
+    assertEquals(
+        "account access is denied",
+        objectMapper
+            .readTree(result.getResponse().getContentAsByteArray())
+            .get("message")
+            .asText());
+    assertEquals(ledgerCountBefore, totalCount("ledger_entry"));
+    assertEquals(transactionCountBefore, totalCount("transaction_read_model"));
+    assertEquals(outboxCountBefore, totalCount("outbox_event"));
+    assertEquals(idempotencyCountBefore, totalCount("command_idempotency"));
+    assertEquals(reversalCountBefore, transferReversalCount(booked.transactionReference()));
+    assertEquals(sourceBalanceBefore, balanceOf(sourceAccountId));
+    assertEquals(targetBalanceBefore, balanceOf(targetAccountId));
+  }
+
   private AccountBootstrapResponseView bootstrapAccount(
       String displayName, long initialBalanceMinor) throws Exception {
     MvcResult result =
@@ -333,6 +430,32 @@ class TransferCommandApiIntegrationTest extends PostgresContainerTestSupport {
 
   private long totalCount(String tableName) {
     return jdbcTemplate.queryForObject("SELECT COUNT(*) FROM " + tableName, Map.of(), Long.class);
+  }
+
+  private void updateAccountStatus(long accountId, String accountStatus, String requestId)
+      throws Exception {
+    MvcResult result =
+        mockMvc
+            .perform(
+                put("/internal/api/v1/accounts/%d/status".formatted(accountId))
+                    .header("X-Request-Id", requestId)
+                    .header(
+                        "Authorization",
+                        "Bearer "
+                            + internalServiceTokenIssuer.issue(
+                                "account-admin",
+                                java.util.Set.of(InternalServiceScope.ACCOUNT_ADMIN)))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                          "accountStatus": "%s"
+                        }
+                        """
+                            .formatted(accountStatus)))
+            .andReturn();
+
+    assertEquals(200, result.getResponse().getStatus(), result.getResponse().getContentAsString());
   }
 
   private long balanceOf(long accountId) {

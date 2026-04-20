@@ -215,6 +215,220 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
   }
 
   @Test
+  void lockedAccountAllowsReadButBlocksTransferAndReversal() throws Exception {
+    String token = login("alice", "password123!");
+
+    MvcResult bookedTransfer =
+        mockMvc
+            .perform(
+                post("/api/v1/transfers")
+                    .header("Authorization", "Bearer " + token)
+                    .header("X-Request-Id", "jwt-locked-booked-001")
+                    .header("Idempotency-Key", "jwt-locked-booked-001")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                          "sourceAccountId": %d,
+                          "targetAccountId": %d,
+                          "amountMinor": 1500,
+                          "currencyCode": "KRW",
+                          "summary": "rent"
+                        }
+                        """
+                            .formatted(allowedSourceAccountId, targetAccountId)))
+            .andExpect(status().isOk())
+            .andReturn();
+
+    String transactionReference = transactionReference(bookedTransfer);
+    updateAccountStatus(allowedSourceAccountId, "LOCKED", "account-locked-request");
+
+    mockMvc
+        .perform(
+            get("/api/v1/accounts/%d".formatted(allowedSourceAccountId))
+                .header("Authorization", "Bearer " + token))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.accountStatus").value("LOCKED"))
+        .andExpect(jsonPath("$.availableBalanceMinor").value(8500L));
+
+    mockMvc
+        .perform(
+            get("/api/v1/transactions")
+                .header("Authorization", "Bearer " + token)
+                .param("accountId", String.valueOf(allowedSourceAccountId))
+                .param("from", transactionQueryFrom())
+                .param("to", transactionQueryTo()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items[0].accountId").value(allowedSourceAccountId));
+
+    mockMvc
+        .perform(
+            get("/api/v1/transactions/%s".formatted(transactionReference))
+                .header("Authorization", "Bearer " + token)
+                .param("accountId", String.valueOf(allowedSourceAccountId)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.transactionReference").value(transactionReference));
+
+    mockMvc
+        .perform(
+            post("/api/v1/transfers")
+                .header("Authorization", "Bearer " + token)
+                .header("X-Request-Id", "jwt-locked-transfer-403")
+                .header("Idempotency-Key", "jwt-locked-transfer-403")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "sourceAccountId": %d,
+                      "targetAccountId": %d,
+                      "amountMinor": 500,
+                      "currencyCode": "KRW",
+                      "summary": "locked-blocked"
+                    }
+                    """
+                        .formatted(allowedSourceAccountId, targetAccountId)))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.message").value("account access is denied"));
+
+    mockMvc
+        .perform(
+            post("/api/v1/transfers/%s/reversal".formatted(transactionReference))
+                .header("Authorization", "Bearer " + token)
+                .header("X-Request-Id", "jwt-locked-reversal-403")
+                .header("Idempotency-Key", "jwt-locked-reversal-403")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "sourceAccountId": %d,
+                      "reversalReason": "CANCEL",
+                      "summary": "locked-reversal-blocked"
+                    }
+                    """
+                        .formatted(allowedSourceAccountId)))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.message").value("account access is denied"));
+  }
+
+  @Test
+  void closedAccountBlocksReadTransferAndReversal() throws Exception {
+    String token = login("alice", "password123!");
+
+    MvcResult bookedTransfer =
+        mockMvc
+            .perform(
+                post("/api/v1/transfers")
+                    .header("Authorization", "Bearer " + token)
+                    .header("X-Request-Id", "jwt-closed-booked-001")
+                    .header("Idempotency-Key", "jwt-closed-booked-001")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                          "sourceAccountId": %d,
+                          "targetAccountId": %d,
+                          "amountMinor": 1500,
+                          "currencyCode": "KRW",
+                          "summary": "rent"
+                        }
+                        """
+                            .formatted(allowedSourceAccountId, targetAccountId)))
+            .andExpect(status().isOk())
+            .andReturn();
+
+    String transactionReference = transactionReference(bookedTransfer);
+    updateAccountStatus(allowedSourceAccountId, "CLOSED", "account-closed-request");
+
+    mockMvc
+        .perform(
+            get("/api/v1/accounts/%d".formatted(allowedSourceAccountId))
+                .header("Authorization", "Bearer " + token))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.message").value("account access is denied"));
+
+    mockMvc
+        .perform(
+            get("/api/v1/transactions")
+                .header("Authorization", "Bearer " + token)
+                .param("accountId", String.valueOf(allowedSourceAccountId))
+                .param("from", transactionQueryFrom())
+                .param("to", transactionQueryTo()))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.message").value("account access is denied"));
+
+    mockMvc
+        .perform(
+            get("/api/v1/transactions/%s".formatted(transactionReference))
+                .header("Authorization", "Bearer " + token)
+                .param("accountId", String.valueOf(allowedSourceAccountId)))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.message").value("account access is denied"));
+
+    mockMvc
+        .perform(
+            post("/api/v1/transfers")
+                .header("Authorization", "Bearer " + token)
+                .header("X-Request-Id", "jwt-closed-transfer-403")
+                .header("Idempotency-Key", "jwt-closed-transfer-403")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "sourceAccountId": %d,
+                      "targetAccountId": %d,
+                      "amountMinor": 500,
+                      "currencyCode": "KRW",
+                      "summary": "closed-blocked"
+                    }
+                    """
+                        .formatted(allowedSourceAccountId, targetAccountId)))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.message").value("account access is denied"));
+
+    mockMvc
+        .perform(
+            post("/api/v1/transfers/%s/reversal".formatted(transactionReference))
+                .header("Authorization", "Bearer " + token)
+                .header("X-Request-Id", "jwt-closed-reversal-403")
+                .header("Idempotency-Key", "jwt-closed-reversal-403")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "sourceAccountId": %d,
+                      "reversalReason": "CANCEL",
+                      "summary": "closed-reversal-blocked"
+                    }
+                    """
+                        .formatted(allowedSourceAccountId)))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.message").value("account access is denied"));
+  }
+
+  @Test
+  void bootstrapAccountPrincipalAllowsLockedReadButRejectsClosedRead() throws Exception {
+    updateAccountStatus(allowedSourceAccountId, "LOCKED", "bootstrap-account-locked-request");
+
+    mockMvc
+        .perform(
+            get("/api/v1/accounts/%d".formatted(allowedSourceAccountId))
+                .header("X-Account-Id", String.valueOf(allowedSourceAccountId))
+                .header("X-Subject", "bootstrap-account"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.accountStatus").value("LOCKED"));
+
+    updateAccountStatus(allowedSourceAccountId, "CLOSED", "bootstrap-account-closed-request");
+
+    mockMvc
+        .perform(
+            get("/api/v1/accounts/%d".formatted(allowedSourceAccountId))
+                .header("X-Account-Id", String.valueOf(allowedSourceAccountId))
+                .header("X-Subject", "bootstrap-account"))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.message").value("account access is denied"));
+  }
+
+  @Test
   void transactionDetailReturnsAllowedAccountDataAnd404ForMissingReference() throws Exception {
     String token = login("alice", "password123!");
 
@@ -1543,6 +1757,29 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.userId").value(userId))
         .andExpect(jsonPath("$.userStatus").value(userStatus));
+  }
+
+  private void updateAccountStatus(long accountId, String accountStatus, String requestId)
+      throws Exception {
+    mockMvc
+        .perform(
+            put("/internal/api/v1/accounts/%d/status".formatted(accountId))
+                .header(
+                    "Authorization",
+                    internalServiceAuthorization(
+                        "account-admin", InternalServiceScope.ACCOUNT_ADMIN))
+                .header("X-Request-Id", requestId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "accountStatus": "%s"
+                    }
+                    """
+                        .formatted(accountStatus)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.accountId").value(accountId))
+        .andExpect(jsonPath("$.accountStatus").value(accountStatus));
   }
 
   private void updateMembershipStatus(
