@@ -215,9 +215,10 @@ public class LoginController {
       @CurrentAuthenticatedPrincipal AuthenticatedRequestPrincipal principal,
       @RequestParam(defaultValue = "20")
           @Min(value = 1, message = "size must be at least 1") @Max(value = 50, message = "size must be 50 or less") int size) {
+    AuthenticatedUserPrincipal userPrincipal = requireUserPrincipal(principal);
     AuthSessionList result =
-        authSessionListUseCase.get(new AuthSessionListQuery(resolveUserId(principal), size));
-    return AuthSessionListResponse.from(result);
+        authSessionListUseCase.get(new AuthSessionListQuery(userPrincipal.userId(), size));
+    return AuthSessionListResponse.from(result, userPrincipal.currentSessionId());
   }
 
   @DeleteMapping("/sessions/{sessionId}")
@@ -393,9 +394,11 @@ public class LoginController {
   /** 현재 user refresh token session 목록 응답 */
   public record AuthSessionListResponse(List<AuthSessionItemResponse> items) {
 
-    private static AuthSessionListResponse from(AuthSessionList result) {
+    private static AuthSessionListResponse from(AuthSessionList result, Long currentSessionId) {
       return new AuthSessionListResponse(
-          result.items().stream().map(AuthSessionItemResponse::from).toList());
+          result.items().stream()
+              .map(summary -> AuthSessionItemResponse.from(summary, currentSessionId))
+              .toList());
     }
   }
 
@@ -407,9 +410,10 @@ public class LoginController {
       Instant lastUsedAt,
       Instant createdAt,
       String deviceName,
-      String ipAddress) {
+      String ipAddress,
+      boolean currentSession) {
 
-    private static AuthSessionItemResponse from(AuthSessionSummary summary) {
+    private static AuthSessionItemResponse from(AuthSessionSummary summary, Long currentSessionId) {
       return new AuthSessionItemResponse(
           summary.sessionId(),
           summary.sessionStatus().name(),
@@ -417,7 +421,8 @@ public class LoginController {
           summary.lastUsedAt(),
           summary.createdAt(),
           summary.deviceName(),
-          summary.ipAddress());
+          summary.ipAddress(),
+          currentSessionId != null && summary.sessionId() == currentSessionId);
     }
   }
 

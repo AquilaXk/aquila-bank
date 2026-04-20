@@ -104,7 +104,7 @@ class LoginServiceTest {
     verify(loginAttemptUpdatePort, never()).recordLoginSuccess(Mockito.any());
     verify(refreshTokenSessionWritePort, never()).create(Mockito.any());
     verify(authTokenIssuePort, never())
-        .issue(Mockito.anyLong(), Mockito.anyString(), Mockito.any());
+        .issue(Mockito.anyLong(), Mockito.anyString(), Mockito.anyLong(), Mockito.any());
     verify(userCredentialLoadPort).findByLoginIdForUpdate(eq("missing-user"));
     verifyNoInteractions(
         totpCredentialLoadPort,
@@ -247,7 +247,8 @@ class LoginServiceTest {
     when(refreshTokenSecretPort.hash("refresh-token")).thenReturn("refresh-hash");
     when(refreshDeviceBindingSecretPort.createToken()).thenReturn("binding-token");
     when(refreshDeviceBindingSecretPort.hash("binding-token")).thenReturn("binding-hash");
-    when(authTokenIssuePort.issue(7L, "alice", Instant.parse("2026-04-17T00:00:00Z")))
+    when(refreshTokenSessionWritePort.create(any())).thenReturn(31L);
+    when(authTokenIssuePort.issue(7L, "alice", 31L, Instant.parse("2026-04-17T00:00:00Z")))
         .thenReturn(
             new com.aquilabank.domain.auth.model.IssuedAccessToken(
                 "access-token", "Bearer", Instant.parse("2026-04-17T00:15:00Z"), 7L));
@@ -287,6 +288,7 @@ class LoginServiceTest {
         "next-remember-device-token", result.rememberDeviceToken());
     verify(rememberDeviceWritePort).rotate(any());
     verify(refreshTokenSessionWritePort).create(any());
+    verify(authTokenIssuePort).issue(7L, "alice", 31L, Instant.parse("2026-04-17T00:00:00Z"));
     verify(totpLoginChallengeWritePort, never()).upsert(any());
   }
 
@@ -321,7 +323,8 @@ class LoginServiceTest {
     when(refreshTokenSecretPort.hash("refresh-token")).thenReturn("refresh-hash");
     when(refreshDeviceBindingSecretPort.createToken()).thenReturn("binding-token");
     when(refreshDeviceBindingSecretPort.hash("binding-token")).thenReturn("binding-hash");
-    when(authTokenIssuePort.issue(7L, "alice", Instant.parse("2026-04-17T00:00:00Z")))
+    when(refreshTokenSessionWritePort.create(any())).thenReturn(32L);
+    when(authTokenIssuePort.issue(7L, "alice", 32L, Instant.parse("2026-04-17T00:00:00Z")))
         .thenReturn(
             new com.aquilabank.domain.auth.model.IssuedAccessToken(
                 "access-token", "Bearer", Instant.parse("2026-04-17T00:15:00Z"), 7L));
@@ -364,5 +367,6 @@ class LoginServiceTest {
                     Instant.parse("2026-05-01T00:00:00Z"),
                     Instant.parse("2026-04-17T00:00:00Z"),
                     SESSION_CLIENT_METADATA)));
+    verify(authTokenIssuePort).issue(7L, "alice", 32L, Instant.parse("2026-04-17T00:00:00Z"));
   }
 }

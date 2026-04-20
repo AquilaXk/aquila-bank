@@ -157,16 +157,17 @@ public final class BackupCodeChallengeVerifyService implements BackupCodeChallen
     Instant refreshExpiresAt = now.plus(refreshTokenPolicy.ttl());
     // refresh token 단독 탈취 재사용을 막기 위해 device binding hash를 session에 함께 저장합니다.
     String rememberDeviceToken = issueRememberDevice(challenge, now, rememberDevice);
-    refreshTokenSessionWritePort.create(
-        new RefreshTokenSessionCreateCommand(
-            challenge.userId(),
-            refreshTokenHash,
-            refreshDeviceBindingHash,
-            refreshExpiresAt,
-            now,
-            new AuthSessionClientMetadata(challenge.deviceName(), challenge.ipAddress())));
+    long sessionId =
+        refreshTokenSessionWritePort.create(
+            new RefreshTokenSessionCreateCommand(
+                challenge.userId(),
+                refreshTokenHash,
+                refreshDeviceBindingHash,
+                refreshExpiresAt,
+                now,
+                new AuthSessionClientMetadata(challenge.deviceName(), challenge.ipAddress())));
     IssuedAccessToken issuedAccessToken =
-        authTokenIssuePort.issue(challenge.userId(), challenge.loginId(), now);
+        authTokenIssuePort.issue(challenge.userId(), challenge.loginId(), sessionId, now);
     return LoginResult.success(
         issuedAccessToken.accessToken(),
         refreshToken,

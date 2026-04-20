@@ -93,7 +93,7 @@ public final class RefreshTokenService implements RefreshTokenUseCase {
         new RefreshTokenSessionRotateCommand(session.sessionId(), newSessionId, now));
 
     IssuedAccessToken issuedAccessToken =
-        authTokenIssuePort.issue(session.userId(), session.loginId(), now);
+        authTokenIssuePort.issue(session.userId(), session.loginId(), newSessionId, now);
     return LoginResult.success(
         issuedAccessToken.accessToken(),
         nextRefreshToken,

@@ -69,7 +69,8 @@ class TotpChallengeVerifyServiceTest {
     when(refreshTokenSecretPort.hash("refresh-token")).thenReturn("refresh-hash");
     when(refreshDeviceBindingSecretPort.createToken()).thenReturn("binding-token");
     when(refreshDeviceBindingSecretPort.hash("binding-token")).thenReturn("binding-hash");
-    when(authTokenIssuePort.issue(7L, "alice", NOW))
+    when(refreshTokenSessionWritePort.create(any())).thenReturn(41L);
+    when(authTokenIssuePort.issue(7L, "alice", 41L, NOW))
         .thenReturn(new IssuedAccessToken("access-token", "Bearer", NOW.plusSeconds(900), 7L));
 
     TotpChallengeVerifyService service =
@@ -98,6 +99,7 @@ class TotpChallengeVerifyServiceTest {
     verify(totpLoginChallengeWritePort).update(any());
     verify(totpCredentialWritePort).touchLastUsed(any());
     verify(refreshTokenSessionWritePort).create(any());
+    verify(authTokenIssuePort).issue(7L, "alice", 41L, NOW);
     verify(rememberDeviceWritePort, never()).issue(any());
   }
 
@@ -182,7 +184,8 @@ class TotpChallengeVerifyServiceTest {
     when(refreshTokenSecretPort.hash("refresh-token")).thenReturn("refresh-hash");
     when(refreshDeviceBindingSecretPort.createToken()).thenReturn("binding-token");
     when(refreshDeviceBindingSecretPort.hash("binding-token")).thenReturn("binding-hash");
-    when(authTokenIssuePort.issue(7L, "alice", NOW))
+    when(refreshTokenSessionWritePort.create(any())).thenReturn(42L);
+    when(authTokenIssuePort.issue(7L, "alice", 42L, NOW))
         .thenReturn(new IssuedAccessToken("access-token", "Bearer", NOW.plusSeconds(900), 7L));
 
     TotpChallengeVerifyService service =
@@ -207,6 +210,7 @@ class TotpChallengeVerifyServiceTest {
 
     assertEquals("binding-token", result.refreshDeviceBindingToken());
     assertEquals("remember-device-token", result.rememberDeviceToken());
+    verify(authTokenIssuePort).issue(7L, "alice", 42L, NOW);
     verify(rememberDeviceWritePort).issue(any());
   }
 

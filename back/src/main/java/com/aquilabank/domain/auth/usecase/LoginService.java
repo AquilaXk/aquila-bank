@@ -292,15 +292,16 @@ public final class LoginService implements LoginUseCase {
         refreshDeviceBindingSecretPort.hash(refreshDeviceBindingToken);
     Instant refreshExpiresAt = now.plus(refreshTokenPolicy.ttl());
     // refresh token 단독 탈취 재사용을 막기 위해 device binding hash를 session에 함께 저장합니다.
-    refreshTokenSessionWritePort.create(
-        new RefreshTokenSessionCreateCommand(
-            userId,
-            refreshTokenHash,
-            refreshDeviceBindingHash,
-            refreshExpiresAt,
-            now,
-            sessionClientMetadata));
-    IssuedAccessToken issuedAccessToken = authTokenIssuePort.issue(userId, loginId, now);
+    long sessionId =
+        refreshTokenSessionWritePort.create(
+            new RefreshTokenSessionCreateCommand(
+                userId,
+                refreshTokenHash,
+                refreshDeviceBindingHash,
+                refreshExpiresAt,
+                now,
+                sessionClientMetadata));
+    IssuedAccessToken issuedAccessToken = authTokenIssuePort.issue(userId, loginId, sessionId, now);
     return LoginResult.success(
         issuedAccessToken.accessToken(),
         refreshToken,
