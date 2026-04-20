@@ -49,6 +49,10 @@ server:
     connection-timeout: 3s
 
 management:
+  health:
+    # Redis는 opt-in throttling store라 기본 memory 경로에서는 actuator DOWN 전파를 막습니다.
+    redis:
+      enabled: ${MANAGEMENT_HEALTH_REDIS_ENABLED:false}
   endpoints:
     web:
       exposure:
