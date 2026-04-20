@@ -78,6 +78,37 @@ class NotificationSearchCursorCodecTest {
   }
 
   @Test
+  void rejectsSearchSliceWhenNextCursorWindowDiffers() {
+    NotificationSearchCursor nextCursor =
+        new NotificationSearchCursor(
+            Instant.parse("2026-04-20T00:00:00Z"),
+            41L,
+            Instant.parse("2026-03-20T00:00:00Z"),
+            Instant.parse("2026-04-20T00:00:00Z"),
+            "UNREAD|TransferBooked|2026-03-20T00:00:00Z|2026-04-20T00:00:00Z");
+
+    assertThatThrownBy(
+            () ->
+                new NotificationSearchSlice(
+                    List.of(
+                        new NotificationSummary(
+                            10L,
+                            101L,
+                            "TransferBooked",
+                            "입금 완료",
+                            "급여가 입금되었습니다.",
+                            Instant.parse("2026-04-20T00:10:00Z"),
+                            null)),
+                    nextCursor,
+                    true,
+                    20,
+                    Instant.parse("2026-03-21T00:00:00Z"),
+                    Instant.parse("2026-04-21T00:00:00Z")))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("nextCursor window must match slice window");
+  }
+
+  @Test
   void mapsSearchResponseWithNextCursorAndWindow() {
     NotificationSearchCursor nextCursor =
         new NotificationSearchCursor(

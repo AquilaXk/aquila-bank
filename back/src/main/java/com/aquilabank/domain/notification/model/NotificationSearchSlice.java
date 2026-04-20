@@ -25,5 +25,10 @@ public record NotificationSearchSlice(
     if (!hasNext && nextCursor != null) {
       throw new IllegalArgumentException("nextCursor must be null when hasNext is false");
     }
+    if (nextCursor != null
+        && (!nextCursor.appliedFrom().equals(appliedFrom)
+            || !nextCursor.appliedTo().equals(appliedTo))) {
+      throw new IllegalArgumentException("nextCursor window must match slice window");
+    }
   }
 }
