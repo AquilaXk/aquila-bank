@@ -16,9 +16,7 @@ public final class RedisLoginThrottleStore implements LoginThrottleStore {
 
   @Override
   public ThrottleDecision check(String ipAddress) {
-    // 실제 distributed counter 동작은 다음 작업에서 완성합니다.
-    return ThrottleDecision.allowed(
-        properties.ip().maxAttempts(), properties.ip().windowSeconds(), 0);
+    throw new IllegalStateException("redis login throttling counter is not implemented yet");
   }
 
   @Override

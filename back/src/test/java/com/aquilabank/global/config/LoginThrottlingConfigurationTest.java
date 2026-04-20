@@ -1,6 +1,8 @@
 package com.aquilabank.global.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
 
 import com.aquilabank.global.security.LoginThrottleGuard;
 import com.aquilabank.global.security.LoginThrottleStore;
@@ -52,6 +54,39 @@ class LoginThrottlingConfigurationTest {
                   .hasRootCauseMessage(
                       "security.login-throttling.store=redis requires StringRedisTemplate");
             });
+  }
+
+  @Test
+  void createsRedisStoreWhenStringRedisTemplateIsPresent() {
+    contextRunner
+        .withPropertyValues("security.login-throttling.store=redis")
+        .withBean(
+            org.springframework.data.redis.core.StringRedisTemplate.class,
+            () -> mock(org.springframework.data.redis.core.StringRedisTemplate.class))
+        .run(
+            context -> {
+              assertThat(context).hasNotFailed();
+              assertThat(context).hasSingleBean(LoginThrottleStore.class);
+              assertThat(context.getBean(LoginThrottleStore.class))
+                  .isInstanceOf(RedisLoginThrottleStore.class);
+            });
+  }
+
+  @Test
+  void failsClosedWhenRedisThrottleCounterIsNotImplementedYet() {
+    RedisLoginThrottleStore loginThrottleStore =
+        new RedisLoginThrottleStore(
+            new LoginThrottlingProperties(
+                16,
+                new LoginThrottlingProperties.ScopeProperties(2, 60),
+                new LoginThrottlingProperties.ScopeProperties(4, 10),
+                LoginThrottlingProperties.StoreType.REDIS,
+                new LoginThrottlingProperties.RedisProperties("auth:login:throttle:")),
+            mock(org.springframework.data.redis.core.StringRedisTemplate.class));
+
+    assertThatThrownBy(() -> loginThrottleStore.check("203.0.113.10"))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage("redis login throttling counter is not implemented yet");
   }
 
   @Configuration(proxyBeanMethods = false)
