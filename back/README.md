@@ -417,21 +417,31 @@ login 실패/잠금은 structured log 한 줄로 남습니다.
   - `expiresAt`
   - `refreshExpiresAt`
   - `userId`
+- cookie 계약:
+  - token pair를 발급하는 `POST /api/v1/auth/login`, `POST /api/v1/auth/refresh`, `POST /api/v1/auth/mfa/totp/challenge/verify`, `POST /api/v1/auth/mfa/backup-codes/challenge/verify` 성공 응답은 `ab_refresh_device` HttpOnly cookie를 함께 내려준다
+  - binding cookie는 `Secure`, `SameSite=Lax`, `Path=/api/v1/auth/refresh` 로 고정한다
+  - request body에는 binding token을 추가하지 않고 refresh token body + cookie 조합만 유지한다
 - 기본값:
   - `SECURITY_JWT_ACCESS_TOKEN_TTL_SECONDS=900`
   - `SECURITY_JWT_REFRESH_TOKEN_TTL_SECONDS=1209600`
+  - `SECURITY_JWT_REFRESH_DEVICE_COOKIE_NAME=ab_refresh_device`
   - `AUTH_REFRESH_TOKEN_SESSION_CLEANUP_ENABLED=true`
   - `AUTH_REFRESH_TOKEN_SESSION_CLEANUP_RETENTION_DAYS=30`
   - `AUTH_REFRESH_TOKEN_SESSION_CLEANUP_BATCH_SIZE=500`
 - 저장 기준:
   - raw refresh token은 응답으로만 한 번 내려가고 DB에는 `SHA-256 token_hash`만 저장
+  - raw binding token도 cookie로만 한 번 내려가고 DB에는 `SHA-256 device_binding_hash`만 저장
   - 저장 테이블은 `auth_refresh_token_session`
   - login/refresh 시 session row에 `device_name`, `ip_address`를 함께 저장
   - `device_name`은 request `User-Agent`를 경량 규칙으로 정리한 `OS / Browser` 값 우선 사용
   - `ip_address`는 `X-Forwarded-For` 첫 값, `Forwarded for=`, `X-Real-IP`, `remoteAddr` 순서로 해석
-  - 성공 refresh 시 기존 row는 `ROTATED`, 새 row는 `ACTIVE`
+  - 성공 refresh 시 기존 row는 `ROTATED`, 새 row는 새 `token_hash`, 새 `device_binding_hash`, 현재 `device_name`, `ip_address`로 다시 저장된다
   - 성공 logout 시 현재 사용자 `ACTIVE` session은 `REVOKED`
   - cleanup batch는 `ACTIVE`는 `expires_at`, `ROTATED|REVOKED`는 `updated_at` 기준으로 retention cutoff 밖 row만 작은 batch로 삭제
+- refresh 재발급 기준:
+  - `POST /api/v1/auth/refresh` 는 request body `refreshToken`과 `ab_refresh_device` cookie가 모두 맞을 때만 성공한다
+  - refresh 성공 시 refresh token과 binding cookie가 함께 rotate 되고 이전 refresh token, 이전 binding cookie는 모두 다시 쓸 수 없다
+  - binding cookie가 없거나 mismatch이거나 기존 row의 `device_binding_hash`가 비어 있으면 generic `401 refresh failed` 로 거절한다
 - 세션 목록 조회 기준:
   - `GET /api/v1/auth/sessions`
   - 현재 JWT user만 호출 가능하고 bootstrap account principal은 `403`
@@ -440,14 +450,14 @@ login 실패/잠금은 structured log 한 줄로 남습니다.
   - item 필드는 `sessionId`, `sessionStatus`, `expiresAt`, `lastUsedAt`, `createdAt`, `deviceName`, `ipAddress`
 - 세션 종료 기준:
   - `DELETE /api/v1/auth/sessions/{sessionId}`는 현재 user 소유의 `ACTIVE` session 하나만 `REVOKED`로 바꾼다.
-  - `DELETE /api/v1/auth/sessions`는 현재 user의 `ACTIVE` session 전체를 `REVOKED`로 바꾼다.
+  - `DELETE /api/v1/auth/sessions`는 현재 user의 `ACTIVE` session 전체를 `REVOKED`로 바꾸고 `ab_refresh_device` cookie도 clear 한다.
   - 두 endpoint 모두 다른 사용자 session, 이미 `ROTATED|REVOKED` 상태, 존재하지 않는 session에 대해 `204` no-op을 유지한다.
 - 비밀번호 재설정 기준:
   - `POST /api/v1/auth/password-reset`
   - 현재 JWT user만 호출 가능하고 bootstrap account principal은 `403`
   - request body는 `currentPassword`, `newPassword`
   - `currentPassword`가 맞고 `user_status = ACTIVE`일 때만 비밀번호를 새 `BCrypt password_hash`로 교체한다.
-  - 성공 시 현재 user의 `ACTIVE` refresh session 전체를 `REVOKED`로 바꾼다.
+  - 성공 시 현재 user의 `ACTIVE` refresh session 전체를 `REVOKED`로 바꾸고 `ab_refresh_device` cookie도 clear 한다.
 - forgot-password 복구 기준:
   - `POST /api/v1/auth/password-recovery/request`
   - 인증 없이 `loginId`만 받고 항상 `204 No Content`를 반환한다.
@@ -467,9 +477,9 @@ login 실패/잠금은 structured log 한 줄로 남습니다.
 - 운영 주의:
   - logout은 access token 즉시 폐기가 아니라 refresh 재발급 차단까지만 처리
   - password reset도 access token 즉시 폐기가 아니라 refresh 재발급 차단까지만 처리
-  - 다른 사용자 token, 이미 `ROTATED|REVOKED` 상태인 token, 존재하지 않는 token으로 logout 요청 시 `204` no-op 유지
+  - logout 성공 시 `ab_refresh_device` cookie를 clear 하고, 다른 사용자 token, 이미 `ROTATED|REVOKED` 상태인 token, 존재하지 않는 token으로 요청해도 응답은 `204` no-op을 유지한다
   - 선택 revoke와 전체 revoke도 access token 즉시 폐기가 아니라 refresh 재발급 차단까지만 처리
-  - raw refresh token, plaintext secret은 로그/DB에 남기지 않음
+  - raw refresh token, raw binding token, plaintext secret은 로그/DB에 남기지 않음
 
 ## TOTP MFA
 
@@ -490,7 +500,7 @@ TOTP MFA는 `login -> challenge -> verify` 2단계 경로로만 token pair를 �
 - 해제 기준:
   - disable request body는 `totpCode`
   - 현재 JWT user와 현재 `ACTIVE` credential, 유효한 현재 TOTP code가 모두 맞을 때만 `204 No Content`
-  - disable 성공 시 `auth_totp_credential` row는 삭제되고 해당 user의 active refresh session은 전부 `REVOKED`
+  - disable 성공 시 `auth_totp_credential` row는 삭제되고 해당 user의 active refresh session은 전부 `REVOKED`, `ab_refresh_device` cookie도 clear 된다
   - disable 성공 시 active backup code도 전부 `SUPERSEDED` 처리돼 이전 복구 수단이 남지 않는다
   - wrong code, 활성 credential 없음, 비활성 user는 `401 mfa disable failed`
 - backup code 발급 기준:
@@ -502,7 +512,7 @@ TOTP MFA는 `login -> challenge -> verify` 2단계 경로로만 token pair를 �
 - 로그인 challenge 기준:
   - `ACTIVE` TOTP credential이 있는 사용자의 `POST /api/v1/auth/login` 응답은 `status=MFA_REQUIRED`
   - 이때 `challengeId`, `challengeType=TOTP`, `challengeExpiresAt`만 내려가고 token pair는 비어 있다
-  - challenge verify 성공 시에만 `status=SUCCESS`와 token pair가 발급된다
+  - challenge verify 성공 시에만 `status=SUCCESS`와 token pair가 발급되고 `ab_refresh_device` cookie도 함께 내려간다
   - challenge verify는 `totpCode` 또는 `backupCode` 중 하나를 사용하며 backup code 성공 시 해당 row는 즉시 `USED` 처리된다
   - challenge verify는 로그인 시점의 `device_name`, `ip_address` 메타데이터를 그대로 session row에 저장한다
 - remember device 기준:

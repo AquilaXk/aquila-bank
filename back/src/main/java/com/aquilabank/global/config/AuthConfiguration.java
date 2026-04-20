@@ -19,6 +19,7 @@ import com.aquilabank.domain.auth.port.PasswordHashPort;
 import com.aquilabank.domain.auth.port.PasswordRecoverySecretPort;
 import com.aquilabank.domain.auth.port.PasswordRecoveryTokenLoadPort;
 import com.aquilabank.domain.auth.port.PasswordRecoveryTokenQueryPort;
+import com.aquilabank.domain.auth.port.RefreshDeviceBindingSecretPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSecretPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionLoadPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionWritePort;
@@ -148,6 +149,7 @@ public class AuthConfiguration {
       RememberDeviceSecretPort rememberDeviceSecretPort,
       RefreshTokenSessionWritePort refreshTokenSessionWritePort,
       RefreshTokenSecretPort refreshTokenSecretPort,
+      RefreshDeviceBindingSecretPort refreshDeviceBindingSecretPort,
       AuthTokenIssuePort authTokenIssuePort,
       LoginProtectionPolicy loginProtectionPolicy,
       RefreshTokenPolicy refreshTokenPolicy,
@@ -168,6 +170,7 @@ public class AuthConfiguration {
             rememberDeviceSecretPort,
             refreshTokenSessionWritePort,
             refreshTokenSecretPort,
+            refreshDeviceBindingSecretPort,
             authTokenIssuePort,
             loginProtectionPolicy,
             refreshTokenPolicy,
@@ -204,6 +207,7 @@ public class AuthConfiguration {
       RefreshTokenSessionLoadPort refreshTokenSessionLoadPort,
       RefreshTokenSessionWritePort refreshTokenSessionWritePort,
       RefreshTokenSecretPort refreshTokenSecretPort,
+      RefreshDeviceBindingSecretPort refreshDeviceBindingSecretPort,
       AuthTokenIssuePort authTokenIssuePort,
       RefreshTokenPolicy refreshTokenPolicy,
       Clock authClock,
@@ -213,6 +217,7 @@ public class AuthConfiguration {
             refreshTokenSessionLoadPort,
             refreshTokenSessionWritePort,
             refreshTokenSecretPort,
+            refreshDeviceBindingSecretPort,
             authTokenIssuePort,
             refreshTokenPolicy,
             authClock);
@@ -281,6 +286,7 @@ public class AuthConfiguration {
       RememberDeviceSecretPort rememberDeviceSecretPort,
       RefreshTokenSessionWritePort refreshTokenSessionWritePort,
       RefreshTokenSecretPort refreshTokenSecretPort,
+      RefreshDeviceBindingSecretPort refreshDeviceBindingSecretPort,
       TotpSecretPort totpSecretPort,
       AuthTokenIssuePort authTokenIssuePort,
       RefreshTokenPolicy refreshTokenPolicy,
@@ -298,6 +304,7 @@ public class AuthConfiguration {
             rememberDeviceSecretPort,
             refreshTokenSessionWritePort,
             refreshTokenSecretPort,
+            refreshDeviceBindingSecretPort,
             totpSecretPort,
             authTokenIssuePort,
             refreshTokenPolicy,
@@ -395,6 +402,7 @@ public class AuthConfiguration {
       RememberDeviceSecretPort rememberDeviceSecretPort,
       RefreshTokenSessionWritePort refreshTokenSessionWritePort,
       RefreshTokenSecretPort refreshTokenSecretPort,
+      RefreshDeviceBindingSecretPort refreshDeviceBindingSecretPort,
       AuthTokenIssuePort authTokenIssuePort,
       RefreshTokenPolicy refreshTokenPolicy,
       RememberDevicePolicy rememberDevicePolicy,
@@ -413,6 +421,7 @@ public class AuthConfiguration {
             rememberDeviceSecretPort,
             refreshTokenSessionWritePort,
             refreshTokenSecretPort,
+            refreshDeviceBindingSecretPort,
             authTokenIssuePort,
             refreshTokenPolicy,
             rememberDevicePolicy,

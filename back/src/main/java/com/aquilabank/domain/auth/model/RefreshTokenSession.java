@@ -9,11 +9,37 @@ public record RefreshTokenSession(
     String loginId,
     UserStatus userStatus,
     String tokenHash,
+    String deviceBindingHash,
     RefreshTokenSessionStatus sessionStatus,
     Instant expiresAt,
     Instant lastUsedAt,
     Instant rotatedAt,
     Long replacedBySessionId) {
+
+  public RefreshTokenSession(
+      long sessionId,
+      long userId,
+      String loginId,
+      UserStatus userStatus,
+      String tokenHash,
+      RefreshTokenSessionStatus sessionStatus,
+      Instant expiresAt,
+      Instant lastUsedAt,
+      Instant rotatedAt,
+      Long replacedBySessionId) {
+    this(
+        sessionId,
+        userId,
+        loginId,
+        userStatus,
+        tokenHash,
+        null,
+        sessionStatus,
+        expiresAt,
+        lastUsedAt,
+        rotatedAt,
+        replacedBySessionId);
+  }
 
   public RefreshTokenSession {
     if (sessionId <= 0) {
@@ -30,6 +56,9 @@ public record RefreshTokenSession(
     }
     if (tokenHash == null || tokenHash.isBlank()) {
       throw new IllegalArgumentException("tokenHash is required");
+    }
+    if (deviceBindingHash != null && deviceBindingHash.isBlank()) {
+      deviceBindingHash = null;
     }
     if (sessionStatus == null) {
       throw new IllegalArgumentException("sessionStatus is required");

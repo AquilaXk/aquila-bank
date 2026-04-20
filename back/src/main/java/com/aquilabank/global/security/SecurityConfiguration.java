@@ -4,6 +4,7 @@ import com.aquilabank.domain.auth.port.AuthTokenIssuePort;
 import com.aquilabank.domain.auth.port.BackupCodeSecretPort;
 import com.aquilabank.domain.auth.port.PasswordHashPort;
 import com.aquilabank.domain.auth.port.PasswordRecoverySecretPort;
+import com.aquilabank.domain.auth.port.RefreshDeviceBindingSecretPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSecretPort;
 import com.aquilabank.domain.auth.port.RememberDeviceSecretPort;
 import com.aquilabank.global.web.InternalAuthStatusAuditRequestCachingFilter;
@@ -186,6 +187,11 @@ public class SecurityConfiguration {
   @Bean
   RefreshTokenSecretPort refreshTokenSecretPort() {
     return new Sha256RefreshTokenManager();
+  }
+
+  @Bean
+  RefreshDeviceBindingSecretPort refreshDeviceBindingSecretPort() {
+    return new Sha256RefreshDeviceBindingManager();
   }
 
   @Bean

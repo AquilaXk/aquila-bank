@@ -90,6 +90,7 @@ public class LoginController {
   private final AuthSessionMetadataResolver authSessionMetadataResolver;
   private final LoginThrottleGuard loginThrottleGuard;
   private final RememberDeviceCookieManager rememberDeviceCookieManager;
+  private final RefreshDeviceBindingCookieManager refreshDeviceBindingCookieManager;
 
   public LoginController(
       LoginUseCase loginUseCase,
@@ -108,7 +109,8 @@ public class LoginController {
       PasswordRecoveryConfirmUseCase passwordRecoveryConfirmUseCase,
       AuthSessionMetadataResolver authSessionMetadataResolver,
       LoginThrottleGuard loginThrottleGuard,
-      RememberDeviceCookieManager rememberDeviceCookieManager) {
+      RememberDeviceCookieManager rememberDeviceCookieManager,
+      RefreshDeviceBindingCookieManager refreshDeviceBindingCookieManager) {
     this.loginUseCase = loginUseCase;
     this.authSessionListUseCase = authSessionListUseCase;
     this.authSessionRevokeUseCase = authSessionRevokeUseCase;
@@ -126,6 +128,7 @@ public class LoginController {
     this.authSessionMetadataResolver = authSessionMetadataResolver;
     this.loginThrottleGuard = loginThrottleGuard;
     this.rememberDeviceCookieManager = rememberDeviceCookieManager;
+    this.refreshDeviceBindingCookieManager = refreshDeviceBindingCookieManager;
   }
 
   @PostMapping("/login")
@@ -181,7 +184,7 @@ public class LoginController {
       @Valid @RequestBody TotpCodeRequest request) {
     AuthenticatedUserPrincipal userPrincipal = requireUserPrincipal(principal);
     totpDisableUseCase.disable(new TotpDisableCommand(userPrincipal.userId(), request.totpCode()));
-    return noContentWithClearedRememberDeviceCookie();
+    return noContentResponseClearingAuthCookies();
   }
 
   @PostMapping("/mfa/backup-codes")
@@ -231,17 +234,19 @@ public class LoginController {
       @CurrentAuthenticatedPrincipal AuthenticatedRequestPrincipal principal) {
     authSessionRevokeAllUseCase.revokeAll(
         new AuthSessionRevokeAllCommand(resolveUserId(principal)));
-    return noContentWithClearedRememberDeviceCookie();
+    return noContentResponseClearingAuthCookies();
   }
 
   @PostMapping("/refresh")
-  public LoginResponse refresh(
+  public ResponseEntity<LoginResponse> refresh(
       HttpServletRequest httpServletRequest, @Valid @RequestBody RefreshRequest request) {
     LoginResult result =
         refreshTokenUseCase.refresh(
             new RefreshTokenCommand(
-                request.refreshToken(), authSessionMetadataResolver.resolve(httpServletRequest)));
-    return LoginResponse.from(result);
+                request.refreshToken(),
+                refreshDeviceBindingCookieManager.resolve(httpServletRequest),
+                authSessionMetadataResolver.resolve(httpServletRequest)));
+    return loginResponse(result, false);
   }
 
   @PostMapping("/logout")
@@ -254,7 +259,7 @@ public class LoginController {
             resolveUserId(principal),
             request.refreshToken(),
             rememberDeviceCookieManager.resolve(httpServletRequest)));
-    return noContentWithClearedRememberDeviceCookie();
+    return noContentResponseClearingAuthCookies();
   }
 
   @PostMapping("/password-reset")
@@ -264,7 +269,7 @@ public class LoginController {
     passwordResetUseCase.reset(
         new PasswordResetCommand(
             resolveUserId(principal), request.currentPassword(), request.newPassword()));
-    return noContentWithClearedRememberDeviceCookie();
+    return noContentResponseClearingAuthCookies();
   }
 
   @PostMapping("/password-recovery/request")
@@ -423,6 +428,10 @@ public class LoginController {
   private ResponseEntity<LoginResponse> loginResponse(
       LoginResult result, boolean clearRememberDeviceCookie) {
     HttpHeaders headers = new HttpHeaders();
+    if (result.refreshDeviceBindingToken() != null) {
+      refreshDeviceBindingCookieManager.addBindingCookie(
+          headers, result.refreshDeviceBindingToken());
+    }
     if (result.rememberDeviceToken() != null) {
       rememberDeviceCookieManager.addRememberDeviceCookie(headers, result.rememberDeviceToken());
     } else if (clearRememberDeviceCookie) {
@@ -431,9 +440,10 @@ public class LoginController {
     return ResponseEntity.ok().headers(headers).body(LoginResponse.from(result));
   }
 
-  private ResponseEntity<Void> noContentWithClearedRememberDeviceCookie() {
+  private ResponseEntity<Void> noContentResponseClearingAuthCookies() {
     HttpHeaders headers = new HttpHeaders();
     rememberDeviceCookieManager.addClearCookie(headers);
+    refreshDeviceBindingCookieManager.addClearCookie(headers);
     return ResponseEntity.noContent().headers(headers).build();
   }
 

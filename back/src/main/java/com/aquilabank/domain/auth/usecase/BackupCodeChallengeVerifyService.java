@@ -21,6 +21,7 @@ import com.aquilabank.domain.auth.port.AuthTokenIssuePort;
 import com.aquilabank.domain.auth.port.BackupCodeLoadPort;
 import com.aquilabank.domain.auth.port.BackupCodeSecretPort;
 import com.aquilabank.domain.auth.port.BackupCodeWritePort;
+import com.aquilabank.domain.auth.port.RefreshDeviceBindingSecretPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSecretPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionWritePort;
 import com.aquilabank.domain.auth.port.RememberDeviceSecretPort;
@@ -44,6 +45,7 @@ public final class BackupCodeChallengeVerifyService implements BackupCodeChallen
   private final RememberDeviceSecretPort rememberDeviceSecretPort;
   private final RefreshTokenSessionWritePort refreshTokenSessionWritePort;
   private final RefreshTokenSecretPort refreshTokenSecretPort;
+  private final RefreshDeviceBindingSecretPort refreshDeviceBindingSecretPort;
   private final AuthTokenIssuePort authTokenIssuePort;
   private final RefreshTokenPolicy refreshTokenPolicy;
   private final RememberDevicePolicy rememberDevicePolicy;
@@ -61,6 +63,7 @@ public final class BackupCodeChallengeVerifyService implements BackupCodeChallen
       RememberDeviceSecretPort rememberDeviceSecretPort,
       RefreshTokenSessionWritePort refreshTokenSessionWritePort,
       RefreshTokenSecretPort refreshTokenSecretPort,
+      RefreshDeviceBindingSecretPort refreshDeviceBindingSecretPort,
       AuthTokenIssuePort authTokenIssuePort,
       RefreshTokenPolicy refreshTokenPolicy,
       RememberDevicePolicy rememberDevicePolicy,
@@ -76,6 +79,7 @@ public final class BackupCodeChallengeVerifyService implements BackupCodeChallen
     this.rememberDeviceSecretPort = rememberDeviceSecretPort;
     this.refreshTokenSessionWritePort = refreshTokenSessionWritePort;
     this.refreshTokenSecretPort = refreshTokenSecretPort;
+    this.refreshDeviceBindingSecretPort = refreshDeviceBindingSecretPort;
     this.authTokenIssuePort = authTokenIssuePort;
     this.refreshTokenPolicy = refreshTokenPolicy;
     this.rememberDevicePolicy = rememberDevicePolicy;
@@ -146,12 +150,18 @@ public final class BackupCodeChallengeVerifyService implements BackupCodeChallen
   private LoginResult issueTokenPair(
       TotpLoginChallenge challenge, Instant now, boolean rememberDevice) {
     String refreshToken = refreshTokenSecretPort.createToken();
+    String refreshTokenHash = refreshTokenSecretPort.hash(refreshToken);
+    String refreshDeviceBindingToken = refreshDeviceBindingSecretPort.createToken();
+    String refreshDeviceBindingHash =
+        refreshDeviceBindingSecretPort.hash(refreshDeviceBindingToken);
     Instant refreshExpiresAt = now.plus(refreshTokenPolicy.ttl());
+    // refresh token 단독 탈취 재사용을 막기 위해 device binding hash를 session에 함께 저장합니다.
     String rememberDeviceToken = issueRememberDevice(challenge, now, rememberDevice);
     refreshTokenSessionWritePort.create(
         new RefreshTokenSessionCreateCommand(
             challenge.userId(),
-            refreshTokenSecretPort.hash(refreshToken),
+            refreshTokenHash,
+            refreshDeviceBindingHash,
             refreshExpiresAt,
             now,
             new AuthSessionClientMetadata(challenge.deviceName(), challenge.ipAddress())));
@@ -164,6 +174,7 @@ public final class BackupCodeChallengeVerifyService implements BackupCodeChallen
         issuedAccessToken.expiresAt(),
         refreshExpiresAt,
         issuedAccessToken.userId(),
+        refreshDeviceBindingToken,
         rememberDeviceToken);
   }
 

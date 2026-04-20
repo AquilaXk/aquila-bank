@@ -29,6 +29,7 @@ import com.aquilabank.domain.auth.usecase.TotpChallengeVerifyUseCase;
 import com.aquilabank.domain.auth.usecase.TotpDisableUseCase;
 import com.aquilabank.domain.auth.usecase.TotpEnrollmentUseCase;
 import com.aquilabank.global.security.LoginThrottleGuard;
+import com.aquilabank.global.security.SecurityJwtProperties;
 import com.aquilabank.global.security.SecurityRememberDeviceProperties;
 import com.aquilabank.global.web.ApiExceptionHandler;
 import jakarta.servlet.http.Cookie;
@@ -74,8 +75,10 @@ class LoginControllerRememberDeviceTest {
                     authSessionMetadataResolver,
                     mock(LoginThrottleGuard.class),
                     new RememberDeviceCookieManager(
-                        new SecurityRememberDeviceProperties(
-                            "ab_mfa_remember_device", 2_592_000L))))
+                        new SecurityRememberDeviceProperties("ab_mfa_remember_device", 2_592_000L)),
+                    new RefreshDeviceBindingCookieManager(
+                        new SecurityJwtProperties(
+                            "secret", "issuer", 900L, 1_209_600L, "ab_refresh_device"))))
             .setControllerAdvice(new ApiExceptionHandler())
             .build();
   }
@@ -96,6 +99,7 @@ class LoginControllerRememberDeviceTest {
                 Instant.parse("2026-04-20T12:00:00Z"),
                 Instant.parse("2026-05-04T11:45:00Z"),
                 7L,
+                null,
                 "next-remember-device-token"));
 
     mockMvc
@@ -161,6 +165,7 @@ class LoginControllerRememberDeviceTest {
                 Instant.parse("2026-04-20T12:00:00Z"),
                 Instant.parse("2026-05-04T11:45:00Z"),
                 7L,
+                null,
                 "remember-device-token"));
 
     mockMvc

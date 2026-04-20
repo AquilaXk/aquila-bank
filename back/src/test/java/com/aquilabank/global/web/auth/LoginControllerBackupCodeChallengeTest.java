@@ -24,6 +24,8 @@ import com.aquilabank.domain.auth.usecase.TotpChallengeVerifyUseCase;
 import com.aquilabank.domain.auth.usecase.TotpDisableUseCase;
 import com.aquilabank.domain.auth.usecase.TotpEnrollmentUseCase;
 import com.aquilabank.global.security.LoginThrottleGuard;
+import com.aquilabank.global.security.SecurityJwtProperties;
+import com.aquilabank.global.security.SecurityRememberDeviceProperties;
 import com.aquilabank.global.web.ApiExceptionHandler;
 import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
@@ -60,8 +62,10 @@ class LoginControllerBackupCodeChallengeTest {
                     mock(AuthSessionMetadataResolver.class),
                     mock(LoginThrottleGuard.class),
                     new RememberDeviceCookieManager(
-                        new com.aquilabank.global.security.SecurityRememberDeviceProperties(
-                            "ab_mfa_remember_device", 2_592_000L))))
+                        new SecurityRememberDeviceProperties("ab_mfa_remember_device", 2_592_000L)),
+                    new RefreshDeviceBindingCookieManager(
+                        new SecurityJwtProperties(
+                            "secret", "issuer", 900L, 1_209_600L, "ab_refresh_device"))))
             .setControllerAdvice(new ApiExceptionHandler())
             .build();
   }

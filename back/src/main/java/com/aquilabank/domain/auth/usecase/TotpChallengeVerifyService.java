@@ -15,6 +15,7 @@ import com.aquilabank.domain.auth.model.TotpLoginChallengeStatus;
 import com.aquilabank.domain.auth.model.TotpLoginChallengeUpdateCommand;
 import com.aquilabank.domain.auth.model.UserStatus;
 import com.aquilabank.domain.auth.port.AuthTokenIssuePort;
+import com.aquilabank.domain.auth.port.RefreshDeviceBindingSecretPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSecretPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionWritePort;
 import com.aquilabank.domain.auth.port.RememberDeviceSecretPort;
@@ -38,6 +39,7 @@ public final class TotpChallengeVerifyService implements TotpChallengeVerifyUseC
   private final RememberDeviceSecretPort rememberDeviceSecretPort;
   private final RefreshTokenSessionWritePort refreshTokenSessionWritePort;
   private final RefreshTokenSecretPort refreshTokenSecretPort;
+  private final RefreshDeviceBindingSecretPort refreshDeviceBindingSecretPort;
   private final TotpSecretPort totpSecretPort;
   private final AuthTokenIssuePort authTokenIssuePort;
   private final com.aquilabank.domain.auth.model.RefreshTokenPolicy refreshTokenPolicy;
@@ -54,6 +56,7 @@ public final class TotpChallengeVerifyService implements TotpChallengeVerifyUseC
       RememberDeviceSecretPort rememberDeviceSecretPort,
       RefreshTokenSessionWritePort refreshTokenSessionWritePort,
       RefreshTokenSecretPort refreshTokenSecretPort,
+      RefreshDeviceBindingSecretPort refreshDeviceBindingSecretPort,
       TotpSecretPort totpSecretPort,
       AuthTokenIssuePort authTokenIssuePort,
       com.aquilabank.domain.auth.model.RefreshTokenPolicy refreshTokenPolicy,
@@ -68,6 +71,7 @@ public final class TotpChallengeVerifyService implements TotpChallengeVerifyUseC
     this.rememberDeviceSecretPort = rememberDeviceSecretPort;
     this.refreshTokenSessionWritePort = refreshTokenSessionWritePort;
     this.refreshTokenSecretPort = refreshTokenSecretPort;
+    this.refreshDeviceBindingSecretPort = refreshDeviceBindingSecretPort;
     this.totpSecretPort = totpSecretPort;
     this.authTokenIssuePort = authTokenIssuePort;
     this.refreshTokenPolicy = refreshTokenPolicy;
@@ -124,12 +128,18 @@ public final class TotpChallengeVerifyService implements TotpChallengeVerifyUseC
   private LoginResult issueTokenPair(
       TotpLoginChallenge challenge, Instant now, boolean rememberDevice) {
     String refreshToken = refreshTokenSecretPort.createToken();
+    String refreshTokenHash = refreshTokenSecretPort.hash(refreshToken);
+    String refreshDeviceBindingToken = refreshDeviceBindingSecretPort.createToken();
+    String refreshDeviceBindingHash =
+        refreshDeviceBindingSecretPort.hash(refreshDeviceBindingToken);
     Instant refreshExpiresAt = now.plus(refreshTokenPolicy.ttl());
+    // refresh token 단독 탈취 재사용을 막기 위해 device binding hash를 session에 함께 저장합니다.
     String rememberDeviceToken = issueRememberDevice(challenge, now, rememberDevice);
     refreshTokenSessionWritePort.create(
         new com.aquilabank.domain.auth.model.RefreshTokenSessionCreateCommand(
             challenge.userId(),
-            refreshTokenSecretPort.hash(refreshToken),
+            refreshTokenHash,
+            refreshDeviceBindingHash,
             refreshExpiresAt,
             now,
             new AuthSessionClientMetadata(challenge.deviceName(), challenge.ipAddress())));
@@ -142,6 +152,7 @@ public final class TotpChallengeVerifyService implements TotpChallengeVerifyUseC
         issuedAccessToken.expiresAt(),
         refreshExpiresAt,
         issuedAccessToken.userId(),
+        refreshDeviceBindingToken,
         rememberDeviceToken);
   }
 
