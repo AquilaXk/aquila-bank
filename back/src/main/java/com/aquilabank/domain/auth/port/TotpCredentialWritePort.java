@@ -11,4 +11,6 @@ public interface TotpCredentialWritePort {
   void activate(TotpCredentialActivateCommand command);
 
   void touchLastUsed(TotpCredentialTouchCommand command);
+
+  void deleteByUserId(long userId);
 }

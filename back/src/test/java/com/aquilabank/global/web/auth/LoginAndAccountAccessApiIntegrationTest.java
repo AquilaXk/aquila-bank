@@ -980,6 +980,23 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
   }
 
   @Test
+  void bootstrapAccountPrincipalCannotDisableTotp() throws Exception {
+    mockMvc
+        .perform(
+            post("/api/v1/auth/mfa/totp/disable")
+                .header("X-Account-Id", String.valueOf(allowedSourceAccountId))
+                .header("X-Subject", "bootstrap-account")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "totpCode": "123456"
+                    }
+                    """))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
   void passwordRecoveryRequestReturnsGenericNoContentWithSeparateHandoffRequestId()
       throws Exception {
     MvcResult existingResult =
@@ -1494,6 +1511,46 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
         "totp-limit-challenge-after-failed");
   }
 
+  @Test
+  void totpDisableDeletesCredentialRevokesSessionsAndNextLoginReturnsTokenPair() throws Exception {
+    TokenPairResponseView initialSession =
+        loginResult("alice", "password123!", "totp-disable-login-001", WINDOWS_CHROME);
+    TotpEnrollmentStartResponseView enrollment =
+        startTotpEnrollment(initialSession.accessToken(), "totp-disable-start-001");
+    verifyTotpEnrollment(
+        initialSession.accessToken(),
+        currentTotpCode(enrollment.secretKey()),
+        "totp-disable-verify-001");
+
+    disableTotp(
+        initialSession.accessToken(),
+        currentTotpCode(enrollment.secretKey()),
+        "totp-disable-request-001");
+
+    assertEquals(0, countTotpCredentialRows(userId));
+    assertEquals(0, countActiveRefreshSessions(userId));
+
+    loginResult("alice", "password123!", "totp-disable-login-002", WINDOWS_EDGE);
+  }
+
+  @Test
+  void totpDisableRejectsWrongCodeAndKeepsCredential() throws Exception {
+    TokenPairResponseView initialSession =
+        loginResult("alice", "password123!", "totp-disable-wrong-login-001", WINDOWS_CHROME);
+    TotpEnrollmentStartResponseView enrollment =
+        startTotpEnrollment(initialSession.accessToken(), "totp-disable-wrong-start-001");
+    verifyTotpEnrollment(
+        initialSession.accessToken(),
+        currentTotpCode(enrollment.secretKey()),
+        "totp-disable-wrong-verify-001");
+
+    disableTotpExpectUnauthorized(
+        initialSession.accessToken(), "000000", "totp-disable-wrong-request-001");
+
+    assertEquals(1, countTotpCredentialRows(userId));
+    assertEquals(1, countActiveRefreshSessions(userId));
+  }
+
   private String login(String loginId, String password) throws Exception {
     return login(loginId, password, null);
   }
@@ -1654,6 +1711,17 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
         .andExpect(jsonPath("$.message").value("mfa challenge failed"));
   }
 
+  private void disableTotp(String accessToken, String totpCode, String requestId) throws Exception {
+    performDisableTotp(accessToken, totpCode, requestId).andExpect(status().isNoContent());
+  }
+
+  private void disableTotpExpectUnauthorized(String accessToken, String totpCode, String requestId)
+      throws Exception {
+    performDisableTotp(accessToken, totpCode, requestId)
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.message").value("mfa disable failed"));
+  }
+
   private org.springframework.test.web.servlet.ResultActions performStartTotpEnrollment(
       String accessToken, String requestId) throws Exception {
     MockHttpServletRequestBuilder requestBuilder =
@@ -1701,6 +1769,25 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
       requestBuilder.header("X-Request-Id", requestId);
     }
     applyClientMetadata(requestBuilder, clientMetadata);
+    return mockMvc.perform(requestBuilder);
+  }
+
+  private org.springframework.test.web.servlet.ResultActions performDisableTotp(
+      String accessToken, String totpCode, String requestId) throws Exception {
+    MockHttpServletRequestBuilder requestBuilder =
+        post("/api/v1/auth/mfa/totp/disable")
+            .header("Authorization", "Bearer " + accessToken)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(
+                """
+                {
+                  "totpCode": "%s"
+                }
+                """
+                    .formatted(totpCode));
+    if (requestId != null && !requestId.isBlank()) {
+      requestBuilder.header("X-Request-Id", requestId);
+    }
     return mockMvc.perform(requestBuilder);
   }
 
@@ -2219,6 +2306,20 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
             FROM auth_refresh_token_session
             WHERE user_id = :userId
               AND session_status = 'ACTIVE'
+            """,
+            new org.springframework.jdbc.core.namedparam.MapSqlParameterSource()
+                .addValue("userId", userId),
+            Integer.class);
+    return count == null ? 0 : count;
+  }
+
+  private int countTotpCredentialRows(long userId) {
+    Integer count =
+        jdbcTemplate.queryForObject(
+            """
+            SELECT COUNT(*)
+            FROM auth_totp_credential
+            WHERE user_id = :userId
             """,
             new org.springframework.jdbc.core.namedparam.MapSqlParameterSource()
                 .addValue("userId", userId),

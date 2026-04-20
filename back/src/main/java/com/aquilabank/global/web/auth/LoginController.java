@@ -14,6 +14,7 @@ import com.aquilabank.domain.auth.model.PasswordRecoveryRequestResult;
 import com.aquilabank.domain.auth.model.PasswordResetCommand;
 import com.aquilabank.domain.auth.model.RefreshTokenCommand;
 import com.aquilabank.domain.auth.model.TotpChallengeVerifyCommand;
+import com.aquilabank.domain.auth.model.TotpDisableCommand;
 import com.aquilabank.domain.auth.model.TotpEnrollmentStartCommand;
 import com.aquilabank.domain.auth.model.TotpEnrollmentStartResult;
 import com.aquilabank.domain.auth.model.TotpEnrollmentVerifyCommand;
@@ -28,6 +29,7 @@ import com.aquilabank.domain.auth.usecase.PasswordRecoveryRequestUseCase;
 import com.aquilabank.domain.auth.usecase.PasswordResetUseCase;
 import com.aquilabank.domain.auth.usecase.RefreshTokenUseCase;
 import com.aquilabank.domain.auth.usecase.TotpChallengeVerifyUseCase;
+import com.aquilabank.domain.auth.usecase.TotpDisableUseCase;
 import com.aquilabank.domain.auth.usecase.TotpEnrollmentUseCase;
 import com.aquilabank.global.security.AuthenticatedAccountPrincipal;
 import com.aquilabank.global.security.AuthenticatedRequestPrincipal;
@@ -72,6 +74,7 @@ public class LoginController {
   private final RefreshTokenUseCase refreshTokenUseCase;
   private final TotpEnrollmentUseCase totpEnrollmentUseCase;
   private final TotpChallengeVerifyUseCase totpChallengeVerifyUseCase;
+  private final TotpDisableUseCase totpDisableUseCase;
   private final LogoutUseCase logoutUseCase;
   private final PasswordResetUseCase passwordResetUseCase;
   private final PasswordRecoveryRequestUseCase passwordRecoveryRequestUseCase;
@@ -87,6 +90,7 @@ public class LoginController {
       RefreshTokenUseCase refreshTokenUseCase,
       TotpEnrollmentUseCase totpEnrollmentUseCase,
       TotpChallengeVerifyUseCase totpChallengeVerifyUseCase,
+      TotpDisableUseCase totpDisableUseCase,
       LogoutUseCase logoutUseCase,
       PasswordResetUseCase passwordResetUseCase,
       PasswordRecoveryRequestUseCase passwordRecoveryRequestUseCase,
@@ -100,6 +104,7 @@ public class LoginController {
     this.refreshTokenUseCase = refreshTokenUseCase;
     this.totpEnrollmentUseCase = totpEnrollmentUseCase;
     this.totpChallengeVerifyUseCase = totpChallengeVerifyUseCase;
+    this.totpDisableUseCase = totpDisableUseCase;
     this.logoutUseCase = logoutUseCase;
     this.passwordResetUseCase = passwordResetUseCase;
     this.passwordRecoveryRequestUseCase = passwordRecoveryRequestUseCase;
@@ -146,6 +151,15 @@ public class LoginController {
         totpChallengeVerifyUseCase.verify(
             new TotpChallengeVerifyCommand(request.challengeId(), request.totpCode()));
     return LoginResponse.from(result);
+  }
+
+  @PostMapping("/mfa/totp/disable")
+  public ResponseEntity<Void> disableTotp(
+      @CurrentAuthenticatedPrincipal AuthenticatedRequestPrincipal principal,
+      @Valid @RequestBody TotpCodeRequest request) {
+    AuthenticatedUserPrincipal userPrincipal = requireUserPrincipal(principal);
+    totpDisableUseCase.disable(new TotpDisableCommand(userPrincipal.userId(), request.totpCode()));
+    return ResponseEntity.noContent().build();
   }
 
   @GetMapping("/sessions")

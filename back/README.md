@@ -478,12 +478,18 @@ TOTP MFA는 `login -> challenge -> verify` 2단계 경로로만 token pair를 �
 - 공개 endpoint:
   - `POST /api/v1/auth/mfa/totp/enroll`
   - `POST /api/v1/auth/mfa/totp/enroll/verify`
+  - `POST /api/v1/auth/mfa/totp/disable`
   - `POST /api/v1/auth/mfa/totp/challenge/verify`
 - 등록 기준:
   - enrollment start/verify는 현재 JWT user만 호출 가능하고 bootstrap account principal은 `403`
   - start 응답은 `status=PENDING`, `secretKey`, `otpauthUri`, `expiresAt`
   - verify request body는 `totpCode`
   - verify 성공 시 credential 상태는 `ACTIVE`, 응답은 `status=ACTIVE`, `verifiedAt`
+- 해제 기준:
+  - disable request body는 `totpCode`
+  - 현재 JWT user와 현재 `ACTIVE` credential, 유효한 현재 TOTP code가 모두 맞을 때만 `204 No Content`
+  - disable 성공 시 `auth_totp_credential` row는 삭제되고 해당 user의 active refresh session은 전부 `REVOKED`
+  - wrong code, 활성 credential 없음, 비활성 user는 `401 mfa disable failed`
 - 로그인 challenge 기준:
   - `ACTIVE` TOTP credential이 있는 사용자의 `POST /api/v1/auth/login` 응답은 `status=MFA_REQUIRED`
   - 이때 `challengeId`, `challengeType=TOTP`, `challengeExpiresAt`만 내려가고 token pair는 비어 있다
