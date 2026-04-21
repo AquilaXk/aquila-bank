@@ -199,6 +199,77 @@ class NotificationApiIntegrationTest extends PostgresContainerTestSupport {
   }
 
   @Test
+  void getsAndUpdatesNotificationPreferencesForJwtUser() throws Exception {
+    long[] userIds = new long[2];
+    commit(
+        transactionManager,
+        () -> {
+          userIds[0] = insertUser("pref-user-a");
+          userIds[1] = insertUser("pref-user-b");
+        });
+
+    String tokenA = issueToken("pref-user-a-subject", userIds[0]);
+    String tokenB = issueToken("pref-user-b-subject", userIds[1]);
+
+    mockMvc
+        .perform(
+            get("/api/v1/notifications/preferences").header("Authorization", "Bearer " + tokenA))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(9))
+        .andExpect(jsonPath("$.items[0].category").isString())
+        .andExpect(jsonPath("$.items[0].channel").isString());
+
+    mockMvc
+        .perform(
+            post("/api/v1/notifications/preferences")
+                .header("Authorization", "Bearer " + tokenA)
+                .contentType("application/json")
+                .content(
+                    """
+                    {
+                      "items": [
+                        {"category": "MARKETING", "channel": "EMAIL", "enabled": true},
+                        {"category": "SECURITY", "channel": "SMS", "enabled": false}
+                      ]
+                    }
+                    """))
+        .andExpect(status().isNoContent());
+
+    mockMvc
+        .perform(
+            get("/api/v1/notifications/preferences").header("Authorization", "Bearer " + tokenA))
+        .andExpect(status().isOk())
+        .andExpect(
+            jsonPath("$.items[?(@.category=='MARKETING' && @.channel=='EMAIL')].enabled")
+                .value(org.hamcrest.Matchers.contains(true)))
+        .andExpect(
+            jsonPath("$.items[?(@.category=='SECURITY' && @.channel=='SMS')].enabled")
+                .value(org.hamcrest.Matchers.contains(false)));
+
+    mockMvc
+        .perform(
+            get("/api/v1/notifications/preferences").header("Authorization", "Bearer " + tokenB))
+        .andExpect(status().isOk())
+        .andExpect(
+            jsonPath("$.items[?(@.category=='MARKETING' && @.channel=='EMAIL')].enabled")
+                .value(org.hamcrest.Matchers.contains(false)))
+        .andExpect(
+            jsonPath("$.items[?(@.category=='SECURITY' && @.channel=='SMS')].enabled")
+                .value(org.hamcrest.Matchers.contains(true)));
+  }
+
+  @Test
+  void rejectsNotificationPreferencesForAccountPrincipal() throws Exception {
+    long[] accountId = new long[1];
+    commit(transactionManager, () -> accountId[0] = insertAccount("pref-account"));
+
+    mockMvc
+        .perform(get("/api/v1/notifications/preferences").header("X-Account-Id", accountId[0]))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message").value("notification preferences require user principal"));
+  }
+
+  @Test
   void supportsBulkReadArchiveAndDeleteForJwtUser() throws Exception {
     long[] userIds = new long[2];
     long[] accountId = new long[1];
