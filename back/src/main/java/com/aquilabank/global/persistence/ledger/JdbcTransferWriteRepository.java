@@ -4,6 +4,7 @@ import com.aquilabank.domain.ledger.exception.CommandConflictException;
 import com.aquilabank.domain.ledger.exception.CurrencyMismatchException;
 import com.aquilabank.domain.ledger.exception.InsufficientBalanceException;
 import com.aquilabank.domain.ledger.exception.SnapshotNotFoundException;
+import com.aquilabank.domain.ledger.exception.TransferAccountStatusBlockedException;
 import com.aquilabank.domain.ledger.exception.TransferReversalNotFoundException;
 import com.aquilabank.domain.ledger.model.TransferCommand;
 import com.aquilabank.domain.ledger.model.TransferResult;
@@ -32,6 +33,8 @@ import org.springframework.transaction.annotation.Transactional;
 /** 송금 쓰기 명령을 ledger, snapshot, read model, outbox 적재로 풀어내는 JDBC adapter */
 @Repository
 public class JdbcTransferWriteRepository implements TransferWritePort, TransferReversalWritePort {
+
+  private static final String ACTIVE_ACCOUNT_STATUS = "ACTIVE";
 
   private static final RowMapper<IdempotencyRecord> IDEMPOTENCY_ROW_MAPPER =
       (rs, rowNum) -> mapIdempotencyRecord(rs);
@@ -67,9 +70,11 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
       refreshIdempotencyLock(command.idempotencyKey(), now);
     }
 
-    // source/target snapshot을 모두 잠가 송금 중간 상태가 다른 쓰기와 엇갈리지 않게 합니다.
+    // source/target snapshot과 계좌 row를 함께 잠가 상태 변경과 잔액 쓰기가 엇갈리지 않게 합니다.
     LockedBalanceSnapshot source = loadBalanceSnapshot(command.sourceAccountId());
     LockedBalanceSnapshot target = loadBalanceSnapshot(command.targetAccountId());
+    verifyTransferableAccount(source);
+    verifyTransferableAccount(target);
 
     if (!source.currencyCode().equals(command.currencyCode())
         || !target.currencyCode().equals(command.currencyCode())) {
@@ -189,6 +194,8 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
 
     LockedBalanceSnapshot source = loadBalanceSnapshot(original.sourceAccountId());
     LockedBalanceSnapshot target = loadBalanceSnapshot(original.targetAccountId());
+    verifyTransferableAccount(source);
+    verifyTransferableAccount(target);
     if (!source.currencyCode().equals(original.currencyCode())
         || !target.currencyCode().equals(original.currencyCode())) {
       throw new CurrencyMismatchException("currency does not match original transfer");
@@ -365,14 +372,16 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
     return jdbcTemplate
         .query(
             """
-            SELECT account_id,
-                   last_applied_ledger_entry_id,
-                   available_balance_minor,
-                   pending_balance_minor,
-                   currency_code
-            FROM account_balance_snapshot
-            WHERE account_id = :accountId
-            FOR UPDATE
+            SELECT s.account_id,
+                   s.last_applied_ledger_entry_id,
+                   s.available_balance_minor,
+                   s.pending_balance_minor,
+                   s.currency_code,
+                   a.account_status
+            FROM account_balance_snapshot s
+            JOIN bank_account a ON a.id = s.account_id
+            WHERE s.account_id = :accountId
+            FOR UPDATE OF s, a
             """,
             params,
             (rs, rowNum) ->
@@ -381,11 +390,18 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
                     rs.getLong("last_applied_ledger_entry_id"),
                     rs.getLong("available_balance_minor"),
                     rs.getLong("pending_balance_minor"),
-                    rs.getString("currency_code")))
+                    rs.getString("currency_code"),
+                    rs.getString("account_status")))
         .stream()
         .findFirst()
         .orElseThrow(
             () -> new SnapshotNotFoundException("account snapshot is missing: " + accountId));
+  }
+
+  private void verifyTransferableAccount(LockedBalanceSnapshot snapshot) {
+    if (!ACTIVE_ACCOUNT_STATUS.equals(snapshot.accountStatus())) {
+      throw new TransferAccountStatusBlockedException("account access is denied");
+    }
   }
 
   private long insertLedgerEntry(
@@ -862,5 +878,6 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
       long lastAppliedLedgerEntryId,
       long availableBalanceMinor,
       long pendingBalanceMinor,
-      String currencyCode) {}
+      String currencyCode,
+      String accountStatus) {}
 }
