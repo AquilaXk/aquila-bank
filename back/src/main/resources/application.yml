@@ -149,6 +149,15 @@ ledger:
     drift-list-limit: ${LEDGER_SNAPSHOT_RECONCILIATION_DRIFT_LIST_LIMIT:50}
     recovery-reason-max-length: ${LEDGER_SNAPSHOT_RECONCILIATION_RECOVERY_REASON_MAX_LENGTH:200}
 
+transaction:
+  read-model:
+    cleanup:
+      enabled: ${TRANSACTION_READ_MODEL_CLEANUP_ENABLED:false}
+      fixed-delay-ms: ${TRANSACTION_READ_MODEL_CLEANUP_FIXED_DELAY_MS:300000}
+      initial-delay-ms: ${TRANSACTION_READ_MODEL_CLEANUP_INITIAL_DELAY_MS:60000}
+      batch-size: ${TRANSACTION_READ_MODEL_CLEANUP_BATCH_SIZE:500}
+      retention-days: ${TRANSACTION_READ_MODEL_CLEANUP_RETENTION_DAYS:365}
+
 notification:
   sse:
     connection-timeout-ms: ${NOTIFICATION_SSE_CONNECTION_TIMEOUT_MS:1800000}

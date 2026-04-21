@@ -51,6 +51,7 @@ public abstract class PostgresContainerTestSupport {
                             notification_preference,
                             notification_user_read_state,
                             notification_inbox,
+                            transaction_read_model_archive,
                             transaction_read_model,
                             ledger_entry,
                             command_idempotency,
