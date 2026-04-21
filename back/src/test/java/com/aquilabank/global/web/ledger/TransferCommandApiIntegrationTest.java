@@ -379,6 +379,88 @@ class TransferCommandApiIntegrationTest extends PostgresContainerTestSupport {
   }
 
   @Test
+  void rejectsTransferWhenTargetAccountIsLockedWithoutWriteSideEffects() throws Exception {
+    updateAccountStatus(targetAccountId, "LOCKED", "transfer-target-locked-request");
+
+    long ledgerCountBefore = totalCount("ledger_entry");
+    long transactionCountBefore = totalCount("transaction_read_model");
+    long outboxCountBefore = totalCount("outbox_event");
+    long idempotencyCountBefore = totalCount("command_idempotency");
+    long sourceBalanceBefore = balanceOf(sourceAccountId);
+    long targetBalanceBefore = balanceOf(targetAccountId);
+
+    MvcResult result =
+        mockMvc
+            .perform(
+                post("/api/v1/transfers")
+                    .header("X-Account-Id", String.valueOf(sourceAccountId))
+                    .header("X-Request-Id", "transfer-target-locked-001-request")
+                    .header("Idempotency-Key", "transfer-target-locked-001")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                    {
+                      "sourceAccountId": %d,
+                      "targetAccountId": %d,
+                      "amountMinor": 1500,
+                      "currencyCode": "KRW",
+                      "summary": "target locked"
+                    }
+                    """
+                            .formatted(sourceAccountId, targetAccountId)))
+            .andReturn();
+
+    assertAccountAccessDenied(result);
+    assertEquals(ledgerCountBefore, totalCount("ledger_entry"));
+    assertEquals(transactionCountBefore, totalCount("transaction_read_model"));
+    assertEquals(outboxCountBefore, totalCount("outbox_event"));
+    assertEquals(idempotencyCountBefore, totalCount("command_idempotency"));
+    assertEquals(sourceBalanceBefore, balanceOf(sourceAccountId));
+    assertEquals(targetBalanceBefore, balanceOf(targetAccountId));
+  }
+
+  @Test
+  void rejectsTransferWhenTargetAccountIsClosedWithoutWriteSideEffects() throws Exception {
+    updateAccountStatus(targetAccountId, "CLOSED", "transfer-target-closed-request");
+
+    long ledgerCountBefore = totalCount("ledger_entry");
+    long transactionCountBefore = totalCount("transaction_read_model");
+    long outboxCountBefore = totalCount("outbox_event");
+    long idempotencyCountBefore = totalCount("command_idempotency");
+    long sourceBalanceBefore = balanceOf(sourceAccountId);
+    long targetBalanceBefore = balanceOf(targetAccountId);
+
+    MvcResult result =
+        mockMvc
+            .perform(
+                post("/api/v1/transfers")
+                    .header("X-Account-Id", String.valueOf(sourceAccountId))
+                    .header("X-Request-Id", "transfer-target-closed-001-request")
+                    .header("Idempotency-Key", "transfer-target-closed-001")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                    {
+                      "sourceAccountId": %d,
+                      "targetAccountId": %d,
+                      "amountMinor": 1500,
+                      "currencyCode": "KRW",
+                      "summary": "target closed"
+                    }
+                    """
+                            .formatted(sourceAccountId, targetAccountId)))
+            .andReturn();
+
+    assertAccountAccessDenied(result);
+    assertEquals(ledgerCountBefore, totalCount("ledger_entry"));
+    assertEquals(transactionCountBefore, totalCount("transaction_read_model"));
+    assertEquals(outboxCountBefore, totalCount("outbox_event"));
+    assertEquals(idempotencyCountBefore, totalCount("command_idempotency"));
+    assertEquals(sourceBalanceBefore, balanceOf(sourceAccountId));
+    assertEquals(targetBalanceBefore, balanceOf(targetAccountId));
+  }
+
+  @Test
   void rejectsReversalWhenSourceAccountIsClosedWithoutWriteSideEffects() throws Exception {
     TransferResponseView booked = invokeTransfer("transfer-006", targetAccountId, 1_500L, "rent");
 
@@ -418,6 +500,92 @@ class TransferCommandApiIntegrationTest extends PostgresContainerTestSupport {
             .readTree(result.getResponse().getContentAsByteArray())
             .get("message")
             .asText());
+    assertEquals(ledgerCountBefore, totalCount("ledger_entry"));
+    assertEquals(transactionCountBefore, totalCount("transaction_read_model"));
+    assertEquals(outboxCountBefore, totalCount("outbox_event"));
+    assertEquals(idempotencyCountBefore, totalCount("command_idempotency"));
+    assertEquals(reversalCountBefore, transferReversalCount(booked.transactionReference()));
+    assertEquals(sourceBalanceBefore, balanceOf(sourceAccountId));
+    assertEquals(targetBalanceBefore, balanceOf(targetAccountId));
+  }
+
+  @Test
+  void rejectsReversalWhenTargetAccountIsLockedWithoutWriteSideEffects() throws Exception {
+    TransferResponseView booked = invokeTransfer("transfer-007", targetAccountId, 1_500L, "rent");
+
+    updateAccountStatus(targetAccountId, "LOCKED", "reversal-target-locked-request");
+
+    long ledgerCountBefore = totalCount("ledger_entry");
+    long transactionCountBefore = totalCount("transaction_read_model");
+    long outboxCountBefore = totalCount("outbox_event");
+    long idempotencyCountBefore = totalCount("command_idempotency");
+    long reversalCountBefore = transferReversalCount(booked.transactionReference());
+    long sourceBalanceBefore = balanceOf(sourceAccountId);
+    long targetBalanceBefore = balanceOf(targetAccountId);
+
+    MvcResult result =
+        mockMvc
+            .perform(
+                post("/api/v1/transfers/%s/reversal".formatted(booked.transactionReference()))
+                    .header("X-Account-Id", String.valueOf(sourceAccountId))
+                    .header("X-Request-Id", "reversal-target-locked-001-request")
+                    .header("Idempotency-Key", "reversal-target-locked-001")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                          "sourceAccountId": %d,
+                          "reversalReason": "CANCEL",
+                          "summary": "target locked"
+                        }
+                        """
+                            .formatted(sourceAccountId)))
+            .andReturn();
+
+    assertAccountAccessDenied(result);
+    assertEquals(ledgerCountBefore, totalCount("ledger_entry"));
+    assertEquals(transactionCountBefore, totalCount("transaction_read_model"));
+    assertEquals(outboxCountBefore, totalCount("outbox_event"));
+    assertEquals(idempotencyCountBefore, totalCount("command_idempotency"));
+    assertEquals(reversalCountBefore, transferReversalCount(booked.transactionReference()));
+    assertEquals(sourceBalanceBefore, balanceOf(sourceAccountId));
+    assertEquals(targetBalanceBefore, balanceOf(targetAccountId));
+  }
+
+  @Test
+  void rejectsReversalWhenTargetAccountIsClosedWithoutWriteSideEffects() throws Exception {
+    TransferResponseView booked = invokeTransfer("transfer-008", targetAccountId, 1_500L, "rent");
+
+    updateAccountStatus(targetAccountId, "CLOSED", "reversal-target-closed-request");
+
+    long ledgerCountBefore = totalCount("ledger_entry");
+    long transactionCountBefore = totalCount("transaction_read_model");
+    long outboxCountBefore = totalCount("outbox_event");
+    long idempotencyCountBefore = totalCount("command_idempotency");
+    long reversalCountBefore = transferReversalCount(booked.transactionReference());
+    long sourceBalanceBefore = balanceOf(sourceAccountId);
+    long targetBalanceBefore = balanceOf(targetAccountId);
+
+    MvcResult result =
+        mockMvc
+            .perform(
+                post("/api/v1/transfers/%s/reversal".formatted(booked.transactionReference()))
+                    .header("X-Account-Id", String.valueOf(sourceAccountId))
+                    .header("X-Request-Id", "reversal-target-closed-001-request")
+                    .header("Idempotency-Key", "reversal-target-closed-001")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                          "sourceAccountId": %d,
+                          "reversalReason": "CANCEL",
+                          "summary": "target closed"
+                        }
+                        """
+                            .formatted(sourceAccountId)))
+            .andReturn();
+
+    assertAccountAccessDenied(result);
     assertEquals(ledgerCountBefore, totalCount("ledger_entry"));
     assertEquals(transactionCountBefore, totalCount("transaction_read_model"));
     assertEquals(outboxCountBefore, totalCount("outbox_event"));
@@ -611,6 +779,16 @@ class TransferCommandApiIntegrationTest extends PostgresContainerTestSupport {
             .andReturn();
 
     assertEquals(200, result.getResponse().getStatus(), result.getResponse().getContentAsString());
+  }
+
+  private void assertAccountAccessDenied(MvcResult result) throws Exception {
+    assertEquals(403, result.getResponse().getStatus(), result.getResponse().getContentAsString());
+    assertEquals(
+        "account access is denied",
+        objectMapper
+            .readTree(result.getResponse().getContentAsByteArray())
+            .get("message")
+            .asText());
   }
 
   private long balanceOf(long accountId) {

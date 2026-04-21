@@ -17,6 +17,7 @@ import com.aquilabank.domain.ledger.exception.CommandConflictException;
 import com.aquilabank.domain.ledger.exception.CurrencyMismatchException;
 import com.aquilabank.domain.ledger.exception.InsufficientBalanceException;
 import com.aquilabank.domain.ledger.exception.SnapshotNotFoundException;
+import com.aquilabank.domain.ledger.exception.TransferAccountStatusBlockedException;
 import com.aquilabank.domain.ledger.exception.TransferReversalNotFoundException;
 import com.aquilabank.domain.notification.exception.NotificationNotFoundException;
 import com.aquilabank.domain.transaction.exception.TransactionDetailNotFoundException;
@@ -101,9 +102,12 @@ public class ApiExceptionHandler {
                 request.getRequestURI()));
   }
 
-  @ExceptionHandler(AccountAccessDeniedException.class)
+  @ExceptionHandler({
+    AccountAccessDeniedException.class,
+    TransferAccountStatusBlockedException.class
+  })
   ResponseEntity<ApiErrorResponse> handleForbidden(
-      AccountAccessDeniedException ex, HttpServletRequest request) {
+      RuntimeException ex, HttpServletRequest request) {
     return response(HttpStatus.FORBIDDEN, ex.getMessage(), request);
   }
 
