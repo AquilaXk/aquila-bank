@@ -283,6 +283,7 @@ public class JdbcNotificationInboxRepository
               ROW_MAPPER));
     }
     applyUnreadProjectionForInsertedNotifications(insertedItems);
+    appendChannelOutboxForInsertedNotifications(insertedItems);
     publishInsertedNotifications(insertedItems);
   }
 
@@ -418,6 +419,78 @@ public class JdbcNotificationInboxRepository
       hideInsertedNotificationForDisabledUsers(item);
       incrementUserProjectionForEnabledUsers(item);
     }
+  }
+
+  private void appendChannelOutboxForInsertedNotifications(List<NotificationSummary> items) {
+    for (NotificationSummary item : items) {
+      appendChannelOutboxForInsertedNotification(item);
+    }
+  }
+
+  private void appendChannelOutboxForInsertedNotification(NotificationSummary item) {
+    // 현재 inbox ingest source는 transfer event라 외부 channel preference도 TRANSACTIONAL 기준으로 평가합니다.
+    jdbcTemplate.update(
+        """
+        INSERT INTO notification_channel_outbox (
+            notification_id,
+            user_id,
+            account_id,
+            category,
+            channel,
+            event_type,
+            event_key,
+            payload,
+            delivery_status,
+            available_at,
+            retry_count,
+            created_at,
+            updated_at
+        )
+        SELECT n.id,
+               m.user_id,
+               n.account_id,
+               'TRANSACTIONAL',
+               channel_item.channel,
+               n.event_type,
+               n.event_key,
+               jsonb_build_object(
+                   'notificationId', n.id,
+                   'userId', m.user_id,
+                   'accountId', n.account_id,
+                   'category', 'TRANSACTIONAL',
+                   'channel', channel_item.channel,
+                   'eventType', n.event_type,
+                   'eventKey', n.event_key,
+                   'title', n.title,
+                   'message', n.message,
+                   'createdAt', n.created_at
+               ),
+               'PENDING',
+               n.created_at,
+               0,
+               n.created_at,
+               n.created_at
+        FROM notification_inbox n
+        JOIN user_account_membership m
+          ON m.account_id = n.account_id
+        JOIN bank_user u
+          ON u.id = m.user_id
+        JOIN (
+            VALUES ('EMAIL'::varchar, TRUE),
+                   ('SMS'::varchar, FALSE)
+        ) AS channel_item(channel, default_enabled)
+          ON TRUE
+        LEFT JOIN notification_preference p
+          ON p.user_id = m.user_id
+         AND p.category = 'TRANSACTIONAL'
+         AND p.channel = channel_item.channel
+        WHERE n.id = :notificationId
+          AND m.membership_status = 'ACTIVE'
+          AND u.user_status = 'ACTIVE'
+          AND COALESCE(p.enabled, channel_item.default_enabled) = TRUE
+        ON CONFLICT (event_key, user_id, channel) DO NOTHING
+        """,
+        new MapSqlParameterSource().addValue("notificationId", item.id()));
   }
 
   private void hideInsertedNotificationForDisabledUsers(NotificationSummary item) {
