@@ -15,14 +15,17 @@ public class WebMvcSecurityConfiguration implements WebMvcConfigurer {
       currentAuthenticatedPrincipalArgumentResolver;
   private final InternalServiceTokenAuthenticationInterceptor
       internalServiceTokenAuthenticationInterceptor;
+  private final CurrentSessionActiveInterceptor currentSessionActiveInterceptor;
 
   public WebMvcSecurityConfiguration(
       CurrentAuthenticatedPrincipalArgumentResolver currentAuthenticatedPrincipalArgumentResolver,
-      InternalServiceTokenAuthenticationInterceptor internalServiceTokenAuthenticationInterceptor) {
+      InternalServiceTokenAuthenticationInterceptor internalServiceTokenAuthenticationInterceptor,
+      CurrentSessionActiveInterceptor currentSessionActiveInterceptor) {
     this.currentAuthenticatedPrincipalArgumentResolver =
         currentAuthenticatedPrincipalArgumentResolver;
     this.internalServiceTokenAuthenticationInterceptor =
         internalServiceTokenAuthenticationInterceptor;
+    this.currentSessionActiveInterceptor = currentSessionActiveInterceptor;
   }
 
   @Override
@@ -32,6 +35,19 @@ public class WebMvcSecurityConfiguration implements WebMvcConfigurer {
 
   @Override
   public void addInterceptors(InterceptorRegistry registry) {
+    registry
+        .addInterceptor(currentSessionActiveInterceptor)
+        .addPathPatterns(
+            "/api/v1/transfers",
+            "/api/v1/transfers/*/reversal",
+            "/api/v1/auth/password-reset",
+            "/api/v1/auth/mfa/totp/enroll",
+            "/api/v1/auth/mfa/totp/enroll/verify",
+            "/api/v1/auth/mfa/totp/disable",
+            "/api/v1/auth/mfa/backup-codes",
+            "/api/v1/auth/sessions",
+            "/api/v1/auth/sessions/*");
+
     registry
         .addInterceptor(internalServiceTokenAuthenticationInterceptor)
         .addPathPatterns(
