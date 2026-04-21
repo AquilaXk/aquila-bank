@@ -101,6 +101,8 @@ public class SecurityConfiguration {
                     .permitAll()
                     .requestMatchers("/internal/api/v1/outbox/**")
                     .permitAll()
+                    .requestMatchers("/internal/api/v1/ledger/**")
+                    .permitAll()
                     .requestMatchers("/internal/api/v1/auth/**")
                     .permitAll()
                     .anyRequest()
