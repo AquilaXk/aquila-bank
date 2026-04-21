@@ -174,6 +174,125 @@ class TransferCommandApiIntegrationTest extends PostgresContainerTestSupport {
   }
 
   @Test
+  void partiallyReversesTransferAndKeepsOriginalPartiallyReversed() throws Exception {
+    TransferResponseView booked =
+        invokeTransfer("transfer-partial-001", targetAccountId, 1_500L, "rent");
+
+    TransferReversalResponseView reversed =
+        invokeReversal(
+            booked.transactionReference(),
+            "reversal-partial-001",
+            500L,
+            "CORRECTION",
+            "partial rent");
+
+    assertEquals(booked.transactionReference(), reversed.originalTransactionReference());
+    assertEquals(500L, reversed.amountMinor());
+    assertEquals(9_000L, reversed.availableBalanceAfterMinor());
+    assertEquals("PARTIALLY_REVERSED", reversed.status());
+    assertEquals(2L, countRows("ledger_entry", booked.transactionReference()));
+    assertEquals(2L, countRows("ledger_entry", reversed.reversalTransactionReference()));
+    assertEquals(2L, countRows("transaction_read_model", reversed.reversalTransactionReference()));
+    assertEquals(2L, transactionStatusCount(booked.transactionReference(), "PARTIALLY_REVERSED"));
+    assertEquals(9_000L, balanceOf(sourceAccountId));
+    assertEquals(1_000L, balanceOf(targetAccountId));
+    assertEquals(1L, transferReversalCount(booked.transactionReference()));
+
+    Map<String, Object> outboxState = outboxState(reversed.reversalTransactionReference());
+    assertEquals("TransferReversed", outboxState.get("event_type"));
+    assertEquals(
+        500,
+        objectMapper
+            .readTree(String.valueOf(outboxState.get("payload")))
+            .get("amountMinor")
+            .asInt());
+  }
+
+  @Test
+  void completesOriginalStatusWhenPartialReversalsReachOriginalAmount() throws Exception {
+    TransferResponseView booked =
+        invokeTransfer("transfer-partial-002", targetAccountId, 1_500L, "rent");
+
+    TransferReversalResponseView first =
+        invokeReversal(
+            booked.transactionReference(),
+            "reversal-partial-002",
+            500L,
+            "CORRECTION",
+            "partial rent");
+    TransferReversalResponseView second =
+        invokeReversal(
+            booked.transactionReference(),
+            "reversal-partial-003",
+            1_000L,
+            "CANCEL",
+            "remaining rent");
+
+    assertEquals("PARTIALLY_REVERSED", first.status());
+    assertEquals("REVERSED", second.status());
+    assertEquals(2L, transactionStatusCount(booked.transactionReference(), "REVERSED"));
+    assertEquals(10_000L, balanceOf(sourceAccountId));
+    assertEquals(0L, balanceOf(targetAccountId));
+    assertEquals(2L, transferReversalCount(booked.transactionReference()));
+  }
+
+  @Test
+  void rejectsPartialReversalWhenAmountExceedsRemainingAmount() throws Exception {
+    TransferResponseView booked =
+        invokeTransfer("transfer-partial-003", targetAccountId, 1_500L, "rent");
+    invokeReversal(
+        booked.transactionReference(), "reversal-partial-004", 1_000L, "CORRECTION", "part");
+
+    MvcResult result =
+        mockMvc
+            .perform(
+                post("/api/v1/transfers/%s/reversal".formatted(booked.transactionReference()))
+                    .header("X-Account-Id", String.valueOf(sourceAccountId))
+                    .header("X-Request-Id", "reversal-partial-005-request")
+                    .header("Idempotency-Key", "reversal-partial-005")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                          "sourceAccountId": %d,
+                          "amountMinor": 600,
+                          "reversalReason": "CANCEL",
+                          "summary": "too much"
+                        }
+                        """
+                            .formatted(sourceAccountId)))
+            .andReturn();
+
+    assertEquals(409, result.getResponse().getStatus(), result.getResponse().getContentAsString());
+    assertEquals(
+        "reversal amount exceeds remaining amount",
+        objectMapper
+            .readTree(result.getResponse().getContentAsByteArray())
+            .get("message")
+            .asText());
+    assertEquals(1L, transferReversalCount(booked.transactionReference()));
+    assertEquals(9_500L, balanceOf(sourceAccountId));
+    assertEquals(500L, balanceOf(targetAccountId));
+  }
+
+  @Test
+  void reversesRemainingAmountWhenAmountIsOmittedAfterPartialReversal() throws Exception {
+    TransferResponseView booked =
+        invokeTransfer("transfer-partial-004", targetAccountId, 1_500L, "rent");
+    invokeReversal(
+        booked.transactionReference(), "reversal-partial-006", 500L, "CORRECTION", "part");
+
+    TransferReversalResponseView second =
+        invokeReversal(booked.transactionReference(), "reversal-partial-007", "CANCEL", "rest");
+
+    assertEquals(1_000L, second.amountMinor());
+    assertEquals("REVERSED", second.status());
+    assertEquals(10_000L, balanceOf(sourceAccountId));
+    assertEquals(0L, balanceOf(targetAccountId));
+    assertEquals(2L, transferReversalCount(booked.transactionReference()));
+  }
+
+  @Test
   void rejectsDuplicateReversalForSameOriginalTransfer() throws Exception {
     TransferResponseView booked =
         invokeTransfer("transfer-005", targetAccountId, 1_200L, "tuition");
@@ -406,6 +525,42 @@ class TransferCommandApiIntegrationTest extends PostgresContainerTestSupport {
         result.getResponse().getHeader("X-Request-Id"));
   }
 
+  private TransferReversalResponseView invokeReversal(
+      String originalTransactionReference,
+      String idempotencyKey,
+      long amountMinor,
+      String reversalReason,
+      String summary)
+      throws Exception {
+    String requestId = idempotencyKey + "-request";
+    MvcResult result =
+        mockMvc
+            .perform(
+                post("/api/v1/transfers/%s/reversal".formatted(originalTransactionReference))
+                    .header("X-Account-Id", String.valueOf(sourceAccountId))
+                    .header("X-Request-Id", requestId)
+                    .header("Idempotency-Key", idempotencyKey)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                          "sourceAccountId": %d,
+                          "amountMinor": %d,
+                          "reversalReason": "%s",
+                          "summary": "%s"
+                        }
+                        """
+                            .formatted(sourceAccountId, amountMinor, reversalReason, summary)))
+            .andReturn();
+
+    assertEquals(200, result.getResponse().getStatus(), result.getResponse().getContentAsString());
+
+    return new TransferReversalResponseView(
+        objectMapper.readValue(
+            result.getResponse().getContentAsByteArray(), TransferReversalResponseBody.class),
+        result.getResponse().getHeader("X-Request-Id"));
+  }
+
   private void updateBalance(long accountId, long availableBalanceMinor) {
     jdbcTemplate.update(
         """
@@ -590,6 +745,14 @@ class TransferCommandApiIntegrationTest extends PostgresContainerTestSupport {
 
     private long availableBalanceAfterMinor() {
       return body.availableBalanceAfterMinor();
+    }
+
+    private long amountMinor() {
+      return body.amountMinor();
+    }
+
+    private String status() {
+      return body.status();
     }
   }
 

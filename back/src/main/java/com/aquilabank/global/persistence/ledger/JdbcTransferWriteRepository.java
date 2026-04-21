@@ -176,7 +176,16 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
     OriginalTransferRecord original =
         loadOriginalTransferForUpdate(
             command.originalTransactionReference(), command.sourceAccountId());
-    ensureNotAlreadyReversed(command.originalTransactionReference());
+    long alreadyReversedAmount =
+        loadExistingReversalAmountForUpdate(original.transactionReference());
+    long remainingAmount = original.amountMinor() - alreadyReversedAmount;
+    if (remainingAmount <= 0) {
+      throw new CommandConflictException("transfer is already reversed");
+    }
+    long reversalAmount = command.amountMinor() == null ? remainingAmount : command.amountMinor();
+    if (reversalAmount > remainingAmount) {
+      throw new CommandConflictException("reversal amount exceeds remaining amount");
+    }
 
     LockedBalanceSnapshot source = loadBalanceSnapshot(original.sourceAccountId());
     LockedBalanceSnapshot target = loadBalanceSnapshot(original.targetAccountId());
@@ -184,18 +193,22 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
         || !target.currencyCode().equals(original.currencyCode())) {
       throw new CurrencyMismatchException("currency does not match original transfer");
     }
-    if (target.availableBalanceMinor() < original.amountMinor()) {
+    if (target.availableBalanceMinor() < reversalAmount) {
       throw new InsufficientBalanceException("reversal target balance is not enough");
     }
 
     Instant bookedAt = now;
     String reversalTransactionReference = "TRX-" + UUID.randomUUID();
-    long sourceBalanceAfter = source.availableBalanceMinor() + original.amountMinor();
-    long targetBalanceAfter = target.availableBalanceMinor() - original.amountMinor();
+    long sourceBalanceAfter = source.availableBalanceMinor() + reversalAmount;
+    long targetBalanceAfter = target.availableBalanceMinor() - reversalAmount;
+    long totalReversedAmount = alreadyReversedAmount + reversalAmount;
+    String originalStatus =
+        totalReversedAmount == original.amountMinor() ? "REVERSED" : "PARTIALLY_REVERSED";
     String reversalMetadata =
         toJson(
             Map.of(
                 "originalTransactionReference", original.transactionReference(),
+                "reversalAmountMinor", reversalAmount,
                 "reversalReason", command.reversalReason().name()));
 
     long sourceReversalEntryId =
@@ -203,7 +216,7 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
             original.sourceAccountId(),
             reversalTransactionReference,
             "CREDIT",
-            original.amountMinor(),
+            reversalAmount,
             original.currencyCode(),
             command.summary(),
             bookedAt,
@@ -213,7 +226,7 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
             original.targetAccountId(),
             reversalTransactionReference,
             "DEBIT",
-            original.amountMinor(),
+            reversalAmount,
             original.currencyCode(),
             command.summary(),
             bookedAt,
@@ -224,14 +237,14 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
     updateBalanceSnapshot(
         original.targetAccountId(), targetReversalEntryId, targetBalanceAfter, bookedAt);
 
-    markTransactionReadModelReversed(original.transactionReference());
+    markTransactionReadModelStatus(original.transactionReference(), originalStatus);
     insertTransactionReadModel(
         sourceReversalEntryId,
         original.sourceAccountId(),
         reversalTransactionReference,
         "CREDIT",
         "BOOKED",
-        original.amountMinor(),
+        reversalAmount,
         sourceBalanceAfter,
         original.currencyCode(),
         command.summary(),
@@ -243,15 +256,17 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
         reversalTransactionReference,
         "DEBIT",
         "BOOKED",
-        original.amountMinor(),
+        reversalAmount,
         targetBalanceAfter,
         original.currencyCode(),
         command.summary(),
         "ACCOUNT-" + original.sourceAccountId(),
         bookedAt);
 
-    insertTransferReversal(original, reversalTransactionReference, command, bookedAt);
-    insertReversalOutboxEvent(original, reversalTransactionReference, command, bookedAt);
+    insertTransferReversal(
+        original, reversalTransactionReference, reversalAmount, command, bookedAt);
+    insertReversalOutboxEvent(
+        original, reversalTransactionReference, reversalAmount, command, bookedAt);
 
     TransferReversalResult result =
         new TransferReversalResult(
@@ -259,11 +274,11 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
             reversalTransactionReference,
             original.sourceAccountId(),
             original.targetAccountId(),
-            original.amountMinor(),
+            reversalAmount,
             original.currencyCode(),
             sourceBalanceAfter,
             bookedAt,
-            "REVERSED");
+            originalStatus);
     completeIdempotency(command.idempotencyKey(), result, bookedAt);
     return result;
   }
@@ -565,12 +580,13 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
   private void insertReversalOutboxEvent(
       OriginalTransferRecord original,
       String reversalTransactionReference,
+      long reversalAmount,
       TransferReversalCommand command,
       Instant bookedAt) {
     MapSqlParameterSource params =
         new MapSqlParameterSource()
             .addValue("aggregateId", reversalTransactionReference)
-            .addValue("eventKey", "transfer-reversed:" + original.transactionReference())
+            .addValue("eventKey", "transfer-reversed:" + reversalTransactionReference)
             .addValue(
                 "payload",
                 toJson(
@@ -579,7 +595,7 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
                         "reversalTransactionReference", reversalTransactionReference,
                         "sourceAccountId", original.sourceAccountId(),
                         "targetAccountId", original.targetAccountId(),
-                        "amountMinor", original.amountMinor(),
+                        "amountMinor", reversalAmount,
                         "currencyCode", original.currencyCode(),
                         "reversalReason", command.reversalReason().name(),
                         "bookedAt", bookedAt.toString())))
@@ -616,6 +632,7 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
   private void insertTransferReversal(
       OriginalTransferRecord original,
       String reversalTransactionReference,
+      long reversalAmount,
       TransferReversalCommand command,
       Instant createdAt) {
     try {
@@ -649,7 +666,7 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
               .addValue("reversalTransactionReference", reversalTransactionReference)
               .addValue("sourceAccountId", original.sourceAccountId())
               .addValue("targetAccountId", original.targetAccountId())
-              .addValue("amountMinor", original.amountMinor())
+              .addValue("amountMinor", reversalAmount)
               .addValue("currencyCode", original.currencyCode())
               .addValue("reversalReason", command.reversalReason().name())
               .addValue("summary", command.summary())
@@ -659,25 +676,21 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
     }
   }
 
-  private void ensureNotAlreadyReversed(String originalTransactionReference) {
-    boolean exists =
-        jdbcTemplate
-            .query(
-                """
-                SELECT 1
-                FROM transfer_reversal
-                WHERE original_transaction_reference = :originalTransactionReference
-                FOR UPDATE
-                """,
-                new MapSqlParameterSource()
-                    .addValue("originalTransactionReference", originalTransactionReference),
-                (rs, rowNum) -> rs.getInt(1))
-            .stream()
-            .findFirst()
-            .isPresent();
-    if (exists) {
-      throw new CommandConflictException("transfer is already reversed");
-    }
+  private long loadExistingReversalAmountForUpdate(String originalTransactionReference) {
+    return jdbcTemplate
+        .query(
+            """
+            SELECT amount_minor
+            FROM transfer_reversal
+            WHERE original_transaction_reference = :originalTransactionReference
+            FOR UPDATE
+            """,
+            new MapSqlParameterSource()
+                .addValue("originalTransactionReference", originalTransactionReference),
+            (rs, rowNum) -> rs.getLong("amount_minor"))
+        .stream()
+        .mapToLong(Long::longValue)
+        .sum();
   }
 
   private OriginalTransferRecord loadOriginalTransferForUpdate(
@@ -737,15 +750,18 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
         debit.currencyCode());
   }
 
-  private void markTransactionReadModelReversed(String transactionReference) {
+  private void markTransactionReadModelStatus(
+      String transactionReference, String transactionStatus) {
     int updated =
         jdbcTemplate.update(
             """
             UPDATE transaction_read_model
-            SET transaction_status = 'REVERSED'
+            SET transaction_status = :transactionStatus
             WHERE transaction_reference = :transactionReference
             """,
-            new MapSqlParameterSource().addValue("transactionReference", transactionReference));
+            new MapSqlParameterSource()
+                .addValue("transactionReference", transactionReference)
+                .addValue("transactionStatus", transactionStatus));
     if (updated != 2) {
       throw new IllegalStateException("original transaction read model update failed");
     }
