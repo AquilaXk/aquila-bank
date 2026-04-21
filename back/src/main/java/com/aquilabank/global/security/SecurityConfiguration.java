@@ -9,7 +9,9 @@ import com.aquilabank.domain.auth.port.RefreshTokenSecretPort;
 import com.aquilabank.domain.auth.port.RememberDeviceSecretPort;
 import com.aquilabank.global.web.InternalAuthStatusAuditRequestCachingFilter;
 import com.aquilabank.global.web.RequestIdFilter;
+import com.aquilabank.global.web.auth.OidcLoginAuthenticationSuccessHandler;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import javax.crypto.spec.SecretKeySpec;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -23,6 +25,7 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.core.OAuth2TokenValidator;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -58,6 +61,8 @@ public class SecurityConfiguration {
       RequestIdFilter requestIdFilter,
       InternalAuthStatusAuditRequestCachingFilter internalAuthStatusAuditRequestCachingFilter,
       ObjectProvider<BootstrapHeaderAuthenticationFilter> bootstrapHeaderAuthenticationFilter,
+      ObjectProvider<ClientRegistrationRepository> clientRegistrationRepository,
+      ObjectProvider<OidcLoginAuthenticationSuccessHandler> oidcLoginAuthenticationSuccessHandler,
       JwtDecoder jwtDecoder,
       BearerTokenResolver publicApiBearerTokenResolver)
       throws Exception {
@@ -85,6 +90,8 @@ public class SecurityConfiguration {
                     .permitAll()
                     .requestMatchers("/api/v1/auth/mfa/backup-codes/challenge/verify")
                     .permitAll()
+                    .requestMatchers("/oauth2/authorization/**", "/login/oauth2/code/**")
+                    .permitAll()
                     // 내부 운영 API는 public JWT resolver에서 제외하고 전용 service JWT로만 검증합니다.
                     .requestMatchers("/internal/api/v1/accounts/bootstrap")
                     .permitAll()
@@ -110,6 +117,22 @@ public class SecurityConfiguration {
             exception ->
                 exception.authenticationEntryPoint(
                     new HttpStatusEntryPoint(org.springframework.http.HttpStatus.UNAUTHORIZED)));
+
+    OidcLoginAuthenticationSuccessHandler successHandler =
+        oidcLoginAuthenticationSuccessHandler.getIfAvailable();
+    if (successHandler != null && clientRegistrationRepository.getIfAvailable() != null) {
+      // OIDC authorization state만 session을 쓰고, API 인증은 기존 bearer JWT 경로를 유지합니다.
+      http.sessionManagement(
+              session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
+          .oauth2Login(
+              oauth2 ->
+                  oauth2
+                      .successHandler(successHandler)
+                      .failureHandler(
+                          (request, response, exception) ->
+                              response.sendError(
+                                  HttpServletResponse.SC_UNAUTHORIZED, "oidc login failed")));
+    }
 
     http.addFilterBefore(requestIdFilter, AnonymousAuthenticationFilter.class);
     http.addFilterAfter(internalAuthStatusAuditRequestCachingFilter, RequestIdFilter.class);

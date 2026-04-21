@@ -30,6 +30,7 @@ import com.aquilabank.domain.auth.port.AccountStatusAccessPort;
 import com.aquilabank.domain.auth.port.AuthSessionQueryPort;
 import com.aquilabank.domain.auth.port.AuthStatusChangeAuditQueryPort;
 import com.aquilabank.domain.auth.port.BackupCodeLoadPort;
+import com.aquilabank.domain.auth.port.ExternalIdentityUserLoadPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionLoadPort;
 import com.aquilabank.domain.auth.port.RememberDeviceLoadPort;
 import com.aquilabank.domain.auth.port.TotpCredentialLoadPort;
@@ -59,6 +60,7 @@ public class JdbcAuthRepository
         AuthSessionQueryPort,
         AccountAccessPort,
         AccountStatusAccessPort,
+        ExternalIdentityUserLoadPort,
         UserQueryPort,
         UserAccountMembershipQueryPort,
         AuthStatusChangeAuditQueryPort {
@@ -132,6 +134,35 @@ public class JdbcAuthRepository
             FOR UPDATE
             """,
             new MapSqlParameterSource().addValue("userId", userId),
+            (rs, rowNum) -> mapLoginUser(rs))
+        .stream()
+        .findFirst();
+  }
+
+  @Override
+  public Optional<LoginUser> findByProviderIdAndSubjectForUpdate(
+      String providerId, String subject) {
+    return jdbcTemplate
+        .query(
+            """
+            SELECT u.id,
+                   u.login_id,
+                   u.password_hash,
+                   u.user_status,
+                   u.failed_login_count,
+                   u.last_login_failed_at,
+                   u.login_locked_until,
+                   u.last_login_succeeded_at
+            FROM auth_external_identity e
+            JOIN bank_user u
+              ON u.id = e.user_id
+            WHERE e.provider_id = :providerId
+              AND e.subject = :subject
+            FOR UPDATE OF u
+            """,
+            new MapSqlParameterSource()
+                .addValue("providerId", providerId)
+                .addValue("subject", subject),
             (rs, rowNum) -> mapLoginUser(rs))
         .stream()
         .findFirst();
