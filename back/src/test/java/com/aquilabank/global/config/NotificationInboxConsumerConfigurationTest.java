@@ -3,6 +3,7 @@ package com.aquilabank.global.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
+import com.aquilabank.domain.notification.port.NotificationDlqRedriveAuditPort;
 import com.aquilabank.domain.notification.port.NotificationInboxAppendPort;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -15,6 +16,9 @@ class NotificationInboxConsumerConfigurationTest {
           .withUserConfiguration(NotificationInboxConsumerConfiguration.class)
           .withBean(
               NotificationInboxAppendPort.class, () -> mock(NotificationInboxAppendPort.class))
+          .withBean(
+              NotificationDlqRedriveAuditPort.class,
+              () -> mock(NotificationDlqRedriveAuditPort.class))
           .withBean(ObjectMapper.class, ObjectMapper::new);
 
   @Test

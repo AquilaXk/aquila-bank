@@ -5,6 +5,8 @@ import com.aquilabank.domain.notification.usecase.NotificationOpsRecoveryUseCase
 import com.aquilabank.global.config.NotificationInboxConsumerProperties;
 import com.aquilabank.global.security.InternalServiceRequestAuthorizer;
 import com.aquilabank.global.security.InternalServiceScope;
+import com.aquilabank.global.security.InternalServiceTokenClaims;
+import com.aquilabank.global.web.RequestTraceContext;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Positive;
@@ -60,8 +62,22 @@ public class NotificationOpsController {
   @PostMapping("/dlq-events/redrive")
   public NotificationDlqRedriveResponse redriveDlqEvent(
       HttpServletRequest request, @Valid @RequestBody NotificationDlqRedriveRequest body) {
-    internalServiceRequestAuthorizer.requireScope(request, InternalServiceScope.OUTBOX_OPS);
+    InternalServiceTokenClaims claims =
+        internalServiceRequestAuthorizer.requireScope(request, InternalServiceScope.OUTBOX_OPS);
     return NotificationDlqRedriveResponse.from(
-        notificationOpsRecoveryUseCase.redrive(body.toTarget()));
+        notificationOpsRecoveryUseCase.redrive(
+            body.toCommand(claims.subject(), resolveRequestId(request))));
+  }
+
+  private String resolveRequestId(HttpServletRequest request) {
+    return RequestTraceContext.currentRequestId()
+        .or(
+            () -> {
+              String header = request.getHeader(RequestTraceContext.REQUEST_ID_HEADER);
+              return header == null || header.isBlank()
+                  ? java.util.Optional.empty()
+                  : java.util.Optional.of(header);
+            })
+        .orElse("unknown");
   }
 }

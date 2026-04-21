@@ -1,5 +1,6 @@
 package com.aquilabank.global.config;
 
+import com.aquilabank.domain.notification.port.NotificationDlqRedriveAuditPort;
 import com.aquilabank.domain.notification.port.NotificationInboxAppendPort;
 import com.aquilabank.domain.notification.port.NotificationOpsReadPort;
 import com.aquilabank.domain.notification.port.NotificationOpsRecoveryPort;
@@ -149,9 +150,10 @@ public class NotificationInboxConsumerConfiguration {
   @ConditionalOnBean(name = "notificationInboxDlqKafkaTemplate")
   NotificationOpsRecoveryPort notificationOpsRecoveryPort(
       NotificationInboxConsumerProperties properties,
-      @Qualifier("notificationInboxDlqKafkaTemplate") KafkaTemplate<String, String> notificationInboxDlqKafkaTemplate) {
+      @Qualifier("notificationInboxDlqKafkaTemplate") KafkaTemplate<String, String> notificationInboxDlqKafkaTemplate,
+      NotificationDlqRedriveAuditPort notificationDlqRedriveAuditPort) {
     return new KafkaNotificationOpsRecoveryRepository(
-        properties, notificationInboxDlqKafkaTemplate);
+        properties, notificationInboxDlqKafkaTemplate, notificationDlqRedriveAuditPort);
   }
 
   @Bean

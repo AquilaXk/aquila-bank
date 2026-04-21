@@ -1,8 +1,12 @@
 package com.aquilabank.global.notification;
 
 import com.aquilabank.domain.notification.exception.NotificationNotFoundException;
+import com.aquilabank.domain.notification.model.NotificationDlqRedriveAuditEntry;
+import com.aquilabank.domain.notification.model.NotificationDlqRedriveCommand;
+import com.aquilabank.domain.notification.model.NotificationDlqRedriveOutcome;
 import com.aquilabank.domain.notification.model.NotificationDlqRedriveResult;
 import com.aquilabank.domain.notification.model.NotificationDlqRedriveTarget;
+import com.aquilabank.domain.notification.port.NotificationDlqRedriveAuditPort;
 import com.aquilabank.domain.notification.port.NotificationOpsRecoveryPort;
 import com.aquilabank.global.config.NotificationInboxConsumerProperties;
 import java.nio.ByteBuffer;
@@ -21,12 +25,16 @@ import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.header.Header;
 import org.apache.kafka.common.header.Headers;
 import org.apache.kafka.common.serialization.StringDeserializer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.KafkaHeaders;
 
 /** preview 좌표 기준 exact seek 만 허용해 DLQ redrive 범위를 넓히지 않습니다. */
 public final class KafkaNotificationOpsRecoveryRepository implements NotificationOpsRecoveryPort {
 
+  private static final Logger log =
+      LoggerFactory.getLogger(KafkaNotificationOpsRecoveryRepository.class);
   private static final Duration READ_TIMEOUT = Duration.ofSeconds(2);
   private static final Duration POLL_INTERVAL = Duration.ofMillis(200);
   private static final String REDRIVE_SOURCE_TOPIC_HEADER = "notification-redrive-source-topic";
@@ -36,18 +44,73 @@ public final class KafkaNotificationOpsRecoveryRepository implements Notificatio
 
   private final NotificationInboxConsumerProperties properties;
   private final KafkaTemplate<String, String> kafkaTemplate;
+  private final NotificationDlqRedriveAuditPort auditPort;
 
   public KafkaNotificationOpsRecoveryRepository(
-      NotificationInboxConsumerProperties properties, KafkaTemplate<String, String> kafkaTemplate) {
+      NotificationInboxConsumerProperties properties,
+      KafkaTemplate<String, String> kafkaTemplate,
+      NotificationDlqRedriveAuditPort auditPort) {
     this.properties = properties;
     this.kafkaTemplate = kafkaTemplate;
+    this.auditPort = auditPort;
   }
 
   @Override
-  public NotificationDlqRedriveResult redrive(NotificationDlqRedriveTarget target) {
-    ConsumerRecord<String, String> sourceRecord = findDlqRecord(target);
-    String originalTopic = requiredHeaderValue(sourceRecord, KafkaHeaders.DLT_ORIGINAL_TOPIC);
-    Integer originalPartition = headerInteger(sourceRecord, KafkaHeaders.DLT_ORIGINAL_PARTITION);
+  public NotificationDlqRedriveResult redrive(NotificationDlqRedriveCommand command) {
+    NotificationDlqRedriveTarget target = command.target();
+    ConsumerRecord<String, String> sourceRecord;
+    try {
+      sourceRecord = findDlqRecord(target);
+    } catch (NotificationNotFoundException ex) {
+      appendAudit(
+          command,
+          properties.dlq().topic(),
+          target.partition(),
+          target.offset(),
+          null,
+          null,
+          null,
+          null,
+          NotificationDlqRedriveOutcome.NOT_FOUND,
+          ex.getMessage(),
+          Instant.now());
+      throw ex;
+    } catch (RuntimeException ex) {
+      appendAudit(
+          command,
+          properties.dlq().topic(),
+          target.partition(),
+          target.offset(),
+          null,
+          null,
+          null,
+          null,
+          NotificationDlqRedriveOutcome.FAILED,
+          ex.getMessage(),
+          Instant.now());
+      throw ex;
+    }
+
+    String originalTopic;
+    Integer originalPartition;
+    try {
+      originalTopic = requiredHeaderValue(sourceRecord, KafkaHeaders.DLT_ORIGINAL_TOPIC);
+      originalPartition = headerInteger(sourceRecord, KafkaHeaders.DLT_ORIGINAL_PARTITION);
+    } catch (RuntimeException ex) {
+      appendAudit(
+          command,
+          sourceRecord.topic(),
+          sourceRecord.partition(),
+          sourceRecord.offset(),
+          sourceRecord.key(),
+          null,
+          null,
+          null,
+          NotificationDlqRedriveOutcome.FAILED,
+          ex.getMessage(),
+          Instant.now());
+      throw ex;
+    }
 
     ProducerRecord<String, String> redriveRecord =
         new ProducerRecord<>(
@@ -56,7 +119,19 @@ public final class KafkaNotificationOpsRecoveryRepository implements Notificatio
 
     try {
       var sendResult = kafkaTemplate.send(redriveRecord).get(5, TimeUnit.SECONDS);
-      return new NotificationDlqRedriveResult(
+      Instant redrivenAt = Instant.now();
+      NotificationDlqRedriveResult result =
+          new NotificationDlqRedriveResult(
+              sourceRecord.topic(),
+              sourceRecord.partition(),
+              sourceRecord.offset(),
+              sourceRecord.key(),
+              originalTopic,
+              sendResult.getRecordMetadata().partition(),
+              sendResult.getRecordMetadata().offset(),
+              redrivenAt);
+      appendAudit(
+          command,
           sourceRecord.topic(),
           sourceRecord.partition(),
           sourceRecord.offset(),
@@ -64,12 +139,77 @@ public final class KafkaNotificationOpsRecoveryRepository implements Notificatio
           originalTopic,
           sendResult.getRecordMetadata().partition(),
           sendResult.getRecordMetadata().offset(),
-          Instant.now());
+          NotificationDlqRedriveOutcome.SUCCESS,
+          null,
+          redrivenAt);
+      return result;
     } catch (InterruptedException ex) {
       Thread.currentThread().interrupt();
+      appendAudit(
+          command,
+          sourceRecord.topic(),
+          sourceRecord.partition(),
+          sourceRecord.offset(),
+          sourceRecord.key(),
+          originalTopic,
+          originalPartition,
+          null,
+          NotificationDlqRedriveOutcome.FAILED,
+          "notification DLQ redrive interrupted",
+          Instant.now());
       throw new IllegalStateException("notification DLQ redrive interrupted", ex);
     } catch (Exception ex) {
+      appendAudit(
+          command,
+          sourceRecord.topic(),
+          sourceRecord.partition(),
+          sourceRecord.offset(),
+          sourceRecord.key(),
+          originalTopic,
+          originalPartition,
+          null,
+          NotificationDlqRedriveOutcome.FAILED,
+          ex.getMessage(),
+          Instant.now());
       throw new IllegalStateException("notification DLQ redrive publish failed", ex);
+    }
+  }
+
+  private void appendAudit(
+      NotificationDlqRedriveCommand command,
+      String sourceTopic,
+      int sourcePartition,
+      long sourceOffset,
+      String eventKey,
+      String targetTopic,
+      Integer targetPartition,
+      Long targetOffset,
+      NotificationDlqRedriveOutcome outcome,
+      String errorMessage,
+      Instant redrivenAt) {
+    try {
+      auditPort.append(
+          new NotificationDlqRedriveAuditEntry(
+              command.actor(),
+              command.requestId(),
+              sourceTopic,
+              sourcePartition,
+              sourceOffset,
+              eventKey,
+              targetTopic,
+              targetPartition,
+              targetOffset,
+              outcome,
+              errorMessage,
+              redrivenAt));
+    } catch (RuntimeException auditEx) {
+      log.warn(
+          "notification DLQ redrive audit append failed. sourceTopic={} partition={} offset={} outcome={}",
+          sourceTopic,
+          sourcePartition,
+          sourceOffset,
+          outcome,
+          auditEx);
     }
   }
 
