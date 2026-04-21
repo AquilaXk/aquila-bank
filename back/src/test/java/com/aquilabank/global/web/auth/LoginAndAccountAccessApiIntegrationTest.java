@@ -683,6 +683,11 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
     assertEquals(WINDOWS_EDGE.expectedIpAddress(), newSession.ipAddress());
 
     refreshExpectUnauthorized(loginResult.refreshToken(), "refresh-reuse-001");
+
+    RefreshTokenSessionView revokedDescendant = loadRefreshTokenSession(refreshed.refreshToken());
+    assertEquals("REVOKED", revokedDescendant.sessionStatus());
+    assertNotNull(revokedDescendant.lastUsedAt());
+    refreshExpectUnauthorized(refreshed.refreshToken(), "refresh-descendant-after-reuse-001");
   }
 
   @Test
