@@ -125,6 +125,10 @@ auth:
       retention-days: ${AUTH_REFRESH_TOKEN_SESSION_CLEANUP_RETENTION_DAYS:30}
 
 ledger:
+  transfer-limit:
+    single-transfer-limit-minor: ${LEDGER_TRANSFER_LIMIT_SINGLE_TRANSFER_LIMIT_MINOR:10000000}
+    daily-transfer-limit-minor: ${LEDGER_TRANSFER_LIMIT_DAILY_TRANSFER_LIMIT_MINOR:50000000}
+    business-zone-id: ${LEDGER_TRANSFER_LIMIT_BUSINESS_ZONE_ID:Asia/Seoul}
   command-idempotency:
     cleanup:
       enabled: ${LEDGER_COMMAND_IDEMPOTENCY_CLEANUP_ENABLED:true}
