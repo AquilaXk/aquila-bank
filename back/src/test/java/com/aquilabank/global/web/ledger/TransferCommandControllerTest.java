@@ -117,6 +117,7 @@ class TransferCommandControllerTest {
                     """
                     {
                       "sourceAccountId": 101,
+                      "amountMinor": 700,
                       "reversalReason": "CANCEL",
                       "summary": "cancel transfer"
                     }
@@ -127,7 +128,11 @@ class TransferCommandControllerTest {
         .andExpect(jsonPath("$.availableBalanceAfterMinor").value(10000));
 
     verify(transferReversalUseCase)
-        .reverse(argThat(command -> "reversal-001".equals(command.idempotencyKey())));
+        .reverse(
+            argThat(
+                command ->
+                    "reversal-001".equals(command.idempotencyKey())
+                        && Long.valueOf(700L).equals(command.amountMinor())));
   }
 
   @Test
