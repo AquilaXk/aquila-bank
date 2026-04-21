@@ -6,7 +6,8 @@ public enum InternalServiceScope {
   ACCOUNT_ADMIN("internal:account-admin"),
   AUTH_BOOTSTRAP("internal:auth-bootstrap"),
   AUTH_ADMIN("internal:auth-admin"),
-  OUTBOX_OPS("internal:outbox-ops");
+  OUTBOX_OPS("internal:outbox-ops"),
+  LEDGER_OPS("internal:ledger-ops");
 
   private final String claimValue;
 
