@@ -16,6 +16,7 @@ import com.aquilabank.domain.auth.model.AuthStatusChangeReasonCode;
 import com.aquilabank.domain.ledger.exception.CommandConflictException;
 import com.aquilabank.domain.ledger.exception.CurrencyMismatchException;
 import com.aquilabank.domain.ledger.exception.InsufficientBalanceException;
+import com.aquilabank.domain.ledger.exception.LedgerAuditEntryNotFoundException;
 import com.aquilabank.domain.ledger.exception.LedgerSnapshotOpenDriftNotFoundException;
 import com.aquilabank.domain.ledger.exception.SnapshotNotFoundException;
 import com.aquilabank.domain.ledger.exception.TransferAccountStatusBlockedException;
@@ -127,6 +128,7 @@ public class ApiExceptionHandler {
     AuthUserNotFoundException.class,
     ExternalIdentityAuditNotFoundException.class,
     ExternalIdentityMappingNotFoundException.class,
+    LedgerAuditEntryNotFoundException.class,
     PasswordRecoveryTokenNotFoundException.class,
     UserAccountMembershipNotFoundException.class,
     NotificationNotFoundException.class,
