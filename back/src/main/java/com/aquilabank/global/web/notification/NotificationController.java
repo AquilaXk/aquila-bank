@@ -3,10 +3,13 @@ package com.aquilabank.global.web.notification;
 import com.aquilabank.domain.notification.model.NotificationBulkActionCommand;
 import com.aquilabank.domain.notification.model.NotificationCursor;
 import com.aquilabank.domain.notification.model.NotificationListQuery;
+import com.aquilabank.domain.notification.model.NotificationPreferenceUpdateCommand;
 import com.aquilabank.domain.notification.model.NotificationReadStatusFilter;
 import com.aquilabank.domain.notification.model.NotificationSearchCursor;
 import com.aquilabank.domain.notification.model.NotificationSearchQuery;
 import com.aquilabank.domain.notification.usecase.NotificationBulkActionUseCase;
+import com.aquilabank.domain.notification.usecase.NotificationPreferenceReadUseCase;
+import com.aquilabank.domain.notification.usecase.NotificationPreferenceUpdateUseCase;
 import com.aquilabank.domain.notification.usecase.NotificationQueryUseCase;
 import com.aquilabank.domain.notification.usecase.NotificationReadUseCase;
 import com.aquilabank.domain.notification.usecase.NotificationSearchUseCase;
@@ -53,6 +56,8 @@ public class NotificationController {
   private final NotificationReadUseCase notificationReadUseCase;
   private final NotificationBulkActionUseCase notificationBulkActionUseCase;
   private final NotificationSearchUseCase notificationSearchUseCase;
+  private final NotificationPreferenceReadUseCase notificationPreferenceReadUseCase;
+  private final NotificationPreferenceUpdateUseCase notificationPreferenceUpdateUseCase;
   private final NotificationSseBroker notificationSseBroker;
   private final Clock notificationSearchClock;
 
@@ -61,12 +66,16 @@ public class NotificationController {
       NotificationReadUseCase notificationReadUseCase,
       NotificationBulkActionUseCase notificationBulkActionUseCase,
       NotificationSearchUseCase notificationSearchUseCase,
+      NotificationPreferenceReadUseCase notificationPreferenceReadUseCase,
+      NotificationPreferenceUpdateUseCase notificationPreferenceUpdateUseCase,
       NotificationSseBroker notificationSseBroker,
       @Qualifier("notificationSearchClock") Clock notificationSearchClock) {
     this.notificationQueryUseCase = notificationQueryUseCase;
     this.notificationReadUseCase = notificationReadUseCase;
     this.notificationBulkActionUseCase = notificationBulkActionUseCase;
     this.notificationSearchUseCase = notificationSearchUseCase;
+    this.notificationPreferenceReadUseCase = notificationPreferenceReadUseCase;
+    this.notificationPreferenceUpdateUseCase = notificationPreferenceUpdateUseCase;
     this.notificationSseBroker = notificationSseBroker;
     this.notificationSearchClock = notificationSearchClock;
   }
@@ -132,6 +141,30 @@ public class NotificationController {
       @CurrentAuthenticatedPrincipal AuthenticatedRequestPrincipal principal) {
     try {
       return new NotificationUnreadCountResponse(resolveUnreadCount(principal));
+    } catch (IllegalArgumentException ex) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage(), ex);
+    }
+  }
+
+  @GetMapping("/preferences")
+  public NotificationPreferenceResponse getNotificationPreferences(
+      @CurrentAuthenticatedPrincipal AuthenticatedRequestPrincipal principal) {
+    try {
+      return NotificationPreferenceResponse.from(
+          notificationPreferenceReadUseCase.getPreferences(resolvePreferenceUserId(principal)));
+    } catch (IllegalArgumentException ex) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage(), ex);
+    }
+  }
+
+  @PostMapping("/preferences")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  public void updateNotificationPreferences(
+      @CurrentAuthenticatedPrincipal AuthenticatedRequestPrincipal principal,
+      @Valid @RequestBody NotificationPreferenceUpdateRequest request) {
+    try {
+      notificationPreferenceUpdateUseCase.updatePreferences(
+          resolvePreferenceUserId(principal), toPreferenceUpdateCommand(request));
     } catch (IllegalArgumentException ex) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage(), ex);
     }
@@ -270,6 +303,13 @@ public class NotificationController {
     throw new IllegalArgumentException("unsupported principal type");
   }
 
+  private long resolvePreferenceUserId(AuthenticatedRequestPrincipal principal) {
+    if (principal instanceof AuthenticatedUserPrincipal userPrincipal) {
+      return userPrincipal.userId();
+    }
+    throw new IllegalArgumentException("notification preferences require user principal");
+  }
+
   private SseEmitter openStream(AuthenticatedRequestPrincipal principal, Long lastEventId) {
     if (principal instanceof AuthenticatedUserPrincipal userPrincipal) {
       return notificationSseBroker.subscribeUser(
@@ -354,6 +394,14 @@ public class NotificationController {
   public record NotificationBulkActionRequest(
       @NotEmpty(message = "notificationIds must not be empty") @Size(max = 100, message = "notificationIds size must be 100 or less") List<@Positive(message = "notificationIds must contain only positive values") Long>
               notificationIds) {}
+
+  private NotificationPreferenceUpdateCommand toPreferenceUpdateCommand(
+      NotificationPreferenceUpdateRequest request) {
+    return new NotificationPreferenceUpdateCommand(
+        request.items().stream()
+            .map(NotificationPreferenceUpdateRequest.PreferenceItem::toModel)
+            .toList());
+  }
 
   private record NotificationSearchWindow(Instant appliedFrom, Instant appliedTo) {}
 }
