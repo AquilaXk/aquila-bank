@@ -13,6 +13,7 @@ import com.aquilabank.domain.auth.port.AuthTokenIssuePort;
 import com.aquilabank.domain.auth.port.BackupCodeLoadPort;
 import com.aquilabank.domain.auth.port.BackupCodeSecretPort;
 import com.aquilabank.domain.auth.port.BackupCodeWritePort;
+import com.aquilabank.domain.auth.port.CurrentSessionActivePort;
 import com.aquilabank.domain.auth.port.ExternalIdentityAuditQueryPort;
 import com.aquilabank.domain.auth.port.ExternalIdentityMappingWritePort;
 import com.aquilabank.domain.auth.port.ExternalIdentityUserLoadPort;
@@ -58,6 +59,8 @@ import com.aquilabank.domain.auth.usecase.BackupCodeChallengeVerifyService;
 import com.aquilabank.domain.auth.usecase.BackupCodeChallengeVerifyUseCase;
 import com.aquilabank.domain.auth.usecase.BackupCodeGenerateService;
 import com.aquilabank.domain.auth.usecase.BackupCodeGenerateUseCase;
+import com.aquilabank.domain.auth.usecase.CurrentSessionActiveService;
+import com.aquilabank.domain.auth.usecase.CurrentSessionActiveUseCase;
 import com.aquilabank.domain.auth.usecase.ExternalIdentityAuditQueryService;
 import com.aquilabank.domain.auth.usecase.ExternalIdentityAuditQueryUseCase;
 import com.aquilabank.domain.auth.usecase.ExternalIdentityMappingAdminService;
@@ -723,6 +726,12 @@ public class AuthConfiguration {
   AuthStatusChangeAuditQueryUseCase authStatusChangeAuditQueryUseCase(
       AuthStatusChangeAuditQueryPort authStatusChangeAuditQueryPort) {
     return new AuthStatusChangeAuditQueryService(authStatusChangeAuditQueryPort);
+  }
+
+  @Bean
+  CurrentSessionActiveUseCase currentSessionActiveUseCase(
+      CurrentSessionActivePort currentSessionActivePort, Clock authClock) {
+    return new CurrentSessionActiveService(currentSessionActivePort, authClock);
   }
 
   @Bean

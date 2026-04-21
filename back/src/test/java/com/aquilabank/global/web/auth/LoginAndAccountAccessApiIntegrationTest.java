@@ -750,11 +750,13 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
         loginResult("alice", "password123!", "password-reset-disabled-login-001");
     updateLegacyUserStatus(userId, "DISABLED", "fraud-review", "password-reset-disabled-ops-001");
 
-    passwordResetExpectUnauthorized(
-        currentSession.accessToken(),
-        "password123!",
-        "newPassword456!",
-        "password-reset-disabled-request-001");
+    passwordReset(
+            currentSession.accessToken(),
+            "password123!",
+            "newPassword456!",
+            "password-reset-disabled-request-001")
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.message").value("current session is not active"));
   }
 
   @Test
@@ -994,6 +996,93 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
     refreshExpectUnauthorized(middle.refreshToken(), "session-revoke-all-refresh-002");
     refreshExpectUnauthorized(newest.refreshToken(), "session-revoke-all-refresh-003");
     refresh(bob.refreshToken(), "session-revoke-all-refresh-004");
+  }
+
+  @Test
+  void sensitiveMutationsRejectRevokedCurrentSessionAccessToken() throws Exception {
+    TokenPairResponseView loginResult =
+        loginResult("alice", "password123!", "current-session-gate-login-001");
+    long currentSessionId = loadRefreshTokenSessionId(loginResult.refreshToken());
+
+    revokeSession(loginResult.accessToken(), currentSessionId, "current-session-gate-revoke-001")
+        .andExpect(status().isNoContent());
+
+    passwordReset(
+            loginResult.accessToken(),
+            "password123!",
+            "newPassword456!",
+            "current-session-gate-password-reset-001")
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.message").value("current session is not active"));
+
+    mockMvc
+        .perform(
+            post("/api/v1/transfers")
+                .header("Authorization", "Bearer " + loginResult.accessToken())
+                .header("Idempotency-Key", "current-session-gate-transfer-001")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "sourceAccountId": %d,
+                      "targetAccountId": %d,
+                      "amountMinor": 500,
+                      "currencyCode": "KRW",
+                      "summary": "revoked-session-blocked"
+                    }
+                    """
+                        .formatted(allowedSourceAccountId, targetAccountId)))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.message").value("current session is not active"));
+
+    performStartTotpEnrollment(loginResult.accessToken(), "current-session-gate-totp-enroll-001")
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.message").value("current session is not active"));
+
+    revokeAllSessions(loginResult.accessToken(), "current-session-gate-revoke-all-001")
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.message").value("current session is not active"));
+  }
+
+  @Test
+  void sensitiveMutationsRejectLegacyJwtWithoutSessionId() throws Exception {
+    loginResult("alice", "password123!", "current-session-gate-legacy-login-001");
+    String legacyAccessToken = issueLegacyAccessToken("alice", userId);
+
+    passwordReset(
+            legacyAccessToken,
+            "password123!",
+            "newPassword456!",
+            "current-session-gate-legacy-password-reset-001")
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.message").value("current session is not active"));
+
+    mockMvc
+        .perform(
+            post("/api/v1/transfers")
+                .header("Authorization", "Bearer " + legacyAccessToken)
+                .header("Idempotency-Key", "current-session-gate-legacy-transfer-001")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "sourceAccountId": %d,
+                      "targetAccountId": %d,
+                      "amountMinor": 500,
+                      "currencyCode": "KRW",
+                      "summary": "legacy-session-blocked"
+                    }
+                    """
+                        .formatted(allowedSourceAccountId, targetAccountId)))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.message").value("current session is not active"));
+
+    mockMvc
+        .perform(
+            get("/api/v1/auth/sessions")
+                .header("Authorization", "Bearer " + legacyAccessToken)
+                .param("size", "10"))
+        .andExpect(status().isOk());
   }
 
   @Test
@@ -1321,8 +1410,8 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
                     }
                     """
                         .formatted(allowedSourceAccountId, targetAccountId)))
-        .andExpect(status().isForbidden())
-        .andExpect(jsonPath("$.message").value("account access is denied"));
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.message").value("current session is not active"));
   }
 
   @Test

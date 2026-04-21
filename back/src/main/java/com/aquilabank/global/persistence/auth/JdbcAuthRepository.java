@@ -30,6 +30,7 @@ import com.aquilabank.domain.auth.port.AccountStatusAccessPort;
 import com.aquilabank.domain.auth.port.AuthSessionQueryPort;
 import com.aquilabank.domain.auth.port.AuthStatusChangeAuditQueryPort;
 import com.aquilabank.domain.auth.port.BackupCodeLoadPort;
+import com.aquilabank.domain.auth.port.CurrentSessionActivePort;
 import com.aquilabank.domain.auth.port.ExternalIdentityUserLoadPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionLoadPort;
 import com.aquilabank.domain.auth.port.RememberDeviceLoadPort;
@@ -61,6 +62,7 @@ public class JdbcAuthRepository
         AccountAccessPort,
         AccountStatusAccessPort,
         ExternalIdentityUserLoadPort,
+        CurrentSessionActivePort,
         UserQueryPort,
         UserAccountMembershipQueryPort,
         AuthStatusChangeAuditQueryPort {
@@ -367,6 +369,28 @@ public class JdbcAuthRepository
             .addValue("now", Timestamp.from(now))
             .addValue("size", size),
         (rs, rowNum) -> mapAuthSessionSummary(rs));
+  }
+
+  @Override
+  public boolean existsActiveSession(long userId, long sessionId, Instant now) {
+    Boolean exists =
+        jdbcTemplate.queryForObject(
+            """
+            SELECT EXISTS (
+                SELECT 1
+                FROM auth_refresh_token_session
+                WHERE id = :sessionId
+                  AND user_id = :userId
+                  AND session_status = 'ACTIVE'
+                  AND expires_at > :now
+            )
+            """,
+            new MapSqlParameterSource()
+                .addValue("userId", userId)
+                .addValue("sessionId", sessionId)
+                .addValue("now", Timestamp.from(now)),
+            Boolean.class);
+    return Boolean.TRUE.equals(exists);
   }
 
   @Override
