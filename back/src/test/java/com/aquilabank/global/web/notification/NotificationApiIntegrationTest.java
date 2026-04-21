@@ -6,6 +6,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.aquilabank.domain.notification.model.NotificationInboxEntry;
+import com.aquilabank.global.persistence.notification.JdbcNotificationInboxRepository;
 import com.aquilabank.support.PostgresContainerTestSupport;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nimbusds.jose.JOSEException;
@@ -44,6 +46,8 @@ class NotificationApiIntegrationTest extends PostgresContainerTestSupport {
   @Autowired private WebApplicationContext context;
 
   @Autowired private NamedParameterJdbcTemplate jdbcTemplate;
+
+  @Autowired private JdbcNotificationInboxRepository notificationInboxRepository;
 
   @Autowired private PlatformTransactionManager transactionManager;
 
@@ -256,6 +260,60 @@ class NotificationApiIntegrationTest extends PostgresContainerTestSupport {
         .andExpect(
             jsonPath("$.items[?(@.category=='SECURITY' && @.channel=='SMS')].enabled")
                 .value(org.hamcrest.Matchers.contains(true)));
+  }
+
+  @Test
+  void hidesInAppNotificationsForJwtUserWithDisabledTransactionalPreference() throws Exception {
+    long[] userIds = new long[2];
+    long[] accountId = new long[1];
+    Instant createdAt = Instant.parse("2026-04-17T00:00:00Z");
+    commit(
+        transactionManager,
+        () -> {
+          userIds[0] = insertUser("api-pref-enabled-user");
+          userIds[1] = insertUser("api-pref-disabled-user");
+          accountId[0] = insertAccount("api preference account");
+          insertMembership(userIds[0], accountId[0], "OWNER", "ACTIVE");
+          insertMembership(userIds[1], accountId[0], "VIEWER", "ACTIVE");
+          insertPreference(userIds[1], "TRANSACTIONAL", "IN_APP", false);
+          notificationInboxRepository.appendAllIfAbsent(
+              java.util.List.of(
+                  new NotificationInboxEntry(
+                      accountId[0],
+                      "evt-api-preference-disabled",
+                      "TransferBooked",
+                      "이체 완료",
+                      "1500 KRW 입금 · preference",
+                      createdAt)));
+        });
+
+    String enabledToken = issueToken("api-pref-enabled-subject", userIds[0]);
+    String disabledToken = issueToken("api-pref-disabled-subject", userIds[1]);
+
+    mockMvc
+        .perform(get("/api/v1/notifications").header("Authorization", "Bearer " + enabledToken))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(1))
+        .andExpect(jsonPath("$.items[0].title").value("이체 완료"));
+
+    mockMvc
+        .perform(get("/api/v1/notifications").header("Authorization", "Bearer " + disabledToken))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(0));
+
+    mockMvc
+        .perform(
+            get("/api/v1/notifications/unread-count")
+                .header("Authorization", "Bearer " + enabledToken))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.unreadCount").value(1));
+
+    mockMvc
+        .perform(
+            get("/api/v1/notifications/unread-count")
+                .header("Authorization", "Bearer " + disabledToken))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.unreadCount").value(0));
   }
 
   @Test
@@ -862,7 +920,96 @@ class NotificationApiIntegrationTest extends PostgresContainerTestSupport {
     if (notificationId == null) {
       throw new IllegalStateException("notification_inbox insert did not return id");
     }
+    seedUnreadProjectionForInsertedNotification(accountId, readAt);
     return notificationId;
+  }
+
+  private void seedUnreadProjectionForInsertedNotification(long accountId, Instant readAt) {
+    if (readAt == null) {
+      incrementTestProjection("ACCOUNT", accountId, 1L);
+    }
+    jdbcTemplate.update(
+        """
+        INSERT INTO notification_unread_count_projection (
+            scope_type,
+            scope_id,
+            unread_count,
+            updated_at
+        )
+        SELECT 'USER',
+               m.user_id,
+               1,
+               CURRENT_TIMESTAMP
+        FROM user_account_membership m
+        JOIN bank_user u
+          ON u.id = m.user_id
+        LEFT JOIN notification_preference p
+          ON p.user_id = m.user_id
+         AND p.category = 'TRANSACTIONAL'
+         AND p.channel = 'IN_APP'
+        WHERE m.account_id = :accountId
+          AND m.membership_status = 'ACTIVE'
+          AND u.user_status = 'ACTIVE'
+          AND COALESCE(p.enabled, TRUE) = TRUE
+        ON CONFLICT (scope_type, scope_id)
+        DO UPDATE
+        SET unread_count = notification_unread_count_projection.unread_count + EXCLUDED.unread_count,
+            updated_at = CURRENT_TIMESTAMP
+        """,
+        new MapSqlParameterSource().addValue("accountId", accountId));
+  }
+
+  private void incrementTestProjection(String scopeType, long scopeId, long delta) {
+    jdbcTemplate.update(
+        """
+        INSERT INTO notification_unread_count_projection (
+            scope_type,
+            scope_id,
+            unread_count,
+            updated_at
+        )
+        VALUES (
+            :scopeType,
+            :scopeId,
+            :delta,
+            CURRENT_TIMESTAMP
+        )
+        ON CONFLICT (scope_type, scope_id)
+        DO UPDATE
+        SET unread_count = notification_unread_count_projection.unread_count + EXCLUDED.unread_count,
+            updated_at = CURRENT_TIMESTAMP
+        """,
+        new MapSqlParameterSource()
+            .addValue("scopeType", scopeType)
+            .addValue("scopeId", scopeId)
+            .addValue("delta", delta));
+  }
+
+  private void insertPreference(long userId, String category, String channel, boolean enabled) {
+    jdbcTemplate.update(
+        """
+        INSERT INTO notification_preference (
+            user_id,
+            category,
+            channel,
+            enabled,
+            created_at,
+            updated_at
+        )
+        VALUES (
+            :userId,
+            :category,
+            :channel,
+            :enabled,
+            CURRENT_TIMESTAMP,
+            CURRENT_TIMESTAMP
+        )
+        """,
+        new MapSqlParameterSource()
+            .addValue("userId", userId)
+            .addValue("category", category)
+            .addValue("channel", channel)
+            .addValue("enabled", enabled));
   }
 
   private String issueToken(String subject, long userId) throws JOSEException {
