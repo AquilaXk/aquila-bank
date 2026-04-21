@@ -16,6 +16,7 @@ import com.aquilabank.domain.auth.model.AuthStatusChangeReasonCode;
 import com.aquilabank.domain.ledger.exception.CommandConflictException;
 import com.aquilabank.domain.ledger.exception.CurrencyMismatchException;
 import com.aquilabank.domain.ledger.exception.InsufficientBalanceException;
+import com.aquilabank.domain.ledger.exception.LedgerSnapshotOpenDriftNotFoundException;
 import com.aquilabank.domain.ledger.exception.SnapshotNotFoundException;
 import com.aquilabank.domain.ledger.exception.TransferAccountStatusBlockedException;
 import com.aquilabank.domain.ledger.exception.TransferReversalNotFoundException;
@@ -140,7 +141,8 @@ public class ApiExceptionHandler {
     DuplicateLoginIdException.class,
     CommandConflictException.class,
     CurrencyMismatchException.class,
-    InsufficientBalanceException.class
+    InsufficientBalanceException.class,
+    LedgerSnapshotOpenDriftNotFoundException.class
   })
   ResponseEntity<ApiErrorResponse> handleConflict(RuntimeException ex, HttpServletRequest request) {
     return response(HttpStatus.CONFLICT, ex.getMessage(), request);
