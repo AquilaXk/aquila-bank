@@ -335,6 +335,7 @@ bash tools/test/check-nginx-sse-proxy.sh
   - `POST /api/v1/transfers/{transactionReference}/reversal`
 - reversal 요청 필드:
   - `sourceAccountId`
+  - `amountMinor` (선택, 없으면 남은 reversal 가능 금액 전체)
   - `reversalReason`: `CANCEL` | `CORRECTION`
   - `summary`
 - reversal 응답 필드:
@@ -353,10 +354,12 @@ bash tools/test/check-nginx-sse-proxy.sh
   - 원본 `transaction_read_model` 상태는 `REVERSED` 로 전이하고 reversal read model row 2건을 추가
   - outbox는 `TransferReversed` event를 별도 적재
 - 충돌 기준:
-  - 같은 원본 transfer를 다시 reversal 하면 `409 transfer is already reversed`
+  - 누적 reversal 금액이 원본 금액을 넘으면 `409 reversal amount exceeds remaining amount`
+  - 이미 전액 reversal 된 원본 transfer를 다시 reversal 하면 `409 transfer is already reversed`
   - reversal 시 target 계좌 잔액이 부족하면 `409 reversal target balance is not enough`
 - 운영 주의:
-  - 이번 범위는 full reversal만 지원하고 partial reversal은 제외
+  - partial reversal은 원본 ledger row를 수정하지 않고 reversal ledger row를 누적 append 한다
+  - 원본 read model 상태는 부분 reversal 후 `PARTIALLY_REVERSED`, 전액 누적 reversal 후 `REVERSED` 로 전이한다
   - notification inbox consumer는 `TransferBooked`, `TransferReversed` fan-out을 모두 처리하고 DLQ/ops 집계는 두 topic 합산 기준으로 본다
 
 ## Public Login Protection

@@ -78,6 +78,7 @@ public class TransferCommandController {
             new TransferReversalCommand(
                 transactionReference,
                 sourceAccountId,
+                request.amountMinor(),
                 request.reversalReason(),
                 request.summary(),
                 idempotencyKey));
@@ -98,6 +99,7 @@ public class TransferCommandController {
   /** 송금 reversal 요청 body */
   public record TransferReversalRequest(
       @Positive(message = "sourceAccountId must be positive") long sourceAccountId,
+      @Positive(message = "amountMinor must be positive") Long amountMinor,
       @NotNull(message = "reversalReason is required") TransferReversalReason reversalReason,
       @NotBlank(message = "summary is required") @Size(max = 120, message = "summary must be 120 characters or less") String summary) {}
 

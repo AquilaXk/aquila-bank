@@ -4,6 +4,7 @@ package com.aquilabank.domain.ledger.model;
 public record TransferReversalCommand(
     String originalTransactionReference,
     long sourceAccountId,
+    Long amountMinor,
     TransferReversalReason reversalReason,
     String summary,
     String idempotencyKey) {
@@ -17,6 +18,9 @@ public record TransferReversalCommand(
     }
     if (sourceAccountId <= 0) {
       throw new IllegalArgumentException("sourceAccountId must be positive");
+    }
+    if (amountMinor != null && amountMinor <= 0) {
+      throw new IllegalArgumentException("amountMinor must be positive");
     }
     if (reversalReason == null) {
       throw new IllegalArgumentException("reversalReason is required");
@@ -33,6 +37,8 @@ public record TransferReversalCommand(
     return originalTransactionReference
         + "|"
         + sourceAccountId
+        + "|"
+        + amountMinor
         + "|"
         + reversalReason
         + "|"
