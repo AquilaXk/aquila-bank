@@ -789,6 +789,47 @@ class JdbcNotificationInboxRepositoryIntegrationTest extends PostgresContainerTe
   }
 
   @Test
+  void appendsEmailSmsChannelOutboxUsingTransactionalPreferences() {
+    long[] userIds = new long[3];
+    long[] accountId = new long[1];
+    Instant createdAt = Instant.parse("2026-04-22T00:00:00Z");
+    String eventKey = "evt-channel-preference";
+    String eventType = "TransferBooked";
+    String title = "이체 완료";
+    String message = "1500 KRW 입금 · channel preference";
+    commit(
+        transactionManager,
+        () -> {
+          userIds[0] = insertUser("channel-default-email-user");
+          userIds[1] = insertUser("channel-email-disabled-user");
+          userIds[2] = insertUser("channel-sms-enabled-user");
+          accountId[0] = insertAccount("channel preference account");
+          insertMembership(userIds[0], accountId[0], "OWNER", "ACTIVE");
+          insertMembership(userIds[1], accountId[0], "VIEWER", "ACTIVE");
+          insertMembership(userIds[2], accountId[0], "VIEWER", "ACTIVE");
+          insertPreference(userIds[1], "TRANSACTIONAL", "EMAIL", false);
+          insertPreference(userIds[2], "TRANSACTIONAL", "EMAIL", false);
+          insertPreference(userIds[2], "TRANSACTIONAL", "SMS", true);
+          NotificationInboxEntry accountItem =
+              new NotificationInboxEntry(
+                  accountId[0], eventKey, eventType, title, message, createdAt);
+          repository.appendAllIfAbsent(List.of(accountItem));
+          repository.appendAllIfAbsent(List.of(accountItem));
+        });
+
+    assertThat(findChannelOutboxRows(eventKey))
+        .containsExactlyInAnyOrder(
+            new ChannelOutboxRow(userIds[0], "EMAIL", eventKey),
+            new ChannelOutboxRow(userIds[2], "SMS", eventKey));
+    assertThat(channelOutboxCount(eventKey)).isEqualTo(2L);
+    assertThat(findChannelOutboxPayloads(eventKey))
+        .allSatisfy(
+            payload ->
+                assertThat(payload)
+                    .contains("\"eventType\"", "\"title\"", "\"message\"", "\"accountId\""));
+  }
+
+  @Test
   void deletesExpiredNotificationsInBatchesAndCascadesUserReadState() {
     long[] userId = new long[1];
     long[] accountId = new long[1];
@@ -1213,6 +1254,47 @@ class JdbcNotificationInboxRepositoryIntegrationTest extends PostgresContainerTe
     return count == null ? 0L : count;
   }
 
+  private List<ChannelOutboxRow> findChannelOutboxRows(String eventKey) {
+    return jdbcTemplate.query(
+        """
+        SELECT user_id,
+               channel,
+               event_key
+        FROM notification_channel_outbox
+        WHERE event_key = :eventKey
+        ORDER BY user_id ASC, channel ASC
+        """,
+        new MapSqlParameterSource().addValue("eventKey", eventKey),
+        (rs, rowNum) ->
+            new ChannelOutboxRow(
+                rs.getLong("user_id"), rs.getString("channel"), rs.getString("event_key")));
+  }
+
+  private List<String> findChannelOutboxPayloads(String eventKey) {
+    return jdbcTemplate.queryForList(
+        """
+        SELECT payload::text
+        FROM notification_channel_outbox
+        WHERE event_key = :eventKey
+        ORDER BY user_id ASC, channel ASC
+        """,
+        new MapSqlParameterSource().addValue("eventKey", eventKey),
+        String.class);
+  }
+
+  private long channelOutboxCount(String eventKey) {
+    Long count =
+        jdbcTemplate.queryForObject(
+            """
+            SELECT COUNT(*)
+            FROM notification_channel_outbox
+            WHERE event_key = :eventKey
+            """,
+            new MapSqlParameterSource().addValue("eventKey", eventKey),
+            Long.class);
+    return count == null ? 0L : count;
+  }
+
   private long totalNotifications() {
     Long count =
         jdbcTemplate.queryForObject(
@@ -1250,4 +1332,6 @@ class JdbcNotificationInboxRepositoryIntegrationTest extends PostgresContainerTe
             Long.class);
     return count == null ? 0L : count;
   }
+
+  private record ChannelOutboxRow(long userId, String channel, String eventKey) {}
 }
