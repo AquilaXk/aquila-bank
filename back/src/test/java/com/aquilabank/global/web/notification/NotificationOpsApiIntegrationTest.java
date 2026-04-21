@@ -1,5 +1,6 @@
 package com.aquilabank.global.web.notification;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.isOneOf;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
@@ -16,6 +17,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,6 +25,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.KafkaHeaders;
 import org.springframework.test.context.ActiveProfiles;
@@ -58,6 +62,8 @@ class NotificationOpsApiIntegrationTest extends PostgresKafkaContainerTestSuppor
   @Qualifier("notificationInboxDlqKafkaTemplate") private KafkaTemplate<String, String> kafkaTemplate;
 
   @Autowired private NotificationOpsQueryUseCase notificationOpsQueryUseCase;
+
+  @Autowired private NamedParameterJdbcTemplate jdbcTemplate;
 
   @Autowired private ObjectMapper objectMapper;
 
@@ -115,6 +121,7 @@ class NotificationOpsApiIntegrationTest extends PostgresKafkaContainerTestSuppor
   @Test
   void redrivesNotificationDlqRecordWithInternalServiceToken() throws Exception {
     String eventKey = "transfer-booked:REDRIVE-" + System.currentTimeMillis();
+    String requestId = "notification-redrive-audit-success";
     ProducerRecord<String, String> record =
         validDlqRecord(eventKey, "{\"transactionReference\":\"redrive\"}");
     var sendResult = kafkaTemplate.send(record).get(5, TimeUnit.SECONDS);
@@ -123,6 +130,7 @@ class NotificationOpsApiIntegrationTest extends PostgresKafkaContainerTestSuppor
         .perform(
             post("/internal/api/v1/outbox/notification/dlq-events/redrive")
                 .header("Authorization", outboxOpsAuthorization())
+                .header("X-Request-Id", requestId)
                 .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
                 .content(
                     objectMapper.writeValueAsString(
@@ -135,6 +143,22 @@ class NotificationOpsApiIntegrationTest extends PostgresKafkaContainerTestSuppor
         .andExpect(jsonPath("$.targetTopic").value(TRANSFER_BOOKED_TOPIC))
         .andExpect(jsonPath("$.targetPartition").value(0))
         .andExpect(jsonPath("$.targetOffset", greaterThanOrEqualTo(0)));
+
+    assertThat(
+            findRedriveAuditRows(
+                TRANSFER_BOOKED_DLQ_TOPIC,
+                sendResult.getRecordMetadata().partition(),
+                sendResult.getRecordMetadata().offset()))
+        .singleElement()
+        .satisfies(
+            item -> {
+              assertThat(item.actor()).isEqualTo("outbox-ops");
+              assertThat(item.requestId()).isEqualTo(requestId);
+              assertThat(item.eventKey()).isEqualTo(eventKey);
+              assertThat(item.targetTopic()).isEqualTo(TRANSFER_BOOKED_TOPIC);
+              assertThat(item.targetOffset()).isNotNull();
+              assertThat(item.outcome()).isEqualTo("SUCCESS");
+            });
   }
 
   @Test
@@ -153,6 +177,7 @@ class NotificationOpsApiIntegrationTest extends PostgresKafkaContainerTestSuppor
   @Test
   void returnsBadRequestWhenDlqOriginalTopicHeaderIsMissing() throws Exception {
     String eventKey = "transfer-booked:REDRIVE-MISSING-" + System.currentTimeMillis();
+    String requestId = "notification-redrive-audit-failed";
     ProducerRecord<String, String> record =
         new ProducerRecord<>(TRANSFER_BOOKED_DLQ_TOPIC, eventKey, "{\"broken\":true}");
     var sendResult = kafkaTemplate.send(record).get(5, TimeUnit.SECONDS);
@@ -161,6 +186,7 @@ class NotificationOpsApiIntegrationTest extends PostgresKafkaContainerTestSuppor
         .perform(
             post("/internal/api/v1/outbox/notification/dlq-events/redrive")
                 .header("Authorization", outboxOpsAuthorization())
+                .header("X-Request-Id", requestId)
                 .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
                 .content(
                     objectMapper.writeValueAsString(
@@ -170,21 +196,58 @@ class NotificationOpsApiIntegrationTest extends PostgresKafkaContainerTestSuppor
         .andExpect(status().isBadRequest())
         .andExpect(
             jsonPath("$.message").value("notification DLQ record original topic is missing"));
+
+    assertThat(
+            findRedriveAuditRows(
+                TRANSFER_BOOKED_DLQ_TOPIC,
+                sendResult.getRecordMetadata().partition(),
+                sendResult.getRecordMetadata().offset()))
+        .singleElement()
+        .satisfies(
+            item -> {
+              assertThat(item.actor()).isEqualTo("outbox-ops");
+              assertThat(item.requestId()).isEqualTo(requestId);
+              assertThat(item.eventKey()).isEqualTo(eventKey);
+              assertThat(item.targetTopic()).isNull();
+              assertThat(item.targetOffset()).isNull();
+              assertThat(item.outcome()).isEqualTo("FAILED");
+              assertThat(item.errorMessage()).contains("original topic is missing");
+            });
   }
 
   @Test
   void returnsNotFoundWhenDlqRecordDoesNotExist() throws Exception {
+    long missingOffset = 9_000_000_000L + System.currentTimeMillis();
+    String requestId = "notification-redrive-audit-not-found";
+
     mockMvc
         .perform(
             post("/internal/api/v1/outbox/notification/dlq-events/redrive")
                 .header("Authorization", outboxOpsAuthorization())
+                .header("X-Request-Id", requestId)
                 .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
                 .content(
-                    objectMapper.writeValueAsString(new NotificationDlqRedriveRequest(0, 9999L))))
+                    objectMapper.writeValueAsString(
+                        new NotificationDlqRedriveRequest(0, missingOffset))))
         .andExpect(status().isNotFound())
         .andExpect(
             jsonPath("$.message")
-                .value("notification DLQ record is not found: partition=0 offset=9999"));
+                .value(
+                    "notification DLQ record is not found: partition=0 offset=%d"
+                        .formatted(missingOffset)));
+
+    assertThat(findRedriveAuditRows(TRANSFER_BOOKED_DLQ_TOPIC, 0, missingOffset))
+        .singleElement()
+        .satisfies(
+            item -> {
+              assertThat(item.actor()).isEqualTo("outbox-ops");
+              assertThat(item.requestId()).isEqualTo(requestId);
+              assertThat(item.eventKey()).isNull();
+              assertThat(item.targetTopic()).isNull();
+              assertThat(item.targetOffset()).isNull();
+              assertThat(item.outcome()).isEqualTo("NOT_FOUND");
+              assertThat(item.errorMessage()).contains("not found");
+            });
   }
 
   @Test
@@ -244,4 +307,45 @@ class NotificationOpsApiIntegrationTest extends PostgresKafkaContainerTestSuppor
         + internalServiceTokenIssuer.issue(
             "outbox-ops", java.util.Set.of(InternalServiceScope.OUTBOX_OPS));
   }
+
+  private List<RedriveAuditRow> findRedriveAuditRows(
+      String sourceTopic, int sourcePartition, long sourceOffset) {
+    return jdbcTemplate.query(
+        """
+        SELECT actor,
+               request_id,
+               event_key,
+               target_topic,
+               target_offset,
+               outcome,
+               error_message
+        FROM notification_dlq_redrive_audit
+        WHERE source_topic = :sourceTopic
+          AND source_partition = :sourcePartition
+          AND source_offset = :sourceOffset
+        ORDER BY id ASC
+        """,
+        new MapSqlParameterSource()
+            .addValue("sourceTopic", sourceTopic)
+            .addValue("sourcePartition", sourcePartition)
+            .addValue("sourceOffset", sourceOffset),
+        (rs, rowNum) ->
+            new RedriveAuditRow(
+                rs.getString("actor"),
+                rs.getString("request_id"),
+                rs.getString("event_key"),
+                rs.getString("target_topic"),
+                rs.getObject("target_offset", Long.class),
+                rs.getString("outcome"),
+                rs.getString("error_message")));
+  }
+
+  private record RedriveAuditRow(
+      String actor,
+      String requestId,
+      String eventKey,
+      String targetTopic,
+      Long targetOffset,
+      String outcome,
+      String errorMessage) {}
 }

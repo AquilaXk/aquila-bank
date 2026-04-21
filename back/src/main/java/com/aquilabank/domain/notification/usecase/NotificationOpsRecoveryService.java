@@ -1,5 +1,6 @@
 package com.aquilabank.domain.notification.usecase;
 
+import com.aquilabank.domain.notification.model.NotificationDlqRedriveCommand;
 import com.aquilabank.domain.notification.model.NotificationDlqRedriveResult;
 import com.aquilabank.domain.notification.model.NotificationDlqRedriveTarget;
 import com.aquilabank.domain.notification.port.NotificationOpsRecoveryPort;
@@ -21,6 +22,14 @@ public final class NotificationOpsRecoveryService implements NotificationOpsReco
     if (target == null) {
       throw new IllegalArgumentException("target is required");
     }
-    return notificationOpsRecoveryPort.redrive(target);
+    return redrive(new NotificationDlqRedriveCommand(target, "system", "unknown"));
+  }
+
+  @Override
+  public NotificationDlqRedriveResult redrive(NotificationDlqRedriveCommand command) {
+    if (command == null) {
+      throw new IllegalArgumentException("command is required");
+    }
+    return notificationOpsRecoveryPort.redrive(command);
   }
 }

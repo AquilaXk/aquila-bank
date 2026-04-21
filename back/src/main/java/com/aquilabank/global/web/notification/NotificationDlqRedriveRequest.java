@@ -1,5 +1,6 @@
 package com.aquilabank.global.web.notification;
 
+import com.aquilabank.domain.notification.model.NotificationDlqRedriveCommand;
 import com.aquilabank.domain.notification.model.NotificationDlqRedriveTarget;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
@@ -11,5 +12,9 @@ public record NotificationDlqRedriveRequest(
 
   NotificationDlqRedriveTarget toTarget() {
     return new NotificationDlqRedriveTarget(partition, offset);
+  }
+
+  NotificationDlqRedriveCommand toCommand(String actor, String requestId) {
+    return new NotificationDlqRedriveCommand(toTarget(), actor, requestId);
   }
 }
