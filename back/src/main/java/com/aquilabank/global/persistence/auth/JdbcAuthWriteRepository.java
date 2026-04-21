@@ -21,6 +21,7 @@ import com.aquilabank.domain.auth.model.PasswordRecoveryTokenIssueCommand;
 import com.aquilabank.domain.auth.model.PasswordRecoveryTokenUseCommand;
 import com.aquilabank.domain.auth.model.PasswordResetWriteCommand;
 import com.aquilabank.domain.auth.model.RefreshTokenSessionCreateCommand;
+import com.aquilabank.domain.auth.model.RefreshTokenSessionFamilyRevokeCommand;
 import com.aquilabank.domain.auth.model.RefreshTokenSessionRevokeCommand;
 import com.aquilabank.domain.auth.model.RefreshTokenSessionRotateCommand;
 import com.aquilabank.domain.auth.model.RememberDeviceIssueCommand;
@@ -622,6 +623,62 @@ public class JdbcAuthWriteRepository
     if (updated != 1) {
       throw new IllegalStateException("refresh token session is not active");
     }
+  }
+
+  @Override
+  @Transactional
+  public void revokeFamily(RefreshTokenSessionFamilyRevokeCommand command) {
+    jdbcTemplate.update(
+        """
+        WITH RECURSIVE ancestors(id, replaced_by_session_id) AS (
+            SELECT id,
+                   replaced_by_session_id
+            FROM auth_refresh_token_session
+            WHERE id = :reusedSessionId
+
+            UNION ALL
+
+            SELECT parent.id,
+                   parent.replaced_by_session_id
+            FROM auth_refresh_token_session parent
+            JOIN ancestors child ON parent.replaced_by_session_id = child.id
+        ),
+        family_root(id) AS (
+            SELECT ancestor.id
+            FROM ancestors ancestor
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM auth_refresh_token_session parent
+                WHERE parent.replaced_by_session_id = ancestor.id
+            )
+            LIMIT 1
+        ),
+        family(id, replaced_by_session_id) AS (
+            SELECT session.id,
+                   session.replaced_by_session_id
+            FROM auth_refresh_token_session session
+            JOIN family_root root ON session.id = root.id
+
+            UNION ALL
+
+            SELECT child.id,
+                   child.replaced_by_session_id
+            FROM auth_refresh_token_session child
+            JOIN family parent ON parent.replaced_by_session_id = child.id
+        )
+        UPDATE auth_refresh_token_session target
+        SET session_status = 'REVOKED',
+            last_used_at = :revokedAt,
+            updated_at = :revokedAt
+        WHERE target.session_status = 'ACTIVE'
+          AND target.id IN (
+              SELECT id
+              FROM family
+          )
+        """,
+        new MapSqlParameterSource()
+            .addValue("reusedSessionId", command.reusedSessionId())
+            .addValue("revokedAt", Timestamp.from(command.revokedAt())));
   }
 
   @Override

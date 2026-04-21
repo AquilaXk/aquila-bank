@@ -1,6 +1,7 @@
 package com.aquilabank.domain.auth.port;
 
 import com.aquilabank.domain.auth.model.RefreshTokenSessionCreateCommand;
+import com.aquilabank.domain.auth.model.RefreshTokenSessionFamilyRevokeCommand;
 import com.aquilabank.domain.auth.model.RefreshTokenSessionRevokeCommand;
 import com.aquilabank.domain.auth.model.RefreshTokenSessionRotateCommand;
 import java.time.Instant;
@@ -13,6 +14,8 @@ public interface RefreshTokenSessionWritePort {
   void rotate(RefreshTokenSessionRotateCommand command);
 
   void revoke(RefreshTokenSessionRevokeCommand command);
+
+  void revokeFamily(RefreshTokenSessionFamilyRevokeCommand command);
 
   void revokeActiveSessionsByUserId(long userId, Instant revokedAt);
 }
