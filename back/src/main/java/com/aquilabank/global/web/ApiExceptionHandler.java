@@ -5,7 +5,10 @@ import com.aquilabank.domain.account.exception.AccountSummaryNotFoundException;
 import com.aquilabank.domain.auth.exception.AccountAccessDeniedException;
 import com.aquilabank.domain.auth.exception.AuthStatusChangeAuditNotFoundException;
 import com.aquilabank.domain.auth.exception.AuthUserNotFoundException;
+import com.aquilabank.domain.auth.exception.DuplicateExternalIdentityMappingException;
 import com.aquilabank.domain.auth.exception.DuplicateLoginIdException;
+import com.aquilabank.domain.auth.exception.ExternalIdentityAuditNotFoundException;
+import com.aquilabank.domain.auth.exception.ExternalIdentityMappingNotFoundException;
 import com.aquilabank.domain.auth.exception.InvalidCredentialsException;
 import com.aquilabank.domain.auth.exception.PasswordRecoveryTokenNotFoundException;
 import com.aquilabank.domain.auth.exception.UserAccountMembershipNotFoundException;
@@ -117,6 +120,8 @@ public class ApiExceptionHandler {
     TransferReversalNotFoundException.class,
     AuthStatusChangeAuditNotFoundException.class,
     AuthUserNotFoundException.class,
+    ExternalIdentityAuditNotFoundException.class,
+    ExternalIdentityMappingNotFoundException.class,
     PasswordRecoveryTokenNotFoundException.class,
     UserAccountMembershipNotFoundException.class,
     NotificationNotFoundException.class,
@@ -127,6 +132,7 @@ public class ApiExceptionHandler {
   }
 
   @ExceptionHandler({
+    DuplicateExternalIdentityMappingException.class,
     DuplicateLoginIdException.class,
     CommandConflictException.class,
     CurrencyMismatchException.class,

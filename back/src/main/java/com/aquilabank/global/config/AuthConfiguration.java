@@ -13,6 +13,8 @@ import com.aquilabank.domain.auth.port.AuthTokenIssuePort;
 import com.aquilabank.domain.auth.port.BackupCodeLoadPort;
 import com.aquilabank.domain.auth.port.BackupCodeSecretPort;
 import com.aquilabank.domain.auth.port.BackupCodeWritePort;
+import com.aquilabank.domain.auth.port.ExternalIdentityAuditQueryPort;
+import com.aquilabank.domain.auth.port.ExternalIdentityMappingWritePort;
 import com.aquilabank.domain.auth.port.ExternalIdentityUserLoadPort;
 import com.aquilabank.domain.auth.port.LoginAttemptAuditPort;
 import com.aquilabank.domain.auth.port.LoginAttemptUpdatePort;
@@ -56,6 +58,9 @@ import com.aquilabank.domain.auth.usecase.BackupCodeChallengeVerifyService;
 import com.aquilabank.domain.auth.usecase.BackupCodeChallengeVerifyUseCase;
 import com.aquilabank.domain.auth.usecase.BackupCodeGenerateService;
 import com.aquilabank.domain.auth.usecase.BackupCodeGenerateUseCase;
+import com.aquilabank.domain.auth.usecase.ExternalIdentityAuditQueryService;
+import com.aquilabank.domain.auth.usecase.ExternalIdentityAuditQueryUseCase;
+import com.aquilabank.domain.auth.usecase.ExternalIdentityMappingAdminService;
 import com.aquilabank.domain.auth.usecase.ExternalOidcLoginService;
 import com.aquilabank.domain.auth.usecase.ExternalOidcLoginUseCase;
 import com.aquilabank.domain.auth.usecase.LoginService;
@@ -705,6 +710,18 @@ public class AuthConfiguration {
   AuthStatusChangeAuditQueryUseCase authStatusChangeAuditQueryUseCase(
       AuthStatusChangeAuditQueryPort authStatusChangeAuditQueryPort) {
     return new AuthStatusChangeAuditQueryService(authStatusChangeAuditQueryPort);
+  }
+
+  @Bean
+  ExternalIdentityMappingAdminService externalIdentityMappingAdminService(
+      ExternalIdentityMappingWritePort externalIdentityMappingWritePort) {
+    return new ExternalIdentityMappingAdminService(externalIdentityMappingWritePort);
+  }
+
+  @Bean
+  ExternalIdentityAuditQueryUseCase externalIdentityAuditQueryUseCase(
+      ExternalIdentityAuditQueryPort externalIdentityAuditQueryPort) {
+    return new ExternalIdentityAuditQueryService(externalIdentityAuditQueryPort);
   }
 
   @Bean

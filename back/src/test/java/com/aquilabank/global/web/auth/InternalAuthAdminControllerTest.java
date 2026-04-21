@@ -5,13 +5,17 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.aquilabank.domain.auth.exception.DuplicateExternalIdentityMappingException;
 import com.aquilabank.domain.auth.exception.PasswordRecoveryTokenNotFoundException;
 import com.aquilabank.domain.auth.model.AuthUserSummary;
+import com.aquilabank.domain.auth.model.ExternalIdentityMapping;
 import com.aquilabank.domain.auth.model.MembershipRole;
 import com.aquilabank.domain.auth.model.MembershipStatus;
 import com.aquilabank.domain.auth.model.PasswordRecoveryTokenLookupView;
@@ -19,6 +23,8 @@ import com.aquilabank.domain.auth.model.PasswordRecoveryTokenStatus;
 import com.aquilabank.domain.auth.model.UserAccountMembershipSummary;
 import com.aquilabank.domain.auth.model.UserStatus;
 import com.aquilabank.domain.auth.usecase.AuthUserQueryUseCase;
+import com.aquilabank.domain.auth.usecase.ExternalIdentityMappingLinkUseCase;
+import com.aquilabank.domain.auth.usecase.ExternalIdentityMappingUnlinkUseCase;
 import com.aquilabank.domain.auth.usecase.PasswordRecoveryTokenQueryUseCase;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipQueryUseCase;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipStatusUpdateUseCase;
@@ -42,6 +48,8 @@ class InternalAuthAdminControllerTest {
   private UserAccountMembershipQueryUseCase userAccountMembershipQueryUseCase;
   private UserAccountMembershipStatusUpdateUseCase userAccountMembershipStatusUpdateUseCase;
   private PasswordRecoveryTokenQueryUseCase passwordRecoveryTokenQueryUseCase;
+  private ExternalIdentityMappingLinkUseCase externalIdentityMappingLinkUseCase;
+  private ExternalIdentityMappingUnlinkUseCase externalIdentityMappingUnlinkUseCase;
   private MockMvc mockMvc;
 
   @BeforeEach
@@ -51,6 +59,8 @@ class InternalAuthAdminControllerTest {
     userAccountMembershipQueryUseCase = mock(UserAccountMembershipQueryUseCase.class);
     userAccountMembershipStatusUpdateUseCase = mock(UserAccountMembershipStatusUpdateUseCase.class);
     passwordRecoveryTokenQueryUseCase = mock(PasswordRecoveryTokenQueryUseCase.class);
+    externalIdentityMappingLinkUseCase = mock(ExternalIdentityMappingLinkUseCase.class);
+    externalIdentityMappingUnlinkUseCase = mock(ExternalIdentityMappingUnlinkUseCase.class);
 
     mockMvc =
         MockMvcBuilders.standaloneSetup(
@@ -60,6 +70,8 @@ class InternalAuthAdminControllerTest {
                     userAccountMembershipQueryUseCase,
                     userAccountMembershipStatusUpdateUseCase,
                     passwordRecoveryTokenQueryUseCase,
+                    externalIdentityMappingLinkUseCase,
+                    externalIdentityMappingUnlinkUseCase,
                     InternalServiceTokenTestSupport.authorizer()))
             .setControllerAdvice(new ApiExceptionHandler())
             .build();
@@ -177,6 +189,146 @@ class InternalAuthAdminControllerTest {
                 .param("requestId", "handoff-request-001"))
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.message").value("internal service token is invalid"));
+  }
+
+  @Test
+  void linksAndUnlinksExternalIdentityMapping() throws Exception {
+    ExternalIdentityMapping mapping =
+        new ExternalIdentityMapping(
+            21L,
+            "google",
+            "google-subject-001",
+            Instant.parse("2026-04-20T11:00:00Z"),
+            Instant.parse("2026-04-20T11:00:00Z"));
+
+    when(externalIdentityMappingLinkUseCase.link(argThat(command -> command.userId() == 21L)))
+        .thenReturn(mapping);
+    when(externalIdentityMappingUnlinkUseCase.unlink(argThat(command -> command.userId() == 21L)))
+        .thenReturn(mapping);
+
+    mockMvc
+        .perform(
+            post("/internal/api/v1/auth/users/21/external-identities")
+                .header(
+                    "Authorization",
+                    InternalServiceTokenTestSupport.authorization(
+                        SUBJECT, InternalServiceScope.AUTH_ADMIN))
+                .header(REQUEST_ID_HEADER, "external-identity-link-request")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "providerId": "google",
+                      "subject": "google-subject-001",
+                      "reasonCode": "OPS_MANUAL",
+                      "reasonDetail": "oidc onboarding"
+                    }
+                    """))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.userId").value(21))
+        .andExpect(jsonPath("$.providerId").value("google"))
+        .andExpect(jsonPath("$.subject").value("google-subject-001"))
+        .andExpect(jsonPath("$.createdAt").value("2026-04-20T11:00:00Z"))
+        .andExpect(jsonPath("$.updatedAt").value("2026-04-20T11:00:00Z"));
+
+    mockMvc
+        .perform(
+            delete("/internal/api/v1/auth/users/21/external-identities")
+                .header(
+                    "Authorization",
+                    InternalServiceTokenTestSupport.authorization(
+                        SUBJECT, InternalServiceScope.AUTH_ADMIN))
+                .header(REQUEST_ID_HEADER, "external-identity-unlink-request")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "providerId": "google",
+                      "subject": "google-subject-001",
+                      "reasonCode": "OPS_MANUAL",
+                      "reasonDetail": "oidc unlink"
+                    }
+                    """))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.userId").value(21))
+        .andExpect(jsonPath("$.providerId").value("google"))
+        .andExpect(jsonPath("$.subject").value("google-subject-001"));
+
+    verify(externalIdentityMappingLinkUseCase)
+        .link(
+            argThat(
+                command ->
+                    command.userId() == 21L
+                        && command.providerId().equals("google")
+                        && command.subject().equals("google-subject-001")
+                        && command.normalizedReason().reasonCode().name().equals("OPS_MANUAL")
+                        && command.normalizedReason().reasonDetail().equals("oidc onboarding")
+                        && command.actorSubject().equals(SUBJECT)
+                        && command.requestId().equals("external-identity-link-request")));
+    verify(externalIdentityMappingUnlinkUseCase)
+        .unlink(
+            argThat(
+                command ->
+                    command.userId() == 21L
+                        && command.providerId().equals("google")
+                        && command.subject().equals("google-subject-001")
+                        && command.normalizedReason().reasonCode().name().equals("OPS_MANUAL")
+                        && command.normalizedReason().reasonDetail().equals("oidc unlink")
+                        && command.actorSubject().equals(SUBJECT)
+                        && command.requestId().equals("external-identity-unlink-request")));
+  }
+
+  @Test
+  void rejectsMissingStructuredReasonForExternalIdentityMapping() throws Exception {
+    mockMvc
+        .perform(
+            post("/internal/api/v1/auth/users/21/external-identities")
+                .header(
+                    "Authorization",
+                    InternalServiceTokenTestSupport.authorization(
+                        SUBJECT, InternalServiceScope.AUTH_ADMIN))
+                .header(REQUEST_ID_HEADER, "external-identity-missing-reason-request")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "providerId": "google",
+                      "subject": "google-subject-001"
+                    }
+                    """))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message").value("reasonCode is required"));
+
+    verifyNoInteractions(externalIdentityMappingLinkUseCase);
+  }
+
+  @Test
+  void rejectsDuplicateExternalIdentityMappingAsConflict() throws Exception {
+    when(externalIdentityMappingLinkUseCase.link(argThat(command -> command.userId() == 21L)))
+        .thenThrow(
+            new DuplicateExternalIdentityMappingException(
+                "external identity mapping already exists"));
+
+    mockMvc
+        .perform(
+            post("/internal/api/v1/auth/users/21/external-identities")
+                .header(
+                    "Authorization",
+                    InternalServiceTokenTestSupport.authorization(
+                        SUBJECT, InternalServiceScope.AUTH_ADMIN))
+                .header(REQUEST_ID_HEADER, "external-identity-duplicate-request")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "providerId": "google",
+                      "subject": "google-subject-001",
+                      "reasonCode": "OPS_MANUAL",
+                      "reasonDetail": "duplicate check"
+                    }
+                    """))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.message").value("external identity mapping already exists"));
   }
 
   @Test
