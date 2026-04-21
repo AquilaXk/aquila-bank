@@ -3,8 +3,14 @@ package com.aquilabank.global.config;
 import com.aquilabank.domain.notification.port.NotificationInboxReadPort;
 import com.aquilabank.domain.notification.port.NotificationInboxSearchPort;
 import com.aquilabank.domain.notification.port.NotificationInboxWritePort;
+import com.aquilabank.domain.notification.port.NotificationPreferenceReadPort;
+import com.aquilabank.domain.notification.port.NotificationPreferenceWritePort;
 import com.aquilabank.domain.notification.usecase.NotificationBulkActionService;
 import com.aquilabank.domain.notification.usecase.NotificationBulkActionUseCase;
+import com.aquilabank.domain.notification.usecase.NotificationPreferenceReadService;
+import com.aquilabank.domain.notification.usecase.NotificationPreferenceReadUseCase;
+import com.aquilabank.domain.notification.usecase.NotificationPreferenceUpdateService;
+import com.aquilabank.domain.notification.usecase.NotificationPreferenceUpdateUseCase;
 import com.aquilabank.domain.notification.usecase.NotificationQueryService;
 import com.aquilabank.domain.notification.usecase.NotificationQueryUseCase;
 import com.aquilabank.domain.notification.usecase.NotificationReadService;
@@ -50,6 +56,18 @@ public class NotificationConfiguration {
   NotificationBulkActionUseCase notificationBulkActionUseCase(
       NotificationInboxWritePort notificationInboxWritePort) {
     return new NotificationBulkActionService(notificationInboxWritePort);
+  }
+
+  @Bean
+  NotificationPreferenceReadUseCase notificationPreferenceReadUseCase(
+      NotificationPreferenceReadPort notificationPreferenceReadPort) {
+    return new NotificationPreferenceReadService(notificationPreferenceReadPort);
+  }
+
+  @Bean
+  NotificationPreferenceUpdateUseCase notificationPreferenceUpdateUseCase(
+      NotificationPreferenceWritePort notificationPreferenceWritePort) {
+    return new NotificationPreferenceUpdateService(notificationPreferenceWritePort);
   }
 
   @Bean
