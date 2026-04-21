@@ -278,12 +278,25 @@ public class AuthConfiguration {
             authClock);
     TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
     return command -> {
-      LoginResult result =
-          transactionTemplate.execute(status -> refreshTokenService.refresh(command));
-      if (result == null) {
+      LoginTransactionResult transactionResult =
+          transactionTemplate.execute(
+              status -> {
+                try {
+                  return LoginTransactionResult.success(refreshTokenService.refresh(command));
+                } catch (InvalidCredentialsException ex) {
+                  return LoginTransactionResult.failure(ex);
+                }
+              });
+      if (transactionResult == null) {
+        throw new IllegalStateException("refresh transaction result is null");
+      }
+      if (transactionResult.exception() != null) {
+        throw transactionResult.exception();
+      }
+      if (transactionResult.result() == null) {
         throw new IllegalStateException("refresh transaction returned null result");
       }
-      return result;
+      return transactionResult.result();
     };
   }
 

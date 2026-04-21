@@ -7,6 +7,7 @@ import com.aquilabank.domain.auth.model.RefreshTokenCommand;
 import com.aquilabank.domain.auth.model.RefreshTokenPolicy;
 import com.aquilabank.domain.auth.model.RefreshTokenSession;
 import com.aquilabank.domain.auth.model.RefreshTokenSessionCreateCommand;
+import com.aquilabank.domain.auth.model.RefreshTokenSessionFamilyRevokeCommand;
 import com.aquilabank.domain.auth.model.RefreshTokenSessionRotateCommand;
 import com.aquilabank.domain.auth.model.RefreshTokenSessionStatus;
 import com.aquilabank.domain.auth.model.UserStatus;
@@ -56,6 +57,11 @@ public final class RefreshTokenService implements RefreshTokenUseCase {
             .orElseThrow(() -> new InvalidCredentialsException("refresh failed"));
 
     if (session.sessionStatus() != RefreshTokenSessionStatus.ACTIVE) {
+      // ROTATED token 재사용은 탈취 가능성이 높아 descendant session까지 같은 transaction에서 종료합니다.
+      if (session.sessionStatus() == RefreshTokenSessionStatus.ROTATED) {
+        refreshTokenSessionWritePort.revokeFamily(
+            new RefreshTokenSessionFamilyRevokeCommand(session.sessionId(), now));
+      }
       throw new InvalidCredentialsException("refresh failed");
     }
     if (!session.expiresAt().isAfter(now)) {
