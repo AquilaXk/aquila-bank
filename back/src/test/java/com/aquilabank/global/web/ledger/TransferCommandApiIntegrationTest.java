@@ -29,7 +29,13 @@ import org.springframework.web.context.WebApplicationContext;
 @ActiveProfiles("test")
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.MOCK,
-    properties = {"spring.flyway.enabled=true", "management.health.db.enabled=true"})
+    properties = {
+      "spring.flyway.enabled=true",
+      "management.health.db.enabled=true",
+      "ledger.transfer-limit.single-transfer-limit-minor=2000",
+      "ledger.transfer-limit.daily-transfer-limit-minor=3000",
+      "ledger.transfer-limit.business-zone-id=Asia/Seoul"
+    })
 class TransferCommandApiIntegrationTest extends PostgresContainerTestSupport {
 
   @Autowired private WebApplicationContext context;
@@ -136,6 +142,51 @@ class TransferCommandApiIntegrationTest extends PostgresContainerTestSupport {
     assertEquals(0L, totalCount("command_idempotency"));
     assertEquals(100L, balanceOf(sourceAccountId));
     assertEquals(0L, balanceOf(targetAccountId));
+  }
+
+  @Test
+  void rejectsTransferWhenSingleLimitIsExceededWithoutWriteSideEffects() throws Exception {
+    long ledgerCountBefore = totalCount("ledger_entry");
+    long transactionCountBefore = totalCount("transaction_read_model");
+    long outboxCountBefore = totalCount("outbox_event");
+    long idempotencyCountBefore = totalCount("command_idempotency");
+    long sourceBalanceBefore = balanceOf(sourceAccountId);
+    long targetBalanceBefore = balanceOf(targetAccountId);
+
+    MvcResult result =
+        invokeTransferRaw("transfer-limit-single-001", targetAccountId, 2_001L, "single limit");
+
+    assertTransferLimitExceeded(result, "single transfer limit exceeded");
+    assertEquals(ledgerCountBefore, totalCount("ledger_entry"));
+    assertEquals(transactionCountBefore, totalCount("transaction_read_model"));
+    assertEquals(outboxCountBefore, totalCount("outbox_event"));
+    assertEquals(idempotencyCountBefore, totalCount("command_idempotency"));
+    assertEquals(0L, idempotencyCount("transfer-limit-single-001"));
+    assertEquals(sourceBalanceBefore, balanceOf(sourceAccountId));
+    assertEquals(targetBalanceBefore, balanceOf(targetAccountId));
+  }
+
+  @Test
+  void rejectsTransferWhenDailyLimitIsExceededWithoutWriteSideEffects() throws Exception {
+    invokeTransfer("transfer-limit-daily-001", targetAccountId, 2_000L, "daily base");
+    long ledgerCountBefore = totalCount("ledger_entry");
+    long transactionCountBefore = totalCount("transaction_read_model");
+    long outboxCountBefore = totalCount("outbox_event");
+    long idempotencyCountBefore = totalCount("command_idempotency");
+    long sourceBalanceBefore = balanceOf(sourceAccountId);
+    long targetBalanceBefore = balanceOf(targetAccountId);
+
+    MvcResult result =
+        invokeTransferRaw("transfer-limit-daily-002", targetAccountId, 1_100L, "daily limit");
+
+    assertTransferLimitExceeded(result, "daily transfer limit exceeded");
+    assertEquals(ledgerCountBefore, totalCount("ledger_entry"));
+    assertEquals(transactionCountBefore, totalCount("transaction_read_model"));
+    assertEquals(outboxCountBefore, totalCount("outbox_event"));
+    assertEquals(idempotencyCountBefore, totalCount("command_idempotency"));
+    assertEquals(0L, idempotencyCount("transfer-limit-daily-002"));
+    assertEquals(sourceBalanceBefore, balanceOf(sourceAccountId));
+    assertEquals(targetBalanceBefore, balanceOf(targetAccountId));
   }
 
   @Test
@@ -629,27 +680,7 @@ class TransferCommandApiIntegrationTest extends PostgresContainerTestSupport {
   private TransferResponseView invokeTransfer(
       String idempotencyKey, long targetAccountId, long amountMinor, String summary)
       throws Exception {
-    String requestId = idempotencyKey + "-request";
-    MvcResult result =
-        mockMvc
-            .perform(
-                post("/api/v1/transfers")
-                    .header("X-Account-Id", String.valueOf(sourceAccountId))
-                    .header("X-Request-Id", requestId)
-                    .header("Idempotency-Key", idempotencyKey)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(
-                        """
-                        {
-                          "sourceAccountId": %d,
-                          "targetAccountId": %d,
-                          "amountMinor": %d,
-                          "currencyCode": "KRW",
-                          "summary": "%s"
-                        }
-                        """
-                            .formatted(sourceAccountId, targetAccountId, amountMinor, summary)))
-            .andReturn();
+    MvcResult result = invokeTransferRaw(idempotencyKey, targetAccountId, amountMinor, summary);
 
     assertEquals(200, result.getResponse().getStatus(), result.getResponse().getContentAsString());
 
@@ -657,6 +688,31 @@ class TransferCommandApiIntegrationTest extends PostgresContainerTestSupport {
         objectMapper.readValue(
             result.getResponse().getContentAsByteArray(), TransferResponseBody.class),
         result.getResponse().getHeader("X-Request-Id"));
+  }
+
+  private MvcResult invokeTransferRaw(
+      String idempotencyKey, long targetAccountId, long amountMinor, String summary)
+      throws Exception {
+    String requestId = idempotencyKey + "-request";
+    return mockMvc
+        .perform(
+            post("/api/v1/transfers")
+                .header("X-Account-Id", String.valueOf(sourceAccountId))
+                .header("X-Request-Id", requestId)
+                .header("Idempotency-Key", idempotencyKey)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "sourceAccountId": %d,
+                      "targetAccountId": %d,
+                      "amountMinor": %d,
+                      "currencyCode": "KRW",
+                      "summary": "%s"
+                    }
+                    """
+                        .formatted(sourceAccountId, targetAccountId, amountMinor, summary)))
+        .andReturn();
   }
 
   private TransferReversalResponseView invokeReversal(
@@ -785,6 +841,16 @@ class TransferCommandApiIntegrationTest extends PostgresContainerTestSupport {
     assertEquals(403, result.getResponse().getStatus(), result.getResponse().getContentAsString());
     assertEquals(
         "account access is denied",
+        objectMapper
+            .readTree(result.getResponse().getContentAsByteArray())
+            .get("message")
+            .asText());
+  }
+
+  private void assertTransferLimitExceeded(MvcResult result, String message) throws Exception {
+    assertEquals(403, result.getResponse().getStatus(), result.getResponse().getContentAsString());
+    assertEquals(
+        message,
         objectMapper
             .readTree(result.getResponse().getContentAsByteArray())
             .get("message")
