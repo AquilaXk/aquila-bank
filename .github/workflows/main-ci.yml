@@ -39,6 +39,10 @@ jobs:
       - name: Run backend check
         run: ./gradlew check --no-daemon --stacktrace
 
+      - name: Run transaction query plan regression gate
+        working-directory: ${{ github.workspace }}
+        run: tools/test/run-transaction-query-plan-regression-gate.sh
+
   frontend-lint-build:
     name: Frontend Lint And Build
     runs-on: ubuntu-latest
