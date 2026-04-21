@@ -637,6 +637,158 @@ class JdbcNotificationInboxRepositoryIntegrationTest extends PostgresContainerTe
   }
 
   @Test
+  void appendsNotificationsAndUpdatesUnreadProjectionOnlyForInsertedRows() {
+    long[] userIds = new long[3];
+    long[] accountId = new long[1];
+    Instant createdAt = Instant.parse("2026-04-17T00:00:00Z");
+    commit(
+        transactionManager,
+        () -> {
+          userIds[0] = insertUser("projection-user-a");
+          userIds[1] = insertUser("projection-user-b");
+          userIds[2] = insertUser("projection-user-revoked");
+          accountId[0] = insertAccount("projection account");
+          insertMembership(userIds[0], accountId[0], "OWNER", "ACTIVE");
+          insertMembership(userIds[1], accountId[0], "VIEWER", "ACTIVE");
+          insertMembership(userIds[2], accountId[0], "VIEWER", "REVOKED");
+          repository.appendAllIfAbsent(
+              List.of(
+                  new NotificationInboxEntry(
+                      accountId[0],
+                      "transfer-booked:TRX-PROJECTION:ACCOUNT-" + accountId[0],
+                      "TransferBooked",
+                      "이체 완료",
+                      "1500 KRW 입금 · projection",
+                      createdAt)));
+          repository.appendAllIfAbsent(
+              List.of(
+                  new NotificationInboxEntry(
+                      accountId[0],
+                      "transfer-booked:TRX-PROJECTION:ACCOUNT-" + accountId[0],
+                      "TransferBooked",
+                      "이체 완료",
+                      "1500 KRW 입금 · projection",
+                      createdAt)));
+        });
+
+    assertThat(repository.countUnreadByAccountId(accountId[0])).isEqualTo(1L);
+    assertThat(repository.countUnreadByUserId(userIds[0])).isEqualTo(1L);
+    assertThat(repository.countUnreadByUserId(userIds[1])).isEqualTo(1L);
+    assertThat(repository.countUnreadByUserId(userIds[2])).isZero();
+    assertThat(projectionCount("ACCOUNT", accountId[0])).isEqualTo(1L);
+    assertThat(projectionCount("USER", userIds[0])).isEqualTo(1L);
+    assertThat(projectionCount("USER", userIds[1])).isEqualTo(1L);
+    assertThat(projectionCount("USER", userIds[2])).isZero();
+  }
+
+  @Test
+  void updatesUnreadProjectionWhenNotificationsBecomeReadArchivedOrDeleted() {
+    long[] userIds = new long[2];
+    long[] accountId = new long[1];
+    long[] notificationIds = new long[3];
+    Instant base = Instant.parse("2026-04-17T00:00:00Z");
+    commit(
+        transactionManager,
+        () -> {
+          userIds[0] = insertUser("projection-state-a");
+          userIds[1] = insertUser("projection-state-b");
+          accountId[0] = insertAccount("projection state account");
+          insertMembership(userIds[0], accountId[0], "OWNER", "ACTIVE");
+          insertMembership(userIds[1], accountId[0], "VIEWER", "ACTIVE");
+          repository.appendAllIfAbsent(
+              List.of(
+                  new NotificationInboxEntry(
+                      accountId[0], "evt-projection-state-1", "TransferBooked", "A", "A", base),
+                  new NotificationInboxEntry(
+                      accountId[0],
+                      "evt-projection-state-2",
+                      "TransferBooked",
+                      "B",
+                      "B",
+                      base.plusSeconds(5)),
+                  new NotificationInboxEntry(
+                      accountId[0],
+                      "evt-projection-state-3",
+                      "TransferBooked",
+                      "C",
+                      "C",
+                      base.plusSeconds(10))));
+          notificationIds[0] = findNotificationIdByEventKey("evt-projection-state-1");
+          notificationIds[1] = findNotificationIdByEventKey("evt-projection-state-2");
+          notificationIds[2] = findNotificationIdByEventKey("evt-projection-state-3");
+        });
+
+    assertThat(projectionCount("ACCOUNT", accountId[0])).isEqualTo(3L);
+    assertThat(projectionCount("USER", userIds[0])).isEqualTo(3L);
+    assertThat(projectionCount("USER", userIds[1])).isEqualTo(3L);
+
+    assertThat(repository.markAsReadByUserId(userIds[0], notificationIds[0], base.plusSeconds(20)))
+        .isTrue();
+    assertThat(projectionCount("USER", userIds[0])).isEqualTo(2L);
+    assertThat(repository.markAsReadByUserId(userIds[0], notificationIds[0], base.plusSeconds(21)))
+        .isTrue();
+    assertThat(projectionCount("USER", userIds[0])).isEqualTo(2L);
+
+    assertThat(
+            repository.archiveByUserId(
+                userIds[0], List.of(notificationIds[1]), base.plusSeconds(30)))
+        .isEqualTo(1);
+    assertThat(projectionCount("USER", userIds[0])).isEqualTo(1L);
+    assertThat(projectionCount("USER", userIds[1])).isEqualTo(3L);
+
+    assertThat(
+            repository.archiveByAccountId(
+                accountId[0], List.of(notificationIds[2]), base.plusSeconds(40)))
+        .isEqualTo(1);
+    assertThat(projectionCount("ACCOUNT", accountId[0])).isEqualTo(2L);
+    assertThat(projectionCount("USER", userIds[0])).isEqualTo(0L);
+    assertThat(projectionCount("USER", userIds[1])).isEqualTo(2L);
+
+    assertThat(repository.deleteByAccountId(accountId[0], List.of(notificationIds[0])))
+        .isEqualTo(1);
+    assertThat(projectionCount("ACCOUNT", accountId[0])).isEqualTo(1L);
+    assertThat(projectionCount("USER", userIds[0])).isEqualTo(0L);
+    assertThat(projectionCount("USER", userIds[1])).isEqualTo(1L);
+  }
+
+  @Test
+  void suppressesInAppNotificationForUsersWithDisabledTransactionalPreference() {
+    long[] userIds = new long[2];
+    long[] accountId = new long[1];
+    Instant createdAt = Instant.parse("2026-04-17T00:00:00Z");
+    commit(
+        transactionManager,
+        () -> {
+          userIds[0] = insertUser("preference-enabled-user");
+          userIds[1] = insertUser("preference-disabled-user");
+          accountId[0] = insertAccount("preference account");
+          insertMembership(userIds[0], accountId[0], "OWNER", "ACTIVE");
+          insertMembership(userIds[1], accountId[0], "VIEWER", "ACTIVE");
+          insertPreference(userIds[1], "TRANSACTIONAL", "IN_APP", false);
+          repository.appendAllIfAbsent(
+              List.of(
+                  new NotificationInboxEntry(
+                      accountId[0],
+                      "evt-preference-disabled",
+                      "TransferBooked",
+                      "이체 완료",
+                      "1500 KRW 입금 · preference",
+                      createdAt)));
+        });
+
+    assertThat(repository.fetchByUserId(userIds[0], new NotificationListQuery(10, null)).items())
+        .extracting("title")
+        .containsExactly("이체 완료");
+    assertThat(repository.fetchByUserId(userIds[1], new NotificationListQuery(10, null)).items())
+        .isEmpty();
+    assertThat(repository.countUnreadByUserId(userIds[0])).isEqualTo(1L);
+    assertThat(repository.countUnreadByUserId(userIds[1])).isZero();
+    assertThat(projectionCount("USER", userIds[0])).isEqualTo(1L);
+    assertThat(projectionCount("USER", userIds[1])).isZero();
+    assertThat(hiddenStateCount(userIds[1])).isEqualTo(1L);
+  }
+
+  @Test
   void deletesExpiredNotificationsInBatchesAndCascadesUserReadState() {
     long[] userId = new long[1];
     long[] accountId = new long[1];
@@ -825,6 +977,7 @@ class JdbcNotificationInboxRepositoryIntegrationTest extends PostgresContainerTe
     if (notificationId == null) {
       throw new IllegalStateException("notification_inbox insert did not return id");
     }
+    seedUnreadProjectionForInsertedNotification(accountId, notificationId, readAt);
     return notificationId;
   }
 
@@ -903,6 +1056,161 @@ class JdbcNotificationInboxRepositoryIntegrationTest extends PostgresContainerTe
             .addValue("readAt", readAt == null ? null : Timestamp.from(readAt))
             .addValue("archivedAt", archivedAt == null ? null : Timestamp.from(archivedAt))
             .addValue("deletedAt", deletedAt == null ? null : Timestamp.from(deletedAt)));
+    if (readAt != null || archivedAt != null || deletedAt != null) {
+      decrementTestProjection("USER", userId, 1L);
+    }
+  }
+
+  private void seedUnreadProjectionForInsertedNotification(
+      long accountId, long notificationId, Instant readAt) {
+    if (readAt == null) {
+      incrementTestProjection("ACCOUNT", accountId, 1L);
+    }
+    jdbcTemplate.update(
+        """
+        INSERT INTO notification_unread_count_projection (
+            scope_type,
+            scope_id,
+            unread_count,
+            updated_at
+        )
+        SELECT 'USER',
+               m.user_id,
+               1,
+               CURRENT_TIMESTAMP
+        FROM user_account_membership m
+        JOIN bank_user u
+          ON u.id = m.user_id
+        LEFT JOIN notification_preference p
+          ON p.user_id = m.user_id
+         AND p.category = 'TRANSACTIONAL'
+         AND p.channel = 'IN_APP'
+        WHERE m.account_id = :accountId
+          AND m.membership_status = 'ACTIVE'
+          AND u.user_status = 'ACTIVE'
+          AND COALESCE(p.enabled, TRUE) = TRUE
+        ON CONFLICT (scope_type, scope_id)
+        DO UPDATE
+        SET unread_count = notification_unread_count_projection.unread_count + EXCLUDED.unread_count,
+            updated_at = CURRENT_TIMESTAMP
+        """,
+        new MapSqlParameterSource()
+            .addValue("accountId", accountId)
+            .addValue("notificationId", notificationId));
+  }
+
+  private void incrementTestProjection(String scopeType, long scopeId, long delta) {
+    jdbcTemplate.update(
+        """
+        INSERT INTO notification_unread_count_projection (
+            scope_type,
+            scope_id,
+            unread_count,
+            updated_at
+        )
+        VALUES (
+            :scopeType,
+            :scopeId,
+            :delta,
+            CURRENT_TIMESTAMP
+        )
+        ON CONFLICT (scope_type, scope_id)
+        DO UPDATE
+        SET unread_count = notification_unread_count_projection.unread_count + EXCLUDED.unread_count,
+            updated_at = CURRENT_TIMESTAMP
+        """,
+        new MapSqlParameterSource()
+            .addValue("scopeType", scopeType)
+            .addValue("scopeId", scopeId)
+            .addValue("delta", delta));
+  }
+
+  private void decrementTestProjection(String scopeType, long scopeId, long delta) {
+    jdbcTemplate.update(
+        """
+        UPDATE notification_unread_count_projection
+        SET unread_count = GREATEST(unread_count - :delta, 0),
+            updated_at = CURRENT_TIMESTAMP
+        WHERE scope_type = :scopeType
+          AND scope_id = :scopeId
+        """,
+        new MapSqlParameterSource()
+            .addValue("scopeType", scopeType)
+            .addValue("scopeId", scopeId)
+            .addValue("delta", delta));
+  }
+
+  private void insertPreference(long userId, String category, String channel, boolean enabled) {
+    jdbcTemplate.update(
+        """
+        INSERT INTO notification_preference (
+            user_id,
+            category,
+            channel,
+            enabled,
+            created_at,
+            updated_at
+        )
+        VALUES (
+            :userId,
+            :category,
+            :channel,
+            :enabled,
+            CURRENT_TIMESTAMP,
+            CURRENT_TIMESTAMP
+        )
+        """,
+        new MapSqlParameterSource()
+            .addValue("userId", userId)
+            .addValue("category", category)
+            .addValue("channel", channel)
+            .addValue("enabled", enabled));
+  }
+
+  private long findNotificationIdByEventKey(String eventKey) {
+    Long id =
+        jdbcTemplate.queryForObject(
+            """
+            SELECT id
+            FROM notification_inbox
+            WHERE event_key = :eventKey
+            """,
+            new MapSqlParameterSource().addValue("eventKey", eventKey),
+            Long.class);
+    if (id == null) {
+      throw new IllegalStateException("notification_inbox row was not found");
+    }
+    return id;
+  }
+
+  private long projectionCount(String scopeType, long scopeId) {
+    List<Long> rows =
+        jdbcTemplate.query(
+            """
+            SELECT unread_count
+            FROM notification_unread_count_projection
+            WHERE scope_type = :scopeType
+              AND scope_id = :scopeId
+            """,
+            new MapSqlParameterSource()
+                .addValue("scopeType", scopeType)
+                .addValue("scopeId", scopeId),
+            (rs, rowNum) -> rs.getLong("unread_count"));
+    return rows.isEmpty() ? 0L : rows.getFirst();
+  }
+
+  private long hiddenStateCount(long userId) {
+    Long count =
+        jdbcTemplate.queryForObject(
+            """
+            SELECT COUNT(*)
+            FROM notification_user_read_state
+            WHERE user_id = :userId
+              AND deleted_at IS NOT NULL
+            """,
+            new MapSqlParameterSource().addValue("userId", userId),
+            Long.class);
+    return count == null ? 0L : count;
   }
 
   private long totalNotifications() {
