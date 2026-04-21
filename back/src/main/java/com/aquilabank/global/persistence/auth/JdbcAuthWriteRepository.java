@@ -1,7 +1,9 @@
 package com.aquilabank.global.persistence.auth;
 
 import com.aquilabank.domain.auth.exception.AuthUserNotFoundException;
+import com.aquilabank.domain.auth.exception.DuplicateExternalIdentityMappingException;
 import com.aquilabank.domain.auth.exception.DuplicateLoginIdException;
+import com.aquilabank.domain.auth.exception.ExternalIdentityMappingNotFoundException;
 import com.aquilabank.domain.auth.exception.UserAccountMembershipNotFoundException;
 import com.aquilabank.domain.auth.model.AuthStatusChangeAuditEntry;
 import com.aquilabank.domain.auth.model.AuthStatusChangeOutcome;
@@ -9,6 +11,10 @@ import com.aquilabank.domain.auth.model.AuthStatusChangeType;
 import com.aquilabank.domain.auth.model.AuthUserSummary;
 import com.aquilabank.domain.auth.model.BackupCodeIssueCommand;
 import com.aquilabank.domain.auth.model.BackupCodeUseCommand;
+import com.aquilabank.domain.auth.model.ExternalIdentityChangeType;
+import com.aquilabank.domain.auth.model.ExternalIdentityLinkCommand;
+import com.aquilabank.domain.auth.model.ExternalIdentityMapping;
+import com.aquilabank.domain.auth.model.ExternalIdentityUnlinkCommand;
 import com.aquilabank.domain.auth.model.LoginFailureUpdateCommand;
 import com.aquilabank.domain.auth.model.LoginSuccessUpdateCommand;
 import com.aquilabank.domain.auth.model.PasswordRecoveryTokenIssueCommand;
@@ -34,6 +40,7 @@ import com.aquilabank.domain.auth.model.UserBootstrapWriteCommand;
 import com.aquilabank.domain.auth.model.UserStatus;
 import com.aquilabank.domain.auth.model.UserStatusUpdateCommand;
 import com.aquilabank.domain.auth.port.BackupCodeWritePort;
+import com.aquilabank.domain.auth.port.ExternalIdentityMappingWritePort;
 import com.aquilabank.domain.auth.port.LoginAttemptUpdatePort;
 import com.aquilabank.domain.auth.port.PasswordRecoveryTokenWritePort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionCleanupPort;
@@ -46,10 +53,14 @@ import com.aquilabank.domain.auth.port.UserAccountMembershipUpsertPort;
 import com.aquilabank.domain.auth.port.UserBootstrapPort;
 import com.aquilabank.domain.auth.port.UserCredentialUpdatePort;
 import com.aquilabank.domain.auth.port.UserStatusUpdatePort;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.HexFormat;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -70,6 +81,7 @@ public class JdbcAuthWriteRepository
         TotpCredentialWritePort,
         TotpLoginChallengeWritePort,
         UserAccountMembershipUpsertPort,
+        ExternalIdentityMappingWritePort,
         UserStatusUpdatePort,
         UserAccountMembershipStatusUpdatePort {
 
@@ -77,6 +89,70 @@ public class JdbcAuthWriteRepository
 
   public JdbcAuthWriteRepository(NamedParameterJdbcTemplate jdbcTemplate) {
     this.jdbcTemplate = jdbcTemplate;
+  }
+
+  @Override
+  @Transactional
+  public ExternalIdentityMapping link(ExternalIdentityLinkCommand command) {
+    assertUserExists(command.userId());
+    Instant now = Instant.now();
+    try {
+      ExternalIdentityMapping mapping =
+          jdbcTemplate
+              .query(
+                  """
+                  INSERT INTO auth_external_identity (
+                      provider_id,
+                      subject,
+                      user_id,
+                      created_at,
+                      updated_at
+                  )
+                  VALUES (
+                      :providerId,
+                      :subject,
+                      :userId,
+                      :now,
+                      :now
+                  )
+                  RETURNING user_id, provider_id, subject, created_at, updated_at
+                  """,
+                  new MapSqlParameterSource()
+                      .addValue("providerId", command.providerId())
+                      .addValue("subject", command.subject())
+                      .addValue("userId", command.userId())
+                      .addValue("now", Timestamp.from(now)),
+                  (rs, rowNum) -> mapExternalIdentityMapping(rs))
+              .stream()
+              .findFirst()
+              .orElseThrow(
+                  () -> new IllegalStateException("external identity insert returned null"));
+      insertExternalIdentityAudit(command, ExternalIdentityChangeType.LINK, now);
+      return mapping;
+    } catch (DuplicateKeyException ex) {
+      throw new DuplicateExternalIdentityMappingException(
+          "external identity mapping already exists");
+    }
+  }
+
+  @Override
+  @Transactional
+  public ExternalIdentityMapping unlink(ExternalIdentityUnlinkCommand command) {
+    ExternalIdentityMapping mapping = loadExternalIdentityMappingForUpdate(command);
+    int updated =
+        jdbcTemplate.update(
+            """
+            DELETE FROM auth_external_identity
+            WHERE user_id = :userId
+              AND provider_id = :providerId
+              AND subject = :subject
+            """,
+            externalIdentityParams(command));
+    if (updated != 1) {
+      throw new ExternalIdentityMappingNotFoundException("external identity mapping is not found");
+    }
+    insertExternalIdentityAudit(command, ExternalIdentityChangeType.UNLINK, Instant.now());
+    return mapping;
   }
 
   @Override
@@ -1019,6 +1095,131 @@ public class JdbcAuthWriteRepository
             .addValue("createdAt", Timestamp.from(entry.createdAt())));
   }
 
+  private ExternalIdentityMapping loadExternalIdentityMappingForUpdate(
+      ExternalIdentityUnlinkCommand command) {
+    return jdbcTemplate
+        .query(
+            """
+            SELECT user_id, provider_id, subject, created_at, updated_at
+            FROM auth_external_identity
+            WHERE user_id = :userId
+              AND provider_id = :providerId
+              AND subject = :subject
+            FOR UPDATE
+            """,
+            externalIdentityParams(command),
+            (rs, rowNum) -> mapExternalIdentityMapping(rs))
+        .stream()
+        .findFirst()
+        .orElseThrow(
+            () ->
+                new ExternalIdentityMappingNotFoundException(
+                    "external identity mapping is not found"));
+  }
+
+  private void insertExternalIdentityAudit(
+      ExternalIdentityLinkCommand command, ExternalIdentityChangeType changeType, Instant now) {
+    insertExternalIdentityAudit(
+        command.userId(),
+        command.providerId(),
+        command.subject(),
+        command.requestId(),
+        command.actorSubject(),
+        command.normalizedReason().reasonCode().name(),
+        command.normalizedReason().reasonDetail(),
+        changeType,
+        now);
+  }
+
+  private void insertExternalIdentityAudit(
+      ExternalIdentityUnlinkCommand command, ExternalIdentityChangeType changeType, Instant now) {
+    insertExternalIdentityAudit(
+        command.userId(),
+        command.providerId(),
+        command.subject(),
+        command.requestId(),
+        command.actorSubject(),
+        command.normalizedReason().reasonCode().name(),
+        command.normalizedReason().reasonDetail(),
+        changeType,
+        now);
+  }
+
+  private void insertExternalIdentityAudit(
+      long userId,
+      String providerId,
+      String subject,
+      String requestId,
+      String actorSubject,
+      String reasonCode,
+      String reason,
+      ExternalIdentityChangeType changeType,
+      Instant now) {
+    // raw OIDC subject는 장기 식별자라 감사 row에는 hash만 남깁니다.
+    jdbcTemplate.update(
+        """
+        INSERT INTO auth_external_identity_audit (
+            request_id,
+            actor_subject,
+            change_type,
+            target_user_id,
+            provider_id,
+            subject_hash,
+            reason_code,
+            reason,
+            outcome,
+            created_at
+        )
+        VALUES (
+            :requestId,
+            :actorSubject,
+            :changeType,
+            :userId,
+            :providerId,
+            :subjectHash,
+            :reasonCode,
+            :reason,
+            'SUCCESS',
+            :createdAt
+        )
+        """,
+        new MapSqlParameterSource()
+            .addValue("requestId", requestId)
+            .addValue("actorSubject", actorSubject)
+            .addValue("changeType", changeType.name())
+            .addValue("userId", userId)
+            .addValue("providerId", providerId)
+            .addValue("subjectHash", sha256(subject))
+            .addValue("reasonCode", reasonCode)
+            .addValue("reason", reason)
+            .addValue("createdAt", Timestamp.from(now)));
+  }
+
+  private MapSqlParameterSource externalIdentityParams(ExternalIdentityUnlinkCommand command) {
+    return new MapSqlParameterSource()
+        .addValue("userId", command.userId())
+        .addValue("providerId", command.providerId())
+        .addValue("subject", command.subject());
+  }
+
+  private ExternalIdentityMapping mapExternalIdentityMapping(ResultSet rs) throws SQLException {
+    return new ExternalIdentityMapping(
+        rs.getLong("user_id"),
+        rs.getString("provider_id"),
+        rs.getString("subject"),
+        toInstant(rs.getTimestamp("created_at")),
+        toInstant(rs.getTimestamp("updated_at")));
+  }
+
+  private String sha256(String value) {
+    try {
+      MessageDigest digest = MessageDigest.getInstance("SHA-256");
+      return HexFormat.of().formatHex(digest.digest(value.getBytes(StandardCharsets.UTF_8)));
+    } catch (NoSuchAlgorithmException ex) {
+      throw new IllegalStateException("SHA-256 is not available", ex);
+    }
+  }
+
   private void assertUserUpdated(int updated) {
     if (updated == 0) {
       throw new AuthUserNotFoundException("user is not found");
@@ -1027,6 +1228,10 @@ public class JdbcAuthWriteRepository
 
   private Timestamp toTimestamp(Instant value) {
     return value == null ? null : Timestamp.from(value);
+  }
+
+  private Instant toInstant(Timestamp value) {
+    return value == null ? null : value.toInstant();
   }
 
   private void assertUserExists(long userId) {

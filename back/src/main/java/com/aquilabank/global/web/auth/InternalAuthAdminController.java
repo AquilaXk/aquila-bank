@@ -4,12 +4,17 @@ import com.aquilabank.domain.auth.model.AuthStatusChangeReason;
 import com.aquilabank.domain.auth.model.AuthStatusChangeReasonCode;
 import com.aquilabank.domain.auth.model.AuthStatusChangeReasonNormalizer;
 import com.aquilabank.domain.auth.model.AuthUserSummary;
+import com.aquilabank.domain.auth.model.ExternalIdentityLinkCommand;
+import com.aquilabank.domain.auth.model.ExternalIdentityMapping;
+import com.aquilabank.domain.auth.model.ExternalIdentityUnlinkCommand;
 import com.aquilabank.domain.auth.model.PasswordRecoveryTokenLookupView;
 import com.aquilabank.domain.auth.model.UserAccountMembershipStatusUpdateCommand;
 import com.aquilabank.domain.auth.model.UserAccountMembershipSummary;
 import com.aquilabank.domain.auth.model.UserStatus;
 import com.aquilabank.domain.auth.model.UserStatusUpdateCommand;
 import com.aquilabank.domain.auth.usecase.AuthUserQueryUseCase;
+import com.aquilabank.domain.auth.usecase.ExternalIdentityMappingLinkUseCase;
+import com.aquilabank.domain.auth.usecase.ExternalIdentityMappingUnlinkUseCase;
 import com.aquilabank.domain.auth.usecase.PasswordRecoveryTokenQueryUseCase;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipQueryUseCase;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipStatusUpdateUseCase;
@@ -27,8 +32,10 @@ import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -47,6 +54,8 @@ public class InternalAuthAdminController {
   private final UserAccountMembershipQueryUseCase userAccountMembershipQueryUseCase;
   private final UserAccountMembershipStatusUpdateUseCase userAccountMembershipStatusUpdateUseCase;
   private final PasswordRecoveryTokenQueryUseCase passwordRecoveryTokenQueryUseCase;
+  private final ExternalIdentityMappingLinkUseCase externalIdentityMappingLinkUseCase;
+  private final ExternalIdentityMappingUnlinkUseCase externalIdentityMappingUnlinkUseCase;
   private final InternalServiceRequestAuthorizer internalServiceRequestAuthorizer;
 
   public InternalAuthAdminController(
@@ -55,12 +64,16 @@ public class InternalAuthAdminController {
       UserAccountMembershipQueryUseCase userAccountMembershipQueryUseCase,
       UserAccountMembershipStatusUpdateUseCase userAccountMembershipStatusUpdateUseCase,
       PasswordRecoveryTokenQueryUseCase passwordRecoveryTokenQueryUseCase,
+      ExternalIdentityMappingLinkUseCase externalIdentityMappingLinkUseCase,
+      ExternalIdentityMappingUnlinkUseCase externalIdentityMappingUnlinkUseCase,
       InternalServiceRequestAuthorizer internalServiceRequestAuthorizer) {
     this.authUserQueryUseCase = authUserQueryUseCase;
     this.userStatusUpdateUseCase = userStatusUpdateUseCase;
     this.userAccountMembershipQueryUseCase = userAccountMembershipQueryUseCase;
     this.userAccountMembershipStatusUpdateUseCase = userAccountMembershipStatusUpdateUseCase;
     this.passwordRecoveryTokenQueryUseCase = passwordRecoveryTokenQueryUseCase;
+    this.externalIdentityMappingLinkUseCase = externalIdentityMappingLinkUseCase;
+    this.externalIdentityMappingUnlinkUseCase = externalIdentityMappingUnlinkUseCase;
     this.internalServiceRequestAuthorizer = internalServiceRequestAuthorizer;
   }
 
@@ -103,6 +116,44 @@ public class InternalAuthAdminController {
         httpServletRequest, InternalServiceScope.AUTH_ADMIN);
     return PasswordRecoveryTokenResponse.from(
         passwordRecoveryTokenQueryUseCase.getByHandoffRequestId(handoffRequestId));
+  }
+
+  @PostMapping("/users/{userId}/external-identities")
+  public ExternalIdentityMappingResponse linkExternalIdentity(
+      HttpServletRequest httpServletRequest,
+      @PathVariable @Positive(message = "userId must be positive") long userId,
+      @Valid @RequestBody ExternalIdentityMappingRequest request) {
+    InternalServiceTokenClaims claims =
+        internalServiceRequestAuthorizer.requireScope(
+            httpServletRequest, InternalServiceScope.AUTH_ADMIN);
+    return ExternalIdentityMappingResponse.from(
+        externalIdentityMappingLinkUseCase.link(
+            new ExternalIdentityLinkCommand(
+                userId,
+                request.providerId(),
+                request.subject(),
+                resolveReason(request.reasonCode(), request.reasonDetail(), null),
+                claims.subject(),
+                resolveRequestId(httpServletRequest))));
+  }
+
+  @DeleteMapping("/users/{userId}/external-identities")
+  public ExternalIdentityMappingResponse unlinkExternalIdentity(
+      HttpServletRequest httpServletRequest,
+      @PathVariable @Positive(message = "userId must be positive") long userId,
+      @Valid @RequestBody ExternalIdentityMappingRequest request) {
+    InternalServiceTokenClaims claims =
+        internalServiceRequestAuthorizer.requireScope(
+            httpServletRequest, InternalServiceScope.AUTH_ADMIN);
+    return ExternalIdentityMappingResponse.from(
+        externalIdentityMappingUnlinkUseCase.unlink(
+            new ExternalIdentityUnlinkCommand(
+                userId,
+                request.providerId(),
+                request.subject(),
+                resolveReason(request.reasonCode(), request.reasonDetail(), null),
+                claims.subject(),
+                resolveRequestId(httpServletRequest))));
   }
 
   @PutMapping("/users/{userId}/status")
@@ -168,6 +219,16 @@ public class InternalAuthAdminController {
               max = AuthStatusChangeReason.MAX_REASON_DETAIL_LENGTH,
               message = "reason must be 200 characters or less")
           String reason) {}
+
+  /** 내부 external identity 매핑 생성/삭제 요청 body */
+  public record ExternalIdentityMappingRequest(
+      @NotBlank(message = "providerId is required") @Size(max = 64, message = "providerId must be 64 characters or less") String providerId,
+      @NotBlank(message = "subject is required") @Size(max = 255, message = "subject must be 255 characters or less") String subject,
+      @NotNull(message = "reasonCode is required") AuthStatusChangeReasonCode reasonCode,
+      @NotBlank(message = "reasonDetail is required") @Size(
+              max = AuthStatusChangeReason.MAX_REASON_DETAIL_LENGTH,
+              message = "reasonDetail must be 200 characters or less")
+          String reasonDetail) {}
 
   private String resolveRequestId(HttpServletRequest httpServletRequest) {
     return RequestTraceContext.currentRequestId()
@@ -248,6 +309,20 @@ public class InternalAuthAdminController {
           view.expiresAt(),
           view.usedAt(),
           view.createdAt());
+    }
+  }
+
+  /** 내부 external identity 매핑 생성/삭제 응답 */
+  public record ExternalIdentityMappingResponse(
+      long userId, String providerId, String subject, Instant createdAt, Instant updatedAt) {
+
+    static ExternalIdentityMappingResponse from(ExternalIdentityMapping mapping) {
+      return new ExternalIdentityMappingResponse(
+          mapping.userId(),
+          mapping.providerId(),
+          mapping.subject(),
+          mapping.createdAt(),
+          mapping.updatedAt());
     }
   }
 }

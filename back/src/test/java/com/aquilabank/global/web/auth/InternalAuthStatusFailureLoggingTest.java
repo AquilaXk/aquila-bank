@@ -8,6 +8,8 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.aquilabank.domain.auth.usecase.AuthUserQueryUseCase;
+import com.aquilabank.domain.auth.usecase.ExternalIdentityMappingLinkUseCase;
+import com.aquilabank.domain.auth.usecase.ExternalIdentityMappingUnlinkUseCase;
 import com.aquilabank.domain.auth.usecase.PasswordRecoveryTokenQueryUseCase;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipQueryUseCase;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipStatusUpdateUseCase;
@@ -45,6 +47,10 @@ class InternalAuthStatusFailureLoggingTest {
         Mockito.mock(UserAccountMembershipStatusUpdateUseCase.class);
     PasswordRecoveryTokenQueryUseCase passwordRecoveryTokenQueryUseCase =
         Mockito.mock(PasswordRecoveryTokenQueryUseCase.class);
+    ExternalIdentityMappingLinkUseCase externalIdentityMappingLinkUseCase =
+        Mockito.mock(ExternalIdentityMappingLinkUseCase.class);
+    ExternalIdentityMappingUnlinkUseCase externalIdentityMappingUnlinkUseCase =
+        Mockito.mock(ExternalIdentityMappingUnlinkUseCase.class);
     var authorizer = InternalServiceTokenTestSupport.authorizer();
 
     mockMvc =
@@ -55,6 +61,8 @@ class InternalAuthStatusFailureLoggingTest {
                     userAccountMembershipQueryUseCase,
                     userAccountMembershipStatusUpdateUseCase,
                     passwordRecoveryTokenQueryUseCase,
+                    externalIdentityMappingLinkUseCase,
+                    externalIdentityMappingUnlinkUseCase,
                     authorizer))
             .addInterceptors(new InternalServiceTokenAuthenticationInterceptor(authorizer))
             .addFilters(new RequestIdFilter(), new InternalAuthStatusAuditRequestCachingFilter())
