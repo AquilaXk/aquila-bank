@@ -293,7 +293,8 @@ class InternalAuthAdminControllerTest {
                     """
                     {
                       "providerId": "google",
-                      "subject": "google-subject-001"
+                      "subject": "google-subject-001",
+                      "reasonDetail": "oidc onboarding"
                     }
                     """))
         .andExpect(status().isBadRequest())
