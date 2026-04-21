@@ -13,6 +13,7 @@ import com.aquilabank.domain.auth.port.AuthTokenIssuePort;
 import com.aquilabank.domain.auth.port.BackupCodeLoadPort;
 import com.aquilabank.domain.auth.port.BackupCodeSecretPort;
 import com.aquilabank.domain.auth.port.BackupCodeWritePort;
+import com.aquilabank.domain.auth.port.ExternalIdentityUserLoadPort;
 import com.aquilabank.domain.auth.port.LoginAttemptAuditPort;
 import com.aquilabank.domain.auth.port.LoginAttemptUpdatePort;
 import com.aquilabank.domain.auth.port.PasswordHashPort;
@@ -55,6 +56,8 @@ import com.aquilabank.domain.auth.usecase.BackupCodeChallengeVerifyService;
 import com.aquilabank.domain.auth.usecase.BackupCodeChallengeVerifyUseCase;
 import com.aquilabank.domain.auth.usecase.BackupCodeGenerateService;
 import com.aquilabank.domain.auth.usecase.BackupCodeGenerateUseCase;
+import com.aquilabank.domain.auth.usecase.ExternalOidcLoginService;
+import com.aquilabank.domain.auth.usecase.ExternalOidcLoginUseCase;
 import com.aquilabank.domain.auth.usecase.LoginService;
 import com.aquilabank.domain.auth.usecase.LoginUseCase;
 import com.aquilabank.domain.auth.usecase.LogoutService;
@@ -197,6 +200,53 @@ public class AuthConfiguration {
       }
       if (transactionResult.result() == null) {
         throw new IllegalStateException("login transaction returned null result");
+      }
+      return transactionResult.result();
+    };
+  }
+
+  @Bean
+  ExternalOidcLoginUseCase externalOidcLoginUseCase(
+      ExternalIdentityUserLoadPort externalIdentityUserLoadPort,
+      LoginAttemptUpdatePort loginAttemptUpdatePort,
+      LoginAttemptAuditPort loginAttemptAuditPort,
+      RefreshTokenSessionWritePort refreshTokenSessionWritePort,
+      RefreshTokenSecretPort refreshTokenSecretPort,
+      RefreshDeviceBindingSecretPort refreshDeviceBindingSecretPort,
+      AuthTokenIssuePort authTokenIssuePort,
+      RefreshTokenPolicy refreshTokenPolicy,
+      Clock authClock,
+      PlatformTransactionManager platformTransactionManager) {
+    ExternalOidcLoginService externalOidcLoginService =
+        new ExternalOidcLoginService(
+            externalIdentityUserLoadPort,
+            loginAttemptUpdatePort,
+            loginAttemptAuditPort,
+            refreshTokenSessionWritePort,
+            refreshTokenSecretPort,
+            refreshDeviceBindingSecretPort,
+            authTokenIssuePort,
+            refreshTokenPolicy,
+            authClock);
+    TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
+    return command -> {
+      LoginTransactionResult transactionResult =
+          transactionTemplate.execute(
+              status -> {
+                try {
+                  return LoginTransactionResult.success(externalOidcLoginService.login(command));
+                } catch (InvalidCredentialsException ex) {
+                  return LoginTransactionResult.failure(ex);
+                }
+              });
+      if (transactionResult == null) {
+        throw new IllegalStateException("external oidc login transaction result is null");
+      }
+      if (transactionResult.exception() != null) {
+        throw transactionResult.exception();
+      }
+      if (transactionResult.result() == null) {
+        throw new IllegalStateException("external oidc login transaction returned null result");
       }
       return transactionResult.result();
     };
