@@ -98,6 +98,22 @@ groups:
           description: "SSE total session이 10분 이상 56을 초과했습니다. 기본 max-total-sessions=64 기준 87.5% 사용률 baseline입니다."
           runbook_path: "back/README.md#prometheus-metrics"
 
+  - name: aquila-bank-auth
+    interval: 30s
+    rules:
+      - alert: AquilaCurrentSessionActiveGateRejectDetected
+        expr: sum(rate(aquila_auth_current_session_gate_reject_count_total[5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+          service: aquila-bank
+          domain: auth
+          baseline: "true"
+        annotations:
+          summary: "Aquila Bank current session active gate rejects detected"
+          description: "민감 mutation에서 current session active gate 차단이 5분 이상 발생했습니다. requestId 기준 structured audit log를 먼저 확인합니다."
+          runbook_path: "back/README.md#prometheus-metrics"
+
   - name: aquila-bank-transaction
     interval: 30s
     rules:
