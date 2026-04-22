@@ -585,6 +585,7 @@ public class AuthConfiguration {
             userCredentialLoadPort,
             passwordRecoverySecretPort,
             passwordRecoveryTokenWritePort,
+            command -> {},
             Duration.ofSeconds(passwordRecoveryProperties.ttlSeconds()),
             authClock);
     TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
