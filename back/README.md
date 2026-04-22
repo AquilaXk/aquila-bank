@@ -965,6 +965,19 @@ tools/ops/internal-auth-find-status-change-audit.sh \
 - wrapper script 내부에서 exact lookup endpoint, `Authorization: Bearer`, `requestId` query를 고정합니다.
 - failure 원본은 structured log이므로 incident 시작점은 항상 로그 검색입니다.
 
+success audit 목록/검색 예시:
+
+```bash
+curl -sS \
+  -H "Authorization: Bearer $AUTH_ADMIN_SERVICE_TOKEN" \
+  "http://localhost:8080/internal/api/v1/auth/status-change-audits?fromCreatedAt=2026-04-01T00:00:00Z&toCreatedAt=2026-04-22T00:00:00Z&targetUserId=21&targetAccountId=101&changeType=MEMBERSHIP_STATUS&reasonCode=OPS_MANUAL&size=50"
+```
+
+- 목록 API는 `created_at DESC, id DESC` keyset pagination만 사용합니다. 다음 페이지는 응답 `nextCursor`를 `cursor` query로 그대로 전달합니다.
+- 지원 필터는 `fromCreatedAt`, `toCreatedAt`, `targetUserId`, `targetAccountId`, `changeType`, `reasonCode`, `size`, `cursor`입니다.
+- 기본 `size=50`, 최대 `size=200`이며 그 이상은 서버에서 `200`으로 제한합니다.
+- 검색 index는 `idx_auth_status_change_audit_*_created_id` 계열로 유지합니다. rollback 시 API PR revert와 함께 `V42__add_auth_status_change_audit_search_indexes.sql`로 추가된 index 제거 여부를 확인합니다.
+
 ## Outbox Ops Runbook
 
 Kafka producer 를 붙인 이후 outbox backlog 는 actuator health 와 내부 ops 경로를 같이 봐야 복구 판단이 빨라집니다.
