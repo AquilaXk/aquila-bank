@@ -43,6 +43,7 @@ import com.aquilabank.domain.auth.model.UserStatusUpdateCommand;
 import com.aquilabank.domain.auth.port.BackupCodeWritePort;
 import com.aquilabank.domain.auth.port.ExternalIdentityMappingWritePort;
 import com.aquilabank.domain.auth.port.LoginAttemptUpdatePort;
+import com.aquilabank.domain.auth.port.PasswordRecoveryTokenCleanupPort;
 import com.aquilabank.domain.auth.port.PasswordRecoveryTokenWritePort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionCleanupPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionWritePort;
@@ -75,6 +76,7 @@ public class JdbcAuthWriteRepository
         LoginAttemptUpdatePort,
         BackupCodeWritePort,
         RememberDeviceWritePort,
+        PasswordRecoveryTokenCleanupPort,
         PasswordRecoveryTokenWritePort,
         UserCredentialUpdatePort,
         RefreshTokenSessionCleanupPort,
@@ -913,6 +915,58 @@ public class JdbcAuthWriteRepository
                 USING limited l
                 WHERE s.id = l.id
                 RETURNING s.id
+            )
+            SELECT COUNT(*)
+            FROM deleted
+            """,
+            new MapSqlParameterSource()
+                .addValue("cutoff", Timestamp.from(cutoff))
+                .addValue("batchSize", batchSize),
+            Integer.class);
+    return deleted == null ? 0 : deleted;
+  }
+
+  @Override
+  @Transactional
+  public int deleteExpiredTokens(Instant cutoff, int batchSize) {
+    // PENDING은 expires_at, 완료 상태는 updated_at 기준으로 partial index cursor를 분리합니다.
+    Integer deleted =
+        jdbcTemplate.queryForObject(
+            """
+            WITH candidates AS (
+                SELECT id, cleanup_at
+                FROM (
+                    SELECT id, expires_at AS cleanup_at
+                    FROM auth_password_recovery_token
+                    WHERE token_status = 'PENDING'
+                      AND expires_at < :cutoff
+                    ORDER BY expires_at ASC, id ASC
+                    FOR UPDATE SKIP LOCKED
+                    LIMIT :batchSize
+                ) pending_candidates
+                UNION ALL
+                SELECT id, cleanup_at
+                FROM (
+                    SELECT id, updated_at AS cleanup_at
+                    FROM auth_password_recovery_token
+                    WHERE token_status IN ('USED', 'EXPIRED', 'SUPERSEDED')
+                      AND updated_at < :cutoff
+                    ORDER BY updated_at ASC, id ASC
+                    FOR UPDATE SKIP LOCKED
+                    LIMIT :batchSize
+                ) completed_candidates
+            ),
+            limited AS (
+                SELECT id
+                FROM candidates
+                ORDER BY cleanup_at ASC, id ASC
+                LIMIT :batchSize
+            ),
+            deleted AS (
+                DELETE FROM auth_password_recovery_token t
+                USING limited l
+                WHERE t.id = l.id
+                RETURNING t.id
             )
             SELECT COUNT(*)
             FROM deleted
