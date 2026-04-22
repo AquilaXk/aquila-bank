@@ -10,6 +10,7 @@ import org.springframework.util.StringUtils;
 public record NotificationInboxConsumerProperties(
     boolean enabled,
     boolean autoStartup,
+    int concurrency,
     String bootstrapServers,
     String groupId,
     String autoOffsetReset,
@@ -20,6 +21,7 @@ public record NotificationInboxConsumerProperties(
 
   public NotificationInboxConsumerProperties {
     autoStartup = autoStartup || !enabled;
+    concurrency = concurrency > 0 ? concurrency : 1;
     groupId = StringUtils.hasText(groupId) ? groupId : "aquila-bank-notification-inbox-consumer";
     autoOffsetReset = StringUtils.hasText(autoOffsetReset) ? autoOffsetReset : "earliest";
     transferBooked = transferBooked == null ? new TopicProperties(null) : transferBooked;

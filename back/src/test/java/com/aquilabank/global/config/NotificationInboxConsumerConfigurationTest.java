@@ -7,7 +7,9 @@ import com.aquilabank.domain.notification.port.NotificationDlqRedriveAuditPort;
 import com.aquilabank.domain.notification.port.NotificationInboxAppendPort;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.DirectFieldAccessor;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 
 class NotificationInboxConsumerConfigurationTest {
 
@@ -50,6 +52,26 @@ class NotificationInboxConsumerConfigurationTest {
               assertThat(context).hasBean("notificationInboxKafkaListenerContainerFactory");
               assertThat(context).hasBean("transferBookedNotificationConsumer");
               assertThat(context).doesNotHaveBean("transferReversedNotificationConsumer");
+            });
+  }
+
+  @Test
+  void appliesConfiguredConsumerConcurrencyToListenerFactory() {
+    contextRunner
+        .withPropertyValues(
+            "notification.inbox.consumer.enabled=true",
+            "notification.inbox.consumer.bootstrap-servers=localhost:9092",
+            "notification.inbox.consumer.transfer-booked.topic=bank.transfer.booked.v1",
+            "notification.inbox.consumer.concurrency=3")
+        .run(
+            context -> {
+              ConcurrentKafkaListenerContainerFactory<?, ?> factory =
+                  context.getBean(
+                      "notificationInboxKafkaListenerContainerFactory",
+                      ConcurrentKafkaListenerContainerFactory.class);
+
+              assertThat(new DirectFieldAccessor(factory).getPropertyValue("concurrency"))
+                  .isEqualTo(3);
             });
   }
 
