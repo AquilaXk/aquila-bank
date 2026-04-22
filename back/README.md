@@ -579,6 +579,8 @@ login 실패/잠금은 structured log 한 줄로 남습니다.
     `GET /internal/api/v1/auth/password-recovery-tokens/by-request-id?requestId=...` 에서만 확인한다.
   - internal lookup은 `internal:auth-admin` scope가 필요하고, missing/blank `requestId`는 `400`, unknown `requestId`는 `404`
   - forgot-password confirm 성공도 기존 self-service reset과 동일하게 현재 user의 `ACTIVE` refresh session 전체를 `REVOKED`로 바꾼다.
+  - recovery token cleanup batch는 `PENDING`은 `expires_at`, `USED|EXPIRED|SUPERSEDED`는 `updated_at` 기준으로 retention cutoff 밖 row만 작은 batch로 삭제한다.
+  - 기본 설정은 `AUTH_PASSWORD_RECOVERY_TOKEN_CLEANUP_ENABLED=true`, `AUTH_PASSWORD_RECOVERY_TOKEN_CLEANUP_RETENTION_DAYS=7`, `AUTH_PASSWORD_RECOVERY_TOKEN_CLEANUP_BATCH_SIZE=500` 이다.
 - 거절 기준:
   - 만료, 이미 rotation 된 token, 존재하지 않는 token은 모두 `401 refresh failed`
   - `user_status=LOCKED|DISABLED` 사용자는 refresh로 새 token pair를 발급받지 못함
