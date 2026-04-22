@@ -558,6 +558,63 @@
       ],
       "title": "Transaction P95 Latency by Shape",
       "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 3,
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 20
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "max(hikaricp_connections_pending{pool=\"aquila-bank-pool\"})",
+          "legendFormat": "pool_pending",
+          "refId": "A"
+        },
+        {
+          "expr": "max(hikaricp_connections_active{pool=\"aquila-bank-pool\"}) / clamp_min(max(hikaricp_connections_max{pool=\"aquila-bank-pool\"}), 1)",
+          "legendFormat": "pool_active_ratio",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(rate(aquila_t3micro_saturation_guard_query_timeouts_total[5m]))",
+          "legendFormat": "query_timeout_rate",
+          "refId": "C"
+        },
+        {
+          "expr": "sum(pg_stat_activity_lock_waiting_count)",
+          "legendFormat": "lock_waiting_count",
+          "refId": "D"
+        },
+        {
+          "expr": "sum(rate(pg_stat_statements_seconds_total[5m])) / clamp_min(sum(rate(pg_stat_statements_calls_total[5m])), 0.001)",
+          "legendFormat": "pg_stat_statements_avg_seconds",
+          "refId": "E"
+        }
+      ],
+      "title": "DB Pool and Postgres Slow/Lock Signals",
+      "type": "timeseries"
     }
   ],
   "refresh": "30s",

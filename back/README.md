@@ -260,12 +260,20 @@ set +a
   - `aquila_notification_sse_sessions{principal_type="account|user|total"}`
   - `aquila_auth_current_session_gate_reject_count_total{reason_code="MISSING_SESSION_ID|INACTIVE_OR_MISMATCHED_SESSION"}`
   - `aquila_auth_refresh_token_reuse_detected_count_total{reason_code="ROTATED_TOKEN_REUSE"}`
+  - `aquila_t3micro_saturation_guard_query_timeouts_total`
   - `aquila_transaction_query_latency_seconds`
+- DB saturation metric:
+  - backend actuator scrape: `hikaricp_connections_pending`, `hikaricp_connections_active`, `hikaricp_connections_max`
+  - Postgres exporter scrape: `pg_stat_activity_lock_waiting_count`, `pg_stat_statements_seconds_total`, `pg_stat_statements_calls_total`
 - 활성화 조건:
   - outbox metric은 기본 wiring만 있으면 항상 export 됩니다.
   - notification consumer lag/DLQ metric은 `NOTIFICATION_INBOX_CONSUMER_OPS_ENABLED=true` 와 DLQ topic 설정이 있어야 export 됩니다.
   - current session gate reject counter는 민감 mutation에서 legacy JWT `session_id` 누락 또는 inactive/mismatch session 차단이 발생하면 증가합니다.
   - refresh token reuse metric은 `ROTATED` refresh token 재사용 감지와 family revoke가 발생하면 증가합니다.
+  - t3.micro query timeout counter는 backend query timeout exception이 발생하면 증가합니다.
+  - Hikari pool metric은 Spring Boot/Micrometer 기본 binder와 `aquila-bank-pool` pool tag 기준으로 export 됩니다.
+  - Postgres exporter `pg_stat_statements_*`는 `pg_stat_statements` extension과 collector 활성화가 필요합니다.
+  - `pg_stat_activity_lock_waiting_count`는 `wait_event_type = 'Lock'` custom query metric으로 둡니다.
   - transaction latency timer는 `GET /api/v1/transactions` query path가 한 번이라도 호출되면 `query_shape` tag 기준으로 누적됩니다.
   - transaction latency histogram bucket은 p95 SLO alert용으로 `50ms, 80ms, 120ms, 150ms, 180ms, 350ms, 750ms, 1s, 3s` 경계를 export 합니다.
 - transaction `query_shape` 기준:
@@ -290,8 +298,14 @@ set +a
   - refresh token reuse metric label은 `reason_code`만 사용하고, `requestId`, `userId`, `reusedSessionId`, `familyRootId`는 structured audit log에서만 확인합니다.
   - `AquilaRefreshTokenReuseDetected` alert는 공격성 재사용 후보입니다. 같은 시간대 `requestId`로 `auth refresh token reuse detected` log를 조회하고 `reusedSessionId`, `familyRootId`, `revokedCount`를 먼저 확인합니다.
   - p95 alert는 `query_shape`별 5분 rate가 충분할 때만 평가해 low traffic 노이즈를 줄입니다.
+  - `AquilaDbPoolPendingWaitDetected`는 Hikari pending connection이 남은 상태라 lock wait, slow query, DB CPU, transaction p95를 같은 시간대에서 같이 확인합니다.
+  - `AquilaDbPoolActivePressureHigh`는 active/max pool ratio 90% 이상을 queueing 전조로 봅니다. t3.micro 기본 `DB_POOL_MAX_SIZE=4`에서는 순간 spike보다 10분 지속 여부가 중요합니다.
+  - `AquilaDbQueryTimeoutDetected`는 `statement_timeout` 또는 `lock_timeout` 전파 신호로 보고 blocking query와 pool pending을 먼저 좁힙니다.
+  - `AquilaPostgresLockWaitDetected`는 Postgres exporter custom metric이 있을 때만 동작합니다. alert label에는 query text/pid/user/requestId를 올리지 않고 DB drill-down에서 확인합니다.
+  - `AquilaPostgresSlowQueryDetected`는 `pg_stat_statements` database-level 평균이 750ms를 넘는지 보는 coarse guard입니다. query별 확인은 `queryid` 기준으로 별도 조회합니다.
   - refresh token reuse alert rollback은 `AquilaRefreshTokenReuseDetected` rule 제거 또는 notification routing 비활성화로 수행하고, refresh API 응답 계약은 그대로 유지합니다.
   - histogram bucket/alert rollback은 `management.metrics.distribution.*.aquila.transaction.query.latency`와 `AquilaTransactionQueryLatencyP95SloHigh` rule 제거로 수행합니다.
+  - DB saturation alert rollback은 `ops/prometheus/rules/aquila-bank-alerts.yml`의 `aquila-bank-postgres` group 제거 또는 threshold/`for` 시간 조정으로 수행합니다.
   - baseline 자산은 `ops/prometheus/` 아래에 두고 dashboard import, alert rule apply, tuning 가이드는 `ops/prometheus/README.md`를 기준으로 봅니다.
 - baseline 파일:
   - dashboard: `ops/prometheus/grafana/aquila-bank-overview.json`
