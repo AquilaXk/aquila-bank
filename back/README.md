@@ -35,6 +35,23 @@ com.aquilabank
 - Redis 경로는 login throttling counter 에만 쓰고, SSE fan-out 은 계속 PostgreSQL `LISTEN/NOTIFY` 를 사용합니다.
 - local Redis는 compose `redis` profile로만 뜨며 기본 `postgres kafka` 경로에는 포함하지 않습니다.
 
+## Account List Pagination
+
+`GET /api/v1/accounts` 는 JWT 사용자 요청에서 기존 무파라미터 전체 목록 응답을 유지하면서, `limit` 또는 `cursor` 가 들어오면 account_id 기준 keyset page로 조회합니다.
+
+- 기본 page size: `50`
+- 최대 page size: `100`
+- cursor: 응답의 `nextCursor` 값을 그대로 다음 요청의 `cursor` 에 전달
+- 정렬: `membership.account_id ASC`
+- index: `idx_user_account_membership_user_status_account_cursor`
+
+재현 명령:
+
+```bash
+tools/test/with-resource-lock.sh back-account-list-keyset \
+  tools/test/run-account-list-keyset-pagination.sh
+```
+
 ## Stack
 
 - Java 21

@@ -6,4 +6,6 @@ import com.aquilabank.domain.account.model.AccountSummaryList;
 public interface AccountListQueryUseCase {
 
   AccountSummaryList getByUserId(long userId);
+
+  AccountSummaryList getByUserId(long userId, int limit, Long afterAccountId);
 }
