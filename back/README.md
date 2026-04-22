@@ -233,6 +233,13 @@ tools/test/with-resource-lock.sh back-gradle-check \
 - notification inbox retention cleanup은 `notification_inbox.created_at` 기준으로만 동작해 account/user 경로의 read 의미를 따로 해석하지 않습니다.
 - 오래된 inbox row를 지울 때 연결된 `notification_user_read_state`도 FK cascade로 함께 정리해 read state orphan과 unread 회귀를 막습니다.
 - 기본 설정은 `NOTIFICATION_INBOX_CLEANUP_ENABLED=true`, `NOTIFICATION_INBOX_CLEANUP_RETENTION_DAYS=90`, `NOTIFICATION_INBOX_CLEANUP_BATCH_SIZE=500`, `NOTIFICATION_INBOX_CLEANUP_FIXED_DELAY_MS=300000` 입니다.
+- JWT user inbox list는 active account별 bounded LATERAL query로 `idx_notification_inbox_account_visible_cursor` partial index를 재사용합니다.
+- user inbox EXPLAIN baseline은 active membership/user visibility와 per-user hidden state를 포함한 first/cursor page에서 `notification_inbox` full scan 회귀를 차단합니다.
+- 실행:
+  ```bash
+  tools/test/with-resource-lock.sh back-notification-user-inbox-baseline \
+    tools/test/run-notification-user-inbox-explain-baseline.sh
+  ```
 
 ## Notification Search API
 

@@ -897,76 +897,16 @@ public class JdbcNotificationInboxRepository
 
   private List<NotificationSummary> fetchByUserIdFirstPage(
       long userId, NotificationListQuery query) {
-    return jdbcTemplate.query(
-        """
-        SELECT n.id,
-               n.account_id,
-               n.event_type,
-               n.title,
-               n.message,
-               n.created_at,
-               r.read_at
-        FROM notification_inbox n
-        JOIN user_account_membership m
-          ON m.account_id = n.account_id
-        JOIN bank_user u
-          ON u.id = m.user_id
-        LEFT JOIN notification_user_read_state r
-          ON r.user_id = :userId
-         AND r.notification_id = n.id
-        WHERE m.user_id = :userId
-          AND m.membership_status = 'ACTIVE'
-          AND u.user_status = 'ACTIVE'
-          AND n.archived_at IS NULL
-          AND r.archived_at IS NULL
-          AND r.deleted_at IS NULL
-        ORDER BY n.created_at DESC, n.id DESC
-        LIMIT :limitPlusOne
-        """,
-        new MapSqlParameterSource()
-            .addValue("userId", userId)
-            .addValue("limitPlusOne", query.limit() + 1),
-        ROW_MAPPER);
+    NotificationUserInboxQueryStatement statement =
+        NotificationUserInboxQueryStatement.from(userId, query);
+    return jdbcTemplate.query(statement.sql(), statement.params(), ROW_MAPPER);
   }
 
   private List<NotificationSummary> fetchByUserIdNextPage(
       long userId, NotificationListQuery query) {
-    return jdbcTemplate.query(
-        """
-        SELECT n.id,
-               n.account_id,
-               n.event_type,
-               n.title,
-               n.message,
-               n.created_at,
-               r.read_at
-        FROM notification_inbox n
-        JOIN user_account_membership m
-          ON m.account_id = n.account_id
-        JOIN bank_user u
-          ON u.id = m.user_id
-        LEFT JOIN notification_user_read_state r
-          ON r.user_id = :userId
-         AND r.notification_id = n.id
-        WHERE m.user_id = :userId
-          AND m.membership_status = 'ACTIVE'
-          AND u.user_status = 'ACTIVE'
-          AND n.archived_at IS NULL
-          AND r.archived_at IS NULL
-          AND r.deleted_at IS NULL
-          AND (
-                n.created_at < :cursorCreatedAt
-             OR (n.created_at = :cursorCreatedAt AND n.id < :cursorId)
-              )
-        ORDER BY n.created_at DESC, n.id DESC
-        LIMIT :limitPlusOne
-        """,
-        new MapSqlParameterSource()
-            .addValue("userId", userId)
-            .addValue("limitPlusOne", query.limit() + 1)
-            .addValue("cursorCreatedAt", Timestamp.from(query.cursor().createdAt()))
-            .addValue("cursorId", query.cursor().id()),
-        ROW_MAPPER);
+    NotificationUserInboxQueryStatement statement =
+        NotificationUserInboxQueryStatement.from(userId, query);
+    return jdbcTemplate.query(statement.sql(), statement.params(), ROW_MAPPER);
   }
 
   private List<NotificationSummary> fetchByAccountIdFirstPage(
