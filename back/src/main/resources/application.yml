@@ -252,6 +252,7 @@ notification:
     consumer:
       enabled: ${NOTIFICATION_INBOX_CONSUMER_ENABLED:false}
       auto-startup: ${NOTIFICATION_INBOX_CONSUMER_AUTO_STARTUP:true}
+      concurrency: ${NOTIFICATION_INBOX_CONSUMER_CONCURRENCY:1}
       bootstrap-servers: ${NOTIFICATION_INBOX_CONSUMER_BOOTSTRAP_SERVERS:}
       group-id: ${NOTIFICATION_INBOX_CONSUMER_GROUP_ID:aquila-bank-notification-inbox-consumer}
       auto-offset-reset: ${NOTIFICATION_INBOX_CONSUMER_AUTO_OFFSET_RESET:earliest}

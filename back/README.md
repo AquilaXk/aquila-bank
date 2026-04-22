@@ -206,6 +206,7 @@ docker compose up -d postgres kafka
 - 로컬 Kafka broker는 topic auto-create를 끄고, app startup provisioning이 configured topic을 명시적으로 준비합니다.
 - 기본 topic 이름은 `bank.notification.outbox.v1`, `bank.transfer.booked.v1`, `bank.transfer.reversed.v1`, `bank.transfer.booked.dlq.v1` 입니다.
 - startup validation은 configured topic 존재와 최소 partition 수를 확인하고, outbox/consumer bootstrap server가 다르면 fail-fast 합니다.
+- topic partition을 늘릴 때는 `KAFKA_TOPIC_PROVISIONING_PARTITIONS`와 `NOTIFICATION_INBOX_CONSUMER_CONCURRENCY`를 같이 조정합니다.
 - 이 경로는 로컬 개발 전용입니다.
 
 Redis login throttling runtime smoke가 필요할 때만 profile을 켭니다.
@@ -240,6 +241,7 @@ set +a
 - `dev`/`test` 프로필에서는 필요 시 `X-Account-Id` 헤더 fallback을 사용할 수 있습니다.
 - `dev` 프로필은 `OUTBOX_KAFKA_ENABLED=true`, `NOTIFICATION_INBOX_CONSUMER_ENABLED=true`만 주면 `localhost:9092`, 기본 topic 이름, provisioning/validation 기본값을 자동 사용합니다.
 - Kafka 포트를 바꾸면 `OUTBOX_KAFKA_BOOTSTRAP_SERVERS`, `NOTIFICATION_INBOX_CONSUMER_BOOTSTRAP_SERVERS`를 같은 값으로 같이 넘깁니다.
+- `NOTIFICATION_INBOX_CONSUMER_CONCURRENCY` 기본값은 `1`입니다. partition 확장 검증 없이 값을 올리지 않고, 운영에서는 topic partition 수와 DB pool 여유 안에서만 올립니다.
 - provisioning/validation을 끄려면 `KAFKA_TOPIC_PROVISIONING_ENABLED=false`, `KAFKA_TOPIC_STARTUP_VALIDATION_ENABLED=false`를 함께 조정합니다.
 
 ## Prometheus Metrics
@@ -316,6 +318,20 @@ tools/test/with-resource-lock.sh back-gradle-check \
 
 - 위 테스트는 Testcontainers PostgreSQL + Kafka를 띄워 `transfer API -> outbox -> Kafka -> notification_inbox` 전체 경로를 검증합니다.
 - 로컬 앱을 직접 띄운 뒤 수동 확인이 필요하면 transfer 호출 후 notification API 또는 DB `notification_inbox` row를 확인합니다.
+
+### Kafka Consumer Partition Concurrency
+
+topic partition을 늘려도 consumer concurrency가 `1`이면 lag 해소 속도는 단일 listener thread에 묶입니다. partition 확장 전후에는 아래 smoke로 같은 fixture에서 concurrency `1`과 `4`를 비교합니다.
+
+```bash
+tools/test/run-kafka-consumer-partition-concurrency.sh
+```
+
+- fixture: 4 partitions, 48 records, listener당 고정 30ms work
+- 목표: 최종 consumer lag `0`, concurrency `4` throughput 이 concurrency `1`보다 `1.5x` 초과
+- 운영 적용: `KAFKA_TOPIC_PROVISIONING_PARTITIONS=<n>`으로 topic 최소 partition을 올리고 `NOTIFICATION_INBOX_CONSUMER_CONCURRENCY=<n>`은 partition 수 이하로 둡니다.
+- t3.micro 기준: DB write path가 같이 느려질 수 있으므로 consumer lag, Hikari pool pending, `AquilaDbPoolActivePressureHigh`를 함께 확인합니다.
+- rollback: lag가 줄지 않거나 DB pool wait가 늘면 `NOTIFICATION_INBOX_CONSUMER_CONCURRENCY=1`로 되돌리고 partition 증설 효과를 재측정합니다.
 
 ## Notification Read State
 
@@ -1059,9 +1075,11 @@ OUTBOX_OPS_HEALTH_MAX_LAG_SECONDS=120
 OUTBOX_OPS_HEALTH_MAX_FAILED_COUNT=10
 OUTBOX_OPS_HEALTH_MAX_STALE_SENDING_COUNT=0
 NOTIFICATION_INBOX_CONSUMER_DLQ_TOPIC=bank.transfer.booked.dlq.v1
+NOTIFICATION_INBOX_CONSUMER_CONCURRENCY=1
 NOTIFICATION_INBOX_CONSUMER_OPS_ENABLED=true
 NOTIFICATION_INBOX_CONSUMER_OPS_HEALTH_MAX_LAG_MESSAGES=100
 NOTIFICATION_INBOX_CONSUMER_OPS_HEALTH_MAX_DLQ_COUNT=0
+KAFKA_TOPIC_PROVISIONING_PARTITIONS=1
 ```
 
 운영 호출용 shell에는 아래처럼 pre-generated token을 둡니다.

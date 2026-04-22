@@ -106,6 +106,7 @@ public class NotificationInboxConsumerConfiguration {
     ConcurrentKafkaListenerContainerFactory<String, String> factory =
         new ConcurrentKafkaListenerContainerFactory<>();
     factory.setConsumerFactory(notificationInboxConsumerFactory);
+    factory.setConcurrency(properties.concurrency());
     factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.RECORD);
     factory.setCommonErrorHandler(
         notificationInboxKafkaErrorHandler(
