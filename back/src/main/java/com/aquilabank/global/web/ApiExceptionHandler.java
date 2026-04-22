@@ -26,6 +26,7 @@ import com.aquilabank.domain.ledger.exception.TransferReversalNotFoundException;
 import com.aquilabank.domain.notification.exception.NotificationNotFoundException;
 import com.aquilabank.domain.transaction.exception.TransactionDetailNotFoundException;
 import com.aquilabank.global.notification.NotificationSseOverloadException;
+import com.aquilabank.global.ops.ApiOverloadRejectedException;
 import com.aquilabank.global.ops.T3MicroQueryTimeoutSignal;
 import com.aquilabank.global.ops.T3MicroSaturationRejectedException;
 import com.aquilabank.global.security.BootstrapApiAccessDeniedException;
@@ -107,6 +108,21 @@ public class ApiExceptionHandler {
     logInternalAuthStatusFailure(HttpStatus.TOO_MANY_REQUESTS, request, ex.getMessage());
     return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
         .header("Retry-After", Long.toString(ex.retryAfterSeconds()))
+        .body(
+            new ApiErrorResponse(
+                Instant.now(),
+                HttpStatus.TOO_MANY_REQUESTS.value(),
+                HttpStatus.TOO_MANY_REQUESTS.getReasonPhrase(),
+                ex.getMessage(),
+                request.getRequestURI()));
+  }
+
+  @ExceptionHandler(ApiOverloadRejectedException.class)
+  ResponseEntity<ApiErrorResponse> handleApiOverloadRejected(
+      ApiOverloadRejectedException ex, HttpServletRequest request) {
+    logInternalAuthStatusFailure(HttpStatus.TOO_MANY_REQUESTS, request, ex.getMessage());
+    return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+        .header("Retry-After", Integer.toString(ex.retryAfterSeconds()))
         .body(
             new ApiErrorResponse(
                 Instant.now(),

@@ -73,6 +73,37 @@ management:
         aquila.transaction.query.latency: 50ms,80ms,120ms,150ms,180ms,350ms,750ms,1s,3s
 
 ops:
+  api-admission-control:
+    enabled: ${OPS_API_ADMISSION_CONTROL_ENABLED:true}
+    retry-after-seconds: ${OPS_API_ADMISSION_CONTROL_RETRY_AFTER_SECONDS:1}
+    endpoints:
+      - group: transaction-read
+        max-concurrency: ${OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_MAX:3}
+        path-prefixes:
+          - /api/v1/transactions
+      - group: account-read
+        max-concurrency: ${OPS_API_ADMISSION_CONTROL_ACCOUNT_READ_MAX:4}
+        path-prefixes:
+          - /api/v1/accounts
+      - group: transfer-write
+        max-concurrency: ${OPS_API_ADMISSION_CONTROL_TRANSFER_WRITE_MAX:2}
+        path-prefixes:
+          - /api/v1/transfers
+      - group: notification-stream
+        max-concurrency: ${OPS_API_ADMISSION_CONTROL_NOTIFICATION_STREAM_MAX:4}
+        path-prefixes:
+          - /api/v1/notifications/stream
+      - group: notification-read
+        max-concurrency: ${OPS_API_ADMISSION_CONTROL_NOTIFICATION_READ_MAX:4}
+        path-prefixes:
+          - /api/v1/notifications
+          - /api/v1/notification-preferences
+      - group: internal-ops
+        max-concurrency: ${OPS_API_ADMISSION_CONTROL_INTERNAL_OPS_MAX:2}
+        path-prefixes:
+          - /internal/api/v1/accounts
+          - /internal/api/v1/ledger
+          - /internal/api/v1/outbox
   t3-micro-saturation-guard:
     enabled: ${OPS_T3MICRO_SATURATION_GUARD_ENABLED:true}
     retry-after-seconds: ${OPS_T3MICRO_SATURATION_GUARD_RETRY_AFTER_SECONDS:2}
