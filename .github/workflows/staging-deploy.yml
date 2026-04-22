@@ -1,0 +1,184 @@
+name: Staging Deploy
+
+on:
+  workflow_run:
+    workflows:
+      - Main CI
+    types:
+      - completed
+
+permissions:
+  contents: read
+  deployments: write
+
+concurrency:
+  group: staging-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy Main SHA To Staging
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: staging
+    env:
+      DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+      DEPLOY_LOG_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Checkout deploy SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+          fetch-depth: 0
+
+      - name: Validate main SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin main
+
+          checked_out_sha="$(git rev-parse HEAD)"
+          current_main_sha="$(git rev-parse origin/main)"
+
+          if [ "${checked_out_sha}" != "${DEPLOY_SHA}" ]; then
+            echo "::error::Checked out ${checked_out_sha}, expected ${DEPLOY_SHA}."
+            exit 1
+          fi
+
+          # staging은 main 최신 SHA만 자동 배포해 오래된 CI 완료가 역배포를 만들지 않게 한다.
+          if [ "${current_main_sha}" != "${DEPLOY_SHA}" ]; then
+            echo "::error::Deploy SHA ${DEPLOY_SHA} is not current origin/main ${current_main_sha}."
+            exit 1
+          fi
+
+      - name: Create staging deployment
+        id: deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload="$(
+            jq -n \
+              --arg ref "${DEPLOY_SHA}" \
+              --arg description "Deploy main SHA ${DEPLOY_SHA} to staging" \
+              '{
+                ref: $ref,
+                environment: "staging",
+                description: $description,
+                auto_merge: false,
+                required_contexts: [],
+                production_environment: false,
+                transient_environment: false
+              }'
+          )"
+          deployment_id="$(gh api --method POST "repos/${GITHUB_REPOSITORY}/deployments" --input - --jq ".id" <<< "${payload}")"
+
+          if [ -z "${deployment_id}" ]; then
+            echo "::error::Failed to create staging deployment."
+            exit 1
+          fi
+
+          echo "deployment_id=${deployment_id}" >> "${GITHUB_OUTPUT}"
+
+      - name: Mark staging deployment in progress
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload="$(
+            jq -n \
+              --arg log_url "${DEPLOY_LOG_URL}" \
+              '{
+                state: "in_progress",
+                environment: "staging",
+                log_url: $log_url,
+                auto_inactive: false
+              }'
+          )"
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/deployments/${DEPLOYMENT_ID}/statuses" --input - <<< "${payload}"
+
+      - name: Dispatch staging deploy hook
+        env:
+          STAGING_DEPLOY_WEBHOOK_URL: ${{ secrets.STAGING_DEPLOY_WEBHOOK_URL }}
+          STAGING_DEPLOY_TOKEN: ${{ secrets.STAGING_DEPLOY_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "${STAGING_DEPLOY_WEBHOOK_URL}" ]; then
+            echo "::error::Missing STAGING_DEPLOY_WEBHOOK_URL environment secret."
+            exit 1
+          fi
+
+          if [ -z "${STAGING_DEPLOY_TOKEN}" ]; then
+            echo "::error::Missing STAGING_DEPLOY_TOKEN environment secret."
+            exit 1
+          fi
+
+          payload="$(
+            jq -n \
+              --arg sha "${DEPLOY_SHA}" \
+              --arg repository "${GITHUB_REPOSITORY}" \
+              --arg run_url "${DEPLOY_LOG_URL}" \
+              '{
+                sha: $sha,
+                repository: $repository,
+                environment: "staging",
+                runUrl: $run_url
+              }'
+          )"
+
+          curl --fail-with-body --show-error --silent \
+            --request POST \
+            --header "Authorization: Bearer ${STAGING_DEPLOY_TOKEN}" \
+            --header "Content-Type: application/json" \
+            --data "${payload}" \
+            "${STAGING_DEPLOY_WEBHOOK_URL}"
+
+      - name: Mark staging deployment success
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload="$(
+            jq -n \
+              --arg log_url "${DEPLOY_LOG_URL}" \
+              '{
+                state: "success",
+                environment: "staging",
+                log_url: $log_url,
+                auto_inactive: false
+              }'
+          )"
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/deployments/${DEPLOYMENT_ID}/statuses" --input - <<< "${payload}"
+
+      - name: Mark staging deployment failure
+        if: failure() && steps.deployment.outputs.deployment_id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload="$(
+            jq -n \
+              --arg log_url "${DEPLOY_LOG_URL}" \
+              '{
+                state: "failure",
+                environment: "staging",
+                log_url: $log_url,
+                auto_inactive: false
+              }'
+          )"
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/deployments/${DEPLOYMENT_ID}/statuses" --input - <<< "${payload}"
