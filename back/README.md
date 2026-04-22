@@ -583,6 +583,8 @@ login 실패/잠금은 structured log 한 줄로 남습니다.
   - forgot-password confirm 성공도 기존 self-service reset과 동일하게 현재 user의 `ACTIVE` refresh session 전체를 `REVOKED`로 바꾼다.
   - 현재 delivery adapter는 외부 provider retry/outbox를 만들지 않으며, future provider는 `requestId`를 idempotency key로 사용한다.
   - current delivery ordering 보장은 단일 request 처리 순서까지이며 provider별 재시도/중복 방지는 후속 adapter issue에서 확장한다.
+  - recovery token cleanup batch는 `PENDING`은 `expires_at`, `USED|EXPIRED|SUPERSEDED`는 `updated_at` 기준으로 retention cutoff 밖 row만 작은 batch로 삭제한다.
+  - 기본 설정은 `AUTH_PASSWORD_RECOVERY_TOKEN_CLEANUP_ENABLED=true`, `AUTH_PASSWORD_RECOVERY_TOKEN_CLEANUP_RETENTION_DAYS=7`, `AUTH_PASSWORD_RECOVERY_TOKEN_CLEANUP_BATCH_SIZE=500` 이다.
 - 거절 기준:
   - 만료, 이미 rotation 된 token, 존재하지 않는 token은 모두 `401 refresh failed`
   - `user_status=LOCKED|DISABLED` 사용자는 refresh로 새 token pair를 발급받지 못함

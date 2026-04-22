@@ -98,6 +98,79 @@ class JdbcAuthWriteRepositoryIntegrationTest extends PostgresContainerTestSuppor
     assertThat(findTokenHashes()).containsExactlyInAnyOrder("active-fresh", "rotated-recent");
   }
 
+  @Test
+  void deletesExpiredPasswordRecoveryTokensInBatchesUsingStatusSpecificCutoff() {
+    long[] userId = new long[1];
+    Instant base = Instant.parse("2026-04-22T00:00:00Z");
+    Instant cutoff = base.minusSeconds(7L * 24 * 60 * 60);
+    commit(
+        transactionManager,
+        () -> {
+          userId[0] = insertUser("recovery-cleanup-user");
+          insertPasswordRecoveryToken(
+              userId[0],
+              "pending-expired-old",
+              "PENDING",
+              cutoff.minusSeconds(30),
+              null,
+              cutoff.minusSeconds(90),
+              cutoff.minusSeconds(90));
+          insertPasswordRecoveryToken(
+              userId[0],
+              "used-old",
+              "USED",
+              cutoff.plusSeconds(600),
+              cutoff.minusSeconds(20),
+              cutoff.minusSeconds(80),
+              cutoff.minusSeconds(20));
+          insertPasswordRecoveryToken(
+              userId[0],
+              "expired-old",
+              "EXPIRED",
+              cutoff.plusSeconds(900),
+              null,
+              cutoff.minusSeconds(70),
+              cutoff.minusSeconds(10));
+          insertPasswordRecoveryToken(
+              userId[0],
+              "superseded-old",
+              "SUPERSEDED",
+              cutoff.plusSeconds(1200),
+              null,
+              cutoff.minusSeconds(60),
+              cutoff.minusSeconds(5));
+          insertPasswordRecoveryToken(
+              userId[0],
+              "pending-active",
+              "PENDING",
+              cutoff.plusSeconds(30),
+              null,
+              cutoff.minusSeconds(50),
+              cutoff.minusSeconds(50));
+          insertPasswordRecoveryToken(
+              userId[0],
+              "used-recent",
+              "USED",
+              cutoff.minusSeconds(120),
+              cutoff.plusSeconds(20),
+              cutoff.minusSeconds(40),
+              cutoff.plusSeconds(20));
+        });
+
+    int firstDeleted = repository.deleteExpiredTokens(cutoff, 2);
+
+    assertThat(firstDeleted).isEqualTo(2);
+    assertThat(findRecoveryTokenHashes())
+        .containsExactlyInAnyOrder(
+            "expired-old", "pending-active", "superseded-old", "used-recent");
+
+    int secondDeleted = repository.deleteExpiredTokens(cutoff, 10);
+
+    assertThat(secondDeleted).isEqualTo(2);
+    assertThat(findRecoveryTokenHashes())
+        .containsExactlyInAnyOrder("pending-active", "used-recent");
+  }
+
   private long insertUser(String loginId) {
     Long userId =
         jdbcTemplate.queryForObject(
@@ -176,6 +249,68 @@ class JdbcAuthWriteRepositoryIntegrationTest extends PostgresContainerTestSuppor
         """
         SELECT token_hash
         FROM auth_refresh_token_session
+        ORDER BY token_hash ASC
+        """,
+        new MapSqlParameterSource(),
+        String.class);
+  }
+
+  private void insertPasswordRecoveryToken(
+      long userId,
+      String tokenHash,
+      String tokenStatus,
+      Instant expiresAt,
+      Instant usedAt,
+      Instant createdAt,
+      Instant updatedAt) {
+    jdbcTemplate.update(
+        """
+        INSERT INTO auth_password_recovery_token (
+            request_id,
+            user_id,
+            login_id,
+            token_hash,
+            token_ciphertext,
+            token_nonce,
+            token_status,
+            expires_at,
+            used_at,
+            created_at,
+            updated_at
+        )
+        VALUES (
+            :requestId,
+            :userId,
+            :loginId,
+            :tokenHash,
+            :tokenCiphertext,
+            :tokenNonce,
+            :tokenStatus,
+            :expiresAt,
+            :usedAt,
+            :createdAt,
+            :updatedAt
+        )
+        """,
+        new MapSqlParameterSource()
+            .addValue("requestId", "request-" + tokenHash)
+            .addValue("userId", userId)
+            .addValue("loginId", "recovery-cleanup-user")
+            .addValue("tokenHash", tokenHash)
+            .addValue("tokenCiphertext", "ciphertext-" + tokenHash)
+            .addValue("tokenNonce", "nonce-" + tokenHash)
+            .addValue("tokenStatus", tokenStatus)
+            .addValue("expiresAt", Timestamp.from(expiresAt))
+            .addValue("usedAt", toTimestamp(usedAt))
+            .addValue("createdAt", Timestamp.from(createdAt))
+            .addValue("updatedAt", Timestamp.from(updatedAt)));
+  }
+
+  private List<String> findRecoveryTokenHashes() {
+    return jdbcTemplate.queryForList(
+        """
+        SELECT token_hash
+        FROM auth_password_recovery_token
         ORDER BY token_hash ASC
         """,
         new MapSqlParameterSource(),
