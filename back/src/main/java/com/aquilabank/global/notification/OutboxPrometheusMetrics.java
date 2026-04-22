@@ -20,7 +20,7 @@ public final class OutboxPrometheusMetrics implements MeterBinder {
   private static final Duration SNAPSHOT_TTL = Duration.ofSeconds(5);
   private static final CachedSummary EMPTY_SUMMARY =
       new CachedSummary(
-          new OutboxOpsSummary(Instant.EPOCH, null, Duration.ZERO, 0L, 0L, 0L), Instant.EPOCH);
+          new OutboxOpsSummary(Instant.EPOCH, null, Duration.ZERO, 0L, 0L, 0L, 0L), Instant.EPOCH);
 
   private final OutboxOpsQueryUseCase outboxOpsQueryUseCase;
 
@@ -41,6 +41,12 @@ public final class OutboxPrometheusMetrics implements MeterBinder {
     Gauge.builder(
             "aquila.outbox.failed.count", this, metrics -> metrics.currentSummary().failedCount())
         .description("outbox failed event count")
+        .register(registry);
+    Gauge.builder(
+            "aquila.outbox.quarantined.count",
+            this,
+            metrics -> metrics.currentSummary().quarantinedCount())
+        .description("outbox quarantined poison event count")
         .register(registry);
     Gauge.builder(
             "aquila.outbox.failed.producer_timeout.count",

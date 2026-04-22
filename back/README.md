@@ -176,6 +176,7 @@ set +a
 - custom metric:
   - `aquila_outbox_dispatch_lag_seconds`
   - `aquila_outbox_failed_count`
+  - `aquila_outbox_quarantined_count`
   - `aquila_outbox_failed_producer_timeout_count`
   - `aquila_outbox_sending_stale_count`
   - `aquila_notification_consumer_lag_count`
@@ -904,6 +905,7 @@ Kafka producer 를 붙인 이후 outbox backlog 는 actuator health 와 내부 o
 ### 준비할 env
 
 ```bash
+OUTBOX_POLLER_MAX_RETRY_ATTEMPTS=10
 OUTBOX_OPS_ENABLED=true
 SECURITY_INTERNAL_SERVICE_TOKEN_ISSUER=dev-internal-service
 SECURITY_INTERNAL_SERVICE_TOKEN_AUDIENCE=aquila-internal-api
@@ -1027,22 +1029,27 @@ curl --fail-with-body --silent --show-error \
 - `OUT_OF_SERVICE`: outbox backlog 또는 notification consumer lag/DLQ 적재가 임계값을 넘었고 `/actuator/health` 는 `503`으로 내려간다.
 - `DOWN`: Kafka admin query 자체가 실패해 lag/DLQ 상태를 계산하지 못한 경우다. broker metadata, topic 존재 여부, group offset 조회 실패를 먼저 본다.
 - `OUT_OF_SERVICE` 또는 `DOWN` 이어도 앱 전체 장애와 동일시하지 말고 먼저 `/internal/api/v1/outbox/summary` 와 `/internal/api/v1/outbox/notification/summary` 로 어떤 축이 넘었는지 분리한다.
+- `quarantinedCount` 는 자동 retry 에서 분리된 poison row 수다. health 임계값에는 직접 연결하지 않고 metric/summary 로 수동 triage 한다.
 
 ### 기본 triage 순서
 
 1. `/actuator/health` 가 `503`이면 `/internal/api/v1/outbox/summary` 를 먼저 조회해 `lagSeconds`, `failedCount`, `producerTimeoutFailedCount`, `staleSendingCount` 중 초과 축을 확인합니다.
 2. `producerTimeoutFailedCount` 또는 `failedCount` 가 크면 `tools/ops/outbox-find-failed-events.sh` 로 bounded failed list 를 보고 `eventKey`, `retryCount`, `lastError` 를 먼저 확인합니다.
-3. `/internal/api/v1/outbox/notification/summary` 또는 `tools/ops/notification-get-consumer-summary.sh` 로 consumer lag 와 DLQ count 를 확인합니다.
-4. `dlqCount` 가 0보다 크면 `tools/ops/notification-find-dlq-events.sh` 로 poison message 최근 항목을 보고 `eventKey`, `partition`, `offset`, `originalTopic`, `errorClass`, `errorMessage`, `payloadPreview` 를 먼저 확인합니다.
-5. redrive 대상이 명확하면 `tools/ops/notification-redrive-dlq-event.sh` 로 preview -> redrive -> summary 순서로 한 건씩 재처리하고, 응답의 `targetTopic`, `targetPartition`, `targetOffset` 을 기록합니다.
-6. `staleSendingCount` 가 0보다 크면 `tools/ops/outbox-recover-stale-sending.sh` 를 한 번만 호출하고, 응답의 `recoveredCount` 와 이후 summary 변화를 확인합니다.
-7. recovery 이후에도 `lagSeconds`, `lagCount`, `failedCount` 가 계속 증가하면 producer timeout, consumer 중단, broker 연결 문제를 별도 incident 로 분리합니다.
+3. `quarantinedCount` 가 0보다 크면 같은 오류의 반복 실패가 최대 retry attempt 에 도달한 상태이므로 DB row의 `eventKey`, `eventType`, `lastError`, `payload` 를 확인하고 payload/topic/reference data 수정 필요 여부를 먼저 판단합니다.
+4. `/internal/api/v1/outbox/notification/summary` 또는 `tools/ops/notification-get-consumer-summary.sh` 로 consumer lag 와 DLQ count 를 확인합니다.
+5. `dlqCount` 가 0보다 크면 `tools/ops/notification-find-dlq-events.sh` 로 poison message 최근 항목을 보고 `eventKey`, `partition`, `offset`, `originalTopic`, `errorClass`, `errorMessage`, `payloadPreview` 를 먼저 확인합니다.
+6. redrive 대상이 명확하면 `tools/ops/notification-redrive-dlq-event.sh` 로 preview -> redrive -> summary 순서로 한 건씩 재처리하고, 응답의 `targetTopic`, `targetPartition`, `targetOffset` 을 기록합니다.
+7. `staleSendingCount` 가 0보다 크면 `tools/ops/outbox-recover-stale-sending.sh` 를 한 번만 호출하고, 응답의 `recoveredCount` 와 이후 summary 변화를 확인합니다.
+8. recovery 이후에도 `lagSeconds`, `lagCount`, `failedCount` 가 계속 증가하면 producer timeout, consumer 중단, broker 연결 문제를 별도 incident 로 분리합니다.
 
 ### 운영 주의사항
 
 - stale recovery 는 직접 publish 가 아니라 stale `SENDING` row 를 `PENDING` 으로 되돌리는 동작입니다.
 - recovery 대상은 `outbox.poller.stale-after-seconds` 를 넘긴 row 만 포함합니다.
 - failed list 는 `availableAt ASC, id ASC` 순서의 bounded query 이므로, 대량 backlog 에서도 즉시 재시도 대상부터 확인할 수 있습니다.
+- `QUARANTINED` row 는 dispatch claim, failed list, stale recovery 에서 제외됩니다.
+- `OUTBOX_POLLER_MAX_RETRY_ATTEMPTS` 는 실패 시도 횟수 기준입니다. 기본값 `10`에서는 10번째 실패 시 quarantine 으로 전환됩니다.
+- quarantine row 는 payload/reference data 수정 없이 상태만 `PENDING` 으로 되돌리면 같은 실패를 반복할 수 있으므로 원인 확인 전 수동 복구하지 않습니다.
 - `lastError` 는 outbox table 의 짧은 힌트만 남기므로, 상세 stack trace 는 앱 로그와 Kafka client 로그를 같이 봐야 합니다.
 - consumer poison message 만 DLQ 로 격리하고, broker/DB 같은 transient failure 는 main topic retry failure 로 남깁니다.
 - DLQ preview 는 최근 bounded item 만 보여주므로, 전문 payload/stack trace 가 필요하면 앱 로그와 Kafka client 로그를 같이 확인합니다.

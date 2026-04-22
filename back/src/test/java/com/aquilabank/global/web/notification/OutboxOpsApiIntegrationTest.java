@@ -74,6 +74,13 @@ class OutboxOpsApiIntegrationTest extends PostgresContainerTestSupport {
               base.minusSeconds(15));
           insertOutboxEvent(
               "evt-failed-2", "FAILED", 2, "timeout", base.plusSeconds(30), base.minusSeconds(10));
+          insertOutboxEvent(
+              "evt-quarantined",
+              "QUARANTINED",
+              4,
+              "invalid payload",
+              base.minusSeconds(30),
+              base.minusSeconds(5));
         });
 
     mockMvc
@@ -82,6 +89,7 @@ class OutboxOpsApiIntegrationTest extends PostgresContainerTestSupport {
                 .header("Authorization", outboxOpsAuthorization()))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.failedCount").value(2))
+        .andExpect(jsonPath("$.quarantinedCount").value(1))
         .andExpect(jsonPath("$.staleSendingCount").value(0))
         .andExpect(jsonPath("$.lagSeconds", greaterThanOrEqualTo(20)));
 

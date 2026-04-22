@@ -46,6 +46,7 @@ public final class OutboxHealthIndicator implements HealthIndicator {
           .withDetail("oldestDispatchableAt", summary.oldestDispatchableAt())
           .withDetail("lagSeconds", lagSeconds)
           .withDetail("failedCount", summary.failedCount())
+          .withDetail("quarantinedCount", summary.quarantinedCount())
           .withDetail("staleSendingCount", summary.staleSendingCount())
           .withDetail("reasons", reasons)
           .build();

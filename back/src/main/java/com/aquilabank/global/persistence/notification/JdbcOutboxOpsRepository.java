@@ -73,6 +73,11 @@ public class JdbcOutboxOpsRepository implements OutboxOpsReadPort, OutboxOpsReco
                    (
                        SELECT COUNT(*)
                        FROM outbox_event
+                       WHERE publish_status = 'QUARANTINED'
+                   ) AS quarantined_count,
+                   (
+                       SELECT COUNT(*)
+                       FROM outbox_event
                        WHERE publish_status = 'FAILED'
                          AND last_error = 'kafka publish timed out'
                    ) AS producer_timeout_failed_count,
@@ -90,6 +95,7 @@ public class JdbcOutboxOpsRepository implements OutboxOpsReadPort, OutboxOpsReco
                 new SummaryRow(
                     nullableInstant(rs, "oldest_dispatchable_at"),
                     rs.getLong("failed_count"),
+                    rs.getLong("quarantined_count"),
                     rs.getLong("producer_timeout_failed_count"),
                     rs.getLong("stale_sending_count")));
     if (row == null) {
@@ -107,6 +113,7 @@ public class JdbcOutboxOpsRepository implements OutboxOpsReadPort, OutboxOpsReco
         row.oldestDispatchableAt(),
         lag,
         row.failedCount(),
+        row.quarantinedCount(),
         row.producerTimeoutFailedCount(),
         row.staleSendingCount());
   }
@@ -149,6 +156,7 @@ public class JdbcOutboxOpsRepository implements OutboxOpsReadPort, OutboxOpsReco
   private record SummaryRow(
       Instant oldestDispatchableAt,
       long failedCount,
+      long quarantinedCount,
       long producerTimeoutFailedCount,
       long staleSendingCount) {}
 }

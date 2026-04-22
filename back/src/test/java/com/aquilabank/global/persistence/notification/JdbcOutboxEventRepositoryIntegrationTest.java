@@ -2,8 +2,10 @@ package com.aquilabank.global.persistence.notification;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.aquilabank.domain.notification.model.OutboxEvent;
 import com.aquilabank.support.PostgresContainerTestSupport;
 import java.sql.Timestamp;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -78,14 +80,46 @@ class JdbcOutboxEventRepositoryIntegrationTest extends PostgresContainerTestSupp
             "evt-published-fresh", "evt-pending", "evt-failed", "evt-sending");
   }
 
+  @Test
+  void marksPoisonEventAsQuarantinedAndExcludesItFromDispatchClaim() {
+    Instant now = Instant.parse("2026-04-18T01:00:00Z");
+    long[] id = new long[1];
+    commit(
+        transactionManager,
+        () ->
+            id[0] =
+                insertOutboxEventReturningId(
+                    "evt-poison", "FAILED", now.minusSeconds(60), null, now.minusSeconds(30), 2));
+
+    repository.markQuarantined(id[0], now, "invalid payload");
+
+    assertThat(findStatus(id[0])).isEqualTo("QUARANTINED");
+    assertThat(findRetryCount(id[0])).isEqualTo(3);
+    assertThat(findLastError(id[0])).isEqualTo("invalid payload");
+    List<OutboxEvent> claimed =
+        repository.claimBatch(10, Duration.ofSeconds(30), now.plusSeconds(1));
+    assertThat(claimed).isEmpty();
+  }
+
   private void insertOutboxEvent(
       String eventKey,
       String publishStatus,
       Instant createdAt,
       Instant publishedAt,
       Instant updatedAt) {
-    jdbcTemplate.update(
-        """
+    insertOutboxEventReturningId(eventKey, publishStatus, createdAt, publishedAt, updatedAt, 0);
+  }
+
+  private long insertOutboxEventReturningId(
+      String eventKey,
+      String publishStatus,
+      Instant createdAt,
+      Instant publishedAt,
+      Instant updatedAt,
+      int retryCount) {
+    Long id =
+        jdbcTemplate.queryForObject(
+            """
         INSERT INTO outbox_event (
             aggregate_type,
             aggregate_id,
@@ -109,24 +143,54 @@ class JdbcOutboxEventRepositoryIntegrationTest extends PostgresContainerTestSupp
             :publishStatus,
             :createdAt,
             :publishedAt,
-            0,
+            :retryCount,
             NULL,
             :createdAt,
             :updatedAt
         )
+        RETURNING id
         """,
-        new MapSqlParameterSource()
-            .addValue("eventKey", eventKey)
-            .addValue("publishStatus", publishStatus)
-            .addValue("createdAt", Timestamp.from(createdAt))
-            .addValue("publishedAt", publishedAt == null ? null : Timestamp.from(publishedAt))
-            .addValue("updatedAt", Timestamp.from(updatedAt)));
+            new MapSqlParameterSource()
+                .addValue("eventKey", eventKey)
+                .addValue("publishStatus", publishStatus)
+                .addValue("createdAt", Timestamp.from(createdAt))
+                .addValue("publishedAt", publishedAt == null ? null : Timestamp.from(publishedAt))
+                .addValue("updatedAt", Timestamp.from(updatedAt))
+                .addValue("retryCount", retryCount),
+            Long.class);
+    if (id == null) {
+      throw new IllegalStateException("outbox_event insert did not return id");
+    }
+    return id;
   }
 
   private List<String> findEventKeys() {
     return jdbcTemplate.queryForList(
         "SELECT event_key FROM outbox_event ORDER BY id ASC",
         new MapSqlParameterSource(),
+        String.class);
+  }
+
+  private String findStatus(long id) {
+    return jdbcTemplate.queryForObject(
+        "SELECT publish_status FROM outbox_event WHERE id = :id",
+        new MapSqlParameterSource().addValue("id", id),
+        String.class);
+  }
+
+  private int findRetryCount(long id) {
+    Integer retryCount =
+        jdbcTemplate.queryForObject(
+            "SELECT retry_count FROM outbox_event WHERE id = :id",
+            new MapSqlParameterSource().addValue("id", id),
+            Integer.class);
+    return retryCount == null ? -1 : retryCount;
+  }
+
+  private String findLastError(long id) {
+    return jdbcTemplate.queryForObject(
+        "SELECT last_error FROM outbox_event WHERE id = :id",
+        new MapSqlParameterSource().addValue("id", id),
         String.class);
   }
 }

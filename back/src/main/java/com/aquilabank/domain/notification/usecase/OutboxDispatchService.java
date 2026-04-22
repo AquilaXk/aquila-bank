@@ -19,18 +19,24 @@ public final class OutboxDispatchService implements OutboxDispatchUseCase {
   private final int batchSize;
   private final Duration staleAfter;
   private final Duration maxRetryDelay;
+  private final int maxRetryAttempts;
 
   public OutboxDispatchService(
       OutboxEventStore outboxEventStore,
       OutboxEventPublishPort outboxEventPublishPort,
       int batchSize,
       Duration staleAfter,
-      Duration maxRetryDelay) {
+      Duration maxRetryDelay,
+      int maxRetryAttempts) {
     this.outboxEventStore = outboxEventStore;
     this.outboxEventPublishPort = outboxEventPublishPort;
     this.batchSize = batchSize;
     this.staleAfter = staleAfter;
     this.maxRetryDelay = maxRetryDelay;
+    if (maxRetryAttempts < 1) {
+      throw new IllegalArgumentException("maxRetryAttempts must be positive");
+    }
+    this.maxRetryAttempts = maxRetryAttempts;
   }
 
   @Override
@@ -50,9 +56,16 @@ public final class OutboxDispatchService implements OutboxDispatchUseCase {
       outboxEventPublishPort.publish(event);
       outboxEventStore.markPublished(event.id(), now);
     } catch (RuntimeException ex) {
+      String errorMessage = shorten(ex.getMessage());
+      int nextRetryCount = event.retryCount() + 1;
+      if (nextRetryCount >= maxRetryAttempts) {
+        // poison event는 일반 FAILED backlog에서 분리해 정상 retry 대기열을 가리지 않게 둡니다.
+        outboxEventStore.markQuarantined(event.id(), now, errorMessage);
+        return;
+      }
       // 실패 event 재예약 후 다음 poll 주기 재시도
       outboxEventStore.markFailed(
-          event.id(), now.plus(computeBackoff(event.retryCount())), now, shorten(ex.getMessage()));
+          event.id(), now.plus(computeBackoff(event.retryCount())), now, errorMessage);
     }
   }
 

@@ -30,6 +30,7 @@ class OutboxConfigurationTest {
               "outbox.poller.batch-size=20",
               "outbox.poller.stale-after-seconds=30",
               "outbox.poller.max-retry-delay-seconds=60",
+              "outbox.poller.max-retry-attempts=10",
               "outbox.ops.enabled=false",
               "outbox.ops.token-header=X-Outbox-Ops-Token",
               "outbox.ops.failed-list-limit=20",
