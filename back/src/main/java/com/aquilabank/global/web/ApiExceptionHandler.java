@@ -13,6 +13,7 @@ import com.aquilabank.domain.auth.exception.InvalidCredentialsException;
 import com.aquilabank.domain.auth.exception.PasswordRecoveryTokenNotFoundException;
 import com.aquilabank.domain.auth.exception.UserAccountMembershipNotFoundException;
 import com.aquilabank.domain.auth.model.AuthStatusChangeReasonCode;
+import com.aquilabank.domain.auth.model.InternalAuthConflictReasonCode;
 import com.aquilabank.domain.ledger.exception.CommandConflictException;
 import com.aquilabank.domain.ledger.exception.CurrencyMismatchException;
 import com.aquilabank.domain.ledger.exception.InsufficientBalanceException;
@@ -148,7 +149,17 @@ public class ApiExceptionHandler {
     InsufficientBalanceException.class,
     LedgerSnapshotOpenDriftNotFoundException.class
   })
-  ResponseEntity<ApiErrorResponse> handleConflict(RuntimeException ex, HttpServletRequest request) {
+  ResponseEntity<?> handleConflict(RuntimeException ex, HttpServletRequest request) {
+    if (ex instanceof DuplicateLoginIdException) {
+      return conflictResponse(
+          InternalAuthConflictReasonCode.DUPLICATE_LOGIN_ID, ex.getMessage(), request);
+    }
+    if (ex instanceof DuplicateExternalIdentityMappingException) {
+      return conflictResponse(
+          InternalAuthConflictReasonCode.DUPLICATE_EXTERNAL_IDENTITY_MAPPING,
+          ex.getMessage(),
+          request);
+    }
     return response(HttpStatus.CONFLICT, ex.getMessage(), request);
   }
 
@@ -167,6 +178,20 @@ public class ApiExceptionHandler {
                 Instant.now(),
                 status.value(),
                 status.getReasonPhrase(),
+                message,
+                request.getRequestURI()));
+  }
+
+  private ResponseEntity<ApiConflictErrorResponse> conflictResponse(
+      InternalAuthConflictReasonCode reasonCode, String message, HttpServletRequest request) {
+    logInternalAuthStatusFailure(HttpStatus.CONFLICT, request, message);
+    return ResponseEntity.status(HttpStatus.CONFLICT)
+        .body(
+            new ApiConflictErrorResponse(
+                Instant.now(),
+                HttpStatus.CONFLICT.value(),
+                HttpStatus.CONFLICT.getReasonPhrase(),
+                reasonCode.name(),
                 message,
                 request.getRequestURI()));
   }
@@ -292,4 +317,13 @@ public class ApiExceptionHandler {
   /** 모든 API가 공유하는 기본 error body */
   public record ApiErrorResponse(
       Instant timestamp, int status, String error, String message, String path) {}
+
+  /** 내부 auth conflict는 기존 message를 유지하되 분기 기준 reasonCode를 별도 제공합니다. */
+  public record ApiConflictErrorResponse(
+      Instant timestamp,
+      int status,
+      String error,
+      String reasonCode,
+      String message,
+      String path) {}
 }
