@@ -13,6 +13,7 @@ import com.aquilabank.domain.auth.port.AuthTokenIssuePort;
 import com.aquilabank.domain.auth.port.BackupCodeLoadPort;
 import com.aquilabank.domain.auth.port.BackupCodeSecretPort;
 import com.aquilabank.domain.auth.port.BackupCodeWritePort;
+import com.aquilabank.domain.auth.port.CurrentSessionActiveAuditPort;
 import com.aquilabank.domain.auth.port.CurrentSessionActivePort;
 import com.aquilabank.domain.auth.port.ExternalIdentityAuditQueryPort;
 import com.aquilabank.domain.auth.port.ExternalIdentityMappingWritePort;
@@ -733,8 +734,11 @@ public class AuthConfiguration {
 
   @Bean
   CurrentSessionActiveUseCase currentSessionActiveUseCase(
-      CurrentSessionActivePort currentSessionActivePort, Clock authClock) {
-    return new CurrentSessionActiveService(currentSessionActivePort, authClock);
+      CurrentSessionActivePort currentSessionActivePort,
+      CurrentSessionActiveAuditPort currentSessionActiveAuditPort,
+      Clock authClock) {
+    return new CurrentSessionActiveService(
+        currentSessionActivePort, currentSessionActiveAuditPort, authClock);
   }
 
   @Bean

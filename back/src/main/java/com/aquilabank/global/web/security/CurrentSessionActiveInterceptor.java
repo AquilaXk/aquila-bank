@@ -1,11 +1,16 @@
 package com.aquilabank.global.web.security;
 
 import com.aquilabank.domain.auth.exception.InvalidCredentialsException;
+import com.aquilabank.domain.auth.model.CurrentSessionActiveAuditEvent;
 import com.aquilabank.domain.auth.model.CurrentSessionActiveCheckCommand;
+import com.aquilabank.domain.auth.model.CurrentSessionActiveRejectReason;
+import com.aquilabank.domain.auth.port.CurrentSessionActiveAuditPort;
 import com.aquilabank.domain.auth.usecase.CurrentSessionActiveUseCase;
 import com.aquilabank.global.security.AuthenticatedUserPrincipal;
+import com.aquilabank.global.web.RequestTraceContext;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import java.time.Instant;
 import java.util.List;
 import java.util.regex.Pattern;
 import org.springframework.security.core.Authentication;
@@ -32,15 +37,21 @@ public class CurrentSessionActiveInterceptor implements HandlerInterceptor {
           new SensitiveMutationPath("DELETE", Pattern.compile("^/api/v1/auth/sessions/[^/]+$")));
 
   private final CurrentSessionActiveUseCase currentSessionActiveUseCase;
+  private final CurrentSessionActiveAuditPort currentSessionActiveAuditPort;
 
-  public CurrentSessionActiveInterceptor(CurrentSessionActiveUseCase currentSessionActiveUseCase) {
+  public CurrentSessionActiveInterceptor(
+      CurrentSessionActiveUseCase currentSessionActiveUseCase,
+      CurrentSessionActiveAuditPort currentSessionActiveAuditPort) {
     this.currentSessionActiveUseCase = currentSessionActiveUseCase;
+    this.currentSessionActiveAuditPort = currentSessionActiveAuditPort;
   }
 
   @Override
   public boolean preHandle(
       HttpServletRequest request, HttpServletResponse response, Object handler) {
-    if (!isSensitiveMutation(request)) {
+    String method = request.getMethod();
+    String path = normalizedPath(request);
+    if (!isSensitiveMutation(method, path)) {
       return true;
     }
 
@@ -57,18 +68,30 @@ public class CurrentSessionActiveInterceptor implements HandlerInterceptor {
     Long currentSessionId = userPrincipal.currentSessionId();
     if (currentSessionId == null) {
       // session_id 없는 구 access token은 read 호환만 허용하고 고위험 mutation은 재로그인 요구.
+      currentSessionActiveAuditPort.record(
+          new CurrentSessionActiveAuditEvent(
+              requestId(),
+              userPrincipal.userId(),
+              null,
+              method,
+              path,
+              CurrentSessionActiveRejectReason.MISSING_SESSION_ID,
+              Instant.now()));
       throw new InvalidCredentialsException(CURRENT_SESSION_INACTIVE_MESSAGE);
     }
 
     currentSessionActiveUseCase.requireActive(
-        new CurrentSessionActiveCheckCommand(userPrincipal.userId(), currentSessionId));
+        new CurrentSessionActiveCheckCommand(
+            userPrincipal.userId(), currentSessionId, requestId(), method, path));
     return true;
   }
 
-  private boolean isSensitiveMutation(HttpServletRequest request) {
-    String method = request.getMethod();
-    String path = normalizedPath(request);
+  private boolean isSensitiveMutation(String method, String path) {
     return SENSITIVE_MUTATION_PATHS.stream().anyMatch(item -> item.matches(method, path));
+  }
+
+  private String requestId() {
+    return RequestTraceContext.currentRequestId().orElse("-");
   }
 
   private String normalizedPath(HttpServletRequest request) {
