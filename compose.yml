@@ -61,6 +61,24 @@ services:
       retries: 10
       start_period: 20s
 
+  redis:
+    image: redis:7.4-alpine
+    container_name: aquila-bank-redis
+    profiles:
+      - redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    environment:
+      TZ: Asia/Seoul
+    command: ["redis-server", "--appendonly", "no", "--save", ""]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
 volumes:
   aquila-bank-postgres-data:
   aquila-bank-kafka-data:
