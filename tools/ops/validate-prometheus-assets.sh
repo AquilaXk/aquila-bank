@@ -33,6 +33,14 @@ data["groups"].each do |group|
     abort("expr missing in #{group["name"]}/#{rule["alert"]}") if rule["expr"].to_s.empty?
   end
 end
+
+transaction_rules = data["groups"].find { |group| group["name"] == "aquila-bank-transaction" }&.fetch("rules", [])
+p95_rule = transaction_rules.find { |rule| rule["alert"] == "AquilaTransactionQueryLatencyP95SloHigh" }
+abort("transaction p95 SLO alert missing") unless p95_rule
+expr = p95_rule["expr"].to_s
+abort("transaction p95 SLO alert must use histogram_quantile(0.95)") unless expr.match?(/histogram_quantile\s*\(\s*0\.95/)
+abort("transaction p95 SLO alert must read histogram buckets") unless expr.include?("aquila_transaction_query_latency_seconds_bucket")
+abort("transaction p95 SLO alert must keep query_shape labels") unless expr.include?("query_shape")
 ' "${RULES_FILE}"
 
 echo "Prometheus dashboard and alert rule baseline look valid."

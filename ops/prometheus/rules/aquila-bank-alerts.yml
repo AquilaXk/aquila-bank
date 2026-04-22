@@ -101,6 +101,61 @@ groups:
   - name: aquila-bank-transaction
     interval: 30s
     rules:
+      - alert: AquilaTransactionQueryLatencyP95SloHigh
+        expr: |
+          (
+            (
+              histogram_quantile(
+                0.95,
+                sum by (le, query_shape) (
+                  rate(aquila_transaction_query_latency_seconds_bucket{outcome="success",query_shape="reference_exact"}[5m])
+                )
+              ) > 0.08
+            )
+            or
+            (
+              histogram_quantile(
+                0.95,
+                sum by (le, query_shape) (
+                  rate(aquila_transaction_query_latency_seconds_bucket{outcome="success",query_shape="first_page"}[5m])
+                )
+              ) > 0.12
+            )
+            or
+            (
+              histogram_quantile(
+                0.95,
+                sum by (le, query_shape) (
+                  rate(aquila_transaction_query_latency_seconds_bucket{outcome="success",query_shape=~"cursor|status_first|status_cursor|direction_first|direction_cursor"}[5m])
+                )
+              ) > 0.15
+            )
+            or
+            (
+              histogram_quantile(
+                0.95,
+                sum by (le, query_shape) (
+                  rate(aquila_transaction_query_latency_seconds_bucket{outcome="success",query_shape=~"amount_first|amount_cursor|mixed_first|mixed_cursor"}[5m])
+                )
+              ) > 0.18
+            )
+          )
+          and on (query_shape)
+          sum by (query_shape) (
+            rate(aquila_transaction_query_latency_seconds_count{outcome="success"}[5m])
+          ) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: aquila-bank
+          domain: transaction
+          baseline: "true"
+          slo: "p95"
+        annotations:
+          summary: "Aquila Bank transaction query p95 SLO is high"
+          description: "transaction query p95 latency가 query_shape별 baseline SLO를 5분 이상 초과했습니다. histogram bucket과 query volume을 같이 확인합니다."
+          runbook_path: "back/README.md#prometheus-metrics"
+
       - alert: AquilaTransactionQueryLatencyHigh
         expr: |
           (

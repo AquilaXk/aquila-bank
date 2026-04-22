@@ -18,12 +18,13 @@
   - notification consumer lag / DLQ count
   - SSE total session, account/user/total trend, reject/drop trend
   - transaction query rate by `query_shape`
-  - transaction 평균 latency by `query_shape`
+  - transaction p95 latency by `query_shape`
 - datasource 기준:
   - Grafana datasource variable 이름은 `datasource`입니다.
   - import 직후 Prometheus datasource를 한 번 선택하면 모든 panel이 그 값을 재사용합니다.
 - query 기준:
-  - transaction latency는 histogram percentile이 아니라 `sum(rate(..._sum)) / sum(rate(..._count))` 평균값을 사용합니다.
+  - transaction stat latency는 `sum(rate(..._sum)) / sum(rate(..._count))` 평균값을 유지합니다.
+  - transaction shape별 latency는 `aquila_transaction_query_latency_seconds_bucket`의 `histogram_quantile(0.95, ...)`를 사용합니다.
   - notification lag panel은 topic label이 있을 때 topic별로 분리해 보여줍니다.
   - SSE reject/drop metric은 앱 재시작 전까지 누적되는 gauge 성격이므로 절대값 trend로만 봅니다.
 
@@ -52,6 +53,7 @@
   - DLQ count `> 0`
   - SSE total session `> 56`
 - transaction baseline:
+  - success query p95 SLO: reference_exact `80ms`, first_page `120ms`, cursor/status/direction `150ms`, amount/mixed `180ms`
   - success query 평균 latency `> 750ms`
 
 ## Alert Rule Apply
@@ -89,6 +91,7 @@ bash tools/ops/validate-prometheus-assets.sh
 
 - outbox/notification threshold는 현재 README와 actuator health 기본값을 기준으로 둔 값입니다.
 - `AquilaNotificationSseSessionPressureHigh`의 `56`은 기본 `NOTIFICATION_SSE_MAX_TOTAL_SESSIONS=64`의 `87.5%` baseline입니다.
-- transaction latency `750ms`는 query mix가 가벼운 환경을 전제로 한 출발값입니다. 실제 production에서는 `query_shape`, account volume, DB latency 분포를 보고 조정합니다.
+- transaction p95 SLO는 baseline fixture 기준 회귀 감지선입니다. 실제 production에서는 `query_shape`, account volume, DB latency 분포를 보고 threshold와 `for` 시간을 같이 조정합니다.
+- transaction 평균 latency `750ms` alert는 p95 SLO보다 느슨한 coarse guard로 남겨 둡니다.
 - notification lag/DLQ alert는 `NOTIFICATION_INBOX_CONSUMER_OPS_ENABLED=true`가 아니면 metric 자체가 export되지 않을 수 있습니다.
 - multi-instance SSE 합계는 Grafana/Prometheus 쿼리에서 인스턴스 합산으로 해석하고, 단일 instance alert는 node별 pressure 확인 용도로만 씁니다.
