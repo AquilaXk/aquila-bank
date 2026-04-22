@@ -52,6 +52,23 @@ tools/test/with-resource-lock.sh back-account-list-keyset \
   tools/test/run-account-list-keyset-pagination.sh
 ```
 
+## Bootstrap Bulk Import
+
+내부 운영/테스트 도구는 `POST /internal/api/v1/bootstrap/bulk-import` 로 작은 bootstrap batch를 한 transaction에서 가져올 수 있습니다.
+
+- required scopes: `internal:account-bootstrap`, `internal:auth-bootstrap`
+- section order: `accounts` -> `users` -> `memberships`
+- max section size: 각 `50`개
+- membership은 같은 요청의 `userRef`, `accountRef`를 참조합니다.
+- 중간 실패 시 같은 요청의 account/user/membership 변경은 rollback 됩니다.
+
+재현 명령:
+
+```bash
+tools/test/with-resource-lock.sh back-bootstrap-bulk-import \
+  tools/test/run-bootstrap-bulk-import-api.sh
+```
+
 ## Stack
 
 - Java 21
