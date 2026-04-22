@@ -83,3 +83,11 @@ com.aquilabank
 - global은 domain을 사용해 어댑터와 설정을 구성합니다.
 - util에는 비즈니스 로직을 두지 않고, 공통 기술 보조 코드만 둡니다.
 - 읽기 경로는 초대량 트래픽, 1억 건 조회, `t3.micro` 운영 한계를 함께 고려해 경량화와 분리를 우선합니다.
+
+## Notification Channel Provider Worker
+
+- `NOTIFICATION_CHANNEL_PROVIDER_WORKER_ENABLED`: EMAIL/SMS provider worker 활성화 여부입니다. 기본값은 `false`입니다.
+- `NOTIFICATION_CHANNEL_PROVIDER_WORKER_BATCH_SIZE`: 한 poll에서 claim할 delivery row 상한입니다.
+- `NOTIFICATION_CHANNEL_PROVIDER_WORKER_MAX_RETRY_DELAY_SECONDS`: provider 실패 시 retry backoff 상한입니다.
+- 기본 provider는 외부 secret 없는 logging adapter입니다. 실제 provider 연동 전 운영에서는 활성화하지 않습니다.
+- 롤백은 `NOTIFICATION_CHANNEL_PROVIDER_WORKER_ENABLED=false`로 scheduler를 중지하고, 필요 시 `FAILED` row를 운영 절차에 따라 재처리합니다.
