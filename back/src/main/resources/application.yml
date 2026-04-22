@@ -72,6 +72,27 @@ management:
         # p95 SLO alert가 쓰는 경계만 고정해 query_shape/outcome별 bucket 수를 제한합니다.
         aquila.transaction.query.latency: 50ms,80ms,120ms,150ms,180ms,350ms,750ms,1s,3s
 
+ops:
+  t3-micro-saturation-guard:
+    enabled: ${OPS_T3MICRO_SATURATION_GUARD_ENABLED:true}
+    retry-after-seconds: ${OPS_T3MICRO_SATURATION_GUARD_RETRY_AFTER_SECONDS:2}
+    protected-path-prefixes:
+      - /api/v1/accounts
+      - /api/v1/transactions
+      - /api/v1/transfers
+      - /api/v1/notifications
+      - /internal/api/v1/accounts
+      - /internal/api/v1/ledger
+      - /internal/api/v1/outbox
+    pool:
+      active-threshold-percent: ${OPS_T3MICRO_SATURATION_GUARD_POOL_ACTIVE_THRESHOLD_PERCENT:90}
+      awaiting-threads-threshold: ${OPS_T3MICRO_SATURATION_GUARD_POOL_AWAITING_THREADS_THRESHOLD:1}
+    servlet-threads:
+      busy-threshold-percent: ${OPS_T3MICRO_SATURATION_GUARD_THREADS_BUSY_THRESHOLD_PERCENT:90}
+    query-timeout:
+      window-seconds: ${OPS_T3MICRO_SATURATION_GUARD_QUERY_TIMEOUT_WINDOW_SECONDS:10}
+      threshold: ${OPS_T3MICRO_SATURATION_GUARD_QUERY_TIMEOUT_THRESHOLD:1}
+
 logging:
   pattern:
     level: '%5p [requestId:%X{requestId:-}]'
