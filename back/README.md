@@ -143,6 +143,32 @@ partition/archive 는 `GET /api/v1/transactions` read path를 실제로 줄여�
   - `transaction_read_model`의 historical row 때문에 autovacuum lag, index bloat, backup 시간이 운영 병목이 될 때
   - cold history와 hot path의 보존/SLA가 달라 separate archive tier가 필요해질 때
 
+### Transaction Archive Query
+
+`transaction_read_model_archive` 로 이동한 cold history 는 hot 조회와 분리해 `GET /api/v1/transactions/archive` 로 조회합니다.
+
+- hot path:
+  - `GET /api/v1/transactions`
+  - table: `transaction_read_model`
+  - 목적: 최근/활성 거래 timeline 조회
+- cold path:
+  - `GET /api/v1/transactions/archive`
+  - table: `transaction_read_model_archive`
+  - 목적: retention cleanup 이후 archive projection 조회
+- 두 endpoint 모두 같은 조회 계약을 씁니다.
+  - `accountId`, `from`, `to`, `limit`, `cursor`
+  - `status`, `direction`, `minAmountMinor`, `maxAmountMinor`, `transactionReference`
+  - 기간 상한 `31일`
+  - 정렬 `booked_at DESC, id DESC`
+- archive 조회는 hot table과 union하지 않습니다. 클라이언트는 조회 기간과 보존 정책에 맞춰 hot/cold endpoint를 선택합니다.
+- archive index:
+  - `idx_transaction_read_model_archive_account_cursor`
+  - `idx_transaction_read_model_archive_account_status_cursor`
+  - `idx_transaction_read_model_archive_account_reference_cursor`
+- rollback 기준:
+  - API rollback은 PR revert로 수행합니다.
+  - `V43__add_transaction_archive_reference_index.sql` 로 추가된 reference index 제거가 필요한지 DB 상태를 확인합니다.
+
 재현 명령:
 
 ```bash
