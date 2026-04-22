@@ -126,6 +126,9 @@ outbox:
       max-stale-sending-count: ${OUTBOX_OPS_HEALTH_MAX_STALE_SENDING_COUNT:0}
 
 auth:
+  password-recovery:
+    delivery:
+      enabled: ${AUTH_PASSWORD_RECOVERY_DELIVERY_ENABLED:false}
   refresh-token-session:
     cleanup:
       enabled: ${AUTH_REFRESH_TOKEN_SESSION_CLEANUP_ENABLED:true}

@@ -572,6 +572,8 @@ login 실패/잠금은 structured log 한 줄로 남습니다.
   - 인증 없이 `loginId`만 받고 항상 `204 No Content`를 반환한다.
   - 응답에는 trace용 `X-Request-Id`와 별도로 internal handoff용 `X-Password-Recovery-Request-Id`가 내려간다.
   - active user가 있으면 같은 user의 기존 `PENDING` recovery token을 `SUPERSEDED`로 바꾸고 새 token을 발급한다.
+  - token 발급 성공 뒤 delivery port를 best-effort로 호출하며 기본 adapter는 no-op이다.
+  - `AUTH_PASSWORD_RECOVERY_DELIVERY_ENABLED=true`이면 logging adapter가 requestId/userId/expiresAt metadata만 기록하고 token 원문은 기록하지 않는다.
   - `POST /api/v1/auth/password-recovery/confirm`
   - 인증 없이 `recoveryToken`, `newPassword`를 받고 성공 시 `204 No Content`
   - wrong/expired/used token, `user_status != ACTIVE`는 모두 `401 password recovery failed`
@@ -579,6 +581,8 @@ login 실패/잠금은 structured log 한 줄로 남습니다.
     `GET /internal/api/v1/auth/password-recovery-tokens/by-request-id?requestId=...` 에서만 확인한다.
   - internal lookup은 `internal:auth-admin` scope가 필요하고, missing/blank `requestId`는 `400`, unknown `requestId`는 `404`
   - forgot-password confirm 성공도 기존 self-service reset과 동일하게 현재 user의 `ACTIVE` refresh session 전체를 `REVOKED`로 바꾼다.
+  - 현재 delivery adapter는 외부 provider retry/outbox를 만들지 않으며, future provider는 `requestId`를 idempotency key로 사용한다.
+  - current delivery ordering 보장은 단일 request 처리 순서까지이며 provider별 재시도/중복 방지는 후속 adapter issue에서 확장한다.
 - 거절 기준:
   - 만료, 이미 rotation 된 token, 존재하지 않는 token은 모두 `401 refresh failed`
   - `user_status=LOCKED|DISABLED` 사용자는 refresh로 새 token pair를 발급받지 못함

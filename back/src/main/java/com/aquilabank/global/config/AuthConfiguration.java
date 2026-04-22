@@ -20,6 +20,7 @@ import com.aquilabank.domain.auth.port.ExternalIdentityUserLoadPort;
 import com.aquilabank.domain.auth.port.LoginAttemptAuditPort;
 import com.aquilabank.domain.auth.port.LoginAttemptUpdatePort;
 import com.aquilabank.domain.auth.port.PasswordHashPort;
+import com.aquilabank.domain.auth.port.PasswordRecoveryDeliveryPort;
 import com.aquilabank.domain.auth.port.PasswordRecoverySecretPort;
 import com.aquilabank.domain.auth.port.PasswordRecoveryTokenLoadPort;
 import com.aquilabank.domain.auth.port.PasswordRecoveryTokenQueryPort;
@@ -576,6 +577,7 @@ public class AuthConfiguration {
       UserCredentialLoadPort userCredentialLoadPort,
       PasswordRecoverySecretPort passwordRecoverySecretPort,
       com.aquilabank.domain.auth.port.PasswordRecoveryTokenWritePort passwordRecoveryTokenWritePort,
+      PasswordRecoveryDeliveryPort passwordRecoveryDeliveryPort,
       PasswordRecoveryProperties passwordRecoveryProperties,
       Clock authClock,
       PlatformTransactionManager platformTransactionManager) {
@@ -585,7 +587,7 @@ public class AuthConfiguration {
             userCredentialLoadPort,
             passwordRecoverySecretPort,
             passwordRecoveryTokenWritePort,
-            command -> {},
+            passwordRecoveryDeliveryPort,
             Duration.ofSeconds(passwordRecoveryProperties.ttlSeconds()),
             authClock);
     TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
