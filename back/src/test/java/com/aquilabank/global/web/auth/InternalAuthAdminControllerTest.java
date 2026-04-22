@@ -329,6 +329,7 @@ class InternalAuthAdminControllerTest {
                     }
                     """))
         .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.reasonCode").value("DUPLICATE_EXTERNAL_IDENTITY_MAPPING"))
         .andExpect(jsonPath("$.message").value("external identity mapping already exists"));
   }
 
