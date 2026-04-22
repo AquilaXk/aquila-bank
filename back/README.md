@@ -33,6 +33,7 @@ com.aquilabank
 - 기본 저장소는 `memory`입니다.
 - `redis`는 분산 login throttling 이 필요할 때만 opt-in 으로 사용합니다.
 - Redis 경로는 login throttling counter 에만 쓰고, SSE fan-out 은 계속 PostgreSQL `LISTEN/NOTIFY` 를 사용합니다.
+- local Redis는 compose `redis` profile로만 뜨며 기본 `postgres kafka` 경로에는 포함하지 않습니다.
 
 ## Stack
 
@@ -133,10 +134,17 @@ docker compose up -d postgres kafka
 
 - PostgreSQL 기본 포트: `localhost:5432`
 - Kafka 기본 포트: `localhost:9092`
+- Redis profile 기본 포트: `localhost:6379`
 - 로컬 Kafka broker는 topic auto-create를 끄고, app startup provisioning이 configured topic을 명시적으로 준비합니다.
 - 기본 topic 이름은 `bank.notification.outbox.v1`, `bank.transfer.booked.v1`, `bank.transfer.reversed.v1`, `bank.transfer.booked.dlq.v1` 입니다.
 - startup validation은 configured topic 존재와 최소 partition 수를 확인하고, outbox/consumer bootstrap server가 다르면 fail-fast 합니다.
 - 이 경로는 로컬 개발 전용입니다.
+
+Redis login throttling runtime smoke가 필요할 때만 profile을 켭니다.
+
+```bash
+docker compose --profile redis up -d redis
+```
 
 ## Deployment Baseline
 
@@ -400,6 +408,8 @@ bash tools/test/check-nginx-sse-proxy.sh
   - `SECURITY_LOGIN_THROTTLING_GLOBAL_MAX_ATTEMPTS=40`
   - `SECURITY_LOGIN_THROTTLING_GLOBAL_WINDOW_SECONDS=10`
   - `SECURITY_LOGIN_THROTTLING_MAX_TRACKED_IPS=1024`
+  - `SECURITY_LOGIN_THROTTLING_STORE=memory`
+  - `SECURITY_LOGIN_THROTTLING_REDIS_KEY_PREFIX=auth:login:throttle:`
 - 동작 기준:
   - 같은 `loginId`에서 연속 `5회` 실패하면 `15분` 임시 잠금
   - 마지막 실패 후 `15분`이 지나면 실패 카운트는 다시 `1`부터 계산
@@ -408,10 +418,20 @@ bash tools/test/check-nginx-sse-proxy.sh
   - 성공 login 시 `failed_login_count`, `last_login_failed_at`, `login_locked_until`은 reset
   - `loginId` 잠금은 존재 여부/잠금 여부를 드러내지 않도록 계속 `401 login failed` 유지
   - request-level throttling은 `Retry-After` 헤더와 함께 `429 too many login attempts`를 반환
+- Redis opt-in:
+  - `SECURITY_LOGIN_THROTTLING_STORE=redis`일 때만 Redis-backed counter를 사용
+  - Redis 연결값은 `REDIS_HOST`, `REDIS_PORT`로 지정
+  - Redis runtime smoke는 compose Redis profile을 띄운 뒤 실제 counter 공유와 TTL 만료를 확인
+  - 실행:
+    ```bash
+    tools/test/with-resource-lock.sh back-redis-login-throttling-runtime \
+      tools/test/run-redis-login-throttling-runtime-smoke.sh
+    ```
 - 상태 우선순위:
   - 수동 운영 상태 `user_status=LOCKED|DISABLED`가 임시 잠금보다 우선
   - 임시 brute-force 잠금은 `login_locked_until`로만 관리하고 `user_status`는 직접 바꾸지 않음
-  - IP/global throttling은 per-instance in-memory 기준이며 multi-node 전체 합산 limit는 보장하지 않음
+  - memory 저장소의 IP/global throttling은 per-instance 기준이며 multi-node 전체 합산 limit는 보장하지 않음
+  - Redis 저장소는 multi-node counter 공유가 필요할 때만 사용하고, 장애 시 memory fallback 없이 부팅 단계에서 설정 오류를 드러냄
 
 ### login 실패 감사 로그
 

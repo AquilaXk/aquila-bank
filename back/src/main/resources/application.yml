@@ -30,6 +30,10 @@ spring:
   jdbc:
     template:
       query-timeout: ${DB_QUERY_TIMEOUT_SECONDS:3}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
   mvc:
     async:
       request-timeout: 5000ms
