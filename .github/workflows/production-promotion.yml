@@ -1,0 +1,269 @@
+name: Production Promotion
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Staging success main SHA to promote
+        required: true
+        type: string
+  push:
+    tags:
+      - prod-*
+
+permissions:
+  contents: read
+  deployments: write
+
+concurrency:
+  group: production-promotion
+  cancel-in-progress: false
+
+jobs:
+  guard:
+    name: Verify Staging Success SHA
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      target_sha: ${{ steps.resolve.outputs.target_sha }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve promotion target SHA
+        id: resolve
+        env:
+          DISPATCH_SHA: ${{ inputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --prune origin main:refs/remotes/origin/main
+
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            if [[ ! "${DISPATCH_SHA}" =~ ^[0-9a-fA-F]{40}$ ]]; then
+              echo "::error::workflow_dispatch input sha must be a full 40-character commit SHA."
+              exit 1
+            fi
+            target_sha="$(git rev-parse "${DISPATCH_SHA}^{commit}")"
+          elif [[ "${GITHUB_REF}" == refs/tags/prod-* ]]; then
+            git fetch --force origin "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
+            target_sha="$(git rev-list -n 1 "${GITHUB_REF_NAME}")"
+          else
+            echo "::error::Unsupported production promotion trigger ${GITHUB_EVENT_NAME} ${GITHUB_REF}."
+            exit 1
+          fi
+
+          if [[ ! "${target_sha}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Resolved target ${target_sha} is not a commit SHA."
+            exit 1
+          fi
+
+          # production은 main 밖 SHA를 받지 않아 staging 검증 우회 배포를 막는다.
+          if ! git merge-base --is-ancestor "${target_sha}" origin/main; then
+            echo "::error::Target SHA ${target_sha} is not reachable from origin/main."
+            exit 1
+          fi
+
+          echo "target_sha=${target_sha}" >> "${GITHUB_OUTPUT}"
+
+      - name: Verify staging deployment success
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ steps.resolve.outputs.target_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          deployment_ids="$(
+            gh api --method GET "repos/${GITHUB_REPOSITORY}/deployments" \
+              -f environment=staging \
+              -f sha="${TARGET_SHA}" \
+              --paginate \
+              --jq ".[].id"
+          )"
+
+          if [ -z "${deployment_ids}" ]; then
+            echo "::error::No staging deployment found for ${TARGET_SHA}."
+            exit 1
+          fi
+
+          found_success=false
+          while IFS= read -r deployment_id; do
+            if [ -z "${deployment_id}" ]; then
+              continue
+            fi
+
+            state="$(
+              gh api --method GET "repos/${GITHUB_REPOSITORY}/deployments/${deployment_id}/statuses" \
+                --jq ".[0].state // \"\""
+            )"
+            if [ "${state}" = "success" ]; then
+              found_success=true
+              break
+            fi
+          done <<< "${deployment_ids}"
+
+          if [ "${found_success}" != "true" ]; then
+            echo "::error::No successful staging deployment status found for ${TARGET_SHA}."
+            exit 1
+          fi
+
+  promote:
+    name: Promote SHA To Production
+    needs:
+      - guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: production
+    env:
+      TARGET_SHA: ${{ needs.guard.outputs.target_sha }}
+      PROMOTION_LOG_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Checkout promotion SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          fetch-depth: 0
+
+      - name: Validate checkout SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          checked_out_sha="$(git rev-parse HEAD)"
+          if [ "${checked_out_sha}" != "${TARGET_SHA}" ]; then
+            echo "::error::Checked out ${checked_out_sha}, expected ${TARGET_SHA}."
+            exit 1
+          fi
+
+      - name: Create production deployment
+        id: deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload="$(
+            jq -n \
+              --arg ref "${TARGET_SHA}" \
+              --arg description "Promote staging success SHA ${TARGET_SHA} to production" \
+              '{
+                ref: $ref,
+                environment: "production",
+                description: $description,
+                auto_merge: false,
+                required_contexts: [],
+                production_environment: true,
+                transient_environment: false
+              }'
+          )"
+          deployment_id="$(gh api --method POST "repos/${GITHUB_REPOSITORY}/deployments" --input - --jq ".id" <<< "${payload}")"
+
+          if [ -z "${deployment_id}" ]; then
+            echo "::error::Failed to create production deployment."
+            exit 1
+          fi
+
+          echo "deployment_id=${deployment_id}" >> "${GITHUB_OUTPUT}"
+
+      - name: Mark production deployment in progress
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload="$(
+            jq -n \
+              --arg log_url "${PROMOTION_LOG_URL}" \
+              '{
+                state: "in_progress",
+                environment: "production",
+                log_url: $log_url,
+                auto_inactive: false
+              }'
+          )"
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/deployments/${DEPLOYMENT_ID}/statuses" --input - <<< "${payload}"
+
+      - name: Dispatch production deploy hook
+        env:
+          PRODUCTION_DEPLOY_WEBHOOK_URL: ${{ secrets.PRODUCTION_DEPLOY_WEBHOOK_URL }}
+          PRODUCTION_DEPLOY_TOKEN: ${{ secrets.PRODUCTION_DEPLOY_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "${PRODUCTION_DEPLOY_WEBHOOK_URL}" ]; then
+            echo "::error::Missing PRODUCTION_DEPLOY_WEBHOOK_URL environment secret."
+            exit 1
+          fi
+
+          if [ -z "${PRODUCTION_DEPLOY_TOKEN}" ]; then
+            echo "::error::Missing PRODUCTION_DEPLOY_TOKEN environment secret."
+            exit 1
+          fi
+
+          payload="$(
+            jq -n \
+              --arg sha "${TARGET_SHA}" \
+              --arg repository "${GITHUB_REPOSITORY}" \
+              --arg run_url "${PROMOTION_LOG_URL}" \
+              --arg trigger "${GITHUB_EVENT_NAME}" \
+              --arg ref "${GITHUB_REF_NAME}" \
+              '{
+                sha: $sha,
+                repository: $repository,
+                environment: "production",
+                runUrl: $run_url,
+                trigger: $trigger,
+                ref: $ref
+              }'
+          )"
+
+          curl --fail-with-body --show-error --silent \
+            --request POST \
+            --header "Authorization: Bearer ${PRODUCTION_DEPLOY_TOKEN}" \
+            --header "Content-Type: application/json" \
+            --data "${payload}" \
+            "${PRODUCTION_DEPLOY_WEBHOOK_URL}"
+
+      - name: Mark production deployment success
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload="$(
+            jq -n \
+              --arg log_url "${PROMOTION_LOG_URL}" \
+              '{
+                state: "success",
+                environment: "production",
+                log_url: $log_url,
+                auto_inactive: false
+              }'
+          )"
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/deployments/${DEPLOYMENT_ID}/statuses" --input - <<< "${payload}"
+
+      - name: Mark production deployment failure
+        if: failure() && steps.deployment.outputs.deployment_id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload="$(
+            jq -n \
+              --arg log_url "${PROMOTION_LOG_URL}" \
+              '{
+                state: "failure",
+                environment: "production",
+                log_url: $log_url,
+                auto_inactive: false
+              }'
+          )"
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/deployments/${DEPLOYMENT_ID}/statuses" --input - <<< "${payload}"
