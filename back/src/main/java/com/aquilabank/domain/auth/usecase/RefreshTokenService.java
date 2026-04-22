@@ -5,14 +5,18 @@ import com.aquilabank.domain.auth.model.IssuedAccessToken;
 import com.aquilabank.domain.auth.model.LoginResult;
 import com.aquilabank.domain.auth.model.RefreshTokenCommand;
 import com.aquilabank.domain.auth.model.RefreshTokenPolicy;
+import com.aquilabank.domain.auth.model.RefreshTokenReuseAuditEvent;
+import com.aquilabank.domain.auth.model.RefreshTokenReuseReason;
 import com.aquilabank.domain.auth.model.RefreshTokenSession;
 import com.aquilabank.domain.auth.model.RefreshTokenSessionCreateCommand;
 import com.aquilabank.domain.auth.model.RefreshTokenSessionFamilyRevokeCommand;
+import com.aquilabank.domain.auth.model.RefreshTokenSessionFamilyRevokeResult;
 import com.aquilabank.domain.auth.model.RefreshTokenSessionRotateCommand;
 import com.aquilabank.domain.auth.model.RefreshTokenSessionStatus;
 import com.aquilabank.domain.auth.model.UserStatus;
 import com.aquilabank.domain.auth.port.AuthTokenIssuePort;
 import com.aquilabank.domain.auth.port.RefreshDeviceBindingSecretPort;
+import com.aquilabank.domain.auth.port.RefreshTokenReuseAuditPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSecretPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionLoadPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionWritePort;
@@ -27,6 +31,7 @@ public final class RefreshTokenService implements RefreshTokenUseCase {
   private final RefreshTokenSecretPort refreshTokenSecretPort;
   private final RefreshDeviceBindingSecretPort refreshDeviceBindingSecretPort;
   private final AuthTokenIssuePort authTokenIssuePort;
+  private final RefreshTokenReuseAuditPort refreshTokenReuseAuditPort;
   private final RefreshTokenPolicy refreshTokenPolicy;
   private final Clock clock;
 
@@ -38,11 +43,32 @@ public final class RefreshTokenService implements RefreshTokenUseCase {
       AuthTokenIssuePort authTokenIssuePort,
       RefreshTokenPolicy refreshTokenPolicy,
       Clock clock) {
+    this(
+        refreshTokenSessionLoadPort,
+        refreshTokenSessionWritePort,
+        refreshTokenSecretPort,
+        refreshDeviceBindingSecretPort,
+        authTokenIssuePort,
+        event -> {},
+        refreshTokenPolicy,
+        clock);
+  }
+
+  public RefreshTokenService(
+      RefreshTokenSessionLoadPort refreshTokenSessionLoadPort,
+      RefreshTokenSessionWritePort refreshTokenSessionWritePort,
+      RefreshTokenSecretPort refreshTokenSecretPort,
+      RefreshDeviceBindingSecretPort refreshDeviceBindingSecretPort,
+      AuthTokenIssuePort authTokenIssuePort,
+      RefreshTokenReuseAuditPort refreshTokenReuseAuditPort,
+      RefreshTokenPolicy refreshTokenPolicy,
+      Clock clock) {
     this.refreshTokenSessionLoadPort = refreshTokenSessionLoadPort;
     this.refreshTokenSessionWritePort = refreshTokenSessionWritePort;
     this.refreshTokenSecretPort = refreshTokenSecretPort;
     this.refreshDeviceBindingSecretPort = refreshDeviceBindingSecretPort;
     this.authTokenIssuePort = authTokenIssuePort;
+    this.refreshTokenReuseAuditPort = refreshTokenReuseAuditPort;
     this.refreshTokenPolicy = refreshTokenPolicy;
     this.clock = clock;
   }
@@ -59,8 +85,21 @@ public final class RefreshTokenService implements RefreshTokenUseCase {
     if (session.sessionStatus() != RefreshTokenSessionStatus.ACTIVE) {
       // ROTATED token 재사용은 탈취 가능성이 높아 descendant session까지 같은 transaction에서 종료합니다.
       if (session.sessionStatus() == RefreshTokenSessionStatus.ROTATED) {
-        refreshTokenSessionWritePort.revokeFamily(
-            new RefreshTokenSessionFamilyRevokeCommand(session.sessionId(), now));
+        RefreshTokenSessionFamilyRevokeResult revokeResult =
+            refreshTokenSessionWritePort.revokeFamily(
+                new RefreshTokenSessionFamilyRevokeCommand(session.sessionId(), now));
+        refreshTokenReuseAuditPort.record(
+            new RefreshTokenReuseAuditEvent(
+                command.requestId(),
+                session.userId(),
+                session.sessionId(),
+                revokeResult.familyRootId(),
+                session.replacedBySessionId(),
+                revokeResult.revokedCount(),
+                command.sessionClientMetadata().deviceName(),
+                command.sessionClientMetadata().ipAddress(),
+                RefreshTokenReuseReason.ROTATED_TOKEN_REUSE,
+                now));
       }
       throw new InvalidCredentialsException("refresh failed");
     }

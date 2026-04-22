@@ -22,6 +22,7 @@ import com.aquilabank.domain.auth.model.PasswordRecoveryTokenUseCommand;
 import com.aquilabank.domain.auth.model.PasswordResetWriteCommand;
 import com.aquilabank.domain.auth.model.RefreshTokenSessionCreateCommand;
 import com.aquilabank.domain.auth.model.RefreshTokenSessionFamilyRevokeCommand;
+import com.aquilabank.domain.auth.model.RefreshTokenSessionFamilyRevokeResult;
 import com.aquilabank.domain.auth.model.RefreshTokenSessionRevokeCommand;
 import com.aquilabank.domain.auth.model.RefreshTokenSessionRotateCommand;
 import com.aquilabank.domain.auth.model.RememberDeviceIssueCommand;
@@ -629,9 +630,11 @@ public class JdbcAuthWriteRepository
 
   @Override
   @Transactional
-  public void revokeFamily(RefreshTokenSessionFamilyRevokeCommand command) {
-    jdbcTemplate.update(
-        """
+  public RefreshTokenSessionFamilyRevokeResult revokeFamily(
+      RefreshTokenSessionFamilyRevokeCommand command) {
+    RefreshTokenSessionFamilyRevokeResult result =
+        jdbcTemplate.queryForObject(
+            """
         WITH RECURSIVE ancestors(id, replaced_by_session_id) AS (
             SELECT id,
                    replaced_by_session_id
@@ -667,7 +670,8 @@ public class JdbcAuthWriteRepository
                    child.replaced_by_session_id
             FROM auth_refresh_token_session child
             JOIN family parent ON parent.replaced_by_session_id = child.id
-        )
+        ),
+        updated AS (
         UPDATE auth_refresh_token_session target
         SET session_status = 'REVOKED',
             last_used_at = :revokedAt,
@@ -677,10 +681,22 @@ public class JdbcAuthWriteRepository
               SELECT id
               FROM family
           )
+        RETURNING target.id
+        )
+        SELECT (SELECT id FROM family_root) AS family_root_id,
+               COUNT(updated.id) AS revoked_count
+        FROM updated
         """,
-        new MapSqlParameterSource()
-            .addValue("reusedSessionId", command.reusedSessionId())
-            .addValue("revokedAt", Timestamp.from(command.revokedAt())));
+            new MapSqlParameterSource()
+                .addValue("reusedSessionId", command.reusedSessionId())
+                .addValue("revokedAt", Timestamp.from(command.revokedAt())),
+            (rs, rowNum) ->
+                new RefreshTokenSessionFamilyRevokeResult(
+                    rs.getLong("family_root_id"), rs.getInt("revoked_count")));
+    if (result == null) {
+      throw new IllegalStateException("refresh token session family revoke returned null result");
+    }
+    return result;
   }
 
   @Override

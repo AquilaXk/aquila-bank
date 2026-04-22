@@ -21,8 +21,26 @@
 ## Main CI
 
 - `main`에 merge된 SHA는 `Main CI` workflow가 backend/frontend check를 다시 실행합니다.
-- 아직 자동 배포는 연결하지 않습니다.
-- 배포가 필요해지면 별도 workflow 또는 외부 CD 연동을 추가합니다.
+- `Main CI`가 push 이벤트에서 성공하면 `Staging Deploy` workflow가 같은 SHA를 staging에 배포합니다.
+- `Staging Deploy`는 `github.event.workflow_run.head_sha`를 deploy SHA로 고정하고, 현재 `origin/main`과 같은지 검증합니다.
+- 오래된 `Main CI` 완료가 뒤늦게 도착하면 workflow를 실패시켜 staging 역배포를 막습니다.
+
+## Staging Deploy
+
+- GitHub Environment: `staging`
+- concurrency group: `staging-deploy`
+- required environment secrets:
+  - `STAGING_DEPLOY_WEBHOOK_URL`
+  - `STAGING_DEPLOY_TOKEN`
+- deploy hook payload:
+  - `sha`: staging에 배포할 main SHA
+  - `repository`: `owner/repo`
+  - `environment`: `staging`
+  - `runUrl`: GitHub Actions run URL
+- deploy hook secret이 없으면 성공으로 위장하지 않고 fail-fast합니다.
+- workflow는 staging GitHub deployment status를 `in_progress`에서 `success` 또는 `failure`로 갱신합니다.
+- production 승격은 staging deployment status가 `success`인 같은 SHA만 대상으로 삼습니다.
+- rollback은 `main` 기준 revert PR을 merge해 새 staging SHA를 배포하거나, 운영자가 직전 staging 성공 SHA를 확인해 별도 재배포 절차로 진행합니다.
 
 ## Feature Flag
 

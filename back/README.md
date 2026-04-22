@@ -232,10 +232,14 @@ set +a
   - `aquila_notification_consumer_lag_count`
   - `aquila_notification_consumer_dlq_count`
   - `aquila_notification_sse_sessions{principal_type="account|user|total"}`
+  - `aquila_auth_current_session_gate_reject_count_total{reason_code="MISSING_SESSION_ID|INACTIVE_OR_MISMATCHED_SESSION"}`
+  - `aquila_auth_refresh_token_reuse_detected_count_total{reason_code="ROTATED_TOKEN_REUSE"}`
   - `aquila_transaction_query_latency_seconds`
 - 활성화 조건:
   - outbox metric은 기본 wiring만 있으면 항상 export 됩니다.
   - notification consumer lag/DLQ metric은 `NOTIFICATION_INBOX_CONSUMER_OPS_ENABLED=true` 와 DLQ topic 설정이 있어야 export 됩니다.
+  - current session gate reject counter는 민감 mutation에서 legacy JWT `session_id` 누락 또는 inactive/mismatch session 차단이 발생하면 증가합니다.
+  - refresh token reuse metric은 `ROTATED` refresh token 재사용 감지와 family revoke가 발생하면 증가합니다.
   - transaction latency timer는 `GET /api/v1/transactions` query path가 한 번이라도 호출되면 `query_shape` tag 기준으로 누적됩니다.
   - transaction latency histogram bucket은 p95 SLO alert용으로 `50ms, 80ms, 120ms, 150ms, 180ms, 350ms, 750ms, 1s, 3s` 경계를 export 합니다.
 - transaction `query_shape` 기준:
@@ -254,7 +258,13 @@ set +a
 - 운영 메모:
   - outbox/notification gauge는 scrape 한 번에 같은 summary를 여러 번 다시 조회하지 않게 `5초` cache 안에서 재사용합니다.
   - SSE session metric은 현재 app instance 메모리의 active session 수만 보여주므로 multi-instance 전체 합계는 Prometheus 쿼리에서 합산합니다.
+  - current session gate reject metric label은 `reason_code`만 사용하고, `requestId`, `userId`, `sessionId`, `path`는 structured audit log에서만 확인합니다.
+  - `AquilaCurrentSessionActiveGateRejectDetected` alert는 장애 확정이 아니라 security investigation 시작점입니다. 같은 시간대 `requestId`로 `auth current session gate rejected` log를 조회하고, `reasonCode`, `userId`, `sessionId`, `method`, `path`를 확인합니다.
+  - current session gate alert rollback은 `AquilaCurrentSessionActiveGateRejectDetected` rule 제거 또는 threshold/`for` 시간 조정으로 수행하고, API 응답 계약은 그대로 유지합니다.
+  - refresh token reuse metric label은 `reason_code`만 사용하고, `requestId`, `userId`, `reusedSessionId`, `familyRootId`는 structured audit log에서만 확인합니다.
+  - `AquilaRefreshTokenReuseDetected` alert는 공격성 재사용 후보입니다. 같은 시간대 `requestId`로 `auth refresh token reuse detected` log를 조회하고 `reusedSessionId`, `familyRootId`, `revokedCount`를 먼저 확인합니다.
   - p95 alert는 `query_shape`별 5분 rate가 충분할 때만 평가해 low traffic 노이즈를 줄입니다.
+  - refresh token reuse alert rollback은 `AquilaRefreshTokenReuseDetected` rule 제거 또는 notification routing 비활성화로 수행하고, refresh API 응답 계약은 그대로 유지합니다.
   - histogram bucket/alert rollback은 `management.metrics.distribution.*.aquila.transaction.query.latency`와 `AquilaTransactionQueryLatencyP95SloHigh` rule 제거로 수행합니다.
   - baseline 자산은 `ops/prometheus/` 아래에 두고 dashboard import, alert rule apply, tuning 가이드는 `ops/prometheus/README.md`를 기준으로 봅니다.
 - baseline 파일:
@@ -856,8 +866,9 @@ requestId drill-down:
 #### 409 운영 기준
 
 - 현재 known 상태:
-  - 내부 auth status update 경로에서 `409` 대표 error 문구는 아직 고정돼 있지 않습니다.
-  - 현재 runbook에서는 `httpStatus=409`와 같은 `actorSubject`/`path` 반복 패턴을 먼저 수집하고, 세부 error 분류는 후속 구현 이슈로 남깁니다.
+  - 내부 auth 409 응답은 기존 `message`를 유지하면서 분기용 `reasonCode`를 함께 반환합니다.
+  - 현재 표준 code는 `DUPLICATE_LOGIN_ID`, `DUPLICATE_EXTERNAL_IDENTITY_MAPPING`, `STATUS_TRANSITION_CONFLICT`입니다.
+  - `STATUS_TRANSITION_CONFLICT`는 상태 전이 불가 예외가 추가될 때 쓰는 예약 code이며, 현재 대표 실사용 code는 중복 loginId와 external identity mapping 중복입니다.
 - 수집 패턴:
 
 ```text
@@ -872,6 +883,20 @@ requestId drill-down:
   - 같은 대상에 대한 중복 상태 변경 시도
   - caller 재시도 정책 또는 수동 재실행 충돌
   - 상태 전이 전후 확인이 필요한 경쟁 조건 후보
+- 응답 예시:
+
+```json
+{
+  "status": 409,
+  "error": "Conflict",
+  "reasonCode": "DUPLICATE_EXTERNAL_IDENTITY_MAPPING",
+  "message": "external identity mapping already exists"
+}
+```
+
+- rollback:
+  - PR revert 시 `reasonCode` 필드만 사라지고 기존 `message` 기반 fallback은 유지됩니다.
+  - 운영 스크립트는 배포 전환 기간 동안 `reasonCode` 우선, 없으면 `message` fallback 순서로 분기합니다.
 
 #### 500 운영 기준
 
@@ -913,6 +938,7 @@ requestId 우선 drill-down:
 
 - 기본 처리:
   - 단발 `409`는 warning 전송보다 중복 호출, caller retry, 상태 전이 충돌 후보를 먼저 분리합니다.
+  - 응답 `reasonCode`를 우선 확인하고, 필드가 없으면 구버전 응답으로 보고 `message` fallback을 사용합니다.
 - 제외 조건:
   - 같은 actor의 단발 중복 호출이고, 인접 시간대에 성공 감사 row가 확인되는 경우
   - 수동 재실행이나 caller retry가 이미 적용된 상태로 보이는 경우
@@ -964,6 +990,19 @@ tools/ops/internal-auth-find-status-change-audit.sh \
 - exact lookup은 성공 변경 row만 반환합니다.
 - wrapper script 내부에서 exact lookup endpoint, `Authorization: Bearer`, `requestId` query를 고정합니다.
 - failure 원본은 structured log이므로 incident 시작점은 항상 로그 검색입니다.
+
+success audit 목록/검색 예시:
+
+```bash
+curl -sS \
+  -H "Authorization: Bearer $AUTH_ADMIN_SERVICE_TOKEN" \
+  "http://localhost:8080/internal/api/v1/auth/status-change-audits?fromCreatedAt=2026-04-01T00:00:00Z&toCreatedAt=2026-04-22T00:00:00Z&targetUserId=21&targetAccountId=101&changeType=MEMBERSHIP_STATUS&reasonCode=OPS_MANUAL&size=50"
+```
+
+- 목록 API는 `created_at DESC, id DESC` keyset pagination만 사용합니다. 다음 페이지는 응답 `nextCursor`를 `cursor` query로 그대로 전달합니다.
+- 지원 필터는 `fromCreatedAt`, `toCreatedAt`, `targetUserId`, `targetAccountId`, `changeType`, `reasonCode`, `size`, `cursor`입니다.
+- 기본 `size=50`, 최대 `size=200`이며 그 이상은 서버에서 `200`으로 제한합니다.
+- 검색 index는 `idx_auth_status_change_audit_*_created_id` 계열로 유지합니다. rollback 시 API PR revert와 함께 `V42__add_auth_status_change_audit_search_indexes.sql`로 추가된 index 제거 여부를 확인합니다.
 
 ## Outbox Ops Runbook
 

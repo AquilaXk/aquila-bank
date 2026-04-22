@@ -1,6 +1,8 @@
 package com.aquilabank.domain.auth.usecase;
 
 import com.aquilabank.domain.auth.exception.AuthStatusChangeAuditNotFoundException;
+import com.aquilabank.domain.auth.model.AuthStatusChangeAuditSearchQuery;
+import com.aquilabank.domain.auth.model.AuthStatusChangeAuditSearchResult;
 import com.aquilabank.domain.auth.model.AuthStatusChangeAuditSummary;
 import com.aquilabank.domain.auth.port.AuthStatusChangeAuditQueryPort;
 
@@ -22,5 +24,13 @@ public final class AuthStatusChangeAuditQueryService implements AuthStatusChange
     return authStatusChangeAuditQueryPort
         .findByRequestId(requestId)
         .orElseThrow(() -> new AuthStatusChangeAuditNotFoundException("audit record is not found"));
+  }
+
+  @Override
+  public AuthStatusChangeAuditSearchResult search(AuthStatusChangeAuditSearchQuery query) {
+    if (query == null) {
+      throw new IllegalArgumentException("query is required");
+    }
+    return authStatusChangeAuditQueryPort.search(query);
   }
 }

@@ -3,6 +3,10 @@ package com.aquilabank.global.persistence.auth;
 import com.aquilabank.domain.account.model.AccountStatus;
 import com.aquilabank.domain.auth.model.AccountAccessMembership;
 import com.aquilabank.domain.auth.model.AuthSessionSummary;
+import com.aquilabank.domain.auth.model.AuthStatusChangeAuditCursor;
+import com.aquilabank.domain.auth.model.AuthStatusChangeAuditItem;
+import com.aquilabank.domain.auth.model.AuthStatusChangeAuditSearchQuery;
+import com.aquilabank.domain.auth.model.AuthStatusChangeAuditSearchResult;
 import com.aquilabank.domain.auth.model.AuthStatusChangeAuditSummary;
 import com.aquilabank.domain.auth.model.AuthStatusChangeOutcome;
 import com.aquilabank.domain.auth.model.AuthStatusChangeReason;
@@ -43,6 +47,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -524,6 +529,87 @@ public class JdbcAuthRepository
         .findFirst();
   }
 
+  @Override
+  public AuthStatusChangeAuditSearchResult search(AuthStatusChangeAuditSearchQuery query) {
+    MapSqlParameterSource parameters = new MapSqlParameterSource();
+    parameters.addValue("limit", query.size() + 1);
+    StringBuilder sql =
+        new StringBuilder(
+            """
+            SELECT id,
+                   request_id,
+                   actor_subject,
+                   change_type,
+                   target_user_id,
+                   target_account_id,
+                   before_status,
+                   after_status,
+                   reason_code,
+                   reason,
+                   outcome,
+                   created_at
+            FROM auth_status_change_audit
+            WHERE 1 = 1
+            """);
+    addFilter(
+        sql, parameters, "created_at >= :fromCreatedAt", "fromCreatedAt", query.fromCreatedAt());
+    addFilter(sql, parameters, "created_at <= :toCreatedAt", "toCreatedAt", query.toCreatedAt());
+    addFilter(
+        sql, parameters, "target_user_id = :targetUserId", "targetUserId", query.targetUserId());
+    addFilter(
+        sql,
+        parameters,
+        "target_account_id = :targetAccountId",
+        "targetAccountId",
+        query.targetAccountId());
+    addFilter(
+        sql,
+        parameters,
+        "change_type = :changeType",
+        "changeType",
+        query.changeType() == null ? null : query.changeType().name());
+    addFilter(
+        sql,
+        parameters,
+        "reason_code = :reasonCode",
+        "reasonCode",
+        query.reasonCode() == null ? null : query.reasonCode().name());
+    if (query.cursor() != null) {
+      sql.append(" AND (created_at, id) < (:cursorCreatedAt, :cursorId)\n");
+      parameters.addValue("cursorCreatedAt", Timestamp.from(query.cursor().createdAt()));
+      parameters.addValue("cursorId", query.cursor().auditId());
+    }
+    // keyset pagination 전용 정렬입니다. idx_auth_status_change_audit_*_created_id 계열과 맞춰 유지합니다.
+    sql.append(" ORDER BY created_at DESC, id DESC LIMIT :limit");
+
+    List<AuthStatusChangeAuditItem> rows =
+        jdbcTemplate.query(
+            sql.toString(), parameters, (rs, rowNum) -> mapStatusChangeAuditItem(rs));
+    List<AuthStatusChangeAuditItem> items = new ArrayList<>(rows);
+    String nextCursor = null;
+    if (items.size() > query.size()) {
+      items.removeLast();
+      AuthStatusChangeAuditItem lastItem = items.getLast();
+      nextCursor =
+          new AuthStatusChangeAuditCursor(lastItem.createdAt(), lastItem.auditId()).encode();
+    }
+    return new AuthStatusChangeAuditSearchResult(items, nextCursor);
+  }
+
+  private void addFilter(
+      StringBuilder sql,
+      MapSqlParameterSource parameters,
+      String condition,
+      String parameterName,
+      Object value) {
+    if (value == null) {
+      return;
+    }
+    sql.append(" AND ").append(condition).append('\n');
+    parameters.addValue(
+        parameterName, value instanceof Instant instant ? Timestamp.from(instant) : value);
+  }
+
   private LoginUser mapLoginUser(ResultSet rs) throws SQLException {
     return new LoginUser(
         rs.getLong("id"),
@@ -650,6 +736,24 @@ public class JdbcAuthRepository
       throws SQLException {
     Long targetAccountId = rs.getObject("target_account_id", Long.class);
     return new AuthStatusChangeAuditSummary(
+        rs.getString("request_id"),
+        rs.getString("actor_subject"),
+        AuthStatusChangeType.valueOf(rs.getString("change_type")),
+        rs.getLong("target_user_id"),
+        targetAccountId,
+        rs.getString("before_status"),
+        rs.getString("after_status"),
+        new AuthStatusChangeReason(
+            AuthStatusChangeReasonCode.valueOf(rs.getString("reason_code")),
+            rs.getString("reason")),
+        AuthStatusChangeOutcome.valueOf(rs.getString("outcome")),
+        toInstant(rs.getTimestamp("created_at")));
+  }
+
+  private AuthStatusChangeAuditItem mapStatusChangeAuditItem(ResultSet rs) throws SQLException {
+    Long targetAccountId = rs.getObject("target_account_id", Long.class);
+    return new AuthStatusChangeAuditItem(
+        rs.getLong("id"),
         rs.getString("request_id"),
         rs.getString("actor_subject"),
         AuthStatusChangeType.valueOf(rs.getString("change_type")),
