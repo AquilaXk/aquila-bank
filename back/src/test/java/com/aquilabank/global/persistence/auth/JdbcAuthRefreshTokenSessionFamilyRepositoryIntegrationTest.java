@@ -3,6 +3,7 @@ package com.aquilabank.global.persistence.auth;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.aquilabank.domain.auth.model.RefreshTokenSessionFamilyRevokeCommand;
+import com.aquilabank.domain.auth.model.RefreshTokenSessionFamilyRevokeResult;
 import com.aquilabank.support.PostgresContainerTestSupport;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -37,19 +38,24 @@ class JdbcAuthRefreshTokenSessionFamilyRepositoryIntegrationTest
   @Test
   void revokesOnlyActiveDescendantSessionsInReusedTokenFamily() {
     long[] middleSessionId = new long[1];
+    long[] rootSessionId = new long[1];
     commit(
         transactionManager,
         () -> {
           long userId = insertUser("family-user");
           long activeSessionId = insertSession(userId, "active-descendant", "ACTIVE", null);
           middleSessionId[0] = insertSession(userId, "rotated-middle", "ROTATED", activeSessionId);
-          insertSession(userId, "rotated-root", "ROTATED", middleSessionId[0]);
+          rootSessionId[0] = insertSession(userId, "rotated-root", "ROTATED", middleSessionId[0]);
           insertSession(userId, "unrelated-active", "ACTIVE", null);
         });
 
-    repository.revokeFamily(new RefreshTokenSessionFamilyRevokeCommand(middleSessionId[0], NOW));
+    RefreshTokenSessionFamilyRevokeResult result =
+        repository.revokeFamily(
+            new RefreshTokenSessionFamilyRevokeCommand(middleSessionId[0], NOW));
 
     Map<String, String> statuses = findStatusesByTokenHash();
+    assertThat(result.familyRootId()).isEqualTo(rootSessionId[0]);
+    assertThat(result.revokedCount()).isEqualTo(1);
     assertThat(statuses)
         .containsEntry("active-descendant", "REVOKED")
         .containsEntry("rotated-middle", "ROTATED")
