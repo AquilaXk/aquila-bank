@@ -78,14 +78,22 @@ class PrometheusMetricsIntegrationTest extends PostgresKafkaContainerTestSupport
     Instant base = Instant.now();
     commit(
         transactionManager,
-        () ->
-            insertOutboxEvent(
-                "evt-prometheus-failed",
-                "FAILED",
-                1,
-                "kafka publish timed out",
-                base.minusSeconds(10),
-                base.minusSeconds(20)));
+        () -> {
+          insertOutboxEvent(
+              "evt-prometheus-failed",
+              "FAILED",
+              1,
+              "kafka publish timed out",
+              base.minusSeconds(10),
+              base.minusSeconds(20));
+          insertOutboxEvent(
+              "evt-prometheus-quarantined",
+              "QUARANTINED",
+              4,
+              "invalid payload",
+              base.minusSeconds(30),
+              base.minusSeconds(5));
+        });
 
     SseEmitter emitter = notificationSseBroker.subscribeAccount(1L, "metrics");
     try {
@@ -130,6 +138,7 @@ class PrometheusMetricsIntegrationTest extends PostgresKafkaContainerTestSupport
 
       assertThat(body).contains("# HELP aquila_outbox_dispatch_lag_seconds");
       assertThat(body).containsPattern("aquila_outbox_failed_count\\s+1\\.0");
+      assertThat(body).containsPattern("aquila_outbox_quarantined_count\\s+1\\.0");
       assertThat(body).containsPattern("aquila_outbox_failed_producer_timeout_count\\s+1\\.0");
       assertThat(body)
           .containsPattern(

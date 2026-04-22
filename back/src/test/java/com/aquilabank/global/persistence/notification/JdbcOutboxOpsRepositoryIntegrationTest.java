@@ -104,6 +104,13 @@ class JdbcOutboxOpsRepositoryIntegrationTest extends PostgresContainerTestSuppor
               null,
               observedAt.minusSeconds(5),
               observedAt.minusSeconds(10));
+          insertOutboxEvent(
+              "evt-quarantined",
+              "QUARANTINED",
+              4,
+              "invalid payload",
+              observedAt.minusSeconds(60),
+              observedAt.minusSeconds(15));
         });
 
     OutboxOpsSummary summary = repository.getSummary(Duration.ofSeconds(30), observedAt);
@@ -111,6 +118,7 @@ class JdbcOutboxOpsRepositoryIntegrationTest extends PostgresContainerTestSuppor
     assertThat(summary.oldestDispatchableAt()).isEqualTo(observedAt.minusSeconds(20));
     assertThat(summary.oldestDispatchLag()).isEqualTo(Duration.ofSeconds(20));
     assertThat(summary.failedCount()).isEqualTo(2L);
+    assertThat(summary.quarantinedCount()).isEqualTo(1L);
     assertThat(summary.producerTimeoutFailedCount()).isEqualTo(1L);
     assertThat(summary.staleSendingCount()).isEqualTo(1L);
   }

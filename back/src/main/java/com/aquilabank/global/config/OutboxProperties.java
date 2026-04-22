@@ -10,4 +10,5 @@ public record OutboxProperties(
     long initialDelayMs,
     int batchSize,
     long staleAfterSeconds,
-    long maxRetryDelaySeconds) {}
+    long maxRetryDelaySeconds,
+    int maxRetryAttempts) {}

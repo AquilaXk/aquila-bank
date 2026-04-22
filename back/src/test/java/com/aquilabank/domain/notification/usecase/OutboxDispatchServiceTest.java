@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -33,7 +34,8 @@ class OutboxDispatchServiceTest {
             outboxEventPublishPort,
             20,
             Duration.ofSeconds(30),
-            Duration.ofSeconds(60));
+            Duration.ofSeconds(60),
+            3);
   }
 
   @Test
@@ -83,5 +85,34 @@ class OutboxDispatchServiceTest {
     assertEquals(1, claimed);
     verify(outboxEventStore)
         .markFailed(eq(2L), any(Instant.class), any(Instant.class), eq("publisher down"));
+    verify(outboxEventStore, never())
+        .markQuarantined(eq(2L), any(Instant.class), eq("publisher down"));
+  }
+
+  @Test
+  void quarantinesEventWhenRetryLimitWouldBeExceeded() {
+    OutboxEvent event =
+        new OutboxEvent(
+            3L,
+            "TRANSFER",
+            "300",
+            "TransferBooked",
+            "evt-3",
+            "{}",
+            2,
+            Instant.now(),
+            Instant.now());
+    when(outboxEventStore.claimBatch(eq(20), any(Duration.class), any(Instant.class)))
+        .thenReturn(List.of(event));
+    doThrow(new IllegalArgumentException("invalid payload"))
+        .when(outboxEventPublishPort)
+        .publish(event);
+
+    int claimed = outboxDispatchService.dispatchPendingEvents();
+
+    assertEquals(1, claimed);
+    verify(outboxEventStore).markQuarantined(eq(3L), any(Instant.class), eq("invalid payload"));
+    verify(outboxEventStore, never())
+        .markFailed(eq(3L), any(Instant.class), any(Instant.class), eq("invalid payload"));
   }
 }

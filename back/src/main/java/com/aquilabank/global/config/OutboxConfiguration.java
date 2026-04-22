@@ -57,7 +57,8 @@ public class OutboxConfiguration {
         outboxEventPublishPort,
         outboxProperties.batchSize(),
         Duration.ofSeconds(outboxProperties.staleAfterSeconds()),
-        Duration.ofSeconds(outboxProperties.maxRetryDelaySeconds()));
+        Duration.ofSeconds(outboxProperties.maxRetryDelaySeconds()),
+        outboxProperties.maxRetryAttempts());
   }
 
   @Bean

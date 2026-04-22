@@ -119,6 +119,27 @@ public class JdbcOutboxEventRepository implements OutboxEventStore, OutboxCleanu
 
   @Override
   @Transactional
+  public void markQuarantined(long id, Instant quarantinedAt, String errorMessage) {
+    MapSqlParameterSource params =
+        new MapSqlParameterSource()
+            .addValue("id", id)
+            .addValue("quarantinedAt", Timestamp.from(quarantinedAt))
+            .addValue("errorMessage", errorMessage);
+
+    jdbcTemplate.update(
+        """
+        UPDATE outbox_event
+        SET publish_status = 'QUARANTINED',
+            retry_count = retry_count + 1,
+            last_error = :errorMessage,
+            updated_at = :quarantinedAt
+        WHERE id = :id
+        """,
+        params);
+  }
+
+  @Override
+  @Transactional
   public int deletePublishedEvents(Instant cutoff, int batchSize) {
     // dispatch 중/실패 row를 건드리지 않게 PUBLISHED + published_at index 경로만 정리합니다.
     Integer deleted =
