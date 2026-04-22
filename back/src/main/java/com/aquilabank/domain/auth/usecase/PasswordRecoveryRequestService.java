@@ -3,10 +3,12 @@ package com.aquilabank.domain.auth.usecase;
 import com.aquilabank.domain.auth.model.AuthUserSummary;
 import com.aquilabank.domain.auth.model.GeneratedPasswordRecoveryToken;
 import com.aquilabank.domain.auth.model.LoginUser;
+import com.aquilabank.domain.auth.model.PasswordRecoveryDeliveryCommand;
 import com.aquilabank.domain.auth.model.PasswordRecoveryRequestCommand;
 import com.aquilabank.domain.auth.model.PasswordRecoveryRequestResult;
 import com.aquilabank.domain.auth.model.PasswordRecoveryTokenIssueCommand;
 import com.aquilabank.domain.auth.model.UserStatus;
+import com.aquilabank.domain.auth.port.PasswordRecoveryDeliveryPort;
 import com.aquilabank.domain.auth.port.PasswordRecoverySecretPort;
 import com.aquilabank.domain.auth.port.PasswordRecoveryTokenWritePort;
 import com.aquilabank.domain.auth.port.UserCredentialLoadPort;
@@ -23,6 +25,7 @@ public final class PasswordRecoveryRequestService implements PasswordRecoveryReq
   private final UserCredentialLoadPort userCredentialLoadPort;
   private final PasswordRecoverySecretPort passwordRecoverySecretPort;
   private final PasswordRecoveryTokenWritePort passwordRecoveryTokenWritePort;
+  private final PasswordRecoveryDeliveryPort passwordRecoveryDeliveryPort;
   private final Duration ttl;
   private final Clock clock;
 
@@ -31,12 +34,14 @@ public final class PasswordRecoveryRequestService implements PasswordRecoveryReq
       UserCredentialLoadPort userCredentialLoadPort,
       PasswordRecoverySecretPort passwordRecoverySecretPort,
       PasswordRecoveryTokenWritePort passwordRecoveryTokenWritePort,
+      PasswordRecoveryDeliveryPort passwordRecoveryDeliveryPort,
       Duration ttl,
       Clock clock) {
     this.userQueryPort = userQueryPort;
     this.userCredentialLoadPort = userCredentialLoadPort;
     this.passwordRecoverySecretPort = passwordRecoverySecretPort;
     this.passwordRecoveryTokenWritePort = passwordRecoveryTokenWritePort;
+    this.passwordRecoveryDeliveryPort = passwordRecoveryDeliveryPort;
     this.ttl = ttl;
     this.clock = clock;
   }
@@ -70,6 +75,22 @@ public final class PasswordRecoveryRequestService implements PasswordRecoveryReq
             generatedToken.tokenNonce(),
             expiresAt,
             issuedAt));
+    deliverBestEffort(
+        new PasswordRecoveryDeliveryCommand(
+            handoffRequestId,
+            lockedUser.userId(),
+            lockedUser.loginId(),
+            generatedToken.plainToken(),
+            expiresAt,
+            issuedAt));
     return new PasswordRecoveryRequestResult(handoffRequestId);
+  }
+
+  private void deliverBestEffort(PasswordRecoveryDeliveryCommand command) {
+    try {
+      passwordRecoveryDeliveryPort.deliver(command);
+    } catch (RuntimeException ex) {
+      // 전달 실패가 generic 204 응답과 token 발급 transaction을 깨지 않게 격리합니다.
+    }
   }
 }
