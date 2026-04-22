@@ -40,6 +40,7 @@ import com.aquilabank.global.security.AuthenticatedAccountPrincipal;
 import com.aquilabank.global.security.AuthenticatedRequestPrincipal;
 import com.aquilabank.global.security.AuthenticatedUserPrincipal;
 import com.aquilabank.global.security.LoginThrottleGuard;
+import com.aquilabank.global.web.RequestTraceContext;
 import com.aquilabank.global.web.security.CurrentAuthenticatedPrincipal;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -246,7 +247,8 @@ public class LoginController {
             new RefreshTokenCommand(
                 request.refreshToken(),
                 refreshDeviceBindingCookieManager.resolve(httpServletRequest),
-                authSessionMetadataResolver.resolve(httpServletRequest)));
+                authSessionMetadataResolver.resolve(httpServletRequest),
+                RequestTraceContext.currentRequestId().orElse("-")));
     return loginResponse(result, false);
   }
 
