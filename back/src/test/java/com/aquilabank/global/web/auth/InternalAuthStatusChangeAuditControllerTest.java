@@ -7,6 +7,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.aquilabank.domain.auth.exception.AuthStatusChangeAuditNotFoundException;
+import com.aquilabank.domain.auth.model.AuthStatusChangeAuditItem;
+import com.aquilabank.domain.auth.model.AuthStatusChangeAuditSearchResult;
 import com.aquilabank.domain.auth.model.AuthStatusChangeAuditSummary;
 import com.aquilabank.domain.auth.model.AuthStatusChangeOutcome;
 import com.aquilabank.domain.auth.model.AuthStatusChangeReason;
@@ -17,6 +19,7 @@ import com.aquilabank.global.security.InternalServiceScope;
 import com.aquilabank.global.security.InternalServiceTokenTestSupport;
 import com.aquilabank.global.web.ApiExceptionHandler;
 import java.time.Instant;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
@@ -37,6 +40,42 @@ class InternalAuthStatusChangeAuditControllerTest {
                     InternalServiceTokenTestSupport.authorizer()))
             .setControllerAdvice(new ApiExceptionHandler())
             .build();
+  }
+
+  @Test
+  void searchesAuditsWithFiltersAndKeysetCursor() throws Exception {
+    when(authStatusChangeAuditQueryUseCase.search(
+            org.mockito.ArgumentMatchers.argThat(
+                query ->
+                    query.fromCreatedAt().equals(Instant.parse("2026-04-01T00:00:00Z"))
+                        && query.toCreatedAt().equals(Instant.parse("2026-04-22T00:00:00Z"))
+                        && query.targetUserId().equals(21L)
+                        && query.targetAccountId().equals(101L)
+                        && query.changeType() == AuthStatusChangeType.MEMBERSHIP_STATUS
+                        && query.reasonCode() == AuthStatusChangeReasonCode.OPS_MANUAL
+                        && query.size() == 25)))
+        .thenReturn(new AuthStatusChangeAuditSearchResult(List.of(item()), "next-cursor"));
+
+    mockMvc
+        .perform(
+            get("/internal/api/v1/auth/status-change-audits")
+                .header(
+                    "Authorization",
+                    InternalServiceTokenTestSupport.authorization(
+                        "ops-admin", InternalServiceScope.AUTH_ADMIN))
+                .param("fromCreatedAt", "2026-04-01T00:00:00Z")
+                .param("toCreatedAt", "2026-04-22T00:00:00Z")
+                .param("targetUserId", "21")
+                .param("targetAccountId", "101")
+                .param("changeType", "MEMBERSHIP_STATUS")
+                .param("reasonCode", "OPS_MANUAL")
+                .param("size", "25"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items[0].requestId").value("request-001"))
+        .andExpect(jsonPath("$.items[0].targetUserId").value(21))
+        .andExpect(jsonPath("$.items[0].targetAccountId").value(101))
+        .andExpect(jsonPath("$.items[0].reasonCode").value("OPS_MANUAL"))
+        .andExpect(jsonPath("$.nextCursor").value("next-cursor"));
   }
 
   @Test
@@ -103,5 +142,20 @@ class InternalAuthStatusChangeAuditControllerTest {
                 .param("requestId", "membership-revoked-request"))
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.message").value("internal service token is invalid"));
+  }
+
+  private AuthStatusChangeAuditItem item() {
+    return new AuthStatusChangeAuditItem(
+        101L,
+        "request-001",
+        "ops-admin",
+        AuthStatusChangeType.MEMBERSHIP_STATUS,
+        21L,
+        101L,
+        "ACTIVE",
+        "REVOKED",
+        new AuthStatusChangeReason(AuthStatusChangeReasonCode.OPS_MANUAL, "manual-revoke"),
+        AuthStatusChangeOutcome.SUCCESS,
+        Instant.parse("2026-04-21T00:00:00Z"));
   }
 }

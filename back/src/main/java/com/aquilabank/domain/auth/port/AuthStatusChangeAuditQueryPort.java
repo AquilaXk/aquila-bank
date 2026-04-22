@@ -1,5 +1,7 @@
 package com.aquilabank.domain.auth.port;
 
+import com.aquilabank.domain.auth.model.AuthStatusChangeAuditSearchQuery;
+import com.aquilabank.domain.auth.model.AuthStatusChangeAuditSearchResult;
 import com.aquilabank.domain.auth.model.AuthStatusChangeAuditSummary;
 import java.util.Optional;
 
@@ -7,4 +9,8 @@ import java.util.Optional;
 public interface AuthStatusChangeAuditQueryPort {
 
   Optional<AuthStatusChangeAuditSummary> findByRequestId(String requestId);
+
+  default AuthStatusChangeAuditSearchResult search(AuthStatusChangeAuditSearchQuery query) {
+    throw new UnsupportedOperationException("auth status change audit search is not implemented");
+  }
 }
