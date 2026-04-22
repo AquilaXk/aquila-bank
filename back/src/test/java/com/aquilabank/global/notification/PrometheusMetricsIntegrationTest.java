@@ -156,6 +156,12 @@ class PrometheusMetricsIntegrationTest extends PostgresKafkaContainerTestSupport
       assertThat(body)
           .containsPattern(
               "aquila_transaction_query_latency_seconds_count\\{[^\\n]*outcome=\"success\"[^\\n]*query_shape=\"first_page\"[^\\n]*\\}\\s+1");
+      assertThat(body)
+          .containsPattern(
+              "aquila_transaction_query_latency_seconds_bucket\\{(?=[^\\n]*le=\"0\\.12\")(?=[^\\n]*outcome=\"success\")(?=[^\\n]*query_shape=\"first_page\")[^\\n]*\\}\\s+1");
+      assertThat(body)
+          .containsPattern(
+              "aquila_transaction_query_latency_seconds_bucket\\{(?=[^\\n]*le=\"0\\.75\")(?=[^\\n]*outcome=\"success\")(?=[^\\n]*query_shape=\"first_page\")[^\\n]*\\}\\s+1");
     } finally {
       emitter.complete();
     }

@@ -186,6 +186,7 @@ set +a
   - outbox metric은 기본 wiring만 있으면 항상 export 됩니다.
   - notification consumer lag/DLQ metric은 `NOTIFICATION_INBOX_CONSUMER_OPS_ENABLED=true` 와 DLQ topic 설정이 있어야 export 됩니다.
   - transaction latency timer는 `GET /api/v1/transactions` query path가 한 번이라도 호출되면 `query_shape` tag 기준으로 누적됩니다.
+  - transaction latency histogram bucket은 p95 SLO alert용으로 `50ms, 80ms, 120ms, 150ms, 180ms, 350ms, 750ms, 1s, 3s` 경계를 export 합니다.
 - transaction `query_shape` 기준:
   - `first_page`
   - `cursor`
@@ -194,9 +195,16 @@ set +a
   - `amount_first`, `amount_cursor`
   - `mixed_first`, `mixed_cursor`
   - `reference_exact`
+- transaction p95 SLO 기준:
+  - `reference_exact`: `80ms`
+  - `first_page`: `120ms`
+  - `cursor`, `status_first`, `status_cursor`, `direction_first`, `direction_cursor`: `150ms`
+  - `amount_first`, `amount_cursor`, `mixed_first`, `mixed_cursor`: `180ms`
 - 운영 메모:
   - outbox/notification gauge는 scrape 한 번에 같은 summary를 여러 번 다시 조회하지 않게 `5초` cache 안에서 재사용합니다.
   - SSE session metric은 현재 app instance 메모리의 active session 수만 보여주므로 multi-instance 전체 합계는 Prometheus 쿼리에서 합산합니다.
+  - p95 alert는 `query_shape`별 5분 rate가 충분할 때만 평가해 low traffic 노이즈를 줄입니다.
+  - histogram bucket/alert rollback은 `management.metrics.distribution.*.aquila.transaction.query.latency`와 `AquilaTransactionQueryLatencyP95SloHigh` rule 제거로 수행합니다.
   - baseline 자산은 `ops/prometheus/` 아래에 두고 dashboard import, alert rule apply, tuning 가이드는 `ops/prometheus/README.md`를 기준으로 봅니다.
 - baseline 파일:
   - dashboard: `ops/prometheus/grafana/aquila-bank-overview.json`

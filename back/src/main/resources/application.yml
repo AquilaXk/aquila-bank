@@ -62,6 +62,11 @@ management:
       probes:
         enabled: true
       show-details: never
+  metrics:
+    distribution:
+      slo:
+        # p95 SLO alert가 쓰는 경계만 고정해 query_shape/outcome별 bucket 수를 제한합니다.
+        aquila.transaction.query.latency: 50ms,80ms,120ms,150ms,180ms,350ms,750ms,1s,3s
 
 logging:
   pattern:
