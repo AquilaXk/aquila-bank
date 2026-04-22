@@ -314,6 +314,15 @@ tools/test/with-resource-lock.sh back-gradle-check \
   - `aquila_notification_sse_sessions{principal_type="account|user|total"}`
   - `aquila_notification_sse_subscription_rejected_count{reason="session_limit"}`
   - `aquila_notification_sse_session_dropped_count{reason="pending_overflow"}`
+- 부하/장애 주입 검증:
+  - account 2개 session, user 2개 session, live event 25건을 같은 broker publish path로 보내 누락과 순서를 확인합니다.
+  - emitter send 실패는 해당 session만 제거하고 같은 batch의 healthy session 전파를 유지해야 합니다.
+  - replay pending overflow는 `pending_overflow` drop metric 증가와 session 제거로 해석합니다.
+  - 실행:
+    ```bash
+    tools/test/with-resource-lock.sh back-notification-sse-fanout-load-fault \
+      tools/test/run-notification-sse-fanout-load-fault.sh
+    ```
 
 ### Nginx Reverse Proxy Baseline
 
