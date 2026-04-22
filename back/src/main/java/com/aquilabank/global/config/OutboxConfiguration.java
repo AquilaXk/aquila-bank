@@ -4,6 +4,7 @@ import com.aquilabank.domain.notification.port.OutboxEventPublishPort;
 import com.aquilabank.domain.notification.port.OutboxEventStore;
 import com.aquilabank.domain.notification.port.OutboxOpsReadPort;
 import com.aquilabank.domain.notification.port.OutboxOpsRecoveryPort;
+import com.aquilabank.domain.notification.usecase.OutboxDispatchAdaptivePolicy;
 import com.aquilabank.domain.notification.usecase.OutboxDispatchService;
 import com.aquilabank.domain.notification.usecase.OutboxDispatchUseCase;
 import com.aquilabank.domain.notification.usecase.OutboxOpsQueryService;
@@ -51,14 +52,31 @@ public class OutboxConfiguration {
       OutboxEventStore outboxEventStore,
       OutboxEventPublishPort outboxEventPublishPort,
       OutboxProperties outboxProperties) {
-    // poller가 바뀌어도 retry 기준과 batch 크기는 설정값에서만 제어되게 둡니다.
+    // poller가 바뀌어도 retry 기준과 batch 한계는 설정값에서만 제어되게 둡니다.
     return new OutboxDispatchService(
         outboxEventStore,
         outboxEventPublishPort,
         outboxProperties.batchSize(),
         Duration.ofSeconds(outboxProperties.staleAfterSeconds()),
         Duration.ofSeconds(outboxProperties.maxRetryDelaySeconds()),
-        outboxProperties.maxRetryAttempts());
+        outboxProperties.maxRetryAttempts(),
+        outboxDispatchAdaptivePolicy(outboxProperties));
+  }
+
+  private OutboxDispatchAdaptivePolicy outboxDispatchAdaptivePolicy(
+      OutboxProperties outboxProperties) {
+    if (!outboxProperties.adaptiveEnabled()) {
+      return OutboxDispatchAdaptivePolicy.disabled(outboxProperties.batchSize());
+    }
+    int minBatchSize =
+        Math.max(1, Math.min(outboxProperties.minBatchSize(), outboxProperties.batchSize()));
+    long maxAdaptiveDelayMs =
+        Math.max(outboxProperties.fixedDelayMs(), outboxProperties.maxAdaptiveDelayMs());
+    return OutboxDispatchAdaptivePolicy.extraDelayOnlyAfterPressure(
+        outboxProperties.batchSize(),
+        minBatchSize,
+        Duration.ofMillis(outboxProperties.fixedDelayMs()),
+        Duration.ofMillis(maxAdaptiveDelayMs));
   }
 
   @Bean

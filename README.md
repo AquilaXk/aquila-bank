@@ -83,3 +83,11 @@ com.aquilabank
 - global은 domain을 사용해 어댑터와 설정을 구성합니다.
 - util에는 비즈니스 로직을 두지 않고, 공통 기술 보조 코드만 둡니다.
 - 읽기 경로는 초대량 트래픽, 1억 건 조회, `t3.micro` 운영 한계를 함께 고려해 경량화와 분리를 우선합니다.
+
+## Outbox Dispatcher
+
+- `OUTBOX_POLLER_BATCH_SIZE`: 정상 상태 claim batch 상한입니다.
+- `OUTBOX_POLLER_ADAPTIVE_ENABLED`: Kafka/DB 지연 시 adaptive batch/backoff 적용 여부입니다.
+- `OUTBOX_POLLER_MIN_BATCH_SIZE`: publish 실패가 이어질 때 줄일 최소 batch 크기입니다.
+- `OUTBOX_POLLER_MAX_ADAPTIVE_DELAY_MS`: 실패 또는 빈 poll 반복 시 추가 대기 시간 상한입니다.
+- 운영 복구 시 `OUTBOX_POLLER_ADAPTIVE_ENABLED=false`로 고정 batch/주기 모드로 되돌릴 수 있습니다.
