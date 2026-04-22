@@ -37,9 +37,11 @@ jobs:
           fetch-depth: 0
 
       - name: Validate main SHA
+        id: validate
         shell: bash
         run: |
           set -euo pipefail
+          echo "should_deploy=false" >> "${GITHUB_OUTPUT}"
           git fetch --no-tags --depth=1 origin main
 
           checked_out_sha="$(git rev-parse HEAD)"
@@ -50,14 +52,17 @@ jobs:
             exit 1
           fi
 
-          # staging은 main 최신 SHA만 자동 배포해 오래된 CI 완료가 역배포를 만들지 않게 한다.
+          # staging은 main 최신 SHA만 자동 배포하되, 오래된 CI 완료는 정상 race로 보고 skip한다.
           if [ "${current_main_sha}" != "${DEPLOY_SHA}" ]; then
-            echo "::error::Deploy SHA ${DEPLOY_SHA} is not current origin/main ${current_main_sha}."
-            exit 1
+            echo "::notice::Skipping stale deploy SHA ${DEPLOY_SHA}; current origin/main is ${current_main_sha}."
+            exit 0
           fi
+
+          echo "should_deploy=true" >> "${GITHUB_OUTPUT}"
 
       - name: Create staging deployment
         id: deployment
+        if: steps.validate.outputs.should_deploy == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -87,6 +92,7 @@ jobs:
           echo "deployment_id=${deployment_id}" >> "${GITHUB_OUTPUT}"
 
       - name: Mark staging deployment in progress
+        if: steps.validate.outputs.should_deploy == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
@@ -106,6 +112,7 @@ jobs:
           gh api --method POST "repos/${GITHUB_REPOSITORY}/deployments/${DEPLOYMENT_ID}/statuses" --input - <<< "${payload}"
 
       - name: Dispatch staging deploy hook
+        if: steps.validate.outputs.should_deploy == 'true'
         env:
           STAGING_DEPLOY_WEBHOOK_URL: ${{ secrets.STAGING_DEPLOY_WEBHOOK_URL }}
           STAGING_DEPLOY_TOKEN: ${{ secrets.STAGING_DEPLOY_TOKEN }}
@@ -144,7 +151,7 @@ jobs:
             "${STAGING_DEPLOY_WEBHOOK_URL}"
 
       - name: Mark staging deployment success
-        if: success()
+        if: success() && steps.validate.outputs.should_deploy == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
@@ -164,7 +171,7 @@ jobs:
           gh api --method POST "repos/${GITHUB_REPOSITORY}/deployments/${DEPLOYMENT_ID}/statuses" --input - <<< "${payload}"
 
       - name: Mark staging deployment failure
-        if: failure() && steps.deployment.outputs.deployment_id != ''
+        if: failure() && steps.validate.outputs.should_deploy == 'true' && steps.deployment.outputs.deployment_id != ''
         env:
           GH_TOKEN: ${{ github.token }}
           DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}

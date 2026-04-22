@@ -23,7 +23,7 @@
 - `main`에 merge된 SHA는 `Main CI` workflow가 backend/frontend check를 다시 실행합니다.
 - `Main CI`가 push 이벤트에서 성공하면 `Staging Deploy` workflow가 같은 SHA를 staging에 배포합니다.
 - `Staging Deploy`는 `github.event.workflow_run.head_sha`를 deploy SHA로 고정하고, 현재 `origin/main`과 같은지 검증합니다.
-- 오래된 `Main CI` 완료가 뒤늦게 도착하면 workflow를 실패시켜 staging 역배포를 막습니다.
+- 오래된 `Main CI` 완료가 뒤늦게 도착하면 deploy step을 skip해 staging 역배포와 불필요한 failure를 같이 막습니다.
 
 ## Staging Deploy
 
