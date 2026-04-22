@@ -26,6 +26,8 @@ import com.aquilabank.domain.ledger.exception.TransferReversalNotFoundException;
 import com.aquilabank.domain.notification.exception.NotificationNotFoundException;
 import com.aquilabank.domain.transaction.exception.TransactionDetailNotFoundException;
 import com.aquilabank.global.notification.NotificationSseOverloadException;
+import com.aquilabank.global.ops.T3MicroQueryTimeoutSignal;
+import com.aquilabank.global.ops.T3MicroSaturationRejectedException;
 import com.aquilabank.global.security.BootstrapApiAccessDeniedException;
 import com.aquilabank.global.security.InternalServiceRequestAuthorizer;
 import com.aquilabank.global.security.InternalServiceTokenClaims;
@@ -38,6 +40,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.QueryTimeoutException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -55,6 +59,12 @@ public class ApiExceptionHandler {
       Pattern.compile("^/internal/api/v1/auth/users/(\\d+)/status$");
   private static final Pattern MEMBERSHIP_STATUS_PATH_PATTERN =
       Pattern.compile("^/internal/api/v1/auth/users/(\\d+)/memberships/(\\d+)/status$");
+  private T3MicroQueryTimeoutSignal t3MicroQueryTimeoutSignal;
+
+  @Autowired(required = false)
+  void setT3MicroQueryTimeoutSignal(T3MicroQueryTimeoutSignal t3MicroQueryTimeoutSignal) {
+    this.t3MicroQueryTimeoutSignal = t3MicroQueryTimeoutSignal;
+  }
 
   @ExceptionHandler(MethodArgumentNotValidException.class)
   ResponseEntity<ApiErrorResponse> handleValidation(
@@ -120,6 +130,29 @@ public class ApiExceptionHandler {
   ResponseEntity<ApiErrorResponse> handleServiceUnavailable(
       NotificationSseOverloadException ex, HttpServletRequest request) {
     return response(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage(), request);
+  }
+
+  @ExceptionHandler(T3MicroSaturationRejectedException.class)
+  ResponseEntity<ApiErrorResponse> handleT3MicroSaturationRejected(
+      T3MicroSaturationRejectedException ex, HttpServletRequest request) {
+    return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+        .header("Retry-After", Integer.toString(ex.retryAfterSeconds()))
+        .body(
+            new ApiErrorResponse(
+                Instant.now(),
+                HttpStatus.SERVICE_UNAVAILABLE.value(),
+                HttpStatus.SERVICE_UNAVAILABLE.getReasonPhrase(),
+                ex.getMessage(),
+                request.getRequestURI()));
+  }
+
+  @ExceptionHandler(QueryTimeoutException.class)
+  ResponseEntity<ApiErrorResponse> handleQueryTimeout(
+      QueryTimeoutException ex, HttpServletRequest request) {
+    if (t3MicroQueryTimeoutSignal != null) {
+      t3MicroQueryTimeoutSignal.record();
+    }
+    return response(HttpStatus.SERVICE_UNAVAILABLE, "query timed out", request);
   }
 
   @ExceptionHandler({
