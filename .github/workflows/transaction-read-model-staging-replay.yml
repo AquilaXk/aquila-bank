@@ -1,0 +1,121 @@
+name: Transaction Read Model Staging Replay
+
+on:
+  workflow_dispatch:
+    inputs:
+      hot_account_id:
+        description: Hot table account id with enough rows for cursor replay
+        required: true
+        type: string
+      hot_from:
+        description: Hot query from timestamp, ISO-8601
+        required: true
+        type: string
+      hot_to:
+        description: Hot query to timestamp, ISO-8601
+        required: true
+        type: string
+      cold_account_id:
+        description: Archive table account id with enough rows for cursor replay
+        required: true
+        type: string
+      cold_from:
+        description: Cold query from timestamp, ISO-8601
+        required: true
+        type: string
+      cold_to:
+        description: Cold query to timestamp, ISO-8601
+        required: true
+        type: string
+      iterations:
+        description: Replay iterations per hot/cold shape
+        required: true
+        default: "40"
+        type: string
+      page_limit:
+        description: API page limit, max 100
+        required: true
+        default: "50"
+        type: string
+      expected_total_rows:
+        description: Minimum estimated hot + archive rows in staging RDS
+        required: true
+        default: "100000000"
+        type: string
+      hot_p95_threshold_ms:
+        description: Hot first/cursor p95 threshold in milliseconds
+        required: true
+        default: "350"
+        type: string
+      cold_p95_threshold_ms:
+        description: Cold first/cursor p95 threshold in milliseconds
+        required: true
+        default: "750"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: transaction-read-model-staging-replay
+  cancel-in-progress: false
+
+jobs:
+  replay:
+    name: Replay Hot And Cold Transaction Queries
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: staging
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v psql >/dev/null 2>&1; then
+            exit 0
+          fi
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Run staging replay
+        env:
+          STAGING_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
+          STAGING_REPLAY_TOKEN: ${{ secrets.STAGING_REPLAY_TOKEN }}
+          STAGING_RDS_DATABASE_URL: ${{ secrets.STAGING_RDS_DATABASE_URL }}
+          HOT_ACCOUNT_ID: ${{ inputs.hot_account_id }}
+          HOT_FROM: ${{ inputs.hot_from }}
+          HOT_TO: ${{ inputs.hot_to }}
+          COLD_ACCOUNT_ID: ${{ inputs.cold_account_id }}
+          COLD_FROM: ${{ inputs.cold_from }}
+          COLD_TO: ${{ inputs.cold_to }}
+          ITERATIONS: ${{ inputs.iterations }}
+          PAGE_LIMIT: ${{ inputs.page_limit }}
+          EXPECTED_TOTAL_ROWS: ${{ inputs.expected_total_rows }}
+          HOT_P95_THRESHOLD_MS: ${{ inputs.hot_p95_threshold_ms }}
+          COLD_P95_THRESHOLD_MS: ${{ inputs.cold_p95_threshold_ms }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tools/ops/transaction-read-model-staging-replay.sh
+
+      - name: Append summary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          summary_path="build/reports/transaction-staging-replay/summary.md"
+          if [ -f "${summary_path}" ]; then
+            cat "${summary_path}" >> "${GITHUB_STEP_SUMMARY}"
+          fi
+
+      - name: Upload replay report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: transaction-read-model-staging-replay
+          path: build/reports/transaction-staging-replay/
+          if-no-files-found: ignore
