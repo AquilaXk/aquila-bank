@@ -29,7 +29,7 @@
 
 - GitHub Environment: `staging`
 - concurrency group: `staging-deploy`
-- required environment secrets:
+- actual deploy required environment secrets:
   - `STAGING_DEPLOY_WEBHOOK_URL`
   - `STAGING_DEPLOY_TOKEN`
 - deploy hook payload:
@@ -37,8 +37,8 @@
   - `repository`: `owner/repo`
   - `environment`: `staging`
   - `runUrl`: GitHub Actions run URL
-- deploy hook secret이 없으면 성공으로 위장하지 않고 fail-fast합니다.
-- workflow는 staging GitHub deployment status를 `in_progress`에서 `success` 또는 `failure`로 갱신합니다.
+- deploy hook secret이 없으면 workflow는 no-op skip으로 끝내고 staging GitHub deployment status를 만들지 않습니다.
+- workflow는 실제 hook 호출 시에만 staging GitHub deployment status를 `in_progress`에서 `success` 또는 `failure`로 갱신합니다.
 - production 승격은 staging deployment status가 `success`인 같은 SHA만 대상으로 삼습니다.
 - rollback은 `main` 기준 revert PR을 merge해 새 staging SHA를 배포하거나, 운영자가 직전 staging 성공 SHA를 확인해 별도 재배포 절차로 진행합니다.
 
