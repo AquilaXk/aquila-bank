@@ -14,6 +14,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -22,6 +23,8 @@ import org.springframework.web.server.ResponseStatusException;
 @RestController
 @RequestMapping("/api/v1/accounts")
 public class AccountListController {
+
+  private static final int DEFAULT_PAGE_LIMIT = 50;
 
   private final AccountListQueryUseCase accountListQueryUseCase;
   private final AccountSummaryQueryUseCase accountSummaryQueryUseCase;
@@ -35,16 +38,25 @@ public class AccountListController {
 
   @GetMapping
   public AccountListResponse getAccounts(
-      @CurrentAuthenticatedPrincipal AuthenticatedRequestPrincipal principal) {
+      @CurrentAuthenticatedPrincipal AuthenticatedRequestPrincipal principal,
+      @RequestParam(required = false) Integer limit,
+      @RequestParam(required = false) String cursor) {
     try {
-      return AccountListResponse.from(resolveAccountSummaryList(principal));
+      return AccountListResponse.from(resolveAccountSummaryList(principal, limit, cursor));
     } catch (IllegalArgumentException ex) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage(), ex);
     }
   }
 
-  private AccountSummaryList resolveAccountSummaryList(AuthenticatedRequestPrincipal principal) {
+  private AccountSummaryList resolveAccountSummaryList(
+      AuthenticatedRequestPrincipal principal, Integer limit, String cursor) {
     if (principal instanceof AuthenticatedUserPrincipal userPrincipal) {
+      if (limit != null || hasCursor(cursor)) {
+        int resolvedLimit = limit == null ? DEFAULT_PAGE_LIMIT : limit;
+        Long afterAccountId = hasCursor(cursor) ? AccountListCursorCodec.decode(cursor) : null;
+        return accountListQueryUseCase.getByUserId(
+            userPrincipal.userId(), resolvedLimit, afterAccountId);
+      }
       return accountListQueryUseCase.getByUserId(userPrincipal.userId());
     }
     if (principal instanceof AuthenticatedAccountPrincipal accountPrincipal) {
@@ -55,12 +67,19 @@ public class AccountListController {
     throw new IllegalArgumentException("unsupported principal type");
   }
 
+  private boolean hasCursor(String cursor) {
+    return cursor != null && !cursor.isBlank();
+  }
+
   /** 고객 계좌 목록 응답 */
-  public record AccountListResponse(List<AccountItemResponse> items) {
+  public record AccountListResponse(List<AccountItemResponse> items, String nextCursor) {
 
     static AccountListResponse from(AccountSummaryList summaryList) {
       return new AccountListResponse(
-          summaryList.items().stream().map(AccountItemResponse::from).toList());
+          summaryList.items().stream().map(AccountItemResponse::from).toList(),
+          summaryList.nextCursorAccountId() == null
+              ? null
+              : AccountListCursorCodec.encode(summaryList.nextCursorAccountId()));
     }
   }
 

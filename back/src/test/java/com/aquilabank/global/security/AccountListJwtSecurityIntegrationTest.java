@@ -19,6 +19,7 @@ import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.Base64;
 import java.util.Date;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -88,6 +89,47 @@ class AccountListJwtSecurityIntegrationTest {
   }
 
   @Test
+  void acceptsBearerJwtAndReturnsKeysetAccountPage() throws Exception {
+    when(accountListReadPort.findByUserId(55L, 2, 555L))
+        .thenReturn(
+            new AccountSummaryList(
+                List.of(
+                    new AccountSummary(
+                        777L,
+                        "100000000000002",
+                        "saving account",
+                        "ACTIVE",
+                        "KRW",
+                        20_000L,
+                        0L,
+                        Instant.parse("2026-04-16T10:00:00Z"),
+                        Instant.parse("2026-04-16T10:05:00Z")),
+                    new AccountSummary(
+                        888L,
+                        "100000000000003",
+                        "investment account",
+                        "ACTIVE",
+                        "KRW",
+                        30_000L,
+                        0L,
+                        Instant.parse("2026-04-16T11:00:00Z"),
+                        Instant.parse("2026-04-16T11:05:00Z"))),
+                888L));
+
+    mockMvc
+        .perform(
+            get("/api/v1/accounts")
+                .header("Authorization", "Bearer " + issueToken("user-55", 55L))
+                .param("limit", "2")
+                .param("cursor", encodeCursor(555L)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(2))
+        .andExpect(jsonPath("$.items[0].accountId").value(777L))
+        .andExpect(jsonPath("$.items[1].accountId").value(888L))
+        .andExpect(jsonPath("$.nextCursor").value(encodeCursor(888L)));
+  }
+
+  @Test
   void rejectsRequestWithoutJwtOrBootstrapHeader() throws Exception {
     mockMvc.perform(get("/api/v1/accounts")).andExpect(status().isUnauthorized());
   }
@@ -107,5 +149,11 @@ class AccountListJwtSecurityIntegrationTest {
             new JWSHeader.Builder(JWSAlgorithm.HS256).type(JOSEObjectType.JWT).build(), claimsSet);
     signedJwt.sign(new MACSigner(TEST_SECRET.getBytes(StandardCharsets.UTF_8)));
     return signedJwt.serialize();
+  }
+
+  private String encodeCursor(long accountId) {
+    return Base64.getUrlEncoder()
+        .withoutPadding()
+        .encodeToString(Long.toString(accountId).getBytes(StandardCharsets.UTF_8));
   }
 }

@@ -6,4 +6,6 @@ import com.aquilabank.domain.account.model.AccountSummaryList;
 public interface AccountListReadPort {
 
   AccountSummaryList findByUserId(long userId);
+
+  AccountSummaryList findByUserId(long userId, int limit, Long afterAccountId);
 }
