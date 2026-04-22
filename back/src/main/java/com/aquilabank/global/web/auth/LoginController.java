@@ -275,7 +275,9 @@ public class LoginController {
 
   @PostMapping("/password-recovery/request")
   public ResponseEntity<Void> requestPasswordRecovery(
-      @Valid @RequestBody PasswordRecoveryRequest request) {
+      HttpServletRequest httpServletRequest, @Valid @RequestBody PasswordRecoveryRequest request) {
+    var sessionClientMetadata = authSessionMetadataResolver.resolve(httpServletRequest);
+    loginThrottleGuard.checkPasswordRecovery(sessionClientMetadata.ipAddress());
     PasswordRecoveryRequestResult result =
         passwordRecoveryRequestUseCase.request(
             new PasswordRecoveryRequestCommand(request.loginId()));
