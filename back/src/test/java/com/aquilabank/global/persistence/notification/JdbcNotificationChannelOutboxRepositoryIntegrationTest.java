@@ -10,6 +10,7 @@ import com.aquilabank.domain.notification.model.NotificationPreferenceChannel;
 import com.aquilabank.support.PostgresContainerTestSupport;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -33,6 +34,128 @@ class JdbcNotificationChannelOutboxRepositoryIntegrationTest extends PostgresCon
   @BeforeEach
   void setUpDatabase() {
     resetBankingTables(jdbcTemplate);
+  }
+
+  @Test
+  void claimsPendingRowsAndMovesClaimedRowsOutOfDueQueue() {
+    long[] userId = new long[1];
+    long[] accountId = new long[1];
+    long[] notificationIds = new long[2];
+    Instant base = Instant.parse("2026-04-22T01:00:00Z");
+    commit(
+        transactionManager,
+        () -> {
+          userId[0] = insertUser("channel-claim-user");
+          accountId[0] = insertAccount("channel claim account");
+          notificationIds[0] =
+              insertNotification(
+                  accountId[0],
+                  "evt-channel-claim-email",
+                  "TransferBooked",
+                  "이체 완료",
+                  "1000 KRW 입금",
+                  base);
+          notificationIds[1] =
+              insertNotification(
+                  accountId[0],
+                  "evt-channel-claim-sms",
+                  "TransferBooked",
+                  "이체 완료",
+                  "2000 KRW 입금",
+                  base.plusSeconds(1));
+        });
+    NotificationChannelOutboxEntry emailItem =
+        new NotificationChannelOutboxEntry(
+            notificationIds[0],
+            userId[0],
+            accountId[0],
+            NotificationPreferenceCategory.TRANSACTIONAL,
+            NotificationPreferenceChannel.EMAIL,
+            "TransferBooked",
+            "evt-channel-claim-email",
+            "{\"kind\":\"transfer\",\"amount\":\"1000\"}",
+            base.minusSeconds(10),
+            base);
+    NotificationChannelOutboxEntry smsItem =
+        new NotificationChannelOutboxEntry(
+            notificationIds[1],
+            userId[0],
+            accountId[0],
+            NotificationPreferenceCategory.TRANSACTIONAL,
+            NotificationPreferenceChannel.SMS,
+            "TransferBooked",
+            "evt-channel-claim-sms",
+            "{\"kind\":\"transfer\",\"amount\":\"2000\"}",
+            base.minusSeconds(5),
+            base.plusSeconds(1));
+    repository.appendAllIfAbsent(List.of(emailItem, smsItem));
+
+    List<NotificationChannelOutboxItem> firstClaim = repository.claimPending(1, base);
+
+    assertThat(firstClaim).hasSize(1);
+    assertThat(firstClaim.getFirst().eventKey()).isEqualTo("evt-channel-claim-email");
+    assertThat(firstClaim.getFirst().deliveryStatus())
+        .isEqualTo(NotificationChannelDeliveryStatus.SENDING);
+    assertThat(repository.findPending(10, base))
+        .extracting(NotificationChannelOutboxItem::eventKey)
+        .containsExactly("evt-channel-claim-sms");
+    assertThat(repository.claimPending(10, base))
+        .extracting(NotificationChannelOutboxItem::eventKey)
+        .containsExactly("evt-channel-claim-sms");
+  }
+
+  @Test
+  void marksClaimedRowsAsSentOrFailedWithRetryBackoff() {
+    long[] userId = new long[1];
+    long[] accountId = new long[1];
+    long[] notificationId = new long[1];
+    Instant base = Instant.parse("2026-04-22T02:00:00Z");
+    commit(
+        transactionManager,
+        () -> {
+          userId[0] = insertUser("channel-status-user");
+          accountId[0] = insertAccount("channel status account");
+          notificationId[0] =
+              insertNotification(
+                  accountId[0],
+                  "evt-channel-status-email",
+                  "TransferBooked",
+                  "이체 완료",
+                  "1000 KRW 입금",
+                  base);
+        });
+    NotificationChannelOutboxEntry emailItem =
+        new NotificationChannelOutboxEntry(
+            notificationId[0],
+            userId[0],
+            accountId[0],
+            NotificationPreferenceCategory.TRANSACTIONAL,
+            NotificationPreferenceChannel.EMAIL,
+            "TransferBooked",
+            "evt-channel-status-email",
+            "{\"kind\":\"transfer\",\"amount\":\"1000\"}",
+            base.minusSeconds(10),
+            base);
+    repository.appendAllIfAbsent(List.of(emailItem));
+    NotificationChannelOutboxItem claimed = repository.claimPending(1, base).getFirst();
+    Instant nextAttemptAt = base.plusSeconds(15);
+
+    repository.markFailed(claimed.id(), nextAttemptAt, base.plusSeconds(1), "provider timeout");
+
+    DeliveryRow failedRow = findDeliveryRow(claimed.id());
+    assertThat(failedRow.deliveryStatus()).isEqualTo(NotificationChannelDeliveryStatus.FAILED);
+    assertThat(failedRow.retryCount()).isEqualTo(1);
+    assertThat(failedRow.availableAt()).isEqualTo(nextAttemptAt);
+    assertThat(failedRow.lastError()).isEqualTo("provider timeout");
+    assertThat(repository.claimPending(1, base.plusSeconds(10))).isEmpty();
+
+    NotificationChannelOutboxItem retryClaim = repository.claimPending(1, nextAttemptAt).getFirst();
+    repository.markSent(retryClaim.id(), nextAttemptAt.plusSeconds(1));
+
+    DeliveryRow sentRow = findDeliveryRow(claimed.id());
+    assertThat(sentRow.deliveryStatus()).isEqualTo(NotificationChannelDeliveryStatus.SENT);
+    assertThat(sentRow.sentAt()).isEqualTo(nextAttemptAt.plusSeconds(1));
+    assertThat(sentRow.lastError()).isNull();
   }
 
   @Test
@@ -213,4 +336,36 @@ class JdbcNotificationChannelOutboxRepositoryIntegrationTest extends PostgresCon
     }
     return notificationId;
   }
+
+  private DeliveryRow findDeliveryRow(long id) {
+    return jdbcTemplate.queryForObject(
+        """
+        SELECT delivery_status,
+               available_at,
+               sent_at,
+               retry_count,
+               last_error
+        FROM notification_channel_outbox
+        WHERE id = :id
+        """,
+        new MapSqlParameterSource().addValue("id", id),
+        (rs, rowNum) ->
+            new DeliveryRow(
+                NotificationChannelDeliveryStatus.valueOf(rs.getString("delivery_status")),
+                rs.getObject("available_at", OffsetDateTime.class).toInstant(),
+                nullableInstant(rs.getObject("sent_at", OffsetDateTime.class)),
+                rs.getInt("retry_count"),
+                rs.getString("last_error")));
+  }
+
+  private Instant nullableInstant(OffsetDateTime value) {
+    return value == null ? null : value.toInstant();
+  }
+
+  private record DeliveryRow(
+      NotificationChannelDeliveryStatus deliveryStatus,
+      Instant availableAt,
+      Instant sentAt,
+      int retryCount,
+      String lastError) {}
 }
