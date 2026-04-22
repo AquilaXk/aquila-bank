@@ -34,6 +34,14 @@ com.aquilabank
 - `redis`는 분산 login throttling 이 필요할 때만 opt-in 으로 사용합니다.
 - Redis 경로는 login throttling counter 에만 쓰고, SSE fan-out 은 계속 PostgreSQL `LISTEN/NOTIFY` 를 사용합니다.
 - local Redis는 compose `redis` profile로만 뜨며 기본 `postgres kafka` 경로에는 포함하지 않습니다.
+- 같은 counter/guard는 password recovery request entrypoint에도 적용되어 token write 전 burst를 차단합니다.
+
+재현 명령:
+
+```bash
+tools/test/with-resource-lock.sh back-password-recovery-throttling \
+  tools/test/run-password-recovery-throttling.sh
+```
 
 ## Account List Pagination
 

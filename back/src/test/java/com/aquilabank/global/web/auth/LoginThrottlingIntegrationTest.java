@@ -134,6 +134,23 @@ class LoginThrottlingIntegrationTest extends PostgresContainerTestSupport {
     assertNotNull(token);
   }
 
+  @Test
+  void throttlesRepeatedPasswordRecoveryRequestBurstFromSameIp(CapturedOutput output)
+      throws Exception {
+    RequestClientMetadata sharedIp = clientMetadata("203.0.113.220");
+
+    passwordRecoveryExpectNoContent("alice", "recovery-ip-throttle-001", sharedIp);
+    passwordRecoveryExpectNoContent("alice", "recovery-ip-throttle-002", sharedIp);
+
+    passwordRecoveryExpectTooManyRequests("alice", "recovery-ip-throttle-003", sharedIp);
+    assertTrue(output.getOut().contains("auth password recovery throttled"));
+    assertTrue(output.getOut().contains("scope=IP"));
+
+    Thread.sleep(1200L);
+
+    passwordRecoveryExpectNoContent("alice", "recovery-ip-throttle-004", sharedIp);
+  }
+
   private String login(
       String loginId, String password, String requestId, RequestClientMetadata clientMetadata)
       throws Exception {
@@ -164,6 +181,21 @@ class LoginThrottlingIntegrationTest extends PostgresContainerTestSupport {
         .andExpect(header().string("Retry-After", "1"));
   }
 
+  private void passwordRecoveryExpectNoContent(
+      String loginId, String requestId, RequestClientMetadata clientMetadata) throws Exception {
+    performPasswordRecovery(loginId, requestId, clientMetadata)
+        .andExpect(status().isNoContent())
+        .andExpect(header().exists("X-Password-Recovery-Request-Id"));
+  }
+
+  private void passwordRecoveryExpectTooManyRequests(
+      String loginId, String requestId, RequestClientMetadata clientMetadata) throws Exception {
+    performPasswordRecovery(loginId, requestId, clientMetadata)
+        .andExpect(status().isTooManyRequests())
+        .andExpect(jsonPath("$.message").value("too many password recovery requests"))
+        .andExpect(header().string("Retry-After", "1"));
+  }
+
   private org.springframework.test.web.servlet.ResultActions performLogin(
       String loginId, String password, String requestId, RequestClientMetadata clientMetadata)
       throws Exception {
@@ -178,6 +210,26 @@ class LoginThrottlingIntegrationTest extends PostgresContainerTestSupport {
                 }
                 """
                     .formatted(loginId, password));
+    if (requestId != null && !requestId.isBlank()) {
+      requestBuilder.header("X-Request-Id", requestId);
+    }
+    requestBuilder.header("User-Agent", clientMetadata.userAgent());
+    requestBuilder.header("X-Forwarded-For", clientMetadata.forwardedFor());
+    return mockMvc.perform(requestBuilder);
+  }
+
+  private org.springframework.test.web.servlet.ResultActions performPasswordRecovery(
+      String loginId, String requestId, RequestClientMetadata clientMetadata) throws Exception {
+    MockHttpServletRequestBuilder requestBuilder =
+        post("/api/v1/auth/password-recovery/request")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(
+                """
+                {
+                  "loginId": "%s"
+                }
+                """
+                    .formatted(loginId));
     if (requestId != null && !requestId.isBlank()) {
       requestBuilder.header("X-Request-Id", requestId);
     }

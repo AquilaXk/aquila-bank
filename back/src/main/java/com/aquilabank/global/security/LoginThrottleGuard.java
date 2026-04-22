@@ -22,17 +22,27 @@ public class LoginThrottleGuard {
   }
 
   public void check(String ipAddress) {
+    check(ipAddress, LoginThrottleEntryPoint.LOGIN);
+  }
+
+  public void checkPasswordRecovery(String ipAddress) {
+    check(ipAddress, LoginThrottleEntryPoint.PASSWORD_RECOVERY);
+  }
+
+  private void check(String ipAddress, LoginThrottleEntryPoint entryPoint) {
     String normalizedIpAddress = normalizeIpAddress(ipAddress);
     LoginThrottleStore.ThrottleDecision decision = loginThrottleStore.check(normalizedIpAddress);
     if (decision.throttled()) {
       logThrottle(
+          entryPoint,
           decision.scope(),
           normalizedIpAddress,
           decision.retryAfterSeconds(),
           decision.maxAttempts(),
           decision.windowSeconds(),
           decision.trackedIpCount());
-      throw new LoginThrottledException(decision.scope(), decision.retryAfterSeconds());
+      throw new LoginThrottledException(
+          decision.scope(), decision.retryAfterSeconds(), entryPoint.message());
     }
   }
 
@@ -42,6 +52,7 @@ public class LoginThrottleGuard {
   }
 
   private void logThrottle(
+      LoginThrottleEntryPoint entryPoint,
       LoginThrottleScope scope,
       String ipAddress,
       long retryAfterSeconds,
@@ -49,7 +60,8 @@ public class LoginThrottleGuard {
       long windowSeconds,
       int trackedIpCount) {
     log.warn(
-        "auth login throttled requestId={} scope={} ipHash={} retryAfterSeconds={} maxAttempts={} windowSeconds={} trackedIpCount={} path={}",
+        "{} requestId={} scope={} ipHash={} retryAfterSeconds={} maxAttempts={} windowSeconds={} trackedIpCount={} path={}",
+        entryPoint.logMessage(),
         RequestTraceContext.currentRequestId().orElse("-"),
         scope.name(),
         hashIpAddress(ipAddress),
@@ -82,5 +94,26 @@ public class LoginThrottleGuard {
       return "unknown";
     }
     return ipAddress;
+  }
+
+  private enum LoginThrottleEntryPoint {
+    LOGIN("auth login throttled", "too many login attempts"),
+    PASSWORD_RECOVERY("auth password recovery throttled", "too many password recovery requests");
+
+    private final String logMessage;
+    private final String message;
+
+    LoginThrottleEntryPoint(String logMessage, String message) {
+      this.logMessage = logMessage;
+      this.message = message;
+    }
+
+    String logMessage() {
+      return logMessage;
+    }
+
+    String message() {
+      return message;
+    }
   }
 }
