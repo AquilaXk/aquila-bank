@@ -22,6 +22,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.LongFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -39,6 +40,7 @@ public class NotificationSseBroker {
   private final NotificationSseProperties notificationSseProperties;
   private final NotificationSseTargetResolver notificationSseTargetResolver;
   private final NotificationQueryUseCase notificationQueryUseCase;
+  private final LongFunction<SseEmitter> sseEmitterFactory;
   private final Map<Long, Map<String, NotificationSseSession>> accountSessions =
       new ConcurrentHashMap<>();
   private final Map<Long, Map<String, NotificationSseSession>> userSessions =
@@ -47,13 +49,27 @@ public class NotificationSseBroker {
   private final AtomicLong rejectedSubscriptionCount = new AtomicLong();
   private final AtomicLong backpressureDropCount = new AtomicLong();
 
+  @Autowired
   public NotificationSseBroker(
       NotificationSseProperties notificationSseProperties,
       NotificationSseTargetResolver notificationSseTargetResolver,
       NotificationQueryUseCase notificationQueryUseCase) {
+    this(
+        notificationSseProperties,
+        notificationSseTargetResolver,
+        notificationQueryUseCase,
+        SseEmitter::new);
+  }
+
+  NotificationSseBroker(
+      NotificationSseProperties notificationSseProperties,
+      NotificationSseTargetResolver notificationSseTargetResolver,
+      NotificationQueryUseCase notificationQueryUseCase,
+      LongFunction<SseEmitter> sseEmitterFactory) {
     this.notificationSseProperties = notificationSseProperties;
     this.notificationSseTargetResolver = notificationSseTargetResolver;
     this.notificationQueryUseCase = notificationQueryUseCase;
+    this.sseEmitterFactory = sseEmitterFactory;
   }
 
   public SseEmitter subscribeAccount(long accountId, String subject) {
@@ -157,7 +173,7 @@ public class NotificationSseBroker {
     String sessionId = UUID.randomUUID().toString();
     boolean registered = false;
     try {
-      SseEmitter emitter = new SseEmitter(notificationSseProperties.connectionTimeoutMs());
+      SseEmitter emitter = sseEmitterFactory.apply(notificationSseProperties.connectionTimeoutMs());
       NotificationSseSession session =
           new NotificationSseSession(sessionId, subject, emitter, lastEventId);
       if (!registerSession(sessionsByPrincipalId, principalId, session, maxPrincipalSessions)) {
