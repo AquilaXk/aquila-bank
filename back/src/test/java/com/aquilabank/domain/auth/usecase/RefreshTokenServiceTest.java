@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.aquilabank.domain.auth.exception.InvalidCredentialsException;
@@ -12,14 +13,18 @@ import com.aquilabank.domain.auth.model.AuthSessionClientMetadata;
 import com.aquilabank.domain.auth.model.IssuedAccessToken;
 import com.aquilabank.domain.auth.model.RefreshTokenCommand;
 import com.aquilabank.domain.auth.model.RefreshTokenPolicy;
+import com.aquilabank.domain.auth.model.RefreshTokenReuseAuditEvent;
+import com.aquilabank.domain.auth.model.RefreshTokenReuseReason;
 import com.aquilabank.domain.auth.model.RefreshTokenSession;
 import com.aquilabank.domain.auth.model.RefreshTokenSessionCreateCommand;
 import com.aquilabank.domain.auth.model.RefreshTokenSessionFamilyRevokeCommand;
+import com.aquilabank.domain.auth.model.RefreshTokenSessionFamilyRevokeResult;
 import com.aquilabank.domain.auth.model.RefreshTokenSessionRotateCommand;
 import com.aquilabank.domain.auth.model.RefreshTokenSessionStatus;
 import com.aquilabank.domain.auth.model.UserStatus;
 import com.aquilabank.domain.auth.port.AuthTokenIssuePort;
 import com.aquilabank.domain.auth.port.RefreshDeviceBindingSecretPort;
+import com.aquilabank.domain.auth.port.RefreshTokenReuseAuditPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSecretPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionLoadPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionWritePort;
@@ -29,6 +34,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 
 class RefreshTokenServiceTest {
@@ -158,6 +164,8 @@ class RefreshTokenServiceTest {
     RefreshDeviceBindingSecretPort refreshDeviceBindingSecretPort =
         Mockito.mock(RefreshDeviceBindingSecretPort.class);
     AuthTokenIssuePort authTokenIssuePort = Mockito.mock(AuthTokenIssuePort.class);
+    RefreshTokenReuseAuditPort refreshTokenReuseAuditPort =
+        Mockito.mock(RefreshTokenReuseAuditPort.class);
 
     when(refreshTokenSecretPort.hash("refresh-token")).thenReturn("token-hash");
     when(refreshTokenSessionLoadPort.findByTokenHashForUpdate("token-hash"))
@@ -175,6 +183,9 @@ class RefreshTokenServiceTest {
                     NOW.minusSeconds(10),
                     NOW.minusSeconds(10),
                     33L)));
+    when(refreshTokenSessionWritePort.revokeFamily(
+            new RefreshTokenSessionFamilyRevokeCommand(11L, NOW)))
+        .thenReturn(new RefreshTokenSessionFamilyRevokeResult(3L, 1));
 
     RefreshTokenService refreshTokenService =
         new RefreshTokenService(
@@ -183,6 +194,7 @@ class RefreshTokenServiceTest {
             refreshTokenSecretPort,
             refreshDeviceBindingSecretPort,
             authTokenIssuePort,
+            refreshTokenReuseAuditPort,
             new RefreshTokenPolicy(Duration.ofDays(14)),
             CLOCK);
 
@@ -191,10 +203,24 @@ class RefreshTokenServiceTest {
         () ->
             refreshTokenService.refresh(
                 new RefreshTokenCommand(
-                    "refresh-token", "binding-token", SESSION_CLIENT_METADATA)));
+                    "refresh-token", "binding-token", SESSION_CLIENT_METADATA, "req-reuse")));
 
     verify(refreshTokenSessionWritePort)
         .revokeFamily(new RefreshTokenSessionFamilyRevokeCommand(11L, NOW));
+    ArgumentCaptor<RefreshTokenReuseAuditEvent> eventCaptor =
+        ArgumentCaptor.forClass(RefreshTokenReuseAuditEvent.class);
+    verify(refreshTokenReuseAuditPort).record(eventCaptor.capture());
+    RefreshTokenReuseAuditEvent event = eventCaptor.getValue();
+    assertEquals("req-reuse", event.requestId());
+    assertEquals(7L, event.userId());
+    assertEquals(11L, event.reusedSessionId());
+    assertEquals(3L, event.familyRootId());
+    assertEquals(33L, event.replacedBySessionId());
+    assertEquals(1, event.revokedCount());
+    assertEquals(SESSION_CLIENT_METADATA.deviceName(), event.deviceName());
+    assertEquals(SESSION_CLIENT_METADATA.ipAddress(), event.ipAddress());
+    assertEquals(RefreshTokenReuseReason.ROTATED_TOKEN_REUSE, event.reasonCode());
+    assertEquals(NOW, event.occurredAt());
     verify(refreshTokenSessionWritePort, never()).create(Mockito.any());
     verify(refreshTokenSessionWritePort, never()).rotate(Mockito.any());
     verify(authTokenIssuePort, never())
@@ -211,6 +237,8 @@ class RefreshTokenServiceTest {
     RefreshDeviceBindingSecretPort refreshDeviceBindingSecretPort =
         Mockito.mock(RefreshDeviceBindingSecretPort.class);
     AuthTokenIssuePort authTokenIssuePort = Mockito.mock(AuthTokenIssuePort.class);
+    RefreshTokenReuseAuditPort refreshTokenReuseAuditPort =
+        Mockito.mock(RefreshTokenReuseAuditPort.class);
 
     when(refreshTokenSecretPort.hash("refresh-token")).thenReturn("token-hash");
     when(refreshTokenSessionLoadPort.findByTokenHashForUpdate("token-hash"))
@@ -236,6 +264,7 @@ class RefreshTokenServiceTest {
             refreshTokenSecretPort,
             refreshDeviceBindingSecretPort,
             authTokenIssuePort,
+            refreshTokenReuseAuditPort,
             new RefreshTokenPolicy(Duration.ofDays(14)),
             CLOCK);
 
@@ -249,6 +278,7 @@ class RefreshTokenServiceTest {
     verify(refreshTokenSessionWritePort, never()).revokeFamily(Mockito.any());
     verify(refreshTokenSessionWritePort, never()).create(Mockito.any());
     verify(refreshTokenSessionWritePort, never()).rotate(Mockito.any());
+    verifyNoInteractions(refreshTokenReuseAuditPort);
   }
 
   @Test

@@ -13,6 +13,7 @@ import com.aquilabank.domain.auth.port.AuthTokenIssuePort;
 import com.aquilabank.domain.auth.port.BackupCodeLoadPort;
 import com.aquilabank.domain.auth.port.BackupCodeSecretPort;
 import com.aquilabank.domain.auth.port.BackupCodeWritePort;
+import com.aquilabank.domain.auth.port.CurrentSessionActiveAuditPort;
 import com.aquilabank.domain.auth.port.CurrentSessionActivePort;
 import com.aquilabank.domain.auth.port.ExternalIdentityAuditQueryPort;
 import com.aquilabank.domain.auth.port.ExternalIdentityMappingWritePort;
@@ -25,6 +26,7 @@ import com.aquilabank.domain.auth.port.PasswordRecoverySecretPort;
 import com.aquilabank.domain.auth.port.PasswordRecoveryTokenLoadPort;
 import com.aquilabank.domain.auth.port.PasswordRecoveryTokenQueryPort;
 import com.aquilabank.domain.auth.port.RefreshDeviceBindingSecretPort;
+import com.aquilabank.domain.auth.port.RefreshTokenReuseAuditPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSecretPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionLoadPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionWritePort;
@@ -268,6 +270,7 @@ public class AuthConfiguration {
       RefreshTokenSecretPort refreshTokenSecretPort,
       RefreshDeviceBindingSecretPort refreshDeviceBindingSecretPort,
       AuthTokenIssuePort authTokenIssuePort,
+      RefreshTokenReuseAuditPort refreshTokenReuseAuditPort,
       RefreshTokenPolicy refreshTokenPolicy,
       Clock authClock,
       PlatformTransactionManager platformTransactionManager) {
@@ -278,6 +281,7 @@ public class AuthConfiguration {
             refreshTokenSecretPort,
             refreshDeviceBindingSecretPort,
             authTokenIssuePort,
+            refreshTokenReuseAuditPort,
             refreshTokenPolicy,
             authClock);
     TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
@@ -733,8 +737,11 @@ public class AuthConfiguration {
 
   @Bean
   CurrentSessionActiveUseCase currentSessionActiveUseCase(
-      CurrentSessionActivePort currentSessionActivePort, Clock authClock) {
-    return new CurrentSessionActiveService(currentSessionActivePort, authClock);
+      CurrentSessionActivePort currentSessionActivePort,
+      CurrentSessionActiveAuditPort currentSessionActiveAuditPort,
+      Clock authClock) {
+    return new CurrentSessionActiveService(
+        currentSessionActivePort, currentSessionActiveAuditPort, authClock);
   }
 
   @Bean

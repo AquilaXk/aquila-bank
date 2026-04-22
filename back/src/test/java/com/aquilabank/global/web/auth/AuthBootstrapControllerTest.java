@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.aquilabank.domain.auth.exception.DuplicateLoginIdException;
 import com.aquilabank.domain.auth.model.MembershipRole;
 import com.aquilabank.domain.auth.model.MembershipStatus;
 import com.aquilabank.domain.auth.model.UserAccountMembership;
@@ -124,5 +125,31 @@ class AuthBootstrapControllerTest {
                     """))
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.message").value("internal service token is invalid"));
+  }
+
+  @Test
+  void rejectsDuplicateLoginIdAsConflictWithReasonCode() throws Exception {
+    when(userBootstrapUseCase.bootstrap(argThat(command -> "alice".equals(command.loginId()))))
+        .thenThrow(new DuplicateLoginIdException("loginId is already used"));
+
+    mockMvc
+        .perform(
+            post("/internal/api/v1/auth/users/bootstrap")
+                .header(
+                    "Authorization",
+                    InternalServiceTokenTestSupport.authorization(
+                        "auth-bootstrap-test", InternalServiceScope.AUTH_BOOTSTRAP))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "loginId": "alice",
+                      "password": "password123!",
+                      "displayName": "Alice"
+                    }
+                    """))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.reasonCode").value("DUPLICATE_LOGIN_ID"))
+        .andExpect(jsonPath("$.message").value("loginId is already used"));
   }
 }
