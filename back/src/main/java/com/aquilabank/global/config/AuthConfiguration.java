@@ -26,6 +26,7 @@ import com.aquilabank.domain.auth.port.PasswordRecoverySecretPort;
 import com.aquilabank.domain.auth.port.PasswordRecoveryTokenLoadPort;
 import com.aquilabank.domain.auth.port.PasswordRecoveryTokenQueryPort;
 import com.aquilabank.domain.auth.port.RefreshDeviceBindingSecretPort;
+import com.aquilabank.domain.auth.port.RefreshTokenReuseAuditPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSecretPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionLoadPort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionWritePort;
@@ -269,6 +270,7 @@ public class AuthConfiguration {
       RefreshTokenSecretPort refreshTokenSecretPort,
       RefreshDeviceBindingSecretPort refreshDeviceBindingSecretPort,
       AuthTokenIssuePort authTokenIssuePort,
+      RefreshTokenReuseAuditPort refreshTokenReuseAuditPort,
       RefreshTokenPolicy refreshTokenPolicy,
       Clock authClock,
       PlatformTransactionManager platformTransactionManager) {
@@ -279,6 +281,7 @@ public class AuthConfiguration {
             refreshTokenSecretPort,
             refreshDeviceBindingSecretPort,
             authTokenIssuePort,
+            refreshTokenReuseAuditPort,
             refreshTokenPolicy,
             authClock);
     TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);

@@ -114,6 +114,19 @@ groups:
           description: "민감 mutation에서 current session active gate 차단이 5분 이상 발생했습니다. requestId 기준 structured audit log를 먼저 확인합니다."
           runbook_path: "back/README.md#prometheus-metrics"
 
+      - alert: AquilaRefreshTokenReuseDetected
+        expr: sum(rate(aquila_auth_refresh_token_reuse_detected_count_total[5m])) > 0
+        for: 1m
+        labels:
+          severity: critical
+          service: aquila-bank
+          domain: auth
+          baseline: "true"
+        annotations:
+          summary: "Aquila Bank refresh token reuse detected"
+          description: "refresh token reuse 감지가 발생했습니다. requestId 기준 structured audit log와 revokedCount를 즉시 확인합니다."
+          runbook_path: "back/README.md#prometheus-metrics"
+
   - name: aquila-bank-transaction
     interval: 30s
     rules:

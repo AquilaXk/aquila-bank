@@ -54,6 +54,7 @@
   - SSE total session `> 56`
 - auth baseline:
   - current session active gate reject rate `> 0` for `5m`
+  - refresh token reuse detected rate `> 0` for `1m`
 - transaction baseline:
   - success query p95 SLO: reference_exact `80ms`, first_page `120ms`, cursor/status/direction `150ms`, amount/mixed `180ms`
   - success query 평균 latency `> 750ms`
@@ -98,3 +99,4 @@ bash tools/ops/validate-prometheus-assets.sh
 - notification lag/DLQ alert는 `NOTIFICATION_INBOX_CONSUMER_OPS_ENABLED=true`가 아니면 metric 자체가 export되지 않을 수 있습니다.
 - multi-instance SSE 합계는 Grafana/Prometheus 쿼리에서 인스턴스 합산으로 해석하고, 단일 instance alert는 node별 pressure 확인 용도로만 씁니다.
 - `AquilaCurrentSessionActiveGateRejectDetected`는 `reason_code`만 집계합니다. `requestId`, `userId`, `sessionId`, `path`는 cardinality 때문에 alert label로 올리지 않고 app structured log에서 drill-down합니다.
+- `AquilaRefreshTokenReuseDetected`는 공격성 재사용 후보라 critical baseline입니다. `requestId`, `userId`, `reusedSessionId`, `familyRootId`는 cardinality 때문에 alert label로 올리지 않고 app structured log에서 drill-down합니다.

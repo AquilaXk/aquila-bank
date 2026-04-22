@@ -4,10 +4,18 @@ package com.aquilabank.domain.auth.model;
 public record RefreshTokenCommand(
     String refreshToken,
     String refreshDeviceBindingToken,
-    AuthSessionClientMetadata sessionClientMetadata) {
+    AuthSessionClientMetadata sessionClientMetadata,
+    String requestId) {
 
   public RefreshTokenCommand(String refreshToken, AuthSessionClientMetadata sessionClientMetadata) {
-    this(refreshToken, null, sessionClientMetadata);
+    this(refreshToken, null, sessionClientMetadata, "-");
+  }
+
+  public RefreshTokenCommand(
+      String refreshToken,
+      String refreshDeviceBindingToken,
+      AuthSessionClientMetadata sessionClientMetadata) {
+    this(refreshToken, refreshDeviceBindingToken, sessionClientMetadata, "-");
   }
 
   public RefreshTokenCommand {
@@ -19,6 +27,9 @@ public record RefreshTokenCommand(
     }
     if (sessionClientMetadata == null) {
       throw new IllegalArgumentException("sessionClientMetadata is required");
+    }
+    if (requestId == null || requestId.isBlank()) {
+      requestId = "-";
     }
   }
 }
