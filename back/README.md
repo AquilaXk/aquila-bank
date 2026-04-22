@@ -856,8 +856,9 @@ requestId drill-down:
 #### 409 운영 기준
 
 - 현재 known 상태:
-  - 내부 auth status update 경로에서 `409` 대표 error 문구는 아직 고정돼 있지 않습니다.
-  - 현재 runbook에서는 `httpStatus=409`와 같은 `actorSubject`/`path` 반복 패턴을 먼저 수집하고, 세부 error 분류는 후속 구현 이슈로 남깁니다.
+  - 내부 auth 409 응답은 기존 `message`를 유지하면서 분기용 `reasonCode`를 함께 반환합니다.
+  - 현재 표준 code는 `DUPLICATE_LOGIN_ID`, `DUPLICATE_EXTERNAL_IDENTITY_MAPPING`, `STATUS_TRANSITION_CONFLICT`입니다.
+  - `STATUS_TRANSITION_CONFLICT`는 상태 전이 불가 예외가 추가될 때 쓰는 예약 code이며, 현재 대표 실사용 code는 중복 loginId와 external identity mapping 중복입니다.
 - 수집 패턴:
 
 ```text
@@ -872,6 +873,20 @@ requestId drill-down:
   - 같은 대상에 대한 중복 상태 변경 시도
   - caller 재시도 정책 또는 수동 재실행 충돌
   - 상태 전이 전후 확인이 필요한 경쟁 조건 후보
+- 응답 예시:
+
+```json
+{
+  "status": 409,
+  "error": "Conflict",
+  "reasonCode": "DUPLICATE_EXTERNAL_IDENTITY_MAPPING",
+  "message": "external identity mapping already exists"
+}
+```
+
+- rollback:
+  - PR revert 시 `reasonCode` 필드만 사라지고 기존 `message` 기반 fallback은 유지됩니다.
+  - 운영 스크립트는 배포 전환 기간 동안 `reasonCode` 우선, 없으면 `message` fallback 순서로 분기합니다.
 
 #### 500 운영 기준
 
@@ -913,6 +928,7 @@ requestId 우선 drill-down:
 
 - 기본 처리:
   - 단발 `409`는 warning 전송보다 중복 호출, caller retry, 상태 전이 충돌 후보를 먼저 분리합니다.
+  - 응답 `reasonCode`를 우선 확인하고, 필드가 없으면 구버전 응답으로 보고 `message` fallback을 사용합니다.
 - 제외 조건:
   - 같은 actor의 단발 중복 호출이고, 인접 시간대에 성공 감사 row가 확인되는 경우
   - 수동 재실행이나 caller retry가 이미 적용된 상태로 보이는 경우
