@@ -19,11 +19,11 @@ public record ApiAdmissionControlProperties(
         new EndpointLimit("transaction-read", 3, List.of("/api/v1/transactions")),
         new EndpointLimit("account-read", 4, List.of("/api/v1/accounts")),
         new EndpointLimit("transfer-write", 2, List.of("/api/v1/transfers")),
+        new EndpointLimit("notification-stream", 4, List.of("/api/v1/notifications/stream")),
         new EndpointLimit(
             "notification-read",
             4,
             List.of("/api/v1/notifications", "/api/v1/notification-preferences")),
-        new EndpointLimit("notification-stream", 4, List.of("/api/v1/notifications/stream")),
         new EndpointLimit(
             "internal-ops",
             2,

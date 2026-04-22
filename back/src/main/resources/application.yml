@@ -89,15 +89,15 @@ ops:
         max-concurrency: ${OPS_API_ADMISSION_CONTROL_TRANSFER_WRITE_MAX:2}
         path-prefixes:
           - /api/v1/transfers
+      - group: notification-stream
+        max-concurrency: ${OPS_API_ADMISSION_CONTROL_NOTIFICATION_STREAM_MAX:4}
+        path-prefixes:
+          - /api/v1/notifications/stream
       - group: notification-read
         max-concurrency: ${OPS_API_ADMISSION_CONTROL_NOTIFICATION_READ_MAX:4}
         path-prefixes:
           - /api/v1/notifications
           - /api/v1/notification-preferences
-      - group: notification-stream
-        max-concurrency: ${OPS_API_ADMISSION_CONTROL_NOTIFICATION_STREAM_MAX:4}
-        path-prefixes:
-          - /api/v1/notifications/stream
       - group: internal-ops
         max-concurrency: ${OPS_API_ADMISSION_CONTROL_INTERNAL_OPS_MAX:2}
         path-prefixes:
