@@ -127,6 +127,91 @@ groups:
           description: "refresh token reuse 감지가 발생했습니다. requestId 기준 structured audit log와 revokedCount를 즉시 확인합니다."
           runbook_path: "back/README.md#prometheus-metrics"
 
+  - name: aquila-bank-postgres
+    interval: 30s
+    rules:
+      - alert: AquilaDbPoolPendingWaitDetected
+        expr: max(hikaricp_connections_pending{pool="aquila-bank-pool"}) > 0
+        for: 5m
+        labels:
+          severity: warning
+          service: aquila-bank
+          domain: postgres
+          signal: pool_wait
+          baseline: "true"
+        annotations:
+          summary: "Aquila Bank DB pool wait detected"
+          description: "Hikari pending connection이 5분 이상 남아 있습니다. lock wait, slow query, DB CPU를 transaction p95와 함께 확인합니다."
+          runbook_path: "back/README.md#prometheus-metrics"
+
+      - alert: AquilaDbPoolActivePressureHigh
+        expr: |
+          (
+            max(hikaricp_connections_active{pool="aquila-bank-pool"})
+            /
+            clamp_min(max(hikaricp_connections_max{pool="aquila-bank-pool"}), 1)
+          ) > 0.9
+        for: 10m
+        labels:
+          severity: warning
+          service: aquila-bank
+          domain: postgres
+          signal: pool_active_pressure
+          baseline: "true"
+        annotations:
+          summary: "Aquila Bank DB pool active pressure is high"
+          description: "Hikari active connection이 max pool의 90%를 10분 이상 초과했습니다. t3.micro 기본 pool=4 기준 queueing 전조로 봅니다."
+          runbook_path: "back/README.md#prometheus-metrics"
+
+      - alert: AquilaDbQueryTimeoutDetected
+        expr: sum(rate(aquila_t3micro_saturation_guard_query_timeouts_total[5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+          service: aquila-bank
+          domain: postgres
+          signal: query_timeout
+          baseline: "true"
+        annotations:
+          summary: "Aquila Bank DB query timeouts detected"
+          description: "query timeout이 5분 window에서 증가했습니다. statement_timeout, lock_timeout, pool wait를 같은 시간대에서 확인합니다."
+          runbook_path: "back/README.md#prometheus-metrics"
+
+      - alert: AquilaPostgresLockWaitDetected
+        expr: sum by (datname) (pg_stat_activity_lock_waiting_count) > 0
+        for: 5m
+        labels:
+          severity: warning
+          service: aquila-bank
+          domain: postgres
+          signal: lock_wait
+          baseline: "true"
+        annotations:
+          summary: "Aquila Bank PostgreSQL lock wait detected"
+          description: "pg_stat_activity wait_event_type=Lock 기반 custom metric이 5분 이상 0건 초과입니다. blocking PID와 긴 transaction을 먼저 확인합니다."
+          runbook_path: "back/README.md#prometheus-metrics"
+
+      - alert: AquilaPostgresSlowQueryDetected
+        expr: |
+          (
+            sum by (datname) (rate(pg_stat_statements_seconds_total[5m]))
+            /
+            clamp_min(sum by (datname) (rate(pg_stat_statements_calls_total[5m])), 0.001)
+          ) > 0.75
+          and on (datname)
+          sum by (datname) (rate(pg_stat_statements_calls_total[5m])) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+          service: aquila-bank
+          domain: postgres
+          signal: slow_query
+          baseline: "true"
+        annotations:
+          summary: "Aquila Bank PostgreSQL slow query signal detected"
+          description: "pg_stat_statements 평균 실행 시간이 10분 이상 750ms를 초과했습니다. query text는 alert label로 올리지 않고 exporter/dashboard에서 queryid 기준으로 drill-down합니다."
+          runbook_path: "back/README.md#prometheus-metrics"
+
   - name: aquila-bank-transaction
     interval: 30s
     rules:

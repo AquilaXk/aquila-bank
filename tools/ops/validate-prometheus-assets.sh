@@ -41,6 +41,25 @@ expr = p95_rule["expr"].to_s
 abort("transaction p95 SLO alert must use histogram_quantile(0.95)") unless expr.match?(/histogram_quantile\s*\(\s*0\.95/)
 abort("transaction p95 SLO alert must read histogram buckets") unless expr.include?("aquila_transaction_query_latency_seconds_bucket")
 abort("transaction p95 SLO alert must keep query_shape labels") unless expr.include?("query_shape")
+
+def require_alert(data, alert_name, required_fragments)
+  rule = data["groups"].flat_map { |group| group["rules"] }.find { |item| item["alert"] == alert_name }
+  abort("#{alert_name} alert missing") unless rule
+  expr = rule["expr"].to_s
+  required_fragments.each do |fragment|
+    abort("#{alert_name} alert must include #{fragment}") unless expr.include?(fragment)
+  end
+end
+
+{
+  "AquilaDbPoolPendingWaitDetected" => ["hikaricp_connections_pending"],
+  "AquilaDbPoolActivePressureHigh" => ["hikaricp_connections_active", "hikaricp_connections_max"],
+  "AquilaDbQueryTimeoutDetected" => ["aquila_t3micro_saturation_guard_query_timeouts_total"],
+  "AquilaPostgresLockWaitDetected" => ["pg_stat_activity_lock_waiting_count"],
+  "AquilaPostgresSlowQueryDetected" => ["pg_stat_statements_seconds_total", "pg_stat_statements_calls_total"]
+}.each do |alert_name, required_fragments|
+  require_alert(data, alert_name, required_fragments)
+end
 ' "${RULES_FILE}"
 
 echo "Prometheus dashboard and alert rule baseline look valid."
