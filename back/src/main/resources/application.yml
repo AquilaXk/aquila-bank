@@ -136,6 +136,9 @@ outbox:
     fixed-delay-ms: ${OUTBOX_POLLER_FIXED_DELAY_MS:1000}
     initial-delay-ms: ${OUTBOX_POLLER_INITIAL_DELAY_MS:3000}
     batch-size: ${OUTBOX_POLLER_BATCH_SIZE:20}
+    adaptive-enabled: ${OUTBOX_POLLER_ADAPTIVE_ENABLED:true}
+    min-batch-size: ${OUTBOX_POLLER_MIN_BATCH_SIZE:5}
+    max-adaptive-delay-ms: ${OUTBOX_POLLER_MAX_ADAPTIVE_DELAY_MS:8000}
     stale-after-seconds: ${OUTBOX_POLLER_STALE_AFTER_SECONDS:30}
     max-retry-delay-seconds: ${OUTBOX_POLLER_MAX_RETRY_DELAY_SECONDS:60}
     max-retry-attempts: ${OUTBOX_POLLER_MAX_RETRY_ATTEMPTS:10}

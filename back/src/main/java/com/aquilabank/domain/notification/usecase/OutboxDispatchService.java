@@ -16,10 +16,10 @@ public final class OutboxDispatchService implements OutboxDispatchUseCase {
 
   private final OutboxEventStore outboxEventStore;
   private final OutboxEventPublishPort outboxEventPublishPort;
-  private final int batchSize;
   private final Duration staleAfter;
   private final Duration maxRetryDelay;
   private final int maxRetryAttempts;
+  private final OutboxDispatchAdaptivePolicy adaptivePolicy;
 
   public OutboxDispatchService(
       OutboxEventStore outboxEventStore,
@@ -28,44 +28,80 @@ public final class OutboxDispatchService implements OutboxDispatchUseCase {
       Duration staleAfter,
       Duration maxRetryDelay,
       int maxRetryAttempts) {
+    this(
+        outboxEventStore,
+        outboxEventPublishPort,
+        batchSize,
+        staleAfter,
+        maxRetryDelay,
+        maxRetryAttempts,
+        OutboxDispatchAdaptivePolicy.disabled(batchSize));
+  }
+
+  public OutboxDispatchService(
+      OutboxEventStore outboxEventStore,
+      OutboxEventPublishPort outboxEventPublishPort,
+      int batchSize,
+      Duration staleAfter,
+      Duration maxRetryDelay,
+      int maxRetryAttempts,
+      OutboxDispatchAdaptivePolicy adaptivePolicy) {
     this.outboxEventStore = outboxEventStore;
     this.outboxEventPublishPort = outboxEventPublishPort;
-    this.batchSize = batchSize;
+    if (batchSize < 1) {
+      throw new IllegalArgumentException("batchSize must be positive");
+    }
     this.staleAfter = staleAfter;
     this.maxRetryDelay = maxRetryDelay;
     if (maxRetryAttempts < 1) {
       throw new IllegalArgumentException("maxRetryAttempts must be positive");
     }
     this.maxRetryAttempts = maxRetryAttempts;
+    this.adaptivePolicy = adaptivePolicy;
   }
 
   @Override
   public int dispatchPendingEvents() {
     Instant now = Instant.now();
     // 병렬 poller 간 중복 publish 방지용 선점 claim
-    List<OutboxEvent> batch = outboxEventStore.claimBatch(batchSize, staleAfter, now);
+    List<OutboxEvent> batch =
+        outboxEventStore.claimBatch(adaptivePolicy.currentBatchSize(), staleAfter, now);
+    int publishedCount = 0;
+    int failedCount = 0;
     for (OutboxEvent event : batch) {
-      dispatchSingle(event);
+      if (dispatchSingle(event)) {
+        publishedCount++;
+      } else {
+        failedCount++;
+      }
     }
+    adaptivePolicy.record(new OutboxDispatchResult(batch.size(), publishedCount, failedCount));
     return batch.size();
   }
 
-  private void dispatchSingle(OutboxEvent event) {
+  @Override
+  public Duration nextPollDelay() {
+    return adaptivePolicy.currentDelay();
+  }
+
+  private boolean dispatchSingle(OutboxEvent event) {
     Instant now = Instant.now();
     try {
       outboxEventPublishPort.publish(event);
       outboxEventStore.markPublished(event.id(), now);
+      return true;
     } catch (RuntimeException ex) {
       String errorMessage = shorten(ex.getMessage());
       int nextRetryCount = event.retryCount() + 1;
       if (nextRetryCount >= maxRetryAttempts) {
         // poison event는 일반 FAILED backlog에서 분리해 정상 retry 대기열을 가리지 않게 둡니다.
         outboxEventStore.markQuarantined(event.id(), now, errorMessage);
-        return;
+        return false;
       }
       // 실패 event 재예약 후 다음 poll 주기 재시도
       outboxEventStore.markFailed(
           event.id(), now.plus(computeBackoff(event.retryCount())), now, errorMessage);
+      return false;
     }
   }
 
