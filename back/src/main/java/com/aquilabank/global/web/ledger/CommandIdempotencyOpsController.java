@@ -3,6 +3,7 @@ package com.aquilabank.global.web.ledger;
 import com.aquilabank.domain.ledger.usecase.CommandIdempotencyOpsQueryUseCase;
 import com.aquilabank.domain.ledger.usecase.CommandIdempotencyOpsRecoveryUseCase;
 import com.aquilabank.global.config.CommandIdempotencyOpsProperties;
+import com.aquilabank.global.ledger.CommandIdempotencyPrometheusMetrics;
 import com.aquilabank.global.security.InternalServiceRequestAuthorizer;
 import com.aquilabank.global.security.InternalServiceScope;
 import jakarta.servlet.http.HttpServletRequest;
@@ -26,16 +27,19 @@ public class CommandIdempotencyOpsController {
   private final CommandIdempotencyOpsRecoveryUseCase recoveryUseCase;
   private final InternalServiceRequestAuthorizer internalServiceRequestAuthorizer;
   private final CommandIdempotencyOpsProperties opsProperties;
+  private final CommandIdempotencyPrometheusMetrics commandIdempotencyPrometheusMetrics;
 
   public CommandIdempotencyOpsController(
       CommandIdempotencyOpsQueryUseCase queryUseCase,
       CommandIdempotencyOpsRecoveryUseCase recoveryUseCase,
       InternalServiceRequestAuthorizer internalServiceRequestAuthorizer,
-      CommandIdempotencyOpsProperties opsProperties) {
+      CommandIdempotencyOpsProperties opsProperties,
+      CommandIdempotencyPrometheusMetrics commandIdempotencyPrometheusMetrics) {
     this.queryUseCase = queryUseCase;
     this.recoveryUseCase = recoveryUseCase;
     this.internalServiceRequestAuthorizer = internalServiceRequestAuthorizer;
     this.opsProperties = opsProperties;
+    this.commandIdempotencyPrometheusMetrics = commandIdempotencyPrometheusMetrics;
   }
 
   @GetMapping("/summary")
@@ -58,6 +62,9 @@ public class CommandIdempotencyOpsController {
   @PostMapping("/recovery/stale-started")
   public CommandIdempotencyStaleRecoveryResponse recoverStaleStarted(HttpServletRequest request) {
     internalServiceRequestAuthorizer.requireScope(request, InternalServiceScope.LEDGER_OPS);
-    return CommandIdempotencyStaleRecoveryResponse.from(recoveryUseCase.recoverStaleStarted());
+    CommandIdempotencyStaleRecoveryResponse response =
+        CommandIdempotencyStaleRecoveryResponse.from(recoveryUseCase.recoverStaleStarted());
+    commandIdempotencyPrometheusMetrics.recordRecovered(response.recoveredCount());
+    return response;
   }
 }

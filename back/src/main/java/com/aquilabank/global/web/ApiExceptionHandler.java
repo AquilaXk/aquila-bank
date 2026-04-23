@@ -25,6 +25,7 @@ import com.aquilabank.domain.ledger.exception.TransferLimitExceededException;
 import com.aquilabank.domain.ledger.exception.TransferReversalNotFoundException;
 import com.aquilabank.domain.notification.exception.NotificationNotFoundException;
 import com.aquilabank.domain.transaction.exception.TransactionDetailNotFoundException;
+import com.aquilabank.global.ledger.CommandIdempotencyPrometheusMetrics;
 import com.aquilabank.global.notification.NotificationSseOverloadException;
 import com.aquilabank.global.ops.ApiOverloadRejectedException;
 import com.aquilabank.global.ops.T3MicroQueryTimeoutSignal;
@@ -61,10 +62,17 @@ public class ApiExceptionHandler {
   private static final Pattern MEMBERSHIP_STATUS_PATH_PATTERN =
       Pattern.compile("^/internal/api/v1/auth/users/(\\d+)/memberships/(\\d+)/status$");
   private T3MicroQueryTimeoutSignal t3MicroQueryTimeoutSignal;
+  private CommandIdempotencyPrometheusMetrics commandIdempotencyPrometheusMetrics;
 
   @Autowired(required = false)
   void setT3MicroQueryTimeoutSignal(T3MicroQueryTimeoutSignal t3MicroQueryTimeoutSignal) {
     this.t3MicroQueryTimeoutSignal = t3MicroQueryTimeoutSignal;
+  }
+
+  @Autowired(required = false)
+  void setCommandIdempotencyPrometheusMetrics(
+      CommandIdempotencyPrometheusMetrics commandIdempotencyPrometheusMetrics) {
+    this.commandIdempotencyPrometheusMetrics = commandIdempotencyPrometheusMetrics;
   }
 
   @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -208,6 +216,9 @@ public class ApiExceptionHandler {
           InternalAuthConflictReasonCode.DUPLICATE_EXTERNAL_IDENTITY_MAPPING,
           ex.getMessage(),
           request);
+    }
+    if (ex instanceof CommandConflictException && commandIdempotencyPrometheusMetrics != null) {
+      commandIdempotencyPrometheusMetrics.recordConflict(ex.getMessage());
     }
     return response(HttpStatus.CONFLICT, ex.getMessage(), request);
   }
