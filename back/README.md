@@ -708,14 +708,18 @@ login 실패/잠금은 structured log 한 줄로 남습니다.
   - 인증 없이 `loginId`만 받고 항상 `204 No Content`를 반환한다.
   - 응답에는 trace용 `X-Request-Id`와 별도로 internal handoff용 `X-Password-Recovery-Request-Id`가 내려간다.
   - active user가 있으면 같은 user의 기존 `PENDING` recovery token을 `SUPERSEDED`로 바꾸고 새 token을 발급한다.
-  - token 발급 성공 뒤 delivery port를 best-effort로 호출하며 기본 adapter는 no-op이다.
+  - token 발급과 같은 transaction 안에서 `auth_password_recovery_delivery_outbox` row를 함께 적재하고, 외부 provider 호출은 worker가 비동기로 수행한다.
+  - 기본 provider adapter는 no-op이고, worker는 queue를 비운 뒤 row를 `SENT`로 정리한다.
   - `AUTH_PASSWORD_RECOVERY_DELIVERY_ENABLED=true`이고 provider URL이 없으면 logging adapter가 requestId/userId/expiresAt metadata만 기록하고 token 원문은 기록하지 않는다.
   - `AUTH_PASSWORD_RECOVERY_DELIVERY_ENABLED=true`이고
     `AUTH_PASSWORD_RECOVERY_DELIVERY_EMAIL_URL` 또는 `AUTH_PASSWORD_RECOVERY_DELIVERY_SMS_URL`가 있으면 webhook adapter가 JSON payload를 실제 provider endpoint로 `POST` 한다.
   - 현재 user/contact schema에는 별도 verified email/phone 컬럼이 없으므로, 실제 전달은 `loginId`가 email 또는 E.164 phone 형식일 때만 실행한다.
   - `loginId`가 email/phone 형식이 아니거나 해당 channel URL이 비어 있으면 잘못된 대상 전송 대신 delivery를 skip 하고 token 발급 결과는 유지한다.
-  - webhook 요청 공통 header는 `AUTH_PASSWORD_RECOVERY_DELIVERY_AUTH_HEADER_NAME`, `AUTH_PASSWORD_RECOVERY_DELIVERY_AUTH_HEADER_VALUE`로 주입하고, timeout은 `AUTH_PASSWORD_RECOVERY_DELIVERY_CONNECT_TIMEOUT_MS`, `AUTH_PASSWORD_RECOVERY_DELIVERY_READ_TIMEOUT_MS`로 조정한다.
+  - webhook 요청 공통 header는 `AUTH_PASSWORD_RECOVERY_DELIVERY_AUTH_HEADER_NAME`, `AUTH_PASSWORD_RECOVERY_DELIVERY_AUTH_HEADER_VALUE`로 주입하고, `AUTH_PASSWORD_RECOVERY_DELIVERY_IDEMPOTENCY_HEADER_NAME` header에는 항상 `requestId`를 넣는다.
+  - timeout은 `AUTH_PASSWORD_RECOVERY_DELIVERY_CONNECT_TIMEOUT_MS`, `AUTH_PASSWORD_RECOVERY_DELIVERY_READ_TIMEOUT_MS`로 조정하고, worker retry는 `AUTH_PASSWORD_RECOVERY_DELIVERY_WORKER_*` 설정으로 제어한다.
   - webhook payload는 `channel`, `requestId`, `userId`, `loginId`, `destination`, `recoveryToken`, `expiresAt`, `issuedAt` 필드를 포함한다.
+  - worker는 작은 batch로 due row를 claim 하고 bounded exponential backoff 뒤 재시도하며, `AUTH_PASSWORD_RECOVERY_DELIVERY_WORKER_MAX_RETRY_ATTEMPTS` 도달 시 `QUARANTINED`로 격리한다.
+  - 이미 `USED|EXPIRED|SUPERSEDED` 된 token 또는 내부 조회에서 사라진 token은 provider로 보내지 않고 queue에서 skip 완료 처리한다.
   - `POST /api/v1/auth/password-recovery/confirm`
   - 인증 없이 `recoveryToken`, `newPassword`를 받고 성공 시 `204 No Content`
   - wrong/expired/used token, `user_status != ACTIVE`는 모두 `401 password recovery failed`
@@ -723,8 +727,7 @@ login 실패/잠금은 structured log 한 줄로 남습니다.
     `GET /internal/api/v1/auth/password-recovery-tokens/by-request-id?requestId=...` 에서만 확인한다.
   - internal lookup은 `internal:auth-admin` scope가 필요하고, missing/blank `requestId`는 `400`, unknown `requestId`는 `404`
   - forgot-password confirm 성공도 기존 self-service reset과 동일하게 현재 user의 `ACTIVE` refresh session 전체를 `REVOKED`로 바꾼다.
-  - 현재 delivery adapter는 외부 provider retry/outbox를 만들지 않으며, future provider는 `requestId`를 idempotency key로 사용한다.
-  - current delivery ordering 보장은 단일 request 처리 순서까지이며 provider별 재시도/중복 방지는 후속 adapter issue에서 확장한다.
+  - delivery ordering 보장은 `available_at, id` 기준 queue 순서까지만 두고, provider 중복 방지는 `requestId` idempotency key 계약에 맡긴다.
   - recovery token cleanup batch는 `PENDING`은 `expires_at`, `USED|EXPIRED|SUPERSEDED`는 `updated_at` 기준으로 retention cutoff 밖 row만 작은 batch로 삭제한다.
   - 기본 설정은 `AUTH_PASSWORD_RECOVERY_TOKEN_CLEANUP_ENABLED=true`, `AUTH_PASSWORD_RECOVERY_TOKEN_CLEANUP_RETENTION_DAYS=7`, `AUTH_PASSWORD_RECOVERY_TOKEN_CLEANUP_BATCH_SIZE=500` 이다.
 - 거절 기준:
