@@ -5,6 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.aquilabank.domain.notification.model.NotificationChannelDeliveryStatus;
 import com.aquilabank.domain.notification.model.NotificationChannelOutboxEntry;
 import com.aquilabank.domain.notification.model.NotificationChannelOutboxItem;
+import com.aquilabank.domain.notification.model.NotificationChannelOutboxQuarantinedItem;
+import com.aquilabank.domain.notification.model.NotificationChannelOutboxRedriveOutcome;
+import com.aquilabank.domain.notification.model.NotificationChannelOutboxRedriveResult;
 import com.aquilabank.domain.notification.model.NotificationPreferenceCategory;
 import com.aquilabank.domain.notification.model.NotificationPreferenceChannel;
 import com.aquilabank.support.PostgresContainerTestSupport;
@@ -203,6 +206,150 @@ class JdbcNotificationChannelOutboxRepositoryIntegrationTest extends PostgresCon
     assertThat(row.lastError()).isEqualTo("provider rejected");
     assertThat(row.updatedAt()).isEqualTo(quarantinedAt);
     assertThat(repository.findPending(10, base.plusSeconds(3600))).isEmpty();
+  }
+
+  @Test
+  void findsQuarantinedRowsInNewestFirstOrder() {
+    long[] userId = new long[1];
+    long[] accountId = new long[1];
+    Instant base = Instant.parse("2026-04-22T03:30:00Z");
+    commit(
+        transactionManager,
+        () -> {
+          userId[0] = insertUser("channel-quarantined-list-user");
+          accountId[0] = insertAccount("channel quarantined list account");
+        });
+    List<NotificationChannelOutboxEntry> items = new ArrayList<>();
+    commit(
+        transactionManager,
+        () -> {
+          items.add(cleanupItem(userId[0], accountId[0], "evt-channel-quarantine-old", base));
+          items.add(cleanupItem(userId[0], accountId[0], "evt-channel-quarantine-new", base));
+          items.add(cleanupItem(userId[0], accountId[0], "evt-channel-failed-skip", base));
+        });
+    repository.appendAllIfAbsent(items);
+    commit(
+        transactionManager,
+        () -> {
+          updateDeliveryState(
+              "evt-channel-quarantine-old",
+              NotificationChannelDeliveryStatus.QUARANTINED,
+              null,
+              base.minusSeconds(20),
+              4,
+              "provider timeout");
+          updateDeliveryState(
+              "evt-channel-quarantine-new",
+              NotificationChannelDeliveryStatus.QUARANTINED,
+              null,
+              base.minusSeconds(5),
+              7,
+              "provider rejected");
+          updateDeliveryState(
+              "evt-channel-failed-skip",
+              NotificationChannelDeliveryStatus.FAILED,
+              null,
+              base.minusSeconds(1),
+              2,
+              "provider failed");
+        });
+
+    List<NotificationChannelOutboxQuarantinedItem> itemsFound = repository.findQuarantinedItems(5);
+
+    assertThat(itemsFound).hasSize(2);
+    assertThat(itemsFound)
+        .extracting(NotificationChannelOutboxQuarantinedItem::eventKey)
+        .containsExactly("evt-channel-quarantine-new", "evt-channel-quarantine-old");
+    assertThat(itemsFound.getFirst().retryCount()).isEqualTo(7);
+    assertThat(itemsFound.getFirst().lastError()).isEqualTo("provider rejected");
+  }
+
+  @Test
+  void redrivesOnlyQuarantinedRowsAndKeepsRetryCount() {
+    long[] userId = new long[1];
+    long[] accountId = new long[1];
+    Instant base = Instant.parse("2026-04-22T03:40:00Z");
+    commit(
+        transactionManager,
+        () -> {
+          userId[0] = insertUser("channel-redrive-user");
+          accountId[0] = insertAccount("channel redrive account");
+        });
+    List<NotificationChannelOutboxEntry> items = new ArrayList<>();
+    commit(
+        transactionManager,
+        () -> items.add(cleanupItem(userId[0], accountId[0], "evt-channel-redrive", base)));
+    NotificationChannelOutboxEntry item = items.getFirst();
+    repository.appendAllIfAbsent(List.of(item));
+    commit(
+        transactionManager,
+        () ->
+            updateDeliveryState(
+                "evt-channel-redrive",
+                NotificationChannelDeliveryStatus.QUARANTINED,
+                null,
+                base.minusSeconds(15),
+                9,
+                "provider rejected"));
+
+    assertThat(repository.findPending(10, base)).isEmpty();
+
+    Instant requestedAt = base.plusSeconds(30);
+    long rowId = findIdByEventKey("evt-channel-redrive");
+
+    NotificationChannelOutboxRedriveResult result = repository.redrive(rowId, requestedAt);
+
+    assertThat(result.outcome()).isEqualTo(NotificationChannelOutboxRedriveOutcome.REDRIVEN);
+    assertThat(result.currentStatus()).isEqualTo(NotificationChannelDeliveryStatus.PENDING);
+    assertThat(result.retryCount()).isEqualTo(9);
+    DeliveryRow row = findDeliveryRow(rowId);
+    assertThat(row.deliveryStatus()).isEqualTo(NotificationChannelDeliveryStatus.PENDING);
+    assertThat(row.availableAt()).isEqualTo(requestedAt);
+    assertThat(row.retryCount()).isEqualTo(9);
+    assertThat(row.lastError()).isNull();
+    assertThat(row.sentAt()).isNull();
+    assertThat(repository.findPending(10, requestedAt))
+        .extracting(NotificationChannelOutboxItem::eventKey)
+        .containsExactly("evt-channel-redrive");
+  }
+
+  @Test
+  void returnsNotFoundWhenRedriveTargetDoesNotExist() {
+    Instant requestedAt = Instant.parse("2026-04-22T03:50:00Z");
+
+    NotificationChannelOutboxRedriveResult result = repository.redrive(999_999L, requestedAt);
+
+    assertThat(result.outcome()).isEqualTo(NotificationChannelOutboxRedriveOutcome.NOT_FOUND);
+    assertThat(result.currentStatus()).isNull();
+    assertThat(result.retryCount()).isZero();
+  }
+
+  @Test
+  void returnsNotQuarantinedWhenTargetStatusIsDifferent() {
+    long[] userId = new long[1];
+    long[] accountId = new long[1];
+    Instant base = Instant.parse("2026-04-22T03:55:00Z");
+    commit(
+        transactionManager,
+        () -> {
+          userId[0] = insertUser("channel-redrive-skip-user");
+          accountId[0] = insertAccount("channel redrive skip account");
+        });
+    List<NotificationChannelOutboxEntry> items = new ArrayList<>();
+    commit(
+        transactionManager,
+        () -> items.add(cleanupItem(userId[0], accountId[0], "evt-channel-redrive-skip", base)));
+    NotificationChannelOutboxEntry item = items.getFirst();
+    repository.appendAllIfAbsent(List.of(item));
+    long rowId = findIdByEventKey("evt-channel-redrive-skip");
+
+    NotificationChannelOutboxRedriveResult result = repository.redrive(rowId, base.plusSeconds(5));
+
+    assertThat(result.outcome()).isEqualTo(NotificationChannelOutboxRedriveOutcome.NOT_QUARANTINED);
+    assertThat(result.currentStatus()).isEqualTo(NotificationChannelDeliveryStatus.PENDING);
+    DeliveryRow row = findDeliveryRow(rowId);
+    assertThat(row.deliveryStatus()).isEqualTo(NotificationChannelDeliveryStatus.PENDING);
+    assertThat(row.lastError()).isNull();
   }
 
   @Test
@@ -458,11 +605,23 @@ class JdbcNotificationChannelOutboxRepositoryIntegrationTest extends PostgresCon
       NotificationChannelDeliveryStatus status,
       Instant sentAt,
       Instant updatedAt) {
+    updateDeliveryState(eventKey, status, sentAt, updatedAt, 0, null);
+  }
+
+  private void updateDeliveryState(
+      String eventKey,
+      NotificationChannelDeliveryStatus status,
+      Instant sentAt,
+      Instant updatedAt,
+      int retryCount,
+      String lastError) {
     jdbcTemplate.update(
         """
         UPDATE notification_channel_outbox
         SET delivery_status = :status,
             sent_at = :sentAt,
+            retry_count = :retryCount,
+            last_error = :lastError,
             updated_at = :updatedAt
         WHERE event_key = :eventKey
         """,
@@ -470,7 +629,25 @@ class JdbcNotificationChannelOutboxRepositoryIntegrationTest extends PostgresCon
             .addValue("eventKey", eventKey)
             .addValue("status", status.name())
             .addValue("sentAt", sentAt == null ? null : Timestamp.from(sentAt))
+            .addValue("retryCount", retryCount)
+            .addValue("lastError", lastError)
             .addValue("updatedAt", Timestamp.from(updatedAt)));
+  }
+
+  private long findIdByEventKey(String eventKey) {
+    Long id =
+        jdbcTemplate.queryForObject(
+            """
+            SELECT id
+            FROM notification_channel_outbox
+            WHERE event_key = :eventKey
+            """,
+            new MapSqlParameterSource().addValue("eventKey", eventKey),
+            Long.class);
+    if (id == null) {
+      throw new IllegalStateException("notification_channel_outbox row not found");
+    }
+    return id;
   }
 
   private List<String> findDeliveryEventKeys() {
