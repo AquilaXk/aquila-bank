@@ -4,5 +4,6 @@ public enum NotificationChannelDeliveryStatus {
   PENDING,
   SENDING,
   SENT,
-  FAILED
+  FAILED,
+  QUARANTINED
 }
