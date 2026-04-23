@@ -1,6 +1,7 @@
 package com.aquilabank.domain.auth.usecase;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -11,12 +12,12 @@ import static org.mockito.Mockito.when;
 import com.aquilabank.domain.auth.model.AuthUserSummary;
 import com.aquilabank.domain.auth.model.GeneratedPasswordRecoveryToken;
 import com.aquilabank.domain.auth.model.LoginUser;
-import com.aquilabank.domain.auth.model.PasswordRecoveryDeliveryCommand;
+import com.aquilabank.domain.auth.model.PasswordRecoveryDeliveryOutboxEntry;
 import com.aquilabank.domain.auth.model.PasswordRecoveryRequestCommand;
 import com.aquilabank.domain.auth.model.PasswordRecoveryRequestResult;
 import com.aquilabank.domain.auth.model.PasswordRecoveryTokenIssueCommand;
 import com.aquilabank.domain.auth.model.UserStatus;
-import com.aquilabank.domain.auth.port.PasswordRecoveryDeliveryPort;
+import com.aquilabank.domain.auth.port.PasswordRecoveryDeliveryOutboxAppendPort;
 import com.aquilabank.domain.auth.port.PasswordRecoverySecretPort;
 import com.aquilabank.domain.auth.port.PasswordRecoveryTokenWritePort;
 import com.aquilabank.domain.auth.port.UserCredentialLoadPort;
@@ -36,14 +37,14 @@ class PasswordRecoveryRequestServiceTest {
   private static final Duration TTL = Duration.ofMinutes(30);
 
   @Test
-  void issuesTokenForActiveUserAndSupersedesPendingTokens() {
+  void issuesTokenForActiveUserAndAppendsDeliveryOutbox() {
     UserQueryPort userQueryPort = mock(UserQueryPort.class);
     UserCredentialLoadPort userCredentialLoadPort = mock(UserCredentialLoadPort.class);
     PasswordRecoverySecretPort passwordRecoverySecretPort = mock(PasswordRecoverySecretPort.class);
     PasswordRecoveryTokenWritePort passwordRecoveryTokenWritePort =
         mock(PasswordRecoveryTokenWritePort.class);
-    PasswordRecoveryDeliveryPort passwordRecoveryDeliveryPort =
-        mock(PasswordRecoveryDeliveryPort.class);
+    PasswordRecoveryDeliveryOutboxAppendPort passwordRecoveryDeliveryOutboxAppendPort =
+        mock(PasswordRecoveryDeliveryOutboxAppendPort.class);
 
     when(userQueryPort.findSummaryByLoginId("alice")).thenReturn(Optional.of(activeSummary()));
     when(userCredentialLoadPort.findByLoginIdForUpdate("alice"))
@@ -59,7 +60,7 @@ class PasswordRecoveryRequestServiceTest {
             userCredentialLoadPort,
             passwordRecoverySecretPort,
             passwordRecoveryTokenWritePort,
-            passwordRecoveryDeliveryPort,
+            passwordRecoveryDeliveryOutboxAppendPort,
             TTL,
             CLOCK);
 
@@ -83,28 +84,27 @@ class PasswordRecoveryRequestServiceTest {
     assertThat(command.createdAt()).isEqualTo(NOW);
     assertThat(command.expiresAt()).isEqualTo(NOW.plus(TTL));
 
-    ArgumentCaptor<PasswordRecoveryDeliveryCommand> deliveryCaptor =
-        ArgumentCaptor.forClass(PasswordRecoveryDeliveryCommand.class);
-    verify(passwordRecoveryDeliveryPort).deliver(deliveryCaptor.capture());
+    ArgumentCaptor<PasswordRecoveryDeliveryOutboxEntry> outboxCaptor =
+        ArgumentCaptor.forClass(PasswordRecoveryDeliveryOutboxEntry.class);
+    verify(passwordRecoveryDeliveryOutboxAppendPort).append(outboxCaptor.capture());
 
-    PasswordRecoveryDeliveryCommand deliveryCommand = deliveryCaptor.getValue();
-    assertThat(deliveryCommand.requestId()).isEqualTo(result.handoffRequestId());
-    assertThat(deliveryCommand.userId()).isEqualTo(7L);
-    assertThat(deliveryCommand.loginId()).isEqualTo("alice");
-    assertThat(deliveryCommand.recoveryToken()).isEqualTo("plain-token");
-    assertThat(deliveryCommand.expiresAt()).isEqualTo(NOW.plus(TTL));
-    assertThat(deliveryCommand.issuedAt()).isEqualTo(NOW);
+    PasswordRecoveryDeliveryOutboxEntry outboxEntry = outboxCaptor.getValue();
+    assertThat(outboxEntry.requestId()).isEqualTo(result.handoffRequestId());
+    assertThat(outboxEntry.userId()).isEqualTo(7L);
+    assertThat(outboxEntry.loginId()).isEqualTo("alice");
+    assertThat(outboxEntry.availableAt()).isEqualTo(NOW);
+    assertThat(outboxEntry.createdAt()).isEqualTo(NOW);
   }
 
   @Test
-  void returnsHandoffRequestIdWhenDeliveryFailsAfterTokenWrite() {
+  void failsRequestWhenOutboxAppendFails() {
     UserQueryPort userQueryPort = mock(UserQueryPort.class);
     UserCredentialLoadPort userCredentialLoadPort = mock(UserCredentialLoadPort.class);
     PasswordRecoverySecretPort passwordRecoverySecretPort = mock(PasswordRecoverySecretPort.class);
     PasswordRecoveryTokenWritePort passwordRecoveryTokenWritePort =
         mock(PasswordRecoveryTokenWritePort.class);
-    PasswordRecoveryDeliveryPort passwordRecoveryDeliveryPort =
-        mock(PasswordRecoveryDeliveryPort.class);
+    PasswordRecoveryDeliveryOutboxAppendPort passwordRecoveryDeliveryOutboxAppendPort =
+        mock(PasswordRecoveryDeliveryOutboxAppendPort.class);
 
     when(userQueryPort.findSummaryByLoginId("alice")).thenReturn(Optional.of(activeSummary()));
     when(userCredentialLoadPort.findByLoginIdForUpdate("alice"))
@@ -113,9 +113,9 @@ class PasswordRecoveryRequestServiceTest {
         .thenReturn(
             new GeneratedPasswordRecoveryToken(
                 "plain-token", "token-hash", "token-ciphertext", "token-nonce"));
-    doThrow(new IllegalStateException("delivery unavailable"))
-        .when(passwordRecoveryDeliveryPort)
-        .deliver(org.mockito.ArgumentMatchers.any(PasswordRecoveryDeliveryCommand.class));
+    doThrow(new IllegalStateException("outbox unavailable"))
+        .when(passwordRecoveryDeliveryOutboxAppendPort)
+        .append(org.mockito.ArgumentMatchers.any(PasswordRecoveryDeliveryOutboxEntry.class));
 
     PasswordRecoveryRequestService service =
         new PasswordRecoveryRequestService(
@@ -123,19 +123,18 @@ class PasswordRecoveryRequestServiceTest {
             userCredentialLoadPort,
             passwordRecoverySecretPort,
             passwordRecoveryTokenWritePort,
-            passwordRecoveryDeliveryPort,
+            passwordRecoveryDeliveryOutboxAppendPort,
             TTL,
             CLOCK);
 
-    PasswordRecoveryRequestResult result =
-        service.request(new PasswordRecoveryRequestCommand("alice"));
-
-    assertThat(result.handoffRequestId()).isNotBlank();
+    assertThatThrownBy(() -> service.request(new PasswordRecoveryRequestCommand("alice")))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage("outbox unavailable");
     verify(passwordRecoveryTokenWritePort).supersedePendingTokens(7L, NOW);
     verify(passwordRecoveryTokenWritePort)
         .issue(org.mockito.ArgumentMatchers.any(PasswordRecoveryTokenIssueCommand.class));
-    verify(passwordRecoveryDeliveryPort)
-        .deliver(org.mockito.ArgumentMatchers.any(PasswordRecoveryDeliveryCommand.class));
+    verify(passwordRecoveryDeliveryOutboxAppendPort)
+        .append(org.mockito.ArgumentMatchers.any(PasswordRecoveryDeliveryOutboxEntry.class));
   }
 
   @Test
@@ -145,8 +144,8 @@ class PasswordRecoveryRequestServiceTest {
     PasswordRecoverySecretPort passwordRecoverySecretPort = mock(PasswordRecoverySecretPort.class);
     PasswordRecoveryTokenWritePort passwordRecoveryTokenWritePort =
         mock(PasswordRecoveryTokenWritePort.class);
-    PasswordRecoveryDeliveryPort passwordRecoveryDeliveryPort =
-        mock(PasswordRecoveryDeliveryPort.class);
+    PasswordRecoveryDeliveryOutboxAppendPort passwordRecoveryDeliveryOutboxAppendPort =
+        mock(PasswordRecoveryDeliveryOutboxAppendPort.class);
 
     when(userQueryPort.findSummaryByLoginId("missing")).thenReturn(Optional.empty());
 
@@ -156,7 +155,7 @@ class PasswordRecoveryRequestServiceTest {
             userCredentialLoadPort,
             passwordRecoverySecretPort,
             passwordRecoveryTokenWritePort,
-            passwordRecoveryDeliveryPort,
+            passwordRecoveryDeliveryOutboxAppendPort,
             TTL,
             CLOCK);
 
@@ -169,7 +168,7 @@ class PasswordRecoveryRequestServiceTest {
         userCredentialLoadPort,
         passwordRecoverySecretPort,
         passwordRecoveryTokenWritePort,
-        passwordRecoveryDeliveryPort);
+        passwordRecoveryDeliveryOutboxAppendPort);
   }
 
   @Test
@@ -179,8 +178,8 @@ class PasswordRecoveryRequestServiceTest {
     PasswordRecoverySecretPort passwordRecoverySecretPort = mock(PasswordRecoverySecretPort.class);
     PasswordRecoveryTokenWritePort passwordRecoveryTokenWritePort =
         mock(PasswordRecoveryTokenWritePort.class);
-    PasswordRecoveryDeliveryPort passwordRecoveryDeliveryPort =
-        mock(PasswordRecoveryDeliveryPort.class);
+    PasswordRecoveryDeliveryOutboxAppendPort passwordRecoveryDeliveryOutboxAppendPort =
+        mock(PasswordRecoveryDeliveryOutboxAppendPort.class);
 
     when(userQueryPort.findSummaryByLoginId("alice")).thenReturn(Optional.of(inactiveSummary()));
 
@@ -190,7 +189,7 @@ class PasswordRecoveryRequestServiceTest {
             userCredentialLoadPort,
             passwordRecoverySecretPort,
             passwordRecoveryTokenWritePort,
-            passwordRecoveryDeliveryPort,
+            passwordRecoveryDeliveryOutboxAppendPort,
             TTL,
             CLOCK);
 
@@ -203,7 +202,7 @@ class PasswordRecoveryRequestServiceTest {
         userCredentialLoadPort,
         passwordRecoverySecretPort,
         passwordRecoveryTokenWritePort,
-        passwordRecoveryDeliveryPort);
+        passwordRecoveryDeliveryOutboxAppendPort);
     verifyNoMoreInteractions(userQueryPort);
   }
 

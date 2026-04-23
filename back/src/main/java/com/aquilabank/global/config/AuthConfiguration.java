@@ -21,7 +21,7 @@ import com.aquilabank.domain.auth.port.ExternalIdentityUserLoadPort;
 import com.aquilabank.domain.auth.port.LoginAttemptAuditPort;
 import com.aquilabank.domain.auth.port.LoginAttemptUpdatePort;
 import com.aquilabank.domain.auth.port.PasswordHashPort;
-import com.aquilabank.domain.auth.port.PasswordRecoveryDeliveryPort;
+import com.aquilabank.domain.auth.port.PasswordRecoveryDeliveryOutboxAppendPort;
 import com.aquilabank.domain.auth.port.PasswordRecoverySecretPort;
 import com.aquilabank.domain.auth.port.PasswordRecoveryTokenLoadPort;
 import com.aquilabank.domain.auth.port.PasswordRecoveryTokenQueryPort;
@@ -99,6 +99,7 @@ import com.aquilabank.domain.auth.usecase.UserBootstrapService;
 import com.aquilabank.domain.auth.usecase.UserBootstrapUseCase;
 import com.aquilabank.domain.auth.usecase.UserStatusUpdateService;
 import com.aquilabank.domain.auth.usecase.UserStatusUpdateUseCase;
+import com.aquilabank.global.persistence.auth.JdbcPasswordRecoveryDeliveryOutboxRepository;
 import com.aquilabank.global.persistence.auth.JdbcPasswordRecoveryRepository;
 import com.aquilabank.global.security.LoginProtectionProperties;
 import com.aquilabank.global.security.PasswordRecoveryProperties;
@@ -148,6 +149,12 @@ public class AuthConfiguration {
   JdbcPasswordRecoveryRepository jdbcPasswordRecoveryRepository(
       NamedParameterJdbcTemplate namedParameterJdbcTemplate) {
     return new JdbcPasswordRecoveryRepository(namedParameterJdbcTemplate);
+  }
+
+  @Bean
+  JdbcPasswordRecoveryDeliveryOutboxRepository jdbcPasswordRecoveryDeliveryOutboxRepository(
+      NamedParameterJdbcTemplate namedParameterJdbcTemplate) {
+    return new JdbcPasswordRecoveryDeliveryOutboxRepository(namedParameterJdbcTemplate);
   }
 
   @Bean
@@ -581,7 +588,7 @@ public class AuthConfiguration {
       UserCredentialLoadPort userCredentialLoadPort,
       PasswordRecoverySecretPort passwordRecoverySecretPort,
       com.aquilabank.domain.auth.port.PasswordRecoveryTokenWritePort passwordRecoveryTokenWritePort,
-      PasswordRecoveryDeliveryPort passwordRecoveryDeliveryPort,
+      PasswordRecoveryDeliveryOutboxAppendPort passwordRecoveryDeliveryOutboxAppendPort,
       PasswordRecoveryProperties passwordRecoveryProperties,
       Clock authClock,
       PlatformTransactionManager platformTransactionManager) {
@@ -591,7 +598,7 @@ public class AuthConfiguration {
             userCredentialLoadPort,
             passwordRecoverySecretPort,
             passwordRecoveryTokenWritePort,
-            passwordRecoveryDeliveryPort,
+            passwordRecoveryDeliveryOutboxAppendPort,
             Duration.ofSeconds(passwordRecoveryProperties.ttlSeconds()),
             authClock);
     TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
