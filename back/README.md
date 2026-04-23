@@ -488,6 +488,16 @@ tools/test/with-resource-lock.sh back-notification-provider \
   ./back/gradlew -p back test --tests '*NotificationChannelProvider*' --tests '*WebhookNotificationChannelProviderTest'
 ```
 
+- bounded smoke:
+
+```bash
+tools/test/with-resource-lock.sh back-notification-provider-smoke \
+  tools/test/run-notification-provider-delivery-smoke.sh
+```
+
+- smoke fixture는 local webhook server에서 `EMAIL=202 Accepted`, `SMS=delayed response`를 주입합니다.
+- smoke 기대값은 `EMAIL -> SENT`, `SMS -> FAILED + nextAttemptAt=base+5s` 입니다.
+- smoke가 실패하면 channel URL, timeout env, worker retry base delay drift를 먼저 확인합니다.
 - skip가 늘면 `bank_user.login_id` 형식 drift 또는 channel URL 오구성을 먼저 확인합니다.
 - retry가 늘면 provider timeout과 응답 코드, `last_error`, `available_at` backoff 증가를 같이 봅니다.
 
