@@ -8,6 +8,7 @@ import com.aquilabank.global.security.AuthenticatedAccountPrincipal;
 import com.aquilabank.global.security.AuthenticatedRequestPrincipal;
 import com.aquilabank.global.security.AuthenticatedUserPrincipal;
 import com.aquilabank.global.web.security.CurrentAuthenticatedPrincipal;
+import com.aquilabank.global.web.security.RequestAccountAuthorizationService;
 import java.time.Instant;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -28,12 +29,15 @@ public class AccountListController {
 
   private final AccountListQueryUseCase accountListQueryUseCase;
   private final AccountSummaryQueryUseCase accountSummaryQueryUseCase;
+  private final RequestAccountAuthorizationService requestAccountAuthorizationService;
 
   public AccountListController(
       AccountListQueryUseCase accountListQueryUseCase,
-      AccountSummaryQueryUseCase accountSummaryQueryUseCase) {
+      AccountSummaryQueryUseCase accountSummaryQueryUseCase,
+      RequestAccountAuthorizationService requestAccountAuthorizationService) {
     this.accountListQueryUseCase = accountListQueryUseCase;
     this.accountSummaryQueryUseCase = accountSummaryQueryUseCase;
+    this.requestAccountAuthorizationService = requestAccountAuthorizationService;
   }
 
   @GetMapping
@@ -60,9 +64,11 @@ public class AccountListController {
       return accountListQueryUseCase.getByUserId(userPrincipal.userId());
     }
     if (principal instanceof AuthenticatedAccountPrincipal accountPrincipal) {
-      // bootstrap account principal도 같은 요약 모델을 재사용해 dev/test 응답 계약을 단순화합니다.
-      return new AccountSummaryList(
-          List.of(accountSummaryQueryUseCase.getByAccountId(accountPrincipal.accountId())));
+      // bootstrap account principal도 exact read gate를 재사용해 CLOSED 노출을 막습니다.
+      long accountId =
+          requestAccountAuthorizationService.resolveReadableAccountId(
+              principal, accountPrincipal.accountId());
+      return new AccountSummaryList(List.of(accountSummaryQueryUseCase.getByAccountId(accountId)));
     }
     throw new IllegalArgumentException("unsupported principal type");
   }

@@ -59,6 +59,33 @@ class JdbcAccountListRepositoryIntegrationTest extends PostgresContainerTestSupp
   }
 
   @Test
+  void excludesClosedAccountsButKeepsLockedAccounts() {
+    long[] userId = new long[1];
+    long[] accountIds = new long[3];
+    commit(
+        transactionManager,
+        () -> {
+          userId[0] = insertUser("account-list-status-user", "ACTIVE");
+          for (int index = 0; index < accountIds.length; index++) {
+            accountIds[index] = insertAccount("status-account-" + index);
+            insertSnapshot(accountIds[index]);
+            insertMembership(userId[0], accountIds[index], "ACTIVE");
+          }
+          updateAccountStatus(accountIds[1], "LOCKED");
+          updateAccountStatus(accountIds[2], "CLOSED");
+        });
+
+    AccountSummaryList result = repository.findByUserId(userId[0]);
+
+    assertThat(result.items())
+        .extracting(item -> item.accountId())
+        .containsExactly(accountIds[0], accountIds[1]);
+    assertThat(result.items())
+        .extracting(item -> item.accountStatus())
+        .containsExactly("ACTIVE", "LOCKED");
+  }
+
+  @Test
   void accountListKeysetPlanUsesUserStatusAccountCursorIndex() {
     long[] userId = new long[1];
     commit(transactionManager, () -> userId[0] = insertUser("account-list-plan-user", "ACTIVE"));
@@ -195,6 +222,19 @@ class JdbcAccountListRepositoryIntegrationTest extends PostgresContainerTestSupp
             .addValue("userId", userId)
             .addValue("accountId", accountId)
             .addValue("status", status));
+  }
+
+  private void updateAccountStatus(long accountId, String accountStatus) {
+    jdbcTemplate.update(
+        """
+        UPDATE bank_account
+        SET account_status = :accountStatus,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = :accountId
+        """,
+        new MapSqlParameterSource()
+            .addValue("accountId", accountId)
+            .addValue("accountStatus", accountStatus));
   }
 
   private void bulkInsertAccountsAndMemberships(long userId, int count) {
