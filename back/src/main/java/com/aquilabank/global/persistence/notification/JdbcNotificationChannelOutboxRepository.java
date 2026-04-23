@@ -6,6 +6,7 @@ import com.aquilabank.domain.notification.model.NotificationChannelOutboxItem;
 import com.aquilabank.domain.notification.model.NotificationPreferenceCategory;
 import com.aquilabank.domain.notification.model.NotificationPreferenceChannel;
 import com.aquilabank.domain.notification.port.NotificationChannelOutboxAppendPort;
+import com.aquilabank.domain.notification.port.NotificationChannelOutboxCleanupPort;
 import com.aquilabank.domain.notification.port.NotificationChannelOutboxDispatchPort;
 import com.aquilabank.domain.notification.port.NotificationChannelOutboxReadPort;
 import java.sql.ResultSet;
@@ -25,7 +26,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class JdbcNotificationChannelOutboxRepository
     implements NotificationChannelOutboxAppendPort,
         NotificationChannelOutboxReadPort,
-        NotificationChannelOutboxDispatchPort {
+        NotificationChannelOutboxDispatchPort,
+        NotificationChannelOutboxCleanupPort {
 
   private static final RowMapper<NotificationChannelOutboxItem> ROW_MAPPER =
       (rs, rowNum) -> mapRow(rs);
@@ -145,6 +147,82 @@ public class JdbcNotificationChannelOutboxRepository
             .addValue("nextAttemptAt", Timestamp.from(nextAttemptAt))
             .addValue("failedAt", Timestamp.from(failedAt))
             .addValue("lastError", errorMessage));
+  }
+
+  @Override
+  @Transactional
+  public void markQuarantined(long id, Instant quarantinedAt, String errorMessage) {
+    if (quarantinedAt == null) {
+      throw new IllegalArgumentException("quarantinedAt must not be null");
+    }
+    jdbcTemplate.update(
+        """
+        UPDATE notification_channel_outbox
+        SET delivery_status = 'QUARANTINED',
+            retry_count = retry_count + 1,
+            last_error = :lastError,
+            updated_at = :quarantinedAt
+        WHERE id = :id
+          AND delivery_status = 'SENDING'
+        """,
+        new MapSqlParameterSource()
+            .addValue("id", id)
+            .addValue("quarantinedAt", Timestamp.from(quarantinedAt))
+            .addValue("lastError", errorMessage));
+  }
+
+  @Override
+  @Transactional
+  public int deleteFinishedBefore(Instant cutoff, int limit) {
+    if (cutoff == null) {
+      throw new IllegalArgumentException("cutoff must not be null");
+    }
+    if (limit <= 0) {
+      throw new IllegalArgumentException("limit must be positive");
+    }
+    Integer deleted =
+        jdbcTemplate.queryForObject(
+            """
+            WITH candidates AS (
+                SELECT id
+                FROM (
+                    (
+                        SELECT id,
+                               sent_at AS finished_at
+                        FROM notification_channel_outbox
+                        WHERE delivery_status = 'SENT'
+                          AND sent_at < :cutoff
+                        ORDER BY sent_at ASC, id ASC
+                        LIMIT :limit
+                    )
+                    UNION ALL
+                    (
+                        SELECT id,
+                               updated_at AS finished_at
+                        FROM notification_channel_outbox
+                        WHERE delivery_status = 'QUARANTINED'
+                          AND updated_at < :cutoff
+                        ORDER BY updated_at ASC, id ASC
+                        LIMIT :limit
+                    )
+                ) item
+                ORDER BY finished_at ASC, id ASC
+                LIMIT :limit
+            ),
+            deleted AS (
+                DELETE FROM notification_channel_outbox item
+                USING candidates
+                WHERE item.id = candidates.id
+                RETURNING item.id
+            )
+            SELECT COUNT(*)
+            FROM deleted
+            """,
+            new MapSqlParameterSource()
+                .addValue("cutoff", Timestamp.from(cutoff))
+                .addValue("limit", limit),
+            Integer.class);
+    return deleted == null ? 0 : deleted;
   }
 
   @Override
