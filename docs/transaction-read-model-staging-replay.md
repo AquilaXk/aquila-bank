@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`Transaction Read Model Staging Replay` workflow는 로컬 fixture가 아니라 staging/RDS의 1억 건 분포에서 hot/cold 거래 조회 p95를 검증합니다.
+`Transaction Read Model Staging Replay`는 수동 workflow와 staging deploy release gate가 같은 script를 공유하며, 로컬 fixture가 아니라 staging/RDS의 1억 건 분포에서 hot/cold 거래 조회 p95를 검증합니다.
 
 - hot: `GET /api/v1/transactions`
 - cold: `GET /api/v1/transactions/archive`
@@ -15,10 +15,39 @@
   - `STAGING_BASE_URL`
   - `STAGING_REPLAY_TOKEN`
   - `STAGING_RDS_DATABASE_URL`
+- staging deploy release gate용 추가 secrets:
+  - `STAGING_REPLAY_HOT_ACCOUNT_ID`
+  - `STAGING_REPLAY_HOT_FROM`
+  - `STAGING_REPLAY_HOT_TO`
+  - `STAGING_REPLAY_COLD_ACCOUNT_ID`
+  - `STAGING_REPLAY_COLD_FROM`
+  - `STAGING_REPLAY_COLD_TO`
 - staging RDS 통계가 최신이어야 합니다.
   - 1억 건 분포 적재 또는 replay 전후 `ANALYZE` 수행
   - full count 대신 `pg_class.reltuples` estimate를 쓰므로 오래된 통계는 검증 실패나 과소/과대 평가를 만들 수 있습니다.
 - cold path는 `GET /api/v1/transactions/archive` 배포 이후 실행합니다.
+
+## Staging Deploy Release Gate
+
+- `Staging Deploy` workflow는 post-deploy smoke 뒤에 같은 replay script를 실행합니다.
+- release gate는 아래 `staging` Environment secret을 읽어 수동 입력 없이 same SHA를 검증합니다.
+  - required:
+    - `STAGING_REPLAY_HOT_ACCOUNT_ID`
+    - `STAGING_REPLAY_HOT_FROM`
+    - `STAGING_REPLAY_HOT_TO`
+    - `STAGING_REPLAY_COLD_ACCOUNT_ID`
+    - `STAGING_REPLAY_COLD_FROM`
+    - `STAGING_REPLAY_COLD_TO`
+  - optional:
+    - `STAGING_REPLAY_ITERATIONS`
+    - `STAGING_REPLAY_PAGE_LIMIT`
+    - `STAGING_REPLAY_REQUEST_TIMEOUT_SECONDS`
+    - `STAGING_REPLAY_EXPECTED_TOTAL_ROWS`
+    - `STAGING_REPLAY_HOT_P95_THRESHOLD_MS`
+    - `STAGING_REPLAY_COLD_P95_THRESHOLD_MS`
+    - `STAGING_REPLAY_STATS_MAX_AGE_HOURS`
+    - `STAGING_REPLAY_STATS_MAX_MODIFIED_RATIO`
+- replay gate가 실패하면 staging deployment status가 `success`로 기록되지 않아 production promotion이 같은 SHA를 통과시키지 않습니다.
 
 ## Workflow Inputs
 
@@ -34,6 +63,8 @@
 
 ## Gate Behavior
 
+- planner stats freshness guard가 `transaction_read_model`, `transaction_read_model_archive`의 analyze 시각과 `n_mod_since_analyze / reltuples` 비율을 먼저 확인합니다.
+- freshness guard가 stale stats를 감지하면 table별 `ANALYZE VERBOSE public.<table>;` guidance와 함께 즉시 실패합니다.
 - RDS estimate가 `expected_total_rows`보다 작으면 실패합니다.
 - hot/cold account에 row가 없으면 실패합니다.
 - 각 first page가 `nextCursor`를 반환하지 않으면 cursor replay가 불가능하므로 실패합니다.

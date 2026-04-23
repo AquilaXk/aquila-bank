@@ -196,6 +196,31 @@ jobs:
           set -euo pipefail
           tools/ops/staging-postdeploy-smoke.sh
 
+      - name: Run transaction replay regression gate
+        if: steps.validate.outputs.should_deploy == 'true' && steps.hook_config.outputs.hook_configured == 'true'
+        env:
+          STAGING_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
+          STAGING_REPLAY_TOKEN: ${{ secrets.STAGING_REPLAY_TOKEN }}
+          STAGING_RDS_DATABASE_URL: ${{ secrets.STAGING_RDS_DATABASE_URL }}
+          HOT_ACCOUNT_ID: ${{ secrets.STAGING_REPLAY_HOT_ACCOUNT_ID }}
+          HOT_FROM: ${{ secrets.STAGING_REPLAY_HOT_FROM }}
+          HOT_TO: ${{ secrets.STAGING_REPLAY_HOT_TO }}
+          COLD_ACCOUNT_ID: ${{ secrets.STAGING_REPLAY_COLD_ACCOUNT_ID }}
+          COLD_FROM: ${{ secrets.STAGING_REPLAY_COLD_FROM }}
+          COLD_TO: ${{ secrets.STAGING_REPLAY_COLD_TO }}
+          ITERATIONS: ${{ secrets.STAGING_REPLAY_ITERATIONS }}
+          PAGE_LIMIT: ${{ secrets.STAGING_REPLAY_PAGE_LIMIT }}
+          REQUEST_TIMEOUT_SECONDS: ${{ secrets.STAGING_REPLAY_REQUEST_TIMEOUT_SECONDS }}
+          EXPECTED_TOTAL_ROWS: ${{ secrets.STAGING_REPLAY_EXPECTED_TOTAL_ROWS }}
+          HOT_P95_THRESHOLD_MS: ${{ secrets.STAGING_REPLAY_HOT_P95_THRESHOLD_MS }}
+          COLD_P95_THRESHOLD_MS: ${{ secrets.STAGING_REPLAY_COLD_P95_THRESHOLD_MS }}
+          PLANNER_STATS_MAX_AGE_HOURS: ${{ secrets.STAGING_REPLAY_STATS_MAX_AGE_HOURS }}
+          PLANNER_STATS_MAX_MODIFIED_RATIO: ${{ secrets.STAGING_REPLAY_STATS_MAX_MODIFIED_RATIO }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tools/ops/transaction-read-model-staging-replay.sh
+
       - name: Dispatch staging rollback guard
         if: failure() && steps.validate.outputs.should_deploy == 'true' && steps.hook_config.outputs.hook_configured == 'true' && steps.deployment.outputs.deployment_id != ''
         env:
