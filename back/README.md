@@ -466,6 +466,16 @@ bash tools/test/check-nginx-sse-proxy.sh
 
 - backend가 이미 `X-Accel-Buffering: no` 헤더를 응답하므로 Nginx도 buffering off 상태를 같이 유지합니다.
 - `NOTIFICATION_SSE_CONNECTION_TIMEOUT_MS` 또는 upstream 포트를 바꾸면 Nginx timeout/upstream도 같이 맞춥니다.
+- multi-node drain/reconnect runbook smoke는 아래 엔트리포인트를 사용합니다.
+
+```bash
+tools/test/run-sse-multinode-drain-smoke.sh
+```
+
+- 위 script는 `check-nginx-sse-proxy.sh`, reconnect storm replay, `NotificationSseBrokerTest`를 한 runbook smoke로 묶습니다.
+- 기본 drain grace는 `5s`, reconnect delay baseline은 `3000ms` 입니다.
+- scheduled workflow `SSE Multi-Node Drain Smoke`는 매주 목요일 03:30 KST(`30 18 * * 3` UTC)와 manual `workflow_dispatch`를 지원합니다.
+- repository variable로 `SSE_MULTINODE_DRAIN_GRACE_SECONDS`, `SSE_RECONNECT_DELAY_MS`를 override 할 수 있습니다.
 
 ## Transfer Reversal
 
