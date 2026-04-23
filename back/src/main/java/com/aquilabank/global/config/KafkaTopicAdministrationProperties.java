@@ -8,16 +8,22 @@ public record KafkaTopicAdministrationProperties(
     ProvisioningProperties provisioning, StartupValidationProperties startupValidation) {
 
   public KafkaTopicAdministrationProperties {
-    provisioning = provisioning == null ? new ProvisioningProperties(true, 1, 1) : provisioning;
+    provisioning = provisioning == null ? new ProvisioningProperties(true, 1, 1, 1) : provisioning;
     startupValidation =
         startupValidation == null ? new StartupValidationProperties(true) : startupValidation;
   }
 
-  public record ProvisioningProperties(boolean enabled, int partitions, int replicationFactor) {
+  public record ProvisioningProperties(
+      boolean enabled, int partitions, int replicationFactor, int minInSyncReplicas) {
 
     public ProvisioningProperties {
       partitions = partitions > 0 ? partitions : 1;
       replicationFactor = replicationFactor > 0 ? replicationFactor : 1;
+      minInSyncReplicas = minInSyncReplicas > 0 ? minInSyncReplicas : 1;
+      if (minInSyncReplicas > replicationFactor) {
+        throw new IllegalArgumentException(
+            "Kafka topic provisioning min.in.sync.replicas must not exceed replication factor");
+      }
     }
   }
 
