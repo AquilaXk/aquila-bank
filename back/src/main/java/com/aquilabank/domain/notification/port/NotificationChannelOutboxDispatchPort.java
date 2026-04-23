@@ -12,4 +12,8 @@ public interface NotificationChannelOutboxDispatchPort {
   void markSent(long id, Instant sentAt);
 
   void markFailed(long id, Instant nextAttemptAt, Instant failedAt, String errorMessage);
+
+  default void markQuarantined(long id, Instant quarantinedAt, String errorMessage) {
+    throw new UnsupportedOperationException("markQuarantined is not implemented");
+  }
 }

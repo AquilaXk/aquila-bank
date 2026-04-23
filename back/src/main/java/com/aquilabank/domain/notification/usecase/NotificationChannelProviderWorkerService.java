@@ -22,6 +22,7 @@ public final class NotificationChannelProviderWorkerService
   private final int batchSize;
   private final Duration retryBaseDelay;
   private final Duration maxRetryDelay;
+  private final int maxRetryAttempts;
 
   public NotificationChannelProviderWorkerService(
       NotificationChannelOutboxDispatchPort dispatchPort,
@@ -30,6 +31,17 @@ public final class NotificationChannelProviderWorkerService
       int batchSize,
       Duration retryBaseDelay,
       Duration maxRetryDelay) {
+    this(dispatchPort, providerPort, clock, batchSize, retryBaseDelay, maxRetryDelay, 10);
+  }
+
+  public NotificationChannelProviderWorkerService(
+      NotificationChannelOutboxDispatchPort dispatchPort,
+      NotificationChannelProviderPort providerPort,
+      Clock clock,
+      int batchSize,
+      Duration retryBaseDelay,
+      Duration maxRetryDelay,
+      int maxRetryAttempts) {
     this.dispatchPort = Objects.requireNonNull(dispatchPort, "dispatchPort");
     this.providerPort = Objects.requireNonNull(providerPort, "providerPort");
     this.clock = Objects.requireNonNull(clock, "clock");
@@ -42,6 +54,10 @@ public final class NotificationChannelProviderWorkerService
     if (this.maxRetryDelay.compareTo(this.retryBaseDelay) < 0) {
       throw new IllegalArgumentException("maxRetryDelay must be greater than retryBaseDelay");
     }
+    if (maxRetryAttempts < 1) {
+      throw new IllegalArgumentException("maxRetryAttempts must be positive");
+    }
+    this.maxRetryAttempts = maxRetryAttempts;
   }
 
   @Override
@@ -59,8 +75,13 @@ public final class NotificationChannelProviderWorkerService
       providerPort.send(item);
       dispatchPort.markSent(item.id(), now);
     } catch (RuntimeException ex) {
+      String errorMessage = shorten(ex.getMessage());
+      if (item.retryCount() + 1 >= maxRetryAttempts) {
+        dispatchPort.markQuarantined(item.id(), now, errorMessage);
+        return;
+      }
       Instant nextAttemptAt = now.plus(computeBackoff(item.retryCount()));
-      dispatchPort.markFailed(item.id(), nextAttemptAt, now, shorten(ex.getMessage()));
+      dispatchPort.markFailed(item.id(), nextAttemptAt, now, errorMessage);
     }
   }
 
