@@ -11,6 +11,7 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -24,12 +25,13 @@ public class JdbcTransactionDetailRepository implements TransactionDetailReadPor
 
   private final NamedParameterJdbcTemplate jdbcTemplate;
 
-  public JdbcTransactionDetailRepository(NamedParameterJdbcTemplate jdbcTemplate) {
+  public JdbcTransactionDetailRepository(
+      @Qualifier("transactionReadJdbcTemplate") NamedParameterJdbcTemplate jdbcTemplate) {
     this.jdbcTemplate = jdbcTemplate;
   }
 
   @Override
-  @Transactional(readOnly = true)
+  @Transactional(readOnly = true, transactionManager = "transactionReadTransactionManager")
   public Optional<TransactionDetail> find(TransactionDetailQuery query) {
     TransactionDetailQueryStatement statement = TransactionDetailQueryStatement.from(query);
     List<TransactionDetail> rows =

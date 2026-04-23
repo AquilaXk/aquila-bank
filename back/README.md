@@ -120,6 +120,39 @@ tools/test/with-resource-lock.sh back-transaction-baseline \
   tools/test/run-transaction-query-baseline.sh
 ```
 
+## Transaction Read Replica Routing
+
+transaction read replica baseline은 거래 조회 3개 path만 좁게 분리합니다.
+
+- 적용 범위:
+  - `GET /api/v1/transactions`
+  - `GET /api/v1/transactions/{transactionReference}`
+  - `GET /api/v1/transactions/archive`
+- wiring:
+  - `JdbcTransactionReadRepository`
+  - `JdbcTransactionDetailRepository`
+  - `JdbcTransactionArchiveReadRepository`
+  - 전용 `transactionReadJdbcTemplate`
+  - 전용 `transactionReadTransactionManager`
+- fallback:
+  - `TRANSACTION_READ_REPLICA_ENABLED=false`
+  - 또는 `TRANSACTION_READ_REPLICA_URL` 미설정
+  - 위 경우 기존처럼 primary만 사용
+- 기본 replica pool:
+  - `minimumIdle=0`
+  - `maximumPoolSize=2`
+- 운영 주의:
+  - account/auth/write path는 계속 primary를 사용합니다.
+  - replica lag는 baseline 범위 밖입니다. 거래 직후 강한 read-after-write 일관성이 필요한 확인 흐름은 primary 정책을 별도로 검토해야 합니다.
+- 주요 설정:
+  - `TRANSACTION_READ_REPLICA_ENABLED`
+  - `TRANSACTION_READ_REPLICA_URL`
+  - `TRANSACTION_READ_REPLICA_USERNAME`
+  - `TRANSACTION_READ_REPLICA_PASSWORD`
+  - `TRANSACTION_READ_REPLICA_POOL_MAX_SIZE`
+  - `TRANSACTION_READ_REPLICA_STATEMENT_TIMEOUT_MS`
+  - `TRANSACTION_READ_REPLICA_LOCK_TIMEOUT_MS`
+
 ## Transaction Read Model Partition / Archive Fit
 
 partition/archive 는 `GET /api/v1/transactions` read path를 실제로 줄여줄 때만 고려합니다.

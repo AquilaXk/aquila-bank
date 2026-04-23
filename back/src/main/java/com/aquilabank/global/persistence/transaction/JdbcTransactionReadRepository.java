@@ -14,6 +14,7 @@ import java.sql.SQLException;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -29,13 +30,14 @@ public class JdbcTransactionReadRepository implements TransactionReadPort {
   private final MeterRegistry meterRegistry;
 
   public JdbcTransactionReadRepository(
-      NamedParameterJdbcTemplate jdbcTemplate, MeterRegistry meterRegistry) {
+      @Qualifier("transactionReadJdbcTemplate") NamedParameterJdbcTemplate jdbcTemplate,
+      MeterRegistry meterRegistry) {
     this.jdbcTemplate = jdbcTemplate;
     this.meterRegistry = meterRegistry;
   }
 
   @Override
-  @Transactional(readOnly = true)
+  @Transactional(readOnly = true, transactionManager = "transactionReadTransactionManager")
   public TransactionSlice fetch(TransactionQuery query) {
     Timer.Sample sample = Timer.start(meterRegistry);
     String outcome = "success";
