@@ -4,10 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.mockito.Mockito.mock;
 
+import com.aquilabank.domain.notification.port.NotificationChannelOutboxCleanupPort;
 import com.aquilabank.domain.notification.port.NotificationChannelOutboxDispatchPort;
 import com.aquilabank.domain.notification.port.NotificationChannelProviderPort;
+import com.aquilabank.domain.notification.usecase.NotificationChannelOutboxCleanupUseCase;
 import com.aquilabank.domain.notification.usecase.NotificationChannelProviderWorkerUseCase;
 import com.aquilabank.global.notification.LoggingNotificationChannelProvider;
+import com.aquilabank.global.notification.NotificationChannelOutboxCleanupPoller;
 import com.aquilabank.global.notification.NotificationChannelProviderWorkerPoller;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -18,16 +21,21 @@ class NotificationChannelProviderWorkerConfigurationTest {
       new ApplicationContextRunner()
           .withUserConfiguration(
               NotificationChannelProviderWorkerConfiguration.class,
-              NotificationChannelProviderWorkerPoller.class)
+              NotificationChannelProviderWorkerPoller.class,
+              NotificationChannelOutboxCleanupPoller.class)
           .withBean(
               NotificationChannelOutboxDispatchPort.class,
-              () -> mock(NotificationChannelOutboxDispatchPort.class));
+              () -> mock(NotificationChannelOutboxDispatchPort.class))
+          .withBean(
+              NotificationChannelOutboxCleanupPort.class,
+              () -> mock(NotificationChannelOutboxCleanupPort.class));
 
   @Test
   void registersUseCaseAndLoggingProviderByDefault() {
     contextRunner.run(
         context -> {
           assertThat(context).hasSingleBean(NotificationChannelProviderWorkerUseCase.class);
+          assertThat(context).hasSingleBean(NotificationChannelOutboxCleanupUseCase.class);
           assertInstanceOf(
               LoggingNotificationChannelProvider.class,
               context.getBean(NotificationChannelProviderPort.class));
@@ -50,5 +58,23 @@ class NotificationChannelProviderWorkerConfigurationTest {
         .run(
             context ->
                 assertThat(context).hasSingleBean(NotificationChannelProviderWorkerPoller.class));
+  }
+
+  @Test
+  void doesNotRegisterCleanupPollerWhenCleanupIsDisabled() {
+    contextRunner
+        .withPropertyValues("notification.channel-provider.cleanup.enabled=false")
+        .run(
+            context ->
+                assertThat(context).doesNotHaveBean(NotificationChannelOutboxCleanupPoller.class));
+  }
+
+  @Test
+  void registersCleanupPollerWhenCleanupIsEnabled() {
+    contextRunner
+        .withPropertyValues("notification.channel-provider.cleanup.enabled=true")
+        .run(
+            context ->
+                assertThat(context).hasSingleBean(NotificationChannelOutboxCleanupPoller.class));
   }
 }
