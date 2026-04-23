@@ -109,12 +109,15 @@ public class JdbcNotificationInboxRepository
           ON m.account_id = n.account_id
         JOIN bank_user u
           ON u.id = m.user_id
+        JOIN bank_account a
+          ON a.id = n.account_id
         LEFT JOIN notification_user_read_state r
           ON r.user_id = :userId
          AND r.notification_id = n.id
         WHERE m.user_id = :userId
           AND m.membership_status = 'ACTIVE'
           AND u.user_status = 'ACTIVE'
+          AND a.account_status IN ('ACTIVE', 'LOCKED')
           AND n.archived_at IS NULL
           AND r.archived_at IS NULL
           AND r.deleted_at IS NULL
@@ -159,7 +162,33 @@ public class JdbcNotificationInboxRepository
   @Override
   @Transactional(readOnly = true)
   public long countUnreadByUserId(long userId) {
-    return unreadProjectionCount(USER_SCOPE, userId);
+    // user unread projection은 account_status 축이 없어 CLOSED 전환 직후에는 exact count로 보정합니다.
+    Long unreadCount =
+        jdbcTemplate.queryForObject(
+            """
+            SELECT COUNT(*)
+            FROM notification_inbox n
+            JOIN user_account_membership m
+              ON m.account_id = n.account_id
+            JOIN bank_user u
+              ON u.id = m.user_id
+            JOIN bank_account a
+              ON a.id = n.account_id
+            LEFT JOIN notification_user_read_state r
+              ON r.user_id = :userId
+             AND r.notification_id = n.id
+            WHERE m.user_id = :userId
+              AND m.membership_status = 'ACTIVE'
+              AND u.user_status = 'ACTIVE'
+              AND a.account_status IN ('ACTIVE', 'LOCKED')
+              AND n.archived_at IS NULL
+              AND r.read_at IS NULL
+              AND r.archived_at IS NULL
+              AND r.deleted_at IS NULL
+            """,
+            new MapSqlParameterSource().addValue("userId", userId),
+            Long.class);
+    return unreadCount == null ? 0L : unreadCount;
   }
 
   @Override
@@ -708,9 +737,12 @@ public class JdbcNotificationInboxRepository
               ON m.account_id = n.account_id
             JOIN bank_user u
               ON u.id = m.user_id
+            JOIN bank_account a
+              ON a.id = n.account_id
             WHERE m.user_id = :userId
               AND m.membership_status = 'ACTIVE'
               AND u.user_status = 'ACTIVE'
+              AND a.account_status IN ('ACTIVE', 'LOCKED')
               AND n.archived_at IS NULL
               AND n.id IN (:notificationIds)
         ),
@@ -755,9 +787,12 @@ public class JdbcNotificationInboxRepository
                   ON m.account_id = n.account_id
                 JOIN bank_user u
                   ON u.id = m.user_id
+                JOIN bank_account a
+                  ON a.id = n.account_id
                 WHERE m.user_id = :userId
                   AND m.membership_status = 'ACTIVE'
                   AND u.user_status = 'ACTIVE'
+                  AND a.account_status IN ('ACTIVE', 'LOCKED')
                   AND n.archived_at IS NULL
                   AND n.id IN (:notificationIds)
             ),
@@ -809,9 +844,12 @@ public class JdbcNotificationInboxRepository
                   ON m.account_id = n.account_id
                 JOIN bank_user u
                   ON u.id = m.user_id
+                JOIN bank_account a
+                  ON a.id = n.account_id
                 WHERE m.user_id = :userId
                   AND m.membership_status = 'ACTIVE'
                   AND u.user_status = 'ACTIVE'
+                  AND a.account_status IN ('ACTIVE', 'LOCKED')
                   AND n.archived_at IS NULL
                   AND n.id IN (:notificationIds)
             ),
@@ -1102,12 +1140,15 @@ public class JdbcNotificationInboxRepository
               ON m.account_id = n.account_id
             JOIN bank_user u
               ON u.id = m.user_id
+            JOIN bank_account a
+              ON a.id = n.account_id
             LEFT JOIN notification_user_read_state r
               ON r.user_id = :userId
              AND r.notification_id = n.id
             WHERE m.user_id = :userId
               AND m.membership_status = 'ACTIVE'
               AND u.user_status = 'ACTIVE'
+              AND a.account_status IN ('ACTIVE', 'LOCKED')
               AND n.archived_at IS NULL
               AND r.archived_at IS NULL
               AND r.deleted_at IS NULL

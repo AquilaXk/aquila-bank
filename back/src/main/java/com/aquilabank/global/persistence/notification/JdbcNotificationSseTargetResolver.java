@@ -26,9 +26,12 @@ public class JdbcNotificationSseTargetResolver implements NotificationSseTargetR
         FROM user_account_membership m
         JOIN bank_user u
           ON u.id = m.user_id
+        JOIN bank_account a
+          ON a.id = m.account_id
         WHERE m.account_id = :accountId
           AND m.membership_status = 'ACTIVE'
           AND u.user_status = 'ACTIVE'
+          AND a.account_status IN ('ACTIVE', 'LOCKED')
         ORDER BY m.user_id
         """,
         new MapSqlParameterSource().addValue("accountId", accountId),

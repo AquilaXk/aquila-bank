@@ -18,6 +18,7 @@ import com.aquilabank.global.security.AuthenticatedAccountPrincipal;
 import com.aquilabank.global.security.AuthenticatedRequestPrincipal;
 import com.aquilabank.global.security.AuthenticatedUserPrincipal;
 import com.aquilabank.global.web.security.CurrentAuthenticatedPrincipal;
+import com.aquilabank.global.web.security.RequestAccountAuthorizationService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Positive;
@@ -59,6 +60,7 @@ public class NotificationController {
   private final NotificationPreferenceReadUseCase notificationPreferenceReadUseCase;
   private final NotificationPreferenceUpdateUseCase notificationPreferenceUpdateUseCase;
   private final NotificationSseBroker notificationSseBroker;
+  private final RequestAccountAuthorizationService requestAccountAuthorizationService;
   private final Clock notificationSearchClock;
 
   public NotificationController(
@@ -69,6 +71,7 @@ public class NotificationController {
       NotificationPreferenceReadUseCase notificationPreferenceReadUseCase,
       NotificationPreferenceUpdateUseCase notificationPreferenceUpdateUseCase,
       NotificationSseBroker notificationSseBroker,
+      RequestAccountAuthorizationService requestAccountAuthorizationService,
       @Qualifier("notificationSearchClock") Clock notificationSearchClock) {
     this.notificationQueryUseCase = notificationQueryUseCase;
     this.notificationReadUseCase = notificationReadUseCase;
@@ -77,6 +80,7 @@ public class NotificationController {
     this.notificationPreferenceReadUseCase = notificationPreferenceReadUseCase;
     this.notificationPreferenceUpdateUseCase = notificationPreferenceUpdateUseCase;
     this.notificationSseBroker = notificationSseBroker;
+    this.requestAccountAuthorizationService = requestAccountAuthorizationService;
     this.notificationSearchClock = notificationSearchClock;
   }
 
@@ -224,8 +228,10 @@ public class NotificationController {
       return notificationQueryUseCase.getNotificationsForUser(userPrincipal.userId(), query);
     }
     if (principal instanceof AuthenticatedAccountPrincipal accountPrincipal) {
-      return notificationQueryUseCase.getNotificationsForAccount(
-          accountPrincipal.accountId(), query);
+      long accountId =
+          requestAccountAuthorizationService.resolveReadableAccountId(
+              principal, accountPrincipal.accountId());
+      return notificationQueryUseCase.getNotificationsForAccount(accountId, query);
     }
     throw new IllegalArgumentException("unsupported principal type");
   }
@@ -235,7 +241,10 @@ public class NotificationController {
       return notificationQueryUseCase.getUnreadCountForUser(userPrincipal.userId());
     }
     if (principal instanceof AuthenticatedAccountPrincipal accountPrincipal) {
-      return notificationQueryUseCase.getUnreadCountForAccount(accountPrincipal.accountId());
+      long accountId =
+          requestAccountAuthorizationService.resolveReadableAccountId(
+              principal, accountPrincipal.accountId());
+      return notificationQueryUseCase.getUnreadCountForAccount(accountId);
     }
     throw new IllegalArgumentException("unsupported principal type");
   }
@@ -247,7 +256,10 @@ public class NotificationController {
       return notificationSearchUseCase.searchForUser(userPrincipal.userId(), query);
     }
     if (principal instanceof AuthenticatedAccountPrincipal accountPrincipal) {
-      return notificationSearchUseCase.searchForAccount(accountPrincipal.accountId(), query);
+      long accountId =
+          requestAccountAuthorizationService.resolveReadableAccountId(
+              principal, accountPrincipal.accountId());
+      return notificationSearchUseCase.searchForAccount(accountId, query);
     }
     throw new IllegalArgumentException("unsupported principal type");
   }
@@ -258,7 +270,10 @@ public class NotificationController {
       return;
     }
     if (principal instanceof AuthenticatedAccountPrincipal accountPrincipal) {
-      notificationReadUseCase.markAsReadForAccount(accountPrincipal.accountId(), notificationId);
+      long accountId =
+          requestAccountAuthorizationService.resolveReadableAccountId(
+              principal, accountPrincipal.accountId());
+      notificationReadUseCase.markAsReadForAccount(accountId, notificationId);
       return;
     }
     throw new IllegalArgumentException("unsupported principal type");
@@ -271,7 +286,10 @@ public class NotificationController {
       return;
     }
     if (principal instanceof AuthenticatedAccountPrincipal accountPrincipal) {
-      notificationBulkActionUseCase.markAsReadForAccount(accountPrincipal.accountId(), command);
+      long accountId =
+          requestAccountAuthorizationService.resolveReadableAccountId(
+              principal, accountPrincipal.accountId());
+      notificationBulkActionUseCase.markAsReadForAccount(accountId, command);
       return;
     }
     throw new IllegalArgumentException("unsupported principal type");
@@ -284,7 +302,10 @@ public class NotificationController {
       return;
     }
     if (principal instanceof AuthenticatedAccountPrincipal accountPrincipal) {
-      notificationBulkActionUseCase.archiveForAccount(accountPrincipal.accountId(), command);
+      long accountId =
+          requestAccountAuthorizationService.resolveReadableAccountId(
+              principal, accountPrincipal.accountId());
+      notificationBulkActionUseCase.archiveForAccount(accountId, command);
       return;
     }
     throw new IllegalArgumentException("unsupported principal type");
@@ -297,7 +318,10 @@ public class NotificationController {
       return;
     }
     if (principal instanceof AuthenticatedAccountPrincipal accountPrincipal) {
-      notificationBulkActionUseCase.deleteForAccount(accountPrincipal.accountId(), command);
+      long accountId =
+          requestAccountAuthorizationService.resolveReadableAccountId(
+              principal, accountPrincipal.accountId());
+      notificationBulkActionUseCase.deleteForAccount(accountId, command);
       return;
     }
     throw new IllegalArgumentException("unsupported principal type");
@@ -316,8 +340,11 @@ public class NotificationController {
           userPrincipal.userId(), userPrincipal.subject(), lastEventId);
     }
     if (principal instanceof AuthenticatedAccountPrincipal accountPrincipal) {
+      long accountId =
+          requestAccountAuthorizationService.resolveReadableAccountId(
+              principal, accountPrincipal.accountId());
       return notificationSseBroker.subscribeAccount(
-          accountPrincipal.accountId(), accountPrincipal.subject(), lastEventId);
+          accountId, accountPrincipal.subject(), lastEventId);
     }
     throw new IllegalArgumentException("unsupported principal type");
   }
