@@ -299,6 +299,10 @@ set +a
   - `aquila_auth_throttling_reject_count_total{entry_point="login|password_recovery",scope="ip|global",store="memory|redis"}`
   - `aquila_auth_current_session_gate_reject_count_total{reason_code="MISSING_SESSION_ID|INACTIVE_OR_MISMATCHED_SESSION"}`
   - `aquila_auth_refresh_token_reuse_detected_count_total{reason_code="ROTATED_TOKEN_REUSE"}`
+  - `aquila_api_admission_requests_total{group="transaction-read|account-read|transfer-write|notification-stream|notification-read|internal-ops",outcome="accepted|rejected"}`
+  - `aquila_api_admission_inflight{group="transaction-read|account-read|transfer-write|notification-stream|notification-read|internal-ops"}`
+  - `aquila_t3micro_saturation_guard_requests_total{outcome="accepted|rejected"}`
+  - `aquila_t3micro_saturation_guard_saturated`
   - `aquila_t3micro_saturation_guard_query_timeouts_total`
   - `aquila_transaction_query_latency_seconds`
 - DB saturation metric:
@@ -310,6 +314,8 @@ set +a
   - current session gate reject counter는 민감 mutation에서 legacy JWT `session_id` 누락 또는 inactive/mismatch session 차단이 발생하면 증가합니다.
   - auth throttling reject metric은 login/password recovery edge 직전 reject가 발생하면 `entry_point`, `scope`, `store` tag 기준으로 증가합니다.
   - refresh token reuse metric은 `ROTATED` refresh token 재사용 감지와 family revoke가 발생하면 증가합니다.
+  - admission control metric은 MVC edge에서 path group별 accepted/rejected와 in-flight를 바로 기록합니다.
+  - t3 saturation guard request/saturated metric은 protected path fail-fast 여부를 기록하고, query timeout counter는 DB timeout 신호를 따로 누적합니다.
   - t3.micro query timeout counter는 backend query timeout exception이 발생하면 증가합니다.
   - Hikari pool metric은 Spring Boot/Micrometer 기본 binder와 `aquila-bank-pool` pool tag 기준으로 export 됩니다.
   - Postgres exporter `pg_stat_statements_*`는 `pg_stat_statements` extension과 collector 활성화가 필요합니다.
@@ -339,6 +345,9 @@ set +a
   - current session gate alert rollback은 `AquilaCurrentSessionActiveGateRejectDetected` rule 제거 또는 threshold/`for` 시간 조정으로 수행하고, API 응답 계약은 그대로 유지합니다.
   - refresh token reuse metric label은 `reason_code`만 사용하고, `requestId`, `userId`, `reusedSessionId`, `familyRootId`는 structured audit log에서만 확인합니다.
   - `AquilaRefreshTokenReuseDetected` alert는 공격성 재사용 후보입니다. 같은 시간대 `requestId`로 `auth refresh token reuse detected` log를 조회하고 `reusedSessionId`, `familyRootId`, `revokedCount`를 먼저 확인합니다.
+  - admission control metric label은 `group`, `outcome`만 사용하고 IP/path/requestId는 edge log나 app log에서 drill-down 합니다.
+  - `AquilaApiAdmissionRejectBurstDetected`는 endpoint group reject burst를 의미합니다. 같은 시간대 `aquila_api_admission_inflight`, auth/Nginx throttling, t3 saturation signal을 같이 봅니다.
+  - `AquilaT3MicroSaturationRejectDetected`는 protected path fail-fast가 실제로 발생한 상태입니다. pool pending/active, servlet busy, query timeout, slow query를 같은 시간대에서 바로 확인합니다.
   - auth throttling alert rollback은 `AquilaAuthThrottlingRejectBurstDetected` rule 제거 또는 threshold/`for` 시간 조정으로 수행하고, auth API 응답 계약은 그대로 유지합니다.
   - p95 alert는 `query_shape`별 5분 rate가 충분할 때만 평가해 low traffic 노이즈를 줄입니다.
   - `AquilaDbPoolPendingWaitDetected`는 Hikari pending connection이 남은 상태라 lock wait, slow query, DB CPU, transaction p95를 같은 시간대에서 같이 확인합니다.
@@ -347,6 +356,7 @@ set +a
   - `AquilaPostgresLockWaitDetected`는 Postgres exporter custom metric이 있을 때만 동작합니다. alert label에는 query text/pid/user/requestId를 올리지 않고 DB drill-down에서 확인합니다.
   - `AquilaPostgresSlowQueryDetected`는 `pg_stat_statements` database-level 평균이 750ms를 넘는지 보는 coarse guard입니다. query별 확인은 `queryid` 기준으로 별도 조회합니다.
   - refresh token reuse alert rollback은 `AquilaRefreshTokenReuseDetected` rule 제거 또는 notification routing 비활성화로 수행하고, refresh API 응답 계약은 그대로 유지합니다.
+  - admission/t3 guard alert rollback은 `AquilaApiAdmissionRejectBurstDetected`, `AquilaT3MicroSaturationRejectDetected` rule 제거 또는 threshold/`for` 시간 조정으로 수행합니다.
   - histogram bucket/alert rollback은 `management.metrics.distribution.*.aquila.transaction.query.latency`와 `AquilaTransactionQueryLatencyP95SloHigh` rule 제거로 수행합니다.
   - DB saturation alert rollback은 `ops/prometheus/rules/aquila-bank-alerts.yml`의 `aquila-bank-postgres` group 제거 또는 threshold/`for` 시간 조정으로 수행합니다.
   - baseline 자산은 `ops/prometheus/` 아래에 두고 dashboard import, alert rule apply, tuning 가이드는 `ops/prometheus/README.md`를 기준으로 봅니다.

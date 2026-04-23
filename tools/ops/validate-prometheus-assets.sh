@@ -30,8 +30,14 @@ for provisioning_file in \
   fi
 done
 
-jq -e '.uid == "aquila-bank-overview" and (.panels | type == "array" and length >= 8)' \
-  "${DASHBOARD_FILE}" >/dev/null
+jq -e '
+  .uid == "aquila-bank-overview"
+  and (.panels | type == "array" and length >= 8)
+  and any(.panels[]?.targets[]?.expr?; contains("aquila_api_admission_requests_total"))
+  and any(.panels[]?.targets[]?.expr?; contains("aquila_api_admission_inflight"))
+  and any(.panels[]?.targets[]?.expr?; contains("aquila_t3micro_saturation_guard_requests_total"))
+  and any(.panels[]?.targets[]?.expr?; contains("aquila_t3micro_saturation_guard_saturated"))
+' "${DASHBOARD_FILE}" >/dev/null
 
 jq -e '[.panels[] | .targets // [] | .[]? | .expr] | any(.[]; contains("aquila_auth_throttling_reject_count_total"))' \
   "${DASHBOARD_FILE}" >/dev/null
@@ -71,6 +77,11 @@ end
 
 {
   "AquilaAuthThrottlingRejectBurstDetected" => ["aquila_auth_throttling_reject_count_total"],
+  "AquilaApiAdmissionRejectBurstDetected" => ["aquila_api_admission_requests_total"],
+  "AquilaT3MicroSaturationRejectDetected" => [
+    "aquila_t3micro_saturation_guard_requests_total",
+    "aquila_t3micro_saturation_guard_saturated"
+  ],
   "AquilaDbPoolPendingWaitDetected" => ["hikaricp_connections_pending"],
   "AquilaDbPoolActivePressureHigh" => ["hikaricp_connections_active", "hikaricp_connections_max"],
   "AquilaDbQueryTimeoutDetected" => ["aquila_t3micro_saturation_guard_query_timeouts_total"],
