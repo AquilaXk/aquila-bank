@@ -20,6 +20,9 @@ COLD_FROM="${COLD_FROM:-}"
 COLD_TO="${COLD_TO:-}"
 HOT_P95_THRESHOLD_MS="${HOT_P95_THRESHOLD_MS:-350}"
 COLD_P95_THRESHOLD_MS="${COLD_P95_THRESHOLD_MS:-750}"
+PLANNER_STATS_GUARD_SCRIPT="${PLANNER_STATS_GUARD_SCRIPT:-tools/ops/transaction-read-model-planner-stats-freshness-guard.sh}"
+PLANNER_STATS_MAX_AGE_HOURS="${PLANNER_STATS_MAX_AGE_HOURS:-24}"
+PLANNER_STATS_MAX_MODIFIED_RATIO="${PLANNER_STATS_MAX_MODIFIED_RATIO:-0.05}"
 
 fail() {
   echo "::error::$*" >&2
@@ -44,6 +47,15 @@ require_positive_integer() {
   local name="$1"
   local value="${!name:-}"
   [[ "$value" =~ ^[1-9][0-9]*$ ]] || fail "${name} must be a positive integer"
+}
+
+require_ratio_between_zero_and_one() {
+  local name="$1"
+  local value="${!name:-}"
+
+  [[ "$value" =~ ^([0-9]+([.][0-9]+)?|[.][0-9]+)$ ]] || fail "${name} must be a decimal ratio between 0 and 1"
+  awk -v value="$value" 'BEGIN { exit !(value > 0 && value < 1) }' \
+    || fail "${name} must be greater than 0 and less than 1"
 }
 
 psql_scalar() {
@@ -76,12 +88,26 @@ validate_inputs() {
   require_positive_integer COLD_ACCOUNT_ID
   require_positive_integer HOT_P95_THRESHOLD_MS
   require_positive_integer COLD_P95_THRESHOLD_MS
+  require_positive_integer PLANNER_STATS_MAX_AGE_HOURS
+  require_ratio_between_zero_and_one PLANNER_STATS_MAX_MODIFIED_RATIO
 
   if [ "$PAGE_LIMIT" -gt 100 ]; then
     fail "PAGE_LIMIT must be 100 or less"
   fi
 
+  [ -x "$PLANNER_STATS_GUARD_SCRIPT" ] || fail "Planner stats guard script is not executable: ${PLANNER_STATS_GUARD_SCRIPT}"
+
   STAGING_BASE_URL="${STAGING_BASE_URL%/}"
+}
+
+run_planner_stats_guard() {
+  # `reltuples` estimate는 stale stats에 취약해서 replay 전에 ANALYZE 필요 여부를 먼저 차단합니다.
+  if ! DATABASE_URL="$STAGING_RDS_DATABASE_URL" \
+    STATS_MAX_AGE_HOURS="$PLANNER_STATS_MAX_AGE_HOURS" \
+    STATS_MAX_MODIFIED_RATIO="$PLANNER_STATS_MAX_MODIFIED_RATIO" \
+    "$PLANNER_STATS_GUARD_SCRIPT"; then
+    fail "Planner stats freshness guard failed. Run ANALYZE on reported tables before replay."
+  fi
 }
 
 verify_staging_distribution() {
@@ -291,6 +317,7 @@ write_summary() {
 main() {
   mkdir -p "$REPORT_DIR"
   validate_inputs
+  run_planner_stats_guard
   verify_staging_distribution
   run_replay
   write_summary
