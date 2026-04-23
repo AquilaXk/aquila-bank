@@ -90,6 +90,21 @@ jobs:
 
           echo "hook_configured=true" >> "${GITHUB_OUTPUT}"
 
+      - name: Run Alertmanager receiver secret smoke
+        if: steps.validate.outputs.should_deploy == 'true' && steps.hook_config.outputs.hook_configured == 'true'
+        env:
+          ALERTMANAGER_RECEIVER_SECRET_SMOKE_ENVIRONMENT: staging
+          ALERTMANAGER_RECEIVER_SLACK_ENABLED: ${{ secrets.ALERTMANAGER_RECEIVER_SLACK_ENABLED }}
+          ALERTMANAGER_RECEIVER_SLACK_WEBHOOK_URL: ${{ secrets.ALERTMANAGER_RECEIVER_SLACK_WEBHOOK_URL }}
+          ALERTMANAGER_RECEIVER_PAGERDUTY_ENABLED: ${{ secrets.ALERTMANAGER_RECEIVER_PAGERDUTY_ENABLED }}
+          ALERTMANAGER_RECEIVER_PAGERDUTY_ROUTING_KEY: ${{ secrets.ALERTMANAGER_RECEIVER_PAGERDUTY_ROUTING_KEY }}
+          ALERTMANAGER_RECEIVER_WEBHOOK_ENABLED: ${{ secrets.ALERTMANAGER_RECEIVER_WEBHOOK_ENABLED }}
+          ALERTMANAGER_RECEIVER_WEBHOOK_URL: ${{ secrets.ALERTMANAGER_RECEIVER_WEBHOOK_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tools/ops/validate-alertmanager-receiver-secrets.sh
+
       - name: Create staging deployment
         id: deployment
         if: steps.validate.outputs.should_deploy == 'true' && steps.hook_config.outputs.hook_configured == 'true'

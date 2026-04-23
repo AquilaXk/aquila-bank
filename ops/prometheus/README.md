@@ -125,12 +125,34 @@ cp ops/prometheus/rules/aquila-bank-alerts.yml /etc/prometheus/rules/
 
 Alertmanager baseline receiver는 route 구조만 고정하며 실제 Slack/PagerDuty/Webhook URL은 저장소에 두지 않습니다. 운영 환경에서는 `aquila-bank-critical`, `aquila-bank-warning` receiver에 환경별 notification config를 추가합니다.
 
+배포 전 secret smoke는 아래 env/secret 이름을 기준으로 실제 receiver 구성을 확인합니다.
+
+- 공통:
+  - `ALERTMANAGER_RECEIVER_SLACK_ENABLED`
+  - `ALERTMANAGER_RECEIVER_PAGERDUTY_ENABLED`
+  - `ALERTMANAGER_RECEIVER_WEBHOOK_ENABLED`
+- Slack:
+  - `ALERTMANAGER_RECEIVER_SLACK_WEBHOOK_URL`
+- PagerDuty:
+  - `ALERTMANAGER_RECEIVER_PAGERDUTY_ROUTING_KEY`
+- Webhook:
+  - `ALERTMANAGER_RECEIVER_WEBHOOK_URL`
+
+규칙은 단순합니다.
+
+- staging/production 배포 전에는 최소 한 개 이상의 실제 receiver를 `enabled=true`로 둡니다.
+- `enabled=true`인 receiver는 해당 secret이 비어 있으면 fail-fast 합니다.
+- receiver를 쓰지 않으면 `enabled=false`로 두고 secret은 비워 둡니다.
+- secret 값은 저장소에 기록하지 않고 GitHub Environment secret 또는 동등한 runtime secret으로만 주입합니다.
+
 ## Validation
 
 로컬 baseline 자산 문법 확인은 아래 스크립트로 먼저 닫습니다.
 
 ```bash
 bash tools/ops/validate-prometheus-assets.sh
+tools/test/run-alertmanager-receiver-secret-smoke.sh
+tools/test/run-alertmanager-receiver-secret-workflow-gate.sh
 ```
 
 - dashboard JSON은 `uid`, panel 개수, JSON syntax를 같이 확인합니다.
@@ -138,6 +160,7 @@ bash tools/ops/validate-prometheus-assets.sh
 - Prometheus provisioning은 rule file, Alertmanager target, backend/Postgres scrape job을 확인합니다.
 - Grafana provisioning은 datasource uid/type과 dashboard provider path를 확인합니다.
 - Alertmanager routing은 severity grouping과 critical/warning receiver route를 확인합니다.
+- receiver secret smoke는 실제 sink enable/secret 누락을 fail-fast로 확인합니다.
 - 실제 Prometheus 적용 전에는 여기에 더해 `promtool check rules`를 추가로 수행합니다.
 
 ## Threshold Tuning
