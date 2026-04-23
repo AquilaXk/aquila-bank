@@ -41,7 +41,8 @@ class NotificationChannelProviderWorkerServiceTest {
             Clock.fixed(NOW, ZoneOffset.UTC),
             20,
             Duration.ofSeconds(5),
-            Duration.ofSeconds(60));
+            Duration.ofSeconds(60),
+            10);
   }
 
   @Test
@@ -80,6 +81,29 @@ class NotificationChannelProviderWorkerServiceTest {
     service.dispatchDueDeliveries();
 
     verify(dispatchPort).markFailed(3L, NOW.plusSeconds(60), NOW, "provider saturated");
+  }
+
+  @Test
+  void quarantinesItemWhenNextFailureReachesMaxRetryAttempts() {
+    service =
+        new NotificationChannelProviderWorkerService(
+            dispatchPort,
+            providerPort,
+            Clock.fixed(NOW, ZoneOffset.UTC),
+            20,
+            Duration.ofSeconds(5),
+            Duration.ofSeconds(60),
+            3);
+    NotificationChannelOutboxItem item = item(4L, 2);
+    when(dispatchPort.claimPending(20, NOW)).thenReturn(List.of(item));
+    doThrow(new IllegalStateException("provider rejected")).when(providerPort).send(item);
+
+    service.dispatchDueDeliveries();
+
+    verify(dispatchPort).markQuarantined(4L, NOW, "provider rejected");
+    verify(dispatchPort, never())
+        .markFailed(eq(4L), eq(NOW.plusSeconds(20)), eq(NOW), eq("provider rejected"));
+    verify(dispatchPort, never()).markSent(4L, NOW);
   }
 
   private NotificationChannelOutboxItem item(long id, int retryCount) {

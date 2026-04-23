@@ -8,6 +8,13 @@
   - `grafana/aquila-bank-overview.json`
 - alert rule:
   - `rules/aquila-bank-alerts.yml`
+- Prometheus provisioning:
+  - `prometheus.yml`
+- Grafana provisioning:
+  - `grafana/provisioning/datasources/prometheus.yml`
+  - `grafana/provisioning/dashboards/aquila-bank.yml`
+- Alertmanager routing:
+  - `alertmanager/alertmanager.yml`
 
 ## Dashboard Baseline
 
@@ -100,6 +107,24 @@ cp ops/prometheus/rules/aquila-bank-alerts.yml /etc/prometheus/rules/
 
 그 다음 `promtool check rules` 또는 동등한 검증 후 Prometheus reload를 수행합니다.
 
+## Provisioning Apply
+
+저장소 baseline은 runtime을 강제하지 않고, compose/Kubernetes/systemd 어디서든 같은 mount path로 적용할 수 있게 둡니다.
+
+- Prometheus:
+  - `ops/prometheus/prometheus.yml` -> `/etc/prometheus/prometheus.yml`
+  - `ops/prometheus/rules/aquila-bank-alerts.yml` -> `/etc/prometheus/rules/aquila-bank-alerts.yml`
+- Alertmanager:
+  - `ops/prometheus/alertmanager/alertmanager.yml` -> `/etc/alertmanager/alertmanager.yml`
+- Grafana:
+  - `ops/prometheus/grafana/provisioning/datasources/prometheus.yml` -> `/etc/grafana/provisioning/datasources/prometheus.yml`
+  - `ops/prometheus/grafana/provisioning/dashboards/aquila-bank.yml` -> `/etc/grafana/provisioning/dashboards/aquila-bank.yml`
+  - `ops/prometheus/grafana/aquila-bank-overview.json` -> `/var/lib/grafana/dashboards/aquila-bank/aquila-bank-overview.json`
+
+기본 service name은 `prometheus:9090`, `alertmanager:9093`, `aquila-bank-backend:8080`, `postgres-exporter:9187`입니다. 환경별 host, label, receiver sink는 overlay 또는 runtime secret으로 덮어씁니다.
+
+Alertmanager baseline receiver는 route 구조만 고정하며 실제 Slack/PagerDuty/Webhook URL은 저장소에 두지 않습니다. 운영 환경에서는 `aquila-bank-critical`, `aquila-bank-warning` receiver에 환경별 notification config를 추가합니다.
+
 ## Validation
 
 로컬 baseline 자산 문법 확인은 아래 스크립트로 먼저 닫습니다.
@@ -110,6 +135,9 @@ bash tools/ops/validate-prometheus-assets.sh
 
 - dashboard JSON은 `uid`, panel 개수, JSON syntax를 같이 확인합니다.
 - alert rule YAML은 group/rule/expr 존재 여부와 YAML syntax를 같이 확인합니다.
+- Prometheus provisioning은 rule file, Alertmanager target, backend/Postgres scrape job을 확인합니다.
+- Grafana provisioning은 datasource uid/type과 dashboard provider path를 확인합니다.
+- Alertmanager routing은 severity grouping과 critical/warning receiver route를 확인합니다.
 - 실제 Prometheus 적용 전에는 여기에 더해 `promtool check rules`를 추가로 수행합니다.
 
 ## Threshold Tuning
@@ -127,3 +155,4 @@ bash tools/ops/validate-prometheus-assets.sh
 - `AquilaCurrentSessionActiveGateRejectDetected`는 `reason_code`만 집계합니다. `requestId`, `userId`, `sessionId`, `path`는 cardinality 때문에 alert label로 올리지 않고 app structured log에서 drill-down합니다.
 - `AquilaRefreshTokenReuseDetected`는 공격성 재사용 후보라 critical baseline입니다. `requestId`, `userId`, `reusedSessionId`, `familyRootId`는 cardinality 때문에 alert label로 올리지 않고 app structured log에서 drill-down합니다.
 - DB saturation alert rollback은 `aquila-bank-postgres` group 제거 또는 해당 rule의 threshold/`for` 시간 조정으로 수행합니다. 앱 API 계약과 DB schema는 그대로 유지합니다.
+- provisioning rollback은 mount에서 해당 baseline 파일을 제거하거나 직전 runtime config로 되돌린 뒤 Prometheus/Grafana/Alertmanager를 reload합니다.

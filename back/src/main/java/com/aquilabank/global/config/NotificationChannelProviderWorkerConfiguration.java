@@ -1,7 +1,10 @@
 package com.aquilabank.global.config;
 
+import com.aquilabank.domain.notification.port.NotificationChannelOutboxCleanupPort;
 import com.aquilabank.domain.notification.port.NotificationChannelOutboxDispatchPort;
 import com.aquilabank.domain.notification.port.NotificationChannelProviderPort;
+import com.aquilabank.domain.notification.usecase.NotificationChannelOutboxCleanupService;
+import com.aquilabank.domain.notification.usecase.NotificationChannelOutboxCleanupUseCase;
 import com.aquilabank.domain.notification.usecase.NotificationChannelProviderWorkerService;
 import com.aquilabank.domain.notification.usecase.NotificationChannelProviderWorkerUseCase;
 import com.aquilabank.global.notification.LoggingNotificationChannelProvider;
@@ -16,7 +19,10 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 /** provider worker 설정과 domain use case wiring */
 @Configuration
 @EnableScheduling
-@EnableConfigurationProperties(NotificationChannelProviderWorkerProperties.class)
+@EnableConfigurationProperties({
+  NotificationChannelProviderWorkerProperties.class,
+  NotificationChannelOutboxCleanupProperties.class
+})
 public class NotificationChannelProviderWorkerConfiguration {
 
   @Bean
@@ -36,6 +42,18 @@ public class NotificationChannelProviderWorkerConfiguration {
         Clock.systemUTC(),
         properties.batchSize(),
         Duration.ofSeconds(properties.retryBaseDelaySeconds()),
-        Duration.ofSeconds(properties.maxRetryDelaySeconds()));
+        Duration.ofSeconds(properties.maxRetryDelaySeconds()),
+        properties.maxRetryAttempts());
+  }
+
+  @Bean
+  NotificationChannelOutboxCleanupUseCase notificationChannelOutboxCleanupUseCase(
+      NotificationChannelOutboxCleanupPort cleanupPort,
+      NotificationChannelOutboxCleanupProperties properties) {
+    return new NotificationChannelOutboxCleanupService(
+        cleanupPort,
+        Clock.systemUTC(),
+        Duration.ofDays(properties.retentionDays()),
+        properties.batchSize());
   }
 }
