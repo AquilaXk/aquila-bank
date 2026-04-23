@@ -581,7 +581,9 @@ tools/test/with-resource-lock.sh back-notification-provider-smoke \
 
 ### Nginx Reverse Proxy Baseline
 
-- 기준 파일: [ops/nginx/nginx.conf](/Users/aquila/Custom/GitProjects/aquila-bank/ops/nginx/nginx.conf)
+- template 기준 파일: [ops/nginx/nginx.conf](/Users/aquila/Custom/GitProjects/aquila-bank/ops/nginx/nginx.conf)
+- runtime env 예시: [ops/nginx/runtime.env.example](/Users/aquila/Custom/GitProjects/aquila-bank/ops/nginx/runtime.env.example)
+- render script: `bash tools/ops/render-nginx-runtime-config.sh /tmp/aquila-bank-nginx.conf ops/nginx/runtime.env.example`
 - upstream 기본값:
   - frontend `127.0.0.1:3000`
   - backend `127.0.0.1:8080`
@@ -600,9 +602,11 @@ tools/test/with-resource-lock.sh back-notification-provider-smoke \
 
 ```bash
 bash tools/test/check-nginx-sse-proxy.sh
+bash tools/test/run-nginx-runtime-template-gate.sh
 ```
 
 - backend가 이미 `X-Accel-Buffering: no` 헤더를 응답하므로 Nginx도 buffering off 상태를 같이 유지합니다.
+- `check-nginx-sse-proxy.sh`는 template directive drift만 확인하고, runtime render + `nginx -t`는 `run-nginx-runtime-template-gate.sh`에서 따로 검사합니다.
 - `NOTIFICATION_SSE_CONNECTION_TIMEOUT_MS` 또는 upstream 포트를 바꾸면 Nginx timeout/upstream도 같이 맞춥니다.
 - multi-node drain/reconnect runbook smoke는 아래 엔트리포인트를 사용합니다.
 
@@ -613,6 +617,7 @@ tools/test/run-sse-multinode-drain-smoke.sh
 - 위 script는 `check-nginx-sse-proxy.sh`, reconnect storm replay, `NotificationSseBrokerTest`를 한 runbook smoke로 묶습니다.
 - 기본 drain grace는 `5s`, reconnect delay baseline은 `3000ms` 입니다.
 - scheduled workflow `SSE Multi-Node Drain Smoke`는 매주 목요일 03:30 KST(`30 18 * * 3` UTC)와 manual `workflow_dispatch`를 지원합니다.
+- PR workflow `Nginx Runtime Gate`는 render + `nginx -t` strict gate를 수행합니다.
 - repository variable로 `SSE_MULTINODE_DRAIN_GRACE_SECONDS`, `SSE_RECONNECT_DELAY_MS`를 override 할 수 있습니다.
 
 ## Transfer Reversal

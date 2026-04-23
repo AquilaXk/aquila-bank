@@ -42,7 +42,7 @@
 
 - 로컬 개발: `Docker Compose + PostgreSQL 18 + Kafka`
 - 배포 환경: `EC2 + RDS PostgreSQL 18`
-- EC2 reverse proxy baseline은 [ops/nginx/nginx.conf](/Users/aquila/Custom/GitProjects/aquila-bank/ops/nginx/nginx.conf)에 둡니다.
+- EC2 reverse proxy baseline template은 [ops/nginx/nginx.conf](/Users/aquila/Custom/GitProjects/aquila-bank/ops/nginx/nginx.conf)에 두고, runtime 값은 `ops/nginx/runtime.env.example` 기반으로 렌더링합니다.
 - `compose.yml`은 로컬 개발 전용이며, 배포용 인프라 정의는 포함하지 않습니다.
 
 ## Delivery Flow

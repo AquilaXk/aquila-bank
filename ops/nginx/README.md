@@ -1,6 +1,6 @@
 # Nginx Reverse Proxy Baseline
 
-`ops/nginx/nginx.conf`는 frontend(`3000`)와 backend(`8080`)를 reverse proxy 하는 기준 파일입니다. 이번 baseline은 HTTPS 종료, exact `server_name`, API rate limit, multi-node load balancer와 SSE 라우팅 기준까지 포함합니다.
+`ops/nginx/nginx.conf`는 frontend(`3000`)와 backend(`8080`)를 reverse proxy 하는 template 기준 파일입니다. runtime 값은 `ops/nginx/runtime.env.example`과 `tools/ops/render-nginx-runtime-config.sh`로 렌더링하고, 최종 rendered config는 Git 추적 대상에 두지 않습니다.
 
 ## 포함 범위
 
@@ -14,12 +14,30 @@
 - API/SSE upstream 분리
 - multi-node backend pool placeholder
 
+## Runtime Render 기준
+
+- runtime env 예시는 `ops/nginx/runtime.env.example`에 둡니다.
+- 필수 env:
+  - `NGINX_SERVER_NAME`
+  - `NGINX_SSL_CERTIFICATE_PATH`
+  - `NGINX_SSL_CERTIFICATE_KEY_PATH`
+  - `NGINX_FRONTEND_SERVER`
+  - `NGINX_BACKEND_API_SERVERS`
+- `NGINX_BACKEND_SSE_SERVERS`를 비우면 API upstream과 같은 backend pool을 재사용합니다.
+- render 명령:
+
+```bash
+bash tools/ops/render-nginx-runtime-config.sh /tmp/aquila-bank-nginx.conf ops/nginx/runtime.env.example
+```
+
+- render script는 값 누락 시 fail-fast 하고, upstream server list를 multi-node CSV에서 `server ... max_fails=3 fail_timeout=5s;` block으로 풀어냅니다.
+
 ## TLS / `server_name` 기준
 
-- `server_name`은 `_` wildcard 대신 실제 FQDN 하나로 고정합니다. 기본값은 `bank.example.com` placeholder입니다.
+- `server_name`은 `_` wildcard 대신 실제 FQDN 하나로 고정합니다. template에서는 `${NGINX_SERVER_NAME}` placeholder를 사용합니다.
 - `listen 80`에서는 `/.well-known/acme-challenge/`와 `/actuator/health`만 예외로 두고 나머지는 `308`으로 HTTPS redirect 합니다.
 - `listen 443 ssl http2`에서 TLS termination을 수행합니다.
-- `ssl_certificate`, `ssl_certificate_key`는 placeholder 경로이므로 운영 적용 전에 실제 인증서 경로로 교체해야 합니다.
+- `ssl_certificate`, `ssl_certificate_key`는 `${NGINX_SSL_CERTIFICATE_PATH}`, `${NGINX_SSL_CERTIFICATE_KEY_PATH}`를 통해 runtime에서 채웁니다.
 - `return 308 https://$server_name$request_uri;`를 써서 요청 `Host` 헤더를 그대로 반사하지 않고 설정한 host 기준으로 redirect 합니다.
 
 ## Rate Limit 기준
@@ -64,8 +82,8 @@
 
 ## 운영 적용 전 확인
 
-- frontend/backend 포트가 기본값과 다르면 API/SSE upstream `server` 주소를 같이 수정합니다.
-- `bank.example.com`, `/etc/letsencrypt/live/...` placeholder는 실제 운영값으로 교체합니다.
+- frontend/backend 포트가 기본값과 다르면 runtime env의 upstream 값을 같이 수정합니다.
+- `bank.example.com`, `/etc/letsencrypt/live/...` 같은 예시 값은 `runtime.env`에서만 관리하고, rendered config는 artifact로만 사용합니다.
 - HTTP health probe가 필요 없으면 `listen 80`의 `/actuator/health` 예외도 HTTPS로 통일합니다.
 - multi-node로 확장할 때는 `aquila_bank_backend_api`와 `aquila_bank_backend_sse` 두 upstream에 같은 backend node 집합을 반영합니다.
 - 인스턴스 drain 시에는 대상 node를 upstream에서 제거한 뒤 reload 하고, client reconnect/pull 재동기화가 끝날 시간을 둡니다.
@@ -76,8 +94,11 @@
 
 ```bash
 bash tools/test/check-nginx-sse-proxy.sh
+bash tools/test/run-nginx-runtime-template-gate.sh
 tools/test/run-sse-multinode-drain-smoke.sh --print-plan
 tools/test/run-sse-multinode-drain-smoke.sh
 ```
 
-`nginx` binary와 실제 TLS 인증서 파일이 모두 있는 환경이면 위 smoke check가 추가로 `nginx -t`까지 수행합니다. placeholder 인증서 경로만 있는 상태에서는 directive smoke check까지만 수행합니다.
+- `check-nginx-sse-proxy.sh`는 template directive drift만 확인합니다.
+- `run-nginx-runtime-template-gate.sh`는 env render 후 unresolved placeholder를 막고, `nginx` binary가 있으면 `nginx -t`까지 수행합니다.
+- strict gate는 PR workflow `Nginx Runtime Gate`에서 `nginx`와 `openssl`을 설치한 뒤 같은 script를 `NGINX_RUNTIME_GATE_STRICT=true`로 실행합니다.

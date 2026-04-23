@@ -1,0 +1,48 @@
+name: Nginx Runtime Gate
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "ops/nginx/**"
+      - "tools/ops/**"
+      - "tools/test/**"
+      - ".github/workflows/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nginx-runtime-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: Render And Validate Nginx Runtime Config
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install nginx and openssl
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y nginx openssl
+
+      - name: Run directive smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tools/test/check-nginx-sse-proxy.sh
+
+      - name: Run runtime render gate
+        env:
+          NGINX_RUNTIME_GATE_STRICT: "true"
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tools/test/run-nginx-runtime-template-gate.sh
