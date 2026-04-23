@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.aquilabank.domain.auth.port.PasswordRecoveryDeliveryPort;
 import com.aquilabank.global.auth.LoggingPasswordRecoveryDeliveryAdapter;
 import com.aquilabank.global.auth.NoOpPasswordRecoveryDeliveryAdapter;
+import com.aquilabank.global.auth.WebhookPasswordRecoveryDeliveryAdapter;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
@@ -33,6 +34,21 @@ class PasswordRecoveryDeliveryConfigurationTest {
               assertThat(context).hasSingleBean(PasswordRecoveryDeliveryPort.class);
               assertThat(context).hasSingleBean(LoggingPasswordRecoveryDeliveryAdapter.class);
               assertThat(context).doesNotHaveBean(NoOpPasswordRecoveryDeliveryAdapter.class);
+            });
+  }
+
+  @Test
+  void createsWebhookDeliveryAdapterWhenProviderUrlIsConfigured() {
+    contextRunner
+        .withPropertyValues(
+            "auth.password-recovery.delivery.enabled=true",
+            "auth.password-recovery.delivery.email.url=https://email-provider.example/recovery")
+        .run(
+            context -> {
+              assertThat(context).hasSingleBean(PasswordRecoveryDeliveryPort.class);
+              assertThat(context).hasSingleBean(WebhookPasswordRecoveryDeliveryAdapter.class);
+              assertThat(context).doesNotHaveBean(NoOpPasswordRecoveryDeliveryAdapter.class);
+              assertThat(context).doesNotHaveBean(LoggingPasswordRecoveryDeliveryAdapter.class);
             });
   }
 }

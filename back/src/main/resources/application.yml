@@ -184,6 +184,14 @@ auth:
   password-recovery:
     delivery:
       enabled: ${AUTH_PASSWORD_RECOVERY_DELIVERY_ENABLED:false}
+      auth-header-name: ${AUTH_PASSWORD_RECOVERY_DELIVERY_AUTH_HEADER_NAME:Authorization}
+      auth-header-value: ${AUTH_PASSWORD_RECOVERY_DELIVERY_AUTH_HEADER_VALUE:}
+      connect-timeout-ms: ${AUTH_PASSWORD_RECOVERY_DELIVERY_CONNECT_TIMEOUT_MS:3000}
+      read-timeout-ms: ${AUTH_PASSWORD_RECOVERY_DELIVERY_READ_TIMEOUT_MS:5000}
+      email:
+        url: ${AUTH_PASSWORD_RECOVERY_DELIVERY_EMAIL_URL:}
+      sms:
+        url: ${AUTH_PASSWORD_RECOVERY_DELIVERY_SMS_URL:}
   refresh-token-session:
     cleanup:
       enabled: ${AUTH_REFRESH_TOKEN_SESSION_CLEANUP_ENABLED:true}
