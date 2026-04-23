@@ -25,6 +25,8 @@
   - notification consumer lag / DLQ count
   - SSE total session, account/user/total trend, reject/drop trend
   - auth throttling reject rate by `entry_point`, `scope`, `store`
+  - admission control decision rate / inflight by `group`
+  - t3 saturation guard request, saturated, query timeout trend
   - DB pool pending/active pressure, query timeout, Postgres lock/slow query signal
   - transaction query rate by `query_shape`
   - transaction p95 latency by `query_shape`
@@ -34,6 +36,8 @@
 - query 기준:
   - transaction stat latency는 `sum(rate(..._sum)) / sum(rate(..._count))` 평균값을 유지합니다.
   - transaction shape별 latency는 `aquila_transaction_query_latency_seconds_bucket`의 `histogram_quantile(0.95, ...)`를 사용합니다.
+  - admission control panel은 `aquila_api_admission_requests_total`, `aquila_api_admission_inflight`를 `group` 기준으로 나눠 봅니다.
+  - t3 saturation guard panel은 reject rate, saturated gauge, query timeout rate를 같은 시간축에 두고 fail-fast와 DB 전조를 같이 봅니다.
   - DB saturation panel은 Hikari pool metric과 Postgres exporter metric을 한 panel에 모아 p95 악화 전 전조를 먼저 봅니다.
   - notification lag panel은 topic label이 있을 때 topic별로 분리해 보여줍니다.
   - SSE reject/drop metric은 앱 재시작 전까지 누적되는 gauge 성격이므로 절대값 trend로만 봅니다.
@@ -47,7 +51,10 @@
    - `aquila_outbox_dispatch_lag_seconds`
    - `aquila_notification_consumer_lag_count`
    - `aquila_notification_sse_sessions`
-   - `aquila_auth_throttling_reject_count_total`
+  - `aquila_auth_throttling_reject_count_total`
+  - `aquila_api_admission_requests_total`
+  - `aquila_api_admission_inflight`
+  - `aquila_t3micro_saturation_guard_requests_total`
    - `aquila_transaction_query_latency_seconds_count`
    - `hikaricp_connections_pending`
    - `aquila_t3micro_saturation_guard_query_timeouts_total`
@@ -69,6 +76,9 @@
   - current session active gate reject rate `> 0` for `5m`
   - refresh token reuse detected rate `> 0` for `1m`
   - auth throttling reject increase `>= 5` for `10m`
+- runtime guard baseline:
+  - endpoint `group`별 admission reject increase `>= 5` for `10m`
+  - t3 saturation guard reject + saturated signal 동시 발생 for `5m`
 - Postgres/DB saturation baseline:
   - Hikari pending connection `> 0` for `5m`
   - Hikari active/max pool ratio `> 90%` for `10m`

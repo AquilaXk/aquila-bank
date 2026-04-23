@@ -140,6 +140,45 @@ groups:
           description: "login/password recovery throttling reject가 10분 window에서 5건 이상 누적됐습니다. entry_point, scope, store 축과 auth structured log를 같이 확인합니다."
           runbook_path: "back/README.md#prometheus-metrics"
 
+  - name: aquila-bank-runtime-guard
+    interval: 30s
+    rules:
+      - alert: AquilaApiAdmissionRejectBurstDetected
+        expr: |
+          sum by (group) (
+            increase(aquila_api_admission_requests_total{outcome="rejected"}[10m])
+          ) >= 5
+        for: 5m
+        labels:
+          severity: warning
+          service: aquila-bank
+          domain: runtime
+          signal: admission_reject
+          baseline: "true"
+        annotations:
+          summary: "Aquila Bank API admission rejects increased"
+          description: "endpoint group별 admission reject가 10분 동안 5건 이상입니다. 같은 group의 inflight, edge throttling, t3 saturation 신호를 같이 확인합니다."
+          runbook_path: "back/README.md#prometheus-metrics"
+
+      - alert: AquilaT3MicroSaturationRejectDetected
+        expr: |
+          max_over_time(aquila_t3micro_saturation_guard_saturated[5m]) >= 1
+          and
+          sum(
+            increase(aquila_t3micro_saturation_guard_requests_total{outcome="rejected"}[5m])
+          ) >= 1
+        for: 5m
+        labels:
+          severity: critical
+          service: aquila-bank
+          domain: runtime
+          signal: t3_saturation_guard
+          baseline: "true"
+        annotations:
+          summary: "Aquila Bank t3.micro saturation guard rejects requests"
+          description: "t3 saturation guard가 보호 경로를 실제로 차단했습니다. Hikari active/pending, servlet busy, query timeout, slow query를 같은 시간대에서 바로 확인합니다."
+          runbook_path: "back/README.md#prometheus-metrics"
+
   - name: aquila-bank-postgres
     interval: 30s
     rules:

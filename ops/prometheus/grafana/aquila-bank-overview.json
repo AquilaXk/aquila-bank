@@ -652,6 +652,127 @@
       ],
       "title": "Auth Throttling Reject Trend",
       "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 3,
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 36
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (group, outcome) (rate(aquila_api_admission_requests_total[5m]))",
+          "legendFormat": "{{group}} {{outcome}}_rate",
+          "refId": "A"
+        }
+      ],
+      "title": "Admission Control Decisions",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 3,
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 36
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "max by (group) (aquila_api_admission_inflight)",
+          "legendFormat": "{{group}} inflight",
+          "refId": "A"
+        }
+      ],
+      "title": "Admission Control Inflight",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 3,
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 44
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(aquila_t3micro_saturation_guard_requests_total[5m]))",
+          "legendFormat": "guard_{{outcome}}_rate",
+          "refId": "A"
+        },
+        {
+          "expr": "max(aquila_t3micro_saturation_guard_saturated)",
+          "legendFormat": "guard_saturated",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(rate(aquila_t3micro_saturation_guard_query_timeouts_total[5m]))",
+          "legendFormat": "query_timeout_rate",
+          "refId": "C"
+        }
+      ],
+      "title": "T3 Saturation Guard Signals",
+      "type": "timeseries"
     }
   ],
   "refresh": "30s",
