@@ -3,6 +3,15 @@ set -euo pipefail
 
 config_path="ops/nginx/nginx.conf"
 
+contains_pattern() {
+  local pattern="$1"
+  if command -v rg >/dev/null 2>&1; then
+    rg -F --quiet -- "$pattern" "$config_path"
+    return
+  fi
+  grep -Fq -- "$pattern" "$config_path"
+}
+
 if [[ ! -f "$config_path" ]]; then
   echo "[nginx-sse-check] missing config: $config_path" >&2
   exit 1
@@ -46,7 +55,7 @@ required_patterns=(
 )
 
 for pattern in "${required_patterns[@]}"; do
-  if ! rg -F --quiet "$pattern" "$config_path"; then
+  if ! contains_pattern "$pattern"; then
     echo "[nginx-sse-check] missing directive: $pattern" >&2
     exit 1
   fi
