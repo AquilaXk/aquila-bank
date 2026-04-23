@@ -11,6 +11,7 @@ fi
 required_patterns=(
   "limit_req_status 429;"
   "limit_req_zone \$binary_remote_addr zone=aquila_bank_api_per_ip:10m rate=30r/s;"
+  "limit_req_zone \$binary_remote_addr zone=aquila_bank_auth_per_ip:10m rate=5r/s;"
   "upstream aquila_bank_frontend"
   "server 127.0.0.1:3000;"
   "upstream aquila_bank_backend_api"
@@ -32,6 +33,10 @@ required_patterns=(
   "proxy_read_timeout 1900s;"
   "proxy_send_timeout 1900s;"
   "add_header X-Accel-Buffering no always;"
+  "location = /api/v1/auth/login"
+  "location = /api/v1/auth/refresh"
+  "location = /api/v1/auth/password-recovery/request"
+  "limit_req zone=aquila_bank_auth_per_ip burst=10 nodelay;"
   "location /api/"
   "proxy_pass http://aquila_bank_backend_api;"
   "limit_req zone=aquila_bank_api_per_ip burst=60 nodelay;"

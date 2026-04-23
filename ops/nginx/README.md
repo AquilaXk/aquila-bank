@@ -25,10 +25,14 @@
 ## Rate Limit 기준
 
 - `limit_req_zone $binary_remote_addr zone=aquila_bank_api_per_ip:10m rate=30r/s;`
-- `/api/`에만 `limit_req zone=aquila_bank_api_per_ip burst=60 nodelay;`를 적용합니다.
+- `limit_req_zone $binary_remote_addr zone=aquila_bank_auth_per_ip:10m rate=5r/s;`
+- `location = /api/v1/auth/login`, `location = /api/v1/auth/refresh`, `location = /api/v1/auth/password-recovery/request`에 `limit_req zone=aquila_bank_auth_per_ip burst=10 nodelay;`를 적용합니다.
+- auth exact location은 generic `/api/`보다 먼저 매칭되므로 두 zone을 중첩 적용하지 않습니다.
+- `/api/`에는 `limit_req zone=aquila_bank_api_per_ip burst=60 nodelay;`를 유지합니다.
 - `/api/v1/notifications/stream`은 장기 연결이라 일반 API와 성격이 달라 exact location으로 분리하고 rate limit 대상에서 제외합니다.
 - `429`는 Nginx에서 바로 반환해 backend thread/connection 소비를 줄이는 1차 가드로 둡니다.
-- 실제 서비스 트래픽 특성에 따라 `rate`와 `burst`는 조정하되, 로그인/토큰 재발급/SSE 재연결 패턴을 같이 확인합니다.
+- backend에는 login/password recovery throttling이 이미 있으므로, Nginx auth zone은 edge 1차 차단으로 보고 backend는 계정/IP 단위 2차 가드로 둡니다.
+- 실제 서비스 트래픽 특성에 따라 `rate`와 `burst`는 조정하되, 로그인/토큰 재발급/SSE 재연결 패턴과 shared IP 영향을 같이 확인합니다.
 
 ## Multi-Node Load Balancer 기준
 
