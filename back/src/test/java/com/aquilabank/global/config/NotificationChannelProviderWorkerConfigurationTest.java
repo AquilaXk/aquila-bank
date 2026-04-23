@@ -7,11 +7,14 @@ import static org.mockito.Mockito.mock;
 import com.aquilabank.domain.notification.port.NotificationChannelOutboxCleanupPort;
 import com.aquilabank.domain.notification.port.NotificationChannelOutboxDispatchPort;
 import com.aquilabank.domain.notification.port.NotificationChannelProviderPort;
+import com.aquilabank.domain.notification.port.NotificationChannelRecipientLookupPort;
 import com.aquilabank.domain.notification.usecase.NotificationChannelOutboxCleanupUseCase;
 import com.aquilabank.domain.notification.usecase.NotificationChannelProviderWorkerUseCase;
 import com.aquilabank.global.notification.LoggingNotificationChannelProvider;
 import com.aquilabank.global.notification.NotificationChannelOutboxCleanupPoller;
 import com.aquilabank.global.notification.NotificationChannelProviderWorkerPoller;
+import com.aquilabank.global.notification.WebhookNotificationChannelProvider;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
@@ -40,6 +43,25 @@ class NotificationChannelProviderWorkerConfigurationTest {
               LoggingNotificationChannelProvider.class,
               context.getBean(NotificationChannelProviderPort.class));
         });
+  }
+
+  @Test
+  void registersWebhookProviderWhenDeliveryIsEnabled() {
+    contextRunner
+        .withBean(
+            NotificationChannelRecipientLookupPort.class,
+            () -> userId -> java.util.Optional.of("alice@example.com"))
+        .withBean(ObjectMapper.class, () -> new ObjectMapper().findAndRegisterModules())
+        .withPropertyValues(
+            "notification.channel-provider.delivery.enabled=true",
+            "notification.channel-provider.delivery.email.url=https://email-provider.example/notifications")
+        .run(
+            context -> {
+              assertThat(context).hasSingleBean(NotificationChannelProviderPort.class);
+              assertInstanceOf(
+                  WebhookNotificationChannelProvider.class,
+                  context.getBean(NotificationChannelProviderPort.class));
+            });
   }
 
   @Test
