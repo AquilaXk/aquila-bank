@@ -11,6 +11,7 @@ import com.aquilabank.support.PostgresContainerTestSupport;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -156,6 +157,103 @@ class JdbcNotificationChannelOutboxRepositoryIntegrationTest extends PostgresCon
     assertThat(sentRow.deliveryStatus()).isEqualTo(NotificationChannelDeliveryStatus.SENT);
     assertThat(sentRow.sentAt()).isEqualTo(nextAttemptAt.plusSeconds(1));
     assertThat(sentRow.lastError()).isNull();
+  }
+
+  @Test
+  void quarantinesClaimedRowsAndRemovesThemFromDueQueue() {
+    long[] userId = new long[1];
+    long[] accountId = new long[1];
+    long[] notificationId = new long[1];
+    Instant base = Instant.parse("2026-04-22T03:00:00Z");
+    commit(
+        transactionManager,
+        () -> {
+          userId[0] = insertUser("channel-quarantine-user");
+          accountId[0] = insertAccount("channel quarantine account");
+          notificationId[0] =
+              insertNotification(
+                  accountId[0],
+                  "evt-channel-quarantine-email",
+                  "TransferBooked",
+                  "이체 완료",
+                  "1000 KRW 입금",
+                  base);
+        });
+    repository.appendAllIfAbsent(
+        List.of(
+            new NotificationChannelOutboxEntry(
+                notificationId[0],
+                userId[0],
+                accountId[0],
+                NotificationPreferenceCategory.TRANSACTIONAL,
+                NotificationPreferenceChannel.EMAIL,
+                "TransferBooked",
+                "evt-channel-quarantine-email",
+                "{\"kind\":\"transfer\",\"amount\":\"1000\"}",
+                base.minusSeconds(10),
+                base)));
+    NotificationChannelOutboxItem claimed = repository.claimPending(1, base).getFirst();
+    Instant quarantinedAt = base.plusSeconds(1);
+
+    repository.markQuarantined(claimed.id(), quarantinedAt, "provider rejected");
+
+    DeliveryRow row = findDeliveryRow(claimed.id());
+    assertThat(row.deliveryStatus()).isEqualTo(NotificationChannelDeliveryStatus.QUARANTINED);
+    assertThat(row.retryCount()).isEqualTo(1);
+    assertThat(row.lastError()).isEqualTo("provider rejected");
+    assertThat(row.updatedAt()).isEqualTo(quarantinedAt);
+    assertThat(repository.findPending(10, base.plusSeconds(3600))).isEmpty();
+  }
+
+  @Test
+  void deletesOnlyOldSentAndQuarantinedRowsWithinBatch() {
+    long[] userId = new long[1];
+    long[] accountId = new long[1];
+    Instant base = Instant.parse("2026-04-22T04:00:00Z");
+    commit(
+        transactionManager,
+        () -> {
+          userId[0] = insertUser("channel-cleanup-user");
+          accountId[0] = insertAccount("channel cleanup account");
+        });
+    List<NotificationChannelOutboxEntry> items = new ArrayList<>();
+    commit(
+        transactionManager,
+        () -> {
+          items.add(cleanupItem(userId[0], accountId[0], "evt-cleanup-old-sent", base));
+          items.add(cleanupItem(userId[0], accountId[0], "evt-cleanup-old-quarantine", base));
+          items.add(cleanupItem(userId[0], accountId[0], "evt-cleanup-recent-sent", base));
+          items.add(cleanupItem(userId[0], accountId[0], "evt-cleanup-pending", base));
+          items.add(cleanupItem(userId[0], accountId[0], "evt-cleanup-failed", base));
+        });
+    repository.appendAllIfAbsent(items);
+    Instant oldTime = base.minusSeconds(40L * 24 * 60 * 60);
+    Instant recentTime = base.minusSeconds(3L * 24 * 60 * 60);
+    commit(
+        transactionManager,
+        () -> {
+          updateDeliveryState(
+              "evt-cleanup-old-sent", NotificationChannelDeliveryStatus.SENT, oldTime, oldTime);
+          updateDeliveryState(
+              "evt-cleanup-old-quarantine",
+              NotificationChannelDeliveryStatus.QUARANTINED,
+              null,
+              oldTime);
+          updateDeliveryState(
+              "evt-cleanup-recent-sent",
+              NotificationChannelDeliveryStatus.SENT,
+              recentTime,
+              recentTime);
+          updateDeliveryState(
+              "evt-cleanup-failed", NotificationChannelDeliveryStatus.FAILED, null, oldTime);
+        });
+
+    int deleted = repository.deleteFinishedBefore(base.minusSeconds(30L * 24 * 60 * 60), 2);
+
+    assertThat(deleted).isEqualTo(2);
+    assertThat(findDeliveryEventKeys())
+        .containsExactlyInAnyOrder(
+            "evt-cleanup-recent-sent", "evt-cleanup-pending", "evt-cleanup-failed");
   }
 
   @Test
@@ -337,6 +435,55 @@ class JdbcNotificationChannelOutboxRepositoryIntegrationTest extends PostgresCon
     return notificationId;
   }
 
+  private NotificationChannelOutboxEntry cleanupItem(
+      long userId, long accountId, String eventKey, Instant base) {
+    long notificationId =
+        insertNotification(
+            accountId, eventKey, "TransferBooked", "이체 완료", eventKey + " message", base);
+    return new NotificationChannelOutboxEntry(
+        notificationId,
+        userId,
+        accountId,
+        NotificationPreferenceCategory.TRANSACTIONAL,
+        NotificationPreferenceChannel.EMAIL,
+        "TransferBooked",
+        eventKey,
+        "{\"kind\":\"cleanup\"}",
+        base.minusSeconds(10),
+        base);
+  }
+
+  private void updateDeliveryState(
+      String eventKey,
+      NotificationChannelDeliveryStatus status,
+      Instant sentAt,
+      Instant updatedAt) {
+    jdbcTemplate.update(
+        """
+        UPDATE notification_channel_outbox
+        SET delivery_status = :status,
+            sent_at = :sentAt,
+            updated_at = :updatedAt
+        WHERE event_key = :eventKey
+        """,
+        new MapSqlParameterSource()
+            .addValue("eventKey", eventKey)
+            .addValue("status", status.name())
+            .addValue("sentAt", sentAt == null ? null : Timestamp.from(sentAt))
+            .addValue("updatedAt", Timestamp.from(updatedAt)));
+  }
+
+  private List<String> findDeliveryEventKeys() {
+    return jdbcTemplate.queryForList(
+        """
+        SELECT event_key
+        FROM notification_channel_outbox
+        ORDER BY event_key ASC
+        """,
+        new MapSqlParameterSource(),
+        String.class);
+  }
+
   private DeliveryRow findDeliveryRow(long id) {
     return jdbcTemplate.queryForObject(
         """
@@ -344,7 +491,8 @@ class JdbcNotificationChannelOutboxRepositoryIntegrationTest extends PostgresCon
                available_at,
                sent_at,
                retry_count,
-               last_error
+               last_error,
+               updated_at
         FROM notification_channel_outbox
         WHERE id = :id
         """,
@@ -355,7 +503,8 @@ class JdbcNotificationChannelOutboxRepositoryIntegrationTest extends PostgresCon
                 rs.getObject("available_at", OffsetDateTime.class).toInstant(),
                 nullableInstant(rs.getObject("sent_at", OffsetDateTime.class)),
                 rs.getInt("retry_count"),
-                rs.getString("last_error")));
+                rs.getString("last_error"),
+                rs.getObject("updated_at", OffsetDateTime.class).toInstant()));
   }
 
   private Instant nullableInstant(OffsetDateTime value) {
@@ -367,5 +516,6 @@ class JdbcNotificationChannelOutboxRepositoryIntegrationTest extends PostgresCon
       Instant availableAt,
       Instant sentAt,
       int retryCount,
-      String lastError) {}
+      String lastError,
+      Instant updatedAt) {}
 }

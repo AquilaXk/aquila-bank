@@ -10,11 +10,13 @@ import com.aquilabank.domain.notification.model.NotificationSearchQuery;
 import com.aquilabank.domain.notification.model.NotificationSearchSlice;
 import com.aquilabank.domain.notification.model.NotificationSlice;
 import com.aquilabank.domain.notification.model.NotificationSummary;
+import com.aquilabank.domain.notification.model.NotificationUnreadProjectionReconcileResult;
 import com.aquilabank.domain.notification.port.NotificationInboxAppendPort;
 import com.aquilabank.domain.notification.port.NotificationInboxCleanupPort;
 import com.aquilabank.domain.notification.port.NotificationInboxReadPort;
 import com.aquilabank.domain.notification.port.NotificationInboxSearchPort;
 import com.aquilabank.domain.notification.port.NotificationInboxWritePort;
+import com.aquilabank.domain.notification.port.NotificationUnreadProjectionReconcilePort;
 import com.aquilabank.global.notification.NotificationInboxInsertedEvent;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -39,7 +41,8 @@ public class JdbcNotificationInboxRepository
         NotificationInboxSearchPort,
         NotificationInboxWritePort,
         NotificationInboxAppendPort,
-        NotificationInboxCleanupPort {
+        NotificationInboxCleanupPort,
+        NotificationUnreadProjectionReconcilePort {
 
   private static final String ACCOUNT_SCOPE = "ACCOUNT";
   private static final String USER_SCOPE = "USER";
@@ -316,6 +319,84 @@ public class JdbcNotificationInboxRepository
                 .addValue("batchSize", batchSize),
             Integer.class);
     return deleted == null ? 0 : deleted;
+  }
+
+  @Override
+  @Transactional
+  public NotificationUnreadProjectionReconcileResult reconcileUnreadProjection() {
+    // ACCOUNT는 inbox row, USER는 per-user 상태를 source-of-truth로 다시 계산합니다.
+    return jdbcTemplate.queryForObject(
+        """
+        WITH source_counts AS (
+            SELECT :accountScope AS scope_type,
+                   n.account_id AS scope_id,
+                   COUNT(*) AS unread_count
+            FROM notification_inbox n
+            WHERE n.archived_at IS NULL
+              AND n.read_at IS NULL
+            GROUP BY n.account_id
+            UNION ALL
+            SELECT :userScope AS scope_type,
+                   m.user_id AS scope_id,
+                   COUNT(*) AS unread_count
+            FROM notification_inbox n
+            JOIN user_account_membership m
+              ON m.account_id = n.account_id
+            JOIN bank_user u
+              ON u.id = m.user_id
+            LEFT JOIN notification_user_read_state r
+              ON r.user_id = m.user_id
+             AND r.notification_id = n.id
+            WHERE n.archived_at IS NULL
+              AND m.membership_status = 'ACTIVE'
+              AND u.user_status = 'ACTIVE'
+              AND r.read_at IS NULL
+              AND r.archived_at IS NULL
+              AND r.deleted_at IS NULL
+            GROUP BY m.user_id
+        ),
+        upserted AS (
+            INSERT INTO notification_unread_count_projection (
+                scope_type,
+                scope_id,
+                unread_count,
+                updated_at
+            )
+            SELECT scope_type,
+                   scope_id,
+                   unread_count,
+                   CURRENT_TIMESTAMP
+            FROM source_counts
+            ON CONFLICT (scope_type, scope_id)
+            DO UPDATE
+            SET unread_count = EXCLUDED.unread_count,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE notification_unread_count_projection.unread_count
+                  IS DISTINCT FROM EXCLUDED.unread_count
+            RETURNING scope_type
+        ),
+        zeroed AS (
+            UPDATE notification_unread_count_projection p
+            SET unread_count = 0,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE p.unread_count <> 0
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM source_counts s
+                  WHERE s.scope_type = p.scope_type
+                    AND s.scope_id = p.scope_id
+              )
+            RETURNING scope_type
+        )
+        SELECT CAST((SELECT COUNT(*) FROM upserted) AS INTEGER) AS updated_count,
+               CAST((SELECT COUNT(*) FROM zeroed) AS INTEGER) AS zeroed_count
+        """,
+        new MapSqlParameterSource()
+            .addValue("accountScope", ACCOUNT_SCOPE)
+            .addValue("userScope", USER_SCOPE),
+        (rs, rowNum) ->
+            new NotificationUnreadProjectionReconcileResult(
+                rs.getInt("updated_count"), rs.getInt("zeroed_count")));
   }
 
   private void publishInsertedNotifications(List<NotificationSummary> insertedItems) {
