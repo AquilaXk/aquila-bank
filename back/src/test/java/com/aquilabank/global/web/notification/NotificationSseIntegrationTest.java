@@ -272,6 +272,71 @@ class NotificationSseIntegrationTest extends PostgresContainerTestSupport {
   }
 
   @Test
+  @Timeout(20)
+  void reconnectStormReplaysMissedNotificationsWithoutDuplicates() throws Exception {
+    long[] accountIds = new long[2];
+    commit(
+        transactionManager,
+        () -> {
+          accountIds[0] = insertAccount("reconnect storm account");
+          accountIds[1] = insertAccount("reconnect storm target");
+        });
+
+    long lastEventId;
+    try (NotificationSseStream stream = openAccountStream(accountIds[0])) {
+      assertThat(stream.awaitEvent("connected", Duration.ofSeconds(3)).name())
+          .isEqualTo("connected");
+
+      String liveEventKey = "transfer-booked:TRX-SSE-STORM-LIVE";
+      transferBookedNotificationConsumer.consume(
+          liveEventKey, transferBookedPayload(accountIds[0], accountIds[1], 1400L, "storm-live"));
+
+      SseEvent liveEvent = stream.awaitEvent("notification", Duration.ofSeconds(3));
+      lastEventId = Long.parseLong(liveEvent.id());
+      assertThat(lastEventId).isEqualTo(findNotificationIdByEventKey(liveEventKey, accountIds[0]));
+    }
+
+    List<Long> replayIds = new ArrayList<>();
+    for (int index = 0; index < 5; index++) {
+      int replaySuffix = index;
+      long notificationId =
+          commitAndReturn(
+              () ->
+                  insertNotification(
+                      accountIds[0],
+                      "reconnect-storm:TRX-SSE-%d".formatted(700 + replaySuffix),
+                      "TransferBooked",
+                      "이체 완료",
+                      "reconnect-storm-%d".formatted(replaySuffix)));
+      replayIds.add(notificationId);
+    }
+
+    int clientCount = Math.min(3, notificationSseProperties.maxUserSessions());
+    for (int round = 0; round < 3; round++) {
+      List<NotificationSseStream> streams = new ArrayList<>();
+      try {
+        // session limit 안에서 burst reconnect를 반복해 replay pull 누락/중복을 짧게 검증합니다.
+        for (int client = 0; client < clientCount; client++) {
+          streams.add(openAccountStream(accountIds[0], lastEventId));
+        }
+        for (NotificationSseStream stream : streams) {
+          assertThat(stream.awaitEvent("connected", Duration.ofSeconds(3)).name())
+              .isEqualTo("connected");
+        }
+        for (NotificationSseStream stream : streams) {
+          List<Long> receivedIds = awaitNotificationIds(stream, replayIds.size());
+          assertThat(receivedIds).containsExactlyElementsOf(replayIds).doesNotHaveDuplicates();
+          stream.assertNoEvent("notification", Duration.ofMillis(200));
+        }
+      } finally {
+        for (NotificationSseStream stream : streams) {
+          stream.close();
+        }
+      }
+    }
+  }
+
+  @Test
   @Timeout(15)
   void pushesNotificationToJwtUserStreamAfterRemoteFanoutSignal() throws Exception {
     long[] userId = new long[1];
@@ -464,6 +529,15 @@ class NotificationSseIntegrationTest extends PostgresContainerTestSupport {
     assertThat(response.headers().firstValue("content-type"))
         .hasValueSatisfying(value -> assertThat(value).contains("text/event-stream"));
     return new NotificationSseStream(response.body());
+  }
+
+  private List<Long> awaitNotificationIds(NotificationSseStream stream, int expectedCount)
+      throws InterruptedException {
+    List<Long> eventIds = new ArrayList<>();
+    for (int index = 0; index < expectedCount; index++) {
+      eventIds.add(Long.parseLong(stream.awaitEvent("notification", Duration.ofSeconds(3)).id()));
+    }
+    return eventIds;
   }
 
   private String transferBookedPayload(
