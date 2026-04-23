@@ -25,10 +25,14 @@ prepare_nginx_test_config() {
   local access_log_path="${tmp_dir}/logs/access.log"
   local error_log_path="${tmp_dir}/logs/error.log"
   local patched_config="${rendered_config}.patched"
+  local http_listen_port="18080"
+  local https_listen_port="18443"
 
   if ! awk \
     -v access_log_path="${access_log_path}" \
-    -v error_log_path="${error_log_path}" '
+    -v error_log_path="${error_log_path}" \
+    -v http_listen_port="${http_listen_port}" \
+    -v https_listen_port="${https_listen_port}" '
       /^pid / && !main_log_injected {
         print
         print "error_log " error_log_path " notice;"
@@ -41,14 +45,24 @@ prepare_nginx_test_config() {
         http_log_injected = 1
         next
       }
+      /^[[:space:]]*listen 80 default_server;$/ && !http_listen_rewritten {
+        print "    listen " http_listen_port " default_server;"
+        http_listen_rewritten = 1
+        next
+      }
+      /^[[:space:]]*listen 443 ssl http2;$/ && !https_listen_rewritten {
+        print "    listen " https_listen_port " ssl http2;"
+        https_listen_rewritten = 1
+        next
+      }
       { print }
       END {
-        if (!main_log_injected || !http_log_injected) {
+        if (!main_log_injected || !http_log_injected || !http_listen_rewritten || !https_listen_rewritten) {
           exit 1
         }
       }
     ' "${rendered_config}" > "${patched_config}"; then
-    echo "[nginx-runtime-gate] failed to inject tmp log paths into rendered config" >&2
+    echo "[nginx-runtime-gate] failed to inject tmp log path or high listen port into rendered config" >&2
     exit 1
   fi
 
