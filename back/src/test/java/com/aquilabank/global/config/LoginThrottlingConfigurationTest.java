@@ -8,6 +8,8 @@ import com.aquilabank.global.security.LoginThrottleStore;
 import com.aquilabank.global.security.LoginThrottlingProperties;
 import com.aquilabank.global.security.MemoryLoginThrottleStore;
 import com.aquilabank.global.security.RedisLoginThrottleStore;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -95,6 +97,11 @@ class LoginThrottlingConfigurationTest {
     @Bean
     Clock authClock() {
       return Clock.fixed(Instant.parse("2025-01-01T00:00:00Z"), ZoneOffset.UTC);
+    }
+
+    @Bean
+    MeterRegistry meterRegistry() {
+      return new SimpleMeterRegistry();
     }
   }
 }

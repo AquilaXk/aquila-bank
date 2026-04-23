@@ -16,9 +16,12 @@ public class LoginThrottleGuard {
   private static final Logger log = LoggerFactory.getLogger(LoginThrottleGuard.class);
 
   private final LoginThrottleStore loginThrottleStore;
+  private final LoginThrottlingMetricsRecorder metricsRecorder;
 
-  public LoginThrottleGuard(LoginThrottleStore loginThrottleStore) {
+  public LoginThrottleGuard(
+      LoginThrottleStore loginThrottleStore, LoginThrottlingMetricsRecorder metricsRecorder) {
     this.loginThrottleStore = loginThrottleStore;
+    this.metricsRecorder = metricsRecorder;
   }
 
   public void check(String ipAddress) {
@@ -33,6 +36,7 @@ public class LoginThrottleGuard {
     String normalizedIpAddress = normalizeIpAddress(ipAddress);
     LoginThrottleStore.ThrottleDecision decision = loginThrottleStore.check(normalizedIpAddress);
     if (decision.throttled()) {
+      metricsRecorder.recordReject(entryPoint.metricTagValue(), decision.scope());
       logThrottle(
           entryPoint,
           decision.scope(),
@@ -106,6 +110,10 @@ public class LoginThrottleGuard {
     LoginThrottleEntryPoint(String logMessage, String message) {
       this.logMessage = logMessage;
       this.message = message;
+    }
+
+    String metricTagValue() {
+      return this == LOGIN ? "login" : "password_recovery";
     }
 
     String logMessage() {

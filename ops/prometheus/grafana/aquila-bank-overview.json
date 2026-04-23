@@ -615,6 +615,43 @@
       ],
       "title": "DB Pool and Postgres Slow/Lock Signals",
       "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 3,
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 28
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (entry_point, scope, store) (rate(aquila_auth_throttling_reject_count_total[5m]))",
+          "legendFormat": "{{entry_point}} {{scope}} {{store}} reject_rate",
+          "refId": "A"
+        }
+      ],
+      "title": "Auth Throttling Reject Trend",
+      "type": "timeseries"
     }
   ],
   "refresh": "30s",

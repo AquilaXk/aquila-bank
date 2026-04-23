@@ -33,6 +33,9 @@ done
 jq -e '.uid == "aquila-bank-overview" and (.panels | type == "array" and length >= 8)' \
   "${DASHBOARD_FILE}" >/dev/null
 
+jq -e '[.panels[] | .targets // [] | .[]? | .expr] | any(.[]; contains("aquila_auth_throttling_reject_count_total"))' \
+  "${DASHBOARD_FILE}" >/dev/null
+
 ruby -e '
 require "yaml"
 
@@ -67,6 +70,7 @@ def require_alert(data, alert_name, required_fragments)
 end
 
 {
+  "AquilaAuthThrottlingRejectBurstDetected" => ["aquila_auth_throttling_reject_count_total"],
   "AquilaDbPoolPendingWaitDetected" => ["hikaricp_connections_pending"],
   "AquilaDbPoolActivePressureHigh" => ["hikaricp_connections_active", "hikaricp_connections_max"],
   "AquilaDbQueryTimeoutDetected" => ["aquila_t3micro_saturation_guard_query_timeouts_total"],

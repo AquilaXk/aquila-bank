@@ -296,6 +296,7 @@ set +a
   - `aquila_notification_consumer_lag_count`
   - `aquila_notification_consumer_dlq_count`
   - `aquila_notification_sse_sessions{principal_type="account|user|total"}`
+  - `aquila_auth_throttling_reject_count_total{entry_point="login|password_recovery",scope="ip|global",store="memory|redis"}`
   - `aquila_auth_current_session_gate_reject_count_total{reason_code="MISSING_SESSION_ID|INACTIVE_OR_MISMATCHED_SESSION"}`
   - `aquila_auth_refresh_token_reuse_detected_count_total{reason_code="ROTATED_TOKEN_REUSE"}`
   - `aquila_t3micro_saturation_guard_query_timeouts_total`
@@ -307,6 +308,7 @@ set +a
   - outbox metric은 기본 wiring만 있으면 항상 export 됩니다.
   - notification consumer lag/DLQ metric은 `NOTIFICATION_INBOX_CONSUMER_OPS_ENABLED=true` 와 DLQ topic 설정이 있어야 export 됩니다.
   - current session gate reject counter는 민감 mutation에서 legacy JWT `session_id` 누락 또는 inactive/mismatch session 차단이 발생하면 증가합니다.
+  - auth throttling reject metric은 login/password recovery edge 직전 reject가 발생하면 `entry_point`, `scope`, `store` tag 기준으로 증가합니다.
   - refresh token reuse metric은 `ROTATED` refresh token 재사용 감지와 family revoke가 발생하면 증가합니다.
   - t3.micro query timeout counter는 backend query timeout exception이 발생하면 증가합니다.
   - Hikari pool metric은 Spring Boot/Micrometer 기본 binder와 `aquila-bank-pool` pool tag 기준으로 export 됩니다.
@@ -330,11 +332,14 @@ set +a
 - 운영 메모:
   - outbox/notification gauge는 scrape 한 번에 같은 summary를 여러 번 다시 조회하지 않게 `5초` cache 안에서 재사용합니다.
   - SSE session metric은 현재 app instance 메모리의 active session 수만 보여주므로 multi-instance 전체 합계는 Prometheus 쿼리에서 합산합니다.
+  - auth throttling reject metric label은 `entry_point`, `scope`, `store`만 사용하고, IP, `requestId`, `userId`, `path`는 structured log에서만 확인합니다.
+  - `AquilaAuthThrottlingRejectBurstDetected` alert는 brute-force/abuse 징후 investigation 시작점입니다. 같은 시간대 `auth login throttled`, `auth password recovery throttled` log와 Nginx auth edge `429` 추이를 같이 봅니다.
   - current session gate reject metric label은 `reason_code`만 사용하고, `requestId`, `userId`, `sessionId`, `path`는 structured audit log에서만 확인합니다.
   - `AquilaCurrentSessionActiveGateRejectDetected` alert는 장애 확정이 아니라 security investigation 시작점입니다. 같은 시간대 `requestId`로 `auth current session gate rejected` log를 조회하고, `reasonCode`, `userId`, `sessionId`, `method`, `path`를 확인합니다.
   - current session gate alert rollback은 `AquilaCurrentSessionActiveGateRejectDetected` rule 제거 또는 threshold/`for` 시간 조정으로 수행하고, API 응답 계약은 그대로 유지합니다.
   - refresh token reuse metric label은 `reason_code`만 사용하고, `requestId`, `userId`, `reusedSessionId`, `familyRootId`는 structured audit log에서만 확인합니다.
   - `AquilaRefreshTokenReuseDetected` alert는 공격성 재사용 후보입니다. 같은 시간대 `requestId`로 `auth refresh token reuse detected` log를 조회하고 `reusedSessionId`, `familyRootId`, `revokedCount`를 먼저 확인합니다.
+  - auth throttling alert rollback은 `AquilaAuthThrottlingRejectBurstDetected` rule 제거 또는 threshold/`for` 시간 조정으로 수행하고, auth API 응답 계약은 그대로 유지합니다.
   - p95 alert는 `query_shape`별 5분 rate가 충분할 때만 평가해 low traffic 노이즈를 줄입니다.
   - `AquilaDbPoolPendingWaitDetected`는 Hikari pending connection이 남은 상태라 lock wait, slow query, DB CPU, transaction p95를 같은 시간대에서 같이 확인합니다.
   - `AquilaDbPoolActivePressureHigh`는 active/max pool ratio 90% 이상을 queueing 전조로 봅니다. t3.micro 기본 `DB_POOL_MAX_SIZE=4`에서는 순간 spike보다 10분 지속 여부가 중요합니다.

@@ -24,6 +24,7 @@
   - outbox dispatch lag / failed count / stale sending
   - notification consumer lag / DLQ count
   - SSE total session, account/user/total trend, reject/drop trend
+  - auth throttling reject rate by `entry_point`, `scope`, `store`
   - DB pool pending/active pressure, query timeout, Postgres lock/slow query signal
   - transaction query rate by `query_shape`
   - transaction p95 latency by `query_shape`
@@ -46,6 +47,7 @@
    - `aquila_outbox_dispatch_lag_seconds`
    - `aquila_notification_consumer_lag_count`
    - `aquila_notification_sse_sessions`
+   - `aquila_auth_throttling_reject_count_total`
    - `aquila_transaction_query_latency_seconds_count`
    - `hikaricp_connections_pending`
    - `aquila_t3micro_saturation_guard_query_timeouts_total`
@@ -66,6 +68,7 @@
 - auth baseline:
   - current session active gate reject rate `> 0` for `5m`
   - refresh token reuse detected rate `> 0` for `1m`
+  - auth throttling reject increase `>= 5` for `10m`
 - Postgres/DB saturation baseline:
   - Hikari pending connection `> 0` for `5m`
   - Hikari active/max pool ratio `> 90%` for `10m`
@@ -177,5 +180,6 @@ tools/test/run-alertmanager-receiver-secret-workflow-gate.sh
 - multi-instance SSE 합계는 Grafana/Prometheus 쿼리에서 인스턴스 합산으로 해석하고, 단일 instance alert는 node별 pressure 확인 용도로만 씁니다.
 - `AquilaCurrentSessionActiveGateRejectDetected`는 `reason_code`만 집계합니다. `requestId`, `userId`, `sessionId`, `path`는 cardinality 때문에 alert label로 올리지 않고 app structured log에서 drill-down합니다.
 - `AquilaRefreshTokenReuseDetected`는 공격성 재사용 후보라 critical baseline입니다. `requestId`, `userId`, `reusedSessionId`, `familyRootId`는 cardinality 때문에 alert label로 올리지 않고 app structured log에서 drill-down합니다.
+- `AquilaAuthThrottlingRejectBurstDetected`는 `entry_point`, `scope`, `store` 축만 사용합니다. IP, user, requestId, path는 cardinality 때문에 metric/alert label에 올리지 않고 app structured log에서 drill-down합니다.
 - DB saturation alert rollback은 `aquila-bank-postgres` group 제거 또는 해당 rule의 threshold/`for` 시간 조정으로 수행합니다. 앱 API 계약과 DB schema는 그대로 유지합니다.
 - provisioning rollback은 mount에서 해당 baseline 파일을 제거하거나 직전 runtime config로 되돌린 뒤 Prometheus/Grafana/Alertmanager를 reload합니다.
