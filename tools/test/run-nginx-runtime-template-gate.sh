@@ -12,6 +12,49 @@ cleanup() {
 }
 trap cleanup EXIT
 
+contains_pattern() {
+  local pattern="$1"
+  if command -v rg >/dev/null 2>&1; then
+    rg -F --quiet -- "$pattern" "${rendered_config}"
+    return
+  fi
+  grep -Fq -- "$pattern" "${rendered_config}"
+}
+
+prepare_nginx_test_config() {
+  local access_log_path="${tmp_dir}/logs/access.log"
+  local error_log_path="${tmp_dir}/logs/error.log"
+  local patched_config="${rendered_config}.patched"
+
+  if ! awk \
+    -v access_log_path="${access_log_path}" \
+    -v error_log_path="${error_log_path}" '
+      /^pid / && !main_log_injected {
+        print
+        print "error_log " error_log_path " notice;"
+        main_log_injected = 1
+        next
+      }
+      /^http \{/ && !http_log_injected {
+        print
+        print "  access_log " access_log_path ";"
+        http_log_injected = 1
+        next
+      }
+      { print }
+      END {
+        if (!main_log_injected || !http_log_injected) {
+          exit 1
+        }
+      }
+    ' "${rendered_config}" > "${patched_config}"; then
+    echo "[nginx-runtime-gate] failed to inject tmp log paths into rendered config" >&2
+    exit 1
+  fi
+
+  mv "${patched_config}" "${rendered_config}"
+}
+
 if [[ ! -f "${env_file}" ]]; then
   echo "[nginx-runtime-gate] missing env file: ${env_file}" >&2
   exit 1
@@ -44,8 +87,10 @@ if [[ ! -f "${NGINX_SSL_CERTIFICATE_PATH:-}" || ! -f "${NGINX_SSL_CERTIFICATE_KE
 fi
 
 bash tools/ops/render-nginx-runtime-config.sh "${rendered_config}"
+mkdir -p "${tmp_dir}/logs"
+prepare_nginx_test_config
 
-if rg -F --quiet '${' "${rendered_config}"; then
+if contains_pattern '${'; then
   echo "[nginx-runtime-gate] unresolved template placeholder remains in rendered config" >&2
   exit 1
 fi
@@ -68,6 +113,5 @@ if [[ "${skip_nginx_check}" == "true" || ! -f "${NGINX_SSL_CERTIFICATE_PATH}" ||
   exit 0
 fi
 
-mkdir -p "${tmp_dir}/logs"
 nginx -t -p "${tmp_dir}" -c "${rendered_config}" >/dev/null
 echo "[nginx-runtime-gate] nginx -t passed"
