@@ -50,11 +50,17 @@ notification:
         topic: ""
       ops:
         enabled: false
-        dlq-preview-limit: 20
-        summary-cache-seconds: 5
-        health:
-          max-lag-messages: 100
-          max-dlq-count: 0
+      dlq-preview-limit: 20
+      summary-cache-seconds: 5
+      health:
+        max-lag-messages: 100
+        max-dlq-count: 0
+
+auth:
+  password-recovery:
+    delivery:
+      worker:
+        enabled: false
 
 security:
   jwt:
