@@ -66,11 +66,14 @@
 - multi-node로 확장할 때는 `aquila_bank_backend_api`와 `aquila_bank_backend_sse` 두 upstream에 같은 backend node 집합을 반영합니다.
 - 인스턴스 drain 시에는 대상 node를 upstream에서 제거한 뒤 reload 하고, client reconnect/pull 재동기화가 끝날 시간을 둡니다.
 - backend는 이미 `X-Accel-Buffering: no` 헤더를 내려주므로 Nginx도 같은 방향으로 buffering을 끈 상태를 유지합니다.
+- 운영 smoke는 `tools/test/run-sse-multinode-drain-smoke.sh`로 같은 순서를 반복 검증합니다.
 
 ## 검증
 
 ```bash
 bash tools/test/check-nginx-sse-proxy.sh
+tools/test/run-sse-multinode-drain-smoke.sh --print-plan
+tools/test/run-sse-multinode-drain-smoke.sh
 ```
 
 `nginx` binary와 실제 TLS 인증서 파일이 모두 있는 환경이면 위 smoke check가 추가로 `nginx -t`까지 수행합니다. placeholder 인증서 경로만 있는 상태에서는 directive smoke check까지만 수행합니다.
