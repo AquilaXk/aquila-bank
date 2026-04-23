@@ -32,13 +32,28 @@
 - actual deploy required environment secrets:
   - `STAGING_DEPLOY_WEBHOOK_URL`
   - `STAGING_DEPLOY_TOKEN`
+- post-deploy smoke required environment secrets:
+  - `STAGING_BASE_URL`
+  - `STAGING_SMOKE_READ_PATH`
+  - `STAGING_SMOKE_WRITE_PATH`
+- post-deploy smoke optional environment secrets:
+  - `STAGING_SMOKE_HEALTH_PATH` (default: `/actuator/health`)
+  - `STAGING_SMOKE_WRITE_METHOD` (default: `POST`)
+  - `STAGING_SMOKE_WRITE_BODY` (default: `{}`)
+  - `STAGING_SMOKE_AUTH_HEADER_NAME`
+  - `STAGING_SMOKE_AUTH_HEADER_VALUE`
+- rollback hook optional environment secrets:
+  - `STAGING_ROLLBACK_WEBHOOK_URL`
+  - `STAGING_ROLLBACK_TOKEN`
 - deploy hook payload:
   - `sha`: staging에 배포할 main SHA
   - `repository`: `owner/repo`
   - `environment`: `staging`
   - `runUrl`: GitHub Actions run URL
 - deploy hook secret이 없으면 workflow는 no-op skip으로 끝내고 staging GitHub deployment status를 만들지 않습니다.
-- workflow는 실제 hook 호출 시에만 staging GitHub deployment status를 `in_progress`에서 `success` 또는 `failure`로 갱신합니다.
+- workflow는 실제 hook 호출 후 post-deploy smoke를 통과한 경우에만 staging GitHub deployment status를 `success`로 갱신합니다.
+- post-deploy smoke는 health/read/write endpoint를 호출하며, read/write path는 환경별 smoke 전용 endpoint를 secret으로 주입합니다.
+- smoke 또는 deploy hook 실패 시 deployment status는 `failure`가 되고, rollback hook이 설정된 경우 `sha`, `repository`, `runUrl`, `deploymentId`와 함께 호출합니다.
 - production 승격은 staging deployment status가 `success`인 같은 SHA만 대상으로 삼습니다.
 - rollback은 `main` 기준 revert PR을 merge해 새 staging SHA를 배포하거나, 운영자가 직전 staging 성공 SHA를 확인해 별도 재배포 절차로 진행합니다.
 

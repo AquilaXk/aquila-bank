@@ -180,6 +180,33 @@ jobs:
             --data "${payload}" \
             "${STAGING_DEPLOY_WEBHOOK_URL}"
 
+      - name: Run staging post-deploy smoke
+        if: steps.validate.outputs.should_deploy == 'true' && steps.hook_config.outputs.hook_configured == 'true'
+        env:
+          STAGING_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
+          STAGING_SMOKE_HEALTH_PATH: ${{ secrets.STAGING_SMOKE_HEALTH_PATH }}
+          STAGING_SMOKE_READ_PATH: ${{ secrets.STAGING_SMOKE_READ_PATH }}
+          STAGING_SMOKE_WRITE_PATH: ${{ secrets.STAGING_SMOKE_WRITE_PATH }}
+          STAGING_SMOKE_WRITE_METHOD: ${{ secrets.STAGING_SMOKE_WRITE_METHOD }}
+          STAGING_SMOKE_WRITE_BODY: ${{ secrets.STAGING_SMOKE_WRITE_BODY }}
+          STAGING_SMOKE_AUTH_HEADER_NAME: ${{ secrets.STAGING_SMOKE_AUTH_HEADER_NAME }}
+          STAGING_SMOKE_AUTH_HEADER_VALUE: ${{ secrets.STAGING_SMOKE_AUTH_HEADER_VALUE }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tools/ops/staging-postdeploy-smoke.sh
+
+      - name: Dispatch staging rollback guard
+        if: failure() && steps.validate.outputs.should_deploy == 'true' && steps.hook_config.outputs.hook_configured == 'true' && steps.deployment.outputs.deployment_id != ''
+        env:
+          STAGING_ROLLBACK_WEBHOOK_URL: ${{ secrets.STAGING_ROLLBACK_WEBHOOK_URL }}
+          STAGING_ROLLBACK_TOKEN: ${{ secrets.STAGING_ROLLBACK_TOKEN }}
+          DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tools/ops/staging-rollback-guard.sh
+
       - name: Mark staging deployment success
         if: success() && steps.validate.outputs.should_deploy == 'true' && steps.hook_config.outputs.hook_configured == 'true'
         env:
