@@ -60,7 +60,9 @@ class KafkaConsumerPartitionConcurrencyIntegrationTest {
 
     assertThat(single.finalLag()).isZero();
     assertThat(multi.finalLag()).isZero();
-    assertThat(multi.usedThreadCount()).isGreaterThanOrEqualTo(PARTITION_COUNT);
+    assertThat(multi.usedThreadCount())
+        .as("all partitions should be processed by distinct listener threads")
+        .isGreaterThanOrEqualTo(PARTITION_COUNT);
     assertThat(multi.throughputPerSecond()).isGreaterThan(single.throughputPerSecond() * 1.5);
   }
 
@@ -68,7 +70,6 @@ class KafkaConsumerPartitionConcurrencyIntegrationTest {
     String topic = "bank.notification.partition-concurrency." + suffix;
     String groupId = "aquila-bank-partition-concurrency-" + suffix;
     createTopic(topic);
-    produceRecords(topic);
 
     AtomicInteger processedCount = new AtomicInteger();
     CountDownLatch latch = new CountDownLatch(RECORD_COUNT);
@@ -76,13 +77,16 @@ class KafkaConsumerPartitionConcurrencyIntegrationTest {
     ConcurrentMessageListenerContainer<String, String> container =
         listenerContainer(topic, groupId, concurrency, processedCount, listenerThreads, latch);
 
-    Instant startedAt = Instant.now();
     container.start();
     try {
       awaitCondition(
           "partition assignment",
-          () -> container.getAssignedPartitions().size() >= Math.min(concurrency, PARTITION_COUNT));
+          () ->
+              container.getAssignedPartitions().size() >= Math.min(concurrency, PARTITION_COUNT)
+                  && assignedConsumerCount(container) >= Math.min(concurrency, PARTITION_COUNT));
 
+      Instant startedAt = Instant.now();
+      produceRecords(topic);
       assertThat(latch.await(WAIT_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS))
           .as("processed all records with concurrency=%s", concurrency)
           .isTrue();
@@ -131,6 +135,12 @@ class KafkaConsumerPartitionConcurrencyIntegrationTest {
     container.setBeanName("partition-concurrency-" + groupId);
     container.setConcurrency(concurrency);
     return container;
+  }
+
+  private long assignedConsumerCount(ConcurrentMessageListenerContainer<String, String> container) {
+    return container.getContainers().stream()
+        .filter(item -> !item.getAssignedPartitions().isEmpty())
+        .count();
   }
 
   private void createTopic(String topic) throws Exception {
