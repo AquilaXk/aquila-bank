@@ -15,9 +15,13 @@ public class CommandIdempotencyCleanupPoller {
   private static final Logger log = LoggerFactory.getLogger(CommandIdempotencyCleanupPoller.class);
 
   private final CommandIdempotencyCleanupUseCase cleanupUseCase;
+  private final CommandIdempotencyPrometheusMetrics commandIdempotencyPrometheusMetrics;
 
-  public CommandIdempotencyCleanupPoller(CommandIdempotencyCleanupUseCase cleanupUseCase) {
+  public CommandIdempotencyCleanupPoller(
+      CommandIdempotencyCleanupUseCase cleanupUseCase,
+      CommandIdempotencyPrometheusMetrics commandIdempotencyPrometheusMetrics) {
     this.cleanupUseCase = cleanupUseCase;
+    this.commandIdempotencyPrometheusMetrics = commandIdempotencyPrometheusMetrics;
   }
 
   @Scheduled(
@@ -25,6 +29,7 @@ public class CommandIdempotencyCleanupPoller {
       initialDelayString = "${ledger.command-idempotency.cleanup.initial-delay-ms:60000}")
   void cleanupExpiredRecords() {
     int deleted = cleanupUseCase.cleanupExpiredRecords();
+    commandIdempotencyPrometheusMetrics.recordCleanupDeleted(deleted);
     if (deleted > 0) {
       log.info("deleted {} command idempotency row(s)", deleted);
     }

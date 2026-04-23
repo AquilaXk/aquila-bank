@@ -6,6 +6,7 @@ import static org.mockito.Mockito.mock;
 import com.aquilabank.domain.ledger.port.CommandIdempotencyCleanupPort;
 import com.aquilabank.domain.ledger.usecase.CommandIdempotencyCleanupUseCase;
 import com.aquilabank.global.ledger.CommandIdempotencyCleanupPoller;
+import com.aquilabank.global.ledger.CommandIdempotencyPrometheusMetrics;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
@@ -17,6 +18,9 @@ class CommandIdempotencyCleanupConfigurationTest {
               CommandIdempotencyCleanupConfiguration.class, CommandIdempotencyCleanupPoller.class)
           .withBean(
               CommandIdempotencyCleanupPort.class, () -> mock(CommandIdempotencyCleanupPort.class))
+          .withBean(
+              CommandIdempotencyPrometheusMetrics.class,
+              () -> mock(CommandIdempotencyPrometheusMetrics.class))
           .withPropertyValues(
               "ledger.command-idempotency.cleanup.fixed-delay-ms=300000",
               "ledger.command-idempotency.cleanup.initial-delay-ms=60000",
