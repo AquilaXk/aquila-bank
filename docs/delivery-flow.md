@@ -42,6 +42,24 @@
   - `STAGING_SMOKE_WRITE_BODY` (default: `{}`)
   - `STAGING_SMOKE_AUTH_HEADER_NAME`
   - `STAGING_SMOKE_AUTH_HEADER_VALUE`
+- transaction replay gate required environment secrets:
+  - `STAGING_REPLAY_TOKEN`
+  - `STAGING_RDS_DATABASE_URL`
+  - `STAGING_REPLAY_HOT_ACCOUNT_ID`
+  - `STAGING_REPLAY_HOT_FROM`
+  - `STAGING_REPLAY_HOT_TO`
+  - `STAGING_REPLAY_COLD_ACCOUNT_ID`
+  - `STAGING_REPLAY_COLD_FROM`
+  - `STAGING_REPLAY_COLD_TO`
+- transaction replay gate optional environment secrets:
+  - `STAGING_REPLAY_ITERATIONS` (default: `40`)
+  - `STAGING_REPLAY_PAGE_LIMIT` (default: `50`)
+  - `STAGING_REPLAY_REQUEST_TIMEOUT_SECONDS` (default: `5`)
+  - `STAGING_REPLAY_EXPECTED_TOTAL_ROWS` (default: `100000000`)
+  - `STAGING_REPLAY_HOT_P95_THRESHOLD_MS` (default: `350`)
+  - `STAGING_REPLAY_COLD_P95_THRESHOLD_MS` (default: `750`)
+  - `STAGING_REPLAY_STATS_MAX_AGE_HOURS` (default: `24`)
+  - `STAGING_REPLAY_STATS_MAX_MODIFIED_RATIO` (default: `0.05`)
 - rollback hook optional environment secrets:
   - `STAGING_ROLLBACK_WEBHOOK_URL`
   - `STAGING_ROLLBACK_TOKEN`
@@ -52,6 +70,8 @@
   - `runUrl`: GitHub Actions run URL
 - deploy hook secret이 없으면 workflow는 no-op skip으로 끝내고 staging GitHub deployment status를 만들지 않습니다.
 - workflow는 실제 hook 호출 후 post-deploy smoke를 통과한 경우에만 staging GitHub deployment status를 `success`로 갱신합니다.
+- transaction replay gate는 post-deploy smoke 뒤에 실행되며, `pg_class.reltuples` 검증 전에 planner stats freshness guard로 stale stats를 차단합니다.
+- replay gate가 실패하면 staging deployment status는 `success`로 올라가지 않으므로 production promotion guard가 같은 SHA를 자동으로 거부합니다.
 - post-deploy smoke는 health/read/write endpoint를 호출하며, read/write path는 환경별 smoke 전용 endpoint를 secret으로 주입합니다.
 - smoke 또는 deploy hook 실패 시 deployment status는 `failure`가 되고, rollback hook이 설정된 경우 `sha`, `repository`, `runUrl`, `deploymentId`와 함께 호출합니다.
 - production 승격은 staging deployment status가 `success`인 같은 SHA만 대상으로 삼습니다.
