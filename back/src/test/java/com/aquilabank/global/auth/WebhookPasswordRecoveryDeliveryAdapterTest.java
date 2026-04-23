@@ -27,6 +27,7 @@ class WebhookPasswordRecoveryDeliveryAdapterTest {
         .expect(requestTo("https://email-provider.example/recovery"))
         .andExpect(method(HttpMethod.POST))
         .andExpect(header("Authorization", "Bearer delivery-secret"))
+        .andExpect(header("Idempotency-Key", "request-1"))
         .andExpect(content().contentType(MediaType.APPLICATION_JSON))
         .andExpect(jsonPath("$.channel").value("EMAIL"))
         .andExpect(jsonPath("$.requestId").value("request-1"))
@@ -50,6 +51,7 @@ class WebhookPasswordRecoveryDeliveryAdapterTest {
     server
         .expect(requestTo("https://sms-provider.example/recovery"))
         .andExpect(method(HttpMethod.POST))
+        .andExpect(header("Idempotency-Key", "request-2"))
         .andExpect(jsonPath("$.channel").value("SMS"))
         .andExpect(jsonPath("$.destination").value("+821012345678"))
         .andRespond(withAccepted());
@@ -91,6 +93,7 @@ class WebhookPasswordRecoveryDeliveryAdapterTest {
         true,
         "Authorization",
         "Bearer delivery-secret",
+        "Idempotency-Key",
         3000,
         5000,
         new PasswordRecoveryDeliveryProperties.ChannelProperties(

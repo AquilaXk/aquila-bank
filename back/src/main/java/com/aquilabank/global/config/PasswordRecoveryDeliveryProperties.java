@@ -10,6 +10,7 @@ public record PasswordRecoveryDeliveryProperties(
     boolean enabled,
     String authHeaderName,
     String authHeaderValue,
+    String idempotencyHeaderName,
     int connectTimeoutMs,
     int readTimeoutMs,
     ChannelProperties email,
@@ -19,6 +20,8 @@ public record PasswordRecoveryDeliveryProperties(
     authHeaderName =
         StringUtils.hasText(authHeaderName) ? authHeaderName : HttpHeaders.AUTHORIZATION;
     authHeaderValue = StringUtils.hasText(authHeaderValue) ? authHeaderValue : "";
+    idempotencyHeaderName =
+        StringUtils.hasText(idempotencyHeaderName) ? idempotencyHeaderName : "Idempotency-Key";
     connectTimeoutMs = connectTimeoutMs > 0 ? connectTimeoutMs : 3000;
     readTimeoutMs = readTimeoutMs > 0 ? readTimeoutMs : 5000;
     email = email == null ? new ChannelProperties(null) : email;

@@ -56,6 +56,7 @@ public final class WebhookPasswordRecoveryDeliveryAdapter implements PasswordRec
     if (StringUtils.hasText(properties.authHeaderValue())) {
       requestSpec.header(properties.authHeaderName(), properties.authHeaderValue());
     }
+    requestSpec.header(properties.idempotencyHeaderName(), command.requestId());
     requestSpec
         .body(
             new PasswordRecoveryWebhookRequest(
