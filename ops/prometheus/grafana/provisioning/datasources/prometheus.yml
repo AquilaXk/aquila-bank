@@ -1,0 +1,13 @@
+# Grafana datasource provisioning baseline. URL은 compose/Kubernetes service 이름 기준입니다.
+apiVersion: 1
+
+datasources:
+  - name: Aquila Prometheus
+    uid: aquila-prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true
+    jsonData:
+      timeInterval: 15s

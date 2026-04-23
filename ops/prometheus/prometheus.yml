@@ -1,0 +1,31 @@
+# Aquila Bank Prometheus baseline. 환경별 target/secret은 runtime overlay에서 조정합니다.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 30s
+
+rule_files:
+  - /etc/prometheus/rules/aquila-bank-alerts.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+scrape_configs:
+  - job_name: aquila-bank-backend
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets:
+          - aquila-bank-backend:8080
+        labels:
+          service: aquila-bank
+          environment: local
+
+  - job_name: postgres-exporter
+    static_configs:
+      - targets:
+          - postgres-exporter:9187
+        labels:
+          service: postgres
+          environment: local

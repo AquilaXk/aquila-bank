@@ -1,0 +1,30 @@
+# 실제 receiver sink는 환경별 overlay에서 추가하고, 저장소 baseline은 route 구조만 고정합니다.
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: aquila-bank-null
+  group_by:
+    - alertname
+    - service
+    - domain
+    - severity
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - receiver: aquila-bank-critical
+      matchers:
+        - service="aquila-bank"
+        - severity="critical"
+      continue: false
+    - receiver: aquila-bank-warning
+      matchers:
+        - service="aquila-bank"
+        - severity="warning"
+      continue: false
+
+receivers:
+  - name: aquila-bank-null
+  - name: aquila-bank-critical
+  - name: aquila-bank-warning
