@@ -228,6 +228,32 @@ jobs:
             --data "${payload}" \
             "${PRODUCTION_DEPLOY_WEBHOOK_URL}"
 
+      - name: Run production post-deploy smoke
+        env:
+          PRODUCTION_BASE_URL: ${{ secrets.PRODUCTION_BASE_URL }}
+          PRODUCTION_SMOKE_SHA_PATH: ${{ secrets.PRODUCTION_SMOKE_SHA_PATH }}
+          PRODUCTION_SMOKE_HEALTH_PATH: ${{ secrets.PRODUCTION_SMOKE_HEALTH_PATH }}
+          PRODUCTION_SMOKE_READ_PATH: ${{ secrets.PRODUCTION_SMOKE_READ_PATH }}
+          PRODUCTION_SMOKE_WRITE_PATH: ${{ secrets.PRODUCTION_SMOKE_WRITE_PATH }}
+          PRODUCTION_SMOKE_WRITE_METHOD: ${{ secrets.PRODUCTION_SMOKE_WRITE_METHOD }}
+          PRODUCTION_SMOKE_WRITE_BODY: ${{ secrets.PRODUCTION_SMOKE_WRITE_BODY }}
+          PRODUCTION_SMOKE_AUTH_HEADER_NAME: ${{ secrets.PRODUCTION_SMOKE_AUTH_HEADER_NAME }}
+          PRODUCTION_SMOKE_AUTH_HEADER_VALUE: ${{ secrets.PRODUCTION_SMOKE_AUTH_HEADER_VALUE }}
+          PRODUCTION_SMOKE_TIMEOUT_SECONDS: ${{ secrets.PRODUCTION_SMOKE_TIMEOUT_SECONDS }}
+        shell: bash
+        run: tools/ops/production-postdeploy-smoke.sh
+
+      - name: Dispatch production rollback guard
+        if: failure() && steps.deployment.outputs.deployment_id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
+          PRODUCTION_ROLLBACK_WEBHOOK_URL: ${{ secrets.PRODUCTION_ROLLBACK_WEBHOOK_URL }}
+          PRODUCTION_ROLLBACK_TOKEN: ${{ secrets.PRODUCTION_ROLLBACK_TOKEN }}
+          PRODUCTION_ROLLBACK_TARGET_SHA: ${{ secrets.PRODUCTION_ROLLBACK_TARGET_SHA }}
+        shell: bash
+        run: tools/ops/production-rollback-guard.sh
+
       - name: Mark production deployment success
         if: success()
         env:
