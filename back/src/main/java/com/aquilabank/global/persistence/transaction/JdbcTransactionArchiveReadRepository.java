@@ -12,6 +12,7 @@ import java.sql.SQLException;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -25,12 +26,13 @@ public class JdbcTransactionArchiveReadRepository implements TransactionArchiveR
 
   private final NamedParameterJdbcTemplate jdbcTemplate;
 
-  public JdbcTransactionArchiveReadRepository(NamedParameterJdbcTemplate jdbcTemplate) {
+  public JdbcTransactionArchiveReadRepository(
+      @Qualifier("transactionReadJdbcTemplate") NamedParameterJdbcTemplate jdbcTemplate) {
     this.jdbcTemplate = jdbcTemplate;
   }
 
   @Override
-  @Transactional(readOnly = true)
+  @Transactional(readOnly = true, transactionManager = "transactionReadTransactionManager")
   public TransactionSlice fetchArchived(TransactionQuery query) {
     TransactionArchiveReadQueryStatement statement =
         TransactionArchiveReadQueryStatement.from(query);
