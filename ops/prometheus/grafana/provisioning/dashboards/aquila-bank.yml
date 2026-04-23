@@ -1,0 +1,13 @@
+# dashboard JSON은 /var/lib/grafana/dashboards/aquila-bank 로 mount해 자동 로드합니다.
+apiVersion: 1
+
+providers:
+  - name: aquila-bank
+    orgId: 1
+    folder: Aquila Bank
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards/aquila-bank

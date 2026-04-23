@@ -4,6 +4,10 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DASHBOARD_FILE="${ROOT_DIR}/ops/prometheus/grafana/aquila-bank-overview.json"
 RULES_FILE="${ROOT_DIR}/ops/prometheus/rules/aquila-bank-alerts.yml"
+PROMETHEUS_FILE="${ROOT_DIR}/ops/prometheus/prometheus.yml"
+ALERTMANAGER_FILE="${ROOT_DIR}/ops/prometheus/alertmanager/alertmanager.yml"
+GRAFANA_DATASOURCE_FILE="${ROOT_DIR}/ops/prometheus/grafana/provisioning/datasources/prometheus.yml"
+GRAFANA_DASHBOARD_PROVIDER_FILE="${ROOT_DIR}/ops/prometheus/grafana/provisioning/dashboards/aquila-bank.yml"
 
 if [[ ! -f "${DASHBOARD_FILE}" ]]; then
   echo "dashboard file is missing: ${DASHBOARD_FILE}" >&2
@@ -14,6 +18,17 @@ if [[ ! -f "${RULES_FILE}" ]]; then
   echo "rules file is missing: ${RULES_FILE}" >&2
   exit 1
 fi
+
+for provisioning_file in \
+  "${PROMETHEUS_FILE}" \
+  "${ALERTMANAGER_FILE}" \
+  "${GRAFANA_DATASOURCE_FILE}" \
+  "${GRAFANA_DASHBOARD_PROVIDER_FILE}"; do
+  if [[ ! -f "${provisioning_file}" ]]; then
+    echo "provisioning file is missing: ${provisioning_file}" >&2
+    exit 1
+  fi
+done
 
 jq -e '.uid == "aquila-bank-overview" and (.panels | type == "array" and length >= 8)' \
   "${DASHBOARD_FILE}" >/dev/null
@@ -62,4 +77,38 @@ end
 end
 ' "${RULES_FILE}"
 
-echo "Prometheus dashboard and alert rule baseline look valid."
+ruby -e '
+require "yaml"
+
+prometheus = YAML.safe_load(File.read(ARGV[0]), permitted_classes: [], aliases: false)
+abort("prometheus rule_files missing") unless prometheus["rule_files"].include?("/etc/prometheus/rules/aquila-bank-alerts.yml")
+alertmanagers = prometheus.fetch("alerting").fetch("alertmanagers")
+targets = alertmanagers.flat_map { |item| item.fetch("static_configs").flat_map { |config| config.fetch("targets") } }
+abort("alertmanager target missing") unless targets.include?("alertmanager:9093")
+scrape_jobs = prometheus.fetch("scrape_configs").map { |item| item["job_name"] }
+abort("backend scrape job missing") unless scrape_jobs.include?("aquila-bank-backend")
+abort("postgres exporter scrape job missing") unless scrape_jobs.include?("postgres-exporter")
+
+alertmanager = YAML.safe_load(File.read(ARGV[1]), permitted_classes: [], aliases: false)
+route = alertmanager.fetch("route")
+abort("alertmanager group_by must include severity") unless route.fetch("group_by").include?("severity")
+receiver_names = alertmanager.fetch("receivers").map { |item| item.fetch("name") }
+%w[aquila-bank-null aquila-bank-critical aquila-bank-warning].each do |name|
+  abort("receiver missing: #{name}") unless receiver_names.include?(name)
+end
+route_receivers = route.fetch("routes").map { |item| item.fetch("receiver") }
+abort("critical route missing") unless route_receivers.include?("aquila-bank-critical")
+abort("warning route missing") unless route_receivers.include?("aquila-bank-warning")
+
+datasource = YAML.safe_load(File.read(ARGV[2]), permitted_classes: [], aliases: false)
+prometheus_datasource = datasource.fetch("datasources").find { |item| item["uid"] == "aquila-prometheus" }
+abort("Grafana Prometheus datasource missing") unless prometheus_datasource
+abort("Grafana datasource type must be prometheus") unless prometheus_datasource["type"] == "prometheus"
+
+dashboard_provider = YAML.safe_load(File.read(ARGV[3]), permitted_classes: [], aliases: false)
+provider = dashboard_provider.fetch("providers").find { |item| item["name"] == "aquila-bank" }
+abort("Grafana dashboard provider missing") unless provider
+abort("Grafana dashboard provider path missing") unless provider.fetch("options").fetch("path") == "/var/lib/grafana/dashboards/aquila-bank"
+' "${PROMETHEUS_FILE}" "${ALERTMANAGER_FILE}" "${GRAFANA_DATASOURCE_FILE}" "${GRAFANA_DASHBOARD_PROVIDER_FILE}"
+
+echo "Prometheus dashboard, alert rules, provisioning, and routing baseline look valid."
