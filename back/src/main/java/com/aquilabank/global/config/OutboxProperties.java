@@ -9,6 +9,9 @@ public record OutboxProperties(
     long fixedDelayMs,
     long initialDelayMs,
     int batchSize,
+    boolean adaptiveEnabled,
+    int minBatchSize,
+    long maxAdaptiveDelayMs,
     long staleAfterSeconds,
     long maxRetryDelaySeconds,
     int maxRetryAttempts) {}

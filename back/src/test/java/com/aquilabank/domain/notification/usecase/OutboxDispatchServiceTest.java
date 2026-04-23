@@ -90,6 +90,44 @@ class OutboxDispatchServiceTest {
   }
 
   @Test
+  void usesAdaptiveBatchSizeAfterPublishFailure() {
+    OutboxDispatchAdaptivePolicy adaptivePolicy =
+        new OutboxDispatchAdaptivePolicy(20, 5, Duration.ofMillis(1000), Duration.ofMillis(8000));
+    outboxDispatchService =
+        new OutboxDispatchService(
+            outboxEventStore,
+            outboxEventPublishPort,
+            20,
+            Duration.ofSeconds(30),
+            Duration.ofSeconds(60),
+            3,
+            adaptivePolicy);
+    OutboxEvent failedEvent =
+        new OutboxEvent(
+            4L,
+            "TRANSFER",
+            "400",
+            "TransferBooked",
+            "evt-4",
+            "{}",
+            0,
+            Instant.now(),
+            Instant.now());
+    when(outboxEventStore.claimBatch(eq(20), any(Duration.class), any(Instant.class)))
+        .thenReturn(List.of(failedEvent));
+    when(outboxEventStore.claimBatch(eq(10), any(Duration.class), any(Instant.class)))
+        .thenReturn(List.of());
+    doThrow(new IllegalStateException("publisher timeout"))
+        .when(outboxEventPublishPort)
+        .publish(failedEvent);
+
+    outboxDispatchService.dispatchPendingEvents();
+    outboxDispatchService.dispatchPendingEvents();
+
+    verify(outboxEventStore).claimBatch(eq(10), any(Duration.class), any(Instant.class));
+  }
+
+  @Test
   void quarantinesEventWhenRetryLimitWouldBeExceeded() {
     OutboxEvent event =
         new OutboxEvent(
