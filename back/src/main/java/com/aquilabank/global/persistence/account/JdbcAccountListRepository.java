@@ -49,6 +49,7 @@ public class JdbcAccountListRepository implements AccountListReadPort {
             WHERE membership.user_id = :userId
               AND membership.membership_status = 'ACTIVE'
               AND bank_user.user_status = 'ACTIVE'
+              AND account.account_status IN ('ACTIVE', 'LOCKED')
             ORDER BY membership.account_id ASC
             """,
             new MapSqlParameterSource().addValue("userId", userId),
@@ -88,6 +89,7 @@ public class JdbcAccountListRepository implements AccountListReadPort {
               AND membership.membership_status = 'ACTIVE'
               AND membership.account_id > :afterAccountId
               AND bank_user.user_status = 'ACTIVE'
+              AND account.account_status IN ('ACTIVE', 'LOCKED')
             ORDER BY membership.account_id ASC
             LIMIT :limit
             """,

@@ -272,6 +272,74 @@ class NotificationSseIntegrationTest extends PostgresContainerTestSupport {
   }
 
   @Test
+  @Timeout(15)
+  void jwtUserStreamKeepsLockedAccountNotificationsButHidesClosedAccounts() throws Exception {
+    long[] userId = new long[1];
+    long[] lockedAccountId = new long[1];
+    long[] closedAccountId = new long[1];
+    commit(
+        transactionManager,
+        () -> {
+          userId[0] = insertUser("status-stream-user");
+          lockedAccountId[0] = insertAccount("locked stream account");
+          closedAccountId[0] = insertAccount("closed stream account");
+          insertMembership(userId[0], lockedAccountId[0], "OWNER", "ACTIVE");
+          insertMembership(userId[0], closedAccountId[0], "VIEWER", "ACTIVE");
+        });
+
+    updateAccountStatus(lockedAccountId[0], "LOCKED");
+    updateAccountStatus(closedAccountId[0], "CLOSED");
+    String token = issueToken("status-stream-user-subject", userId[0]);
+    long lastEventId;
+
+    try (NotificationSseStream stream = openJwtStream(token)) {
+      assertThat(stream.awaitEvent("connected", Duration.ofSeconds(3)).name())
+          .isEqualTo("connected");
+
+      transferBookedNotificationConsumer.consume(
+          "transfer-booked:TRX-SSE-STATUS-LOCKED",
+          transferBookedPayload(lockedAccountId[0], closedAccountId[0], 1800L, "status-live"));
+
+      SseEvent liveEvent = stream.awaitEvent("notification", Duration.ofSeconds(3));
+      JsonNode payload = objectMapper.readTree(liveEvent.data());
+      lastEventId = Long.parseLong(liveEvent.id());
+      assertThat(payload.get("accountId").asLong()).isEqualTo(lockedAccountId[0]);
+      assertThat(payload.get("message").asText()).contains("status-live");
+      stream.assertNoEvent("notification", Duration.ofMillis(800));
+    }
+
+    long replayLockedId =
+        commitAndReturn(
+            () ->
+                insertNotification(
+                    lockedAccountId[0],
+                    "jwt-status-replay:TRX-SSE-403",
+                    "TransferBooked",
+                    "이체 완료",
+                    "2100 KRW 입금 · jwt-status-replay"));
+    commitAndReturn(
+        () ->
+            insertNotification(
+                closedAccountId[0],
+                "jwt-status-hidden:TRX-SSE-404",
+                "TransferBooked",
+                "이체 완료",
+                "2200 KRW 입금 · jwt-status-hidden"));
+
+    try (NotificationSseStream replayStream = openJwtStream(token, lastEventId)) {
+      assertThat(replayStream.awaitEvent("connected", Duration.ofSeconds(3)).name())
+          .isEqualTo("connected");
+
+      SseEvent replayEvent = replayStream.awaitEvent("notification", Duration.ofSeconds(3));
+      JsonNode payload = objectMapper.readTree(replayEvent.data());
+      assertThat(Long.parseLong(replayEvent.id())).isEqualTo(replayLockedId);
+      assertThat(payload.get("accountId").asLong()).isEqualTo(lockedAccountId[0]);
+      assertThat(payload.get("message").asText()).contains("jwt-status-replay");
+      replayStream.assertNoEvent("notification", Duration.ofMillis(800));
+    }
+  }
+
+  @Test
   @Timeout(20)
   void reconnectStormReplaysMissedNotificationsWithoutDuplicates() throws Exception {
     long[] accountIds = new long[2];
@@ -706,6 +774,27 @@ class NotificationSseIntegrationTest extends PostgresContainerTestSupport {
             .addValue("accountId", accountId)
             .addValue("role", role)
             .addValue("status", status));
+  }
+
+  private void updateAccountStatus(long accountId, String accountStatus) {
+    commit(
+        transactionManager,
+        () -> {
+          int updated =
+              jdbcTemplate.update(
+                  """
+                  UPDATE bank_account
+                  SET account_status = :accountStatus,
+                      updated_at = CURRENT_TIMESTAMP
+                  WHERE id = :accountId
+                  """,
+                  new MapSqlParameterSource()
+                      .addValue("accountId", accountId)
+                      .addValue("accountStatus", accountStatus));
+          if (updated != 1) {
+            throw new IllegalStateException("bank_account update did not affect exactly one row");
+          }
+        });
   }
 
   private long commitAndReturn(java.util.concurrent.Callable<Long> action) {

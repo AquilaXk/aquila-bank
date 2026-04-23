@@ -33,9 +33,12 @@ record NotificationUserInboxQueryStatement(String sql, MapSqlParameterSource par
             FROM user_account_membership m
             JOIN bank_user u
               ON u.id = m.user_id
+            JOIN bank_account a
+              ON a.id = m.account_id
             WHERE m.user_id = :userId
               AND m.membership_status = 'ACTIVE'
               AND u.user_status = 'ACTIVE'
+              AND a.account_status IN ('ACTIVE', 'LOCKED')
         )
         SELECT item.id,
                item.account_id,

@@ -535,6 +535,289 @@ class NotificationApiIntegrationTest extends PostgresContainerTestSupport {
   }
 
   @Test
+  void jwtNotificationApisHideClosedAccountsButKeepLockedAccounts() throws Exception {
+    long[] userId = new long[1];
+    long[] accountIds = new long[2];
+    long[] notificationIds = new long[3];
+    Instant base = Instant.parse("2026-04-17T00:00:00Z");
+    Instant from = base.minusSeconds(60);
+    Instant to = base.plusSeconds(300);
+    commit(
+        transactionManager,
+        () -> {
+          userId[0] = insertUser("status-filter-user");
+          accountIds[0] = insertAccount("locked notification account");
+          accountIds[1] = insertAccount("closed notification account");
+          insertMembership(userId[0], accountIds[0], "OWNER", "ACTIVE");
+          insertMembership(userId[0], accountIds[1], "VIEWER", "ACTIVE");
+          notificationIds[0] =
+              insertNotification(
+                  accountIds[0],
+                  "evt-status-filter-1",
+                  "TransferBooked",
+                  "첫 LOCKED 알림",
+                  "A",
+                  null,
+                  base);
+          notificationIds[1] =
+              insertNotification(
+                  accountIds[1],
+                  "evt-status-filter-2",
+                  "TransferBooked",
+                  "CLOSED 알림",
+                  "B",
+                  null,
+                  base.plusSeconds(10));
+          notificationIds[2] =
+              insertNotification(
+                  accountIds[0],
+                  "evt-status-filter-3",
+                  "TransferBooked",
+                  "둘째 LOCKED 알림",
+                  "C",
+                  null,
+                  base.plusSeconds(20));
+        });
+
+    updateAccountStatus(accountIds[0], "LOCKED");
+    updateAccountStatus(accountIds[1], "CLOSED");
+    String token = issueToken("status-filter-user-subject", userId[0]);
+
+    mockMvc
+        .perform(get("/api/v1/notifications").header("Authorization", "Bearer " + token))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(2))
+        .andExpect(jsonPath("$.items[0].accountId").value(accountIds[0]))
+        .andExpect(jsonPath("$.items[1].accountId").value(accountIds[0]));
+
+    mockMvc
+        .perform(
+            get("/api/v1/notifications/search")
+                .header("Authorization", "Bearer " + token)
+                .param("from", from.toString())
+                .param("to", to.toString()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(2))
+        .andExpect(jsonPath("$.items[0].accountId").value(accountIds[0]))
+        .andExpect(jsonPath("$.items[1].accountId").value(accountIds[0]));
+
+    mockMvc
+        .perform(
+            get("/api/v1/notifications/unread-count").header("Authorization", "Bearer " + token))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.unreadCount").value(2));
+
+    mockMvc
+        .perform(
+            post("/api/v1/notifications/" + notificationIds[1] + "/read")
+                .header("Authorization", "Bearer " + token))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.message").value("notification is not found"));
+
+    mockMvc
+        .perform(
+            post("/api/v1/notifications/" + notificationIds[0] + "/read")
+                .header("Authorization", "Bearer " + token))
+        .andExpect(status().isNoContent());
+
+    mockMvc
+        .perform(
+            post("/api/v1/notifications/archive")
+                .header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content(
+                    """
+                    {"notificationIds":[%d,%d]}
+                    """
+                        .formatted(notificationIds[1], notificationIds[2])))
+        .andExpect(status().isNoContent());
+
+    mockMvc
+        .perform(
+            post("/api/v1/notifications/delete")
+                .header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content(
+                    """
+                    {"notificationIds":[%d,%d]}
+                    """
+                        .formatted(notificationIds[1], notificationIds[0])))
+        .andExpect(status().isNoContent());
+
+    mockMvc
+        .perform(get("/api/v1/notifications").header("Authorization", "Bearer " + token))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(0));
+
+    mockMvc
+        .perform(
+            get("/api/v1/notifications/unread-count").header("Authorization", "Bearer " + token))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.unreadCount").value(0));
+  }
+
+  @Test
+  void accountPrincipalNotificationApisAllowLockedAccountButRejectClosedAccount() throws Exception {
+    long[] accountId = new long[1];
+    long[] notificationIds = new long[2];
+    Instant base = Instant.parse("2026-04-17T00:00:00Z");
+    Instant from = base.minusSeconds(60);
+    Instant to = base.plusSeconds(300);
+    commit(
+        transactionManager,
+        () -> {
+          accountId[0] = insertAccount("account-principal status account");
+          notificationIds[0] =
+              insertNotification(
+                  accountId[0], "evt-account-status-1", "TransferBooked", "첫 알림", "A", null, base);
+          notificationIds[1] =
+              insertNotification(
+                  accountId[0],
+                  "evt-account-status-2",
+                  "TransferBooked",
+                  "둘째 알림",
+                  "B",
+                  null,
+                  base.plusSeconds(10));
+        });
+
+    updateAccountStatus(accountId[0], "LOCKED");
+
+    mockMvc
+        .perform(get("/api/v1/notifications").header("X-Account-Id", accountId[0]))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(2));
+
+    mockMvc
+        .perform(
+            get("/api/v1/notifications/search")
+                .header("X-Account-Id", accountId[0])
+                .param("from", from.toString())
+                .param("to", to.toString()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(2));
+
+    mockMvc
+        .perform(get("/api/v1/notifications/unread-count").header("X-Account-Id", accountId[0]))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.unreadCount").value(2));
+
+    mockMvc
+        .perform(
+            post("/api/v1/notifications/" + notificationIds[0] + "/read")
+                .header("X-Account-Id", Long.toString(accountId[0])))
+        .andExpect(status().isNoContent());
+
+    mockMvc
+        .perform(
+            post("/api/v1/notifications/read")
+                .header("X-Account-Id", Long.toString(accountId[0]))
+                .contentType("application/json")
+                .content(
+                    """
+                    {"notificationIds":[%d]}
+                    """
+                        .formatted(notificationIds[1])))
+        .andExpect(status().isNoContent());
+
+    mockMvc
+        .perform(
+            post("/api/v1/notifications/archive")
+                .header("X-Account-Id", Long.toString(accountId[0]))
+                .contentType("application/json")
+                .content(
+                    """
+                    {"notificationIds":[%d]}
+                    """
+                        .formatted(notificationIds[0])))
+        .andExpect(status().isNoContent());
+
+    mockMvc
+        .perform(
+            post("/api/v1/notifications/delete")
+                .header("X-Account-Id", Long.toString(accountId[0]))
+                .contentType("application/json")
+                .content(
+                    """
+                    {"notificationIds":[%d]}
+                    """
+                        .formatted(notificationIds[1])))
+        .andExpect(status().isNoContent());
+
+    updateAccountStatus(accountId[0], "CLOSED");
+
+    mockMvc
+        .perform(get("/api/v1/notifications").header("X-Account-Id", accountId[0]))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.message").value("account access is denied"));
+
+    mockMvc
+        .perform(
+            get("/api/v1/notifications/search")
+                .header("X-Account-Id", accountId[0])
+                .param("from", from.toString())
+                .param("to", to.toString()))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.message").value("account access is denied"));
+
+    mockMvc
+        .perform(get("/api/v1/notifications/unread-count").header("X-Account-Id", accountId[0]))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.message").value("account access is denied"));
+
+    mockMvc
+        .perform(
+            post("/api/v1/notifications/" + notificationIds[0] + "/read")
+                .header("X-Account-Id", Long.toString(accountId[0])))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.message").value("account access is denied"));
+
+    mockMvc
+        .perform(
+            post("/api/v1/notifications/read")
+                .header("X-Account-Id", Long.toString(accountId[0]))
+                .contentType("application/json")
+                .content(
+                    """
+                    {"notificationIds":[%d]}
+                    """
+                        .formatted(notificationIds[1])))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.message").value("account access is denied"));
+
+    mockMvc
+        .perform(
+            post("/api/v1/notifications/archive")
+                .header("X-Account-Id", Long.toString(accountId[0]))
+                .contentType("application/json")
+                .content(
+                    """
+                    {"notificationIds":[%d]}
+                    """
+                        .formatted(notificationIds[0])))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.message").value("account access is denied"));
+
+    mockMvc
+        .perform(
+            post("/api/v1/notifications/delete")
+                .header("X-Account-Id", Long.toString(accountId[0]))
+                .contentType("application/json")
+                .content(
+                    """
+                    {"notificationIds":[%d]}
+                    """
+                        .formatted(notificationIds[1])))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.message").value("account access is denied"));
+
+    mockMvc
+        .perform(get("/api/v1/notifications/stream").header("X-Account-Id", accountId[0]))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.message").value("account access is denied"));
+  }
+
+  @Test
   void searchesNotificationsForJwtUserWithExplicitFilters() throws Exception {
     long[] userId = new long[1];
     long[] accountIds = new long[2];
@@ -875,6 +1158,27 @@ class NotificationApiIntegrationTest extends PostgresContainerTestSupport {
             .addValue("accountId", accountId)
             .addValue("role", role)
             .addValue("status", status));
+  }
+
+  private void updateAccountStatus(long accountId, String accountStatus) {
+    commit(
+        transactionManager,
+        () -> {
+          int updated =
+              jdbcTemplate.update(
+                  """
+                  UPDATE bank_account
+                  SET account_status = :accountStatus,
+                      updated_at = CURRENT_TIMESTAMP
+                  WHERE id = :accountId
+                  """,
+                  new MapSqlParameterSource()
+                      .addValue("accountId", accountId)
+                      .addValue("accountStatus", accountStatus));
+          if (updated != 1) {
+            throw new IllegalStateException("bank_account update did not affect exactly one row");
+          }
+        });
   }
 
   private long insertNotification(

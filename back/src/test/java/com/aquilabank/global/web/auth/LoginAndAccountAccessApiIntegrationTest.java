@@ -452,6 +452,47 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
   }
 
   @Test
+  void accountListKeepsLockedAccountsButHidesClosedAccounts() throws Exception {
+    upsertMembership(userId, targetAccountId, "VIEWER", "ACTIVE");
+    String token = login("alice", "password123!");
+
+    updateAccountStatus(allowedSourceAccountId, "LOCKED", "account-list-locked-request");
+    updateAccountStatus(targetAccountId, "CLOSED", "account-list-closed-request");
+
+    mockMvc
+        .perform(get("/api/v1/accounts").header("Authorization", "Bearer " + token))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(1))
+        .andExpect(jsonPath("$.items[0].accountId").value(allowedSourceAccountId))
+        .andExpect(jsonPath("$.items[0].accountStatus").value("LOCKED"));
+  }
+
+  @Test
+  void bootstrapAccountListAllowsLockedAccountButRejectsClosedAccount() throws Exception {
+    updateAccountStatus(allowedSourceAccountId, "LOCKED", "bootstrap-account-list-locked-request");
+
+    mockMvc
+        .perform(
+            get("/api/v1/accounts")
+                .header("X-Account-Id", String.valueOf(allowedSourceAccountId))
+                .header("X-Subject", "bootstrap-account"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(1))
+        .andExpect(jsonPath("$.items[0].accountId").value(allowedSourceAccountId))
+        .andExpect(jsonPath("$.items[0].accountStatus").value("LOCKED"));
+
+    updateAccountStatus(allowedSourceAccountId, "CLOSED", "bootstrap-account-list-closed-request");
+
+    mockMvc
+        .perform(
+            get("/api/v1/accounts")
+                .header("X-Account-Id", String.valueOf(allowedSourceAccountId))
+                .header("X-Subject", "bootstrap-account"))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.message").value("account access is denied"));
+  }
+
+  @Test
   void transactionDetailReturnsAllowedAccountDataAnd404ForMissingReference() throws Exception {
     String token = login("alice", "password123!");
 

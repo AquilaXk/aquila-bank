@@ -14,6 +14,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.aquilabank.domain.auth.exception.AccountAccessDeniedException;
 import com.aquilabank.domain.notification.exception.NotificationNotFoundException;
 import com.aquilabank.domain.notification.model.NotificationBulkActionCommand;
 import com.aquilabank.domain.notification.model.NotificationCursor;
@@ -40,6 +41,7 @@ import com.aquilabank.global.security.AuthenticatedUserPrincipal;
 import com.aquilabank.global.security.BootstrapHeaderAuthenticationFilter;
 import com.aquilabank.global.web.ApiExceptionHandler;
 import com.aquilabank.global.web.security.CurrentAuthenticatedPrincipalArgumentResolver;
+import com.aquilabank.global.web.security.RequestAccountAuthorizationService;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -61,6 +63,7 @@ class NotificationControllerTest {
   private NotificationPreferenceReadUseCase notificationPreferenceReadUseCase;
   private NotificationPreferenceUpdateUseCase notificationPreferenceUpdateUseCase;
   private NotificationSseBroker notificationSseBroker;
+  private RequestAccountAuthorizationService requestAccountAuthorizationService;
   private MockMvc mockMvc;
 
   @BeforeEach
@@ -72,6 +75,9 @@ class NotificationControllerTest {
     notificationPreferenceReadUseCase = mock(NotificationPreferenceReadUseCase.class);
     notificationPreferenceUpdateUseCase = mock(NotificationPreferenceUpdateUseCase.class);
     notificationSseBroker = mock(NotificationSseBroker.class);
+    requestAccountAuthorizationService = mock(RequestAccountAuthorizationService.class);
+    when(requestAccountAuthorizationService.resolveReadableAccountId(any(), anyLong()))
+        .thenAnswer(invocation -> invocation.getArgument(1, Long.class));
     Clock notificationSearchClock =
         Clock.fixed(Instant.parse("2026-04-21T12:00:00Z"), ZoneOffset.UTC);
     mockMvc =
@@ -84,6 +90,7 @@ class NotificationControllerTest {
                     notificationPreferenceReadUseCase,
                     notificationPreferenceUpdateUseCase,
                     notificationSseBroker,
+                    requestAccountAuthorizationService,
                     notificationSearchClock))
             .setControllerAdvice(new ApiExceptionHandler())
             .addFilters(new BootstrapHeaderAuthenticationFilter("X-Account-Id", "X-Subject"))
@@ -209,6 +216,17 @@ class NotificationControllerTest {
         .andExpect(jsonPath("$.items[0].read").value(false))
         .andExpect(jsonPath("$.hasNext").value(true))
         .andExpect(jsonPath("$.nextCursor").isString());
+  }
+
+  @Test
+  void rejectsAccountPrincipalWhenReadableAccountAccessIsDenied() throws Exception {
+    when(requestAccountAuthorizationService.resolveReadableAccountId(any(), eq(101L)))
+        .thenThrow(new AccountAccessDeniedException("account access is denied"));
+
+    mockMvc
+        .perform(get("/api/v1/notifications").header("X-Account-Id", "101"))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.message").value("account access is denied"));
   }
 
   @Test
