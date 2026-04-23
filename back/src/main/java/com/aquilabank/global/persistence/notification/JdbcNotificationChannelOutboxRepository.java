@@ -3,11 +3,16 @@ package com.aquilabank.global.persistence.notification;
 import com.aquilabank.domain.notification.model.NotificationChannelDeliveryStatus;
 import com.aquilabank.domain.notification.model.NotificationChannelOutboxEntry;
 import com.aquilabank.domain.notification.model.NotificationChannelOutboxItem;
+import com.aquilabank.domain.notification.model.NotificationChannelOutboxQuarantinedItem;
+import com.aquilabank.domain.notification.model.NotificationChannelOutboxRedriveOutcome;
+import com.aquilabank.domain.notification.model.NotificationChannelOutboxRedriveResult;
 import com.aquilabank.domain.notification.model.NotificationPreferenceCategory;
 import com.aquilabank.domain.notification.model.NotificationPreferenceChannel;
 import com.aquilabank.domain.notification.port.NotificationChannelOutboxAppendPort;
 import com.aquilabank.domain.notification.port.NotificationChannelOutboxCleanupPort;
 import com.aquilabank.domain.notification.port.NotificationChannelOutboxDispatchPort;
+import com.aquilabank.domain.notification.port.NotificationChannelOutboxOpsReadPort;
+import com.aquilabank.domain.notification.port.NotificationChannelOutboxOpsRecoveryPort;
 import com.aquilabank.domain.notification.port.NotificationChannelOutboxReadPort;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -27,10 +32,14 @@ public class JdbcNotificationChannelOutboxRepository
     implements NotificationChannelOutboxAppendPort,
         NotificationChannelOutboxReadPort,
         NotificationChannelOutboxDispatchPort,
-        NotificationChannelOutboxCleanupPort {
+        NotificationChannelOutboxCleanupPort,
+        NotificationChannelOutboxOpsReadPort,
+        NotificationChannelOutboxOpsRecoveryPort {
 
   private static final RowMapper<NotificationChannelOutboxItem> ROW_MAPPER =
       (rs, rowNum) -> mapRow(rs);
+  private static final RowMapper<NotificationChannelOutboxQuarantinedItem> QUARANTINED_ROW_MAPPER =
+      (rs, rowNum) -> mapQuarantinedRow(rs);
 
   private final NamedParameterJdbcTemplate jdbcTemplate;
 
@@ -169,6 +178,79 @@ public class JdbcNotificationChannelOutboxRepository
             .addValue("id", id)
             .addValue("quarantinedAt", Timestamp.from(quarantinedAt))
             .addValue("lastError", errorMessage));
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public List<NotificationChannelOutboxQuarantinedItem> findQuarantinedItems(int limit) {
+    if (limit <= 0) {
+      throw new IllegalArgumentException("limit must be positive");
+    }
+    return jdbcTemplate.query(
+        """
+        SELECT id,
+               notification_id,
+               user_id,
+               account_id,
+               category,
+               channel,
+               event_type,
+               event_key,
+               retry_count,
+               last_error,
+               created_at,
+               updated_at
+        FROM notification_channel_outbox
+        WHERE delivery_status = 'QUARANTINED'
+        ORDER BY updated_at DESC, id DESC
+        LIMIT :limit
+        """,
+        new MapSqlParameterSource().addValue("limit", limit),
+        QUARANTINED_ROW_MAPPER);
+  }
+
+  @Override
+  @Transactional
+  public NotificationChannelOutboxRedriveResult redrive(long id, Instant requestedAt) {
+    if (id <= 0) {
+      throw new IllegalArgumentException("id must be positive");
+    }
+    if (requestedAt == null) {
+      throw new IllegalArgumentException("requestedAt must not be null");
+    }
+    RedriveTargetRow target = findRedriveTarget(id);
+    if (target == null) {
+      return new NotificationChannelOutboxRedriveResult(
+          id, NotificationChannelOutboxRedriveOutcome.NOT_FOUND, null, 0, requestedAt);
+    }
+    if (target.deliveryStatus() != NotificationChannelDeliveryStatus.QUARANTINED) {
+      return new NotificationChannelOutboxRedriveResult(
+          id,
+          NotificationChannelOutboxRedriveOutcome.NOT_QUARANTINED,
+          target.deliveryStatus(),
+          target.retryCount(),
+          requestedAt);
+    }
+    jdbcTemplate.update(
+        """
+        UPDATE notification_channel_outbox
+        SET delivery_status = 'PENDING',
+            available_at = :requestedAt,
+            sent_at = NULL,
+            last_error = NULL,
+            updated_at = :requestedAt
+        WHERE id = :id
+          AND delivery_status = 'QUARANTINED'
+        """,
+        new MapSqlParameterSource()
+            .addValue("id", id)
+            .addValue("requestedAt", Timestamp.from(requestedAt)));
+    return new NotificationChannelOutboxRedriveResult(
+        id,
+        NotificationChannelOutboxRedriveOutcome.REDRIVEN,
+        NotificationChannelDeliveryStatus.PENDING,
+        target.retryCount(),
+        requestedAt);
   }
 
   @Override
@@ -338,6 +420,41 @@ public class JdbcNotificationChannelOutboxRepository
         instant(rs, "updated_at"));
   }
 
+  private static NotificationChannelOutboxQuarantinedItem mapQuarantinedRow(ResultSet rs)
+      throws SQLException {
+    return new NotificationChannelOutboxQuarantinedItem(
+        rs.getLong("id"),
+        rs.getLong("notification_id"),
+        rs.getLong("user_id"),
+        rs.getLong("account_id"),
+        NotificationPreferenceCategory.valueOf(rs.getString("category")),
+        NotificationPreferenceChannel.valueOf(rs.getString("channel")),
+        rs.getString("event_type"),
+        rs.getString("event_key"),
+        rs.getInt("retry_count"),
+        rs.getString("last_error"),
+        instant(rs, "created_at"),
+        instant(rs, "updated_at"));
+  }
+
+  private RedriveTargetRow findRedriveTarget(long id) {
+    List<RedriveTargetRow> rows =
+        jdbcTemplate.query(
+            """
+            SELECT delivery_status,
+                   retry_count
+            FROM notification_channel_outbox
+            WHERE id = :id
+            FOR UPDATE
+            """,
+            new MapSqlParameterSource().addValue("id", id),
+            (rs, rowNum) ->
+                new RedriveTargetRow(
+                    NotificationChannelDeliveryStatus.valueOf(rs.getString("delivery_status")),
+                    rs.getInt("retry_count")));
+    return rows.isEmpty() ? null : rows.getFirst();
+  }
+
   private static Instant instant(ResultSet rs, String columnName) throws SQLException {
     return rs.getObject(columnName, OffsetDateTime.class).toInstant();
   }
@@ -346,4 +463,7 @@ public class JdbcNotificationChannelOutboxRepository
     OffsetDateTime value = rs.getObject(columnName, OffsetDateTime.class);
     return value == null ? null : value.toInstant();
   }
+
+  private record RedriveTargetRow(
+      NotificationChannelDeliveryStatus deliveryStatus, int retryCount) {}
 }
