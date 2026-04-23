@@ -1,0 +1,69 @@
+name: Production t3.micro Capacity Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      soak_repeat:
+        description: Repeat count for extended rehearsal
+        required: true
+        default: "1"
+        type: string
+      db_pool_max_size:
+        description: Production DB pool max size
+        required: true
+        default: "4"
+        type: string
+      server_threads_max:
+        description: Production server threads max
+        required: true
+        default: "16"
+        type: string
+      sse_max_total_sessions:
+        description: Production SSE total session budget
+        required: true
+        default: "64"
+        type: string
+      notification_stream_max:
+        description: Production notification stream admission budget
+        required: true
+        default: "4"
+        type: string
+  schedule:
+    - cron: "15 18 * * 0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-t3micro-capacity-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    name: Run Production t3.micro Capacity Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Grant Gradle wrapper execute permission
+        run: chmod +x back/gradlew
+
+      - name: Run production t3.micro capacity smoke
+        env:
+          SOAK_REPEAT: ${{ github.event_name == 'workflow_dispatch' && inputs.soak_repeat || vars.PRODUCTION_T3MICRO_SOAK_REPEAT }}
+          PRODUCTION_T3MICRO_DB_POOL_MAX_SIZE: ${{ github.event_name == 'workflow_dispatch' && inputs.db_pool_max_size || vars.PRODUCTION_T3MICRO_DB_POOL_MAX_SIZE }}
+          PRODUCTION_T3MICRO_SERVER_THREADS_MAX: ${{ github.event_name == 'workflow_dispatch' && inputs.server_threads_max || vars.PRODUCTION_T3MICRO_SERVER_THREADS_MAX }}
+          PRODUCTION_T3MICRO_SSE_MAX_TOTAL_SESSIONS: ${{ github.event_name == 'workflow_dispatch' && inputs.sse_max_total_sessions || vars.PRODUCTION_T3MICRO_SSE_MAX_TOTAL_SESSIONS }}
+          PRODUCTION_T3MICRO_NOTIFICATION_STREAM_MAX: ${{ github.event_name == 'workflow_dispatch' && inputs.notification_stream_max || vars.PRODUCTION_T3MICRO_NOTIFICATION_STREAM_MAX }}
+        run: tools/test/run-production-t3micro-capacity-smoke.sh

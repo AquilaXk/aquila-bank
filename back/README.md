@@ -347,6 +347,26 @@ tools/test/run-kafka-consumer-partition-concurrency.sh
 - t3.micro 기준: DB write path가 같이 느려질 수 있으므로 consumer lag, Hikari pool pending, `AquilaDbPoolActivePressureHigh`를 함께 확인합니다.
 - rollback: lag가 줄지 않거나 DB pool wait가 늘면 `NOTIFICATION_INBOX_CONSUMER_CONCURRENCY=1`로 되돌리고 partition 증설 효과를 재측정합니다.
 
+### Production t3.micro Capacity Smoke
+
+production budget 회귀는 아래 smoke entrypoint와 scheduled workflow로 주기 확인합니다.
+
+```bash
+tools/test/run-production-t3micro-capacity-smoke.sh
+```
+
+- 위 script는 기존 `tools/test/run-t3micro-mixed-workload-soak.sh`를 production budget env와 함께 실행합니다.
+- 기본 budget은 `DB_POOL_MAX_SIZE=4`, `SERVER_THREADS_MAX=16`, `NOTIFICATION_SSE_MAX_TOTAL_SESSIONS=64`, `OPS_API_ADMISSION_CONTROL_NOTIFICATION_STREAM_MAX=4` 입니다.
+- 기본 repeat는 `1`이고, 장시간 rehearsal이 필요하면 `SOAK_REPEAT=<n>`으로 늘립니다.
+- scheduled workflow `Production t3.micro Capacity Smoke`는 매주 월요일 03:15 KST(`15 18 * * 0` UTC)와 manual `workflow_dispatch`를 지원합니다.
+- repository variable로 아래 값을 override 할 수 있습니다.
+  - `PRODUCTION_T3MICRO_SOAK_REPEAT`
+  - `PRODUCTION_T3MICRO_DB_POOL_MAX_SIZE`
+  - `PRODUCTION_T3MICRO_SERVER_THREADS_MAX`
+  - `PRODUCTION_T3MICRO_SSE_MAX_TOTAL_SESSIONS`
+  - `PRODUCTION_T3MICRO_NOTIFICATION_STREAM_MAX`
+- smoke rollback은 workflow 비활성화 또는 variable 값을 기본 budget으로 되돌리는 방식으로 처리합니다.
+
 ## Notification Read State
 
 - JWT user 경로의 읽음 상태는 `notification_user_read_state`에 user별로 저장됩니다.
