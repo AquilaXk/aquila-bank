@@ -91,3 +91,11 @@ com.aquilabank
 - `OUTBOX_POLLER_MIN_BATCH_SIZE`: publish 실패가 이어질 때 줄일 최소 batch 크기입니다.
 - `OUTBOX_POLLER_MAX_ADAPTIVE_DELAY_MS`: 실패 또는 빈 poll 반복 시 추가 대기 시간 상한입니다.
 - 운영 복구 시 `OUTBOX_POLLER_ADAPTIVE_ENABLED=false`로 고정 batch/주기 모드로 되돌릴 수 있습니다.
+
+## Notification Channel Provider Worker
+
+- `NOTIFICATION_CHANNEL_PROVIDER_WORKER_ENABLED`: EMAIL/SMS provider worker 활성화 여부입니다. 기본값은 `false`입니다.
+- `NOTIFICATION_CHANNEL_PROVIDER_WORKER_BATCH_SIZE`: 한 poll에서 claim할 delivery row 상한입니다.
+- `NOTIFICATION_CHANNEL_PROVIDER_WORKER_MAX_RETRY_DELAY_SECONDS`: provider 실패 시 retry backoff 상한입니다.
+- 기본 provider는 외부 secret 없는 logging adapter입니다. 실제 provider 연동 전 운영에서는 활성화하지 않습니다.
+- 롤백은 `NOTIFICATION_CHANNEL_PROVIDER_WORKER_ENABLED=false`로 scheduler를 중지하고, 필요 시 `FAILED` row를 운영 절차에 따라 재처리합니다.

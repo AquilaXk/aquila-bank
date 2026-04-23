@@ -6,6 +6,7 @@ import com.aquilabank.domain.notification.model.NotificationChannelOutboxItem;
 import com.aquilabank.domain.notification.model.NotificationPreferenceCategory;
 import com.aquilabank.domain.notification.model.NotificationPreferenceChannel;
 import com.aquilabank.domain.notification.port.NotificationChannelOutboxAppendPort;
+import com.aquilabank.domain.notification.port.NotificationChannelOutboxDispatchPort;
 import com.aquilabank.domain.notification.port.NotificationChannelOutboxReadPort;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -22,7 +23,9 @@ import org.springframework.transaction.annotation.Transactional;
 /** EMAIL/SMS 외부 channel delivery outbox를 PostgreSQL durable queue로 관리합니다. */
 @Repository
 public class JdbcNotificationChannelOutboxRepository
-    implements NotificationChannelOutboxAppendPort, NotificationChannelOutboxReadPort {
+    implements NotificationChannelOutboxAppendPort,
+        NotificationChannelOutboxReadPort,
+        NotificationChannelOutboxDispatchPort {
 
   private static final RowMapper<NotificationChannelOutboxItem> ROW_MAPPER =
       (rs, rowNum) -> mapRow(rs);
@@ -45,6 +48,103 @@ public class JdbcNotificationChannelOutboxRepository
       insertedCount += appendIfAbsent(item);
     }
     return insertedCount;
+  }
+
+  @Override
+  @Transactional
+  public List<NotificationChannelOutboxItem> claimPending(int limit, Instant now) {
+    if (limit <= 0) {
+      throw new IllegalArgumentException("limit must be positive");
+    }
+    if (now == null) {
+      throw new IllegalArgumentException("now must not be null");
+    }
+    return jdbcTemplate.query(
+        """
+        WITH candidates AS (
+            SELECT id
+            FROM notification_channel_outbox
+            WHERE delivery_status IN ('PENDING', 'FAILED')
+              AND available_at <= :now
+            ORDER BY available_at ASC, id ASC
+            LIMIT :limit
+            FOR UPDATE SKIP LOCKED
+        ),
+        claimed AS (
+            UPDATE notification_channel_outbox item
+            SET delivery_status = 'SENDING',
+                updated_at = :now
+            FROM candidates
+            WHERE item.id = candidates.id
+            RETURNING item.id,
+                      item.notification_id,
+                      item.user_id,
+                      item.account_id,
+                      item.category,
+                      item.channel,
+                      item.event_type,
+                      item.event_key,
+                      item.payload::text AS payload,
+                      item.delivery_status,
+                      item.available_at,
+                      item.sent_at,
+                      item.retry_count,
+                      item.last_error,
+                      item.created_at,
+                      item.updated_at
+        )
+        SELECT *
+        FROM claimed
+        ORDER BY available_at ASC, id ASC
+        """,
+        new MapSqlParameterSource().addValue("limit", limit).addValue("now", Timestamp.from(now)),
+        ROW_MAPPER);
+  }
+
+  @Override
+  @Transactional
+  public void markSent(long id, Instant sentAt) {
+    if (sentAt == null) {
+      throw new IllegalArgumentException("sentAt must not be null");
+    }
+    jdbcTemplate.update(
+        """
+        UPDATE notification_channel_outbox
+        SET delivery_status = 'SENT',
+            sent_at = :sentAt,
+            last_error = NULL,
+            updated_at = :sentAt
+        WHERE id = :id
+          AND delivery_status = 'SENDING'
+        """,
+        new MapSqlParameterSource().addValue("id", id).addValue("sentAt", Timestamp.from(sentAt)));
+  }
+
+  @Override
+  @Transactional
+  public void markFailed(long id, Instant nextAttemptAt, Instant failedAt, String errorMessage) {
+    if (nextAttemptAt == null) {
+      throw new IllegalArgumentException("nextAttemptAt must not be null");
+    }
+    if (failedAt == null) {
+      throw new IllegalArgumentException("failedAt must not be null");
+    }
+    jdbcTemplate.update(
+        """
+        UPDATE notification_channel_outbox
+        SET delivery_status = 'FAILED',
+            available_at = :nextAttemptAt,
+            retry_count = retry_count + 1,
+            last_error = :lastError,
+            updated_at = :failedAt
+        WHERE id = :id
+          AND delivery_status = 'SENDING'
+        """,
+        new MapSqlParameterSource()
+            .addValue("id", id)
+            .addValue("nextAttemptAt", Timestamp.from(nextAttemptAt))
+            .addValue("failedAt", Timestamp.from(failedAt))
+            .addValue("lastError", errorMessage));
   }
 
   @Override
