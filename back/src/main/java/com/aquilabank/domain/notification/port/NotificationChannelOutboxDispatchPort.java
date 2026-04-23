@@ -12,4 +12,6 @@ public interface NotificationChannelOutboxDispatchPort {
   void markSent(long id, Instant sentAt);
 
   void markFailed(long id, Instant nextAttemptAt, Instant failedAt, String errorMessage);
+
+  void markQuarantined(long id, Instant quarantinedAt, String errorMessage);
 }

@@ -10,7 +10,8 @@ public record NotificationChannelProviderWorkerProperties(
     long initialDelayMs,
     int batchSize,
     long retryBaseDelaySeconds,
-    long maxRetryDelaySeconds) {
+    long maxRetryDelaySeconds,
+    int maxRetryAttempts) {
 
   public NotificationChannelProviderWorkerProperties {
     fixedDelayMs = fixedDelayMs > 0 ? fixedDelayMs : 5000;
@@ -19,5 +20,6 @@ public record NotificationChannelProviderWorkerProperties(
     retryBaseDelaySeconds = retryBaseDelaySeconds > 0 ? retryBaseDelaySeconds : 5;
     maxRetryDelaySeconds =
         Math.max(retryBaseDelaySeconds, maxRetryDelaySeconds > 0 ? maxRetryDelaySeconds : 60);
+    maxRetryAttempts = maxRetryAttempts > 0 ? maxRetryAttempts : 10;
   }
 }
