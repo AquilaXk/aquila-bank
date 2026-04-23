@@ -237,8 +237,9 @@ docker compose up -d postgres kafka
 - Kafka 기본 포트: `localhost:9092`
 - Redis profile 기본 포트: `localhost:6379`
 - 로컬 Kafka broker는 topic auto-create를 끄고, app startup provisioning이 configured topic을 명시적으로 준비합니다.
+- 로컬 기본 baseline은 `KAFKA_TOPIC_PROVISIONING_REPLICATION_FACTOR=1`, `KAFKA_TOPIC_PROVISIONING_MIN_IN_SYNC_REPLICAS=1` 입니다.
 - 기본 topic 이름은 `bank.notification.outbox.v1`, `bank.transfer.booked.v1`, `bank.transfer.reversed.v1`, `bank.transfer.booked.dlq.v1` 입니다.
-- startup validation은 configured topic 존재와 최소 partition 수를 확인하고, outbox/consumer bootstrap server가 다르면 fail-fast 합니다.
+- startup validation은 configured topic 존재, 최소 partition 수, replication factor, `min.insync.replicas`를 확인하고, outbox/consumer bootstrap server가 다르면 fail-fast 합니다.
 - topic partition을 늘릴 때는 `KAFKA_TOPIC_PROVISIONING_PARTITIONS`와 `NOTIFICATION_INBOX_CONSUMER_CONCURRENCY`를 같이 조정합니다.
 - 이 경로는 로컬 개발 전용입니다.
 
@@ -275,6 +276,8 @@ set +a
 - `dev` 프로필은 `OUTBOX_KAFKA_ENABLED=true`, `NOTIFICATION_INBOX_CONSUMER_ENABLED=true`만 주면 `localhost:9092`, 기본 topic 이름, provisioning/validation 기본값을 자동 사용합니다.
 - Kafka 포트를 바꾸면 `OUTBOX_KAFKA_BOOTSTRAP_SERVERS`, `NOTIFICATION_INBOX_CONSUMER_BOOTSTRAP_SERVERS`를 같은 값으로 같이 넘깁니다.
 - `NOTIFICATION_INBOX_CONSUMER_CONCURRENCY` 기본값은 `1`입니다. partition 확장 검증 없이 값을 올리지 않고, 운영에서는 topic partition 수와 DB pool 여유 안에서만 올립니다.
+- multi-broker 운영 baseline은 `KAFKA_TOPIC_PROVISIONING_REPLICATION_FACTOR=3`, `KAFKA_TOPIC_PROVISIONING_MIN_IN_SYNC_REPLICAS=2`, `OUTBOX_KAFKA_PRODUCER_ACKS=all`, `OUTBOX_KAFKA_PRODUCER_ENABLE_IDEMPOTENCE=true` 조합을 기본값으로 둡니다.
+- broker 수가 replication factor 보다 적거나 topic의 실제 replication/min ISR 이 baseline 과 다르면 startup validation 이 fail-fast 합니다.
 - provisioning/validation을 끄려면 `KAFKA_TOPIC_PROVISIONING_ENABLED=false`, `KAFKA_TOPIC_STARTUP_VALIDATION_ENABLED=false`를 함께 조정합니다.
 
 ## Prometheus Metrics
@@ -379,6 +382,19 @@ tools/test/run-kafka-consumer-partition-concurrency.sh
 - 운영 적용: `KAFKA_TOPIC_PROVISIONING_PARTITIONS=<n>`으로 topic 최소 partition을 올리고 `NOTIFICATION_INBOX_CONSUMER_CONCURRENCY=<n>`은 partition 수 이하로 둡니다.
 - t3.micro 기준: DB write path가 같이 느려질 수 있으므로 consumer lag, Hikari pool pending, `AquilaDbPoolActivePressureHigh`를 함께 확인합니다.
 - rollback: lag가 줄지 않거나 DB pool wait가 늘면 `NOTIFICATION_INBOX_CONSUMER_CONCURRENCY=1`로 되돌리고 partition 증설 효과를 재측정합니다.
+
+### Kafka Production Replication Baseline
+
+운영 Kafka 는 topic partition 수만 맞추면 끝나지 않습니다. producer 기본값이 `acks=all`, idempotence on 이므로 topic replication factor 와 `min.insync.replicas` baseline 이 같이 맞아야 broker 장애 시에도 durability/availability trade-off 가 예측 가능합니다.
+
+```bash
+tools/test/run-kafka-production-replication-baseline.sh
+```
+
+- local single broker baseline: `KAFKA_TOPIC_PROVISIONING_REPLICATION_FACTOR=1`, `KAFKA_TOPIC_PROVISIONING_MIN_IN_SYNC_REPLICAS=1`
+- multi-broker 운영 baseline: `KAFKA_TOPIC_PROVISIONING_REPLICATION_FACTOR=3`, `KAFKA_TOPIC_PROVISIONING_MIN_IN_SYNC_REPLICAS=2`
+- startup validation 은 required broker 수, topic 최소 partition 수, topic replication factor, topic `min.insync.replicas`를 같이 확인합니다.
+- rollback: broker 수를 줄이거나 quorum 정책을 완화해야 하면 topic baseline env 와 실제 topic config 를 같이 낮춘 뒤 재시작합니다.
 
 ### Production t3.micro Capacity Smoke
 
@@ -1206,6 +1222,8 @@ NOTIFICATION_INBOX_CONSUMER_OPS_ENABLED=true
 NOTIFICATION_INBOX_CONSUMER_OPS_HEALTH_MAX_LAG_MESSAGES=100
 NOTIFICATION_INBOX_CONSUMER_OPS_HEALTH_MAX_DLQ_COUNT=0
 KAFKA_TOPIC_PROVISIONING_PARTITIONS=1
+KAFKA_TOPIC_PROVISIONING_REPLICATION_FACTOR=1
+KAFKA_TOPIC_PROVISIONING_MIN_IN_SYNC_REPLICAS=1
 ```
 
 운영 호출용 shell에는 아래처럼 pre-generated token을 둡니다.

@@ -8,8 +8,11 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.AdminClientConfig;
+import org.apache.kafka.clients.admin.Config;
 import org.apache.kafka.clients.admin.TopicDescription;
 import org.apache.kafka.common.KafkaFuture;
+import org.apache.kafka.common.config.ConfigResource;
+import org.apache.kafka.common.config.TopicConfig;
 import org.apache.kafka.common.errors.UnknownTopicOrPartitionException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -68,6 +71,9 @@ public class KafkaTopicAdministrationConfiguration {
                     TopicBuilder.name(topic.name())
                         .partitions(topic.partitions())
                         .replicas(topic.replicationFactor())
+                        .config(
+                            TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG,
+                            Integer.toString(topic.minInSyncReplicas()))
                         .build())
             .toArray(org.apache.kafka.clients.admin.NewTopic[]::new));
   }
@@ -83,29 +89,37 @@ public class KafkaTopicAdministrationConfiguration {
   }
 
   private void validateTopics(KafkaTopicTopology kafkaTopicTopology) {
+    KafkaTopicRuntimeValidator runtimeValidator = new KafkaTopicRuntimeValidator();
     try (AdminClient adminClient =
         AdminClient.create(
             Map.of(
                 AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG,
                 kafkaTopicTopology.bootstrapServers()))) {
+      runtimeValidator.validateBrokerCount(
+          kafkaTopicTopology,
+          adminClient.describeCluster().nodes().get(5, TimeUnit.SECONDS).size());
       Map<String, KafkaFuture<TopicDescription>> describeResults =
           adminClient
               .describeTopics(
                   kafkaTopicTopology.topics().stream().map(KafkaTopicSpec::name).toList())
               .topicNameValues();
+      Map<ConfigResource, KafkaFuture<Config>> configResults =
+          adminClient
+              .describeConfigs(
+                  kafkaTopicTopology.topics().stream().map(this::topicConfigResource).toList())
+              .values();
       for (KafkaTopicSpec topic : kafkaTopicTopology.topics()) {
         try {
           TopicDescription description = describeResults.get(topic.name()).get(5, TimeUnit.SECONDS);
-          int actualPartitions = description.partitions().size();
-          if (actualPartitions < topic.partitions()) {
-            throw new IllegalStateException(
-                "Kafka topic has fewer partitions than required: topic="
-                    + topic.name()
-                    + ", required="
-                    + topic.partitions()
-                    + ", actual="
-                    + actualPartitions);
-          }
+          Config topicConfig =
+              configResults.get(topicConfigResource(topic)).get(5, TimeUnit.SECONDS);
+          runtimeValidator.validateTopic(
+              topic,
+              new KafkaTopicRuntimeState(
+                  topic.name(),
+                  description.partitions().size(),
+                  resolveReplicationFactor(topic.name(), description),
+                  resolveMinInSyncReplicas(topic.name(), topicConfig)));
         } catch (ExecutionException ex) {
           Throwable rootCause = rootCause(ex);
           if (rootCause instanceof UnknownTopicOrPartitionException) {
@@ -123,8 +137,61 @@ public class KafkaTopicAdministrationConfiguration {
     } catch (InterruptedException ex) {
       Thread.currentThread().interrupt();
       throw new IllegalStateException("Kafka topic startup validation interrupted", ex);
+    } catch (ExecutionException ex) {
+      throw new IllegalStateException(
+          "Kafka topic startup validation failed: unable to describe Kafka cluster", rootCause(ex));
     } catch (TimeoutException ex) {
       throw new IllegalStateException("Kafka topic startup validation timed out", ex);
+    }
+  }
+
+  private ConfigResource topicConfigResource(KafkaTopicSpec topic) {
+    return new ConfigResource(ConfigResource.Type.TOPIC, topic.name());
+  }
+
+  private int resolveReplicationFactor(String topicName, TopicDescription description) {
+    if (description.partitions().isEmpty()) {
+      throw new IllegalStateException(
+          "Kafka topic startup validation failed: topic has no partitions=" + topicName);
+    }
+    int replicationFactor = -1;
+    for (var partition : description.partitions()) {
+      int partitionReplicationFactor = partition.replicas().size();
+      if (replicationFactor < 0) {
+        replicationFactor = partitionReplicationFactor;
+        continue;
+      }
+      if (replicationFactor != partitionReplicationFactor) {
+        throw new IllegalStateException(
+            "Kafka topic has inconsistent replication factor across partitions: topic="
+                + topicName
+                + ", expected-consistent="
+                + replicationFactor
+                + ", actual="
+                + partitionReplicationFactor);
+      }
+    }
+    return replicationFactor;
+  }
+
+  private int resolveMinInSyncReplicas(String topicName, Config topicConfig) {
+    var configEntry = topicConfig.get(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG);
+    if (configEntry == null || !StringUtils.hasText(configEntry.value())) {
+      throw new IllegalStateException(
+          "Kafka topic startup validation failed: missing topic config="
+              + TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG
+              + ", topic="
+              + topicName);
+    }
+    try {
+      return Integer.parseInt(configEntry.value());
+    } catch (NumberFormatException ex) {
+      throw new IllegalStateException(
+          "Kafka topic startup validation failed: invalid min.insync.replicas topic="
+              + topicName
+              + ", actual="
+              + configEntry.value(),
+          ex);
     }
   }
 
@@ -139,7 +206,10 @@ public class KafkaTopicAdministrationConfiguration {
 
 record KafkaTopicTopology(String bootstrapServers, List<KafkaTopicSpec> topics) {}
 
-record KafkaTopicSpec(String name, int partitions, int replicationFactor) {}
+record KafkaTopicSpec(String name, int partitions, int replicationFactor, int minInSyncReplicas) {}
+
+record KafkaTopicRuntimeState(
+    String name, int partitions, int replicationFactor, int minInSyncReplicas) {}
 
 final class KafkaTopicTopologyResolver {
 
@@ -229,7 +299,57 @@ final class KafkaTopicTopologyResolver {
         new KafkaTopicSpec(
             topicName,
             kafkaTopicAdministrationProperties.provisioning().partitions(),
-            kafkaTopicAdministrationProperties.provisioning().replicationFactor()));
+            kafkaTopicAdministrationProperties.provisioning().replicationFactor(),
+            kafkaTopicAdministrationProperties.provisioning().minInSyncReplicas()));
+  }
+}
+
+/** broker 수 부족과 topic config drift를 startup 시점에 fail-fast 합니다. */
+final class KafkaTopicRuntimeValidator {
+
+  void validateBrokerCount(KafkaTopicTopology kafkaTopicTopology, int brokerCount) {
+    int requiredReplicationFactor =
+        kafkaTopicTopology.topics().stream()
+            .mapToInt(KafkaTopicSpec::replicationFactor)
+            .max()
+            .orElse(1);
+    if (brokerCount < requiredReplicationFactor) {
+      throw new IllegalStateException(
+          "Kafka cluster has fewer brokers than required: required="
+              + requiredReplicationFactor
+              + ", actual="
+              + brokerCount);
+    }
+  }
+
+  void validateTopic(KafkaTopicSpec topicSpec, KafkaTopicRuntimeState runtimeState) {
+    if (runtimeState.partitions() < topicSpec.partitions()) {
+      throw new IllegalStateException(
+          "Kafka topic has fewer partitions than required: topic="
+              + topicSpec.name()
+              + ", required="
+              + topicSpec.partitions()
+              + ", actual="
+              + runtimeState.partitions());
+    }
+    if (runtimeState.replicationFactor() != topicSpec.replicationFactor()) {
+      throw new IllegalStateException(
+          "Kafka topic has unexpected replication factor: topic="
+              + topicSpec.name()
+              + ", required="
+              + topicSpec.replicationFactor()
+              + ", actual="
+              + runtimeState.replicationFactor());
+    }
+    if (runtimeState.minInSyncReplicas() != topicSpec.minInSyncReplicas()) {
+      throw new IllegalStateException(
+          "Kafka topic has unexpected min.insync.replicas: topic="
+              + topicSpec.name()
+              + ", required="
+              + topicSpec.minInSyncReplicas()
+              + ", actual="
+              + runtimeState.minInSyncReplicas());
+    }
   }
 }
 
