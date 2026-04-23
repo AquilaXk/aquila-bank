@@ -2,10 +2,12 @@ package com.aquilabank.global.config;
 
 import com.aquilabank.global.security.LoginThrottleGuard;
 import com.aquilabank.global.security.LoginThrottleStore;
+import com.aquilabank.global.security.LoginThrottlingMetricsRecorder;
 import com.aquilabank.global.security.LoginThrottlingProperties;
 import com.aquilabank.global.security.LoginThrottlingProperties.StoreType;
 import com.aquilabank.global.security.MemoryLoginThrottleStore;
 import com.aquilabank.global.security.RedisLoginThrottleStore;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
@@ -33,7 +35,15 @@ public class LoginThrottlingConfiguration {
   }
 
   @Bean
-  LoginThrottleGuard loginThrottleGuard(LoginThrottleStore loginThrottleStore) {
-    return new LoginThrottleGuard(loginThrottleStore);
+  LoginThrottlingMetricsRecorder loginThrottlingMetricsRecorder(
+      MeterRegistry meterRegistry, LoginThrottlingProperties properties) {
+    return new LoginThrottlingMetricsRecorder(meterRegistry, properties.store());
+  }
+
+  @Bean
+  LoginThrottleGuard loginThrottleGuard(
+      LoginThrottleStore loginThrottleStore,
+      LoginThrottlingMetricsRecorder loginThrottlingMetricsRecorder) {
+    return new LoginThrottleGuard(loginThrottleStore, loginThrottlingMetricsRecorder);
   }
 }

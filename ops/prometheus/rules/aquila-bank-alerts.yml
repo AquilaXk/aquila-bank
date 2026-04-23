@@ -127,6 +127,19 @@ groups:
           description: "refresh token reuse 감지가 발생했습니다. requestId 기준 structured audit log와 revokedCount를 즉시 확인합니다."
           runbook_path: "back/README.md#prometheus-metrics"
 
+      - alert: AquilaAuthThrottlingRejectBurstDetected
+        expr: sum by (entry_point, scope, store) (increase(aquila_auth_throttling_reject_count_total[10m])) >= 5
+        for: 5m
+        labels:
+          severity: warning
+          service: aquila-bank
+          domain: auth
+          baseline: "true"
+        annotations:
+          summary: "Aquila Bank auth throttling rejects are increasing"
+          description: "login/password recovery throttling reject가 10분 window에서 5건 이상 누적됐습니다. entry_point, scope, store 축과 auth structured log를 같이 확인합니다."
+          runbook_path: "back/README.md#prometheus-metrics"
+
   - name: aquila-bank-postgres
     interval: 30s
     rules:

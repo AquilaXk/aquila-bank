@@ -1,10 +1,12 @@
 package com.aquilabank.global.web.auth;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -16,6 +18,7 @@ import com.aquilabank.global.security.LoginThrottleGuard;
 import com.aquilabank.support.PostgresContainerTestSupport;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -149,6 +152,32 @@ class LoginThrottlingIntegrationTest extends PostgresContainerTestSupport {
     Thread.sleep(1200L);
 
     passwordRecoveryExpectNoContent("alice", "recovery-ip-throttle-004", sharedIp);
+  }
+
+  @Test
+  void exportsAuthThrottleRejectMetricsToPrometheus() throws Exception {
+    RequestClientMetadata loginIp = clientMetadata("203.0.113.230");
+    RequestClientMetadata recoveryIp = clientMetadata("203.0.113.231");
+
+    loginExpectUnauthorized("alice", "wrong-password", "login-metric-001", loginIp);
+    loginExpectUnauthorized("alice", "wrong-password", "login-metric-002", loginIp);
+    loginExpectTooManyRequests("alice", "password123!", "login-metric-003", loginIp);
+
+    passwordRecoveryExpectNoContent("alice", "recovery-metric-001", recoveryIp);
+    passwordRecoveryExpectNoContent("alice", "recovery-metric-002", recoveryIp);
+    passwordRecoveryExpectTooManyRequests("alice", "recovery-metric-003", recoveryIp);
+
+    String body =
+        mockMvc.perform(get("/actuator/prometheus")).andReturn().getResponse().getContentAsString();
+
+    assertThat(body)
+        .containsPattern(
+            Pattern.compile(
+                "aquila_auth_throttling_reject_count_total\\{[^\\n]*entry_point=\"login\"[^\\n]*scope=\"ip\"[^\\n]*store=\"memory\"[^\\n]*\\}\\s+1\\.0"));
+    assertThat(body)
+        .containsPattern(
+            Pattern.compile(
+                "aquila_auth_throttling_reject_count_total\\{[^\\n]*entry_point=\"password_recovery\"[^\\n]*scope=\"ip\"[^\\n]*store=\"memory\"[^\\n]*\\}\\s+1\\.0"));
   }
 
   private String login(
