@@ -461,6 +461,36 @@ tools/test/run-production-t3micro-capacity-smoke.sh
       tools/test/run-notification-sse-fanout-load-fault.sh
     ```
 
+## Notification Channel Provider Delivery
+
+- worker는 `notification_channel_outbox` row를 claim 한 뒤 `NotificationChannelProviderPort`로 EMAIL/SMS 외부 delivery를 시도합니다.
+- 기본값은 `LoggingNotificationChannelProvider` fallback 이고, `NOTIFICATION_CHANNEL_PROVIDER_DELIVERY_ENABLED=true`일 때 실제 webhook provider adapter가 활성화됩니다.
+- 현재 저장소에는 verified contact 모델이 없으므로 실제 destination은 `bank_user.login_id` 형식으로만 판별합니다.
+  - `EMAIL` channel: email 형식 loginId만 전달
+  - `SMS` channel: E.164 phone 형식 loginId만 전달
+- `userId -> loginId` lookup miss, channel mismatch, channel URL 누락은 잘못된 외부 발송 대신 fail-safe skip 처리하고 row는 `SENT`로 정리합니다.
+- webhook timeout, 4xx/5xx, network error 같은 실제 provider 장애만 예외로 전파돼 기존 bounded retry/backoff/quarantine 흐름으로 들어갑니다.
+- webhook 요청 공통 header는 `NOTIFICATION_CHANNEL_PROVIDER_DELIVERY_AUTH_HEADER_NAME`, `NOTIFICATION_CHANNEL_PROVIDER_DELIVERY_AUTH_HEADER_VALUE`로 주입합니다.
+- timeout은 `NOTIFICATION_CHANNEL_PROVIDER_DELIVERY_CONNECT_TIMEOUT_MS`, `NOTIFICATION_CHANNEL_PROVIDER_DELIVERY_READ_TIMEOUT_MS`로 조정합니다.
+- channel별 URL은 아래 env를 사용합니다.
+  - `NOTIFICATION_CHANNEL_PROVIDER_DELIVERY_EMAIL_URL`
+  - `NOTIFICATION_CHANNEL_PROVIDER_DELIVERY_SMS_URL`
+- webhook payload는 `channel`, `deliveryKey`, `notificationId`, `userId`, `accountId`, `category`, `eventType`, `destination`, `payload` 필드를 포함합니다.
+- `deliveryKey`는 기존 outbox `eventKey`를 그대로 사용합니다. provider idempotency key도 같은 값을 우선 사용합니다.
+- 운영 기본선:
+  - `NOTIFICATION_CHANNEL_PROVIDER_DELIVERY_ENABLED=false`
+  - `NOTIFICATION_CHANNEL_PROVIDER_DELIVERY_CONNECT_TIMEOUT_MS=3000`
+  - `NOTIFICATION_CHANNEL_PROVIDER_DELIVERY_READ_TIMEOUT_MS=5000`
+- 검증:
+
+```bash
+tools/test/with-resource-lock.sh back-notification-provider \
+  ./back/gradlew -p back test --tests '*NotificationChannelProvider*' --tests '*WebhookNotificationChannelProviderTest'
+```
+
+- skip가 늘면 `bank_user.login_id` 형식 drift 또는 channel URL 오구성을 먼저 확인합니다.
+- retry가 늘면 provider timeout과 응답 코드, `last_error`, `available_at` backoff 증가를 같이 봅니다.
+
 ### Nginx Reverse Proxy Baseline
 
 - 기준 파일: [ops/nginx/nginx.conf](/Users/aquila/Custom/GitProjects/aquila-bank/ops/nginx/nginx.conf)
