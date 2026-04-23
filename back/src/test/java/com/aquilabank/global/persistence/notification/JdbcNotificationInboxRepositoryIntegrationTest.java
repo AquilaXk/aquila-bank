@@ -10,6 +10,7 @@ import com.aquilabank.domain.notification.model.NotificationSearchCursor;
 import com.aquilabank.domain.notification.model.NotificationSearchQuery;
 import com.aquilabank.domain.notification.model.NotificationSearchSlice;
 import com.aquilabank.domain.notification.model.NotificationSlice;
+import com.aquilabank.domain.notification.model.NotificationUnreadProjectionReconcileResult;
 import com.aquilabank.support.PostgresContainerTestSupport;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -789,6 +790,80 @@ class JdbcNotificationInboxRepositoryIntegrationTest extends PostgresContainerTe
   }
 
   @Test
+  void reconcilesUnreadProjectionFromInboxAndUserReadStateSourceOfTruth() {
+    long[] userIds = new long[3];
+    long[] accountId = new long[1];
+    long[] staleAccountId = new long[1];
+    long[] notificationIds = new long[4];
+    Instant base = Instant.parse("2026-04-17T00:00:00Z");
+    commit(
+        transactionManager,
+        () -> {
+          userIds[0] = insertUser("reconcile-active-a");
+          userIds[1] = insertUser("reconcile-active-b");
+          userIds[2] = insertUser("reconcile-revoked");
+          accountId[0] = insertAccount("reconcile account");
+          staleAccountId[0] = insertAccount("reconcile stale account");
+          insertMembership(userIds[0], accountId[0], "OWNER", "ACTIVE");
+          insertMembership(userIds[1], accountId[0], "VIEWER", "ACTIVE");
+          insertMembership(userIds[2], accountId[0], "VIEWER", "REVOKED");
+          notificationIds[0] =
+              insertNotification(
+                  accountId[0], "evt-reconcile-unread-1", "TransferBooked", "A", "A", null, base);
+          notificationIds[1] =
+              insertNotification(
+                  accountId[0],
+                  "evt-reconcile-unread-2",
+                  "TransferBooked",
+                  "B",
+                  "B",
+                  null,
+                  base.plusSeconds(1));
+          notificationIds[2] =
+              insertNotification(
+                  accountId[0],
+                  "evt-reconcile-account-read",
+                  "TransferBooked",
+                  "C",
+                  "C",
+                  base.plusSeconds(2),
+                  base.plusSeconds(2));
+          notificationIds[3] =
+              insertArchivedNotification(
+                  accountId[0],
+                  "evt-reconcile-archived",
+                  "TransferBooked",
+                  "D",
+                  "D",
+                  base.plusSeconds(3),
+                  base.plusSeconds(3));
+          insertUserReadState(userIds[0], notificationIds[1], base.plusSeconds(4));
+          insertUserNotificationState(
+              userIds[1], notificationIds[0], null, base.plusSeconds(5), null);
+          insertUserNotificationState(
+              userIds[1], notificationIds[1], null, null, base.plusSeconds(6));
+          setTestProjection("ACCOUNT", accountId[0], 99L);
+          setTestProjection("ACCOUNT", staleAccountId[0], 4L);
+          setTestProjection("USER", userIds[0], 0L);
+          setTestProjection("USER", userIds[1], 10L);
+          setTestProjection("USER", userIds[2], 7L);
+        });
+
+    NotificationUnreadProjectionReconcileResult result = repository.reconcileUnreadProjection();
+
+    assertThat(result.updatedCount()).isEqualTo(3);
+    assertThat(result.zeroedCount()).isEqualTo(2);
+    assertThat(projectionCount("ACCOUNT", accountId[0])).isEqualTo(2L);
+    assertThat(projectionCount("ACCOUNT", staleAccountId[0])).isZero();
+    assertThat(projectionCount("USER", userIds[0])).isEqualTo(2L);
+    assertThat(projectionCount("USER", userIds[1])).isEqualTo(1L);
+    assertThat(projectionCount("USER", userIds[2])).isZero();
+    assertThat(repository.countUnreadByAccountId(accountId[0])).isEqualTo(2L);
+    assertThat(repository.countUnreadByUserId(userIds[0])).isEqualTo(2L);
+    assertThat(repository.countUnreadByUserId(userIds[1])).isEqualTo(1L);
+  }
+
+  @Test
   void appendsEmailSmsChannelOutboxUsingTransactionalPreferences() {
     long[] userIds = new long[3];
     long[] accountId = new long[1];
@@ -1179,6 +1254,32 @@ class JdbcNotificationInboxRepositoryIntegrationTest extends PostgresContainerTe
             .addValue("scopeType", scopeType)
             .addValue("scopeId", scopeId)
             .addValue("delta", delta));
+  }
+
+  private void setTestProjection(String scopeType, long scopeId, long count) {
+    jdbcTemplate.update(
+        """
+        INSERT INTO notification_unread_count_projection (
+            scope_type,
+            scope_id,
+            unread_count,
+            updated_at
+        )
+        VALUES (
+            :scopeType,
+            :scopeId,
+            :count,
+            CURRENT_TIMESTAMP
+        )
+        ON CONFLICT (scope_type, scope_id)
+        DO UPDATE
+        SET unread_count = EXCLUDED.unread_count,
+            updated_at = CURRENT_TIMESTAMP
+        """,
+        new MapSqlParameterSource()
+            .addValue("scopeType", scopeType)
+            .addValue("scopeId", scopeId)
+            .addValue("count", count));
   }
 
   private void insertPreference(long userId, String category, String channel, boolean enabled) {
