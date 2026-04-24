@@ -79,7 +79,9 @@ class T3MicroSaturationInterceptorTest {
             new T3MicroSaturationGuardProperties.ServletThreads(80),
             new T3MicroSaturationGuardProperties.QueryTimeout(10, 1),
             new T3MicroSaturationGuardProperties.JvmPressure(true, 90, 10, 3, 250),
-            new T3MicroSaturationGuardProperties.BackgroundWorkers(true)),
+            new T3MicroSaturationGuardProperties.BackgroundWorkers(true),
+            new T3MicroSaturationGuardProperties.ReadReplicaPool(
+                true, List.of("/api/v1/transactions"))),
         (DbPoolSaturationProbe) () -> pool,
         (ServletThreadSaturationProbe) () -> servletThreads,
         (JvmPressureProbe) gcWindow -> JvmPressureSnapshot.empty(),

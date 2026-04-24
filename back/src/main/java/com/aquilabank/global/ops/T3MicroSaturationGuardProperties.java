@@ -12,7 +12,8 @@ public record T3MicroSaturationGuardProperties(
     ServletThreads servletThreads,
     QueryTimeout queryTimeout,
     JvmPressure jvmPressure,
-    BackgroundWorkers backgroundWorkers) {
+    BackgroundWorkers backgroundWorkers,
+    ReadReplicaPool readReplicaPool) {
 
   public T3MicroSaturationGuardProperties {
     enabled = enabled == null ? Boolean.TRUE : enabled;
@@ -33,6 +34,10 @@ public record T3MicroSaturationGuardProperties(
     queryTimeout = queryTimeout == null ? new QueryTimeout(10, 1) : queryTimeout;
     jvmPressure = jvmPressure == null ? new JvmPressure(true, 90, 10, 3, 250) : jvmPressure;
     backgroundWorkers = backgroundWorkers == null ? new BackgroundWorkers(true) : backgroundWorkers;
+    readReplicaPool =
+        readReplicaPool == null
+            ? new ReadReplicaPool(true, List.of("/api/v1/transactions"))
+            : readReplicaPool;
   }
 
   public record Pool(int activeThresholdPercent, int awaitingThreadsThreshold) {
@@ -83,6 +88,17 @@ public record T3MicroSaturationGuardProperties(
 
     public BackgroundWorkers {
       enabled = enabled == null ? Boolean.TRUE : enabled;
+    }
+  }
+
+  public record ReadReplicaPool(Boolean enabled, List<String> protectedPathPrefixes) {
+
+    public ReadReplicaPool {
+      enabled = enabled == null ? Boolean.TRUE : enabled;
+      protectedPathPrefixes =
+          protectedPathPrefixes == null || protectedPathPrefixes.isEmpty()
+              ? List.of("/api/v1/transactions")
+              : List.copyOf(protectedPathPrefixes);
     }
   }
 }

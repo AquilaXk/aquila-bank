@@ -12,6 +12,7 @@ public class T3MicroSaturationGuard {
 
   private final T3MicroSaturationGuardProperties properties;
   private final DbPoolSaturationProbe poolProbe;
+  private final DbPoolSaturationProbe readReplicaPoolProbe;
   private final ServletThreadSaturationProbe servletThreadProbe;
   private final JvmPressureProbe jvmPressureProbe;
   private final T3MicroQueryTimeoutSignal timeoutSignal;
@@ -29,8 +30,27 @@ public class T3MicroSaturationGuard {
       JvmPressureProbe jvmPressureProbe,
       T3MicroQueryTimeoutSignal timeoutSignal,
       MeterRegistry meterRegistry) {
+    this(
+        properties,
+        poolProbe,
+        DbPoolSaturationSnapshot::empty,
+        servletThreadProbe,
+        jvmPressureProbe,
+        timeoutSignal,
+        meterRegistry);
+  }
+
+  public T3MicroSaturationGuard(
+      T3MicroSaturationGuardProperties properties,
+      DbPoolSaturationProbe poolProbe,
+      DbPoolSaturationProbe readReplicaPoolProbe,
+      ServletThreadSaturationProbe servletThreadProbe,
+      JvmPressureProbe jvmPressureProbe,
+      T3MicroQueryTimeoutSignal timeoutSignal,
+      MeterRegistry meterRegistry) {
     this.properties = properties;
     this.poolProbe = poolProbe;
+    this.readReplicaPoolProbe = readReplicaPoolProbe;
     this.servletThreadProbe = servletThreadProbe;
     this.jvmPressureProbe = jvmPressureProbe;
     this.timeoutSignal = timeoutSignal;
@@ -55,7 +75,7 @@ public class T3MicroSaturationGuard {
     if (!protectedPath(path)) {
       return T3MicroSaturationDecision.allowed(snapshot);
     }
-    if (snapshot.saturated()) {
+    if (snapshot.saturated() || readReplicaPoolSaturated(path, snapshot)) {
       saturatedGauge.set(1);
       rejectedCounter.increment();
       return T3MicroSaturationDecision.rejected(properties.retryAfterSeconds(), snapshot);
@@ -84,21 +104,26 @@ public class T3MicroSaturationGuard {
 
   private T3MicroSaturationSnapshot snapshot() {
     DbPoolSaturationSnapshot pool = poolProbe.snapshot();
+    DbPoolSaturationSnapshot readReplicaPool = readReplicaPoolProbe.snapshot();
     ServletThreadSaturationSnapshot servletThreads = servletThreadProbe.snapshot();
     Duration timeoutWindow = Duration.ofSeconds(properties.queryTimeout().windowSeconds());
     Duration gcWindow = Duration.ofSeconds(properties.jvmPressure().gcWindowSeconds());
     JvmPressureSnapshot jvmPressure = jvmPressureProbe.snapshot(gcWindow);
     int timeoutCount = timeoutSignal.recentCount(timeoutWindow);
     boolean poolSaturated = pool.saturated(properties.pool());
+    boolean readReplicaPoolSaturated =
+        properties.readReplicaPool().enabled() && readReplicaPool.saturated(properties.pool());
     boolean servletThreadsSaturated = servletThreads.saturated(properties.servletThreads());
     boolean queryTimeoutSaturated = timeoutCount >= properties.queryTimeout().threshold();
     boolean jvmPressureSaturated = jvmPressure.saturated(properties.jvmPressure());
     return new T3MicroSaturationSnapshot(
         pool,
+        readReplicaPool,
         servletThreads,
         jvmPressure,
         timeoutCount,
         poolSaturated,
+        readReplicaPoolSaturated,
         servletThreadsSaturated,
         queryTimeoutSaturated,
         jvmPressureSaturated);
@@ -106,6 +131,14 @@ public class T3MicroSaturationGuard {
 
   private boolean protectedPath(String path) {
     return properties.protectedPathPrefixes().stream().anyMatch(path::startsWith);
+  }
+
+  private boolean readReplicaPoolSaturated(String path, T3MicroSaturationSnapshot snapshot) {
+    if (!snapshot.readReplicaPoolSaturated()) {
+      return false;
+    }
+    // replica pool은 transaction read 경로에만 묶어 다른 보호 API의 과잉 차단을 피합니다.
+    return properties.readReplicaPool().protectedPathPrefixes().stream().anyMatch(path::startsWith);
   }
 
   private Counter requestCounter(MeterRegistry meterRegistry, String outcome) {

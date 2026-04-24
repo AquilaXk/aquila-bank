@@ -151,6 +151,46 @@ class T3MicroSaturationGuardTest {
   }
 
   @Test
+  void rejectsTransactionReadRequestWhenReadReplicaPoolIsSaturated() {
+    SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+    T3MicroSaturationGuard guard =
+        new T3MicroSaturationGuard(
+            properties(),
+            new MutableDbPoolProbe(new DbPoolSaturationSnapshot(1, 4, 0)),
+            new MutableDbPoolProbe(new DbPoolSaturationSnapshot(2, 2, 1)),
+            new MutableServletThreadProbe(new ServletThreadSaturationSnapshot(2, 16)),
+            new MutableJvmPressureProbe(JvmPressureSnapshot.empty()),
+            new T3MicroQueryTimeoutSignal(Clock.systemUTC(), meterRegistry),
+            meterRegistry);
+
+    T3MicroSaturationDecision decision = guard.check("/api/v1/transactions");
+
+    assertThat(decision.allowed()).isFalse();
+    assertThat(decision.snapshot().poolSaturated()).isFalse();
+    assertThat(decision.snapshot().readReplicaPool().activeConnections()).isEqualTo(2);
+    assertThat(decision.snapshot().readReplicaPoolSaturated()).isTrue();
+  }
+
+  @Test
+  void allowsOtherProtectedPathWhenOnlyReadReplicaPoolIsSaturated() {
+    SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+    T3MicroSaturationGuard guard =
+        new T3MicroSaturationGuard(
+            propertiesWithReadReplicaPool(List.of("/api/v1/transactions")),
+            new MutableDbPoolProbe(new DbPoolSaturationSnapshot(1, 4, 0)),
+            new MutableDbPoolProbe(new DbPoolSaturationSnapshot(2, 2, 1)),
+            new MutableServletThreadProbe(new ServletThreadSaturationSnapshot(2, 16)),
+            new MutableJvmPressureProbe(JvmPressureSnapshot.empty()),
+            new T3MicroQueryTimeoutSignal(Clock.systemUTC(), meterRegistry),
+            meterRegistry);
+
+    T3MicroSaturationDecision decision = guard.check("/api/v1/notifications");
+
+    assertThat(decision.allowed()).isTrue();
+    assertThat(decision.snapshot().readReplicaPoolSaturated()).isTrue();
+  }
+
+  @Test
   void rejectsProtectedRequestWhenRecentGcPressureIsSaturated() {
     SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
     T3MicroSaturationGuard guard =
@@ -183,7 +223,9 @@ class T3MicroSaturationGuardTest {
                 new T3MicroSaturationGuardProperties.ServletThreads(80),
                 new T3MicroSaturationGuardProperties.QueryTimeout(10, 1),
                 new T3MicroSaturationGuardProperties.JvmPressure(true, 90, 10, 3, 250),
-                new T3MicroSaturationGuardProperties.BackgroundWorkers(true)),
+                new T3MicroSaturationGuardProperties.BackgroundWorkers(true),
+                new T3MicroSaturationGuardProperties.ReadReplicaPool(
+                    true, List.of("/api/v1/transactions"))),
             new MutableDbPoolProbe(new DbPoolSaturationSnapshot(4, 4, 1)),
             new MutableServletThreadProbe(new ServletThreadSaturationSnapshot(16, 16)),
             new MutableJvmPressureProbe(JvmPressureSnapshot.empty()),
@@ -218,15 +260,25 @@ class T3MicroSaturationGuardTest {
   }
 
   private T3MicroSaturationGuardProperties propertiesWithJvmPressure(boolean enabled) {
+    return propertiesWithJvmPressureAndReadReplicaPool(enabled, List.of("/api/v1/transactions"));
+  }
+
+  private T3MicroSaturationGuardProperties propertiesWithReadReplicaPool(List<String> prefixes) {
+    return propertiesWithJvmPressureAndReadReplicaPool(true, prefixes);
+  }
+
+  private T3MicroSaturationGuardProperties propertiesWithJvmPressureAndReadReplicaPool(
+      boolean enabled, List<String> prefixes) {
     return new T3MicroSaturationGuardProperties(
         true,
         2,
-        List.of("/api/v1/transactions"),
+        List.of("/api/v1/transactions", "/api/v1/notifications"),
         new T3MicroSaturationGuardProperties.Pool(80, 1),
         new T3MicroSaturationGuardProperties.ServletThreads(80),
         new T3MicroSaturationGuardProperties.QueryTimeout(10, 1),
         new T3MicroSaturationGuardProperties.JvmPressure(enabled, 90, 10, 3, 250),
-        new T3MicroSaturationGuardProperties.BackgroundWorkers(true));
+        new T3MicroSaturationGuardProperties.BackgroundWorkers(true),
+        new T3MicroSaturationGuardProperties.ReadReplicaPool(true, prefixes));
   }
 
   private T3MicroSaturationGuardProperties propertiesWithBackgroundWorkers(boolean enabled) {
@@ -238,7 +290,9 @@ class T3MicroSaturationGuardTest {
         new T3MicroSaturationGuardProperties.ServletThreads(80),
         new T3MicroSaturationGuardProperties.QueryTimeout(10, 1),
         new T3MicroSaturationGuardProperties.JvmPressure(true, 90, 10, 3, 250),
-        new T3MicroSaturationGuardProperties.BackgroundWorkers(enabled));
+        new T3MicroSaturationGuardProperties.BackgroundWorkers(enabled),
+        new T3MicroSaturationGuardProperties.ReadReplicaPool(
+            true, List.of("/api/v1/transactions")));
   }
 
   private static final class MutableDbPoolProbe implements DbPoolSaturationProbe {
