@@ -10,7 +10,8 @@ public record T3MicroSaturationGuardProperties(
     List<String> protectedPathPrefixes,
     Pool pool,
     ServletThreads servletThreads,
-    QueryTimeout queryTimeout) {
+    QueryTimeout queryTimeout,
+    JvmPressure jvmPressure) {
 
   public T3MicroSaturationGuardProperties {
     enabled = enabled == null ? Boolean.TRUE : enabled;
@@ -29,6 +30,7 @@ public record T3MicroSaturationGuardProperties(
     pool = pool == null ? new Pool(90, 1) : pool;
     servletThreads = servletThreads == null ? new ServletThreads(90) : servletThreads;
     queryTimeout = queryTimeout == null ? new QueryTimeout(10, 1) : queryTimeout;
+    jvmPressure = jvmPressure == null ? new JvmPressure(true, 90, 10, 3, 250) : jvmPressure;
   }
 
   public record Pool(int activeThresholdPercent, int awaitingThreadsThreshold) {
@@ -53,6 +55,25 @@ public record T3MicroSaturationGuardProperties(
     public QueryTimeout {
       windowSeconds = windowSeconds > 0 ? windowSeconds : 10;
       threshold = threshold > 0 ? threshold : 1;
+    }
+  }
+
+  public record JvmPressure(
+      Boolean enabled,
+      int heapUsedThresholdPercent,
+      int gcWindowSeconds,
+      int gcCollectionThreshold,
+      int gcTimeThresholdMs) {
+
+    public JvmPressure {
+      enabled = enabled == null ? Boolean.TRUE : enabled;
+      heapUsedThresholdPercent =
+          heapUsedThresholdPercent > 0 && heapUsedThresholdPercent <= 100
+              ? heapUsedThresholdPercent
+              : 90;
+      gcWindowSeconds = gcWindowSeconds > 0 ? gcWindowSeconds : 10;
+      gcCollectionThreshold = gcCollectionThreshold > 0 ? gcCollectionThreshold : 3;
+      gcTimeThresholdMs = gcTimeThresholdMs > 0 ? gcTimeThresholdMs : 250;
     }
   }
 }

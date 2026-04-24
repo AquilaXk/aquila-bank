@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.aquilabank.global.ops.DbPoolSaturationProbe;
 import com.aquilabank.global.ops.DbPoolSaturationSnapshot;
+import com.aquilabank.global.ops.JvmPressureProbe;
+import com.aquilabank.global.ops.JvmPressureSnapshot;
 import com.aquilabank.global.ops.ServletThreadSaturationProbe;
 import com.aquilabank.global.ops.ServletThreadSaturationSnapshot;
 import com.aquilabank.global.ops.T3MicroQueryTimeoutSignal;
@@ -75,9 +77,11 @@ class T3MicroSaturationInterceptorTest {
             List.of("/api/v1/transactions"),
             new T3MicroSaturationGuardProperties.Pool(80, 1),
             new T3MicroSaturationGuardProperties.ServletThreads(80),
-            new T3MicroSaturationGuardProperties.QueryTimeout(10, 1)),
+            new T3MicroSaturationGuardProperties.QueryTimeout(10, 1),
+            new T3MicroSaturationGuardProperties.JvmPressure(true, 90, 10, 3, 250)),
         (DbPoolSaturationProbe) () -> pool,
         (ServletThreadSaturationProbe) () -> servletThreads,
+        (JvmPressureProbe) gcWindow -> JvmPressureSnapshot.empty(),
         timeoutSignal,
         new SimpleMeterRegistry());
   }

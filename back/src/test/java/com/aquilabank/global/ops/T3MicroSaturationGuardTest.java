@@ -23,7 +23,12 @@ class T3MicroSaturationGuardTest {
         new MutableServletThreadProbe(new ServletThreadSaturationSnapshot(16, 16));
     T3MicroSaturationGuard guard =
         new T3MicroSaturationGuard(
-            properties(), poolProbe, threadProbe, timeoutSignal, meterRegistry);
+            properties(),
+            poolProbe,
+            threadProbe,
+            new MutableJvmPressureProbe(JvmPressureSnapshot.empty()),
+            timeoutSignal,
+            meterRegistry);
 
     assertThat(guard.check("/api/v1/transactions").allowed()).isTrue();
 
@@ -67,6 +72,7 @@ class T3MicroSaturationGuardTest {
             properties(),
             new MutableDbPoolProbe(new DbPoolSaturationSnapshot(4, 4, 1)),
             new MutableServletThreadProbe(new ServletThreadSaturationSnapshot(16, 16)),
+            new MutableJvmPressureProbe(JvmPressureSnapshot.empty()),
             timeoutSignal,
             meterRegistry);
 
@@ -80,6 +86,48 @@ class T3MicroSaturationGuardTest {
   }
 
   @Test
+  void rejectsProtectedRequestWhenJvmPressureIsSaturated() {
+    SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+    T3MicroSaturationGuard guard =
+        new T3MicroSaturationGuard(
+            properties(),
+            new MutableDbPoolProbe(new DbPoolSaturationSnapshot(1, 4, 0)),
+            new MutableServletThreadProbe(new ServletThreadSaturationSnapshot(2, 16)),
+            new MutableJvmPressureProbe(new JvmPressureSnapshot(950, 1000, 0, 0)),
+            new T3MicroQueryTimeoutSignal(Clock.systemUTC(), meterRegistry),
+            meterRegistry);
+
+    T3MicroSaturationDecision decision = guard.check("/api/v1/transactions");
+
+    assertThat(decision.allowed()).isFalse();
+    assertThat(decision.snapshot().jvmPressure().heapUsedBytes()).isEqualTo(950);
+    assertThat(decision.snapshot().jvmPressureSaturated()).isTrue();
+    assertThat(decision.snapshot().poolSaturated()).isFalse();
+    assertThat(decision.snapshot().servletThreadsSaturated()).isFalse();
+    assertThat(decision.snapshot().queryTimeoutSaturated()).isFalse();
+  }
+
+  @Test
+  void rejectsProtectedRequestWhenRecentGcPressureIsSaturated() {
+    SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+    T3MicroSaturationGuard guard =
+        new T3MicroSaturationGuard(
+            properties(),
+            new MutableDbPoolProbe(new DbPoolSaturationSnapshot(1, 4, 0)),
+            new MutableServletThreadProbe(new ServletThreadSaturationSnapshot(2, 16)),
+            new MutableJvmPressureProbe(new JvmPressureSnapshot(200, 1000, 3, 250)),
+            new T3MicroQueryTimeoutSignal(Clock.systemUTC(), meterRegistry),
+            meterRegistry);
+
+    T3MicroSaturationDecision decision = guard.check("/api/v1/transactions");
+
+    assertThat(decision.allowed()).isFalse();
+    assertThat(decision.snapshot().jvmPressure().recentGcCollectionCount()).isEqualTo(3);
+    assertThat(decision.snapshot().jvmPressure().recentGcTimeMs()).isEqualTo(250);
+    assertThat(decision.snapshot().jvmPressureSaturated()).isTrue();
+  }
+
+  @Test
   void disabledGuardAlwaysAllowsWithoutRequestMetrics() {
     SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
     T3MicroSaturationGuard guard =
@@ -90,9 +138,11 @@ class T3MicroSaturationGuardTest {
                 List.of("/api/v1/transactions"),
                 new T3MicroSaturationGuardProperties.Pool(80, 1),
                 new T3MicroSaturationGuardProperties.ServletThreads(80),
-                new T3MicroSaturationGuardProperties.QueryTimeout(10, 1)),
+                new T3MicroSaturationGuardProperties.QueryTimeout(10, 1),
+                new T3MicroSaturationGuardProperties.JvmPressure(true, 90, 10, 3, 250)),
             new MutableDbPoolProbe(new DbPoolSaturationSnapshot(4, 4, 1)),
             new MutableServletThreadProbe(new ServletThreadSaturationSnapshot(16, 16)),
+            new MutableJvmPressureProbe(JvmPressureSnapshot.empty()),
             new T3MicroQueryTimeoutSignal(Clock.systemUTC(), meterRegistry),
             meterRegistry);
 
@@ -101,14 +151,37 @@ class T3MicroSaturationGuardTest {
     assertThat(meterRegistry.find("aquila.t3micro.saturation.guard.requests").counter()).isNull();
   }
 
+  @Test
+  void allowsRequestWhenJvmPressureCheckIsDisabled() {
+    SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+    T3MicroSaturationGuard guard =
+        new T3MicroSaturationGuard(
+            propertiesWithJvmPressure(false),
+            new MutableDbPoolProbe(new DbPoolSaturationSnapshot(1, 4, 0)),
+            new MutableServletThreadProbe(new ServletThreadSaturationSnapshot(2, 16)),
+            new MutableJvmPressureProbe(new JvmPressureSnapshot(950, 1000, 3, 250)),
+            new T3MicroQueryTimeoutSignal(Clock.systemUTC(), meterRegistry),
+            meterRegistry);
+
+    T3MicroSaturationDecision decision = guard.check("/api/v1/transactions");
+
+    assertThat(decision.allowed()).isTrue();
+    assertThat(decision.snapshot().jvmPressureSaturated()).isFalse();
+  }
+
   private T3MicroSaturationGuardProperties properties() {
+    return propertiesWithJvmPressure(true);
+  }
+
+  private T3MicroSaturationGuardProperties propertiesWithJvmPressure(boolean enabled) {
     return new T3MicroSaturationGuardProperties(
         true,
         2,
         List.of("/api/v1/transactions"),
         new T3MicroSaturationGuardProperties.Pool(80, 1),
         new T3MicroSaturationGuardProperties.ServletThreads(80),
-        new T3MicroSaturationGuardProperties.QueryTimeout(10, 1));
+        new T3MicroSaturationGuardProperties.QueryTimeout(10, 1),
+        new T3MicroSaturationGuardProperties.JvmPressure(enabled, 90, 10, 3, 250));
   }
 
   private static final class MutableDbPoolProbe implements DbPoolSaturationProbe {
@@ -135,6 +208,20 @@ class T3MicroSaturationGuardTest {
 
     @Override
     public ServletThreadSaturationSnapshot snapshot() {
+      return snapshot;
+    }
+  }
+
+  private static final class MutableJvmPressureProbe implements JvmPressureProbe {
+
+    private final JvmPressureSnapshot snapshot;
+
+    private MutableJvmPressureProbe(JvmPressureSnapshot snapshot) {
+      this.snapshot = snapshot;
+    }
+
+    @Override
+    public JvmPressureSnapshot snapshot(Duration gcWindow) {
       return snapshot;
     }
   }

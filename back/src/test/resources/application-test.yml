@@ -15,6 +15,12 @@ management:
       # test DB가 없다는 이유만으로 context-load 테스트가 실패하지 않게 합니다.
       enabled: false
 
+ops:
+  t3-micro-saturation-guard:
+    jvm-pressure:
+      # 테스트 JVM heap/GC 변동은 고정 probe 단위 테스트에서만 검증합니다.
+      enabled: false
+
 outbox:
   poller:
     # scheduled dispatch는 끄고 테스트가 retry 타이밍을 직접 제어하게 합니다.
