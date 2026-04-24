@@ -1,6 +1,7 @@
 package com.aquilabank.domain.notification.usecase;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -8,6 +9,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.aquilabank.domain.notification.model.NotificationChannelDeliveryResult;
+import com.aquilabank.domain.notification.model.NotificationChannelDeliverySkipReason;
 import com.aquilabank.domain.notification.model.NotificationChannelDeliveryStatus;
 import com.aquilabank.domain.notification.model.NotificationChannelOutboxItem;
 import com.aquilabank.domain.notification.model.NotificationPreferenceCategory;
@@ -49,6 +52,7 @@ class NotificationChannelProviderWorkerServiceTest {
   void marksClaimedItemAsSentWhenProviderSucceeds() {
     NotificationChannelOutboxItem item = item(1L, 0);
     when(dispatchPort.claimPending(20, NOW)).thenReturn(List.of(item));
+    when(providerPort.send(item)).thenReturn(NotificationChannelDeliveryResult.delivered());
 
     int claimed = service.dispatchDueDeliveries();
 
@@ -57,6 +61,24 @@ class NotificationChannelProviderWorkerServiceTest {
     verify(dispatchPort).markSent(1L, NOW);
     verify(dispatchPort, never())
         .markFailed(eq(1L), eq(NOW.plusSeconds(5)), eq(NOW), eq("provider timeout"));
+  }
+
+  @Test
+  void marksClaimedItemAsSkippedWhenProviderSkipsDelivery() {
+    NotificationChannelOutboxItem item = item(6L, 0);
+    when(dispatchPort.claimPending(20, NOW)).thenReturn(List.of(item));
+    when(providerPort.send(item))
+        .thenReturn(
+            NotificationChannelDeliveryResult.skipped(
+                NotificationChannelDeliverySkipReason.PROVIDER_URL_MISSING));
+
+    int claimed = service.dispatchDueDeliveries();
+
+    assertThat(claimed).isEqualTo(1);
+    verify(dispatchPort)
+        .markSkipped(6L, NOW, NotificationChannelDeliverySkipReason.PROVIDER_URL_MISSING);
+    verify(dispatchPort, never()).markSent(6L, NOW);
+    verify(dispatchPort, never()).markFailed(eq(6L), any(), eq(NOW), any());
   }
 
   @Test

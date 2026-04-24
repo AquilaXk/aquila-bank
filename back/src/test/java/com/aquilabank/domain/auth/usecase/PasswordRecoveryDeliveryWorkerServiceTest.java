@@ -11,6 +11,8 @@ import static org.mockito.Mockito.when;
 
 import com.aquilabank.domain.auth.model.PasswordRecoveryDeliveryCommand;
 import com.aquilabank.domain.auth.model.PasswordRecoveryDeliveryOutboxItem;
+import com.aquilabank.domain.auth.model.PasswordRecoveryDeliveryResult;
+import com.aquilabank.domain.auth.model.PasswordRecoveryDeliverySkipReason;
 import com.aquilabank.domain.auth.model.PasswordRecoveryDeliveryStatus;
 import com.aquilabank.domain.auth.model.PasswordRecoveryTokenQueryRecord;
 import com.aquilabank.domain.auth.model.PasswordRecoveryTokenStatus;
@@ -65,6 +67,7 @@ class PasswordRecoveryDeliveryWorkerServiceTest {
     when(tokenQueryPort.findByRequestId("request-1"))
         .thenReturn(Optional.of(activeToken("request-1")));
     when(secretPort.reveal("cipher-1", "nonce-1")).thenReturn("plain-token-1");
+    when(deliveryPort.deliver(any())).thenReturn(PasswordRecoveryDeliveryResult.delivered());
 
     int claimed = service.dispatchDueDeliveries();
 
@@ -83,7 +86,7 @@ class PasswordRecoveryDeliveryWorkerServiceTest {
   }
 
   @Test
-  void skipsMissingTokenAndMarksSentWithoutProviderCall() {
+  void skipsMissingTokenWithReasonWithoutProviderCall() {
     PasswordRecoveryDeliveryOutboxItem item = item(2L, "request-2", 0);
     when(dispatchPort.claimPending(10, NOW)).thenReturn(List.of(item));
     when(tokenQueryPort.findByRequestId("request-2")).thenReturn(Optional.empty());
@@ -91,12 +94,13 @@ class PasswordRecoveryDeliveryWorkerServiceTest {
     service.dispatchDueDeliveries();
 
     verify(deliveryPort, never()).deliver(any());
-    verify(dispatchPort).markSent(2L, NOW);
+    verify(dispatchPort).markSkipped(2L, NOW, PasswordRecoveryDeliverySkipReason.TOKEN_MISSING);
+    verify(dispatchPort, never()).markSent(2L, NOW);
     verify(secretPort, never()).reveal(any(), any());
   }
 
   @Test
-  void skipsExpiredOrUsedTokenAndMarksSentWithoutProviderCall() {
+  void skipsUsedTokenWithNotPendingReasonWithoutProviderCall() {
     PasswordRecoveryDeliveryOutboxItem item = item(3L, "request-3", 0);
     when(dispatchPort.claimPending(10, NOW)).thenReturn(List.of(item));
     when(tokenQueryPort.findByRequestId("request-3"))
@@ -116,8 +120,54 @@ class PasswordRecoveryDeliveryWorkerServiceTest {
     service.dispatchDueDeliveries();
 
     verify(deliveryPort, never()).deliver(any());
-    verify(dispatchPort).markSent(3L, NOW);
+    verify(dispatchPort).markSkipped(3L, NOW, PasswordRecoveryDeliverySkipReason.TOKEN_NOT_PENDING);
+    verify(dispatchPort, never()).markSent(3L, NOW);
     verify(secretPort, never()).reveal(any(), any());
+  }
+
+  @Test
+  void skipsExpiredTokenWithExpiredReasonWithoutProviderCall() {
+    PasswordRecoveryDeliveryOutboxItem item = item(6L, "request-6", 0);
+    when(dispatchPort.claimPending(10, NOW)).thenReturn(List.of(item));
+    when(tokenQueryPort.findByRequestId("request-6"))
+        .thenReturn(
+            Optional.of(
+                new PasswordRecoveryTokenQueryRecord(
+                    "request-6",
+                    7L,
+                    "alice@example.com",
+                    "cipher-6",
+                    "nonce-6",
+                    PasswordRecoveryTokenStatus.PENDING,
+                    NOW.minusSeconds(1),
+                    null,
+                    NOW.minusSeconds(60))));
+
+    service.dispatchDueDeliveries();
+
+    verify(deliveryPort, never()).deliver(any());
+    verify(dispatchPort).markSkipped(6L, NOW, PasswordRecoveryDeliverySkipReason.TOKEN_EXPIRED);
+    verify(dispatchPort, never()).markSent(6L, NOW);
+    verify(secretPort, never()).reveal(any(), any());
+  }
+
+  @Test
+  void marksSkippedWhenProviderReturnsSkipResult() {
+    PasswordRecoveryDeliveryOutboxItem item = item(7L, "request-7", 0);
+    when(dispatchPort.claimPending(10, NOW)).thenReturn(List.of(item));
+    when(tokenQueryPort.findByRequestId("request-7"))
+        .thenReturn(Optional.of(activeToken("request-7")));
+    when(secretPort.reveal("cipher-1", "nonce-1")).thenReturn("plain-token-7");
+    when(deliveryPort.deliver(any()))
+        .thenReturn(
+            PasswordRecoveryDeliveryResult.skipped(
+                PasswordRecoveryDeliverySkipReason.PROVIDER_URL_MISSING));
+
+    service.dispatchDueDeliveries();
+
+    verify(dispatchPort)
+        .markSkipped(7L, NOW, PasswordRecoveryDeliverySkipReason.PROVIDER_URL_MISSING);
+    verify(dispatchPort, never()).markSent(7L, NOW);
   }
 
   @Test

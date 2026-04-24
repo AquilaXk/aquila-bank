@@ -1,5 +1,6 @@
 package com.aquilabank.domain.notification.usecase;
 
+import com.aquilabank.domain.notification.model.NotificationChannelDeliveryResult;
 import com.aquilabank.domain.notification.model.NotificationChannelOutboxItem;
 import com.aquilabank.domain.notification.port.NotificationChannelOutboxDispatchPort;
 import com.aquilabank.domain.notification.port.NotificationChannelProviderPort;
@@ -72,8 +73,13 @@ public final class NotificationChannelProviderWorkerService
 
   private void dispatchSingle(NotificationChannelOutboxItem item, Instant now) {
     try {
-      providerPort.send(item);
-      dispatchPort.markSent(item.id(), now);
+      NotificationChannelDeliveryResult result =
+          Objects.requireNonNull(providerPort.send(item), "provider delivery result");
+      if (result.sent()) {
+        dispatchPort.markSent(item.id(), now);
+        return;
+      }
+      dispatchPort.markSkipped(item.id(), now, result.skipReason());
     } catch (RuntimeException ex) {
       String errorMessage = shorten(ex.getMessage());
       if (item.retryCount() + 1 >= maxRetryAttempts) {

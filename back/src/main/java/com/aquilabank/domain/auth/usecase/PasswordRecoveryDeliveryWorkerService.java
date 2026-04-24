@@ -2,6 +2,8 @@ package com.aquilabank.domain.auth.usecase;
 
 import com.aquilabank.domain.auth.model.PasswordRecoveryDeliveryCommand;
 import com.aquilabank.domain.auth.model.PasswordRecoveryDeliveryOutboxItem;
+import com.aquilabank.domain.auth.model.PasswordRecoveryDeliveryResult;
+import com.aquilabank.domain.auth.model.PasswordRecoveryDeliverySkipReason;
 import com.aquilabank.domain.auth.model.PasswordRecoveryTokenQueryRecord;
 import com.aquilabank.domain.auth.model.PasswordRecoveryTokenStatus;
 import com.aquilabank.domain.auth.port.PasswordRecoveryDeliveryOutboxDispatchPort;
@@ -74,27 +76,33 @@ public final class PasswordRecoveryDeliveryWorkerService
   private void dispatchSingle(PasswordRecoveryDeliveryOutboxItem item, Instant now) {
     PasswordRecoveryTokenQueryRecord tokenRecord =
         tokenQueryPort.findByRequestId(item.requestId()).orElse(null);
-    if (tokenRecord == null
-        || tokenRecord.tokenStatus() != PasswordRecoveryTokenStatus.PENDING
-        || !tokenRecord.expiresAt().isAfter(now)) {
-      // 이미 사용/만료/정리된 token은 더 이상 provider로 보낼 의미가 없어 skip 완료 처리합니다.
-      dispatchPort.markSent(item.id(), now);
+    PasswordRecoveryDeliverySkipReason tokenSkipReason = tokenSkipReason(tokenRecord, now);
+    if (tokenSkipReason != null) {
+      // 이미 사용/만료/정리된 token은 provider 미호출 완료 사유로 남깁니다.
+      dispatchPort.markSkipped(item.id(), now, tokenSkipReason);
       return;
     }
 
     String recoveryToken =
         secretPort.reveal(tokenRecord.tokenCiphertext(), tokenRecord.tokenNonce());
     try {
-      deliveryPort.deliver(
-          new PasswordRecoveryDeliveryCommand(
-              item.requestId(),
-              item.userId(),
-              item.deliveryChannel(),
-              item.providerDestination(),
-              recoveryToken,
-              tokenRecord.expiresAt(),
-              tokenRecord.createdAt()));
-      dispatchPort.markSent(item.id(), now);
+      PasswordRecoveryDeliveryResult result =
+          Objects.requireNonNull(
+              deliveryPort.deliver(
+                  new PasswordRecoveryDeliveryCommand(
+                      item.requestId(),
+                      item.userId(),
+                      item.deliveryChannel(),
+                      item.providerDestination(),
+                      recoveryToken,
+                      tokenRecord.expiresAt(),
+                      tokenRecord.createdAt())),
+              "password recovery delivery result");
+      if (result.sent()) {
+        dispatchPort.markSent(item.id(), now);
+        return;
+      }
+      dispatchPort.markSkipped(item.id(), now, result.skipReason());
     } catch (RuntimeException ex) {
       String errorMessage = shorten(ex.getMessage());
       if (item.retryCount() + 1 >= maxRetryAttempts) {
@@ -104,6 +112,20 @@ public final class PasswordRecoveryDeliveryWorkerService
       Instant nextAttemptAt = now.plus(computeBackoff(item.retryCount()));
       dispatchPort.markFailed(item.id(), nextAttemptAt, now, errorMessage);
     }
+  }
+
+  private PasswordRecoveryDeliverySkipReason tokenSkipReason(
+      PasswordRecoveryTokenQueryRecord tokenRecord, Instant now) {
+    if (tokenRecord == null) {
+      return PasswordRecoveryDeliverySkipReason.TOKEN_MISSING;
+    }
+    if (tokenRecord.tokenStatus() != PasswordRecoveryTokenStatus.PENDING) {
+      return PasswordRecoveryDeliverySkipReason.TOKEN_NOT_PENDING;
+    }
+    if (!tokenRecord.expiresAt().isAfter(now)) {
+      return PasswordRecoveryDeliverySkipReason.TOKEN_EXPIRED;
+    }
+    return null;
   }
 
   private Duration computeBackoff(int retryCount) {

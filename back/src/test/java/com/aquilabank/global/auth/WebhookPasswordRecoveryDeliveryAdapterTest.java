@@ -1,6 +1,6 @@
 package com.aquilabank.global.auth;
 
-import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.jsonPath;
@@ -9,6 +9,8 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withAccepted;
 
 import com.aquilabank.domain.auth.model.PasswordRecoveryDeliveryCommand;
+import com.aquilabank.domain.auth.model.PasswordRecoveryDeliveryResult;
+import com.aquilabank.domain.auth.model.PasswordRecoveryDeliverySkipReason;
 import com.aquilabank.domain.auth.model.VerifiedContactChannel;
 import com.aquilabank.global.config.PasswordRecoveryDeliveryProperties;
 import java.time.Instant;
@@ -39,8 +41,9 @@ class WebhookPasswordRecoveryDeliveryAdapterTest {
     WebhookPasswordRecoveryDeliveryAdapter adapter =
         new WebhookPasswordRecoveryDeliveryAdapter(builder.build(), properties());
 
-    adapter.deliver(emailCommand());
+    PasswordRecoveryDeliveryResult result = adapter.deliver(emailCommand());
 
+    assertThat(result.sent()).isTrue();
     server.verify();
   }
 
@@ -59,8 +62,9 @@ class WebhookPasswordRecoveryDeliveryAdapterTest {
     WebhookPasswordRecoveryDeliveryAdapter adapter =
         new WebhookPasswordRecoveryDeliveryAdapter(builder.build(), properties());
 
-    adapter.deliver(phoneCommand());
+    PasswordRecoveryDeliveryResult result = adapter.deliver(phoneCommand());
 
+    assertThat(result.sent()).isTrue();
     server.verify();
   }
 
@@ -82,19 +86,20 @@ class WebhookPasswordRecoveryDeliveryAdapterTest {
                 new PasswordRecoveryDeliveryProperties.ChannelProperties(
                     "https://sms-provider.example/recovery")));
 
-    assertThatCode(
-            () ->
-                adapter.deliver(
-                    new PasswordRecoveryDeliveryCommand(
-                        "request-3",
-                        9L,
-                        VerifiedContactChannel.EMAIL,
-                        "alice@example.com",
-                        "plain-recovery-token",
-                        Instant.parse("2026-04-22T00:15:00Z"),
-                        Instant.parse("2026-04-22T00:00:00Z"))))
-        .doesNotThrowAnyException();
+    PasswordRecoveryDeliveryResult result =
+        adapter.deliver(
+            new PasswordRecoveryDeliveryCommand(
+                "request-3",
+                9L,
+                VerifiedContactChannel.EMAIL,
+                "alice@example.com",
+                "plain-recovery-token",
+                Instant.parse("2026-04-22T00:15:00Z"),
+                Instant.parse("2026-04-22T00:00:00Z")));
 
+    assertThat(result.sent()).isFalse();
+    assertThat(result.skipReason())
+        .isEqualTo(PasswordRecoveryDeliverySkipReason.PROVIDER_URL_MISSING);
     server.verify();
   }
 

@@ -1,6 +1,6 @@
 package com.aquilabank.global.notification;
 
-import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
@@ -10,6 +10,8 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withAccepted;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
 
+import com.aquilabank.domain.notification.model.NotificationChannelDeliveryResult;
+import com.aquilabank.domain.notification.model.NotificationChannelDeliverySkipReason;
 import com.aquilabank.domain.notification.model.NotificationChannelDeliveryStatus;
 import com.aquilabank.domain.notification.model.NotificationChannelOutboxItem;
 import com.aquilabank.domain.notification.model.NotificationPreferenceCategory;
@@ -51,8 +53,9 @@ class WebhookNotificationChannelProviderTest {
             properties(),
             new ObjectMapper().findAndRegisterModules());
 
-    provider.send(emailItem());
+    NotificationChannelDeliveryResult result = provider.send(emailItem());
 
+    assertThat(result.sent()).isTrue();
     server.verify();
   }
 
@@ -76,8 +79,9 @@ class WebhookNotificationChannelProviderTest {
             properties(),
             new ObjectMapper().findAndRegisterModules());
 
-    provider.send(smsItem());
+    NotificationChannelDeliveryResult result = provider.send(smsItem());
 
+    assertThat(result.sent()).isTrue();
     server.verify();
   }
 
@@ -94,8 +98,11 @@ class WebhookNotificationChannelProviderTest {
             properties(),
             new ObjectMapper().findAndRegisterModules());
 
-    assertThatCode(() -> provider.send(emailItem())).doesNotThrowAnyException();
+    NotificationChannelDeliveryResult result = provider.send(emailItem());
 
+    assertThat(result.sent()).isFalse();
+    assertThat(result.skipReason())
+        .isEqualTo(NotificationChannelDeliverySkipReason.VERIFIED_CONTACT_MISSING);
     server.verify();
   }
 
@@ -120,8 +127,11 @@ class WebhookNotificationChannelProviderTest {
                     "https://sms-provider.example/notifications")),
             new ObjectMapper().findAndRegisterModules());
 
-    assertThatCode(() -> provider.send(emailItem())).doesNotThrowAnyException();
+    NotificationChannelDeliveryResult result = provider.send(emailItem());
 
+    assertThat(result.sent()).isFalse();
+    assertThat(result.skipReason())
+        .isEqualTo(NotificationChannelDeliverySkipReason.PROVIDER_URL_MISSING);
     server.verify();
   }
 

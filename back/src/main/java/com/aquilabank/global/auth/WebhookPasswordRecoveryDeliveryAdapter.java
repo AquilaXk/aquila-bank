@@ -1,6 +1,8 @@
 package com.aquilabank.global.auth;
 
 import com.aquilabank.domain.auth.model.PasswordRecoveryDeliveryCommand;
+import com.aquilabank.domain.auth.model.PasswordRecoveryDeliveryResult;
+import com.aquilabank.domain.auth.model.PasswordRecoveryDeliverySkipReason;
 import com.aquilabank.domain.auth.model.VerifiedContactChannel;
 import com.aquilabank.domain.auth.port.PasswordRecoveryDeliveryPort;
 import com.aquilabank.global.config.PasswordRecoveryDeliveryProperties;
@@ -26,7 +28,7 @@ public final class WebhookPasswordRecoveryDeliveryAdapter implements PasswordRec
   }
 
   @Override
-  public void deliver(PasswordRecoveryDeliveryCommand command) {
+  public PasswordRecoveryDeliveryResult deliver(PasswordRecoveryDeliveryCommand command) {
     String url = targetUrl(command.deliveryChannel());
     if (!StringUtils.hasText(url)) {
       log.warn(
@@ -34,7 +36,8 @@ public final class WebhookPasswordRecoveryDeliveryAdapter implements PasswordRec
           command.requestId(),
           command.userId(),
           command.deliveryChannel());
-      return;
+      return PasswordRecoveryDeliveryResult.skipped(
+          PasswordRecoveryDeliverySkipReason.PROVIDER_URL_MISSING);
     }
 
     RestClient.RequestBodySpec requestSpec =
@@ -62,6 +65,7 @@ public final class WebhookPasswordRecoveryDeliveryAdapter implements PasswordRec
         command.userId(),
         command.deliveryChannel(),
         command.expiresAt());
+    return PasswordRecoveryDeliveryResult.delivered();
   }
 
   private String targetUrl(VerifiedContactChannel channel) {
