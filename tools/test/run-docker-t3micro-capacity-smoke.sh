@@ -12,6 +12,7 @@ Environment:
   DOCKER_T3MICRO_MEMORY_SWAP       Docker memory+swap limit, default 1024m
   DOCKER_T3MICRO_PIDS_LIMIT        Docker pids limit, default 384
   DOCKER_T3MICRO_GRADLE_USER_HOME  Host Gradle cache mount, default $HOME/.gradle
+  DOCKER_T3MICRO_PREPARE_TEST_CLASSES  compile test classes on host before Docker run, default true
   SOAK_REPEAT                      repeat count passed to production smoke, default 1
 
 Examples:
@@ -48,6 +49,18 @@ require_positive_integer() {
   fi
 }
 
+require_boolean() {
+  local name="$1"
+  local value="$2"
+  case "${value}" in
+    true | false) ;;
+    *)
+      echo "${name} must be true or false" >&2
+      exit 1
+      ;;
+  esac
+}
+
 mode="run"
 if [[ "${1:-}" == "--print-plan" ]]; then
   mode="print-plan"
@@ -75,6 +88,7 @@ db_pool_max_size="${PRODUCTION_T3MICRO_DB_POOL_MAX_SIZE:-4}"
 server_threads_max="${PRODUCTION_T3MICRO_SERVER_THREADS_MAX:-16}"
 sse_max_total_sessions="${PRODUCTION_T3MICRO_SSE_MAX_TOTAL_SESSIONS:-64}"
 notification_stream_max="${PRODUCTION_T3MICRO_NOTIFICATION_STREAM_MAX:-4}"
+prepare_test_classes="${DOCKER_T3MICRO_PREPARE_TEST_CLASSES:-true}"
 
 require_positive_number "DOCKER_T3MICRO_CPUS" "${cpus}"
 require_memory_value "DOCKER_T3MICRO_MEMORY" "${memory}"
@@ -85,6 +99,7 @@ require_positive_integer "PRODUCTION_T3MICRO_DB_POOL_MAX_SIZE" "${db_pool_max_si
 require_positive_integer "PRODUCTION_T3MICRO_SERVER_THREADS_MAX" "${server_threads_max}"
 require_positive_integer "PRODUCTION_T3MICRO_SSE_MAX_TOTAL_SESSIONS" "${sse_max_total_sessions}"
 require_positive_integer "PRODUCTION_T3MICRO_NOTIFICATION_STREAM_MAX" "${notification_stream_max}"
+require_boolean "DOCKER_T3MICRO_PREPARE_TEST_CLASSES" "${prepare_test_classes}"
 
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 host_gradle_home="${DOCKER_T3MICRO_GRADLE_USER_HOME:-${HOME}/.gradle}"
@@ -96,6 +111,7 @@ print_plan() {
   echo "[docker-t3micro-capacity] source=tools/test/run-production-t3micro-capacity-smoke.sh"
   echo "[docker-t3micro-capacity] image=${image}"
   echo "[docker-t3micro-capacity] docker limit: cpus=${cpus} memory=${memory} memory-swap=${memory_swap} pids-limit=${pids_limit}"
+  echo "[docker-t3micro-capacity] prepare-test-classes=${prepare_test_classes}"
   echo "[docker-t3micro-capacity] gradle cache=${host_gradle_home}"
   echo "[docker-t3micro-capacity] caveat: Docker cgroup은 CPU credit, EBS latency, 실제 AWS network를 재현하지 않습니다."
   SOAK_REPEAT="${repeat}" \
@@ -153,5 +169,11 @@ command -v docker >/dev/null 2>&1 || {
 }
 
 mkdir -p "${host_gradle_home}"
+
+if [[ "${prepare_test_classes}" == "true" ]]; then
+  echo "[docker-t3micro-capacity] preparing testClasses on host before cgroup smoke"
+  # Gradle compile 비용은 앱 런타임 부하가 아니므로 Docker 1GiB 판정에서 분리합니다.
+  tools/test/with-resource-lock.sh back-gradle-docker-t3micro-testclasses ./back/gradlew -p back testClasses
+fi
 
 docker "${docker_args[@]}" "${image}" bash -lc "${container_command}"

@@ -19,6 +19,7 @@ plan="$(
 grep -F "source=tools/test/run-production-t3micro-capacity-smoke.sh" <<<"${plan}" >/dev/null
 grep -F "image=local-java21" <<<"${plan}" >/dev/null
 grep -F "cpus=2 memory=1024m memory-swap=1024m pids-limit=384" <<<"${plan}" >/dev/null
+grep -F "prepare-test-classes=true" <<<"${plan}" >/dev/null
 grep -F "repeat=2" <<<"${plan}" >/dev/null
 grep -F "DB_POOL_MAX_SIZE=4" <<<"${plan}" >/dev/null
 grep -F "SERVER_THREADS_MAX=16" <<<"${plan}" >/dev/null
@@ -52,5 +53,9 @@ if DOCKER_T3MICRO_MEMORY=0m "${script}" --print-plan >/dev/null 2>&1; then
 fi
 if DOCKER_T3MICRO_PIDS_LIMIT=abc "${script}" --print-plan >/dev/null 2>&1; then
   echo "DOCKER_T3MICRO_PIDS_LIMIT=abc unexpectedly succeeded" >&2
+  exit 1
+fi
+if DOCKER_T3MICRO_PREPARE_TEST_CLASSES=maybe "${script}" --print-plan >/dev/null 2>&1; then
+  echo "DOCKER_T3MICRO_PREPARE_TEST_CLASSES=maybe unexpectedly succeeded" >&2
   exit 1
 fi

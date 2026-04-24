@@ -492,6 +492,7 @@ tools/test/run-docker-t3micro-capacity-smoke.sh
 
 - 기본 Docker budget은 `--cpus=2`, `--memory=1024m`, `--memory-swap=1024m`, `--pids-limit=384` 입니다.
 - script는 새 부하 발생기를 만들지 않고 기존 `tools/test/run-production-t3micro-capacity-smoke.sh`를 container 안에서 재사용합니다.
+- 기본값은 실행 전 host에서 `testClasses`를 준비해 Gradle compile 비용을 Docker 1GiB 판정에서 분리합니다. 이 동작을 끄려면 `DOCKER_T3MICRO_PREPARE_TEST_CLASSES=false`를 사용합니다.
 - 기본 image는 `eclipse-temurin:21-jdk`이고, 로컬에 다른 Java 21 image가 있으면 `DOCKER_T3MICRO_IMAGE=<image>`로 바꿀 수 있습니다.
 - Docker smoke는 host 자원이 큰 개발 머신에서 놓칠 수 있는 JVM/thread/pool 압력 회귀를 빨리 잡는 용도입니다.
 - 최종 120% headroom 판정은 실제 EC2 `t3.micro` staging에서 transaction replay, read replica smoke, production capacity smoke를 실행한 결과로 닫습니다.
