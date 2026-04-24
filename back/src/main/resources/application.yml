@@ -376,6 +376,7 @@ security:
   login-throttling:
     max-tracked-ips: ${SECURITY_LOGIN_THROTTLING_MAX_TRACKED_IPS:1024}
     store: ${SECURITY_LOGIN_THROTTLING_STORE:memory}
+    require-redis: ${SECURITY_LOGIN_THROTTLING_REQUIRE_REDIS:false}
     ip:
       max-attempts: ${SECURITY_LOGIN_THROTTLING_IP_MAX_ATTEMPTS:20}
       window-seconds: ${SECURITY_LOGIN_THROTTLING_IP_WINDOW_SECONDS:60}

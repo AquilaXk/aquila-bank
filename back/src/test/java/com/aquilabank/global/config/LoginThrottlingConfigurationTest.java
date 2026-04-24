@@ -74,6 +74,39 @@ class LoginThrottlingConfigurationTest {
   }
 
   @Test
+  void failsFastWhenRedisIsRequiredButMemoryStoreIsSelected() {
+    contextRunner
+        .withPropertyValues("security.login-throttling.require-redis=true")
+        .run(
+            context -> {
+              assertThat(context).hasFailed();
+              assertThat(context.getStartupFailure())
+                  .isInstanceOf(org.springframework.beans.factory.BeanCreationException.class)
+                  .hasRootCauseInstanceOf(IllegalStateException.class)
+                  .hasRootCauseMessage(
+                      "security.login-throttling.require-redis=true requires "
+                          + "security.login-throttling.store=redis");
+            });
+  }
+
+  @Test
+  void createsRedisStoreWhenRedisIsRequiredAndTemplateIsPresent() {
+    contextRunner
+        .withPropertyValues(
+            "security.login-throttling.require-redis=true", "security.login-throttling.store=redis")
+        .withBean(
+            org.springframework.data.redis.core.StringRedisTemplate.class,
+            () -> mock(org.springframework.data.redis.core.StringRedisTemplate.class))
+        .run(
+            context -> {
+              assertThat(context).hasNotFailed();
+              assertThat(context).hasSingleBean(LoginThrottleStore.class);
+              assertThat(context.getBean(LoginThrottleStore.class))
+                  .isInstanceOf(RedisLoginThrottleStore.class);
+            });
+  }
+
+  @Test
   void rejectsBlankRedisKeyPrefix() {
     contextRunner
         .withPropertyValues(

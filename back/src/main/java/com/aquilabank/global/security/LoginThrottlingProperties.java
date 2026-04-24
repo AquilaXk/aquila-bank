@@ -9,6 +9,7 @@ public record LoginThrottlingProperties(
     ScopeProperties ip,
     ScopeProperties global,
     StoreType store,
+    boolean requireRedis,
     RedisProperties redis) {
 
   public LoginThrottlingProperties {

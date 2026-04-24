@@ -18,6 +18,7 @@ class RedisLoginThrottleRuntimeSmokeTest {
           new LoginThrottlingProperties.ScopeProperties(2, 1),
           new LoginThrottlingProperties.ScopeProperties(4, 1),
           LoginThrottlingProperties.StoreType.REDIS,
+          false,
           new LoginThrottlingProperties.RedisProperties(redisKeyPrefix()));
 
   private final StringRedisTemplate stringRedisTemplate = createTemplate();

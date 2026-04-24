@@ -23,6 +23,11 @@ public class LoginThrottlingConfiguration {
       LoginThrottlingProperties properties,
       Clock authClock,
       ObjectProvider<StringRedisTemplate> stringRedisTemplateProvider) {
+    if (properties.requireRedis() && properties.store() != StoreType.REDIS) {
+      throw new IllegalStateException(
+          "security.login-throttling.require-redis=true requires "
+              + "security.login-throttling.store=redis");
+    }
     if (properties.store() == StoreType.REDIS) {
       StringRedisTemplate stringRedisTemplate = stringRedisTemplateProvider.getIfAvailable();
       if (stringRedisTemplate == null) {
