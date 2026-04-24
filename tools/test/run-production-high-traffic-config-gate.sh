@@ -36,6 +36,7 @@ abort('gate step must call validation script') unless run.include?('tools/ops/va
   OUTBOX_KAFKA_ENABLED
   OUTBOX_KAFKA_BOOTSTRAP_SERVERS
   NOTIFICATION_INBOX_CONSUMER_ENABLED
+  NOTIFICATION_INBOX_CONSUMER_CONCURRENCY
   KAFKA_TOPIC_PROVISIONING_REPLICATION_FACTOR
   OPS_API_ADMISSION_CONTROL_ENABLED
   OPS_T3MICRO_SATURATION_GUARD_ENABLED
@@ -53,6 +54,7 @@ plan="$("${script}" --print-plan)"
 grep -F "SECURITY_LOGIN_THROTTLING_STORE=redis" <<<"${plan}" >/dev/null
 grep -F "TRANSACTION_READ_REPLICA_ENABLED=true" <<<"${plan}" >/dev/null
 grep -F "OUTBOX_KAFKA_ENABLED=true" <<<"${plan}" >/dev/null
+grep -F "NOTIFICATION_INBOX_CONSUMER_CONCURRENCY>=2" <<<"${plan}" >/dev/null
 grep -F "OPS_API_ADMISSION_CONTROL_ENABLED=true" <<<"${plan}" >/dev/null
 
 echo "[production-high-traffic-config] guard: missing env fails"
@@ -83,6 +85,7 @@ valid_gate_env=(
   NOTIFICATION_INBOX_CONSUMER_ENABLED=true
   NOTIFICATION_INBOX_CONSUMER_OPS_ENABLED=true
   NOTIFICATION_INBOX_CONSUMER_BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9092,kafka-3:9092
+  NOTIFICATION_INBOX_CONSUMER_CONCURRENCY=4
   NOTIFICATION_INBOX_CONSUMER_TRANSFER_BOOKED_TOPIC=bank.transfer.booked.v1
   NOTIFICATION_INBOX_CONSUMER_TRANSFER_REVERSED_TOPIC=bank.transfer.reversed.v1
   NOTIFICATION_INBOX_CONSUMER_DLQ_TOPIC=bank.notification.inbox.dlq.v1
@@ -119,5 +122,23 @@ fi
 echo "[production-high-traffic-config] guard: unsafe Kafka replication fails"
 if env "${valid_gate_env[@]}" KAFKA_TOPIC_PROVISIONING_REPLICATION_FACTOR=1 "${script}" >/dev/null 2>&1; then
   echo "unsafe Kafka replication unexpectedly succeeded" >&2
+  exit 1
+fi
+
+echo "[production-high-traffic-config] guard: notification consumer default concurrency fails"
+if env "${valid_gate_env[@]}" NOTIFICATION_INBOX_CONSUMER_CONCURRENCY=1 "${script}" >/dev/null 2>&1; then
+  echo "default notification consumer concurrency unexpectedly succeeded" >&2
+  exit 1
+fi
+
+echo "[production-high-traffic-config] guard: consumer concurrency above partitions fails"
+if env "${valid_gate_env[@]}" NOTIFICATION_INBOX_CONSUMER_CONCURRENCY=7 "${script}" >/dev/null 2>&1; then
+  echo "consumer concurrency above partitions unexpectedly succeeded" >&2
+  exit 1
+fi
+
+echo "[production-high-traffic-config] guard: consumer concurrency above DB pool fails"
+if env "${valid_gate_env[@]}" NOTIFICATION_INBOX_CONSUMER_CONCURRENCY=5 "${script}" >/dev/null 2>&1; then
+  echo "consumer concurrency above DB pool unexpectedly succeeded" >&2
   exit 1
 fi
