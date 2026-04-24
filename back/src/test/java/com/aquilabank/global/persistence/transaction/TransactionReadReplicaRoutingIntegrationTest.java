@@ -2,9 +2,13 @@ package com.aquilabank.global.persistence.transaction;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.aquilabank.domain.transaction.model.TransactionCursor;
 import com.aquilabank.domain.transaction.model.TransactionDetailQuery;
 import com.aquilabank.domain.transaction.model.TransactionQuery;
 import com.aquilabank.domain.transaction.model.TransactionSlice;
+import com.aquilabank.domain.transaction.port.TransactionArchiveReadPort;
+import com.aquilabank.domain.transaction.port.TransactionDetailReadPort;
+import com.aquilabank.domain.transaction.port.TransactionReadPort;
 import com.aquilabank.support.PostgresContainerTestSupport;
 import java.io.PrintWriter;
 import java.sql.Connection;
@@ -44,14 +48,15 @@ import org.springframework.transaction.PlatformTransactionManager;
 @Import(TransactionReadReplicaRoutingIntegrationTest.ReplicaProbeConfiguration.class)
 class TransactionReadReplicaRoutingIntegrationTest extends PostgresContainerTestSupport {
 
-  private static final Instant HOT_BOOKED_AT = Instant.parse("2026-04-23T12:00:00Z");
-  private static final Instant ARCHIVE_BOOKED_AT = Instant.parse("2025-03-01T12:00:00Z");
+  private Instant hotBookedAt;
+  private Instant coldBookedAt;
+  private Instant archiveBookedAt;
 
-  @Autowired private JdbcTransactionReadRepository readRepository;
+  @Autowired private TransactionReadPort readPort;
 
-  @Autowired private JdbcTransactionDetailRepository detailRepository;
+  @Autowired private TransactionDetailReadPort detailReadPort;
 
-  @Autowired private JdbcTransactionArchiveReadRepository archiveRepository;
+  @Autowired private TransactionArchiveReadPort archiveReadPort;
 
   @Autowired private NamedParameterJdbcTemplate jdbcTemplate;
 
@@ -64,36 +69,43 @@ class TransactionReadReplicaRoutingIntegrationTest extends PostgresContainerTest
   @BeforeEach
   void setUpDatabase() {
     resetBankingTables(jdbcTemplate);
+    hotBookedAt = Instant.now().minusSeconds(5);
+    coldBookedAt = hotBookedAt.minusSeconds(120);
+    archiveBookedAt = hotBookedAt.minusSeconds(3600);
     commit(
         transactionManager,
         () -> {
           accountId = insertAccount("replica account");
           long hotLedgerEntryId =
               insertLedgerEntry(
-                  accountId, "trx-hot-1", "entry-hot-1", HOT_BOOKED_AT, HOT_BOOKED_AT, "hot");
+                  accountId, "trx-hot-1", "entry-hot-1", hotBookedAt, hotBookedAt, "hot");
           insertReadModel(
-              hotLedgerEntryId, accountId, "trx-hot-1", "BOOKED", HOT_BOOKED_AT, "COUNTERPARTY");
+              hotLedgerEntryId, accountId, "trx-hot-1", "BOOKED", hotBookedAt, "COUNTERPARTY");
+          long coldLedgerEntryId =
+              insertLedgerEntry(
+                  accountId, "trx-cold-1", "entry-cold-1", coldBookedAt, coldBookedAt, "cold");
+          insertReadModel(
+              coldLedgerEntryId, accountId, "trx-cold-1", "BOOKED", coldBookedAt, "COUNTERPARTY");
           long archiveLedgerEntryId =
               insertLedgerEntry(
                   accountId,
                   "trx-archive-1",
                   "entry-archive-1",
-                  ARCHIVE_BOOKED_AT,
-                  ARCHIVE_BOOKED_AT,
+                  archiveBookedAt,
+                  archiveBookedAt,
                   "archive");
-          insertArchiveReadModel(
-              archiveLedgerEntryId, accountId, "trx-archive-1", ARCHIVE_BOOKED_AT);
+          insertArchiveReadModel(archiveLedgerEntryId, accountId, "trx-archive-1", archiveBookedAt);
         });
     replicaProbe.reset();
   }
 
   @Test
-  void listQueryUsesReplicaDataSource() {
+  void hotFirstPageQueryUsesPrimaryDataSource() {
     TransactionQuery query =
         new TransactionQuery(
             accountId,
-            HOT_BOOKED_AT.minusSeconds(60),
-            HOT_BOOKED_AT.plusSeconds(60),
+            coldBookedAt.minusSeconds(60),
+            Instant.now().plusSeconds(30),
             20,
             null,
             null,
@@ -102,20 +114,90 @@ class TransactionReadReplicaRoutingIntegrationTest extends PostgresContainerTest
             null,
             null);
 
-    TransactionSlice slice = readRepository.fetch(query);
+    TransactionSlice slice = readPort.fetch(query);
+
+    assertThat(slice.items()).hasSize(2);
+    assertThat(slice.items().getFirst().transactionReference()).isEqualTo("trx-hot-1");
+    assertThat(replicaProbe.primaryConnections()).isGreaterThan(0);
+    assertThat(replicaProbe.replicaConnections()).isZero();
+  }
+
+  @Test
+  void referenceExactQueryUsesPrimaryDataSource() {
+    TransactionQuery query =
+        new TransactionQuery(
+            accountId,
+            hotBookedAt.minusSeconds(60),
+            hotBookedAt.plusSeconds(60),
+            20,
+            null,
+            null,
+            null,
+            null,
+            null,
+            "trx-hot-1");
+
+    TransactionSlice slice = readPort.fetch(query);
 
     assertThat(slice.items()).hasSize(1);
     assertThat(slice.items().getFirst().transactionReference()).isEqualTo("trx-hot-1");
+    assertThat(replicaProbe.primaryConnections()).isGreaterThan(0);
+    assertThat(replicaProbe.replicaConnections()).isZero();
+  }
+
+  @Test
+  void detailQueryUsesPrimaryDataSource() {
+    var detail = detailReadPort.find(new TransactionDetailQuery(accountId, "trx-hot-1"));
+
+    assertThat(detail).isPresent();
+    assertThat(detail.orElseThrow().entryReference()).isEqualTo("entry-hot-1");
+    assertThat(replicaProbe.primaryConnections()).isGreaterThan(0);
+    assertThat(replicaProbe.replicaConnections()).isZero();
+  }
+
+  @Test
+  void oldFirstPageQueryUsesReplicaDataSource() {
+    TransactionQuery query =
+        new TransactionQuery(
+            accountId,
+            coldBookedAt.minusSeconds(60),
+            coldBookedAt.plusSeconds(60),
+            20,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null);
+
+    TransactionSlice slice = readPort.fetch(query);
+
+    assertThat(slice.items()).hasSize(1);
+    assertThat(slice.items().getFirst().transactionReference()).isEqualTo("trx-cold-1");
     assertThat(replicaProbe.replicaConnections()).isGreaterThan(0);
     assertThat(replicaProbe.primaryConnections()).isZero();
   }
 
   @Test
-  void detailQueryUsesReplicaDataSource() {
-    var detail = detailRepository.find(new TransactionDetailQuery(accountId, "trx-hot-1"));
+  void cursorPageQueryUsesReplicaDataSource() {
+    TransactionQuery query =
+        new TransactionQuery(
+            accountId,
+            coldBookedAt.minusSeconds(60),
+            hotBookedAt.plusSeconds(60),
+            20,
+            new TransactionCursor(hotBookedAt.plusSeconds(1), Long.MAX_VALUE),
+            null,
+            null,
+            null,
+            null,
+            null);
 
-    assertThat(detail).isPresent();
-    assertThat(detail.orElseThrow().entryReference()).isEqualTo("entry-hot-1");
+    TransactionSlice slice = readPort.fetch(query);
+
+    assertThat(slice.items())
+        .extracting("transactionReference")
+        .contains("trx-hot-1", "trx-cold-1");
     assertThat(replicaProbe.replicaConnections()).isGreaterThan(0);
     assertThat(replicaProbe.primaryConnections()).isZero();
   }
@@ -125,8 +207,8 @@ class TransactionReadReplicaRoutingIntegrationTest extends PostgresContainerTest
     TransactionQuery query =
         new TransactionQuery(
             accountId,
-            ARCHIVE_BOOKED_AT.minusSeconds(60),
-            ARCHIVE_BOOKED_AT.plusSeconds(60),
+            archiveBookedAt.minusSeconds(60),
+            archiveBookedAt.plusSeconds(60),
             20,
             null,
             null,
@@ -135,7 +217,7 @@ class TransactionReadReplicaRoutingIntegrationTest extends PostgresContainerTest
             null,
             null);
 
-    TransactionSlice slice = archiveRepository.fetchArchived(query);
+    TransactionSlice slice = archiveReadPort.fetchArchived(query);
 
     assertThat(slice.items()).hasSize(1);
     assertThat(slice.items().getFirst().transactionReference()).isEqualTo("trx-archive-1");
@@ -167,7 +249,7 @@ class TransactionReadReplicaRoutingIntegrationTest extends PostgresContainerTest
             """,
             new MapSqlParameterSource()
                 .addValue("displayName", displayName)
-                .addValue("createdAt", Timestamp.from(HOT_BOOKED_AT)),
+                .addValue("createdAt", Timestamp.from(hotBookedAt)),
             Long.class);
     if (id == null) {
       throw new IllegalStateException("account insert did not return id");

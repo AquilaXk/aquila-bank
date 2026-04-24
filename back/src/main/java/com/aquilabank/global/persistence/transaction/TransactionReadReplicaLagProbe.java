@@ -28,7 +28,7 @@ public final class TransactionReadReplicaLagProbe {
   private final Clock clock;
   private volatile CachedLag cachedLag;
 
-  TransactionReadReplicaLagProbe(
+  public TransactionReadReplicaLagProbe(
       Supplier<DataSource> replicaDataSourceSupplier,
       TransactionReadReplicaProperties properties,
       Clock clock) {
