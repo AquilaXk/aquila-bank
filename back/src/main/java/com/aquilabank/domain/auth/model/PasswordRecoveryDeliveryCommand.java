@@ -7,7 +7,8 @@ import java.util.Objects;
 public record PasswordRecoveryDeliveryCommand(
     String requestId,
     long userId,
-    String loginId,
+    VerifiedContactChannel deliveryChannel,
+    String providerDestination,
     String recoveryToken,
     Instant expiresAt,
     Instant issuedAt) {
@@ -19,8 +20,14 @@ public record PasswordRecoveryDeliveryCommand(
     if (userId <= 0) {
       throw new IllegalArgumentException("userId must be positive");
     }
-    if (loginId == null || loginId.isBlank()) {
-      throw new IllegalArgumentException("loginId is required");
+    if (deliveryChannel == null) {
+      throw new IllegalArgumentException("deliveryChannel must not be null");
+    }
+    if (providerDestination == null || providerDestination.isBlank()) {
+      throw new IllegalArgumentException("providerDestination is required");
+    }
+    if (providerDestination.length() > 255) {
+      throw new IllegalArgumentException("providerDestination must be 255 characters or less");
     }
     if (recoveryToken == null || recoveryToken.isBlank()) {
       throw new IllegalArgumentException("recoveryToken is required");

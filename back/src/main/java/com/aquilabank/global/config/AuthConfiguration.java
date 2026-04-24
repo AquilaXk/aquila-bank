@@ -591,6 +591,7 @@ public class AuthConfiguration {
       UserCredentialLoadPort userCredentialLoadPort,
       PasswordRecoverySecretPort passwordRecoverySecretPort,
       com.aquilabank.domain.auth.port.PasswordRecoveryTokenWritePort passwordRecoveryTokenWritePort,
+      VerifiedContactPort verifiedContactPort,
       PasswordRecoveryDeliveryOutboxAppendPort passwordRecoveryDeliveryOutboxAppendPort,
       PasswordRecoveryProperties passwordRecoveryProperties,
       Clock authClock,
@@ -601,6 +602,7 @@ public class AuthConfiguration {
             userCredentialLoadPort,
             passwordRecoverySecretPort,
             passwordRecoveryTokenWritePort,
+            verifiedContactPort,
             passwordRecoveryDeliveryOutboxAppendPort,
             Duration.ofSeconds(passwordRecoveryProperties.ttlSeconds()),
             authClock);

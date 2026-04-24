@@ -3,6 +3,7 @@ package com.aquilabank.global.persistence.auth;
 import com.aquilabank.domain.auth.model.PasswordRecoveryDeliveryOutboxEntry;
 import com.aquilabank.domain.auth.model.PasswordRecoveryDeliveryOutboxItem;
 import com.aquilabank.domain.auth.model.PasswordRecoveryDeliveryStatus;
+import com.aquilabank.domain.auth.model.VerifiedContactChannel;
 import com.aquilabank.domain.auth.port.PasswordRecoveryDeliveryOutboxAppendPort;
 import com.aquilabank.domain.auth.port.PasswordRecoveryDeliveryOutboxDispatchPort;
 import java.sql.ResultSet;
@@ -38,6 +39,8 @@ public class JdbcPasswordRecoveryDeliveryOutboxRepository
                 request_id,
                 user_id,
                 login_id,
+                delivery_channel,
+                provider_destination,
                 available_at,
                 created_at,
                 updated_at
@@ -45,6 +48,8 @@ public class JdbcPasswordRecoveryDeliveryOutboxRepository
                 :requestId,
                 :userId,
                 :loginId,
+                :deliveryChannel,
+                :providerDestination,
                 :availableAt,
                 :createdAt,
                 :createdAt
@@ -54,6 +59,8 @@ public class JdbcPasswordRecoveryDeliveryOutboxRepository
                 .addValue("requestId", entry.requestId())
                 .addValue("userId", entry.userId())
                 .addValue("loginId", entry.loginId())
+                .addValue("deliveryChannel", entry.deliveryChannel().name())
+                .addValue("providerDestination", entry.providerDestination())
                 .addValue("availableAt", Timestamp.from(entry.availableAt()))
                 .addValue("createdAt", Timestamp.from(entry.createdAt())));
     if (updated != 1) {
@@ -76,6 +83,8 @@ public class JdbcPasswordRecoveryDeliveryOutboxRepository
             FROM auth_password_recovery_delivery_outbox
             WHERE delivery_status IN ('PENDING', 'FAILED')
               AND available_at <= :now
+              AND delivery_channel IS NOT NULL
+              AND provider_destination IS NOT NULL
             ORDER BY available_at ASC, id ASC
             LIMIT :limit
             FOR UPDATE SKIP LOCKED
@@ -90,6 +99,8 @@ public class JdbcPasswordRecoveryDeliveryOutboxRepository
                       item.request_id,
                       item.user_id,
                       item.login_id,
+                      item.delivery_channel,
+                      item.provider_destination,
                       item.delivery_status,
                       item.available_at,
                       item.sent_at,
@@ -165,6 +176,8 @@ public class JdbcPasswordRecoveryDeliveryOutboxRepository
         rs.getString("request_id"),
         rs.getLong("user_id"),
         rs.getString("login_id"),
+        VerifiedContactChannel.valueOf(rs.getString("delivery_channel")),
+        rs.getString("provider_destination"),
         PasswordRecoveryDeliveryStatus.valueOf(rs.getString("delivery_status")),
         rs.getTimestamp("available_at").toInstant(),
         rs.getTimestamp("sent_at") == null ? null : rs.getTimestamp("sent_at").toInstant(),

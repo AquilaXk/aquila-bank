@@ -8,11 +8,13 @@ import com.aquilabank.domain.auth.model.PasswordRecoveryRequestCommand;
 import com.aquilabank.domain.auth.model.PasswordRecoveryRequestResult;
 import com.aquilabank.domain.auth.model.PasswordRecoveryTokenIssueCommand;
 import com.aquilabank.domain.auth.model.UserStatus;
+import com.aquilabank.domain.auth.model.VerifiedContact;
 import com.aquilabank.domain.auth.port.PasswordRecoveryDeliveryOutboxAppendPort;
 import com.aquilabank.domain.auth.port.PasswordRecoverySecretPort;
 import com.aquilabank.domain.auth.port.PasswordRecoveryTokenWritePort;
 import com.aquilabank.domain.auth.port.UserCredentialLoadPort;
 import com.aquilabank.domain.auth.port.UserQueryPort;
+import com.aquilabank.domain.auth.port.VerifiedContactPort;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -25,6 +27,7 @@ public final class PasswordRecoveryRequestService implements PasswordRecoveryReq
   private final UserCredentialLoadPort userCredentialLoadPort;
   private final PasswordRecoverySecretPort passwordRecoverySecretPort;
   private final PasswordRecoveryTokenWritePort passwordRecoveryTokenWritePort;
+  private final VerifiedContactPort verifiedContactPort;
   private final PasswordRecoveryDeliveryOutboxAppendPort passwordRecoveryDeliveryOutboxAppendPort;
   private final Duration ttl;
   private final Clock clock;
@@ -34,6 +37,7 @@ public final class PasswordRecoveryRequestService implements PasswordRecoveryReq
       UserCredentialLoadPort userCredentialLoadPort,
       PasswordRecoverySecretPort passwordRecoverySecretPort,
       PasswordRecoveryTokenWritePort passwordRecoveryTokenWritePort,
+      VerifiedContactPort verifiedContactPort,
       PasswordRecoveryDeliveryOutboxAppendPort passwordRecoveryDeliveryOutboxAppendPort,
       Duration ttl,
       Clock clock) {
@@ -41,6 +45,7 @@ public final class PasswordRecoveryRequestService implements PasswordRecoveryReq
     this.userCredentialLoadPort = userCredentialLoadPort;
     this.passwordRecoverySecretPort = passwordRecoverySecretPort;
     this.passwordRecoveryTokenWritePort = passwordRecoveryTokenWritePort;
+    this.verifiedContactPort = verifiedContactPort;
     this.passwordRecoveryDeliveryOutboxAppendPort = passwordRecoveryDeliveryOutboxAppendPort;
     this.ttl = ttl;
     this.clock = clock;
@@ -57,6 +62,12 @@ public final class PasswordRecoveryRequestService implements PasswordRecoveryReq
     LoginUser lockedUser =
         userCredentialLoadPort.findByLoginIdForUpdate(command.loginId()).orElse(null);
     if (lockedUser == null || lockedUser.status() != UserStatus.ACTIVE) {
+      return new PasswordRecoveryRequestResult(handoffRequestId);
+    }
+
+    VerifiedContact destination =
+        verifiedContactPort.findPreferredForPasswordRecovery(lockedUser.userId()).orElse(null);
+    if (destination == null) {
       return new PasswordRecoveryRequestResult(handoffRequestId);
     }
 
@@ -78,7 +89,13 @@ public final class PasswordRecoveryRequestService implements PasswordRecoveryReq
     // 외부 provider I/O는 worker로 미루고 request transaction 안에서는 durable outbox 적재까지만 수행합니다.
     passwordRecoveryDeliveryOutboxAppendPort.append(
         new PasswordRecoveryDeliveryOutboxEntry(
-            handoffRequestId, lockedUser.userId(), lockedUser.loginId(), issuedAt, issuedAt));
+            handoffRequestId,
+            lockedUser.userId(),
+            lockedUser.loginId(),
+            destination.channel(),
+            destination.providerDestination(),
+            issuedAt,
+            issuedAt));
     return new PasswordRecoveryRequestResult(handoffRequestId);
   }
 }

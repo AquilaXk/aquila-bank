@@ -14,6 +14,7 @@ import com.aquilabank.domain.auth.model.PasswordRecoveryDeliveryOutboxItem;
 import com.aquilabank.domain.auth.model.PasswordRecoveryDeliveryStatus;
 import com.aquilabank.domain.auth.model.PasswordRecoveryTokenQueryRecord;
 import com.aquilabank.domain.auth.model.PasswordRecoveryTokenStatus;
+import com.aquilabank.domain.auth.model.VerifiedContactChannel;
 import com.aquilabank.domain.auth.port.PasswordRecoveryDeliveryOutboxDispatchPort;
 import com.aquilabank.domain.auth.port.PasswordRecoveryDeliveryPort;
 import com.aquilabank.domain.auth.port.PasswordRecoverySecretPort;
@@ -74,7 +75,8 @@ class PasswordRecoveryDeliveryWorkerServiceTest {
     PasswordRecoveryDeliveryCommand command = commandCaptor.getValue();
     assertThat(command.requestId()).isEqualTo("request-1");
     assertThat(command.userId()).isEqualTo(7L);
-    assertThat(command.loginId()).isEqualTo("alice@example.com");
+    assertThat(command.deliveryChannel()).isEqualTo(VerifiedContactChannel.EMAIL);
+    assertThat(command.providerDestination()).isEqualTo("alice.recovery@example.com");
     assertThat(command.recoveryToken()).isEqualTo("plain-token-1");
     assertThat(command.expiresAt()).isEqualTo(NOW.plus(Duration.ofMinutes(30)));
     verify(dispatchPort).markSent(1L, NOW);
@@ -154,6 +156,8 @@ class PasswordRecoveryDeliveryWorkerServiceTest {
         requestId,
         7L,
         "alice@example.com",
+        VerifiedContactChannel.EMAIL,
+        "alice.recovery@example.com",
         PasswordRecoveryDeliveryStatus.SENDING,
         NOW.minusSeconds(1),
         null,

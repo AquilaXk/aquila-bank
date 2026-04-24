@@ -133,6 +133,7 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
 
     userId = bootstrapUser("alice", "Alice", "password123!");
     upsertMembership(userId, allowedSourceAccountId, "OWNER", "ACTIVE");
+    upsertVerifiedContact(userId, "EMAIL", "alice.recovery@example.com");
   }
 
   @Test
@@ -2623,6 +2624,39 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
         .andExpect(jsonPath("$.accountId").value(accountId))
         .andExpect(jsonPath("$.membershipRole").value(membershipRole))
         .andExpect(jsonPath("$.membershipStatus").value(membershipStatus));
+  }
+
+  private void upsertVerifiedContact(
+      long userId, String contactChannel, String providerDestination) {
+    commit(
+        transactionManager,
+        () ->
+            jdbcTemplate.update(
+                """
+                INSERT INTO bank_user_verified_contact (
+                    user_id,
+                    contact_channel,
+                    provider_destination,
+                    verified_at,
+                    created_at,
+                    updated_at
+                ) VALUES (
+                    :userId,
+                    :contactChannel,
+                    :providerDestination,
+                    CURRENT_TIMESTAMP,
+                    CURRENT_TIMESTAMP,
+                    CURRENT_TIMESTAMP
+                )
+                ON CONFLICT (user_id, contact_channel)
+                DO UPDATE SET provider_destination = EXCLUDED.provider_destination,
+                              verified_at = EXCLUDED.verified_at,
+                              updated_at = EXCLUDED.updated_at
+                """,
+                new org.springframework.jdbc.core.namedparam.MapSqlParameterSource()
+                    .addValue("userId", userId)
+                    .addValue("contactChannel", contactChannel)
+                    .addValue("providerDestination", providerDestination)));
   }
 
   private void updateLegacyUserStatus(

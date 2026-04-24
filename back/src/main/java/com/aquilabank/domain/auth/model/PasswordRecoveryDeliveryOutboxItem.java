@@ -8,6 +8,8 @@ public record PasswordRecoveryDeliveryOutboxItem(
     String requestId,
     long userId,
     String loginId,
+    VerifiedContactChannel deliveryChannel,
+    String providerDestination,
     PasswordRecoveryDeliveryStatus deliveryStatus,
     Instant availableAt,
     Instant sentAt,
@@ -28,6 +30,12 @@ public record PasswordRecoveryDeliveryOutboxItem(
     }
     if (loginId == null || loginId.isBlank()) {
       throw new IllegalArgumentException("loginId is required");
+    }
+    if (deliveryChannel == null) {
+      throw new IllegalArgumentException("deliveryChannel must not be null");
+    }
+    if (providerDestination == null || providerDestination.isBlank()) {
+      throw new IllegalArgumentException("providerDestination is required");
     }
     if (deliveryStatus == null) {
       throw new IllegalArgumentException("deliveryStatus must not be null");

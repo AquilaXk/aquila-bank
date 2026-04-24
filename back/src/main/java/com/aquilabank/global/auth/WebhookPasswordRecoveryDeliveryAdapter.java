@@ -1,9 +1,8 @@
 package com.aquilabank.global.auth;
 
 import com.aquilabank.domain.auth.model.PasswordRecoveryDeliveryCommand;
+import com.aquilabank.domain.auth.model.VerifiedContactChannel;
 import com.aquilabank.domain.auth.port.PasswordRecoveryDeliveryPort;
-import com.aquilabank.global.auth.PasswordRecoveryDestinationResolver.PasswordRecoveryChannel;
-import com.aquilabank.global.auth.PasswordRecoveryDestinationResolver.ResolvedDestination;
 import com.aquilabank.global.config.PasswordRecoveryDeliveryProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,43 +10,30 @@ import org.springframework.http.MediaType;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
 
-/** contact schema 없이 잘못된 외부 전달을 막기 위해 email/E.164 phone 형식만 webhook으로 넘깁니다. */
+/** request 시점에 확정된 verified contact snapshot만 provider webhook으로 넘깁니다. */
 public final class WebhookPasswordRecoveryDeliveryAdapter implements PasswordRecoveryDeliveryPort {
 
   private static final Logger log =
       LoggerFactory.getLogger(WebhookPasswordRecoveryDeliveryAdapter.class);
 
   private final RestClient restClient;
-  private final PasswordRecoveryDestinationResolver destinationResolver;
   private final PasswordRecoveryDeliveryProperties properties;
 
   public WebhookPasswordRecoveryDeliveryAdapter(
-      RestClient restClient,
-      PasswordRecoveryDestinationResolver destinationResolver,
-      PasswordRecoveryDeliveryProperties properties) {
+      RestClient restClient, PasswordRecoveryDeliveryProperties properties) {
     this.restClient = restClient;
-    this.destinationResolver = destinationResolver;
     this.properties = properties;
   }
 
   @Override
   public void deliver(PasswordRecoveryDeliveryCommand command) {
-    ResolvedDestination destination = destinationResolver.resolve(command.loginId()).orElse(null);
-    if (destination == null) {
-      log.warn(
-          "password recovery delivery skipped due to unsupported loginId format requestId={} userId={}",
-          command.requestId(),
-          command.userId());
-      return;
-    }
-
-    String url = targetUrl(destination.channel());
+    String url = targetUrl(command.deliveryChannel());
     if (!StringUtils.hasText(url)) {
       log.warn(
           "password recovery delivery skipped because provider URL is missing requestId={} userId={} channel={}",
           command.requestId(),
           command.userId(),
-          destination.channel());
+          command.deliveryChannel());
       return;
     }
 
@@ -60,11 +46,10 @@ public final class WebhookPasswordRecoveryDeliveryAdapter implements PasswordRec
     requestSpec
         .body(
             new PasswordRecoveryWebhookRequest(
-                destination.channel().name(),
+                command.deliveryChannel().name(),
                 command.requestId(),
                 command.userId(),
-                command.loginId(),
-                destination.value(),
+                command.providerDestination(),
                 command.recoveryToken(),
                 command.expiresAt().toString(),
                 command.issuedAt().toString()))
@@ -75,12 +60,12 @@ public final class WebhookPasswordRecoveryDeliveryAdapter implements PasswordRec
         "password recovery delivery dispatched requestId={} userId={} channel={} expiresAt={}",
         command.requestId(),
         command.userId(),
-        destination.channel(),
+        command.deliveryChannel(),
         command.expiresAt());
   }
 
-  private String targetUrl(PasswordRecoveryChannel channel) {
-    return channel == PasswordRecoveryChannel.EMAIL
+  private String targetUrl(VerifiedContactChannel channel) {
+    return channel == VerifiedContactChannel.EMAIL
         ? properties.email().url()
         : properties.sms().url();
   }
@@ -89,7 +74,6 @@ public final class WebhookPasswordRecoveryDeliveryAdapter implements PasswordRec
       String channel,
       String requestId,
       long userId,
-      String loginId,
       String destination,
       String recoveryToken,
       String expiresAt,
