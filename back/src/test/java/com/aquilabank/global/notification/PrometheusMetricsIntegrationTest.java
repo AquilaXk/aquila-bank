@@ -93,6 +93,35 @@ class PrometheusMetricsIntegrationTest extends PostgresKafkaContainerTestSupport
               "invalid payload",
               base.minusSeconds(30),
               base.minusSeconds(5));
+          long providerUserId = insertProviderMetricUser("prometheus-provider@example.com", base);
+          long providerAccountId = insertProviderMetricAccount("prometheus provider account", base);
+          long notificationId =
+              insertProviderMetricNotification(
+                  providerAccountId, "evt-prometheus-provider-notification", base);
+          insertNotificationProviderDelivery(
+              notificationId,
+              providerUserId,
+              providerAccountId,
+              "evt-prometheus-provider-skipped",
+              "SKIPPED",
+              "VERIFIED_CONTACT_MISSING",
+              base);
+          insertNotificationProviderDelivery(
+              notificationId,
+              providerUserId,
+              providerAccountId,
+              "evt-prometheus-provider-failed",
+              "FAILED",
+              null,
+              base);
+          insertPasswordRecoveryProviderDelivery(
+              providerUserId,
+              "prometheus-provider-recovery-skipped",
+              "SKIPPED",
+              "PROVIDER_URL_MISSING",
+              base);
+          insertPasswordRecoveryProviderDelivery(
+              providerUserId, "prometheus-provider-recovery-pending", "PENDING", null, base);
         });
 
     SseEmitter emitter = notificationSseBroker.subscribeAccount(1L, "metrics");
@@ -140,6 +169,15 @@ class PrometheusMetricsIntegrationTest extends PostgresKafkaContainerTestSupport
       assertThat(body).containsPattern("aquila_outbox_failed_count\\s+1\\.0");
       assertThat(body).containsPattern("aquila_outbox_quarantined_count\\s+1\\.0");
       assertThat(body).containsPattern("aquila_outbox_failed_producer_timeout_count\\s+1\\.0");
+      assertThat(body)
+          .containsPattern(
+              "aquila_provider_delivery_status_count\\{(?=[^\\n]*queue=\"notification_channel\")(?=[^\\n]*status=\"skipped\")[^\\n]*\\}\\s+1\\.0");
+      assertThat(body)
+          .containsPattern(
+              "aquila_provider_delivery_skip_reason_count\\{(?=[^\\n]*queue=\"notification_channel\")(?=[^\\n]*reason=\"VERIFIED_CONTACT_MISSING\")[^\\n]*\\}\\s+1\\.0");
+      assertThat(body)
+          .containsPattern(
+              "aquila_provider_delivery_retry_backlog_count\\{[^\\n]*queue=\"password_recovery\"[^\\n]*\\}\\s+1\\.0");
       assertThat(body)
           .containsPattern(
               "aquila_notification_consumer_lag_count\\{[^\\n]*topic=\""
@@ -226,6 +264,163 @@ class PrometheusMetricsIntegrationTest extends PostgresKafkaContainerTestSupport
       throw new IllegalStateException("outbox_event insert did not return id");
     }
     return id;
+  }
+
+  private long insertProviderMetricUser(String loginId, Instant now) {
+    Long id =
+        jdbcTemplate.queryForObject(
+            """
+            INSERT INTO bank_user (login_id, password_hash, display_name, user_status, created_at, updated_at)
+            VALUES (:loginId, 'encoded-password', :loginId, 'ACTIVE', :now, :now)
+            RETURNING id
+            """,
+            new MapSqlParameterSource()
+                .addValue("loginId", loginId)
+                .addValue("now", Timestamp.from(now)),
+            Long.class);
+    if (id == null) {
+      throw new IllegalStateException("bank_user insert did not return id");
+    }
+    return id;
+  }
+
+  private long insertProviderMetricAccount(String displayName, Instant now) {
+    Long id =
+        jdbcTemplate.queryForObject(
+            """
+            INSERT INTO bank_account (
+                account_number,
+                display_name,
+                account_status,
+                currency_code,
+                created_at,
+                updated_at
+            )
+            VALUES (
+                '100' || LPAD(nextval('bank_account_number_seq')::text, 11, '0'),
+                :displayName,
+                'ACTIVE',
+                'KRW',
+                :now,
+                :now
+            )
+            RETURNING id
+            """,
+            new MapSqlParameterSource()
+                .addValue("displayName", displayName)
+                .addValue("now", Timestamp.from(now)),
+            Long.class);
+    if (id == null) {
+      throw new IllegalStateException("bank_account insert did not return id");
+    }
+    return id;
+  }
+
+  private long insertProviderMetricNotification(long accountId, String eventKey, Instant now) {
+    Long id =
+        jdbcTemplate.queryForObject(
+            """
+            INSERT INTO notification_inbox (account_id, event_key, event_type, title, message, created_at)
+            VALUES (:accountId, :eventKey, 'TransferBooked', 'provider metrics', 'provider metrics', :now)
+            RETURNING id
+            """,
+            new MapSqlParameterSource()
+                .addValue("accountId", accountId)
+                .addValue("eventKey", eventKey)
+                .addValue("now", Timestamp.from(now)),
+            Long.class);
+    if (id == null) {
+      throw new IllegalStateException("notification_inbox insert did not return id");
+    }
+    return id;
+  }
+
+  private void insertNotificationProviderDelivery(
+      long notificationId,
+      long userId,
+      long accountId,
+      String eventKey,
+      String status,
+      String skipReason,
+      Instant now) {
+    jdbcTemplate.update(
+        """
+        INSERT INTO notification_channel_outbox (
+            notification_id,
+            user_id,
+            account_id,
+            category,
+            channel,
+            event_type,
+            event_key,
+            payload,
+            delivery_status,
+            available_at,
+            skip_reason,
+            created_at,
+            updated_at
+        )
+        VALUES (
+            :notificationId,
+            :userId,
+            :accountId,
+            'TRANSACTIONAL',
+            'EMAIL',
+            'TransferBooked',
+            :eventKey,
+            '{"kind":"prometheus"}'::jsonb,
+            :status,
+            :now,
+            :skipReason,
+            :now,
+            :now
+        )
+        """,
+        new MapSqlParameterSource()
+            .addValue("notificationId", notificationId)
+            .addValue("userId", userId)
+            .addValue("accountId", accountId)
+            .addValue("eventKey", eventKey)
+            .addValue("status", status)
+            .addValue("skipReason", skipReason)
+            .addValue("now", Timestamp.from(now)));
+  }
+
+  private void insertPasswordRecoveryProviderDelivery(
+      long userId, String requestId, String status, String skipReason, Instant now) {
+    jdbcTemplate.update(
+        """
+        INSERT INTO auth_password_recovery_delivery_outbox (
+            request_id,
+            user_id,
+            login_id,
+            delivery_channel,
+            provider_destination,
+            delivery_status,
+            available_at,
+            skip_reason,
+            created_at,
+            updated_at
+        )
+        VALUES (
+            :requestId,
+            :userId,
+            'prometheus-provider@example.com',
+            'EMAIL',
+            'prometheus-provider@example.com',
+            :status,
+            :now,
+            :skipReason,
+            :now,
+            :now
+        )
+        """,
+        new MapSqlParameterSource()
+            .addValue("requestId", requestId)
+            .addValue("userId", userId)
+            .addValue("status", status)
+            .addValue("skipReason", skipReason)
+            .addValue("now", Timestamp.from(now)));
   }
 
   private ProducerRecord<String, String> dlqRecord(String eventKey) {
