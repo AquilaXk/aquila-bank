@@ -26,6 +26,21 @@ YYYY-MM-DD-<environment>-<workload>.md
 
 `tools/test/run-k6-transaction-100m-loadtest.sh`는 k6 summary Markdown을 생성한 뒤 기본적으로 이 디렉터리에 복사합니다.
 
+로컬 DB에 1억 건 synthetic read model을 먼저 적재하고 k6까지 이어서 실행하는 표준 경로는 아래 명령입니다.
+
+```bash
+SEED_TOTAL_ROWS=100000000 \
+SEED_TRUNCATE=true \
+tools/test/run-transaction-read-model-100m-k6-local.sh
+```
+
+실행 전 확인값:
+
+- local disk 여유 공간
+- Docker Desktop memory/disk limit
+- `compose.loadtest.yml`의 backend `2 vCPU / 1GiB` budget
+- hot/cold account와 기간 기본값이 테스트 의도와 맞는지 여부
+
 수동 보관이 필요하면 아래 명령을 사용합니다.
 
 ```bash
