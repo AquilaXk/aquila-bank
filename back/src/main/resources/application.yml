@@ -129,6 +129,8 @@ ops:
       gc-window-seconds: ${OPS_T3MICRO_SATURATION_GUARD_GC_WINDOW_SECONDS:10}
       gc-collection-threshold: ${OPS_T3MICRO_SATURATION_GUARD_GC_COLLECTION_THRESHOLD:3}
       gc-time-threshold-ms: ${OPS_T3MICRO_SATURATION_GUARD_GC_TIME_THRESHOLD_MS:250}
+    background-workers:
+      enabled: ${OPS_T3MICRO_SATURATION_GUARD_BACKGROUND_WORKERS_ENABLED:true}
 
 logging:
   pattern:
