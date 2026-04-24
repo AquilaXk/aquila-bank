@@ -1,0 +1,89 @@
+name: Transaction Read Replica Staging Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      archive_account_id:
+        description: Archive account id with enough rows for replica smoke
+        required: true
+        type: string
+      archive_from:
+        description: Archive query from timestamp, ISO-8601
+        required: true
+        type: string
+      archive_to:
+        description: Archive query to timestamp, ISO-8601
+        required: true
+        type: string
+      page_limit:
+        description: API page limit, max 100
+        required: true
+        default: "20"
+        type: string
+      replica_lag_threshold_ms:
+        description: Maximum accepted replica replay lag in milliseconds
+        required: true
+        default: "3000"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: transaction-read-replica-staging-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    name: Verify Transaction Read Replica Lag And Route
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: staging
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v psql >/dev/null 2>&1; then
+            exit 0
+          fi
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Run transaction read replica staging smoke
+        env:
+          STAGING_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
+          STAGING_REPLAY_TOKEN: ${{ secrets.STAGING_REPLAY_TOKEN }}
+          STAGING_RDS_DATABASE_URL: ${{ secrets.STAGING_RDS_DATABASE_URL }}
+          STAGING_RDS_REPLICA_DATABASE_URL: ${{ secrets.STAGING_RDS_REPLICA_DATABASE_URL }}
+          TRANSACTION_ARCHIVE_ACCOUNT_ID: ${{ inputs.archive_account_id }}
+          TRANSACTION_ARCHIVE_FROM: ${{ inputs.archive_from }}
+          TRANSACTION_ARCHIVE_TO: ${{ inputs.archive_to }}
+          PAGE_LIMIT: ${{ inputs.page_limit }}
+          REPLICA_LAG_THRESHOLD_MS: ${{ inputs.replica_lag_threshold_ms }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tools/ops/transaction-read-replica-staging-smoke.sh
+
+      - name: Append summary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          summary_path="build/reports/transaction-read-replica-staging-smoke/summary.md"
+          if [ -f "${summary_path}" ]; then
+            cat "${summary_path}" >> "${GITHUB_STEP_SUMMARY}"
+          fi
+
+      - name: Upload smoke report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: transaction-read-replica-staging-smoke
+          path: build/reports/transaction-read-replica-staging-smoke/
+          if-no-files-found: ignore
