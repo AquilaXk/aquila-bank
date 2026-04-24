@@ -194,8 +194,29 @@ create_secondary_indexes() {
 set_trigger_state() {
   local state="$1"
   psql_sql "
-    ALTER TABLE transaction_read_model ${state} TRIGGER ALL;
-    ALTER TABLE transaction_read_model_archive ${state} TRIGGER ALL;
+    DO \$\$
+    DECLARE
+      relation_name text;
+    BEGIN
+      -- partitioned parent만 바꾸면 leaf partition FK trigger가 남을 수 있어 전체 tree에 적용합니다.
+      FOR relation_name IN
+        SELECT quote_ident(n.nspname) || '.' || quote_ident(c.relname)
+        FROM pg_partition_tree('transaction_read_model'::regclass) tree
+        JOIN pg_class c
+          ON c.oid = tree.relid
+        JOIN pg_namespace n
+          ON n.oid = c.relnamespace
+        UNION
+        SELECT quote_ident(n.nspname) || '.' || quote_ident(c.relname)
+        FROM pg_partition_tree('transaction_read_model_archive'::regclass) tree
+        JOIN pg_class c
+          ON c.oid = tree.relid
+        JOIN pg_namespace n
+          ON n.oid = c.relnamespace
+      LOOP
+        EXECUTE format('ALTER TABLE %s ${state} TRIGGER ALL', relation_name);
+      END LOOP;
+    END \$\$;
   "
 }
 
@@ -218,7 +239,6 @@ insert_hot_batch() {
       booked_at,
       created_at
     )
-    OVERRIDING SYSTEM VALUE
     SELECT
       n,
       n,
@@ -234,7 +254,7 @@ insert_hot_batch() {
       '${hot_to}'::timestamptz - (((n - 1) % 2500000) * interval '1 second'),
       now()
     FROM generate_series(${start}, ${finish}) AS series(n)
-    ON CONFLICT (id) DO NOTHING;
+    ON CONFLICT (id, booked_at) DO NOTHING;
   "
 }
 
@@ -276,7 +296,7 @@ insert_archive_batch() {
       now(),
       now()
     FROM generate_series(${start}, ${finish}) AS series(n)
-    ON CONFLICT (id) DO NOTHING;
+    ON CONFLICT (id, booked_at) DO NOTHING;
   "
 }
 

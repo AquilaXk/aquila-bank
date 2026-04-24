@@ -60,6 +60,19 @@ class JdbcTransactionReadRepositoryPartitionFitIntegrationTest
   }
 
   @Test
+  void readModelTablesAreMonthlyPartitionedWithDefaultSafetyPartition() {
+    assertThat(partitionStrategy("transaction_read_model")).isEqualTo("r");
+    assertThat(partitionStrategy("transaction_read_model_archive")).isEqualTo("r");
+
+    assertThat(partitionNames("transaction_read_model"))
+        .contains("transaction_read_model_default")
+        .anyMatch(name -> name.startsWith("transaction_read_model_y"));
+    assertThat(partitionNames("transaction_read_model_archive"))
+        .contains("transaction_read_model_archive_default")
+        .anyMatch(name -> name.startsWith("transaction_read_model_archive_y"));
+  }
+
+  @Test
   void recentWindowKeepsAccountCursorIndexEvenWithLongHistory() {
     TransactionQuery query =
         new TransactionQuery(
@@ -146,5 +159,36 @@ class JdbcTransactionReadRepositoryPartitionFitIntegrationTest
       throw new IllegalStateException("EXPLAIN did not return JSON");
     }
     return TransactionExplainPlan.fromJson(objectMapper, explainJson);
+  }
+
+  private String partitionStrategy(String tableName) {
+    return jdbcTemplate.queryForObject(
+        """
+        SELECT p.partstrat::text
+        FROM pg_partitioned_table p
+        JOIN pg_class c
+          ON c.oid = p.partrelid
+        WHERE c.relname = :tableName
+        """,
+        new org.springframework.jdbc.core.namedparam.MapSqlParameterSource()
+            .addValue("tableName", tableName),
+        String.class);
+  }
+
+  private java.util.List<String> partitionNames(String tableName) {
+    return jdbcTemplate.query(
+        """
+        SELECT child.relname
+        FROM pg_inherits i
+        JOIN pg_class parent
+          ON parent.oid = i.inhparent
+        JOIN pg_class child
+          ON child.oid = i.inhrelid
+        WHERE parent.relname = :tableName
+        ORDER BY child.relname
+        """,
+        new org.springframework.jdbc.core.namedparam.MapSqlParameterSource()
+            .addValue("tableName", tableName),
+        (rs, rowNum) -> rs.getString(1));
   }
 }
