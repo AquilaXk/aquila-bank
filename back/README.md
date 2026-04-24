@@ -132,18 +132,29 @@ transaction read replica baseline은 거래 조회 3개 path만 좁게 분리합
   - `JdbcTransactionReadRepository`
   - `JdbcTransactionDetailRepository`
   - `JdbcTransactionArchiveReadRepository`
+  - `RoutedTransactionReadRepository`
+  - `RoutedTransactionDetailRepository`
+  - `RoutedTransactionArchiveReadRepository`
   - 전용 `transactionReadJdbcTemplate`
   - 전용 `transactionReadTransactionManager`
 - fallback:
   - `TRANSACTION_READ_REPLICA_ENABLED=false`
   - 또는 `TRANSACTION_READ_REPLICA_URL` 미설정
+  - replica lag probe 실패 또는 replay timestamp unknown
+  - `TRANSACTION_READ_REPLICA_LAG_THRESHOLD_MS` 초과
   - 위 경우 기존처럼 primary만 사용
+- routing policy:
+  - detail exact lookup과 `transactionReference` exact timeline lookup은 primary
+  - 첫 page hot window(`to >= now - TRANSACTION_READ_REPLICA_HOT_READ_WINDOW_MS`)는 primary
+  - old first page, cursor page, archive 조회는 replica lag가 healthy일 때만 replica
+  - local/test처럼 같은 DB를 replica URL로 둔 경우 `pg_is_in_recovery()=false`를 lag 0으로 처리
 - 기본 replica pool:
   - `minimumIdle=0`
   - `maximumPoolSize=2`
 - 운영 주의:
   - account/auth/write path는 계속 primary를 사용합니다.
-  - replica lag는 baseline 범위 밖입니다. 거래 직후 강한 read-after-write 일관성이 필요한 확인 흐름은 primary 정책을 별도로 검토해야 합니다.
+  - 거래 직후 강한 read-after-write 일관성이 필요한 확인 흐름은 detail/reference/hot first page primary 정책으로 보호합니다.
+  - lag probe는 `TRANSACTION_READ_REPLICA_PROBE_CACHE_MS` 동안 cache해 고트래픽에서 probe query 비용을 제한합니다.
 - 주요 설정:
   - `TRANSACTION_READ_REPLICA_ENABLED`
   - `TRANSACTION_READ_REPLICA_URL`
@@ -152,6 +163,12 @@ transaction read replica baseline은 거래 조회 3개 path만 좁게 분리합
   - `TRANSACTION_READ_REPLICA_POOL_MAX_SIZE`
   - `TRANSACTION_READ_REPLICA_STATEMENT_TIMEOUT_MS`
   - `TRANSACTION_READ_REPLICA_LOCK_TIMEOUT_MS`
+  - `TRANSACTION_READ_REPLICA_LAG_THRESHOLD_MS`
+  - `TRANSACTION_READ_REPLICA_PROBE_CACHE_MS`
+  - `TRANSACTION_READ_REPLICA_HOT_READ_WINDOW_MS`
+- metric:
+  - `aquila_transaction_read_replica_lag_ms`
+  - `aquila_transaction_read_replica_route_decisions_total{query_shape="timeline|detail|archive",route="primary|replica",reason="..."}`
 
 ## Transaction Read Model Partition / Archive Fit
 
@@ -313,6 +330,8 @@ set +a
   - `aquila_command_idempotency_cleanup_deleted_count_total`
   - `aquila_t3micro_saturation_guard_query_timeouts_total`
   - `aquila_transaction_query_latency_seconds`
+  - `aquila_transaction_read_replica_lag_ms`
+  - `aquila_transaction_read_replica_route_decisions_total{query_shape="timeline|detail|archive",route="primary|replica",reason="..."}`
 - DB saturation metric:
   - backend actuator scrape: `hikaricp_connections_pending`, `hikaricp_connections_active`, `hikaricp_connections_max`
   - Postgres exporter scrape: `pg_stat_activity_lock_waiting_count`, `pg_stat_statements_seconds_total`, `pg_stat_statements_calls_total`
@@ -333,6 +352,8 @@ set +a
   - `pg_stat_activity_lock_waiting_count`는 `wait_event_type = 'Lock'` custom query metric으로 둡니다.
   - transaction latency timer는 `GET /api/v1/transactions` query path가 한 번이라도 호출되면 `query_shape` tag 기준으로 누적됩니다.
   - transaction latency histogram bucket은 p95 SLO alert용으로 `50ms, 80ms, 120ms, 150ms, 180ms, 350ms, 750ms, 1s, 3s` 경계를 export 합니다.
+  - transaction read replica lag gauge는 lag probe가 한 번이라도 실행되면 최신 lag ms를 유지합니다.
+  - transaction read replica route counter는 detail/timeline/archive decision을 low-cardinality tag로 누적합니다.
 - transaction `query_shape` 기준:
   - `first_page`
   - `cursor`

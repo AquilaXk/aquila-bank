@@ -5,6 +5,7 @@ import com.aquilabank.global.persistence.transaction.TransactionReadRoute;
 import com.aquilabank.global.persistence.transaction.TransactionReadRoutingDataSource;
 import com.aquilabank.global.persistence.transaction.TransactionReadRoutingPolicy;
 import com.zaxxer.hikari.HikariDataSource;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
 import java.util.HashMap;
 import java.util.Map;
@@ -81,11 +82,13 @@ public class TransactionReadReplicaRoutingConfiguration {
   @ConditionalOnMissingBean
   TransactionReadRoutingPolicy transactionReadRoutingPolicy(
       TransactionReadReplicaProperties transactionReadReplicaProperties,
-      TransactionReadReplicaLagProbe transactionReadReplicaLagProbe) {
+      TransactionReadReplicaLagProbe transactionReadReplicaLagProbe,
+      MeterRegistry meterRegistry) {
     return new TransactionReadRoutingPolicy(
         transactionReadReplicaProperties,
         transactionReadReplicaLagProbe::currentLag,
-        Clock.systemUTC());
+        Clock.systemUTC(),
+        meterRegistry);
   }
 
   @Bean(name = "transactionReadReplicaDataSource", defaultCandidate = false)

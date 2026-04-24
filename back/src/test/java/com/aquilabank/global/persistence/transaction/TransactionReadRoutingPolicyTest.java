@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.aquilabank.domain.transaction.model.TransactionCursor;
 import com.aquilabank.domain.transaction.model.TransactionQuery;
 import com.aquilabank.global.config.TransactionReadReplicaProperties;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -117,6 +118,34 @@ class TransactionReadRoutingPolicyTest {
 
     assertThat(decision.route()).isEqualTo(TransactionReadRoute.REPLICA);
     assertThat(decision.reason()).isEqualTo("replica_healthy");
+  }
+
+  @Test
+  void recordsDecisionCounterAndLagGaugeWithLowCardinalityTags() {
+    SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+    TransactionReadRoutingPolicy policy =
+        new TransactionReadRoutingPolicy(
+            enabledProperties(),
+            () -> TransactionReadReplicaLagProbe.ReplicaLag.healthy(25),
+            CLOCK,
+            meterRegistry);
+
+    policy.routeArchive(firstPageEndingAt(NOW.minusSeconds(120)));
+
+    assertThat(
+            meterRegistry
+                .counter(
+                    "aquila.transaction.read_replica.route.decisions",
+                    "query_shape",
+                    "archive",
+                    "route",
+                    "replica",
+                    "reason",
+                    "replica_healthy")
+                .count())
+        .isEqualTo(1.0);
+    assertThat(meterRegistry.get("aquila.transaction.read_replica.lag.ms").gauge().value())
+        .isEqualTo(25.0);
   }
 
   private static TransactionReadRoutingPolicy policy(
