@@ -14,6 +14,7 @@ import com.aquilabank.domain.auth.usecase.PasswordRecoveryTokenQueryUseCase;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipQueryUseCase;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipStatusUpdateUseCase;
 import com.aquilabank.domain.auth.usecase.UserStatusUpdateUseCase;
+import com.aquilabank.domain.auth.usecase.VerifiedContactAdminUseCase;
 import com.aquilabank.global.security.InternalServiceScope;
 import com.aquilabank.global.security.InternalServiceTokenAuthenticationInterceptor;
 import com.aquilabank.global.security.InternalServiceTokenTestSupport;
@@ -51,6 +52,8 @@ class InternalAuthStatusFailureLoggingTest {
         Mockito.mock(ExternalIdentityMappingLinkUseCase.class);
     ExternalIdentityMappingUnlinkUseCase externalIdentityMappingUnlinkUseCase =
         Mockito.mock(ExternalIdentityMappingUnlinkUseCase.class);
+    VerifiedContactAdminUseCase verifiedContactAdminUseCase =
+        Mockito.mock(VerifiedContactAdminUseCase.class);
     var authorizer = InternalServiceTokenTestSupport.authorizer();
 
     mockMvc =
@@ -63,6 +66,7 @@ class InternalAuthStatusFailureLoggingTest {
                     passwordRecoveryTokenQueryUseCase,
                     externalIdentityMappingLinkUseCase,
                     externalIdentityMappingUnlinkUseCase,
+                    verifiedContactAdminUseCase,
                     authorizer))
             .addInterceptors(new InternalServiceTokenAuthenticationInterceptor(authorizer))
             .addFilters(new RequestIdFilter(), new InternalAuthStatusAuditRequestCachingFilter())

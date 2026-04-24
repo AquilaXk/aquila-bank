@@ -12,6 +12,9 @@ import com.aquilabank.domain.auth.model.UserAccountMembershipStatusUpdateCommand
 import com.aquilabank.domain.auth.model.UserAccountMembershipSummary;
 import com.aquilabank.domain.auth.model.UserStatus;
 import com.aquilabank.domain.auth.model.UserStatusUpdateCommand;
+import com.aquilabank.domain.auth.model.VerifiedContact;
+import com.aquilabank.domain.auth.model.VerifiedContactChannel;
+import com.aquilabank.domain.auth.model.VerifiedContactUpsertCommand;
 import com.aquilabank.domain.auth.usecase.AuthUserQueryUseCase;
 import com.aquilabank.domain.auth.usecase.ExternalIdentityMappingLinkUseCase;
 import com.aquilabank.domain.auth.usecase.ExternalIdentityMappingUnlinkUseCase;
@@ -19,6 +22,7 @@ import com.aquilabank.domain.auth.usecase.PasswordRecoveryTokenQueryUseCase;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipQueryUseCase;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipStatusUpdateUseCase;
 import com.aquilabank.domain.auth.usecase.UserStatusUpdateUseCase;
+import com.aquilabank.domain.auth.usecase.VerifiedContactAdminUseCase;
 import com.aquilabank.global.security.InternalServiceRequestAuthorizer;
 import com.aquilabank.global.security.InternalServiceScope;
 import com.aquilabank.global.security.InternalServiceTokenClaims;
@@ -30,7 +34,9 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.time.Instant;
+import java.util.List;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -40,6 +46,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /** 내부 auth 관리 exact lookup과 revoke/update를 bootstrap surface와 같은 보호 규칙으로 노출합니다. */
@@ -56,6 +63,7 @@ public class InternalAuthAdminController {
   private final PasswordRecoveryTokenQueryUseCase passwordRecoveryTokenQueryUseCase;
   private final ExternalIdentityMappingLinkUseCase externalIdentityMappingLinkUseCase;
   private final ExternalIdentityMappingUnlinkUseCase externalIdentityMappingUnlinkUseCase;
+  private final VerifiedContactAdminUseCase verifiedContactAdminUseCase;
   private final InternalServiceRequestAuthorizer internalServiceRequestAuthorizer;
 
   public InternalAuthAdminController(
@@ -66,6 +74,7 @@ public class InternalAuthAdminController {
       PasswordRecoveryTokenQueryUseCase passwordRecoveryTokenQueryUseCase,
       ExternalIdentityMappingLinkUseCase externalIdentityMappingLinkUseCase,
       ExternalIdentityMappingUnlinkUseCase externalIdentityMappingUnlinkUseCase,
+      VerifiedContactAdminUseCase verifiedContactAdminUseCase,
       InternalServiceRequestAuthorizer internalServiceRequestAuthorizer) {
     this.authUserQueryUseCase = authUserQueryUseCase;
     this.userStatusUpdateUseCase = userStatusUpdateUseCase;
@@ -74,6 +83,7 @@ public class InternalAuthAdminController {
     this.passwordRecoveryTokenQueryUseCase = passwordRecoveryTokenQueryUseCase;
     this.externalIdentityMappingLinkUseCase = externalIdentityMappingLinkUseCase;
     this.externalIdentityMappingUnlinkUseCase = externalIdentityMappingUnlinkUseCase;
+    this.verifiedContactAdminUseCase = verifiedContactAdminUseCase;
     this.internalServiceRequestAuthorizer = internalServiceRequestAuthorizer;
   }
 
@@ -116,6 +126,42 @@ public class InternalAuthAdminController {
         httpServletRequest, InternalServiceScope.AUTH_ADMIN);
     return PasswordRecoveryTokenResponse.from(
         passwordRecoveryTokenQueryUseCase.getByHandoffRequestId(handoffRequestId));
+  }
+
+  @GetMapping("/users/{userId}/verified-contacts")
+  public List<VerifiedContactResponse> getVerifiedContacts(
+      HttpServletRequest httpServletRequest,
+      @PathVariable @Positive(message = "userId must be positive") long userId) {
+    internalServiceRequestAuthorizer.requireScope(
+        httpServletRequest, InternalServiceScope.AUTH_ADMIN);
+    return verifiedContactAdminUseCase.findByUserId(userId).stream()
+        .map(VerifiedContactResponse::from)
+        .toList();
+  }
+
+  @PutMapping("/users/{userId}/verified-contacts/{contactChannel}")
+  public VerifiedContactResponse upsertVerifiedContact(
+      HttpServletRequest httpServletRequest,
+      @PathVariable @Positive(message = "userId must be positive") long userId,
+      @PathVariable VerifiedContactChannel contactChannel,
+      @Valid @RequestBody VerifiedContactRequest request) {
+    internalServiceRequestAuthorizer.requireScope(
+        httpServletRequest, InternalServiceScope.AUTH_ADMIN);
+    return VerifiedContactResponse.from(
+        verifiedContactAdminUseCase.upsert(
+            new VerifiedContactUpsertCommand(
+                userId, contactChannel, request.providerDestination(), Instant.now())));
+  }
+
+  @DeleteMapping("/users/{userId}/verified-contacts/{contactChannel}")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  public void deleteVerifiedContact(
+      HttpServletRequest httpServletRequest,
+      @PathVariable @Positive(message = "userId must be positive") long userId,
+      @PathVariable VerifiedContactChannel contactChannel) {
+    internalServiceRequestAuthorizer.requireScope(
+        httpServletRequest, InternalServiceScope.AUTH_ADMIN);
+    verifiedContactAdminUseCase.delete(userId, contactChannel);
   }
 
   @PostMapping("/users/{userId}/external-identities")
@@ -230,6 +276,10 @@ public class InternalAuthAdminController {
               message = "reasonDetail must be 200 characters or less")
           String reasonDetail) {}
 
+  /** internal admin verified contact upsert 요청 body */
+  public record VerifiedContactRequest(
+      @NotBlank(message = "providerDestination is required") @Size(max = 255, message = "providerDestination must be 255 characters or less") String providerDestination) {}
+
   private String resolveRequestId(HttpServletRequest httpServletRequest) {
     return RequestTraceContext.currentRequestId()
         .orElseGet(
@@ -323,6 +373,26 @@ public class InternalAuthAdminController {
           mapping.subject(),
           mapping.createdAt(),
           mapping.updatedAt());
+    }
+  }
+
+  /** internal admin verified contact 응답 */
+  public record VerifiedContactResponse(
+      long userId,
+      String contactChannel,
+      String providerDestination,
+      Instant verifiedAt,
+      Instant createdAt,
+      Instant updatedAt) {
+
+    static VerifiedContactResponse from(VerifiedContact contact) {
+      return new VerifiedContactResponse(
+          contact.userId(),
+          contact.channel().name(),
+          contact.providerDestination(),
+          contact.verifiedAt(),
+          contact.createdAt(),
+          contact.updatedAt());
     }
   }
 }

@@ -46,6 +46,7 @@ public abstract class PostgresContainerTestSupport {
                         TRUNCATE TABLE
                             auth_status_change_audit,
                             auth_password_recovery_delivery_outbox,
+                            bank_user_verified_contact,
                             notification_dlq_redrive_audit,
                             notification_channel_outbox,
                             notification_unread_count_projection,
