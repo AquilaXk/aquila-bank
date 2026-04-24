@@ -1,0 +1,154 @@
+services:
+  aquila-bank-backend:
+    image: eclipse-temurin:21-jre
+    container_name: aquila-bank-backend-loadtest
+    profiles:
+      - loadtest
+    restart: unless-stopped
+    cpus: "${T3MICRO_BACKEND_CPUS:-2}"
+    mem_limit: "${T3MICRO_BACKEND_MEMORY:-1024m}"
+    memswap_limit: "${T3MICRO_BACKEND_MEMORY_SWAP:-1024m}"
+    pids_limit: ${T3MICRO_BACKEND_PIDS_LIMIT:-384}
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    environment:
+      TZ: Asia/Seoul
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      SERVER_PORT: 8080
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-aquila_bank}
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_POOL_MIN_IDLE: ${DB_POOL_MIN_IDLE:-0}
+      DB_POOL_MAX_SIZE: ${DB_POOL_MAX_SIZE:-4}
+      DB_CONNECTION_TIMEOUT_MS: ${DB_CONNECTION_TIMEOUT_MS:-3000}
+      DB_STATEMENT_TIMEOUT_MS: ${DB_STATEMENT_TIMEOUT_MS:-3000}
+      DB_LOCK_TIMEOUT_MS: ${DB_LOCK_TIMEOUT_MS:-1000}
+      DB_QUERY_TIMEOUT_SECONDS: ${DB_QUERY_TIMEOUT_SECONDS:-3}
+      DB_TRANSACTION_TIMEOUT_SECONDS: ${DB_TRANSACTION_TIMEOUT_SECONDS:-5}
+      SERVER_THREADS_MAX: ${SERVER_THREADS_MAX:-16}
+      OUTBOX_KAFKA_ENABLED: ${OUTBOX_KAFKA_ENABLED:-false}
+      NOTIFICATION_INBOX_CONSUMER_ENABLED: ${NOTIFICATION_INBOX_CONSUMER_ENABLED:-false}
+      KAFKA_TOPIC_PROVISIONING_ENABLED: ${KAFKA_TOPIC_PROVISIONING_ENABLED:-false}
+      KAFKA_TOPIC_STARTUP_VALIDATION_ENABLED: ${KAFKA_TOPIC_STARTUP_VALIDATION_ENABLED:-false}
+      SECURITY_BOOTSTRAP_HEADER_AUTH_ENABLED: ${SECURITY_BOOTSTRAP_HEADER_AUTH_ENABLED:-true}
+      SECURITY_BOOTSTRAP_ACCOUNT_ID_HEADER: ${SECURITY_BOOTSTRAP_ACCOUNT_ID_HEADER:-X-Account-Id}
+      SECURITY_BOOTSTRAP_SUBJECT_HEADER: ${SECURITY_BOOTSTRAP_SUBJECT_HEADER:-X-Subject}
+      OPS_API_ADMISSION_CONTROL_ENABLED: ${OPS_API_ADMISSION_CONTROL_ENABLED:-true}
+      OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_MAX: ${OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_MAX:-3}
+      OPS_T3MICRO_SATURATION_GUARD_ENABLED: ${OPS_T3MICRO_SATURATION_GUARD_ENABLED:-true}
+      NOTIFICATION_SSE_MAX_TOTAL_SESSIONS: ${NOTIFICATION_SSE_MAX_TOTAL_SESSIONS:-64}
+      JAVA_TOOL_OPTIONS: ${LOADTEST_BACKEND_JAVA_TOOL_OPTIONS:--XX:MaxRAMPercentage=70 -XX:InitialRAMPercentage=40}
+    volumes:
+      - ./back/build/libs:/app:ro
+    command: ["sh", "-c", "java -jar /app/aquila-bank-0.0.1-SNAPSHOT.jar"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: aquila-bank-prometheus-loadtest
+    profiles:
+      - loadtest
+    restart: unless-stopped
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./ops/prometheus/prometheus.local-loadtest.yml:/etc/prometheus/prometheus.yml:ro
+      - ./ops/prometheus/rules/aquila-bank-alerts.yml:/etc/prometheus/rules/aquila-bank-alerts.yml:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--web.enable-remote-write-receiver"
+      - "--storage.tsdb.retention.time=${PROMETHEUS_RETENTION_TIME:-6h}"
+    depends_on:
+      aquila-bank-backend:
+        condition: service_started
+      postgres-exporter:
+        condition: service_started
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: aquila-bank-grafana-loadtest
+    profiles:
+      - loadtest
+    restart: unless-stopped
+    ports:
+      - "${GRAFANA_PORT:-3001}:3000"
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+    volumes:
+      - ./ops/prometheus/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./ops/prometheus/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./ops/prometheus/grafana:/var/lib/grafana/dashboards/aquila-bank:ro
+    depends_on:
+      prometheus:
+        condition: service_started
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: aquila-bank-alertmanager-loadtest
+    profiles:
+      - loadtest
+    restart: unless-stopped
+    ports:
+      - "${ALERTMANAGER_PORT:-9093}:9093"
+    volumes:
+      - ./ops/prometheus/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: aquila-bank-postgres-exporter-loadtest
+    profiles:
+      - loadtest
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_EXPORTER_PORT:-9187}:9187"
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${DB_USERNAME:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-aquila_bank}?sslmode=disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  k6-transaction-read-100m:
+    image: grafana/k6:0.54.0
+    container_name: aquila-bank-k6-transaction-100m
+    profiles:
+      - loadtest
+    environment:
+      BASE_URL: ${K6_BASE_URL:-http://aquila-bank-backend:8080}
+      K6_PROMETHEUS_RW_SERVER_URL: ${K6_PROMETHEUS_RW_SERVER_URL:-http://prometheus:9090/api/v1/write}
+      K6_PROMETHEUS_RW_TREND_STATS: "p(50),p(90),p(95),p(99),min,max,avg"
+      K6_REPORT_NAME: ${K6_REPORT_NAME:-transaction-100m}
+      K6_HOT_ACCOUNT_ID: ${K6_HOT_ACCOUNT_ID:-}
+      K6_HOT_FROM: ${K6_HOT_FROM:-}
+      K6_HOT_TO: ${K6_HOT_TO:-}
+      K6_COLD_ACCOUNT_ID: ${K6_COLD_ACCOUNT_ID:-}
+      K6_COLD_FROM: ${K6_COLD_FROM:-}
+      K6_COLD_TO: ${K6_COLD_TO:-}
+      K6_AUTH_TOKEN: ${K6_AUTH_TOKEN:-}
+      K6_LIMIT: ${K6_LIMIT:-50}
+      K6_VUS: ${K6_VUS:-8}
+      K6_DURATION: ${K6_DURATION:-1m}
+      K6_HOT_P95_THRESHOLD_MS: ${K6_HOT_P95_THRESHOLD_MS:-350}
+      K6_COLD_P95_THRESHOLD_MS: ${K6_COLD_P95_THRESHOLD_MS:-750}
+      K6_HTTP_FAILED_RATE: ${K6_HTTP_FAILED_RATE:-0.01}
+    volumes:
+      - ./ops/k6:/scripts:ro
+      - ./build/reports/k6:/reports
+    command:
+      - "run"
+      - "--out"
+      - "experimental-prometheus-rw"
+      - "/scripts/transaction-read-100m.js"
+    depends_on:
+      prometheus:
+        condition: service_started
+      aquila-bank-backend:
+        condition: service_started
