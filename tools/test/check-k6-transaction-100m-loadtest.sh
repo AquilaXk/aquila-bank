@@ -18,10 +18,17 @@ plan="$(
 grep -F "backend: aquila-bank-backend:8080 with t3.micro budget" <<<"${plan}" >/dev/null
 grep -F "observability: prometheus:9090 grafana:3000 alertmanager:9093 postgres-exporter:9187" <<<"${plan}" >/dev/null
 grep -F "k6 report name: transaction-100m-check" <<<"${plan}" >/dev/null
+grep -F "preflight=true" <<<"${plan}" >/dev/null
 
 echo "[k6-transaction-100m] k6 script contract"
 grep -F "experimental-prometheus-rw" compose.loadtest.yml >/dev/null
 grep -F "K6_PROMETHEUS_RW_SERVER_URL" compose.loadtest.yml >/dev/null
+grep -F -- "--no-collector.stat_bgwriter" compose.loadtest.yml >/dev/null
+grep -F "max_wal_size" compose.loadtest.yml >/dev/null
+grep -F "checkpoint_timeout" compose.loadtest.yml >/dev/null
+grep -F "assert_k6_preflight" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "idx_transaction_read_model_account_cursor" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "OOMKilled" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "aquila_transaction_hot_first_ms" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "aquila_transaction_cold_cursor_ms" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "handleSummary" ops/k6/transaction-read-100m.js >/dev/null

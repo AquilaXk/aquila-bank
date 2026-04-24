@@ -19,11 +19,14 @@ plan="$(
 grep -F "total_rows=1000" <<<"${plan}" >/dev/null
 grep -F "hot_rows=600 archive_rows=400 batch_size=200" <<<"${plan}" >/dev/null
 grep -F "truncate=true" <<<"${plan}" >/dev/null
+grep -F "index-strategy=required" <<<"${plan}" >/dev/null
 grep -F "local read-path seed only" <<<"${plan}" >/dev/null
 
 echo "[transaction-100m-local-runner] seed script contract"
 grep -F "TRIGGER ALL" tools/test/seed-transaction-read-model-100m.sh >/dev/null
-grep -F "CREATE INDEX IF NOT EXISTS idx_transaction_read_model_account_cursor" tools/test/seed-transaction-read-model-100m.sh >/dev/null
+grep -F "SEED_INDEX_STRATEGY" tools/test/seed-transaction-read-model-100m.sh >/dev/null
+grep -F "ensure_required_indexes" tools/test/seed-transaction-read-model-100m.sh >/dev/null
+grep -F "drop_optional_secondary_indexes" tools/test/seed-transaction-read-model-100m.sh >/dev/null
 grep -F "generate_series" tools/test/seed-transaction-read-model-100m.sh >/dev/null
 grep -F "ANALYZE transaction_read_model" tools/test/seed-transaction-read-model-100m.sh >/dev/null
 
@@ -49,5 +52,6 @@ grep -F "k6 report=transaction-100m-check" <<<"${wrapper_plan}" >/dev/null
 grep -F "Prometheus http://localhost:9090, Grafana http://localhost:3001" <<<"${wrapper_plan}" >/dev/null
 
 echo "[transaction-100m-local-runner] wrapper contract"
+grep -F "assert_k6_preflight" tools/test/run-transaction-read-model-100m-k6-local.sh >/dev/null
 grep -F "run-k6-transaction-100m-loadtest.sh --no-up" tools/test/run-transaction-read-model-100m-k6-local.sh >/dev/null
 grep -F "seed-transaction-read-model-100m.sh" tools/test/run-transaction-read-model-100m-k6-local.sh >/dev/null
