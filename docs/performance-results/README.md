@@ -26,6 +26,11 @@ YYYY-MM-DD-<environment>-<workload>.md
 
 `tools/test/run-k6-transaction-100m-loadtest.sh`는 k6 summary Markdown을 생성한 뒤 기본적으로 이 디렉터리에 복사합니다.
 
+실행 결과:
+
+- [transaction-100m-small-smoke-summary.md](transaction-100m-small-smoke-summary.md)
+- [transaction-100m-local-t3micro-20260425-bottleneck.md](transaction-100m-local-t3micro-20260425-bottleneck.md)
+
 로컬 DB에 1억 건 synthetic read model을 먼저 적재하고 k6까지 이어서 실행하는 표준 경로는 아래 명령입니다.
 
 ```bash
