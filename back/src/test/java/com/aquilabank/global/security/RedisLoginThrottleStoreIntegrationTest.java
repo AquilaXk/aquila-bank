@@ -37,6 +37,7 @@ class RedisLoginThrottleStoreIntegrationTest {
           new LoginThrottlingProperties.ScopeProperties(2, 2),
           new LoginThrottlingProperties.ScopeProperties(4, 2),
           LoginThrottlingProperties.StoreType.REDIS,
+          false,
           new LoginThrottlingProperties.RedisProperties("auth:login:throttle:"));
 
   private StringRedisTemplate stringRedisTemplate;
@@ -102,6 +103,7 @@ class RedisLoginThrottleStoreIntegrationTest {
             new LoginThrottlingProperties.ScopeProperties(2, 60),
             new LoginThrottlingProperties.ScopeProperties(10, 60),
             LoginThrottlingProperties.StoreType.REDIS,
+            false,
             new LoginThrottlingProperties.RedisProperties("auth:login:sliding:"));
     RedisLoginThrottleStore store =
         new RedisLoginThrottleStore(slidingWindowProperties, stringRedisTemplate, clock);
@@ -129,6 +131,7 @@ class RedisLoginThrottleStoreIntegrationTest {
             new LoginThrottlingProperties.ScopeProperties(2, 60),
             new LoginThrottlingProperties.ScopeProperties(10, 60),
             LoginThrottlingProperties.StoreType.REDIS,
+            false,
             new LoginThrottlingProperties.RedisProperties("auth:login:concurrent-ip:"));
 
     List<LoginThrottleStore.ThrottleDecision> decisions =
@@ -154,6 +157,7 @@ class RedisLoginThrottleStoreIntegrationTest {
             new LoginThrottlingProperties.ScopeProperties(10, 60),
             new LoginThrottlingProperties.ScopeProperties(4, 60),
             LoginThrottlingProperties.StoreType.REDIS,
+            false,
             new LoginThrottlingProperties.RedisProperties("auth:login:concurrent-global:"));
 
     List<LoginThrottleStore.ThrottleDecision> decisions =
