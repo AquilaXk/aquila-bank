@@ -10,6 +10,7 @@
   - `rules/aquila-bank-alerts.yml`
 - Prometheus provisioning:
   - `prometheus.yml`
+  - `prometheus.local-loadtest.yml`
 - Grafana provisioning:
   - `grafana/provisioning/datasources/prometheus.yml`
   - `grafana/provisioning/dashboards/aquila-bank.yml`
@@ -135,6 +136,23 @@ cp ops/prometheus/rules/aquila-bank-alerts.yml /etc/prometheus/rules/
   - `ops/prometheus/grafana/aquila-bank-overview.json` -> `/var/lib/grafana/dashboards/aquila-bank/aquila-bank-overview.json`
 
 기본 service name은 `prometheus:9090`, `alertmanager:9093`, `aquila-bank-backend:8080`, `postgres-exporter:9187`입니다. 환경별 host, label, receiver sink는 overlay 또는 runtime secret으로 덮어씁니다.
+
+## Local k6 Loadtest Runtime
+
+`compose.loadtest.yml`은 저장소 baseline을 실제 local runtime으로 묶는 overlay입니다.
+
+- backend: `aquila-bank-backend:8080`
+- Prometheus: `localhost:9090`
+- Grafana: `localhost:3001`
+- Alertmanager: `localhost:9093`
+- Postgres exporter: `localhost:9187`
+- k6 remote write: `http://prometheus:9090/api/v1/write`
+
+Prometheus는 k6 remote write를 받기 위해 `--web.enable-remote-write-receiver`로 실행됩니다. k6 실행 결과는 Prometheus/Grafana에 남고, Markdown/JSON summary는 `build/reports/k6`와 `docs/performance-results`에 남깁니다.
+
+```bash
+tools/test/run-k6-transaction-100m-loadtest.sh --print-plan
+```
 
 Alertmanager baseline receiver는 route 구조만 고정하며 실제 Slack/PagerDuty/Webhook URL은 저장소에 두지 않습니다. 운영 환경에서는 `aquila-bank-critical`, `aquila-bank-warning` receiver에 환경별 notification config를 추가합니다.
 

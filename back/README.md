@@ -497,6 +497,27 @@ tools/test/run-docker-t3micro-capacity-smoke.sh
 - Docker smoke는 host 자원이 큰 개발 머신에서 놓칠 수 있는 JVM/thread/pool 압력 회귀를 빨리 잡는 용도입니다.
 - 최종 120% headroom 판정은 실제 EC2 `t3.micro` staging에서 transaction replay, read replica smoke, production capacity smoke를 실행한 결과로 닫습니다.
 
+### k6 Transaction 100m Load Test
+
+1억 건 분포가 준비된 transaction read model을 HTTP로 replay할 때는 k6 loadtest overlay를 사용합니다.
+
+```bash
+K6_HOT_ACCOUNT_ID=101 \
+K6_HOT_FROM=2026-04-01T00:00:00Z \
+K6_HOT_TO=2026-04-30T00:00:00Z \
+K6_COLD_ACCOUNT_ID=202 \
+K6_COLD_FROM=2026-01-01T00:00:00Z \
+K6_COLD_TO=2026-01-31T00:00:00Z \
+tools/test/run-k6-transaction-100m-loadtest.sh
+```
+
+- 실행 전 `./back/gradlew -p back bootJar`는 runner가 자동 수행합니다.
+- backend는 `compose.loadtest.yml`의 `aquila-bank-backend` service로 실행되고 기본 `2 vCPU / 1GiB` budget을 적용받습니다.
+- k6는 hot/cold first page와 cursor page를 호출하고, 기본 threshold는 hot p95 `350ms`, cold p95 `750ms`, HTTP failed rate `< 1%` 입니다.
+- Prometheus는 `http://localhost:9090`, Grafana는 `http://localhost:3001`로 노출됩니다.
+- k6 summary 원본은 `build/reports/k6`, 리뷰용 Markdown은 `docs/performance-results`에 남깁니다.
+- 이 runner는 1억 row를 적재하지 않습니다. `K6_*_ACCOUNT_ID`와 기간은 이미 데이터가 준비된 local/staging dataset에 맞춰 넣어야 합니다.
+
 ## Notification Read State
 
 - JWT user 경로의 읽음 상태는 `notification_user_read_state`에 user별로 저장됩니다.
