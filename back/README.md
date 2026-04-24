@@ -518,6 +518,23 @@ tools/test/run-k6-transaction-100m-loadtest.sh
 - k6 summary 원본은 `build/reports/k6`, 리뷰용 Markdown은 `docs/performance-results`에 남깁니다.
 - 이 runner는 1억 row를 적재하지 않습니다. `K6_*_ACCOUNT_ID`와 기간은 이미 데이터가 준비된 local/staging dataset에 맞춰 넣어야 합니다.
 
+로컬 PostgreSQL에 read model 전용 1억 건 synthetic dataset을 직접 만들고 k6까지 이어서 실행하려면 아래 wrapper를 사용합니다.
+
+```bash
+SEED_TOTAL_ROWS=100000000 \
+SEED_TRUNCATE=true \
+tools/test/run-transaction-read-model-100m-k6-local.sh
+```
+
+- 기본 dataset은 `transaction_read_model` 5천만 row, `transaction_read_model_archive` 5천만 row입니다.
+- 기본 hot account는 `910000001`, cold account는 `910000002`입니다.
+- 기본 조회 기간은 hot `2026-04-01T00:00:00Z..2026-04-30T00:00:00Z`, cold `2026-01-01T00:00:00Z..2026-01-31T00:00:00Z`입니다.
+- seed는 read path 성능 검증 전용입니다. 원장 1억 건을 생성하지 않고, seed 중에만 read model FK trigger를 비활성화합니다.
+- 적재 시간을 줄이기 위해 secondary read index를 seed 전 drop하고 seed 후 재생성합니다.
+- local disk와 Docker volume을 크게 사용합니다. 실행 전 `df -h .`로 여유 공간을 확인합니다.
+- 실패 후 재시도할 때는 `SEED_TRUNCATE=true`를 유지해 중간 적재 데이터를 정리하고 다시 시작합니다.
+- k6 결과 Markdown은 `docs/performance-results`, 원본 JSON/Markdown은 `build/reports/k6`에 남습니다.
+
 ## Notification Read State
 
 - JWT user 경로의 읽음 상태는 `notification_user_read_state`에 user별로 저장됩니다.
