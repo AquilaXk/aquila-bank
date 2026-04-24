@@ -47,10 +47,11 @@
 
 ## Delivery Flow
 
-- feature 작업은 `main`에서 짧게 분기한 `feature/*`, `fix/*`, `ci/*` 브랜치에서 진행합니다.
+- feature 작업은 `main`에서 짧게 분기한 `feat/*`, `fix/*`, `perf/*`, `chore/*`, `build/*`, `docs/*` 브랜치에서 진행합니다.
 - PR 리뷰와 backend/frontend CI 통과 후 `main`에 병합합니다.
-- `main`에 병합되면 `Main CI` workflow가 backend/frontend check를 다시 실행합니다.
-- 아직 자동 배포는 연결하지 않고, 배포가 필요해질 때 별도 workflow로 추가합니다.
+- `main`에 병합되면 `Main CI` workflow가 backend/frontend check를 다시 실행하고, 같은 SHA를 `Staging Deploy` workflow로 전달합니다.
+- staging 배포는 현재 `origin/main` SHA와 일치하는 `Main CI` 성공 SHA만 진행하며, deploy hook secret이 없으면 no-op으로 종료합니다.
+- production 승격은 staging deployment status가 `success`인 같은 SHA만 대상으로 하고, GitHub Environment 수동 승인 또는 `prod-*` tag로만 진행합니다.
 - 미완성 기능은 장기 `develop` 브랜치 대신 feature flag로 기본 비노출 처리합니다.
 - 상세 운영 규칙은 [docs/delivery-flow.md](/Users/aquila/Custom/GitProjects/aquila-bank/docs/delivery-flow.md)에서 확인합니다.
 
@@ -92,10 +93,13 @@ com.aquilabank
 - `OUTBOX_POLLER_MAX_ADAPTIVE_DELAY_MS`: 실패 또는 빈 poll 반복 시 추가 대기 시간 상한입니다.
 - 운영 복구 시 `OUTBOX_POLLER_ADAPTIVE_ENABLED=false`로 고정 batch/주기 모드로 되돌릴 수 있습니다.
 
-## Notification Channel Provider Worker
+## Provider Delivery
 
-- `NOTIFICATION_CHANNEL_PROVIDER_WORKER_ENABLED`: EMAIL/SMS provider worker 활성화 여부입니다. 기본값은 `false`입니다.
-- `NOTIFICATION_CHANNEL_PROVIDER_WORKER_BATCH_SIZE`: 한 poll에서 claim할 delivery row 상한입니다.
-- `NOTIFICATION_CHANNEL_PROVIDER_WORKER_MAX_RETRY_DELAY_SECONDS`: provider 실패 시 retry backoff 상한입니다.
-- 기본 provider는 외부 secret 없는 logging adapter입니다. 실제 provider 연동 전 운영에서는 활성화하지 않습니다.
-- 롤백은 `NOTIFICATION_CHANNEL_PROVIDER_WORKER_ENABLED=false`로 scheduler를 중지하고, 필요 시 `FAILED` row를 운영 절차에 따라 재처리합니다.
+- notification EMAIL/SMS provider delivery는 `notification_channel_outbox`와 `NotificationChannelProviderPort`를 통해 외부 호출을 worker로 분리합니다.
+- `NOTIFICATION_CHANNEL_PROVIDER_WORKER_ENABLED`: notification provider worker 활성화 여부입니다. 기본값은 `false`입니다.
+- `NOTIFICATION_CHANNEL_PROVIDER_DELIVERY_ENABLED=true`이면 channel별 webhook adapter가 활성화되고, `false`이면 외부 secret 없는 logging adapter fallback을 사용합니다.
+- notification provider destination은 `bank_user_verified_contact`의 `user_id + contact_channel` 기준 `provider_destination`을 사용합니다.
+- password recovery provider delivery는 token 발급 transaction 안에서 `auth_password_recovery_delivery_outbox`를 적재하고, worker가 EMAIL 우선/SMS fallback verified contact snapshot으로 webhook adapter를 호출합니다.
+- `AUTH_PASSWORD_RECOVERY_DELIVERY_ENABLED=true`이고 `AUTH_PASSWORD_RECOVERY_DELIVERY_EMAIL_URL` 또는 `AUTH_PASSWORD_RECOVERY_DELIVERY_SMS_URL`가 있으면 password recovery webhook adapter가 provider endpoint로 `POST` 합니다.
+- verified contact 누락, 비활성 사용자, channel URL 누락, 이미 사용/만료/대체된 password recovery token은 외부 오발송 방지를 위해 fail-safe skip 처리합니다.
+- webhook timeout, 4xx/5xx, network error 같은 실제 provider 장애만 bounded retry/backoff/quarantine 흐름으로 들어갑니다.
