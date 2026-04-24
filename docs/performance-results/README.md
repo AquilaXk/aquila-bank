@@ -59,3 +59,15 @@ tools/test/archive-k6-transaction-100m-result.sh \
   build/reports/k6/<name>-summary.md \
   build/reports/k6/<name>-summary.json
 ```
+
+## 월별 chunk lifecycle
+
+월별 partition 선생성, archive detach/drop guard, partition별 `ANALYZE`/`VACUUM` 절차는 [Transaction Read Model Chunk Lifecycle Runbook](../transaction-read-model-chunk-lifecycle.md)을 기준으로 실행합니다.
+
+1억 row SLO 검증 전에는 다음 순서를 지킵니다.
+
+```bash
+tools/ops/transaction-read-model-chunk-lifecycle.sh --action precreate --target both --print-sql
+tools/ops/transaction-read-model-chunk-lifecycle.sh --action analyze --target both --print-sql
+tools/test/run-transaction-read-model-100m-k6-local.sh --print-plan
+```

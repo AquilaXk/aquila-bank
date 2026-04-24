@@ -25,6 +25,9 @@
 - staging RDS 통계가 최신이어야 합니다.
   - 1억 건 분포 적재 또는 replay 전후 `ANALYZE` 수행
   - full count 대신 `pg_class.reltuples` estimate를 쓰므로 오래된 통계는 검증 실패나 과소/과대 평가를 만들 수 있습니다.
+- 월별 partition lifecycle은 replay 전에 확인합니다.
+  - 다음 기간 partition 선생성: `tools/ops/transaction-read-model-chunk-lifecycle.sh --action precreate --target both`
+  - partition별 stats 갱신: `tools/ops/transaction-read-model-chunk-lifecycle.sh --action analyze --target both`
 - cold path는 `GET /api/v1/transactions/archive` 배포 이후 실행합니다.
 
 ## Staging Deploy Release Gate
