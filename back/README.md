@@ -543,10 +543,12 @@ tools/test/run-production-t3micro-capacity-smoke.sh
 
 - worker는 `notification_channel_outbox` row를 claim 한 뒤 `NotificationChannelProviderPort`로 EMAIL/SMS 외부 delivery를 시도합니다.
 - 기본값은 `LoggingNotificationChannelProvider` fallback 이고, `NOTIFICATION_CHANNEL_PROVIDER_DELIVERY_ENABLED=true`일 때 실제 webhook provider adapter가 활성화됩니다.
-- 현재 저장소에는 verified contact 모델이 없으므로 실제 destination은 `bank_user.login_id` 형식으로만 판별합니다.
-  - `EMAIL` channel: email 형식 loginId만 전달
-  - `SMS` channel: E.164 phone 형식 loginId만 전달
-- `userId -> loginId` lookup miss, channel mismatch, channel URL 누락은 잘못된 외부 발송 대신 fail-safe skip 처리하고 row는 `SENT`로 정리합니다.
+- 실제 provider destination은 `bank_user_verified_contact`의 `user_id + contact_channel` row에서 조회합니다.
+  - `EMAIL` channel: `contact_channel='EMAIL'`의 `provider_destination`
+  - `SMS` channel: `contact_channel='SMS'`의 `provider_destination`
+- `bank_user_verified_contact`는 `user_id + contact_channel` unique 기준이며, migration 시 active user의 email/E.164 `login_id`만 초기 verified contact로 backfill 합니다.
+- 내부 운영 경로는 `GET|PUT|DELETE /internal/api/v1/auth/users/{userId}/verified-contacts[/{$contactChannel}]`이고 `internal:auth-admin` scope가 필요합니다.
+- verified contact lookup miss, inactive user, channel URL 누락은 잘못된 외부 발송 대신 fail-safe skip 처리하고 row는 `SENT`로 정리합니다.
 - webhook timeout, 4xx/5xx, network error 같은 실제 provider 장애만 예외로 전파돼 기존 bounded retry/backoff/quarantine 흐름으로 들어갑니다.
 - webhook 요청 공통 header는 `NOTIFICATION_CHANNEL_PROVIDER_DELIVERY_AUTH_HEADER_NAME`, `NOTIFICATION_CHANNEL_PROVIDER_DELIVERY_AUTH_HEADER_VALUE`로 주입합니다.
 - timeout은 `NOTIFICATION_CHANNEL_PROVIDER_DELIVERY_CONNECT_TIMEOUT_MS`, `NOTIFICATION_CHANNEL_PROVIDER_DELIVERY_READ_TIMEOUT_MS`로 조정합니다.
@@ -576,7 +578,7 @@ tools/test/with-resource-lock.sh back-notification-provider-smoke \
 - smoke fixture는 local webhook server에서 `EMAIL=202 Accepted`, `SMS=delayed response`를 주입합니다.
 - smoke 기대값은 `EMAIL -> SENT`, `SMS -> FAILED + nextAttemptAt=base+5s` 입니다.
 - smoke가 실패하면 channel URL, timeout env, worker retry base delay drift를 먼저 확인합니다.
-- skip가 늘면 `bank_user.login_id` 형식 drift 또는 channel URL 오구성을 먼저 확인합니다.
+- skip가 늘면 verified contact 누락, inactive user, channel URL 오구성을 먼저 확인합니다.
 - retry가 늘면 provider timeout과 응답 코드, `last_error`, `available_at` backoff 증가를 같이 봅니다.
 
 ### Nginx Reverse Proxy Baseline
@@ -791,16 +793,18 @@ login 실패/잠금은 structured log 한 줄로 남습니다.
   - 인증 없이 `loginId`만 받고 항상 `204 No Content`를 반환한다.
   - 응답에는 trace용 `X-Request-Id`와 별도로 internal handoff용 `X-Password-Recovery-Request-Id`가 내려간다.
   - active user가 있으면 같은 user의 기존 `PENDING` recovery token을 `SUPERSEDED`로 바꾸고 새 token을 발급한다.
-  - token 발급과 같은 transaction 안에서 `auth_password_recovery_delivery_outbox` row를 함께 적재하고, 외부 provider 호출은 worker가 비동기로 수행한다.
+  - 같은 user의 verified contact가 있으면 token 발급과 같은 transaction 안에서 `auth_password_recovery_delivery_outbox` row를 함께 적재하고, 외부 provider 호출은 worker가 비동기로 수행한다.
+  - verified contact는 `EMAIL`을 우선 사용하고 없으면 `SMS`를 fallback으로 사용한다.
+  - verified contact가 없으면 public 응답은 동일하게 `204 No Content`를 유지하되 token/outbox row를 만들지 않는다.
+  - `auth_password_recovery_delivery_outbox.delivery_channel`과 `provider_destination`은 요청 시점 verified contact snapshot이다. 이후 contact가 바뀌어도 이미 적재된 recovery delivery 대상은 바꾸지 않는다.
   - 기본 provider adapter는 no-op이고, worker는 queue를 비운 뒤 row를 `SENT`로 정리한다.
   - `AUTH_PASSWORD_RECOVERY_DELIVERY_ENABLED=true`이고 provider URL이 없으면 logging adapter가 requestId/userId/expiresAt metadata만 기록하고 token 원문은 기록하지 않는다.
   - `AUTH_PASSWORD_RECOVERY_DELIVERY_ENABLED=true`이고
     `AUTH_PASSWORD_RECOVERY_DELIVERY_EMAIL_URL` 또는 `AUTH_PASSWORD_RECOVERY_DELIVERY_SMS_URL`가 있으면 webhook adapter가 JSON payload를 실제 provider endpoint로 `POST` 한다.
-  - 현재 user/contact schema에는 별도 verified email/phone 컬럼이 없으므로, 실제 전달은 `loginId`가 email 또는 E.164 phone 형식일 때만 실행한다.
-  - `loginId`가 email/phone 형식이 아니거나 해당 channel URL이 비어 있으면 잘못된 대상 전송 대신 delivery를 skip 하고 token 발급 결과는 유지한다.
+  - 해당 channel URL이 비어 있으면 잘못된 대상 전송 대신 delivery를 skip 하고 token 발급 결과는 유지한다.
   - webhook 요청 공통 header는 `AUTH_PASSWORD_RECOVERY_DELIVERY_AUTH_HEADER_NAME`, `AUTH_PASSWORD_RECOVERY_DELIVERY_AUTH_HEADER_VALUE`로 주입하고, `AUTH_PASSWORD_RECOVERY_DELIVERY_IDEMPOTENCY_HEADER_NAME` header에는 항상 `requestId`를 넣는다.
   - timeout은 `AUTH_PASSWORD_RECOVERY_DELIVERY_CONNECT_TIMEOUT_MS`, `AUTH_PASSWORD_RECOVERY_DELIVERY_READ_TIMEOUT_MS`로 조정하고, worker retry는 `AUTH_PASSWORD_RECOVERY_DELIVERY_WORKER_*` 설정으로 제어한다.
-  - webhook payload는 `channel`, `requestId`, `userId`, `loginId`, `destination`, `recoveryToken`, `expiresAt`, `issuedAt` 필드를 포함한다.
+  - webhook payload는 `channel`, `requestId`, `userId`, `destination`, `recoveryToken`, `expiresAt`, `issuedAt` 필드를 포함한다.
   - worker는 작은 batch로 due row를 claim 하고 bounded exponential backoff 뒤 재시도하며, `AUTH_PASSWORD_RECOVERY_DELIVERY_WORKER_MAX_RETRY_ATTEMPTS` 도달 시 `QUARANTINED`로 격리한다.
   - 이미 `USED|EXPIRED|SUPERSEDED` 된 token 또는 내부 조회에서 사라진 token은 provider로 보내지 않고 queue에서 skip 완료 처리한다.
   - `POST /api/v1/auth/password-recovery/confirm`
