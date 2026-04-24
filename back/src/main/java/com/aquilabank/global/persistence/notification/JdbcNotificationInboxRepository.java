@@ -25,6 +25,7 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -49,17 +50,20 @@ public class JdbcNotificationInboxRepository
   private static final RowMapper<NotificationSummary> ROW_MAPPER = (rs, rowNum) -> mapRow(rs);
 
   private final NamedParameterJdbcTemplate jdbcTemplate;
+  private final NamedParameterJdbcTemplate notificationReadJdbcTemplate;
   private final ApplicationEventPublisher applicationEventPublisher;
 
   public JdbcNotificationInboxRepository(
       NamedParameterJdbcTemplate jdbcTemplate,
+      @Qualifier("notificationReadJdbcTemplate") NamedParameterJdbcTemplate notificationReadJdbcTemplate,
       ApplicationEventPublisher applicationEventPublisher) {
     this.jdbcTemplate = jdbcTemplate;
+    this.notificationReadJdbcTemplate = notificationReadJdbcTemplate;
     this.applicationEventPublisher = applicationEventPublisher;
   }
 
   @Override
-  @Transactional(readOnly = true)
+  @Transactional(readOnly = true, transactionManager = "notificationReadTransactionManager")
   public NotificationSlice fetchByUserId(long userId, NotificationListQuery query) {
     List<NotificationSummary> rows =
         query.cursor() == null
@@ -69,7 +73,7 @@ public class JdbcNotificationInboxRepository
   }
 
   @Override
-  @Transactional(readOnly = true)
+  @Transactional(readOnly = true, transactionManager = "notificationReadTransactionManager")
   public NotificationSlice fetchByAccountId(long accountId, NotificationListQuery query) {
     List<NotificationSummary> rows =
         query.cursor() == null
@@ -79,14 +83,14 @@ public class JdbcNotificationInboxRepository
   }
 
   @Override
-  @Transactional(readOnly = true)
+  @Transactional(readOnly = true, transactionManager = "notificationReadTransactionManager")
   public NotificationSearchSlice searchByUserId(long userId, NotificationSearchQuery query) {
     validateSearchCursor(query);
     return toSearchSlice(fetchSearchByUserId(userId, query), query);
   }
 
   @Override
-  @Transactional(readOnly = true)
+  @Transactional(readOnly = true, transactionManager = "notificationReadTransactionManager")
   public NotificationSearchSlice searchByAccountId(long accountId, NotificationSearchQuery query) {
     validateSearchCursor(query);
     return toSearchSlice(fetchSearchByAccountId(accountId, query), query);
@@ -1018,19 +1022,19 @@ public class JdbcNotificationInboxRepository
       long userId, NotificationListQuery query) {
     NotificationUserInboxQueryStatement statement =
         NotificationUserInboxQueryStatement.from(userId, query);
-    return jdbcTemplate.query(statement.sql(), statement.params(), ROW_MAPPER);
+    return notificationReadJdbcTemplate.query(statement.sql(), statement.params(), ROW_MAPPER);
   }
 
   private List<NotificationSummary> fetchByUserIdNextPage(
       long userId, NotificationListQuery query) {
     NotificationUserInboxQueryStatement statement =
         NotificationUserInboxQueryStatement.from(userId, query);
-    return jdbcTemplate.query(statement.sql(), statement.params(), ROW_MAPPER);
+    return notificationReadJdbcTemplate.query(statement.sql(), statement.params(), ROW_MAPPER);
   }
 
   private List<NotificationSummary> fetchByAccountIdFirstPage(
       long accountId, NotificationListQuery query) {
-    return jdbcTemplate.query(
+    return notificationReadJdbcTemplate.query(
         """
         SELECT id,
                account_id,
@@ -1053,7 +1057,7 @@ public class JdbcNotificationInboxRepository
 
   private List<NotificationSummary> fetchByAccountIdNextPage(
       long accountId, NotificationListQuery query) {
-    return jdbcTemplate.query(
+    return notificationReadJdbcTemplate.query(
         """
         SELECT id,
                account_id,
@@ -1119,7 +1123,7 @@ public class JdbcNotificationInboxRepository
             ORDER BY created_at DESC, id DESC
             LIMIT :limitPlusOne
         """);
-    return jdbcTemplate.query(sql.toString(), params, ROW_MAPPER);
+    return notificationReadJdbcTemplate.query(sql.toString(), params, ROW_MAPPER);
   }
 
   private List<NotificationSummary> fetchSearchByUserId(
@@ -1175,7 +1179,7 @@ public class JdbcNotificationInboxRepository
             ORDER BY n.created_at DESC, n.id DESC
             LIMIT :limitPlusOne
         """);
-    return jdbcTemplate.query(sql.toString(), params, ROW_MAPPER);
+    return notificationReadJdbcTemplate.query(sql.toString(), params, ROW_MAPPER);
   }
 
   private void appendAccountReadStatusFilter(
