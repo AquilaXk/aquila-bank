@@ -32,6 +32,7 @@ com.aquilabank
 
 - 기본 저장소는 `memory`입니다.
 - `redis`는 분산 login throttling 이 필요할 때만 opt-in 으로 사용합니다.
+- multi-node 운영에서는 `SECURITY_LOGIN_THROTTLING_REQUIRE_REDIS=true`로 memory fallback 부팅을 차단합니다.
 - Redis 경로는 login throttling counter 에만 쓰고, SSE fan-out 은 계속 PostgreSQL `LISTEN/NOTIFY` 를 사용합니다.
 - local Redis는 compose `redis` profile로만 뜨며 기본 `postgres kafka` 경로에는 포함하지 않습니다.
 - 같은 counter/guard는 password recovery request entrypoint에도 적용되어 token write 전 burst를 차단합니다.
@@ -693,6 +694,7 @@ tools/test/run-sse-multinode-drain-smoke.sh
   - `SECURITY_LOGIN_THROTTLING_GLOBAL_WINDOW_SECONDS=10`
   - `SECURITY_LOGIN_THROTTLING_MAX_TRACKED_IPS=1024`
   - `SECURITY_LOGIN_THROTTLING_STORE=memory`
+  - `SECURITY_LOGIN_THROTTLING_REQUIRE_REDIS=false`
   - `SECURITY_LOGIN_THROTTLING_REDIS_KEY_PREFIX=auth:login:throttle:`
 - 동작 기준:
   - 같은 `loginId`에서 연속 `5회` 실패하면 `15분` 임시 잠금
@@ -702,8 +704,12 @@ tools/test/run-sse-multinode-drain-smoke.sh
   - 성공 login 시 `failed_login_count`, `last_login_failed_at`, `login_locked_until`은 reset
   - `loginId` 잠금은 존재 여부/잠금 여부를 드러내지 않도록 계속 `401 login failed` 유지
   - request-level throttling은 `Retry-After` 헤더와 함께 `429 too many login attempts`를 반환
+  - memory 저장소의 IP/global throttling은 per-instance 기준이며 multi-node 전체 합산 limit는 보장하지 않음
+  - Redis 저장소는 multi-node counter 공유가 필요할 때 사용하고, `require-redis=true` 운영값에서는 memory fallback 없이 설정 오류를 부팅 단계에서 드러냄
 - Redis opt-in:
   - `SECURITY_LOGIN_THROTTLING_STORE=redis`일 때만 Redis-backed counter를 사용
+  - multi-node 운영 baseline은 `SECURITY_LOGIN_THROTTLING_STORE=redis`와 `SECURITY_LOGIN_THROTTLING_REQUIRE_REDIS=true`를 같이 둠
+  - `SECURITY_LOGIN_THROTTLING_REQUIRE_REDIS=true`인데 store가 `memory`이면 startup 단계에서 실패시켜 per-instance limit 오적용을 막음
   - Redis 연결값은 `REDIS_HOST`, `REDIS_PORT`로 지정
   - Redis runtime smoke는 compose Redis profile을 띄운 뒤 실제 counter 공유와 TTL 만료를 확인
   - 실행:
@@ -714,8 +720,6 @@ tools/test/run-sse-multinode-drain-smoke.sh
 - 상태 우선순위:
   - 수동 운영 상태 `user_status=LOCKED|DISABLED`가 임시 잠금보다 우선
   - 임시 brute-force 잠금은 `login_locked_until`로만 관리하고 `user_status`는 직접 바꾸지 않음
-  - memory 저장소의 IP/global throttling은 per-instance 기준이며 multi-node 전체 합산 limit는 보장하지 않음
-  - Redis 저장소는 multi-node counter 공유가 필요할 때만 사용하고, 장애 시 memory fallback 없이 부팅 단계에서 설정 오류를 드러냄
 
 ### login 실패 감사 로그
 
