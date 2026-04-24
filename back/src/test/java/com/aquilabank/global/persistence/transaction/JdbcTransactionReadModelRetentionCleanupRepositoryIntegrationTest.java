@@ -74,6 +74,47 @@ class JdbcTransactionReadModelRetentionCleanupRepositoryIntegrationTest
     assertThat(totalLedgerEntries()).isEqualTo(3L);
   }
 
+  @Test
+  void doesNotDeleteWhenArchiveConflictOnlyMatchesLedgerEntryIdWithDifferentBookedAt() {
+    Instant cutoff = BASE.minusSeconds(60);
+    Instant archivedAt = BASE.plusSeconds(10);
+    ReadModelRow[] expired = new ReadModelRow[1];
+
+    commit(
+        transactionManager,
+        () -> {
+          long accountId = insertAccount("retention partition key account");
+          expired[0] =
+              insertTransaction(accountId, "retention-partition-key-old", cutoff.minusSeconds(20));
+
+          long conflictingLedgerEntryId =
+              insertLedgerEntry(
+                  accountId, "retention-partition-key-existing", expired[0].bookedAt());
+          insertArchiveRow(
+              expired[0].id(),
+              conflictingLedgerEntryId,
+              accountId,
+              "retention-partition-key-existing",
+              expired[0].bookedAt(),
+              archivedAt.minusSeconds(10));
+          insertArchiveRow(
+              expired[0].id() + 10_000,
+              expired[0].ledgerEntryId(),
+              accountId,
+              "retention-partition-key-wrong-month",
+              expired[0].bookedAt().minusSeconds(31L * 24 * 60 * 60),
+              archivedAt.minusSeconds(10));
+        });
+
+    int archived = repository.archiveExpiredReadModels(cutoff, 10, archivedAt);
+
+    assertThat(archived).isZero();
+    assertThat(findHotReferences()).containsExactly("retention-partition-key-old");
+    assertThat(findArchiveReferences())
+        .containsExactly("retention-partition-key-wrong-month", "retention-partition-key-existing");
+    assertThat(totalLedgerEntries()).isEqualTo(2L);
+  }
+
   private long insertAccount(String displayName) {
     String accountNumber =
         jdbcTemplate.queryForObject(
@@ -118,7 +159,50 @@ class JdbcTransactionReadModelRetentionCleanupRepositoryIntegrationTest
     return accountId;
   }
 
-  private void insertTransaction(long accountId, String reference, Instant bookedAt) {
+  private ReadModelRow insertTransaction(long accountId, String reference, Instant bookedAt) {
+    Long ledgerEntryId = insertLedgerEntry(accountId, reference, bookedAt);
+
+    jdbcTemplate.update(
+        """
+        INSERT INTO transaction_read_model (
+            ledger_entry_id,
+            account_id,
+            transaction_reference,
+            direction,
+            transaction_status,
+            amount_minor,
+            balance_after_minor,
+            currency_code,
+            summary,
+            counterparty_masked_name,
+            booked_at,
+            created_at
+        )
+        VALUES (
+            :ledgerEntryId,
+            :accountId,
+            :reference,
+            'CREDIT',
+            'BOOKED',
+            1700,
+            1001700,
+            'KRW',
+            :reference,
+            'ATM',
+            :bookedAt,
+            :bookedAt
+        )
+        """,
+        new MapSqlParameterSource()
+            .addValue("ledgerEntryId", ledgerEntryId)
+            .addValue("accountId", accountId)
+            .addValue("reference", reference)
+            .addValue("bookedAt", Timestamp.from(bookedAt)));
+
+    return findReadModelRow(reference);
+  }
+
+  private long insertLedgerEntry(long accountId, String reference, Instant bookedAt) {
     Long ledgerEntryId =
         jdbcTemplate.queryForObject(
             """
@@ -162,10 +246,20 @@ class JdbcTransactionReadModelRetentionCleanupRepositoryIntegrationTest
     if (ledgerEntryId == null) {
       throw new IllegalStateException("ledger entry insert did not return id");
     }
+    return ledgerEntryId;
+  }
 
+  private void insertArchiveRow(
+      long id,
+      long ledgerEntryId,
+      long accountId,
+      String reference,
+      Instant bookedAt,
+      Instant archivedAt) {
     jdbcTemplate.update(
         """
-        INSERT INTO transaction_read_model (
+        INSERT INTO transaction_read_model_archive (
+            id,
             ledger_entry_id,
             account_id,
             transaction_reference,
@@ -177,9 +271,11 @@ class JdbcTransactionReadModelRetentionCleanupRepositoryIntegrationTest
             summary,
             counterparty_masked_name,
             booked_at,
-            created_at
+            created_at,
+            archived_at
         )
         VALUES (
+            :id,
             :ledgerEntryId,
             :accountId,
             :reference,
@@ -191,15 +287,37 @@ class JdbcTransactionReadModelRetentionCleanupRepositoryIntegrationTest
             :reference,
             'ATM',
             :bookedAt,
-            :bookedAt
+            :bookedAt,
+            :archivedAt
         )
         """,
         new MapSqlParameterSource()
+            .addValue("id", id)
             .addValue("ledgerEntryId", ledgerEntryId)
             .addValue("accountId", accountId)
             .addValue("reference", reference)
-            .addValue("bookedAt", Timestamp.from(bookedAt)));
+            .addValue("bookedAt", Timestamp.from(bookedAt))
+            .addValue("archivedAt", Timestamp.from(archivedAt)));
   }
+
+  private ReadModelRow findReadModelRow(String reference) {
+    return jdbcTemplate.queryForObject(
+        """
+        SELECT id,
+               ledger_entry_id,
+               booked_at
+        FROM transaction_read_model
+        WHERE transaction_reference = :reference
+        """,
+        new MapSqlParameterSource().addValue("reference", reference),
+        (rs, rowNum) ->
+            new ReadModelRow(
+                rs.getLong("id"),
+                rs.getLong("ledger_entry_id"),
+                rs.getTimestamp("booked_at").toInstant()));
+  }
+
+  private record ReadModelRow(long id, long ledgerEntryId, Instant bookedAt) {}
 
   private List<String> findHotReferences() {
     return jdbcTemplate.query(

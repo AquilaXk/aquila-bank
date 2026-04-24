@@ -79,23 +79,26 @@ public class JdbcTransactionReadModelRetentionCleanupRepository
                        :archivedAt
                 FROM expired
                 ON CONFLICT DO NOTHING
-                RETURNING ledger_entry_id
+                RETURNING ledger_entry_id, booked_at
             ),
             safe_to_delete AS (
-                SELECT ledger_entry_id
+                SELECT ledger_entry_id, booked_at
                 FROM archived
                 UNION
-                SELECT e.ledger_entry_id
+                SELECT e.ledger_entry_id, e.booked_at
                 FROM expired e
                 JOIN transaction_read_model_archive a
                   ON a.ledger_entry_id = e.ledger_entry_id
+                 AND a.booked_at = e.booked_at
             ),
             deleted AS (
                 DELETE FROM transaction_read_model t
                 USING expired e
                 JOIN safe_to_delete s
                   ON s.ledger_entry_id = e.ledger_entry_id
+                 AND s.booked_at = e.booked_at
                 WHERE t.id = e.id
+                  AND t.booked_at = e.booked_at
                 RETURNING t.id
             )
             SELECT COUNT(*)
