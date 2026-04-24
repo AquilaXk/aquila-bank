@@ -1,0 +1,32 @@
+services:
+  postgres:
+    cpus: "${T3MICRO_POSTGRES_CPUS:-0.60}"
+    mem_limit: "${T3MICRO_POSTGRES_MEMORY:-384m}"
+    memswap_limit: "${T3MICRO_POSTGRES_MEMORY_SWAP:-384m}"
+    pids_limit: ${T3MICRO_POSTGRES_PIDS_LIMIT:-128}
+
+  kafka:
+    cpus: "${T3MICRO_KAFKA_CPUS:-0.90}"
+    mem_limit: "${T3MICRO_KAFKA_MEMORY:-448m}"
+    memswap_limit: "${T3MICRO_KAFKA_MEMORY_SWAP:-448m}"
+    pids_limit: ${T3MICRO_KAFKA_PIDS_LIMIT:-256}
+    environment:
+      KAFKA_HEAP_OPTS: "${T3MICRO_KAFKA_HEAP_OPTS:--Xms128m -Xmx256m}"
+
+  redis:
+    cpus: "${T3MICRO_REDIS_CPUS:-0.10}"
+    mem_limit: "${T3MICRO_REDIS_MEMORY:-64m}"
+    memswap_limit: "${T3MICRO_REDIS_MEMORY_SWAP:-64m}"
+    pids_limit: ${T3MICRO_REDIS_PIDS_LIMIT:-64}
+    command:
+      [
+        "redis-server",
+        "--appendonly",
+        "no",
+        "--save",
+        "",
+        "--maxmemory",
+        "${T3MICRO_REDIS_MAXMEMORY:-48mb}",
+        "--maxmemory-policy",
+        "noeviction",
+      ]
