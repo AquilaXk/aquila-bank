@@ -9,6 +9,7 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withAccepted;
 
 import com.aquilabank.domain.auth.model.PasswordRecoveryDeliveryCommand;
+import com.aquilabank.domain.auth.model.VerifiedContactChannel;
 import com.aquilabank.global.config.PasswordRecoveryDeliveryProperties;
 import java.time.Instant;
 import org.junit.jupiter.api.Test;
@@ -20,7 +21,7 @@ import org.springframework.web.client.RestClient;
 class WebhookPasswordRecoveryDeliveryAdapterTest {
 
   @Test
-  void sendsEmailWebhookWhenLoginIdIsEmail() {
+  void sendsEmailWebhookToSnapshotDestination() {
     RestClient.Builder builder = RestClient.builder();
     MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
     server
@@ -36,8 +37,7 @@ class WebhookPasswordRecoveryDeliveryAdapterTest {
         .andRespond(withAccepted());
 
     WebhookPasswordRecoveryDeliveryAdapter adapter =
-        new WebhookPasswordRecoveryDeliveryAdapter(
-            builder.build(), new PasswordRecoveryDestinationResolver(), properties());
+        new WebhookPasswordRecoveryDeliveryAdapter(builder.build(), properties());
 
     adapter.deliver(emailCommand());
 
@@ -45,7 +45,7 @@ class WebhookPasswordRecoveryDeliveryAdapterTest {
   }
 
   @Test
-  void sendsSmsWebhookWhenLoginIdIsE164Phone() {
+  void sendsSmsWebhookToSnapshotDestination() {
     RestClient.Builder builder = RestClient.builder();
     MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
     server
@@ -57,8 +57,7 @@ class WebhookPasswordRecoveryDeliveryAdapterTest {
         .andRespond(withAccepted());
 
     WebhookPasswordRecoveryDeliveryAdapter adapter =
-        new WebhookPasswordRecoveryDeliveryAdapter(
-            builder.build(), new PasswordRecoveryDestinationResolver(), properties());
+        new WebhookPasswordRecoveryDeliveryAdapter(builder.build(), properties());
 
     adapter.deliver(phoneCommand());
 
@@ -66,12 +65,22 @@ class WebhookPasswordRecoveryDeliveryAdapterTest {
   }
 
   @Test
-  void skipsUnsupportedLoginIdWithoutCallingWebhook() {
+  void skipsWhenChannelUrlIsMissing() {
     RestClient.Builder builder = RestClient.builder();
     MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
     WebhookPasswordRecoveryDeliveryAdapter adapter =
         new WebhookPasswordRecoveryDeliveryAdapter(
-            builder.build(), new PasswordRecoveryDestinationResolver(), properties());
+            builder.build(),
+            new PasswordRecoveryDeliveryProperties(
+                true,
+                "Authorization",
+                "Bearer delivery-secret",
+                "Idempotency-Key",
+                3000,
+                5000,
+                new PasswordRecoveryDeliveryProperties.ChannelProperties(null),
+                new PasswordRecoveryDeliveryProperties.ChannelProperties(
+                    "https://sms-provider.example/recovery")));
 
     assertThatCode(
             () ->
@@ -79,7 +88,8 @@ class WebhookPasswordRecoveryDeliveryAdapterTest {
                     new PasswordRecoveryDeliveryCommand(
                         "request-3",
                         9L,
-                        "alice",
+                        VerifiedContactChannel.EMAIL,
+                        "alice@example.com",
                         "plain-recovery-token",
                         Instant.parse("2026-04-22T00:15:00Z"),
                         Instant.parse("2026-04-22T00:00:00Z"))))
@@ -106,6 +116,7 @@ class WebhookPasswordRecoveryDeliveryAdapterTest {
     return new PasswordRecoveryDeliveryCommand(
         "request-1",
         7L,
+        VerifiedContactChannel.EMAIL,
         "alice@example.com",
         "plain-recovery-token",
         Instant.parse("2026-04-22T00:15:00Z"),
@@ -116,6 +127,7 @@ class WebhookPasswordRecoveryDeliveryAdapterTest {
     return new PasswordRecoveryDeliveryCommand(
         "request-2",
         8L,
+        VerifiedContactChannel.SMS,
         "+821012345678",
         "plain-recovery-token",
         Instant.parse("2026-04-22T00:15:00Z"),

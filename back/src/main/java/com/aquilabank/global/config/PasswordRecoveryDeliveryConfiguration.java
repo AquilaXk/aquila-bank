@@ -8,7 +8,6 @@ import com.aquilabank.domain.auth.usecase.PasswordRecoveryDeliveryWorkerService;
 import com.aquilabank.domain.auth.usecase.PasswordRecoveryDeliveryWorkerUseCase;
 import com.aquilabank.global.auth.LoggingPasswordRecoveryDeliveryAdapter;
 import com.aquilabank.global.auth.NoOpPasswordRecoveryDeliveryAdapter;
-import com.aquilabank.global.auth.PasswordRecoveryDestinationResolver;
 import com.aquilabank.global.auth.WebhookPasswordRecoveryDeliveryAdapter;
 import java.time.Duration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -35,9 +34,7 @@ public class PasswordRecoveryDeliveryConfiguration {
       PasswordRecoveryDeliveryProperties properties) {
     if (properties.hasWebhookTarget()) {
       return new WebhookPasswordRecoveryDeliveryAdapter(
-          passwordRecoveryRestClient(properties),
-          new PasswordRecoveryDestinationResolver(),
-          properties);
+          passwordRecoveryRestClient(properties), properties);
     }
     return new LoggingPasswordRecoveryDeliveryAdapter();
   }

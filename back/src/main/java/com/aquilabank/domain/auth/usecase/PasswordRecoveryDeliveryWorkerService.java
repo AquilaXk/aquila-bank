@@ -89,7 +89,8 @@ public final class PasswordRecoveryDeliveryWorkerService
           new PasswordRecoveryDeliveryCommand(
               item.requestId(),
               item.userId(),
-              item.loginId(),
+              item.deliveryChannel(),
+              item.providerDestination(),
               recoveryToken,
               tokenRecord.expiresAt(),
               tokenRecord.createdAt()));

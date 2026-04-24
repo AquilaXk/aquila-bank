@@ -85,7 +85,7 @@ class NotificationChannelProviderDeliverySmokeTest {
             new NotificationChannelProviderDeliveryProperties.ChannelProperties(
                 "http://127.0.0.1:" + port + "/sms"));
     NotificationChannelRecipientLookupPort recipientLookupPort =
-        userId ->
+        (userId, channel) ->
             switch ((int) userId) {
               case 101 -> Optional.of("alice@example.com");
               case 202 -> Optional.of("+821012345678");
@@ -95,7 +95,6 @@ class NotificationChannelProviderDeliverySmokeTest {
         new WebhookNotificationChannelProvider(
             restClient(properties),
             recipientLookupPort,
-            new NotificationChannelDeliveryDestinationResolver(),
             properties,
             new ObjectMapper().findAndRegisterModules());
     RecordingDispatchPort dispatchPort =

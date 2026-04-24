@@ -46,6 +46,7 @@ import com.aquilabank.domain.auth.port.UserCredentialLoadPort;
 import com.aquilabank.domain.auth.port.UserCredentialUpdatePort;
 import com.aquilabank.domain.auth.port.UserQueryPort;
 import com.aquilabank.domain.auth.port.UserStatusUpdatePort;
+import com.aquilabank.domain.auth.port.VerifiedContactPort;
 import com.aquilabank.domain.auth.usecase.AccountAccessService;
 import com.aquilabank.domain.auth.usecase.AccountAccessUseCase;
 import com.aquilabank.domain.auth.usecase.AuthSessionListService;
@@ -99,6 +100,8 @@ import com.aquilabank.domain.auth.usecase.UserBootstrapService;
 import com.aquilabank.domain.auth.usecase.UserBootstrapUseCase;
 import com.aquilabank.domain.auth.usecase.UserStatusUpdateService;
 import com.aquilabank.domain.auth.usecase.UserStatusUpdateUseCase;
+import com.aquilabank.domain.auth.usecase.VerifiedContactAdminService;
+import com.aquilabank.domain.auth.usecase.VerifiedContactAdminUseCase;
 import com.aquilabank.global.persistence.auth.JdbcPasswordRecoveryDeliveryOutboxRepository;
 import com.aquilabank.global.persistence.auth.JdbcPasswordRecoveryRepository;
 import com.aquilabank.global.security.LoginProtectionProperties;
@@ -588,6 +591,7 @@ public class AuthConfiguration {
       UserCredentialLoadPort userCredentialLoadPort,
       PasswordRecoverySecretPort passwordRecoverySecretPort,
       com.aquilabank.domain.auth.port.PasswordRecoveryTokenWritePort passwordRecoveryTokenWritePort,
+      VerifiedContactPort verifiedContactPort,
       PasswordRecoveryDeliveryOutboxAppendPort passwordRecoveryDeliveryOutboxAppendPort,
       PasswordRecoveryProperties passwordRecoveryProperties,
       Clock authClock,
@@ -598,6 +602,7 @@ public class AuthConfiguration {
             userCredentialLoadPort,
             passwordRecoverySecretPort,
             passwordRecoveryTokenWritePort,
+            verifiedContactPort,
             passwordRecoveryDeliveryOutboxAppendPort,
             Duration.ofSeconds(passwordRecoveryProperties.ttlSeconds()),
             authClock);
@@ -728,6 +733,12 @@ public class AuthConfiguration {
   @Bean
   UserStatusUpdateUseCase userStatusUpdateUseCase(UserStatusUpdatePort userStatusUpdatePort) {
     return new UserStatusUpdateService(userStatusUpdatePort);
+  }
+
+  @Bean
+  VerifiedContactAdminUseCase verifiedContactAdminUseCase(
+      VerifiedContactPort verifiedContactPort, Clock authClock) {
+    return new VerifiedContactAdminService(verifiedContactPort, authClock);
   }
 
   @Bean

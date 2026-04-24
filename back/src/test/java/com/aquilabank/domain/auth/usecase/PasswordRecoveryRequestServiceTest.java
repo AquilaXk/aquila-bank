@@ -17,11 +17,14 @@ import com.aquilabank.domain.auth.model.PasswordRecoveryRequestCommand;
 import com.aquilabank.domain.auth.model.PasswordRecoveryRequestResult;
 import com.aquilabank.domain.auth.model.PasswordRecoveryTokenIssueCommand;
 import com.aquilabank.domain.auth.model.UserStatus;
+import com.aquilabank.domain.auth.model.VerifiedContact;
+import com.aquilabank.domain.auth.model.VerifiedContactChannel;
 import com.aquilabank.domain.auth.port.PasswordRecoveryDeliveryOutboxAppendPort;
 import com.aquilabank.domain.auth.port.PasswordRecoverySecretPort;
 import com.aquilabank.domain.auth.port.PasswordRecoveryTokenWritePort;
 import com.aquilabank.domain.auth.port.UserCredentialLoadPort;
 import com.aquilabank.domain.auth.port.UserQueryPort;
+import com.aquilabank.domain.auth.port.VerifiedContactPort;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -43,6 +46,7 @@ class PasswordRecoveryRequestServiceTest {
     PasswordRecoverySecretPort passwordRecoverySecretPort = mock(PasswordRecoverySecretPort.class);
     PasswordRecoveryTokenWritePort passwordRecoveryTokenWritePort =
         mock(PasswordRecoveryTokenWritePort.class);
+    VerifiedContactPort verifiedContactPort = mock(VerifiedContactPort.class);
     PasswordRecoveryDeliveryOutboxAppendPort passwordRecoveryDeliveryOutboxAppendPort =
         mock(PasswordRecoveryDeliveryOutboxAppendPort.class);
 
@@ -53,6 +57,10 @@ class PasswordRecoveryRequestServiceTest {
         .thenReturn(
             new GeneratedPasswordRecoveryToken(
                 "plain-token", "token-hash", "token-ciphertext", "token-nonce"));
+    when(verifiedContactPort.findPreferredForPasswordRecovery(7L))
+        .thenReturn(
+            Optional.of(
+                verifiedContact(VerifiedContactChannel.EMAIL, "alice.recovery@example.com", NOW)));
 
     PasswordRecoveryRequestService service =
         new PasswordRecoveryRequestService(
@@ -60,6 +68,7 @@ class PasswordRecoveryRequestServiceTest {
             userCredentialLoadPort,
             passwordRecoverySecretPort,
             passwordRecoveryTokenWritePort,
+            verifiedContactPort,
             passwordRecoveryDeliveryOutboxAppendPort,
             TTL,
             CLOCK);
@@ -92,8 +101,89 @@ class PasswordRecoveryRequestServiceTest {
     assertThat(outboxEntry.requestId()).isEqualTo(result.handoffRequestId());
     assertThat(outboxEntry.userId()).isEqualTo(7L);
     assertThat(outboxEntry.loginId()).isEqualTo("alice");
+    assertThat(outboxEntry.deliveryChannel()).isEqualTo(VerifiedContactChannel.EMAIL);
+    assertThat(outboxEntry.providerDestination()).isEqualTo("alice.recovery@example.com");
     assertThat(outboxEntry.availableAt()).isEqualTo(NOW);
     assertThat(outboxEntry.createdAt()).isEqualTo(NOW);
+  }
+
+  @Test
+  void usesSmsDestinationWhenEmailVerifiedContactIsMissing() {
+    UserQueryPort userQueryPort = mock(UserQueryPort.class);
+    UserCredentialLoadPort userCredentialLoadPort = mock(UserCredentialLoadPort.class);
+    PasswordRecoverySecretPort passwordRecoverySecretPort = mock(PasswordRecoverySecretPort.class);
+    PasswordRecoveryTokenWritePort passwordRecoveryTokenWritePort =
+        mock(PasswordRecoveryTokenWritePort.class);
+    VerifiedContactPort verifiedContactPort = mock(VerifiedContactPort.class);
+    PasswordRecoveryDeliveryOutboxAppendPort passwordRecoveryDeliveryOutboxAppendPort =
+        mock(PasswordRecoveryDeliveryOutboxAppendPort.class);
+
+    when(userQueryPort.findSummaryByLoginId("alice")).thenReturn(Optional.of(activeSummary()));
+    when(userCredentialLoadPort.findByLoginIdForUpdate("alice"))
+        .thenReturn(Optional.of(activeUser()));
+    when(verifiedContactPort.findPreferredForPasswordRecovery(7L))
+        .thenReturn(Optional.of(verifiedContact(VerifiedContactChannel.SMS, "+821012345678", NOW)));
+    when(passwordRecoverySecretPort.generate())
+        .thenReturn(
+            new GeneratedPasswordRecoveryToken(
+                "plain-token", "token-hash", "token-ciphertext", "token-nonce"));
+
+    PasswordRecoveryRequestService service =
+        new PasswordRecoveryRequestService(
+            userQueryPort,
+            userCredentialLoadPort,
+            passwordRecoverySecretPort,
+            passwordRecoveryTokenWritePort,
+            verifiedContactPort,
+            passwordRecoveryDeliveryOutboxAppendPort,
+            TTL,
+            CLOCK);
+
+    service.request(new PasswordRecoveryRequestCommand("alice"));
+
+    ArgumentCaptor<PasswordRecoveryDeliveryOutboxEntry> outboxCaptor =
+        ArgumentCaptor.forClass(PasswordRecoveryDeliveryOutboxEntry.class);
+    verify(passwordRecoveryDeliveryOutboxAppendPort).append(outboxCaptor.capture());
+    assertThat(outboxCaptor.getValue().deliveryChannel()).isEqualTo(VerifiedContactChannel.SMS);
+    assertThat(outboxCaptor.getValue().providerDestination()).isEqualTo("+821012345678");
+  }
+
+  @Test
+  void returnsHandoffRequestIdWithoutWritesWhenVerifiedContactIsMissing() {
+    UserQueryPort userQueryPort = mock(UserQueryPort.class);
+    UserCredentialLoadPort userCredentialLoadPort = mock(UserCredentialLoadPort.class);
+    PasswordRecoverySecretPort passwordRecoverySecretPort = mock(PasswordRecoverySecretPort.class);
+    PasswordRecoveryTokenWritePort passwordRecoveryTokenWritePort =
+        mock(PasswordRecoveryTokenWritePort.class);
+    VerifiedContactPort verifiedContactPort = mock(VerifiedContactPort.class);
+    PasswordRecoveryDeliveryOutboxAppendPort passwordRecoveryDeliveryOutboxAppendPort =
+        mock(PasswordRecoveryDeliveryOutboxAppendPort.class);
+
+    when(userQueryPort.findSummaryByLoginId("alice")).thenReturn(Optional.of(activeSummary()));
+    when(userCredentialLoadPort.findByLoginIdForUpdate("alice"))
+        .thenReturn(Optional.of(activeUser()));
+    when(verifiedContactPort.findPreferredForPasswordRecovery(7L)).thenReturn(Optional.empty());
+
+    PasswordRecoveryRequestService service =
+        new PasswordRecoveryRequestService(
+            userQueryPort,
+            userCredentialLoadPort,
+            passwordRecoverySecretPort,
+            passwordRecoveryTokenWritePort,
+            verifiedContactPort,
+            passwordRecoveryDeliveryOutboxAppendPort,
+            TTL,
+            CLOCK);
+
+    PasswordRecoveryRequestResult result =
+        service.request(new PasswordRecoveryRequestCommand("alice"));
+
+    assertThat(result.handoffRequestId()).isNotBlank();
+    verify(verifiedContactPort).findPreferredForPasswordRecovery(7L);
+    verifyNoInteractions(
+        passwordRecoverySecretPort,
+        passwordRecoveryTokenWritePort,
+        passwordRecoveryDeliveryOutboxAppendPort);
   }
 
   @Test
@@ -103,6 +193,7 @@ class PasswordRecoveryRequestServiceTest {
     PasswordRecoverySecretPort passwordRecoverySecretPort = mock(PasswordRecoverySecretPort.class);
     PasswordRecoveryTokenWritePort passwordRecoveryTokenWritePort =
         mock(PasswordRecoveryTokenWritePort.class);
+    VerifiedContactPort verifiedContactPort = mock(VerifiedContactPort.class);
     PasswordRecoveryDeliveryOutboxAppendPort passwordRecoveryDeliveryOutboxAppendPort =
         mock(PasswordRecoveryDeliveryOutboxAppendPort.class);
 
@@ -113,6 +204,10 @@ class PasswordRecoveryRequestServiceTest {
         .thenReturn(
             new GeneratedPasswordRecoveryToken(
                 "plain-token", "token-hash", "token-ciphertext", "token-nonce"));
+    when(verifiedContactPort.findPreferredForPasswordRecovery(7L))
+        .thenReturn(
+            Optional.of(
+                verifiedContact(VerifiedContactChannel.EMAIL, "alice.recovery@example.com", NOW)));
     doThrow(new IllegalStateException("outbox unavailable"))
         .when(passwordRecoveryDeliveryOutboxAppendPort)
         .append(org.mockito.ArgumentMatchers.any(PasswordRecoveryDeliveryOutboxEntry.class));
@@ -123,6 +218,7 @@ class PasswordRecoveryRequestServiceTest {
             userCredentialLoadPort,
             passwordRecoverySecretPort,
             passwordRecoveryTokenWritePort,
+            verifiedContactPort,
             passwordRecoveryDeliveryOutboxAppendPort,
             TTL,
             CLOCK);
@@ -144,6 +240,7 @@ class PasswordRecoveryRequestServiceTest {
     PasswordRecoverySecretPort passwordRecoverySecretPort = mock(PasswordRecoverySecretPort.class);
     PasswordRecoveryTokenWritePort passwordRecoveryTokenWritePort =
         mock(PasswordRecoveryTokenWritePort.class);
+    VerifiedContactPort verifiedContactPort = mock(VerifiedContactPort.class);
     PasswordRecoveryDeliveryOutboxAppendPort passwordRecoveryDeliveryOutboxAppendPort =
         mock(PasswordRecoveryDeliveryOutboxAppendPort.class);
 
@@ -155,6 +252,7 @@ class PasswordRecoveryRequestServiceTest {
             userCredentialLoadPort,
             passwordRecoverySecretPort,
             passwordRecoveryTokenWritePort,
+            verifiedContactPort,
             passwordRecoveryDeliveryOutboxAppendPort,
             TTL,
             CLOCK);
@@ -168,6 +266,7 @@ class PasswordRecoveryRequestServiceTest {
         userCredentialLoadPort,
         passwordRecoverySecretPort,
         passwordRecoveryTokenWritePort,
+        verifiedContactPort,
         passwordRecoveryDeliveryOutboxAppendPort);
   }
 
@@ -178,6 +277,7 @@ class PasswordRecoveryRequestServiceTest {
     PasswordRecoverySecretPort passwordRecoverySecretPort = mock(PasswordRecoverySecretPort.class);
     PasswordRecoveryTokenWritePort passwordRecoveryTokenWritePort =
         mock(PasswordRecoveryTokenWritePort.class);
+    VerifiedContactPort verifiedContactPort = mock(VerifiedContactPort.class);
     PasswordRecoveryDeliveryOutboxAppendPort passwordRecoveryDeliveryOutboxAppendPort =
         mock(PasswordRecoveryDeliveryOutboxAppendPort.class);
 
@@ -189,6 +289,7 @@ class PasswordRecoveryRequestServiceTest {
             userCredentialLoadPort,
             passwordRecoverySecretPort,
             passwordRecoveryTokenWritePort,
+            verifiedContactPort,
             passwordRecoveryDeliveryOutboxAppendPort,
             TTL,
             CLOCK);
@@ -202,6 +303,7 @@ class PasswordRecoveryRequestServiceTest {
         userCredentialLoadPort,
         passwordRecoverySecretPort,
         passwordRecoveryTokenWritePort,
+        verifiedContactPort,
         passwordRecoveryDeliveryOutboxAppendPort);
     verifyNoMoreInteractions(userQueryPort);
   }
@@ -228,5 +330,11 @@ class PasswordRecoveryRequestServiceTest {
 
   private LoginUser activeUser() {
     return new LoginUser(7L, "alice", "stored-hash", UserStatus.ACTIVE, 0, null, null, NOW);
+  }
+
+  private VerifiedContact verifiedContact(
+      VerifiedContactChannel channel, String providerDestination, Instant verifiedAt) {
+    return new VerifiedContact(
+        7L, channel, providerDestination, verifiedAt, verifiedAt.minusSeconds(30), verifiedAt);
   }
 }

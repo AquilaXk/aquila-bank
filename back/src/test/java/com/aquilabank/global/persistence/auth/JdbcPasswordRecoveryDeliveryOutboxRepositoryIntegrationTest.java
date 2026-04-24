@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.aquilabank.domain.auth.model.PasswordRecoveryDeliveryOutboxEntry;
 import com.aquilabank.domain.auth.model.PasswordRecoveryDeliveryOutboxItem;
 import com.aquilabank.domain.auth.model.PasswordRecoveryDeliveryStatus;
+import com.aquilabank.domain.auth.model.VerifiedContactChannel;
 import com.aquilabank.support.PostgresContainerTestSupport;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -42,15 +43,29 @@ class JdbcPasswordRecoveryDeliveryOutboxRepositoryIntegrationTest
     Instant base = Instant.parse("2026-04-23T14:30:00Z");
     repository.append(
         new PasswordRecoveryDeliveryOutboxEntry(
-            "request-1", userId, "alice@example.com", base.minusSeconds(10), base));
+            "request-1",
+            userId,
+            "alice@example.com",
+            VerifiedContactChannel.EMAIL,
+            "alice.recovery@example.com",
+            base.minusSeconds(10),
+            base));
     repository.append(
         new PasswordRecoveryDeliveryOutboxEntry(
-            "request-2", userId, "alice@example.com", base.minusSeconds(5), base.plusSeconds(1)));
+            "request-2",
+            userId,
+            "alice@example.com",
+            VerifiedContactChannel.SMS,
+            "+821012345678",
+            base.minusSeconds(5),
+            base.plusSeconds(1)));
 
     List<PasswordRecoveryDeliveryOutboxItem> claimed = repository.claimPending(1, base);
 
     assertThat(claimed).hasSize(1);
     assertThat(claimed.getFirst().requestId()).isEqualTo("request-1");
+    assertThat(claimed.getFirst().deliveryChannel()).isEqualTo(VerifiedContactChannel.EMAIL);
+    assertThat(claimed.getFirst().providerDestination()).isEqualTo("alice.recovery@example.com");
     assertThat(claimed.getFirst().deliveryStatus())
         .isEqualTo(PasswordRecoveryDeliveryStatus.SENDING);
     assertThat(repository.claimPending(10, base))
@@ -64,7 +79,13 @@ class JdbcPasswordRecoveryDeliveryOutboxRepositoryIntegrationTest
     Instant base = Instant.parse("2026-04-23T14:35:00Z");
     repository.append(
         new PasswordRecoveryDeliveryOutboxEntry(
-            "request-3", userId, "bob@example.com", base.minusSeconds(5), base));
+            "request-3",
+            userId,
+            "bob@example.com",
+            VerifiedContactChannel.EMAIL,
+            "bob.recovery@example.com",
+            base.minusSeconds(5),
+            base));
     PasswordRecoveryDeliveryOutboxItem claimed = repository.claimPending(1, base).getFirst();
 
     repository.markFailed(
@@ -92,7 +113,13 @@ class JdbcPasswordRecoveryDeliveryOutboxRepositoryIntegrationTest
     Instant base = Instant.parse("2026-04-23T14:40:00Z");
     repository.append(
         new PasswordRecoveryDeliveryOutboxEntry(
-            "request-4", userId, "carol@example.com", base.minusSeconds(5), base));
+            "request-4",
+            userId,
+            "carol@example.com",
+            VerifiedContactChannel.EMAIL,
+            "carol.recovery@example.com",
+            base.minusSeconds(5),
+            base));
     PasswordRecoveryDeliveryOutboxItem claimed = repository.claimPending(1, base).getFirst();
 
     repository.markQuarantined(claimed.id(), base.plusSeconds(1), "provider rejected");
@@ -109,7 +136,13 @@ class JdbcPasswordRecoveryDeliveryOutboxRepositoryIntegrationTest
     Instant base = Instant.parse("2026-04-23T14:45:00Z");
     repository.append(
         new PasswordRecoveryDeliveryOutboxEntry(
-            "request-dup", userId, "duplicate@example.com", base, base));
+            "request-dup",
+            userId,
+            "duplicate@example.com",
+            VerifiedContactChannel.EMAIL,
+            "duplicate.recovery@example.com",
+            base,
+            base));
 
     assertThatThrownBy(
             () ->
@@ -118,6 +151,8 @@ class JdbcPasswordRecoveryDeliveryOutboxRepositoryIntegrationTest
                         "request-dup",
                         userId,
                         "duplicate@example.com",
+                        VerifiedContactChannel.EMAIL,
+                        "duplicate.recovery@example.com",
                         base.plusSeconds(1),
                         base.plusSeconds(1))))
         .isInstanceOf(DataIntegrityViolationException.class);

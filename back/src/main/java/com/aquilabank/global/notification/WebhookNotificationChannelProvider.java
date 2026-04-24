@@ -13,7 +13,7 @@ import org.springframework.http.MediaType;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
 
-/** loginId 형식 기반 routing만 허용해 잘못된 외부 발송을 fail-safe skip 합니다. */
+/** verified contact가 있는 channel만 provider webhook으로 전달합니다. */
 public final class WebhookNotificationChannelProvider implements NotificationChannelProviderPort {
 
   private static final Logger log =
@@ -21,39 +21,27 @@ public final class WebhookNotificationChannelProvider implements NotificationCha
 
   private final RestClient restClient;
   private final NotificationChannelRecipientLookupPort recipientLookupPort;
-  private final NotificationChannelDeliveryDestinationResolver destinationResolver;
   private final NotificationChannelProviderDeliveryProperties properties;
   private final ObjectMapper objectMapper;
 
   public WebhookNotificationChannelProvider(
       RestClient restClient,
       NotificationChannelRecipientLookupPort recipientLookupPort,
-      NotificationChannelDeliveryDestinationResolver destinationResolver,
       NotificationChannelProviderDeliveryProperties properties,
       ObjectMapper objectMapper) {
     this.restClient = restClient;
     this.recipientLookupPort = recipientLookupPort;
-    this.destinationResolver = destinationResolver;
     this.properties = properties;
     this.objectMapper = objectMapper;
   }
 
   @Override
   public void send(NotificationChannelOutboxItem item) {
-    String loginId = recipientLookupPort.findLoginIdByUserId(item.userId()).orElse(null);
-    if (!StringUtils.hasText(loginId)) {
-      log.warn(
-          "notification channel delivery skipped because loginId lookup is missing id={} userId={} channel={}",
-          item.id(),
-          item.userId(),
-          item.channel());
-      return;
-    }
-
-    String destination = destinationResolver.resolve(item.channel(), loginId).orElse(null);
+    String destination =
+        recipientLookupPort.findProviderDestination(item.userId(), item.channel()).orElse(null);
     if (!StringUtils.hasText(destination)) {
       log.warn(
-          "notification channel delivery skipped because destination does not match channel id={} userId={} channel={}",
+          "notification channel delivery skipped because verified contact is missing id={} userId={} channel={}",
           item.id(),
           item.userId(),
           item.channel());

@@ -28,7 +28,7 @@ import org.springframework.web.client.RestClient;
 class WebhookNotificationChannelProviderTest {
 
   @Test
-  void sendsEmailWebhookWhenLoginIdMatchesEmailChannel() {
+  void sendsEmailWebhookToVerifiedEmailDestination() {
     RestClient.Builder builder = RestClient.builder();
     MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
     server
@@ -43,12 +43,11 @@ class WebhookNotificationChannelProviderTest {
         .andRespond(withAccepted());
 
     NotificationChannelRecipientLookupPort recipientLookupPort =
-        userId -> Optional.of("alice@example.com");
+        (userId, channel) -> Optional.of("alice@example.com");
     WebhookNotificationChannelProvider provider =
         new WebhookNotificationChannelProvider(
             builder.build(),
             recipientLookupPort,
-            new NotificationChannelDeliveryDestinationResolver(),
             properties(),
             new ObjectMapper().findAndRegisterModules());
 
@@ -58,7 +57,7 @@ class WebhookNotificationChannelProviderTest {
   }
 
   @Test
-  void sendsSmsWebhookWhenLoginIdMatchesSmsChannel() {
+  void sendsSmsWebhookToVerifiedSmsDestination() {
     RestClient.Builder builder = RestClient.builder();
     MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
     server
@@ -69,12 +68,11 @@ class WebhookNotificationChannelProviderTest {
         .andRespond(withAccepted());
 
     NotificationChannelRecipientLookupPort recipientLookupPort =
-        userId -> Optional.of("+821012345678");
+        (userId, channel) -> Optional.of("+821012345678");
     WebhookNotificationChannelProvider provider =
         new WebhookNotificationChannelProvider(
             builder.build(),
             recipientLookupPort,
-            new NotificationChannelDeliveryDestinationResolver(),
             properties(),
             new ObjectMapper().findAndRegisterModules());
 
@@ -84,16 +82,15 @@ class WebhookNotificationChannelProviderTest {
   }
 
   @Test
-  void skipsWhenLoginIdDoesNotMatchRequestedChannel() {
+  void skipsWhenVerifiedContactIsMissing() {
     RestClient.Builder builder = RestClient.builder();
     MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
     NotificationChannelRecipientLookupPort recipientLookupPort =
-        userId -> Optional.of("+821012345678");
+        (userId, channel) -> Optional.empty();
     WebhookNotificationChannelProvider provider =
         new WebhookNotificationChannelProvider(
             builder.build(),
             recipientLookupPort,
-            new NotificationChannelDeliveryDestinationResolver(),
             properties(),
             new ObjectMapper().findAndRegisterModules());
 
@@ -107,12 +104,11 @@ class WebhookNotificationChannelProviderTest {
     RestClient.Builder builder = RestClient.builder();
     MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
     NotificationChannelRecipientLookupPort recipientLookupPort =
-        userId -> Optional.of("alice@example.com");
+        (userId, channel) -> Optional.of("alice@example.com");
     WebhookNotificationChannelProvider provider =
         new WebhookNotificationChannelProvider(
             builder.build(),
             recipientLookupPort,
-            new NotificationChannelDeliveryDestinationResolver(),
             new NotificationChannelProviderDeliveryProperties(
                 true,
                 "Authorization",
@@ -138,12 +134,11 @@ class WebhookNotificationChannelProviderTest {
         .andRespond(withServerError());
 
     NotificationChannelRecipientLookupPort recipientLookupPort =
-        userId -> Optional.of("alice@example.com");
+        (userId, channel) -> Optional.of("alice@example.com");
     WebhookNotificationChannelProvider provider =
         new WebhookNotificationChannelProvider(
             builder.build(),
             recipientLookupPort,
-            new NotificationChannelDeliveryDestinationResolver(),
             properties(),
             new ObjectMapper().findAndRegisterModules());
 

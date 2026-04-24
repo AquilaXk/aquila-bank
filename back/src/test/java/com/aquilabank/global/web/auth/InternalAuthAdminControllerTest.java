@@ -22,6 +22,8 @@ import com.aquilabank.domain.auth.model.PasswordRecoveryTokenLookupView;
 import com.aquilabank.domain.auth.model.PasswordRecoveryTokenStatus;
 import com.aquilabank.domain.auth.model.UserAccountMembershipSummary;
 import com.aquilabank.domain.auth.model.UserStatus;
+import com.aquilabank.domain.auth.model.VerifiedContact;
+import com.aquilabank.domain.auth.model.VerifiedContactChannel;
 import com.aquilabank.domain.auth.usecase.AuthUserQueryUseCase;
 import com.aquilabank.domain.auth.usecase.ExternalIdentityMappingLinkUseCase;
 import com.aquilabank.domain.auth.usecase.ExternalIdentityMappingUnlinkUseCase;
@@ -29,10 +31,12 @@ import com.aquilabank.domain.auth.usecase.PasswordRecoveryTokenQueryUseCase;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipQueryUseCase;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipStatusUpdateUseCase;
 import com.aquilabank.domain.auth.usecase.UserStatusUpdateUseCase;
+import com.aquilabank.domain.auth.usecase.VerifiedContactAdminUseCase;
 import com.aquilabank.global.security.InternalServiceScope;
 import com.aquilabank.global.security.InternalServiceTokenTestSupport;
 import com.aquilabank.global.web.ApiExceptionHandler;
 import java.time.Instant;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -50,6 +54,7 @@ class InternalAuthAdminControllerTest {
   private PasswordRecoveryTokenQueryUseCase passwordRecoveryTokenQueryUseCase;
   private ExternalIdentityMappingLinkUseCase externalIdentityMappingLinkUseCase;
   private ExternalIdentityMappingUnlinkUseCase externalIdentityMappingUnlinkUseCase;
+  private VerifiedContactAdminUseCase verifiedContactAdminUseCase;
   private MockMvc mockMvc;
 
   @BeforeEach
@@ -61,6 +66,7 @@ class InternalAuthAdminControllerTest {
     passwordRecoveryTokenQueryUseCase = mock(PasswordRecoveryTokenQueryUseCase.class);
     externalIdentityMappingLinkUseCase = mock(ExternalIdentityMappingLinkUseCase.class);
     externalIdentityMappingUnlinkUseCase = mock(ExternalIdentityMappingUnlinkUseCase.class);
+    verifiedContactAdminUseCase = mock(VerifiedContactAdminUseCase.class);
 
     mockMvc =
         MockMvcBuilders.standaloneSetup(
@@ -72,9 +78,90 @@ class InternalAuthAdminControllerTest {
                     passwordRecoveryTokenQueryUseCase,
                     externalIdentityMappingLinkUseCase,
                     externalIdentityMappingUnlinkUseCase,
+                    verifiedContactAdminUseCase,
                     InternalServiceTokenTestSupport.authorizer()))
             .setControllerAdvice(new ApiExceptionHandler())
             .build();
+  }
+
+  @Test
+  void managesVerifiedContactsByUserAndChannel() throws Exception {
+    VerifiedContact email =
+        new VerifiedContact(
+            21L,
+            VerifiedContactChannel.EMAIL,
+            "alice@example.com",
+            Instant.parse("2026-04-24T09:00:00Z"),
+            Instant.parse("2026-04-24T09:00:00Z"),
+            Instant.parse("2026-04-24T09:00:00Z"));
+    VerifiedContact sms =
+        new VerifiedContact(
+            21L,
+            VerifiedContactChannel.SMS,
+            "+821012345678",
+            Instant.parse("2026-04-24T09:01:00Z"),
+            Instant.parse("2026-04-24T09:01:00Z"),
+            Instant.parse("2026-04-24T09:01:00Z"));
+
+    when(verifiedContactAdminUseCase.findByUserId(21L)).thenReturn(List.of(email, sms));
+    when(verifiedContactAdminUseCase.upsert(
+            argThat(
+                command ->
+                    command.userId() == 21L
+                        && command.channel() == VerifiedContactChannel.EMAIL
+                        && command.providerDestination().equals("alice.ops@example.com"))))
+        .thenReturn(
+            new VerifiedContact(
+                21L,
+                VerifiedContactChannel.EMAIL,
+                "alice.ops@example.com",
+                Instant.parse("2026-04-24T09:02:00Z"),
+                Instant.parse("2026-04-24T09:00:00Z"),
+                Instant.parse("2026-04-24T09:02:00Z")));
+    when(verifiedContactAdminUseCase.delete(21L, VerifiedContactChannel.SMS)).thenReturn(true);
+
+    mockMvc
+        .perform(
+            get("/internal/api/v1/auth/users/21/verified-contacts")
+                .header(
+                    "Authorization",
+                    InternalServiceTokenTestSupport.authorization(
+                        SUBJECT, InternalServiceScope.AUTH_ADMIN)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$[0].contactChannel").value("EMAIL"))
+        .andExpect(jsonPath("$[0].providerDestination").value("alice@example.com"))
+        .andExpect(jsonPath("$[1].contactChannel").value("SMS"))
+        .andExpect(jsonPath("$[1].providerDestination").value("+821012345678"));
+
+    mockMvc
+        .perform(
+            put("/internal/api/v1/auth/users/21/verified-contacts/EMAIL")
+                .header(
+                    "Authorization",
+                    InternalServiceTokenTestSupport.authorization(
+                        SUBJECT, InternalServiceScope.AUTH_ADMIN))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "providerDestination": "alice.ops@example.com"
+                    }
+                    """))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.contactChannel").value("EMAIL"))
+        .andExpect(jsonPath("$.providerDestination").value("alice.ops@example.com"))
+        .andExpect(jsonPath("$.verifiedAt").value("2026-04-24T09:02:00Z"));
+
+    mockMvc
+        .perform(
+            delete("/internal/api/v1/auth/users/21/verified-contacts/SMS")
+                .header(
+                    "Authorization",
+                    InternalServiceTokenTestSupport.authorization(
+                        SUBJECT, InternalServiceScope.AUTH_ADMIN)))
+        .andExpect(status().isNoContent());
+
+    verify(verifiedContactAdminUseCase).delete(21L, VerifiedContactChannel.SMS);
   }
 
   @Test
