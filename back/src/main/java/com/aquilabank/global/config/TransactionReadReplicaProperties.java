@@ -19,7 +19,10 @@ public record TransactionReadReplicaProperties(
     long maxLifetimeMs,
     long statementTimeoutMs,
     long lockTimeoutMs,
-    long idleInTransactionTimeoutMs) {
+    long idleInTransactionTimeoutMs,
+    long lagThresholdMs,
+    long probeCacheMs,
+    long hotReadWindowMs) {
 
   public TransactionReadReplicaProperties {
     url = StringUtils.hasText(url) ? url : null;
@@ -39,6 +42,9 @@ public record TransactionReadReplicaProperties(
     statementTimeoutMs = positiveOrDefault(statementTimeoutMs, 3000L);
     lockTimeoutMs = positiveOrDefault(lockTimeoutMs, 1000L);
     idleInTransactionTimeoutMs = positiveOrDefault(idleInTransactionTimeoutMs, 5000L);
+    lagThresholdMs = positiveOrDefault(lagThresholdMs, 3000L);
+    probeCacheMs = positiveOrDefault(probeCacheMs, 1000L);
+    hotReadWindowMs = positiveOrDefault(hotReadWindowMs, 30000L);
   }
 
   public boolean configured() {

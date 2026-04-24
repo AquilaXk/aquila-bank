@@ -1,6 +1,14 @@
 package com.aquilabank.global.config;
 
+import com.aquilabank.global.persistence.transaction.TransactionReadReplicaLagProbe;
+import com.aquilabank.global.persistence.transaction.TransactionReadRoute;
+import com.aquilabank.global.persistence.transaction.TransactionReadRoutingDataSource;
+import com.aquilabank.global.persistence.transaction.TransactionReadRoutingPolicy;
 import com.zaxxer.hikari.HikariDataSource;
+import io.micrometer.core.instrument.MeterRegistry;
+import java.time.Clock;
+import java.util.HashMap;
+import java.util.Map;
 import javax.sql.DataSource;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -16,10 +24,9 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.type.AnnotatedTypeMetadata;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
-import org.springframework.jdbc.datasource.LazyConnectionDataSourceProxy;
 import org.springframework.jdbc.support.JdbcTransactionManager;
 
-/** transaction read scope만 read-only routing으로 분리합니다. */
+/** transaction read scope에 query-shape/lag 기준 primary fallback을 적용합니다. */
 @Configuration
 @EnableConfigurationProperties(TransactionReadReplicaProperties.class)
 public class TransactionReadReplicaRoutingConfiguration {
@@ -42,15 +49,16 @@ public class TransactionReadReplicaRoutingConfiguration {
   DataSource transactionReadDataSource(
       @Qualifier("dataSource") DataSource primaryDataSource,
       @Qualifier("transactionReadReplicaDataSource") ObjectProvider<DataSource> replicaDataSource) {
-    LazyConnectionDataSourceProxy dataSource = new LazyConnectionDataSourceProxy(primaryDataSource);
-    // transaction 시작 시 primary default 값을 조회하려고 선행 borrow 하지 않게 고정합니다.
-    dataSource.setDefaultAutoCommit(false);
-    dataSource.setDefaultTransactionIsolationName("TRANSACTION_READ_COMMITTED");
+    TransactionReadRoutingDataSource dataSource = new TransactionReadRoutingDataSource();
     DataSource readOnlyDataSource = replicaDataSource.getIfAvailable();
-    if (readOnlyDataSource != null) {
-      // transaction read scope만 replica를 우선 사용하고, 나머지 JDBC path는 기존 primary를 유지합니다.
-      dataSource.setReadOnlyDataSource(readOnlyDataSource);
-    }
+    Map<Object, Object> targets = new HashMap<>();
+    targets.put(TransactionReadRoute.PRIMARY, primaryDataSource);
+    targets.put(
+        TransactionReadRoute.REPLICA,
+        readOnlyDataSource != null ? readOnlyDataSource : primaryDataSource);
+    dataSource.setTargetDataSources(targets);
+    dataSource.setDefaultTargetDataSource(primaryDataSource);
+    dataSource.afterPropertiesSet();
     return dataSource;
   }
 
@@ -59,6 +67,28 @@ public class TransactionReadReplicaRoutingConfiguration {
   JdbcTransactionManager transactionReadTransactionManager(
       @Qualifier("transactionReadDataSource") DataSource transactionReadDataSource) {
     return new JdbcTransactionManager(transactionReadDataSource);
+  }
+
+  @Bean
+  @ConditionalOnMissingBean
+  TransactionReadReplicaLagProbe transactionReadReplicaLagProbe(
+      @Qualifier("transactionReadReplicaDataSource") ObjectProvider<DataSource> replicaDataSource,
+      TransactionReadReplicaProperties transactionReadReplicaProperties) {
+    return new TransactionReadReplicaLagProbe(
+        replicaDataSource::getIfAvailable, transactionReadReplicaProperties, Clock.systemUTC());
+  }
+
+  @Bean
+  @ConditionalOnMissingBean
+  TransactionReadRoutingPolicy transactionReadRoutingPolicy(
+      TransactionReadReplicaProperties transactionReadReplicaProperties,
+      TransactionReadReplicaLagProbe transactionReadReplicaLagProbe,
+      MeterRegistry meterRegistry) {
+    return new TransactionReadRoutingPolicy(
+        transactionReadReplicaProperties,
+        transactionReadReplicaLagProbe::currentLag,
+        Clock.systemUTC(),
+        meterRegistry);
   }
 
   @Bean(name = "transactionReadReplicaDataSource", defaultCandidate = false)

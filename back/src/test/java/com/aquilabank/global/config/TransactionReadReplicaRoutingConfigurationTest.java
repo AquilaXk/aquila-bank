@@ -3,12 +3,14 @@ package com.aquilabank.global.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
+import com.aquilabank.global.persistence.transaction.TransactionReadRoutingDataSource;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.jdbc.autoconfigure.JdbcProperties;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
-import org.springframework.jdbc.datasource.LazyConnectionDataSourceProxy;
 
 class TransactionReadReplicaRoutingConfigurationTest {
 
@@ -16,6 +18,7 @@ class TransactionReadReplicaRoutingConfigurationTest {
       new ApplicationContextRunner()
           .withUserConfiguration(TransactionReadReplicaRoutingConfiguration.class)
           .withBean("dataSource", DataSource.class, () -> mock(DataSource.class))
+          .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
           .withBean(JdbcProperties.class, JdbcProperties::new);
 
   @Test
@@ -30,7 +33,7 @@ class TransactionReadReplicaRoutingConfigurationTest {
               NamedParameterJdbcTemplate jdbcTemplate =
                   context.getBean("transactionReadJdbcTemplate", NamedParameterJdbcTemplate.class);
               assertThat(jdbcTemplate.getJdbcTemplate().getDataSource())
-                  .isInstanceOf(LazyConnectionDataSourceProxy.class);
+                  .isInstanceOf(TransactionReadRoutingDataSource.class);
               assertThat(jdbcTemplate.getJdbcTemplate().getQueryTimeout()).isEqualTo(3);
             });
   }
