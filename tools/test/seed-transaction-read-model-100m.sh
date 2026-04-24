@@ -161,7 +161,7 @@ insert_hot_batch() {
   local start="$1"
   local finish="$2"
   psql_sql "
-    INSERT INTO transaction_read_model OVERRIDING SYSTEM VALUE (
+    INSERT INTO transaction_read_model (
       id,
       ledger_entry_id,
       account_id,
@@ -176,6 +176,7 @@ insert_hot_batch() {
       booked_at,
       created_at
     )
+    OVERRIDING SYSTEM VALUE
     SELECT
       n,
       n,
