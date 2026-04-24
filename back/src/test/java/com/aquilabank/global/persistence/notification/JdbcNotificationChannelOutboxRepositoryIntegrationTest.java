@@ -2,6 +2,7 @@ package com.aquilabank.global.persistence.notification;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.aquilabank.domain.notification.model.NotificationChannelDeliverySkipReason;
 import com.aquilabank.domain.notification.model.NotificationChannelDeliveryStatus;
 import com.aquilabank.domain.notification.model.NotificationChannelOutboxEntry;
 import com.aquilabank.domain.notification.model.NotificationChannelOutboxItem;
@@ -209,6 +210,55 @@ class JdbcNotificationChannelOutboxRepositoryIntegrationTest extends PostgresCon
   }
 
   @Test
+  void marksClaimedRowsAsSkippedWithReasonAndRemovesThemFromDueQueue() {
+    long[] userId = new long[1];
+    long[] accountId = new long[1];
+    long[] notificationId = new long[1];
+    Instant base = Instant.parse("2026-04-22T03:10:00Z");
+    commit(
+        transactionManager,
+        () -> {
+          userId[0] = insertUser("channel-skip-user");
+          accountId[0] = insertAccount("channel skip account");
+          notificationId[0] =
+              insertNotification(
+                  accountId[0],
+                  "evt-channel-skip-email",
+                  "TransferBooked",
+                  "이체 완료",
+                  "1000 KRW 입금",
+                  base);
+        });
+    repository.appendAllIfAbsent(
+        List.of(
+            new NotificationChannelOutboxEntry(
+                notificationId[0],
+                userId[0],
+                accountId[0],
+                NotificationPreferenceCategory.TRANSACTIONAL,
+                NotificationPreferenceChannel.EMAIL,
+                "TransferBooked",
+                "evt-channel-skip-email",
+                "{\"kind\":\"transfer\",\"amount\":\"1000\"}",
+                base.minusSeconds(10),
+                base)));
+    NotificationChannelOutboxItem claimed = repository.claimPending(1, base).getFirst();
+    Instant skippedAt = base.plusSeconds(1);
+
+    repository.markSkipped(
+        claimed.id(), skippedAt, NotificationChannelDeliverySkipReason.VERIFIED_CONTACT_MISSING);
+
+    DeliveryRow row = findDeliveryRow(claimed.id());
+    assertThat(row.deliveryStatus()).isEqualTo(NotificationChannelDeliveryStatus.SKIPPED);
+    assertThat(row.skipReason())
+        .isEqualTo(NotificationChannelDeliverySkipReason.VERIFIED_CONTACT_MISSING.name());
+    assertThat(row.sentAt()).isNull();
+    assertThat(row.lastError()).isNull();
+    assertThat(row.updatedAt()).isEqualTo(skippedAt);
+    assertThat(repository.findPending(10, base.plusSeconds(3600))).isEmpty();
+  }
+
+  @Test
   void findsQuarantinedRowsInNewestFirstOrder() {
     long[] userId = new long[1];
     long[] accountId = new long[1];
@@ -353,7 +403,7 @@ class JdbcNotificationChannelOutboxRepositoryIntegrationTest extends PostgresCon
   }
 
   @Test
-  void deletesOnlyOldSentAndQuarantinedRowsWithinBatch() {
+  void deletesOnlyOldSentSkippedAndQuarantinedRowsWithinBatch() {
     long[] userId = new long[1];
     long[] accountId = new long[1];
     Instant base = Instant.parse("2026-04-22T04:00:00Z");
@@ -368,6 +418,7 @@ class JdbcNotificationChannelOutboxRepositoryIntegrationTest extends PostgresCon
         transactionManager,
         () -> {
           items.add(cleanupItem(userId[0], accountId[0], "evt-cleanup-old-sent", base));
+          items.add(cleanupItem(userId[0], accountId[0], "evt-cleanup-old-skipped", base));
           items.add(cleanupItem(userId[0], accountId[0], "evt-cleanup-old-quarantine", base));
           items.add(cleanupItem(userId[0], accountId[0], "evt-cleanup-recent-sent", base));
           items.add(cleanupItem(userId[0], accountId[0], "evt-cleanup-pending", base));
@@ -382,6 +433,14 @@ class JdbcNotificationChannelOutboxRepositoryIntegrationTest extends PostgresCon
           updateDeliveryState(
               "evt-cleanup-old-sent", NotificationChannelDeliveryStatus.SENT, oldTime, oldTime);
           updateDeliveryState(
+              "evt-cleanup-old-skipped",
+              NotificationChannelDeliveryStatus.SKIPPED,
+              null,
+              oldTime,
+              0,
+              null,
+              NotificationChannelDeliverySkipReason.PROVIDER_URL_MISSING.name());
+          updateDeliveryState(
               "evt-cleanup-old-quarantine",
               NotificationChannelDeliveryStatus.QUARANTINED,
               null,
@@ -395,9 +454,9 @@ class JdbcNotificationChannelOutboxRepositoryIntegrationTest extends PostgresCon
               "evt-cleanup-failed", NotificationChannelDeliveryStatus.FAILED, null, oldTime);
         });
 
-    int deleted = repository.deleteFinishedBefore(base.minusSeconds(30L * 24 * 60 * 60), 2);
+    int deleted = repository.deleteFinishedBefore(base.minusSeconds(30L * 24 * 60 * 60), 3);
 
-    assertThat(deleted).isEqualTo(2);
+    assertThat(deleted).isEqualTo(3);
     assertThat(findDeliveryEventKeys())
         .containsExactlyInAnyOrder(
             "evt-cleanup-recent-sent", "evt-cleanup-pending", "evt-cleanup-failed");
@@ -615,6 +674,17 @@ class JdbcNotificationChannelOutboxRepositoryIntegrationTest extends PostgresCon
       Instant updatedAt,
       int retryCount,
       String lastError) {
+    updateDeliveryState(eventKey, status, sentAt, updatedAt, retryCount, lastError, null);
+  }
+
+  private void updateDeliveryState(
+      String eventKey,
+      NotificationChannelDeliveryStatus status,
+      Instant sentAt,
+      Instant updatedAt,
+      int retryCount,
+      String lastError,
+      String skipReason) {
     jdbcTemplate.update(
         """
         UPDATE notification_channel_outbox
@@ -622,6 +692,7 @@ class JdbcNotificationChannelOutboxRepositoryIntegrationTest extends PostgresCon
             sent_at = :sentAt,
             retry_count = :retryCount,
             last_error = :lastError,
+            skip_reason = :skipReason,
             updated_at = :updatedAt
         WHERE event_key = :eventKey
         """,
@@ -631,6 +702,7 @@ class JdbcNotificationChannelOutboxRepositoryIntegrationTest extends PostgresCon
             .addValue("sentAt", sentAt == null ? null : Timestamp.from(sentAt))
             .addValue("retryCount", retryCount)
             .addValue("lastError", lastError)
+            .addValue("skipReason", skipReason)
             .addValue("updatedAt", Timestamp.from(updatedAt)));
   }
 
@@ -669,6 +741,7 @@ class JdbcNotificationChannelOutboxRepositoryIntegrationTest extends PostgresCon
                sent_at,
                retry_count,
                last_error,
+               skip_reason,
                updated_at
         FROM notification_channel_outbox
         WHERE id = :id
@@ -681,6 +754,7 @@ class JdbcNotificationChannelOutboxRepositoryIntegrationTest extends PostgresCon
                 nullableInstant(rs.getObject("sent_at", OffsetDateTime.class)),
                 rs.getInt("retry_count"),
                 rs.getString("last_error"),
+                rs.getString("skip_reason"),
                 rs.getObject("updated_at", OffsetDateTime.class).toInstant()));
   }
 
@@ -694,5 +768,6 @@ class JdbcNotificationChannelOutboxRepositoryIntegrationTest extends PostgresCon
       Instant sentAt,
       int retryCount,
       String lastError,
+      String skipReason,
       Instant updatedAt) {}
 }

@@ -2,6 +2,7 @@ package com.aquilabank.global.notification;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.aquilabank.domain.notification.model.NotificationChannelDeliverySkipReason;
 import com.aquilabank.domain.notification.model.NotificationChannelDeliveryStatus;
 import com.aquilabank.domain.notification.model.NotificationChannelOutboxItem;
 import com.aquilabank.domain.notification.model.NotificationPreferenceCategory;
@@ -187,6 +188,12 @@ class NotificationChannelProviderDeliverySmokeTest {
     public void markSent(long id, Instant sentAt) {
       assertThat(sentAt).isEqualTo(expectedNow);
       sentIds.add(id);
+    }
+
+    @Override
+    public void markSkipped(
+        long id, Instant skippedAt, NotificationChannelDeliverySkipReason skipReason) {
+      throw new AssertionError("skip is not expected in smoke");
     }
 
     @Override

@@ -1,6 +1,7 @@
 package com.aquilabank.global.auth;
 
 import com.aquilabank.domain.auth.model.PasswordRecoveryDeliveryCommand;
+import com.aquilabank.domain.auth.model.PasswordRecoveryDeliveryResult;
 import com.aquilabank.domain.auth.port.PasswordRecoveryDeliveryPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,11 +13,12 @@ public final class LoggingPasswordRecoveryDeliveryAdapter implements PasswordRec
       LoggerFactory.getLogger(LoggingPasswordRecoveryDeliveryAdapter.class);
 
   @Override
-  public void deliver(PasswordRecoveryDeliveryCommand command) {
+  public PasswordRecoveryDeliveryResult deliver(PasswordRecoveryDeliveryCommand command) {
     log.info(
         "password recovery delivery requested requestId={} userId={} expiresAt={}",
         command.requestId(),
         command.userId(),
         command.expiresAt());
+    return PasswordRecoveryDeliveryResult.delivered();
   }
 }

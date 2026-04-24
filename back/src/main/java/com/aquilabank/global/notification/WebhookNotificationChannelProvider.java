@@ -1,5 +1,7 @@
 package com.aquilabank.global.notification;
 
+import com.aquilabank.domain.notification.model.NotificationChannelDeliveryResult;
+import com.aquilabank.domain.notification.model.NotificationChannelDeliverySkipReason;
 import com.aquilabank.domain.notification.model.NotificationChannelOutboxItem;
 import com.aquilabank.domain.notification.model.NotificationPreferenceChannel;
 import com.aquilabank.domain.notification.port.NotificationChannelProviderPort;
@@ -36,7 +38,7 @@ public final class WebhookNotificationChannelProvider implements NotificationCha
   }
 
   @Override
-  public void send(NotificationChannelOutboxItem item) {
+  public NotificationChannelDeliveryResult send(NotificationChannelOutboxItem item) {
     String destination =
         recipientLookupPort.findProviderDestination(item.userId(), item.channel()).orElse(null);
     if (!StringUtils.hasText(destination)) {
@@ -45,7 +47,8 @@ public final class WebhookNotificationChannelProvider implements NotificationCha
           item.id(),
           item.userId(),
           item.channel());
-      return;
+      return NotificationChannelDeliveryResult.skipped(
+          NotificationChannelDeliverySkipReason.VERIFIED_CONTACT_MISSING);
     }
 
     String url = targetUrl(item.channel());
@@ -55,7 +58,8 @@ public final class WebhookNotificationChannelProvider implements NotificationCha
           item.id(),
           item.userId(),
           item.channel());
-      return;
+      return NotificationChannelDeliveryResult.skipped(
+          NotificationChannelDeliverySkipReason.PROVIDER_URL_MISSING);
     }
 
     RestClient.RequestBodySpec requestSpec =
@@ -84,6 +88,7 @@ public final class WebhookNotificationChannelProvider implements NotificationCha
         item.userId(),
         item.channel(),
         item.eventKey());
+    return NotificationChannelDeliveryResult.delivered();
   }
 
   private String targetUrl(NotificationPreferenceChannel channel) {

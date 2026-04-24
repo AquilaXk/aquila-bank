@@ -5,6 +5,7 @@ public enum PasswordRecoveryDeliveryStatus {
   PENDING,
   SENDING,
   SENT,
+  SKIPPED,
   FAILED,
   QUARANTINED
 }

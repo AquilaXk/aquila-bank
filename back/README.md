@@ -329,6 +329,9 @@ set +a
   - `aquila_command_idempotency_conflict_count_total{reason_code="DIFFERENT_REQUEST|IN_PROGRESS|STATE_MISSING|ALREADY_REVERSED|AMOUNT_EXCEEDED|OTHER"}`
   - `aquila_command_idempotency_recovery_recovered_count_total`
   - `aquila_command_idempotency_cleanup_deleted_count_total`
+  - `aquila_provider_delivery_status_count{queue="notification_channel|password_recovery",status="sent|skipped|failed|quarantined"}`
+  - `aquila_provider_delivery_skip_reason_count{queue="notification_channel|password_recovery",reason="..."}`
+  - `aquila_provider_delivery_retry_backlog_count{queue="notification_channel|password_recovery"}`
   - `aquila_t3micro_saturation_guard_query_timeouts_total`
   - `aquila_transaction_query_latency_seconds`
   - `aquila_transaction_read_replica_lag_ms`
@@ -347,6 +350,7 @@ set +a
   - command idempotency summary gauge는 ops summary를 5초 cache로 재사용해 stale/failed/cleanup candidate 숫자를 export 합니다.
   - command idempotency conflict counter는 transfer/reversal conflict를 `reason_code` 축으로만 누적합니다.
   - command idempotency recovery/cleanup counter는 stale recovery row 수, retention cleanup delete row 수를 누적합니다.
+  - provider delivery gauge는 notification/password recovery delivery table의 sent/skipped/failed/quarantined/retry backlog row 수와 skip reason을 5초 cache로 export 합니다.
   - t3.micro query timeout counter는 backend query timeout exception이 발생하면 증가합니다.
   - Hikari pool metric은 Spring Boot/Micrometer 기본 binder와 `aquila-bank-pool` pool tag 기준으로 export 됩니다.
   - Postgres exporter `pg_stat_statements_*`는 `pg_stat_statements` extension과 collector 활성화가 필요합니다.
@@ -370,6 +374,7 @@ set +a
   - `amount_first`, `amount_cursor`, `mixed_first`, `mixed_cursor`: `180ms`
 - 운영 메모:
   - outbox/notification gauge는 scrape 한 번에 같은 summary를 여러 번 다시 조회하지 않게 `5초` cache 안에서 재사용합니다.
+  - provider delivery metric label은 `queue`, `status`, `reason`만 사용하고, `userId`, `requestId`, `eventKey`, destination은 table/log drill-down에서만 확인합니다.
   - SSE session metric은 현재 app instance 메모리의 active session 수만 보여주므로 multi-instance 전체 합계는 Prometheus 쿼리에서 합산합니다.
   - auth throttling reject metric label은 `entry_point`, `scope`, `store`만 사용하고, IP, `requestId`, `userId`, `path`는 structured log에서만 확인합니다.
   - `AquilaAuthThrottlingRejectBurstDetected` alert는 brute-force/abuse 징후 investigation 시작점입니다. 같은 시간대 `auth login throttled`, `auth password recovery throttled` log와 Nginx auth edge `429` 추이를 같이 봅니다.
@@ -393,6 +398,7 @@ set +a
   - refresh token reuse alert rollback은 `AquilaRefreshTokenReuseDetected` rule 제거 또는 notification routing 비활성화로 수행하고, refresh API 응답 계약은 그대로 유지합니다.
   - admission/t3 guard alert rollback은 `AquilaApiAdmissionRejectBurstDetected`, `AquilaT3MicroSaturationRejectDetected` rule 제거 또는 threshold/`for` 시간 조정으로 수행합니다.
   - command idempotency metric rollback은 `CommandIdempotencyPrometheusMetrics` wiring 제거와 recovery/cleanup/conflict recorder 호출 제거로 수행합니다.
+  - provider delivery metric rollback은 `ProviderDeliveryPrometheusMetrics` wiring 제거로 제한하며 delivery outbox 상태 전이는 유지합니다.
   - histogram bucket/alert rollback은 `management.metrics.distribution.*.aquila.transaction.query.latency`와 `AquilaTransactionQueryLatencyP95SloHigh` rule 제거로 수행합니다.
   - DB saturation alert rollback은 `ops/prometheus/rules/aquila-bank-alerts.yml`의 `aquila-bank-postgres` group 제거 또는 threshold/`for` 시간 조정으로 수행합니다.
   - baseline 자산은 `ops/prometheus/` 아래에 두고 dashboard import, alert rule apply, tuning 가이드는 `ops/prometheus/README.md`를 기준으로 봅니다.
@@ -570,7 +576,7 @@ tools/test/run-production-t3micro-capacity-smoke.sh
   - `SMS` channel: `contact_channel='SMS'`의 `provider_destination`
 - `bank_user_verified_contact`는 `user_id + contact_channel` unique 기준이며, migration 시 active user의 email/E.164 `login_id`만 초기 verified contact로 backfill 합니다.
 - 내부 운영 경로는 `GET|PUT|DELETE /internal/api/v1/auth/users/{userId}/verified-contacts[/{$contactChannel}]`이고 `internal:auth-admin` scope가 필요합니다.
-- verified contact lookup miss, inactive user, channel URL 누락은 잘못된 외부 발송 대신 fail-safe skip 처리하고 row는 `SENT`로 정리합니다.
+- verified contact lookup miss, inactive user, channel URL 누락은 잘못된 외부 발송 대신 fail-safe skip 처리하고 row는 `SKIPPED`와 `skip_reason`으로 정리합니다.
 - webhook timeout, 4xx/5xx, network error 같은 실제 provider 장애만 예외로 전파돼 기존 bounded retry/backoff/quarantine 흐름으로 들어갑니다.
 - webhook 요청 공통 header는 `NOTIFICATION_CHANNEL_PROVIDER_DELIVERY_AUTH_HEADER_NAME`, `NOTIFICATION_CHANNEL_PROVIDER_DELIVERY_AUTH_HEADER_VALUE`로 주입합니다.
 - timeout은 `NOTIFICATION_CHANNEL_PROVIDER_DELIVERY_CONNECT_TIMEOUT_MS`, `NOTIFICATION_CHANNEL_PROVIDER_DELIVERY_READ_TIMEOUT_MS`로 조정합니다.
@@ -600,7 +606,7 @@ tools/test/with-resource-lock.sh back-notification-provider-smoke \
 - smoke fixture는 local webhook server에서 `EMAIL=202 Accepted`, `SMS=delayed response`를 주입합니다.
 - smoke 기대값은 `EMAIL -> SENT`, `SMS -> FAILED + nextAttemptAt=base+5s` 입니다.
 - smoke가 실패하면 channel URL, timeout env, worker retry base delay drift를 먼저 확인합니다.
-- skip가 늘면 verified contact 누락, inactive user, channel URL 오구성을 먼저 확인합니다.
+- skip가 늘면 `aquila_provider_delivery_skip_reason_count`의 reason별 증가와 verified contact 누락, inactive user, channel URL 오구성을 먼저 확인합니다.
 - retry가 늘면 provider timeout과 응답 코드, `last_error`, `available_at` backoff 증가를 같이 봅니다.
 
 ### Nginx Reverse Proxy Baseline
@@ -826,12 +832,12 @@ login 실패/잠금은 structured log 한 줄로 남습니다.
   - `AUTH_PASSWORD_RECOVERY_DELIVERY_ENABLED=true`이고 provider URL이 없으면 logging adapter가 requestId/userId/expiresAt metadata만 기록하고 token 원문은 기록하지 않는다.
   - `AUTH_PASSWORD_RECOVERY_DELIVERY_ENABLED=true`이고
     `AUTH_PASSWORD_RECOVERY_DELIVERY_EMAIL_URL` 또는 `AUTH_PASSWORD_RECOVERY_DELIVERY_SMS_URL`가 있으면 webhook adapter가 JSON payload를 실제 provider endpoint로 `POST` 한다.
-  - 해당 channel URL이 비어 있으면 잘못된 대상 전송 대신 delivery를 skip 하고 token 발급 결과는 유지한다.
+  - 해당 channel URL이 비어 있으면 잘못된 대상 전송 대신 delivery를 `SKIPPED`와 `skip_reason=PROVIDER_URL_MISSING`으로 정리하고 token 발급 결과는 유지한다.
   - webhook 요청 공통 header는 `AUTH_PASSWORD_RECOVERY_DELIVERY_AUTH_HEADER_NAME`, `AUTH_PASSWORD_RECOVERY_DELIVERY_AUTH_HEADER_VALUE`로 주입하고, `AUTH_PASSWORD_RECOVERY_DELIVERY_IDEMPOTENCY_HEADER_NAME` header에는 항상 `requestId`를 넣는다.
   - timeout은 `AUTH_PASSWORD_RECOVERY_DELIVERY_CONNECT_TIMEOUT_MS`, `AUTH_PASSWORD_RECOVERY_DELIVERY_READ_TIMEOUT_MS`로 조정하고, worker retry는 `AUTH_PASSWORD_RECOVERY_DELIVERY_WORKER_*` 설정으로 제어한다.
   - webhook payload는 `channel`, `requestId`, `userId`, `destination`, `recoveryToken`, `expiresAt`, `issuedAt` 필드를 포함한다.
   - worker는 작은 batch로 due row를 claim 하고 bounded exponential backoff 뒤 재시도하며, `AUTH_PASSWORD_RECOVERY_DELIVERY_WORKER_MAX_RETRY_ATTEMPTS` 도달 시 `QUARANTINED`로 격리한다.
-  - 이미 `USED|EXPIRED|SUPERSEDED` 된 token 또는 내부 조회에서 사라진 token은 provider로 보내지 않고 queue에서 skip 완료 처리한다.
+  - 이미 `USED|EXPIRED|SUPERSEDED` 된 token 또는 내부 조회에서 사라진 token은 provider로 보내지 않고 `SKIPPED`와 token 계열 `skip_reason`으로 정리한다.
   - `POST /api/v1/auth/password-recovery/confirm`
   - 인증 없이 `recoveryToken`, `newPassword`를 받고 성공 시 `204 No Content`
   - wrong/expired/used token, `user_status != ACTIVE`는 모두 `401 password recovery failed`

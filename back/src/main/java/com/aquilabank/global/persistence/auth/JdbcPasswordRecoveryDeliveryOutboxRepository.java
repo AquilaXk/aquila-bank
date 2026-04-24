@@ -2,6 +2,7 @@ package com.aquilabank.global.persistence.auth;
 
 import com.aquilabank.domain.auth.model.PasswordRecoveryDeliveryOutboxEntry;
 import com.aquilabank.domain.auth.model.PasswordRecoveryDeliveryOutboxItem;
+import com.aquilabank.domain.auth.model.PasswordRecoveryDeliverySkipReason;
 import com.aquilabank.domain.auth.model.PasswordRecoveryDeliveryStatus;
 import com.aquilabank.domain.auth.model.VerifiedContactChannel;
 import com.aquilabank.domain.auth.port.PasswordRecoveryDeliveryOutboxAppendPort;
@@ -125,11 +126,38 @@ public class JdbcPasswordRecoveryDeliveryOutboxRepository
         SET delivery_status = 'SENT',
             sent_at = :sentAt,
             last_error = NULL,
+            skip_reason = NULL,
             updated_at = :sentAt
         WHERE id = :id
           AND delivery_status = 'SENDING'
         """,
         new MapSqlParameterSource().addValue("id", id).addValue("sentAt", Timestamp.from(sentAt)));
+  }
+
+  @Override
+  public void markSkipped(
+      long id, Instant skippedAt, PasswordRecoveryDeliverySkipReason skipReason) {
+    if (skippedAt == null) {
+      throw new IllegalArgumentException("skippedAt must not be null");
+    }
+    if (skipReason == null) {
+      throw new IllegalArgumentException("skipReason must not be null");
+    }
+    jdbcTemplate.update(
+        """
+        UPDATE auth_password_recovery_delivery_outbox
+        SET delivery_status = 'SKIPPED',
+            sent_at = NULL,
+            last_error = NULL,
+            skip_reason = :skipReason,
+            updated_at = :skippedAt
+        WHERE id = :id
+          AND delivery_status = 'SENDING'
+        """,
+        new MapSqlParameterSource()
+            .addValue("id", id)
+            .addValue("skippedAt", Timestamp.from(skippedAt))
+            .addValue("skipReason", skipReason.name()));
   }
 
   @Override
@@ -141,6 +169,7 @@ public class JdbcPasswordRecoveryDeliveryOutboxRepository
             available_at = :nextAttemptAt,
             retry_count = retry_count + 1,
             last_error = :lastError,
+            skip_reason = NULL,
             updated_at = :failedAt
         WHERE id = :id
           AND delivery_status = 'SENDING'
@@ -160,6 +189,7 @@ public class JdbcPasswordRecoveryDeliveryOutboxRepository
         SET delivery_status = 'QUARANTINED',
             retry_count = retry_count + 1,
             last_error = :lastError,
+            skip_reason = NULL,
             updated_at = :quarantinedAt
         WHERE id = :id
           AND delivery_status = 'SENDING'

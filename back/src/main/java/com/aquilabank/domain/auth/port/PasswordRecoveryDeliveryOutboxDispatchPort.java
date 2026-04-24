@@ -1,6 +1,7 @@
 package com.aquilabank.domain.auth.port;
 
 import com.aquilabank.domain.auth.model.PasswordRecoveryDeliveryOutboxItem;
+import com.aquilabank.domain.auth.model.PasswordRecoveryDeliverySkipReason;
 import java.time.Instant;
 import java.util.List;
 
@@ -10,6 +11,8 @@ public interface PasswordRecoveryDeliveryOutboxDispatchPort {
   List<PasswordRecoveryDeliveryOutboxItem> claimPending(int limit, Instant now);
 
   void markSent(long id, Instant sentAt);
+
+  void markSkipped(long id, Instant skippedAt, PasswordRecoveryDeliverySkipReason skipReason);
 
   void markFailed(long id, Instant nextAttemptAt, Instant failedAt, String errorMessage);
 
