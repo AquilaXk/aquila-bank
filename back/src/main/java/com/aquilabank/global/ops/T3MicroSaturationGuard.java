@@ -4,6 +4,8 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class T3MicroSaturationGuard {
@@ -13,8 +15,11 @@ public class T3MicroSaturationGuard {
   private final ServletThreadSaturationProbe servletThreadProbe;
   private final JvmPressureProbe jvmPressureProbe;
   private final T3MicroQueryTimeoutSignal timeoutSignal;
+  private final MeterRegistry meterRegistry;
   private final Counter acceptedCounter;
   private final Counter rejectedCounter;
+  private final ConcurrentMap<String, Counter> backgroundWorkerPauseCounters =
+      new ConcurrentHashMap<>();
   private final AtomicInteger saturatedGauge = new AtomicInteger();
 
   public T3MicroSaturationGuard(
@@ -29,6 +34,7 @@ public class T3MicroSaturationGuard {
     this.servletThreadProbe = servletThreadProbe;
     this.jvmPressureProbe = jvmPressureProbe;
     this.timeoutSignal = timeoutSignal;
+    this.meterRegistry = meterRegistry;
     if (properties.enabled()) {
       this.acceptedCounter = requestCounter(meterRegistry, "accepted");
       this.rejectedCounter = requestCounter(meterRegistry, "rejected");
@@ -57,6 +63,23 @@ public class T3MicroSaturationGuard {
     saturatedGauge.set(0);
     acceptedCounter.increment();
     return T3MicroSaturationDecision.allowed(snapshot);
+  }
+
+  public boolean shouldPauseBackgroundWorker(String workerName) {
+    if (workerName == null || workerName.isBlank()) {
+      throw new IllegalArgumentException("workerName must not be blank");
+    }
+    if (!properties.enabled() || !properties.backgroundWorkers().enabled()) {
+      return false;
+    }
+    T3MicroSaturationSnapshot snapshot = snapshot();
+    if (!snapshot.saturated()) {
+      saturatedGauge.set(0);
+      return false;
+    }
+    saturatedGauge.set(1);
+    backgroundWorkerPauseCounter(workerName).increment();
+    return true;
   }
 
   private T3MicroSaturationSnapshot snapshot() {
@@ -90,5 +113,15 @@ public class T3MicroSaturationGuard {
         .tag("outcome", outcome)
         .description("protected request decisions by t3.micro saturation guard")
         .register(meterRegistry);
+  }
+
+  private Counter backgroundWorkerPauseCounter(String workerName) {
+    return backgroundWorkerPauseCounters.computeIfAbsent(
+        workerName,
+        name ->
+            Counter.builder("aquila.t3micro.saturation.guard.background.worker.pauses")
+                .tag("worker", name)
+                .description("background worker pauses by t3.micro saturation guard")
+                .register(meterRegistry));
   }
 }

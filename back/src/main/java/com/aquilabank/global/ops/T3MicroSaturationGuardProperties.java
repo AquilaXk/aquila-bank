@@ -11,7 +11,8 @@ public record T3MicroSaturationGuardProperties(
     Pool pool,
     ServletThreads servletThreads,
     QueryTimeout queryTimeout,
-    JvmPressure jvmPressure) {
+    JvmPressure jvmPressure,
+    BackgroundWorkers backgroundWorkers) {
 
   public T3MicroSaturationGuardProperties {
     enabled = enabled == null ? Boolean.TRUE : enabled;
@@ -31,6 +32,7 @@ public record T3MicroSaturationGuardProperties(
     servletThreads = servletThreads == null ? new ServletThreads(90) : servletThreads;
     queryTimeout = queryTimeout == null ? new QueryTimeout(10, 1) : queryTimeout;
     jvmPressure = jvmPressure == null ? new JvmPressure(true, 90, 10, 3, 250) : jvmPressure;
+    backgroundWorkers = backgroundWorkers == null ? new BackgroundWorkers(true) : backgroundWorkers;
   }
 
   public record Pool(int activeThresholdPercent, int awaitingThreadsThreshold) {
@@ -74,6 +76,13 @@ public record T3MicroSaturationGuardProperties(
       gcWindowSeconds = gcWindowSeconds > 0 ? gcWindowSeconds : 10;
       gcCollectionThreshold = gcCollectionThreshold > 0 ? gcCollectionThreshold : 3;
       gcTimeThresholdMs = gcTimeThresholdMs > 0 ? gcTimeThresholdMs : 250;
+    }
+  }
+
+  public record BackgroundWorkers(Boolean enabled) {
+
+    public BackgroundWorkers {
+      enabled = enabled == null ? Boolean.TRUE : enabled;
     }
   }
 }

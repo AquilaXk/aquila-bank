@@ -108,6 +108,49 @@ class T3MicroSaturationGuardTest {
   }
 
   @Test
+  void pausesBackgroundWorkerWhenJvmPressureIsSaturated() {
+    SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+    T3MicroSaturationGuard guard =
+        new T3MicroSaturationGuard(
+            properties(),
+            new MutableDbPoolProbe(new DbPoolSaturationSnapshot(1, 4, 0)),
+            new MutableServletThreadProbe(new ServletThreadSaturationSnapshot(2, 16)),
+            new MutableJvmPressureProbe(new JvmPressureSnapshot(950, 1000, 0, 0)),
+            new T3MicroQueryTimeoutSignal(Clock.systemUTC(), meterRegistry),
+            meterRegistry);
+
+    assertThat(guard.shouldPauseBackgroundWorker("outbox-dispatch")).isTrue();
+    assertThat(
+            meterRegistry
+                .find("aquila.t3micro.saturation.guard.background.worker.pauses")
+                .tag("worker", "outbox-dispatch")
+                .counter()
+                .count())
+        .isEqualTo(1.0);
+  }
+
+  @Test
+  void doesNotPauseBackgroundWorkerWhenBackgroundPauseIsDisabled() {
+    SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+    T3MicroSaturationGuard guard =
+        new T3MicroSaturationGuard(
+            propertiesWithBackgroundWorkers(false),
+            new MutableDbPoolProbe(new DbPoolSaturationSnapshot(4, 4, 1)),
+            new MutableServletThreadProbe(new ServletThreadSaturationSnapshot(16, 16)),
+            new MutableJvmPressureProbe(new JvmPressureSnapshot(950, 1000, 0, 0)),
+            new T3MicroQueryTimeoutSignal(Clock.systemUTC(), meterRegistry),
+            meterRegistry);
+
+    assertThat(guard.shouldPauseBackgroundWorker("outbox-dispatch")).isFalse();
+    assertThat(
+            meterRegistry
+                .find("aquila.t3micro.saturation.guard.background.worker.pauses")
+                .tag("worker", "outbox-dispatch")
+                .counter())
+        .isNull();
+  }
+
+  @Test
   void rejectsProtectedRequestWhenRecentGcPressureIsSaturated() {
     SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
     T3MicroSaturationGuard guard =
@@ -139,7 +182,8 @@ class T3MicroSaturationGuardTest {
                 new T3MicroSaturationGuardProperties.Pool(80, 1),
                 new T3MicroSaturationGuardProperties.ServletThreads(80),
                 new T3MicroSaturationGuardProperties.QueryTimeout(10, 1),
-                new T3MicroSaturationGuardProperties.JvmPressure(true, 90, 10, 3, 250)),
+                new T3MicroSaturationGuardProperties.JvmPressure(true, 90, 10, 3, 250),
+                new T3MicroSaturationGuardProperties.BackgroundWorkers(true)),
             new MutableDbPoolProbe(new DbPoolSaturationSnapshot(4, 4, 1)),
             new MutableServletThreadProbe(new ServletThreadSaturationSnapshot(16, 16)),
             new MutableJvmPressureProbe(JvmPressureSnapshot.empty()),
@@ -181,7 +225,20 @@ class T3MicroSaturationGuardTest {
         new T3MicroSaturationGuardProperties.Pool(80, 1),
         new T3MicroSaturationGuardProperties.ServletThreads(80),
         new T3MicroSaturationGuardProperties.QueryTimeout(10, 1),
-        new T3MicroSaturationGuardProperties.JvmPressure(enabled, 90, 10, 3, 250));
+        new T3MicroSaturationGuardProperties.JvmPressure(enabled, 90, 10, 3, 250),
+        new T3MicroSaturationGuardProperties.BackgroundWorkers(true));
+  }
+
+  private T3MicroSaturationGuardProperties propertiesWithBackgroundWorkers(boolean enabled) {
+    return new T3MicroSaturationGuardProperties(
+        true,
+        2,
+        List.of("/api/v1/transactions"),
+        new T3MicroSaturationGuardProperties.Pool(80, 1),
+        new T3MicroSaturationGuardProperties.ServletThreads(80),
+        new T3MicroSaturationGuardProperties.QueryTimeout(10, 1),
+        new T3MicroSaturationGuardProperties.JvmPressure(true, 90, 10, 3, 250),
+        new T3MicroSaturationGuardProperties.BackgroundWorkers(enabled));
   }
 
   private static final class MutableDbPoolProbe implements DbPoolSaturationProbe {
