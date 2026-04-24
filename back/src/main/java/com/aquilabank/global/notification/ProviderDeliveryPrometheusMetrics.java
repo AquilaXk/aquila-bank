@@ -9,6 +9,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,7 +17,7 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Component;
 
-/** provider delivery 상태 gauge는 scrape 한 번에 같은 DB snapshot을 재사용합니다. */
+/** provider delivery 상태 gauge는 summary table snapshot만 읽어 scrape 비용을 고정합니다. */
 @Component
 public final class ProviderDeliveryPrometheusMetrics implements MeterBinder {
 
@@ -31,7 +32,7 @@ public final class ProviderDeliveryPrometheusMetrics implements MeterBinder {
   private static final List<String> PASSWORD_RECOVERY_REASONS =
       java.util.Arrays.stream(PasswordRecoveryDeliverySkipReason.values()).map(Enum::name).toList();
   private static final ProviderDeliverySummary EMPTY_SUMMARY =
-      new ProviderDeliverySummary(Map.of(), Map.of(), Map.of());
+      new ProviderDeliverySummary(Map.of(), Map.of());
 
   private final NamedParameterJdbcTemplate jdbcTemplate;
   private volatile CachedSummary cachedSummary = new CachedSummary(EMPTY_SUMMARY, Instant.EPOCH);
@@ -98,74 +99,36 @@ public final class ProviderDeliveryPrometheusMetrics implements MeterBinder {
   private ProviderDeliverySummary loadSummary() {
     Map<MetricKey, Long> statusCounts = new HashMap<>();
     Map<MetricKey, Long> skipReasonCounts = new HashMap<>();
-    Map<String, Long> retryBacklogCounts = new HashMap<>();
-    for (ProviderDeliveryQueue queue : ProviderDeliveryQueue.values()) {
-      loadStatusCounts(queue, statusCounts);
-      loadSkipReasonCounts(queue, skipReasonCounts);
-      retryBacklogCounts.put(queue.metricName(), loadRetryBacklogCount(queue));
-    }
-    return new ProviderDeliverySummary(statusCounts, skipReasonCounts, retryBacklogCounts);
-  }
-
-  private void loadStatusCounts(ProviderDeliveryQueue queue, Map<MetricKey, Long> target) {
     List<Map<String, Object>> rows =
         jdbcTemplate.queryForList(
             """
-            SELECT LOWER(delivery_status) AS metric_name,
-                   COUNT(*) AS metric_count
-            FROM %s
-            WHERE delivery_status IN ('SENT', 'SKIPPED', 'FAILED', 'QUARANTINED')
-            GROUP BY delivery_status
-            """
-                .formatted(queue.tableName()),
+            SELECT queue_name,
+                   metric_type,
+                   metric_name,
+                   metric_count
+            FROM provider_delivery_metric_summary
+            WHERE queue_name IN ('notification_channel', 'password_recovery')
+              AND metric_type IN ('STATUS', 'SKIP_REASON')
+            """,
             new MapSqlParameterSource());
     for (Map<String, Object> row : rows) {
-      target.put(
-          new MetricKey(queue.metricName(), (String) row.get("metric_name")),
-          ((Number) row.get("metric_count")).longValue());
+      String queue = (String) row.get("queue_name");
+      String metricType = (String) row.get("metric_type");
+      String metricName = (String) row.get("metric_name");
+      long count = ((Number) row.get("metric_count")).longValue();
+      if ("STATUS".equals(metricType)) {
+        statusCounts.put(new MetricKey(queue, metricName.toLowerCase(Locale.ROOT)), count);
+      } else if ("SKIP_REASON".equals(metricType)) {
+        skipReasonCounts.put(new MetricKey(queue, metricName), count);
+      }
     }
-  }
-
-  private void loadSkipReasonCounts(ProviderDeliveryQueue queue, Map<MetricKey, Long> target) {
-    List<Map<String, Object>> rows =
-        jdbcTemplate.queryForList(
-            """
-            SELECT skip_reason AS metric_name,
-                   COUNT(*) AS metric_count
-            FROM %s
-            WHERE delivery_status = 'SKIPPED'
-              AND skip_reason IS NOT NULL
-            GROUP BY skip_reason
-            """
-                .formatted(queue.tableName()),
-            new MapSqlParameterSource());
-    for (Map<String, Object> row : rows) {
-      target.put(
-          new MetricKey(queue.metricName(), (String) row.get("metric_name")),
-          ((Number) row.get("metric_count")).longValue());
-    }
-  }
-
-  private long loadRetryBacklogCount(ProviderDeliveryQueue queue) {
-    Long count =
-        jdbcTemplate.queryForObject(
-            """
-            SELECT COUNT(*)
-            FROM %s
-            WHERE delivery_status IN ('PENDING', 'FAILED')
-            """
-                .formatted(queue.tableName()),
-            new MapSqlParameterSource(),
-            Long.class);
-    return count == null ? 0L : count;
+    return new ProviderDeliverySummary(statusCounts, skipReasonCounts);
   }
 
   private record CachedSummary(ProviderDeliverySummary summary, Instant expiresAt) {}
 
   private record ProviderDeliverySummary(
-      Map<MetricKey, Long> statusCounts,
-      Map<MetricKey, Long> skipReasonCounts,
-      Map<String, Long> retryBacklogCounts) {
+      Map<MetricKey, Long> statusCounts, Map<MetricKey, Long> skipReasonCounts) {
 
     private long statusCount(String queue, String status) {
       return statusCounts.getOrDefault(new MetricKey(queue, status), 0L);
@@ -176,34 +139,26 @@ public final class ProviderDeliveryPrometheusMetrics implements MeterBinder {
     }
 
     private long retryBacklogCount(String queue) {
-      return retryBacklogCounts.getOrDefault(queue, 0L);
+      return statusCount(queue, "pending") + statusCount(queue, "failed");
     }
   }
 
   private record MetricKey(String queue, String name) {}
 
   private enum ProviderDeliveryQueue {
-    NOTIFICATION_CHANNEL(
-        "notification_channel", "notification_channel_outbox", NOTIFICATION_REASONS),
-    PASSWORD_RECOVERY(
-        "password_recovery", "auth_password_recovery_delivery_outbox", PASSWORD_RECOVERY_REASONS);
+    NOTIFICATION_CHANNEL("notification_channel", NOTIFICATION_REASONS),
+    PASSWORD_RECOVERY("password_recovery", PASSWORD_RECOVERY_REASONS);
 
     private final String metricName;
-    private final String tableName;
     private final List<String> skipReasons;
 
-    ProviderDeliveryQueue(String metricName, String tableName, List<String> skipReasons) {
+    ProviderDeliveryQueue(String metricName, List<String> skipReasons) {
       this.metricName = metricName;
-      this.tableName = tableName;
       this.skipReasons = skipReasons;
     }
 
     private String metricName() {
       return metricName;
-    }
-
-    private String tableName() {
-      return tableName;
     }
 
     private List<String> skipReasons() {

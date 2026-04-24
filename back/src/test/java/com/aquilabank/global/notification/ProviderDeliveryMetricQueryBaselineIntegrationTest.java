@@ -99,6 +99,15 @@ class ProviderDeliveryMetricQueryBaselineIntegrationTest extends PostgresContain
     assertMetricPlans("auth_password_recovery_delivery_outbox", expectations);
   }
 
+  @Test
+  void summaryMetricQueryDoesNotScanSourceDeliveryTables() {
+    NotificationExplainPlan plan = explain(summaryCountSql());
+
+    assertThat(plan.seqScanRelations())
+        .doesNotContain("notification_channel_outbox", "auth_password_recovery_delivery_outbox");
+    assertThat(plan.hasNodeType("Sort")).isFalse();
+  }
+
   private void assertMetricPlans(String tableName, List<QueryPlanExpectation> expectations) {
     for (QueryPlanExpectation expectation : expectations) {
       NotificationExplainPlan plan = explain(expectation.sql());
@@ -153,6 +162,18 @@ class ProviderDeliveryMetricQueryBaselineIntegrationTest extends PostgresContain
         WHERE delivery_status IN ('PENDING', 'FAILED')
         """
         .formatted(tableName);
+  }
+
+  private String summaryCountSql() {
+    return """
+        SELECT queue_name,
+               metric_type,
+               metric_name,
+               metric_count
+        FROM provider_delivery_metric_summary
+        WHERE queue_name IN ('notification_channel', 'password_recovery')
+          AND metric_type IN ('STATUS', 'SKIP_REASON')
+        """;
   }
 
   private long insertUser(String loginId) {
