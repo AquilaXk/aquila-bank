@@ -9,7 +9,6 @@ import com.aquilabank.domain.notification.usecase.NotificationChannelOutboxClean
 import com.aquilabank.domain.notification.usecase.NotificationChannelProviderWorkerService;
 import com.aquilabank.domain.notification.usecase.NotificationChannelProviderWorkerUseCase;
 import com.aquilabank.global.notification.LoggingNotificationChannelProvider;
-import com.aquilabank.global.notification.NotificationChannelDeliveryDestinationResolver;
 import com.aquilabank.global.notification.WebhookNotificationChannelProvider;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
@@ -44,7 +43,6 @@ public class NotificationChannelProviderWorkerConfiguration {
     return new WebhookNotificationChannelProvider(
         notificationChannelProviderRestClient(properties),
         recipientLookupPort,
-        new NotificationChannelDeliveryDestinationResolver(),
         properties,
         objectMapper);
   }

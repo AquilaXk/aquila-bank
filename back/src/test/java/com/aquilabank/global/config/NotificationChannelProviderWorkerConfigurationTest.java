@@ -50,7 +50,7 @@ class NotificationChannelProviderWorkerConfigurationTest {
     contextRunner
         .withBean(
             NotificationChannelRecipientLookupPort.class,
-            () -> userId -> java.util.Optional.of("alice@example.com"))
+            () -> (userId, channel) -> java.util.Optional.of("alice@example.com"))
         .withBean(ObjectMapper.class, () -> new ObjectMapper().findAndRegisterModules())
         .withPropertyValues(
             "notification.channel-provider.delivery.enabled=true",
