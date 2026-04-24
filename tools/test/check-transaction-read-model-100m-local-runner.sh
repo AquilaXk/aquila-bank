@@ -3,6 +3,7 @@ set -euo pipefail
 
 echo "[transaction-100m-local-runner] shell syntax"
 bash -n tools/test/seed-transaction-read-model-100m.sh
+bash -n tools/test/run-transaction-read-model-100m-k6-local.sh
 
 echo "[transaction-100m-local-runner] compose config"
 docker compose -f compose.yml -f compose.t3micro.yml -f compose.loadtest.yml config >/dev/null
@@ -35,3 +36,18 @@ if SEED_TOTAL_ROWS=100 SEED_HOT_ROWS=100 tools/test/seed-transaction-read-model-
   echo "SEED_HOT_ROWS=SEED_TOTAL_ROWS unexpectedly succeeded" >&2
   exit 1
 fi
+
+echo "[transaction-100m-local-runner] wrapper plan"
+wrapper_plan="$(
+  SEED_TOTAL_ROWS=1000 \
+  K6_REPORT_NAME=transaction-100m-check \
+    tools/test/run-transaction-read-model-100m-k6-local.sh --print-plan
+)"
+grep -F "mode=print-plan" <<<"${wrapper_plan}" >/dev/null
+grep -F "seed_total_rows=1000" <<<"${wrapper_plan}" >/dev/null
+grep -F "k6 report=transaction-100m-check" <<<"${wrapper_plan}" >/dev/null
+grep -F "Prometheus http://localhost:9090, Grafana http://localhost:3001" <<<"${wrapper_plan}" >/dev/null
+
+echo "[transaction-100m-local-runner] wrapper contract"
+grep -F "run-k6-transaction-100m-loadtest.sh --no-up" tools/test/run-transaction-read-model-100m-k6-local.sh >/dev/null
+grep -F "seed-transaction-read-model-100m.sh" tools/test/run-transaction-read-model-100m-k6-local.sh >/dev/null
