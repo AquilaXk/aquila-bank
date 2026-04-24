@@ -1,5 +1,6 @@
 package com.aquilabank.global.persistence.notification;
 
+import com.aquilabank.domain.notification.model.NotificationChannelDeliverySkipReason;
 import com.aquilabank.domain.notification.model.NotificationChannelDeliveryStatus;
 import com.aquilabank.domain.notification.model.NotificationChannelOutboxEntry;
 import com.aquilabank.domain.notification.model.NotificationChannelOutboxItem;
@@ -124,11 +125,39 @@ public class JdbcNotificationChannelOutboxRepository
         SET delivery_status = 'SENT',
             sent_at = :sentAt,
             last_error = NULL,
+            skip_reason = NULL,
             updated_at = :sentAt
         WHERE id = :id
           AND delivery_status = 'SENDING'
         """,
         new MapSqlParameterSource().addValue("id", id).addValue("sentAt", Timestamp.from(sentAt)));
+  }
+
+  @Override
+  @Transactional
+  public void markSkipped(
+      long id, Instant skippedAt, NotificationChannelDeliverySkipReason skipReason) {
+    if (skippedAt == null) {
+      throw new IllegalArgumentException("skippedAt must not be null");
+    }
+    if (skipReason == null) {
+      throw new IllegalArgumentException("skipReason must not be null");
+    }
+    jdbcTemplate.update(
+        """
+        UPDATE notification_channel_outbox
+        SET delivery_status = 'SKIPPED',
+            sent_at = NULL,
+            last_error = NULL,
+            skip_reason = :skipReason,
+            updated_at = :skippedAt
+        WHERE id = :id
+          AND delivery_status = 'SENDING'
+        """,
+        new MapSqlParameterSource()
+            .addValue("id", id)
+            .addValue("skippedAt", Timestamp.from(skippedAt))
+            .addValue("skipReason", skipReason.name()));
   }
 
   @Override
@@ -147,6 +176,7 @@ public class JdbcNotificationChannelOutboxRepository
             available_at = :nextAttemptAt,
             retry_count = retry_count + 1,
             last_error = :lastError,
+            skip_reason = NULL,
             updated_at = :failedAt
         WHERE id = :id
           AND delivery_status = 'SENDING'
@@ -170,6 +200,7 @@ public class JdbcNotificationChannelOutboxRepository
         SET delivery_status = 'QUARANTINED',
             retry_count = retry_count + 1,
             last_error = :lastError,
+            skip_reason = NULL,
             updated_at = :quarantinedAt
         WHERE id = :id
           AND delivery_status = 'SENDING'
@@ -238,6 +269,7 @@ public class JdbcNotificationChannelOutboxRepository
             available_at = :requestedAt,
             sent_at = NULL,
             last_error = NULL,
+            skip_reason = NULL,
             updated_at = :requestedAt
         WHERE id = :id
           AND delivery_status = 'QUARANTINED'
@@ -275,6 +307,16 @@ public class JdbcNotificationChannelOutboxRepository
                         WHERE delivery_status = 'SENT'
                           AND sent_at < :cutoff
                         ORDER BY sent_at ASC, id ASC
+                        LIMIT :limit
+                    )
+                    UNION ALL
+                    (
+                        SELECT id,
+                               updated_at AS finished_at
+                        FROM notification_channel_outbox
+                        WHERE delivery_status = 'SKIPPED'
+                          AND updated_at < :cutoff
+                        ORDER BY updated_at ASC, id ASC
                         LIMIT :limit
                     )
                     UNION ALL

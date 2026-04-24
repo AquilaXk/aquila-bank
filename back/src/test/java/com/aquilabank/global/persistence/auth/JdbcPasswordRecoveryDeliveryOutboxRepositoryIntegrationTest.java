@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.aquilabank.domain.auth.model.PasswordRecoveryDeliveryOutboxEntry;
 import com.aquilabank.domain.auth.model.PasswordRecoveryDeliveryOutboxItem;
+import com.aquilabank.domain.auth.model.PasswordRecoveryDeliverySkipReason;
 import com.aquilabank.domain.auth.model.PasswordRecoveryDeliveryStatus;
 import com.aquilabank.domain.auth.model.VerifiedContactChannel;
 import com.aquilabank.support.PostgresContainerTestSupport;
@@ -131,6 +132,33 @@ class JdbcPasswordRecoveryDeliveryOutboxRepositoryIntegrationTest
   }
 
   @Test
+  void marksRowsSkippedWithReasonAfterClaim() {
+    long userId = insertUser("skip@example.com");
+    Instant base = Instant.parse("2026-04-23T14:42:00Z");
+    repository.append(
+        new PasswordRecoveryDeliveryOutboxEntry(
+            "request-skip",
+            userId,
+            "skip@example.com",
+            VerifiedContactChannel.EMAIL,
+            "skip.recovery@example.com",
+            base.minusSeconds(5),
+            base));
+    PasswordRecoveryDeliveryOutboxItem claimed = repository.claimPending(1, base).getFirst();
+
+    repository.markSkipped(
+        claimed.id(), base.plusSeconds(1), PasswordRecoveryDeliverySkipReason.TOKEN_MISSING);
+
+    DeliveryRow row = findRow(claimed.id());
+    assertThat(row.deliveryStatus()).isEqualTo(PasswordRecoveryDeliveryStatus.SKIPPED);
+    assertThat(row.skipReason()).isEqualTo(PasswordRecoveryDeliverySkipReason.TOKEN_MISSING.name());
+    assertThat(row.sentAt()).isNull();
+    assertThat(row.lastError()).isNull();
+    assertThat(row.updatedAt()).isEqualTo(base.plusSeconds(1));
+    assertThat(repository.claimPending(10, base.plusSeconds(3600))).isEmpty();
+  }
+
+  @Test
   void rejectsDuplicateRequestIdByUniqueConstraint() {
     long userId = insertUser("duplicate@example.com");
     Instant base = Instant.parse("2026-04-23T14:45:00Z");
@@ -213,6 +241,7 @@ class JdbcPasswordRecoveryDeliveryOutboxRepositoryIntegrationTest
                sent_at,
                retry_count,
                last_error,
+               skip_reason,
                updated_at
         FROM auth_password_recovery_delivery_outbox
         WHERE id = :id
@@ -226,6 +255,7 @@ class JdbcPasswordRecoveryDeliveryOutboxRepositoryIntegrationTest
                 rs.getTimestamp("sent_at") == null ? null : rs.getTimestamp("sent_at").toInstant(),
                 rs.getInt("retry_count"),
                 rs.getString("last_error"),
+                rs.getString("skip_reason"),
                 rs.getTimestamp("updated_at").toInstant()));
   }
 
@@ -236,5 +266,6 @@ class JdbcPasswordRecoveryDeliveryOutboxRepositoryIntegrationTest
       Instant sentAt,
       int retryCount,
       String lastError,
+      String skipReason,
       Instant updatedAt) {}
 }

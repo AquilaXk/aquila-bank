@@ -1,5 +1,6 @@
 package com.aquilabank.domain.notification.port;
 
+import com.aquilabank.domain.notification.model.NotificationChannelDeliverySkipReason;
 import com.aquilabank.domain.notification.model.NotificationChannelOutboxItem;
 import java.time.Instant;
 import java.util.List;
@@ -10,6 +11,8 @@ public interface NotificationChannelOutboxDispatchPort {
   List<NotificationChannelOutboxItem> claimPending(int limit, Instant now);
 
   void markSent(long id, Instant sentAt);
+
+  void markSkipped(long id, Instant skippedAt, NotificationChannelDeliverySkipReason skipReason);
 
   void markFailed(long id, Instant nextAttemptAt, Instant failedAt, String errorMessage);
 
