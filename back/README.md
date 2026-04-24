@@ -530,7 +530,9 @@ tools/test/run-transaction-read-model-100m-k6-local.sh
 - 기본 hot account는 `910000001`, cold account는 `910000002`입니다.
 - 기본 조회 기간은 hot `2026-04-01T00:00:00Z..2026-04-30T00:00:00Z`, cold `2026-01-01T00:00:00Z..2026-01-31T00:00:00Z`입니다.
 - seed는 read path 성능 검증 전용입니다. 원장 1억 건을 생성하지 않고, seed 중에만 read model FK trigger를 비활성화합니다.
-- 적재 시간을 줄이기 위해 secondary read index를 seed 전 drop하고 seed 후 재생성합니다.
+- 기본 `SEED_INDEX_STRATEGY=required`는 k6에 필요한 account cursor index만 빈 테이블 상태에서 먼저 유지합니다. t3.micro에서는 5천만 row btree를 seed 후 한 번에 build하면 OOM이 발생할 수 있으므로 기본값으로 사용하지 않습니다.
+- 전체 filter index 재생성 검증이 필요하면 `SEED_INDEX_STRATEGY=rebuild-all`을 명시합니다. 이 모드는 t3.micro보다 큰 메모리 budget 또는 partition/chunk 전환 검증에서만 사용합니다.
+- k6 runner는 실행 전 PostgreSQL `OOMKilled` 상태와 필수 account cursor index 존재 여부를 preflight로 확인합니다.
 - local disk와 Docker volume을 크게 사용합니다. 실행 전 `df -h .`로 여유 공간을 확인합니다.
 - 실패 후 재시도할 때는 `SEED_TRUNCATE=true`를 유지해 중간 적재 데이터를 정리하고 다시 시작합니다.
 - k6 결과 Markdown은 `docs/performance-results`, 원본 JSON/Markdown은 `build/reports/k6`에 남습니다.

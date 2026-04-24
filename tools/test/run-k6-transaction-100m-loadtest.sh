@@ -20,6 +20,7 @@ Optional environment:
   K6_LIMIT             default 50
   K6_AUTH_TOKEN        bearer token, optional when bootstrap header auth is enabled
   K6_ARCHIVE_RESULTS   copy markdown summary to docs/performance-results, default true
+  K6_PREFLIGHT         check PostgreSQL OOM/index readiness before k6, default true
 
 Examples:
   K6_HOT_ACCOUNT_ID=101 K6_HOT_FROM=2026-04-01T00:00:00Z K6_HOT_TO=2026-04-30T00:00:00Z \
@@ -66,8 +67,9 @@ fi
 K6_VUS="${K6_VUS:-8}"
 K6_LIMIT="${K6_LIMIT:-50}"
 K6_ARCHIVE_RESULTS="${K6_ARCHIVE_RESULTS:-true}"
+K6_PREFLIGHT="${K6_PREFLIGHT:-true}"
 K6_REPORT_NAME="${K6_REPORT_NAME:-transaction-100m-$(date +%Y-%m-%d-%H%M%S)}"
-export K6_VUS K6_LIMIT K6_ARCHIVE_RESULTS K6_REPORT_NAME
+export K6_VUS K6_LIMIT K6_ARCHIVE_RESULTS K6_PREFLIGHT K6_REPORT_NAME
 
 require_positive_integer K6_VUS
 require_positive_integer K6_LIMIT
@@ -76,6 +78,7 @@ compose_files=(-f compose.yml -f compose.t3micro.yml -f compose.loadtest.yml)
 report_dir="build/reports/k6"
 summary_md="${report_dir}/${K6_REPORT_NAME}-summary.md"
 summary_json="${report_dir}/${K6_REPORT_NAME}-summary.json"
+psql_base=(docker compose "${compose_files[@]}" exec -T postgres psql -v ON_ERROR_STOP=1 -U "${DB_USERNAME:-postgres}" -d "${DB_NAME:-aquila_bank}")
 
 print_plan() {
   echo "[k6-transaction-100m] compose files: ${compose_files[*]}"
@@ -83,6 +86,7 @@ print_plan() {
   echo "[k6-transaction-100m] observability: prometheus:9090 grafana:3000 alertmanager:9093 postgres-exporter:9187"
   echo "[k6-transaction-100m] k6 report name: ${K6_REPORT_NAME}"
   echo "[k6-transaction-100m] k6 vus=${K6_VUS} duration=${K6_DURATION:-1m} limit=${K6_LIMIT}"
+  echo "[k6-transaction-100m] preflight=${K6_PREFLIGHT}"
   echo "[k6-transaction-100m] required dataset: prepared 100m transaction read model hot/cold accounts"
   echo "[k6-transaction-100m] archive results: ${K6_ARCHIVE_RESULTS}"
 }
@@ -102,6 +106,38 @@ require_env K6_COLD_TO
 
 mkdir -p "${report_dir}"
 
+assert_k6_preflight() {
+  if [[ "${K6_PREFLIGHT}" != "true" ]]; then
+    echo "[k6-transaction-100m] preflight skipped"
+    return 0
+  fi
+
+  local oom_killed
+  oom_killed="$(docker inspect aquila-bank-postgres --format '{{.State.OOMKilled}}' 2>/dev/null || echo unknown)"
+  if [[ "${oom_killed}" == "true" ]]; then
+    echo "PostgreSQL container has OOMKilled=true. Recreate postgres before running k6." >&2
+    exit 1
+  fi
+
+  local missing_indexes
+  missing_indexes="$("${psql_base[@]}" --no-align --tuples-only --command "
+    WITH required(index_name) AS (
+      VALUES
+        ('idx_transaction_read_model_account_cursor'),
+        ('idx_transaction_read_model_archive_account_cursor')
+    )
+    SELECT index_name
+    FROM required
+    WHERE to_regclass('public.' || index_name) IS NULL
+    ORDER BY index_name;
+  ")"
+  if [[ -n "${missing_indexes}" ]]; then
+    echo "Required transaction read indexes are missing:" >&2
+    echo "${missing_indexes}" >&2
+    exit 1
+  fi
+}
+
 if [[ "${mode}" != "no-up" ]]; then
   echo "[k6-transaction-100m] building backend bootJar"
   tools/test/with-resource-lock.sh back-gradle-loadtest-bootjar ./back/gradlew -p back bootJar
@@ -110,6 +146,8 @@ if [[ "${mode}" != "no-up" ]]; then
   docker compose "${compose_files[@]}" --profile loadtest up -d \
     postgres aquila-bank-backend prometheus grafana alertmanager postgres-exporter
 fi
+
+assert_k6_preflight
 
 set +e
 docker compose "${compose_files[@]}" --profile loadtest run --rm \

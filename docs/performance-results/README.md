@@ -30,6 +30,7 @@ YYYY-MM-DD-<environment>-<workload>.md
 
 - [transaction-100m-small-smoke-summary.md](transaction-100m-small-smoke-summary.md)
 - [transaction-100m-local-t3micro-20260425-bottleneck.md](transaction-100m-local-t3micro-20260425-bottleneck.md)
+- [transaction-100m-required-index-smoke-summary.md](transaction-100m-required-index-smoke-summary.md)
 
 로컬 DB에 1억 건 synthetic read model을 먼저 적재하고 k6까지 이어서 실행하는 표준 경로는 아래 명령입니다.
 
@@ -39,11 +40,16 @@ SEED_TRUNCATE=true \
 tools/test/run-transaction-read-model-100m-k6-local.sh
 ```
 
+기본값은 `SEED_INDEX_STRATEGY=required`입니다. 이 전략은 hot/archive account cursor index를 빈 table 상태에서 먼저 유지해, t3.micro PostgreSQL에서 5천만 row btree를 사후 build하다 OOM 나는 경로를 피합니다.
+
+`SEED_INDEX_STRATEGY=rebuild-all`은 전체 secondary filter index를 drop 후 재생성합니다. 이 모드는 partition/chunk 구조 검증 또는 더 큰 memory budget에서만 사용하고, t3.micro 측정 경로에서는 기본값으로 사용하지 않습니다.
+
 실행 전 확인값:
 
 - local disk 여유 공간
 - Docker Desktop memory/disk limit
 - `compose.loadtest.yml`의 backend `2 vCPU / 1GiB` budget
+- PostgreSQL container가 이전 실행에서 `OOMKilled=true`로 남아 있지 않은지 여부
 - hot/cold account와 기간 기본값이 테스트 의도와 맞는지 여부
 
 수동 보관이 필요하면 아래 명령을 사용합니다.

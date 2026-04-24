@@ -16,7 +16,8 @@ Environment:
   SEED_COLD_FROM                  default 2026-01-01T00:00:00Z
   SEED_COLD_TO                    default 2026-01-31T00:00:00Z
   SEED_TRUNCATE                   truncate read model tables first, default false
-  SEED_REBUILD_SECONDARY_INDEXES  drop/recreate read indexes around seed, default true
+  SEED_INDEX_STRATEGY             required|rebuild-all|none, default required
+  SEED_REBUILD_SECONDARY_INDEXES  legacy true->rebuild-all false->none when SEED_INDEX_STRATEGY is unset
   SEED_DISABLE_FK_TRIGGERS        disable read model FK triggers around seed, default true
 
 Examples:
@@ -41,6 +42,17 @@ require_boolean() {
     true | false) ;;
     *)
       echo "${name} must be true or false" >&2
+      exit 1
+      ;;
+  esac
+}
+
+require_index_strategy() {
+  local value="$1"
+  case "${value}" in
+    required | rebuild-all | none) ;;
+    *)
+      echo "SEED_INDEX_STRATEGY must be required, rebuild-all, or none" >&2
       exit 1
       ;;
   esac
@@ -71,7 +83,18 @@ hot_to="${SEED_HOT_TO:-2026-04-30T00:00:00Z}"
 cold_from="${SEED_COLD_FROM:-2026-01-01T00:00:00Z}"
 cold_to="${SEED_COLD_TO:-2026-01-31T00:00:00Z}"
 truncate_tables="${SEED_TRUNCATE:-false}"
-rebuild_indexes="${SEED_REBUILD_SECONDARY_INDEXES:-true}"
+if [[ -n "${SEED_INDEX_STRATEGY:-}" ]]; then
+  index_strategy="${SEED_INDEX_STRATEGY}"
+elif [[ -n "${SEED_REBUILD_SECONDARY_INDEXES:-}" ]]; then
+  require_boolean SEED_REBUILD_SECONDARY_INDEXES "${SEED_REBUILD_SECONDARY_INDEXES}"
+  if [[ "${SEED_REBUILD_SECONDARY_INDEXES}" == "true" ]]; then
+    index_strategy="rebuild-all"
+  else
+    index_strategy="none"
+  fi
+else
+  index_strategy="required"
+fi
 disable_fk_triggers="${SEED_DISABLE_FK_TRIGGERS:-true}"
 
 require_positive_integer SEED_TOTAL_ROWS "${total_rows}"
@@ -80,7 +103,7 @@ require_positive_integer SEED_BATCH_SIZE "${batch_size}"
 require_positive_integer SEED_HOT_ACCOUNT_ID "${hot_account_id}"
 require_positive_integer SEED_COLD_ACCOUNT_ID "${cold_account_id}"
 require_boolean SEED_TRUNCATE "${truncate_tables}"
-require_boolean SEED_REBUILD_SECONDARY_INDEXES "${rebuild_indexes}"
+require_index_strategy "${index_strategy}"
 require_boolean SEED_DISABLE_FK_TRIGGERS "${disable_fk_triggers}"
 
 if ((hot_rows >= total_rows)); then
@@ -96,7 +119,7 @@ print_plan() {
   echo "[transaction-100m-seed] hot_rows=${hot_rows} archive_rows=${cold_rows} batch_size=${batch_size}"
   echo "[transaction-100m-seed] hot account=${hot_account_id} window=${hot_from}..${hot_to}"
   echo "[transaction-100m-seed] cold account=${cold_account_id} window=${cold_from}..${cold_to}"
-  echo "[transaction-100m-seed] truncate=${truncate_tables} rebuild-secondary-indexes=${rebuild_indexes} disable-fk-triggers=${disable_fk_triggers}"
+  echo "[transaction-100m-seed] truncate=${truncate_tables} index-strategy=${index_strategy} disable-fk-triggers=${disable_fk_triggers}"
   echo "[transaction-100m-seed] caveat: local read-path seed only; ledger source-of-truth rows are not generated."
 }
 
@@ -126,6 +149,25 @@ drop_secondary_indexes() {
     DROP INDEX IF EXISTS idx_transaction_read_model_archive_account_cursor;
     DROP INDEX IF EXISTS idx_transaction_read_model_archive_account_status_cursor;
     DROP INDEX IF EXISTS idx_transaction_read_model_archive_account_reference_cursor;
+  "
+}
+
+drop_optional_secondary_indexes() {
+  psql_sql "
+    DROP INDEX IF EXISTS idx_transaction_read_model_account_status_cursor;
+    DROP INDEX IF EXISTS idx_transaction_read_model_account_reference_cursor;
+    DROP INDEX IF EXISTS idx_transaction_read_model_cleanup_cursor;
+    DROP INDEX IF EXISTS idx_transaction_read_model_archive_account_status_cursor;
+    DROP INDEX IF EXISTS idx_transaction_read_model_archive_account_reference_cursor;
+  "
+}
+
+ensure_required_indexes() {
+  psql_sql "
+    CREATE INDEX IF NOT EXISTS idx_transaction_read_model_account_cursor
+      ON transaction_read_model (account_id, booked_at DESC, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_transaction_read_model_archive_account_cursor
+      ON transaction_read_model_archive (account_id, booked_at DESC, id DESC);
   "
 }
 
@@ -298,9 +340,14 @@ main() {
     psql_sql "TRUNCATE transaction_read_model, transaction_read_model_archive RESTART IDENTITY;"
   fi
 
-  if [[ "${rebuild_indexes}" == "true" ]]; then
+  if [[ "${index_strategy}" == "rebuild-all" ]]; then
     echo "[transaction-100m-seed] dropping secondary read indexes"
     drop_secondary_indexes
+  elif [[ "${index_strategy}" == "required" ]]; then
+    echo "[transaction-100m-seed] dropping optional secondary read indexes"
+    drop_optional_secondary_indexes
+    echo "[transaction-100m-seed] ensuring required account cursor indexes before insert"
+    ensure_required_indexes
   fi
 
   if [[ "${disable_fk_triggers}" == "true" ]]; then
@@ -319,9 +366,12 @@ main() {
   fi
   trap - EXIT
 
-  if [[ "${rebuild_indexes}" == "true" ]]; then
+  if [[ "${index_strategy}" == "rebuild-all" ]]; then
     echo "[transaction-100m-seed] recreating secondary read indexes"
     create_secondary_indexes
+  elif [[ "${index_strategy}" == "required" ]]; then
+    echo "[transaction-100m-seed] verifying required account cursor indexes"
+    ensure_required_indexes
   fi
 
   verify_seed

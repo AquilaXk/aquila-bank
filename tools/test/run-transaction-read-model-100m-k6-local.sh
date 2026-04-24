@@ -8,6 +8,7 @@ usage: tools/test/run-transaction-read-model-100m-k6-local.sh [--print-plan|--se
 Environment:
   SEED_TOTAL_ROWS      default 100000000
   SEED_TRUNCATE        default true for this wrapper
+  SEED_INDEX_STRATEGY  default required
   K6_REPORT_NAME       default transaction-100m-local-<timestamp>
   K6_VUS               default 8
   K6_DURATION          default 1m
@@ -47,13 +48,14 @@ seed_hot_to="${SEED_HOT_TO:-2026-04-30T00:00:00Z}"
 seed_cold_from="${SEED_COLD_FROM:-2026-01-01T00:00:00Z}"
 seed_cold_to="${SEED_COLD_TO:-2026-01-31T00:00:00Z}"
 seed_truncate="${SEED_TRUNCATE:-true}"
+seed_index_strategy="${SEED_INDEX_STRATEGY:-required}"
 k6_report_name="${K6_REPORT_NAME:-transaction-100m-local-$(date +%Y-%m-%d-%H%M%S)}"
 
 psql_base=(docker compose "${compose_files[@]}" exec -T postgres psql -v ON_ERROR_STOP=1 -U "${DB_USERNAME:-postgres}" -d "${DB_NAME:-aquila_bank}")
 
 print_plan() {
   echo "[transaction-100m-local] mode=${mode}"
-  echo "[transaction-100m-local] seed_total_rows=${seed_total_rows} seed_truncate=${seed_truncate}"
+  echo "[transaction-100m-local] seed_total_rows=${seed_total_rows} seed_truncate=${seed_truncate} seed_index_strategy=${seed_index_strategy}"
   echo "[transaction-100m-local] hot account=${seed_hot_account_id} window=${seed_hot_from}..${seed_hot_to}"
   echo "[transaction-100m-local] cold account=${seed_cold_account_id} window=${seed_cold_from}..${seed_cold_to}"
   echo "[transaction-100m-local] k6 report=${k6_report_name} vus=${K6_VUS:-8} duration=${K6_DURATION:-1m}"
@@ -95,7 +97,21 @@ run_seed() {
   SEED_COLD_FROM="${seed_cold_from}" \
   SEED_COLD_TO="${seed_cold_to}" \
   SEED_TRUNCATE="${seed_truncate}" \
+  SEED_INDEX_STRATEGY="${seed_index_strategy}" \
     tools/test/seed-transaction-read-model-100m.sh
+}
+
+assert_k6_preflight() {
+  K6_HOT_ACCOUNT_ID="${seed_hot_account_id}" \
+  K6_HOT_FROM="${seed_hot_from}" \
+  K6_HOT_TO="${seed_hot_to}" \
+  K6_COLD_ACCOUNT_ID="${seed_cold_account_id}" \
+  K6_COLD_FROM="${seed_cold_from}" \
+  K6_COLD_TO="${seed_cold_to}" \
+  K6_REPORT_NAME="${k6_report_name}" \
+  K6_VUS="${K6_VUS:-8}" \
+  K6_DURATION="${K6_DURATION:-1m}" \
+    tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null
 }
 
 run_k6() {
@@ -123,5 +139,6 @@ if [[ "${mode}" != "seed-only" ]]; then
   if [[ "${mode}" == "k6-only" ]]; then
     wait_for_schema
   fi
+  assert_k6_preflight
   run_k6
 fi
