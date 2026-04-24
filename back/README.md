@@ -261,6 +261,16 @@ docker compose up -d postgres kafka
 - topic partition을 늘릴 때는 `KAFKA_TOPIC_PROVISIONING_PARTITIONS`와 `NOTIFICATION_INBOX_CONSUMER_CONCURRENCY`를 같이 조정합니다.
 - 이 경로는 로컬 개발 전용입니다.
 
+t3.micro에 가까운 작은 로컬 인프라 budget으로 띄울 때는 override 파일을 함께 지정합니다.
+
+```bash
+docker compose -f compose.yml -f compose.t3micro.yml up -d postgres kafka
+```
+
+- [compose.t3micro.yml](/Users/aquila/Custom/GitProjects/aquila-bank/compose.t3micro.yml)은 Postgres/Kafka/Redis에 CPU, memory, swap, pids 상한을 겁니다.
+- 이 override는 로컬 병목 신호를 빨리 보기 위한 근사값이며, AWS `t3.micro`의 CPU credit, EBS 지연, 실제 네트워크를 재현하지 않습니다.
+- Redis까지 같은 budget으로 올릴 때는 `docker compose -f compose.yml -f compose.t3micro.yml --profile redis up -d redis`를 사용합니다.
+
 Redis login throttling runtime smoke가 필요할 때만 profile을 켭니다.
 
 ```bash
@@ -472,6 +482,20 @@ tools/test/run-production-t3micro-capacity-smoke.sh
   - `PRODUCTION_T3MICRO_SSE_MAX_TOTAL_SESSIONS`
   - `PRODUCTION_T3MICRO_NOTIFICATION_STREAM_MAX`
 - smoke rollback은 workflow 비활성화 또는 variable 값을 기본 budget으로 되돌리는 방식으로 처리합니다.
+
+로컬에서 Docker cgroup 제한까지 걸어 빠르게 회귀를 확인할 때는 아래 entrypoint를 사용합니다.
+
+```bash
+tools/test/run-docker-t3micro-capacity-smoke.sh --print-plan
+tools/test/run-docker-t3micro-capacity-smoke.sh
+```
+
+- 기본 Docker budget은 `--cpus=2`, `--memory=1024m`, `--memory-swap=1024m`, `--pids-limit=384` 입니다.
+- script는 새 부하 발생기를 만들지 않고 기존 `tools/test/run-production-t3micro-capacity-smoke.sh`를 container 안에서 재사용합니다.
+- 기본값은 실행 전 host에서 `testClasses`를 준비해 Gradle compile 비용을 Docker 1GiB 판정에서 분리합니다. 이 동작을 끄려면 `DOCKER_T3MICRO_PREPARE_TEST_CLASSES=false`를 사용합니다.
+- 기본 image는 `eclipse-temurin:21-jdk`이고, 로컬에 다른 Java 21 image가 있으면 `DOCKER_T3MICRO_IMAGE=<image>`로 바꿀 수 있습니다.
+- Docker smoke는 host 자원이 큰 개발 머신에서 놓칠 수 있는 JVM/thread/pool 압력 회귀를 빨리 잡는 용도입니다.
+- 최종 120% headroom 판정은 실제 EC2 `t3.micro` staging에서 transaction replay, read replica smoke, production capacity smoke를 실행한 결과로 닫습니다.
 
 ## Notification Read State
 

@@ -23,7 +23,8 @@
 ├── back
 ├── ops
 ├── .github
-└── compose.yml
+├── compose.yml
+└── compose.t3micro.yml
 ```
 
 - `front`: 고객/운영 웹 애플리케이션
@@ -31,6 +32,7 @@
 - `ops`: reverse proxy 같은 운영 baseline 파일
 - `.github`: 이슈/PR 템플릿과 협업 메타 설정
 - `compose.yml`: 로컬 개발용 Docker Compose 인프라 실행 기준
+- `compose.t3micro.yml`: 로컬 인프라를 작은 CPU/메모리 budget으로 띄우는 t3.micro 근사 override
 
 ## Runtime Baseline
 
@@ -41,9 +43,11 @@
 ## Environment Split
 
 - 로컬 개발: `Docker Compose + PostgreSQL 18 + Kafka`
+- 로컬 t3.micro 근사 검증: `compose.t3micro.yml`과 `tools/test/run-docker-t3micro-capacity-smoke.sh`로 CPU/메모리 cgroup 제한을 적용합니다.
 - 배포 환경: `EC2 + RDS PostgreSQL 18`
 - EC2 reverse proxy baseline template은 [ops/nginx/nginx.conf](/Users/aquila/Custom/GitProjects/aquila-bank/ops/nginx/nginx.conf)에 두고, runtime 값은 `ops/nginx/runtime.env.example` 기반으로 렌더링합니다.
 - `compose.yml`은 로컬 개발 전용이며, 배포용 인프라 정의는 포함하지 않습니다.
+- Docker 근사 검증은 AWS `t3.micro`의 CPU credit, EBS 지연, 실제 네트워크를 재현하지 못하므로 최종 120% headroom 판정은 EC2 `t3.micro` staging smoke 결과로 닫습니다.
 
 ## Delivery Flow
 

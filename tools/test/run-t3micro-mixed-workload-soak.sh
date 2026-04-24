@@ -42,7 +42,8 @@ test_selectors=(
   "*NotificationSseIntegrationTest"
 )
 
-gradle_args=(./back/gradlew -p back test)
+# smoke는 이전 test result cache가 아니라 현재 budget에서의 실제 실행을 봅니다.
+gradle_args=(./back/gradlew -p back cleanTest test)
 for selector in "${test_selectors[@]}"; do
   gradle_args+=(--tests "${selector}")
 done

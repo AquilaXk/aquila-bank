@@ -16,6 +16,9 @@ grep -F "*TransferCommandApiIntegrationTest" <<<"${plan}" >/dev/null
 grep -F "*NotificationSseBrokerTest" <<<"${plan}" >/dev/null
 grep -F "*NotificationSseIntegrationTest" <<<"${plan}" >/dev/null
 
+echo "[t3micro-mixed-soak-script] smoke reruns test task"
+grep -F "cleanTest test" "${script}" >/dev/null
+
 echo "[t3micro-mixed-soak-script] guard: invalid repeat fails before Gradle"
 if SOAK_REPEAT=0 "${script}" --print-plan >/dev/null 2>&1; then
   echo "SOAK_REPEAT=0 unexpectedly succeeded" >&2
