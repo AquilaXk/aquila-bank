@@ -14,6 +14,7 @@ print_plan() {
 - TRANSACTION_READ_REPLICA_ENABLED=true
 - OUTBOX_KAFKA_ENABLED=true
 - NOTIFICATION_INBOX_CONSUMER_ENABLED=true
+- NOTIFICATION_INBOX_CONSUMER_CONCURRENCY>=2
 - NOTIFICATION_INBOX_CONSUMER_OPS_ENABLED=true
 - KAFKA_TOPIC_PROVISIONING_ENABLED=true
 - KAFKA_TOPIC_STARTUP_VALIDATION_ENABLED=true
@@ -62,6 +63,16 @@ require_min_integer() {
   [ "$value" -ge "$min" ] || fail "${name} must be ${min} or greater"
 }
 
+require_lte_integer() {
+  local name="$1"
+  local max_name="$2"
+  require_positive_integer "$name"
+  require_positive_integer "$max_name"
+  local value="${!name}"
+  local max_value="${!max_name}"
+  [ "$value" -le "$max_value" ] || fail "${name} must be less than or equal to ${max_name}"
+}
+
 require_same_value() {
   local left="$1"
   local right="$2"
@@ -99,6 +110,7 @@ validate_kafka() {
   require_true NOTIFICATION_INBOX_CONSUMER_ENABLED
   require_true NOTIFICATION_INBOX_CONSUMER_OPS_ENABLED
   require_env NOTIFICATION_INBOX_CONSUMER_BOOTSTRAP_SERVERS
+  require_min_integer NOTIFICATION_INBOX_CONSUMER_CONCURRENCY 2
   require_env NOTIFICATION_INBOX_CONSUMER_TRANSFER_BOOKED_TOPIC
   require_env NOTIFICATION_INBOX_CONSUMER_TRANSFER_REVERSED_TOPIC
   require_env NOTIFICATION_INBOX_CONSUMER_DLQ_TOPIC
@@ -107,6 +119,7 @@ validate_kafka() {
   require_true KAFKA_TOPIC_PROVISIONING_ENABLED
   require_true KAFKA_TOPIC_STARTUP_VALIDATION_ENABLED
   require_positive_integer KAFKA_TOPIC_PROVISIONING_PARTITIONS
+  require_lte_integer NOTIFICATION_INBOX_CONSUMER_CONCURRENCY KAFKA_TOPIC_PROVISIONING_PARTITIONS
   require_min_integer KAFKA_TOPIC_PROVISIONING_REPLICATION_FACTOR 3
   require_min_integer KAFKA_TOPIC_PROVISIONING_MIN_IN_SYNC_REPLICAS 2
 }
@@ -126,6 +139,7 @@ validate_admission_and_t3micro() {
   require_positive_integer OPS_T3MICRO_SATURATION_GUARD_QUERY_TIMEOUT_THRESHOLD
 
   require_positive_integer DB_POOL_MAX_SIZE
+  require_lte_integer NOTIFICATION_INBOX_CONSUMER_CONCURRENCY DB_POOL_MAX_SIZE
   require_positive_integer SERVER_THREADS_MAX
   require_positive_integer NOTIFICATION_SSE_MAX_TOTAL_SESSIONS
 }
