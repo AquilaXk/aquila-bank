@@ -26,6 +26,7 @@ import javax.management.MBeanServer;
 import javax.management.ObjectName;
 import javax.sql.DataSource;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -48,6 +49,12 @@ public class T3MicroSaturationGuardConfiguration {
   }
 
   @Bean
+  DbPoolSaturationProbe transactionReadReplicaDbPoolSaturationProbe(
+      @Qualifier("transactionReadReplicaDataSource") ObjectProvider<DataSource> dataSourceProvider) {
+    return new HikariDbPoolSaturationProbe(dataSourceProvider);
+  }
+
+  @Bean
   ServletThreadSaturationProbe servletThreadSaturationProbe() {
     return new JmxServletThreadSaturationProbe();
   }
@@ -63,7 +70,8 @@ public class T3MicroSaturationGuardConfiguration {
   @Bean
   T3MicroSaturationGuard t3MicroSaturationGuard(
       T3MicroSaturationGuardProperties properties,
-      DbPoolSaturationProbe dbPoolSaturationProbe,
+      @Qualifier("dbPoolSaturationProbe") DbPoolSaturationProbe dbPoolSaturationProbe,
+      @Qualifier("transactionReadReplicaDbPoolSaturationProbe") DbPoolSaturationProbe transactionReadReplicaDbPoolSaturationProbe,
       ServletThreadSaturationProbe servletThreadSaturationProbe,
       JvmPressureProbe jvmPressureProbe,
       T3MicroQueryTimeoutSignal t3MicroQueryTimeoutSignal,
@@ -71,6 +79,7 @@ public class T3MicroSaturationGuardConfiguration {
     return new T3MicroSaturationGuard(
         properties,
         dbPoolSaturationProbe,
+        transactionReadReplicaDbPoolSaturationProbe,
         servletThreadSaturationProbe,
         jvmPressureProbe,
         t3MicroQueryTimeoutSignal,
