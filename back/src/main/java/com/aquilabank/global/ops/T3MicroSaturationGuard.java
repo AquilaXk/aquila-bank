@@ -11,6 +11,7 @@ public class T3MicroSaturationGuard {
   private final T3MicroSaturationGuardProperties properties;
   private final DbPoolSaturationProbe poolProbe;
   private final ServletThreadSaturationProbe servletThreadProbe;
+  private final JvmPressureProbe jvmPressureProbe;
   private final T3MicroQueryTimeoutSignal timeoutSignal;
   private final Counter acceptedCounter;
   private final Counter rejectedCounter;
@@ -20,11 +21,13 @@ public class T3MicroSaturationGuard {
       T3MicroSaturationGuardProperties properties,
       DbPoolSaturationProbe poolProbe,
       ServletThreadSaturationProbe servletThreadProbe,
+      JvmPressureProbe jvmPressureProbe,
       T3MicroQueryTimeoutSignal timeoutSignal,
       MeterRegistry meterRegistry) {
     this.properties = properties;
     this.poolProbe = poolProbe;
     this.servletThreadProbe = servletThreadProbe;
+    this.jvmPressureProbe = jvmPressureProbe;
     this.timeoutSignal = timeoutSignal;
     if (properties.enabled()) {
       this.acceptedCounter = requestCounter(meterRegistry, "accepted");
@@ -60,17 +63,22 @@ public class T3MicroSaturationGuard {
     DbPoolSaturationSnapshot pool = poolProbe.snapshot();
     ServletThreadSaturationSnapshot servletThreads = servletThreadProbe.snapshot();
     Duration timeoutWindow = Duration.ofSeconds(properties.queryTimeout().windowSeconds());
+    Duration gcWindow = Duration.ofSeconds(properties.jvmPressure().gcWindowSeconds());
+    JvmPressureSnapshot jvmPressure = jvmPressureProbe.snapshot(gcWindow);
     int timeoutCount = timeoutSignal.recentCount(timeoutWindow);
     boolean poolSaturated = pool.saturated(properties.pool());
     boolean servletThreadsSaturated = servletThreads.saturated(properties.servletThreads());
     boolean queryTimeoutSaturated = timeoutCount >= properties.queryTimeout().threshold();
+    boolean jvmPressureSaturated = jvmPressure.saturated(properties.jvmPressure());
     return new T3MicroSaturationSnapshot(
         pool,
         servletThreads,
+        jvmPressure,
         timeoutCount,
         poolSaturated,
         servletThreadsSaturated,
-        queryTimeoutSaturated);
+        queryTimeoutSaturated,
+        jvmPressureSaturated);
   }
 
   private boolean protectedPath(String path) {

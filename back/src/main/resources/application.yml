@@ -123,6 +123,12 @@ ops:
     query-timeout:
       window-seconds: ${OPS_T3MICRO_SATURATION_GUARD_QUERY_TIMEOUT_WINDOW_SECONDS:10}
       threshold: ${OPS_T3MICRO_SATURATION_GUARD_QUERY_TIMEOUT_THRESHOLD:1}
+    jvm-pressure:
+      enabled: ${OPS_T3MICRO_SATURATION_GUARD_JVM_PRESSURE_ENABLED:true}
+      heap-used-threshold-percent: ${OPS_T3MICRO_SATURATION_GUARD_HEAP_USED_THRESHOLD_PERCENT:90}
+      gc-window-seconds: ${OPS_T3MICRO_SATURATION_GUARD_GC_WINDOW_SECONDS:10}
+      gc-collection-threshold: ${OPS_T3MICRO_SATURATION_GUARD_GC_COLLECTION_THRESHOLD:3}
+      gc-time-threshold-ms: ${OPS_T3MICRO_SATURATION_GUARD_GC_TIME_THRESHOLD_MS:250}
 
 logging:
   pattern:
