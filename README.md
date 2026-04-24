@@ -47,7 +47,7 @@
 - 로컬 개발: `Docker Compose + PostgreSQL 18 + Kafka`
 - 로컬 t3.micro 근사 검증: `compose.t3micro.yml`과 `tools/test/run-docker-t3micro-capacity-smoke.sh`로 CPU/메모리 cgroup 제한을 적용합니다.
 - 로컬 HTTP 부하 테스트: `compose.loadtest.yml`로 backend, k6, Prometheus, Grafana, Alertmanager, Postgres exporter를 함께 띄웁니다.
-- 로컬 1억 건 synthetic 조회 테스트: `tools/test/run-transaction-read-model-100m-k6-local.sh`로 read model seed와 k6 실행을 연결합니다.
+- 로컬 1억 건 synthetic 조회 테스트: `tools/test/run-transaction-read-model-100m-k6-local.sh`로 read model seed와 k6 실행을 연결합니다. 기본 seed 전략은 t3.micro에서 사후 대형 btree build를 피하는 `SEED_INDEX_STRATEGY=required`입니다.
 - 배포 환경: `EC2 + RDS PostgreSQL 18`
 - EC2 reverse proxy baseline template은 [ops/nginx/nginx.conf](/Users/aquila/Custom/GitProjects/aquila-bank/ops/nginx/nginx.conf)에 두고, runtime 값은 `ops/nginx/runtime.env.example` 기반으로 렌더링합니다.
 - `compose.yml`은 로컬 개발 전용이며, 배포용 인프라 정의는 포함하지 않습니다.

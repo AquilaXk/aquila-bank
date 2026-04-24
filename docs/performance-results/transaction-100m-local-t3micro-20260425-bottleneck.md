@@ -180,7 +180,9 @@ STATEMENT: SELECT checkpoints_timed, checkpoints_req, ...
 
 ## Next Actions
 
-- 1순위: 1억 row read model을 단일 5천만 row btree index build에 의존하지 않도록 partition/monthly chunk 또는 pre-indexed insert 방식으로 seed 전략을 바꾼다.
-- 2순위: t3.micro PostgreSQL config에 `max_wal_size`, `max_parallel_workers_per_gather`, autovacuum, maintenance 관련 local loadtest profile을 명시한다.
-- 3순위: k6 runner가 required read index 존재 여부와 Docker `OOMKilled` 상태를 preflight/postflight로 검사하고, index가 없으면 k6를 실행하지 않게 한다.
-- 4순위: PostgreSQL 18 호환 exporter로 교체하거나 깨지는 collector를 비활성화한다.
+- 완료: local seed 기본값을 `SEED_INDEX_STRATEGY=required`로 바꿔 k6에 필요한 account cursor index를 빈 table 상태에서 유지한다.
+- 완료: t3.micro loadtest PostgreSQL config에 `max_wal_size`, checkpoint, parallel worker, JIT, autovacuum 기준을 명시한다.
+- 완료: k6 runner가 required read index 존재 여부와 Docker `OOMKilled` 상태를 preflight로 검사하고, index가 없으면 k6를 실행하지 않게 한다.
+- 완료: PostgreSQL 18에서 깨지는 `postgres-exporter` `stat_bgwriter` collector를 local loadtest runtime에서 비활성화한다.
+- 후속: transaction read model을 월/기간 기준 partition 또는 chunk 구조로 전환해 운영에서도 1억 row index build 폭탄이 생기지 않게 한다.
+- 후속: partition lifecycle/runbook/retention automation을 추가한다.
