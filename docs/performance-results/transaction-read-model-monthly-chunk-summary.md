@@ -28,9 +28,10 @@
 
 ## Local 100m Seed 영향
 
-- `tools/test/seed-transaction-read-model-100m.sh`는 explicit id insert를 유지하되 `ON CONFLICT (id, booked_at)`으로 partitioned primary key와 맞춥니다.
+- `tools/test/seed-transaction-read-model-100m.sh`는 explicit id insert를 유지합니다. `SEED_CONFLICT_MODE=ignore` idempotent mode에서만 `ON CONFLICT (id, booked_at)`을 사용해 partitioned primary key와 맞춥니다.
 - FK trigger disable/enable은 parent만이 아니라 `pg_partition_tree()` 전체에 적용합니다.
 - `SEED_INDEX_STRATEGY=required` 경로는 account cursor index가 있는 상태에서 적재해 t3.micro의 사후 대형 index build OOM을 피합니다.
+- local t3.micro 기본 batch는 `250000`이며, truncate 신규 seed 기본 경로는 conflict check 비용을 제거합니다.
 
 ## 검증
 

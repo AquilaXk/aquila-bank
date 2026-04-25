@@ -135,9 +135,12 @@ tools/ops/transaction-read-model-planner-stats-freshness-guard.sh
 
 ```bash
 SEED_TOTAL_ROWS=100000000 \
+SEED_BATCH_SIZE=250000 \
 SEED_TRUNCATE=true \
 tools/test/run-transaction-read-model-100m-k6-local.sh
 ```
+
+local t3.micro wrapper는 backend를 force-recreate해 최신 Flyway runtime을 보장하고, `flyway_schema_history` 최신 version을 로컬 migration 최신 version과 비교한 뒤 seed를 시작합니다. 기본 conflict mode는 `fail`이라 truncate 신규 seed에서 `ON CONFLICT` 비용을 내지 않습니다.
 
 이미 dataset이 준비되어 있으면 k6만 실행합니다.
 

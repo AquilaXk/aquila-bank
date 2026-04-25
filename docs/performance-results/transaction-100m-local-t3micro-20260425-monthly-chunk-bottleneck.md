@@ -134,6 +134,12 @@ Recovery 중 cgroup memory는 `memory.max`에 거의 붙어 있었고 startup pr
 - PostgreSQL cgroup memory headroom을 보장하도록 loadtest profile에서 seed phase와 query phase의 memory/WAL 설정을 분리한다.
 - seed 성공 후에만 k6를 실행하고, 실패 시 k6 미실행을 정상적인 fail-fast 결과로 문서화한다.
 
+## Follow-up Mitigation
+
+- `SEED_BATCH_SIZE` 기본값을 `250000`으로 낮춰 PostgreSQL 384MiB cgroup에서 batch별 index/WAL memory pressure를 줄인다.
+- `SEED_CONFLICT_MODE=fail`을 기본값으로 두고, truncate 신규 seed에서는 `ON CONFLICT`를 생성하지 않는다. 기존 dataset 위 idempotent append가 필요할 때만 `SEED_CONFLICT_MODE=ignore`를 명시한다.
+- local k6 wrapper는 backend bootJar 생성 후 `aquila-bank-backend`를 force-recreate하고, DB의 Flyway latest version이 로컬 migration latest version 이상인지 확인한 뒤 seed를 시작한다.
+
 ## Cleanup
 
 반복 recovery loop로 로컬 자원을 계속 쓰지 않도록 증거 수집 후 PostgreSQL loadtest container를 중지했다.
