@@ -7,8 +7,10 @@ usage: tools/test/run-transaction-read-model-100m-k6-local.sh [--print-plan|--se
 
 Environment:
   SEED_TOTAL_ROWS      default 100000000
+  SEED_BATCH_SIZE      default 250000
   SEED_TRUNCATE        default true for this wrapper
   SEED_INDEX_STRATEGY  default required
+  SEED_CONFLICT_MODE   default fail
   K6_REPORT_NAME       default transaction-100m-local-<timestamp>
   K6_VUS               default 8
   K6_DURATION          default 1m
@@ -41,6 +43,7 @@ fi
 
 compose_files=(-f compose.yml -f compose.t3micro.yml -f compose.loadtest.yml)
 seed_total_rows="${SEED_TOTAL_ROWS:-100000000}"
+seed_batch_size="${SEED_BATCH_SIZE:-250000}"
 seed_hot_account_id="${SEED_HOT_ACCOUNT_ID:-910000001}"
 seed_cold_account_id="${SEED_COLD_ACCOUNT_ID:-910000002}"
 seed_hot_from="${SEED_HOT_FROM:-2026-04-01T00:00:00Z}"
@@ -49,15 +52,17 @@ seed_cold_from="${SEED_COLD_FROM:-2026-01-01T00:00:00Z}"
 seed_cold_to="${SEED_COLD_TO:-2026-01-31T00:00:00Z}"
 seed_truncate="${SEED_TRUNCATE:-true}"
 seed_index_strategy="${SEED_INDEX_STRATEGY:-required}"
+seed_conflict_mode="${SEED_CONFLICT_MODE:-fail}"
 k6_report_name="${K6_REPORT_NAME:-transaction-100m-local-$(date +%Y-%m-%d-%H%M%S)}"
 
 psql_base=(docker compose "${compose_files[@]}" exec -T postgres psql -v ON_ERROR_STOP=1 -U "${DB_USERNAME:-postgres}" -d "${DB_NAME:-aquila_bank}")
 
 print_plan() {
   echo "[transaction-100m-local] mode=${mode}"
-  echo "[transaction-100m-local] seed_total_rows=${seed_total_rows} seed_truncate=${seed_truncate} seed_index_strategy=${seed_index_strategy}"
+  echo "[transaction-100m-local] seed_total_rows=${seed_total_rows} seed_batch_size=${seed_batch_size} seed_truncate=${seed_truncate} seed_index_strategy=${seed_index_strategy} seed_conflict_mode=${seed_conflict_mode}"
   echo "[transaction-100m-local] hot account=${seed_hot_account_id} window=${seed_hot_from}..${seed_hot_to}"
   echo "[transaction-100m-local] cold account=${seed_cold_account_id} window=${seed_cold_from}..${seed_cold_to}"
+  echo "[transaction-100m-local] flyway preflight=latest local migration"
   echo "[transaction-100m-local] k6 report=${k6_report_name} vus=${K6_VUS:-8} duration=${K6_DURATION:-1m}"
   echo "[transaction-100m-local] observability: Prometheus http://localhost:9090, Grafana http://localhost:3001"
 }
@@ -76,20 +81,62 @@ wait_for_schema() {
   exit 1
 }
 
+latest_local_flyway_version() {
+  local version
+  version="$(
+    find back/src/main/resources/db/migration -maxdepth 1 -type f -name 'V*__*.sql' \
+      | sed -E 's#^.*/V([0-9]+)__.*$#\1#' \
+      | sort -n \
+      | tail -1
+  )"
+  if [[ -z "${version}" ]]; then
+    echo "no local Flyway migrations found" >&2
+    exit 1
+  fi
+  echo "${version}"
+}
+
+assert_flyway_latest() {
+  local required_version applied_version
+  required_version="$(latest_local_flyway_version)"
+  applied_version="$(
+    "${psql_base[@]}" --no-align --tuples-only --command "
+      SELECT COALESCE(MAX(version::integer), 0)
+      FROM flyway_schema_history
+      WHERE success
+        AND version ~ '^[0-9]+$';
+    "
+  )"
+  if ! [[ "${applied_version}" =~ ^[0-9]+$ ]]; then
+    echo "Flyway latest version check returned invalid value: ${applied_version}" >&2
+    exit 1
+  fi
+  echo "[transaction-100m-local] flyway latest applied=${applied_version} required=${required_version}"
+  if ((applied_version < required_version)); then
+    echo "Flyway schema is stale. Recreate aquila-bank-backend and retry before seed." >&2
+    exit 1
+  fi
+}
+
 start_runtime() {
   echo "[transaction-100m-local] building backend bootJar"
   tools/test/with-resource-lock.sh back-gradle-loadtest-bootjar ./back/gradlew -p back bootJar
 
   echo "[transaction-100m-local] starting loadtest runtime"
   docker compose "${compose_files[@]}" --profile loadtest up -d \
-    postgres aquila-bank-backend prometheus grafana alertmanager postgres-exporter
+    postgres prometheus grafana alertmanager postgres-exporter
+
+  # stale backend container는 새 bootJar/Flyway를 놓칠 수 있어 backend만 강제 재생성합니다.
+  docker compose "${compose_files[@]}" --profile loadtest up -d --force-recreate aquila-bank-backend
 
   echo "[transaction-100m-local] waiting for Flyway schema"
   wait_for_schema
+  assert_flyway_latest
 }
 
 run_seed() {
   SEED_TOTAL_ROWS="${seed_total_rows}" \
+  SEED_BATCH_SIZE="${seed_batch_size}" \
   SEED_HOT_ACCOUNT_ID="${seed_hot_account_id}" \
   SEED_COLD_ACCOUNT_ID="${seed_cold_account_id}" \
   SEED_HOT_FROM="${seed_hot_from}" \
@@ -98,6 +145,7 @@ run_seed() {
   SEED_COLD_TO="${seed_cold_to}" \
   SEED_TRUNCATE="${seed_truncate}" \
   SEED_INDEX_STRATEGY="${seed_index_strategy}" \
+  SEED_CONFLICT_MODE="${seed_conflict_mode}" \
     tools/test/seed-transaction-read-model-100m.sh
 }
 
@@ -138,6 +186,7 @@ fi
 if [[ "${mode}" != "seed-only" ]]; then
   if [[ "${mode}" == "k6-only" ]]; then
     wait_for_schema
+    assert_flyway_latest
   fi
   assert_k6_preflight
   run_k6

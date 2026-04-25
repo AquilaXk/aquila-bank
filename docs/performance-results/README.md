@@ -36,11 +36,18 @@ YYYY-MM-DD-<environment>-<workload>.md
 
 ```bash
 SEED_TOTAL_ROWS=100000000 \
+SEED_BATCH_SIZE=250000 \
 SEED_TRUNCATE=true \
 tools/test/run-transaction-read-model-100m-k6-local.sh
 ```
 
 기본값은 `SEED_INDEX_STRATEGY=required`입니다. 이 전략은 hot/archive account cursor index를 빈 table 상태에서 먼저 유지해, t3.micro PostgreSQL에서 5천만 row btree를 사후 build하다 OOM 나는 경로를 피합니다.
+
+기본 batch는 `SEED_BATCH_SIZE=250000`입니다. PostgreSQL 384MiB cgroup에서 100만 row 단위 insert가 recovery loop를 만든 전례가 있어 local t3.micro 경로는 더 작은 batch를 기본으로 둡니다.
+
+기본 conflict mode는 `SEED_CONFLICT_MODE=fail`입니다. `SEED_TRUNCATE=true` 신규 seed는 중복 가능성이 없어 `ON CONFLICT` 비용을 제거합니다. 기존 dataset 위에 idempotent append를 의도할 때만 `SEED_TRUNCATE=false SEED_CONFLICT_MODE=ignore`를 명시합니다.
+
+wrapper는 backend bootJar를 만든 뒤 `aquila-bank-backend`를 force-recreate하고, DB의 `flyway_schema_history` 최신 version이 로컬 migration 파일 최신 version 이상인지 확인한 뒤 seed를 실행합니다.
 
 `SEED_INDEX_STRATEGY=rebuild-all`은 전체 secondary filter index를 drop 후 재생성합니다. 이 모드는 partition/chunk 구조 검증 또는 더 큰 memory budget에서만 사용하고, t3.micro 측정 경로에서는 기본값으로 사용하지 않습니다.
 
@@ -50,6 +57,7 @@ tools/test/run-transaction-read-model-100m-k6-local.sh
 - Docker Desktop memory/disk limit
 - `compose.loadtest.yml`의 backend `2 vCPU / 1GiB` budget
 - PostgreSQL container가 이전 실행에서 `OOMKilled=true`로 남아 있지 않은지 여부
+- `tools/test/run-transaction-read-model-100m-k6-local.sh --print-plan`의 batch/conflict/Flyway preflight 값
 - hot/cold account와 기간 기본값이 테스트 의도와 맞는지 여부
 
 수동 보관이 필요하면 아래 명령을 사용합니다.

@@ -8,7 +8,7 @@ usage: tools/test/seed-transaction-read-model-100m.sh [--print-plan]
 Environment:
   SEED_TOTAL_ROWS                 total rows, default 100000000
   SEED_HOT_ROWS                   hot table rows, default half of total
-  SEED_BATCH_SIZE                 insert batch size, default 1000000
+  SEED_BATCH_SIZE                 insert batch size, default 250000
   SEED_HOT_ACCOUNT_ID             default 910000001
   SEED_COLD_ACCOUNT_ID            default 910000002
   SEED_HOT_FROM                   default 2026-04-01T00:00:00Z
@@ -18,11 +18,13 @@ Environment:
   SEED_TRUNCATE                   truncate read model tables first, default false
   SEED_INDEX_STRATEGY             required|rebuild-all|none, default required
   SEED_REBUILD_SECONDARY_INDEXES  legacy true->rebuild-all false->none when SEED_INDEX_STRATEGY is unset
+  SEED_CONFLICT_MODE              fail|ignore, default fail
   SEED_DISABLE_FK_TRIGGERS        disable read model FK triggers around seed, default true
 
 Examples:
   tools/test/seed-transaction-read-model-100m.sh --print-plan
   SEED_TOTAL_ROWS=100000000 SEED_TRUNCATE=true tools/test/seed-transaction-read-model-100m.sh
+  SEED_TRUNCATE=false SEED_CONFLICT_MODE=ignore tools/test/seed-transaction-read-model-100m.sh
 USAGE
 }
 
@@ -58,6 +60,17 @@ require_index_strategy() {
   esac
 }
 
+require_conflict_mode() {
+  local value="$1"
+  case "${value}" in
+    fail | ignore) ;;
+    *)
+      echo "SEED_CONFLICT_MODE must be fail or ignore" >&2
+      exit 1
+      ;;
+  esac
+}
+
 mode="run"
 if [[ "${1:-}" == "--print-plan" ]]; then
   mode="print-plan"
@@ -75,7 +88,7 @@ fi
 total_rows="${SEED_TOTAL_ROWS:-100000000}"
 hot_rows="${SEED_HOT_ROWS:-$((total_rows / 2))}"
 cold_rows=$((total_rows - hot_rows))
-batch_size="${SEED_BATCH_SIZE:-1000000}"
+batch_size="${SEED_BATCH_SIZE:-250000}"
 hot_account_id="${SEED_HOT_ACCOUNT_ID:-910000001}"
 cold_account_id="${SEED_COLD_ACCOUNT_ID:-910000002}"
 hot_from="${SEED_HOT_FROM:-2026-04-01T00:00:00Z}"
@@ -83,6 +96,7 @@ hot_to="${SEED_HOT_TO:-2026-04-30T00:00:00Z}"
 cold_from="${SEED_COLD_FROM:-2026-01-01T00:00:00Z}"
 cold_to="${SEED_COLD_TO:-2026-01-31T00:00:00Z}"
 truncate_tables="${SEED_TRUNCATE:-false}"
+conflict_mode="${SEED_CONFLICT_MODE:-fail}"
 if [[ -n "${SEED_INDEX_STRATEGY:-}" ]]; then
   index_strategy="${SEED_INDEX_STRATEGY}"
 elif [[ -n "${SEED_REBUILD_SECONDARY_INDEXES:-}" ]]; then
@@ -104,6 +118,7 @@ require_positive_integer SEED_HOT_ACCOUNT_ID "${hot_account_id}"
 require_positive_integer SEED_COLD_ACCOUNT_ID "${cold_account_id}"
 require_boolean SEED_TRUNCATE "${truncate_tables}"
 require_index_strategy "${index_strategy}"
+require_conflict_mode "${conflict_mode}"
 require_boolean SEED_DISABLE_FK_TRIGGERS "${disable_fk_triggers}"
 
 if ((hot_rows >= total_rows)); then
@@ -119,7 +134,7 @@ print_plan() {
   echo "[transaction-100m-seed] hot_rows=${hot_rows} archive_rows=${cold_rows} batch_size=${batch_size}"
   echo "[transaction-100m-seed] hot account=${hot_account_id} window=${hot_from}..${hot_to}"
   echo "[transaction-100m-seed] cold account=${cold_account_id} window=${cold_from}..${cold_to}"
-  echo "[transaction-100m-seed] truncate=${truncate_tables} index-strategy=${index_strategy} disable-fk-triggers=${disable_fk_triggers}"
+  echo "[transaction-100m-seed] truncate=${truncate_tables} index-strategy=${index_strategy} conflict-mode=${conflict_mode} disable-fk-triggers=${disable_fk_triggers}"
   echo "[transaction-100m-seed] caveat: local read-path seed only; ledger source-of-truth rows are not generated."
 }
 
@@ -220,9 +235,17 @@ set_trigger_state() {
   "
 }
 
+conflict_clause() {
+  if [[ "${conflict_mode}" == "ignore" ]]; then
+    echo "ON CONFLICT (id, booked_at) DO NOTHING"
+  fi
+}
+
 insert_hot_batch() {
   local start="$1"
   local finish="$2"
+  local conflict_sql
+  conflict_sql="$(conflict_clause)"
   psql_sql "
     INSERT INTO transaction_read_model (
       id,
@@ -254,7 +277,7 @@ insert_hot_batch() {
       '${hot_to}'::timestamptz - (((n - 1) % 2500000) * interval '1 second'),
       now()
     FROM generate_series(${start}, ${finish}) AS series(n)
-    ON CONFLICT (id, booked_at) DO NOTHING;
+    ${conflict_sql};
   "
 }
 
@@ -263,6 +286,8 @@ insert_archive_batch() {
   local finish="$2"
   local id_offset="$hot_rows"
   local ledger_offset="1000000000000"
+  local conflict_sql
+  conflict_sql="$(conflict_clause)"
   psql_sql "
     INSERT INTO transaction_read_model_archive (
       id,
@@ -296,7 +321,7 @@ insert_archive_batch() {
       now(),
       now()
     FROM generate_series(${start}, ${finish}) AS series(n)
-    ON CONFLICT (id, booked_at) DO NOTHING;
+    ${conflict_sql};
   "
 }
 
