@@ -567,6 +567,127 @@
       "fieldConfig": {
         "defaults": {
           "decimals": 3,
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 20
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, query_shape) (rate(aquila_transaction_query_latency_seconds_bucket{outcome=\"success\"}[5m])))",
+          "legendFormat": "{{query_shape}} accepted_p95",
+          "refId": "A"
+        }
+      ],
+      "title": "Transaction Read Accepted P95 SLO",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 3,
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 20
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(aquila_api_admission_requests_total{group=\"transaction-read\",outcome=\"rejected\"}[5m])) / clamp_min(sum(rate(aquila_api_admission_requests_total{group=\"transaction-read\"}[5m])), 0.001)",
+          "legendFormat": "admission_rejected_ratio",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(aquila_t3micro_saturation_guard_requests_total{outcome=\"rejected\"}[5m])) / clamp_min(sum(rate(aquila_t3micro_saturation_guard_requests_total[5m])), 0.001)",
+          "legendFormat": "saturation_rejected_ratio",
+          "refId": "B"
+        }
+      ],
+      "title": "Transaction Read Rejected Ratio",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 3,
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 20
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "max(aquila_api_admission_inflight{group=\"transaction-read\"})",
+          "legendFormat": "admission_inflight",
+          "refId": "A"
+        },
+        {
+          "expr": "max(aquila_transaction_429_rate)",
+          "legendFormat": "k6_transaction_429_rate",
+          "refId": "B"
+        }
+      ],
+      "title": "Transaction Read Inflight and 429",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 3,
           "unit": "none"
         },
         "overrides": []
@@ -575,7 +696,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 20
+        "y": 28
       },
       "options": {
         "legend": {
@@ -632,7 +753,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 28
+        "y": 36
       },
       "options": {
         "legend": {
@@ -669,7 +790,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 36
+        "y": 44
       },
       "options": {
         "legend": {
@@ -706,7 +827,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 36
+        "y": 44
       },
       "options": {
         "legend": {
@@ -743,7 +864,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 44
+        "y": 52
       },
       "options": {
         "legend": {
