@@ -20,6 +20,7 @@ Optional environment:
   PROFILE_DB_POOL_MAX_SIZE  default 4
   PROFILE_BUILD_BACKEND     default true
   PROFILE_READINESS_TIMEOUT_SECONDS default 90
+  PROFILE_JFR_DUMP_TIMEOUT_SECONDS default 60
   PROFILE_BACKEND_HEALTH_URL default http://localhost:${BACKEND_PORT:-8080}/actuator/health
   K6_VUS                    default 8
   K6_DURATION               default 1m
@@ -57,6 +58,7 @@ profile_admission="${PROFILE_ADMISSION:-8}"
 profile_db_pool_max_size="${PROFILE_DB_POOL_MAX_SIZE:-4}"
 profile_build_backend="${PROFILE_BUILD_BACKEND:-true}"
 profile_readiness_timeout_seconds="${PROFILE_READINESS_TIMEOUT_SECONDS:-90}"
+profile_jfr_dump_timeout_seconds="${PROFILE_JFR_DUMP_TIMEOUT_SECONDS:-60}"
 backend_health_url="${PROFILE_BACKEND_HEALTH_URL:-http://localhost:${BACKEND_PORT:-8080}/actuator/health}"
 k6_vus="${K6_VUS:-8}"
 k6_duration="${K6_DURATION:-1m}"
@@ -108,6 +110,7 @@ require_duration "K6_DURATION" "${k6_duration}"
 require_positive_integer "PROFILE_ADMISSION" "${profile_admission}"
 require_positive_integer "PROFILE_DB_POOL_MAX_SIZE" "${profile_db_pool_max_size}"
 require_positive_integer "PROFILE_READINESS_TIMEOUT_SECONDS" "${profile_readiness_timeout_seconds}"
+require_positive_integer "PROFILE_JFR_DUMP_TIMEOUT_SECONDS" "${profile_jfr_dump_timeout_seconds}"
 require_positive_integer "K6_VUS" "${k6_vus}"
 require_positive_integer "K6_LIMIT" "${k6_limit}"
 
@@ -148,12 +151,29 @@ wait_for_backend_readiness() {
   exit 1
 }
 
+wait_for_jfr_dump() {
+  local deadline=$((SECONDS + profile_jfr_dump_timeout_seconds))
+
+  echo "[transaction-read-hotpath-profile] waiting JFR dump: ${jfr_container_path}"
+  while ((SECONDS < deadline)); do
+    if docker compose "${compose_files[@]}" --profile loadtest exec -T aquila-bank-backend \
+        sh -c "test -s '${jfr_container_path}'" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 2
+  done
+
+  echo "JFR dump timeout: ${jfr_container_path}" >&2
+  return 1
+}
+
 print_plan() {
   echo "[transaction-read-hotpath-profile] profile=${profile_name}"
   echo "[transaction-read-hotpath-profile] profiler=jfr"
   echo "[transaction-read-hotpath-profile] admission=${profile_admission} db_pool=${profile_db_pool_max_size}"
   echo "[transaction-read-hotpath-profile] k6 vus=${k6_vus} duration=${k6_duration} limit=${k6_limit} report=${k6_report_name}"
   echo "[transaction-read-hotpath-profile] jfr duration=${profile_duration}"
+  echo "[transaction-read-hotpath-profile] jfr_dump_timeout_seconds=${profile_jfr_dump_timeout_seconds}"
   echo "[transaction-read-hotpath-profile] backend_health_url=${backend_health_url}"
   echo "[transaction-read-hotpath-profile] readiness_timeout_seconds=${profile_readiness_timeout_seconds}"
   echo "[transaction-read-hotpath-profile] artifact=${jfr_artifact}"
@@ -212,6 +232,8 @@ docker compose "${compose_files[@]}" --profile loadtest run --rm --no-deps \
   k6-transaction-read-100m >"${run_log}" 2>&1
 k6_status=$?
 set -e
+
+wait_for_jfr_dump || true
 
 echo "[transaction-read-hotpath-profile] stopping backend to dump JFR"
 docker compose "${compose_files[@]}" --profile loadtest stop aquila-bank-backend >/dev/null 2>&1 || true

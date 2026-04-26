@@ -18,6 +18,7 @@ grep -F "profile=transaction-read-hotpath-check" <<<"${plan}" >/dev/null
 grep -F "profiler=jfr" <<<"${plan}" >/dev/null
 grep -F "k6 vus=8 duration=15s" <<<"${plan}" >/dev/null
 grep -F "jfr duration=20s" <<<"${plan}" >/dev/null
+grep -F "jfr_dump_timeout_seconds=60" <<<"${plan}" >/dev/null
 grep -F "backend_health_url=http://localhost:8080/actuator/health" <<<"${plan}" >/dev/null
 grep -F "artifact=build/reports/profiling/transaction-read-hotpath-check/transaction-read-hotpath-check.jfr" <<<"${plan}" >/dev/null
 grep -F "summary=build/reports/profiling/transaction-read-hotpath-check/transaction-read-hotpath-check-summary.md" <<<"${plan}" >/dev/null
@@ -25,6 +26,7 @@ grep -F "summary=build/reports/profiling/transaction-read-hotpath-check/transact
 echo "[transaction-read-hotpath-profile] runner contract"
 grep -F "StartFlightRecording" "${script}" >/dev/null
 grep -F "wait_for_backend_readiness" "${script}" >/dev/null
+grep -F "wait_for_jfr_dump" "${script}" >/dev/null
 grep -F "LOADTEST_BACKEND_JAVA_TOOL_OPTIONS" "${script}" >/dev/null
 grep -F "docker cp" "${script}" >/dev/null
 grep -F "docker compose" "${script}" >/dev/null
