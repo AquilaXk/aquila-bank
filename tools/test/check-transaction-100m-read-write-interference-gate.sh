@@ -52,6 +52,7 @@ grep -F "aquila_transfer_write_duration_ms" "${write_script}" >/dev/null
 grep -F "Retry-After" "${write_script}" >/dev/null
 
 echo "[transaction-read-write-interference] compose kafka override"
+grep -F 'image: ${KAFKA_IMAGE:-bitnamilegacy/kafka:4.0.0-debian-12-r10}' compose.yml >/dev/null
 grep -F 'KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://${KAFKA_ADVERTISED_HOST:-localhost}:${KAFKA_PORT:-9092}' compose.yml >/dev/null
 grep -F 'OUTBOX_KAFKA_BOOTSTRAP_SERVERS: ${OUTBOX_KAFKA_BOOTSTRAP_SERVERS:-}' compose.loadtest.yml >/dev/null
 grep -F 'NOTIFICATION_INBOX_CONSUMER_BOOTSTRAP_SERVERS: ${NOTIFICATION_INBOX_CONSUMER_BOOTSTRAP_SERVERS:-}' compose.loadtest.yml >/dev/null
