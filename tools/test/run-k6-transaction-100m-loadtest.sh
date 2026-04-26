@@ -26,6 +26,12 @@ Optional environment:
                        max 429 rate in overload mode, default 0.05
   K6_MAX_RETRY_AFTER_SLEEP_SECONDS
                        cap Retry-After backoff in overload mode, default 1
+  K6_GENERATOR_MODE   local|docker-context, default local
+  K6_DOCKER_CONTEXT   docker context for remote k6 generator, required when mode=docker-context
+  K6_REMOTE_BASE_URL  backend URL reachable from remote k6, required when mode=docker-context
+  K6_REMOTE_PROMETHEUS_RW_SERVER_URL
+                       Prometheus remote-write URL reachable from remote k6, required when mode=docker-context
+  K6_REMOTE_WORKDIR   repo path visible from docker context host, default current working directory
 
 Examples:
   K6_HOT_ACCOUNT_ID=101 K6_HOT_FROM=2026-04-01T00:00:00Z K6_HOT_TO=2026-04-30T00:00:00Z \
@@ -75,6 +81,17 @@ require_rate() {
     }
 }
 
+require_generator_mode() {
+  case "${K6_GENERATOR_MODE}" in
+    local|docker-context)
+      ;;
+    *)
+      echo "K6_GENERATOR_MODE must be local or docker-context" >&2
+      exit 1
+      ;;
+  esac
+}
+
 mode="run"
 run_dependencies="true"
 while [[ "$#" -gt 0 ]]; do
@@ -107,13 +124,25 @@ K6_PREFLIGHT="${K6_PREFLIGHT:-true}"
 K6_OVERLOAD_MODE="${K6_OVERLOAD_MODE:-false}"
 K6_OVERLOAD_429_RATE_THRESHOLD="${K6_OVERLOAD_429_RATE_THRESHOLD:-0.05}"
 K6_MAX_RETRY_AFTER_SLEEP_SECONDS="${K6_MAX_RETRY_AFTER_SLEEP_SECONDS:-1}"
+K6_GENERATOR_MODE="${K6_GENERATOR_MODE:-local}"
+K6_DOCKER_CONTEXT="${K6_DOCKER_CONTEXT:-}"
+K6_REMOTE_BASE_URL="${K6_REMOTE_BASE_URL:-}"
+K6_REMOTE_PROMETHEUS_RW_SERVER_URL="${K6_REMOTE_PROMETHEUS_RW_SERVER_URL:-}"
+K6_REMOTE_WORKDIR="${K6_REMOTE_WORKDIR:-$(pwd)}"
 K6_REPORT_NAME="${K6_REPORT_NAME:-transaction-100m-$(date +%Y-%m-%d-%H%M%S)}"
-export K6_VUS K6_LIMIT K6_ARCHIVE_RESULTS K6_PREFLIGHT K6_OVERLOAD_MODE K6_OVERLOAD_429_RATE_THRESHOLD K6_MAX_RETRY_AFTER_SLEEP_SECONDS K6_REPORT_NAME
+export K6_VUS K6_LIMIT K6_ARCHIVE_RESULTS K6_PREFLIGHT K6_OVERLOAD_MODE K6_OVERLOAD_429_RATE_THRESHOLD K6_MAX_RETRY_AFTER_SLEEP_SECONDS K6_GENERATOR_MODE K6_DOCKER_CONTEXT K6_REMOTE_BASE_URL K6_REMOTE_PROMETHEUS_RW_SERVER_URL K6_REMOTE_WORKDIR K6_REPORT_NAME
 
 require_positive_integer K6_VUS
 require_positive_integer K6_LIMIT
 require_non_negative_integer K6_MAX_RETRY_AFTER_SLEEP_SECONDS
 require_rate K6_OVERLOAD_429_RATE_THRESHOLD
+require_generator_mode
+
+if [[ "${K6_GENERATOR_MODE}" == "docker-context" ]]; then
+  require_env K6_DOCKER_CONTEXT
+  require_env K6_REMOTE_BASE_URL
+  require_env K6_REMOTE_PROMETHEUS_RW_SERVER_URL
+fi
 
 compose_files=(-f compose.yml -f compose.t3micro.yml -f compose.loadtest.yml)
 report_dir="build/reports/k6"
@@ -129,6 +158,15 @@ print_plan() {
   echo "[k6-transaction-100m] k6 vus=${K6_VUS} duration=${K6_DURATION:-1m} limit=${K6_LIMIT}"
   echo "[k6-transaction-100m] overload mode=${K6_OVERLOAD_MODE} max retry-after sleep seconds=${K6_MAX_RETRY_AFTER_SLEEP_SECONDS}"
   echo "[k6-transaction-100m] overload 429 rate threshold=${K6_OVERLOAD_429_RATE_THRESHOLD}"
+  echo "[k6-transaction-100m] generator mode=${K6_GENERATOR_MODE}"
+  if [[ "${K6_GENERATOR_MODE}" == "docker-context" ]]; then
+    echo "[k6-transaction-100m] generator runner=docker --context ${K6_DOCKER_CONTEXT} run grafana/k6:0.54.0"
+    echo "[k6-transaction-100m] remote base url=${K6_REMOTE_BASE_URL}"
+    echo "[k6-transaction-100m] remote prometheus rw=${K6_REMOTE_PROMETHEUS_RW_SERVER_URL}"
+    echo "[k6-transaction-100m] remote workdir=${K6_REMOTE_WORKDIR}"
+  else
+    echo "[k6-transaction-100m] generator runner=docker compose service k6-transaction-read-100m"
+  fi
   echo "[k6-transaction-100m] preflight=${K6_PREFLIGHT}"
   if [[ "${run_dependencies}" == "true" ]]; then
     echo "[k6-transaction-100m] dependencies=compose-default"
@@ -197,26 +235,74 @@ fi
 
 assert_k6_preflight
 
+run_k6_local() {
+  local run_args
+  run_args=(--rm)
+  if [[ "${run_dependencies}" != "true" ]]; then
+    run_args+=(--no-deps)
+  fi
+
+  docker compose "${compose_files[@]}" --profile loadtest run "${run_args[@]}" \
+    -e K6_REPORT_NAME="${K6_REPORT_NAME}" \
+    -e K6_HOT_ACCOUNT_ID="${K6_HOT_ACCOUNT_ID}" \
+    -e K6_HOT_FROM="${K6_HOT_FROM}" \
+    -e K6_HOT_TO="${K6_HOT_TO}" \
+    -e K6_COLD_ACCOUNT_ID="${K6_COLD_ACCOUNT_ID}" \
+    -e K6_COLD_FROM="${K6_COLD_FROM}" \
+    -e K6_COLD_TO="${K6_COLD_TO}" \
+    -e K6_AUTH_TOKEN="${K6_AUTH_TOKEN:-}" \
+    -e K6_VUS="${K6_VUS}" \
+    -e K6_DURATION="${K6_DURATION:-1m}" \
+    -e K6_LIMIT="${K6_LIMIT}" \
+    -e K6_OVERLOAD_MODE="${K6_OVERLOAD_MODE}" \
+    -e K6_OVERLOAD_429_RATE_THRESHOLD="${K6_OVERLOAD_429_RATE_THRESHOLD}" \
+    -e K6_MAX_RETRY_AFTER_SLEEP_SECONDS="${K6_MAX_RETRY_AFTER_SLEEP_SECONDS}" \
+    k6-transaction-read-100m
+}
+
+run_k6_docker_context() {
+  local remote_report_dir="${K6_REMOTE_WORKDIR}/build/reports/k6"
+
+  # backend/PostgreSQL CPU와 k6 CPU를 분리하기 위한 별도 Docker context 실행 경로.
+  echo "[k6-transaction-100m] running remote k6 generator on docker context ${K6_DOCKER_CONTEXT}"
+  echo "[k6-transaction-100m] remote reports: ${remote_report_dir}/${K6_REPORT_NAME}-summary.{md,json}"
+
+  docker --context "${K6_DOCKER_CONTEXT}" run --rm \
+    -e BASE_URL="${K6_REMOTE_BASE_URL}" \
+    -e K6_PROMETHEUS_RW_SERVER_URL="${K6_REMOTE_PROMETHEUS_RW_SERVER_URL}" \
+    -e K6_PROMETHEUS_RW_TREND_STATS="p(50),p(90),p(95),p(99),min,max,avg" \
+    -e K6_REPORT_NAME="${K6_REPORT_NAME}" \
+    -e K6_HOT_ACCOUNT_ID="${K6_HOT_ACCOUNT_ID}" \
+    -e K6_HOT_FROM="${K6_HOT_FROM}" \
+    -e K6_HOT_TO="${K6_HOT_TO}" \
+    -e K6_COLD_ACCOUNT_ID="${K6_COLD_ACCOUNT_ID}" \
+    -e K6_COLD_FROM="${K6_COLD_FROM}" \
+    -e K6_COLD_TO="${K6_COLD_TO}" \
+    -e K6_AUTH_TOKEN="${K6_AUTH_TOKEN:-}" \
+    -e K6_VUS="${K6_VUS}" \
+    -e K6_DURATION="${K6_DURATION:-1m}" \
+    -e K6_LIMIT="${K6_LIMIT}" \
+    -e K6_HOT_P95_THRESHOLD_MS="${K6_HOT_P95_THRESHOLD_MS:-350}" \
+    -e K6_COLD_P95_THRESHOLD_MS="${K6_COLD_P95_THRESHOLD_MS:-750}" \
+    -e K6_HTTP_FAILED_RATE="${K6_HTTP_FAILED_RATE:-0.01}" \
+    -e K6_OVERLOAD_MODE="${K6_OVERLOAD_MODE}" \
+    -e K6_OVERLOAD_429_RATE_THRESHOLD="${K6_OVERLOAD_429_RATE_THRESHOLD}" \
+    -e K6_MAX_RETRY_AFTER_SLEEP_SECONDS="${K6_MAX_RETRY_AFTER_SLEEP_SECONDS}" \
+    -v "${K6_REMOTE_WORKDIR}/ops/k6:/scripts:ro" \
+    -v "${remote_report_dir}:/reports" \
+    grafana/k6:0.54.0 \
+    run \
+    --out \
+    experimental-prometheus-rw \
+    /scripts/transaction-read-100m.js
+}
+
 set +e
-run_args=(--rm)
-if [[ "${run_dependencies}" != "true" ]]; then
-  run_args+=(--no-deps)
+if [[ "${K6_GENERATOR_MODE}" == "docker-context" ]]; then
+  run_k6_docker_context
+else
+  run_k6_local
 fi
-docker compose "${compose_files[@]}" --profile loadtest run "${run_args[@]}" \
-  -e K6_REPORT_NAME="${K6_REPORT_NAME}" \
-  -e K6_HOT_ACCOUNT_ID="${K6_HOT_ACCOUNT_ID}" \
-  -e K6_HOT_FROM="${K6_HOT_FROM}" \
-  -e K6_HOT_TO="${K6_HOT_TO}" \
-  -e K6_COLD_ACCOUNT_ID="${K6_COLD_ACCOUNT_ID}" \
-  -e K6_COLD_FROM="${K6_COLD_FROM}" \
-  -e K6_COLD_TO="${K6_COLD_TO}" \
-  -e K6_AUTH_TOKEN="${K6_AUTH_TOKEN:-}" \
-  -e K6_VUS="${K6_VUS}" \
-  -e K6_DURATION="${K6_DURATION:-1m}" \
-  -e K6_LIMIT="${K6_LIMIT}" \
-  -e K6_OVERLOAD_MODE="${K6_OVERLOAD_MODE}" \
-  -e K6_MAX_RETRY_AFTER_SLEEP_SECONDS="${K6_MAX_RETRY_AFTER_SLEEP_SECONDS}" \
-  k6-transaction-read-100m
 status=$?
 set -e
 
@@ -224,6 +310,9 @@ if [[ "${K6_ARCHIVE_RESULTS}" == "true" && -f "${summary_md}" ]]; then
   tools/test/archive-k6-transaction-100m-result.sh "${summary_md}" "${summary_json}"
 elif [[ "${K6_ARCHIVE_RESULTS}" == "true" ]]; then
   echo "k6 summary markdown was not produced: ${summary_md}" >&2
+  if [[ "${K6_GENERATOR_MODE}" == "docker-context" ]]; then
+    echo "remote generator writes summaries under ${K6_REMOTE_WORKDIR}/build/reports/k6 on docker context ${K6_DOCKER_CONTEXT}" >&2
+  fi
 fi
 
 exit "${status}"
