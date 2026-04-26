@@ -1,0 +1,270 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE' >&2
+usage: tools/test/run-transaction-read-admission-pool-matrix.sh [--print-plan]
+
+Required runtime environment for actual runs:
+  K6_HOT_ACCOUNT_ID
+  K6_HOT_FROM
+  K6_HOT_TO
+  K6_COLD_ACCOUNT_ID
+  K6_COLD_FROM
+  K6_COLD_TO
+
+Optional environment:
+  MATRIX_NAME              default transaction-read-admission-pool-<timestamp>
+  MATRIX_ADMISSION_VALUES  default 3,4,6,8
+  MATRIX_DB_POOL_VALUES    default 4,6,8
+  MATRIX_VU_VALUES         default 3,4,6,8
+  MATRIX_CONTINUE_ON_FAILURE default true
+  MATRIX_BUILD_BACKEND     default true
+  PROMETHEUS_URL           default http://localhost:9090
+  K6_DURATION              default 1m
+  K6_LIMIT                 default 50
+
+Examples:
+  tools/test/run-transaction-read-admission-pool-matrix.sh --print-plan
+  MATRIX_ADMISSION_VALUES=3,8 MATRIX_DB_POOL_VALUES=4,8 MATRIX_VU_VALUES=3,8 \
+    tools/test/run-transaction-read-admission-pool-matrix.sh
+USAGE
+}
+
+mode="run"
+while [[ "$#" -gt 0 ]]; do
+  case "$1" in
+    --print-plan)
+      mode="print-plan"
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage
+      exit 1
+      ;;
+  esac
+  shift
+done
+
+matrix_name="${MATRIX_NAME:-transaction-read-admission-pool-$(date +%Y-%m-%d-%H%M%S)}"
+admission_values="${MATRIX_ADMISSION_VALUES-3,4,6,8}"
+db_pool_values="${MATRIX_DB_POOL_VALUES-4,6,8}"
+vu_values="${MATRIX_VU_VALUES-3,4,6,8}"
+continue_on_failure="${MATRIX_CONTINUE_ON_FAILURE:-true}"
+build_backend="${MATRIX_BUILD_BACKEND:-true}"
+prometheus_url="${PROMETHEUS_URL:-http://localhost:9090}"
+report_dir="build/reports/k6/${matrix_name}"
+summary_tsv="${report_dir}/matrix-summary.tsv"
+compose_files=(-f compose.yml -f compose.t3micro.yml -f compose.loadtest.yml)
+
+require_csv_positive_integers() {
+  local name="$1"
+  local value="$2"
+  if [[ -z "${value}" ]]; then
+    echo "${name} must not be empty" >&2
+    exit 1
+  fi
+  IFS=',' read -r -a items <<<"${value}"
+  local item
+  for item in "${items[@]}"; do
+    if ! [[ "${item}" =~ ^[1-9][0-9]*$ ]]; then
+      echo "${name} must contain positive integers: ${value}" >&2
+      exit 1
+    fi
+  done
+}
+
+csv_count() {
+  local value="$1"
+  IFS=',' read -r -a items <<<"${value}"
+  echo "${#items[@]}"
+}
+
+require_csv_positive_integers "MATRIX_ADMISSION_VALUES" "${admission_values}"
+require_csv_positive_integers "MATRIX_DB_POOL_VALUES" "${db_pool_values}"
+require_csv_positive_integers "MATRIX_VU_VALUES" "${vu_values}"
+
+admission_count="$(csv_count "${admission_values}")"
+db_pool_count="$(csv_count "${db_pool_values}")"
+vu_count="$(csv_count "${vu_values}")"
+combination_count=$((admission_count * db_pool_count * vu_count))
+
+print_plan() {
+  echo "[transaction-read-matrix] matrix=${matrix_name}"
+  echo "[transaction-read-matrix] admission_values=${admission_values}"
+  echo "[transaction-read-matrix] db_pool_values=${db_pool_values}"
+  echo "[transaction-read-matrix] vu_values=${vu_values}"
+  echo "[transaction-read-matrix] combinations=${combination_count}"
+  echo "[transaction-read-matrix] execution=serial"
+  echo "[transaction-read-matrix] continue_on_failure=${continue_on_failure}"
+  echo "[transaction-read-matrix] build_backend=${build_backend}"
+  echo "[transaction-read-matrix] prometheus_url=${prometheus_url}"
+  echo "[transaction-read-matrix] summary=${summary_tsv}"
+}
+
+print_plan
+if [[ "${mode}" == "print-plan" ]]; then
+  exit 0
+fi
+
+mkdir -p "${report_dir}"
+
+if [[ "${build_backend}" == "true" ]]; then
+  echo "[transaction-read-matrix] building backend bootJar"
+  tools/test/with-resource-lock.sh back-gradle-loadtest-bootjar ./back/gradlew -p back bootJar
+fi
+
+echo "[transaction-read-matrix] starting shared loadtest services"
+docker compose "${compose_files[@]}" --profile loadtest up -d \
+  postgres alertmanager postgres-exporter
+
+metric_from_json() {
+  local json_path="$1"
+  local metric="$2"
+  local value_name="$3"
+  if [[ ! -f "${json_path}" ]] || ! command -v jq >/dev/null 2>&1; then
+    echo "n/a"
+    return 0
+  fi
+  jq -r --arg metric "${metric}" --arg value_name "${value_name}" \
+    '.metrics[$metric].values[$value_name] // "n/a"' "${json_path}"
+}
+
+prometheus_value() {
+  local query="$1"
+  if ! command -v curl >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
+    echo "n/a"
+    return 0
+  fi
+  curl -fsS --get "${prometheus_url}/api/v1/query" \
+    --data-urlencode "query=${query}" 2>/dev/null \
+    | jq -r '.data.result[0].value[1] // "0"' 2>/dev/null \
+    || echo "n/a"
+}
+
+numeric_delta() {
+  local before="$1"
+  local after="$2"
+  awk -v before="${before}" -v after="${after}" 'BEGIN {
+    if (before == "n/a" || after == "n/a") { print "n/a"; exit }
+    { delta = after - before; if (delta < 0) delta = 0; print delta }
+  }'
+}
+
+numeric_sum() {
+  local left="$1"
+  local right="$2"
+  awk -v left="${left}" -v right="${right}" 'BEGIN {
+    if (left == "n/a" || right == "n/a") { print "n/a"; exit }
+    print left + right
+  }'
+}
+
+ratio() {
+  local numerator="$1"
+  local denominator="$2"
+  awk -v numerator="${numerator}" -v denominator="${denominator}" 'BEGIN {
+    if (numerator == "n/a" || denominator == "n/a" || denominator <= 0) { print "n/a"; exit }
+    printf "%.6f", numerator / denominator
+  }'
+}
+
+container_cpu_percent() {
+  local container_name="$1"
+  local value
+  value="$(
+    docker stats --no-stream --format '{{.Name}}	{{.CPUPerc}}' "${container_name}" 2>/dev/null \
+      | awk -F '\t' -v name="${container_name}" '$1 == name { gsub("%", "", $2); print $2 }' \
+      || true
+  )"
+  echo "${value:-n/a}"
+}
+
+write_header() {
+  printf "status\tadmission\tdb_pool\tvus\treport\thttp_failed_rate\thttp_reqs\tadmission_429_rate\tadmission_accepted\tadmission_rejected\thot_first_p95_ms\thot_cursor_p95_ms\tcold_first_p95_ms\tcold_cursor_p95_ms\tbackend_cpu_percent\tpostgres_cpu_percent\thikari_active\thikari_pending\thikari_max\tlog_path\tsummary_json\n" >"${summary_tsv}"
+}
+
+append_summary() {
+  printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" "$@" >>"${summary_tsv}"
+}
+
+run_combination() {
+  local admission="$1"
+  local db_pool="$2"
+  local vus="$3"
+  local report_name="${matrix_name}-admission${admission}-pool${db_pool}-vu${vus}"
+  local log_path="${report_dir}/${report_name}.log"
+  local summary_json="build/reports/k6/${report_name}-summary.json"
+  local accepted_before rejected_before accepted_after rejected_after
+  local accepted_delta rejected_delta total_admission admission_429_rate
+  local status http_failed_rate http_reqs hot_first hot_cursor cold_first cold_cursor
+  local backend_cpu postgres_cpu hikari_active hikari_pending hikari_max
+
+  echo "[transaction-read-matrix] running admission=${admission} db_pool=${db_pool} vus=${vus}"
+
+  OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_MAX="${admission}" \
+  DB_POOL_MAX_SIZE="${db_pool}" \
+    docker compose "${compose_files[@]}" --profile loadtest up -d --force-recreate aquila-bank-backend prometheus grafana
+
+  # 조합별 backend env가 docker compose run 의존성 처리로 바뀌지 않도록 k6는 --no-deps로 실행합니다.
+  accepted_before="$(prometheus_value 'aquila_api_admission_requests_total{group="transaction-read",outcome="accepted"}')"
+  rejected_before="$(prometheus_value 'aquila_api_admission_requests_total{group="transaction-read",outcome="rejected"}')"
+
+  set +e
+  K6_REPORT_NAME="${report_name}" \
+  K6_VUS="${vus}" \
+  K6_ARCHIVE_RESULTS=false \
+    tools/test/run-k6-transaction-100m-loadtest.sh --no-up --no-deps >"${log_path}" 2>&1
+  status=$?
+  set -e
+
+  accepted_after="$(prometheus_value 'aquila_api_admission_requests_total{group="transaction-read",outcome="accepted"}')"
+  rejected_after="$(prometheus_value 'aquila_api_admission_requests_total{group="transaction-read",outcome="rejected"}')"
+  accepted_delta="$(numeric_delta "${accepted_before}" "${accepted_after}")"
+  rejected_delta="$(numeric_delta "${rejected_before}" "${rejected_after}")"
+  total_admission="$(numeric_sum "${accepted_delta}" "${rejected_delta}")"
+  admission_429_rate="$(ratio "${rejected_delta}" "${total_admission}")"
+
+  http_failed_rate="$(metric_from_json "${summary_json}" "http_req_failed" "rate")"
+  http_reqs="$(metric_from_json "${summary_json}" "http_reqs" "count")"
+  hot_first="$(metric_from_json "${summary_json}" "aquila_transaction_hot_first_ms" "p(95)")"
+  hot_cursor="$(metric_from_json "${summary_json}" "aquila_transaction_hot_cursor_ms" "p(95)")"
+  cold_first="$(metric_from_json "${summary_json}" "aquila_transaction_cold_first_ms" "p(95)")"
+  cold_cursor="$(metric_from_json "${summary_json}" "aquila_transaction_cold_cursor_ms" "p(95)")"
+  backend_cpu="$(container_cpu_percent aquila-bank-backend-loadtest)"
+  postgres_cpu="$(container_cpu_percent aquila-bank-postgres)"
+  hikari_active="$(prometheus_value 'max(hikaricp_connections_active{pool="aquila-bank-pool"})')"
+  hikari_pending="$(prometheus_value 'max(hikaricp_connections_pending{pool="aquila-bank-pool"})')"
+  hikari_max="$(prometheus_value 'max(hikaricp_connections_max{pool="aquila-bank-pool"})')"
+
+  append_summary \
+    "${status}" "${admission}" "${db_pool}" "${vus}" "${report_name}" \
+    "${http_failed_rate}" "${http_reqs}" "${admission_429_rate}" "${accepted_delta}" "${rejected_delta}" \
+    "${hot_first}" "${hot_cursor}" "${cold_first}" "${cold_cursor}" \
+    "${backend_cpu}" "${postgres_cpu}" "${hikari_active}" "${hikari_pending}" "${hikari_max}" \
+    "${log_path}" "${summary_json}"
+
+  if [[ "${status}" -ne 0 && "${continue_on_failure}" != "true" ]]; then
+    echo "[transaction-read-matrix] combination failed and MATRIX_CONTINUE_ON_FAILURE=false: ${report_name}" >&2
+    exit "${status}"
+  fi
+}
+
+write_header
+
+IFS=',' read -r -a admissions <<<"${admission_values}"
+IFS=',' read -r -a pools <<<"${db_pool_values}"
+IFS=',' read -r -a vus_items <<<"${vu_values}"
+
+for admission in "${admissions[@]}"; do
+  for db_pool in "${pools[@]}"; do
+    for vus in "${vus_items[@]}"; do
+      run_combination "${admission}" "${db_pool}" "${vus}"
+    done
+  done
+done
+
+echo "[transaction-read-matrix] summary=${summary_tsv}"

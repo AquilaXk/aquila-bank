@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE' >&2
-usage: tools/test/run-k6-transaction-100m-loadtest.sh [--print-plan|--no-up]
+usage: tools/test/run-k6-transaction-100m-loadtest.sh [--print-plan|--no-up] [--no-deps]
 
 Required environment:
   K6_HOT_ACCOUNT_ID
@@ -48,21 +48,29 @@ require_positive_integer() {
 }
 
 mode="run"
-if [[ "${1:-}" == "--print-plan" ]]; then
-  mode="print-plan"
+run_dependencies="true"
+while [[ "$#" -gt 0 ]]; do
+  case "$1" in
+    --print-plan)
+      mode="print-plan"
+      ;;
+    --no-up)
+      mode="no-up"
+      ;;
+    --no-deps)
+      run_dependencies="false"
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage
+      exit 1
+      ;;
+  esac
   shift
-elif [[ "${1:-}" == "--no-up" ]]; then
-  mode="no-up"
-  shift
-elif [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-  usage
-  exit 0
-fi
-
-if [[ "$#" -ne 0 ]]; then
-  usage
-  exit 1
-fi
+done
 
 K6_VUS="${K6_VUS:-8}"
 K6_LIMIT="${K6_LIMIT:-50}"
@@ -87,6 +95,11 @@ print_plan() {
   echo "[k6-transaction-100m] k6 report name: ${K6_REPORT_NAME}"
   echo "[k6-transaction-100m] k6 vus=${K6_VUS} duration=${K6_DURATION:-1m} limit=${K6_LIMIT}"
   echo "[k6-transaction-100m] preflight=${K6_PREFLIGHT}"
+  if [[ "${run_dependencies}" == "true" ]]; then
+    echo "[k6-transaction-100m] dependencies=compose-default"
+  else
+    echo "[k6-transaction-100m] dependencies=no-deps"
+  fi
   echo "[k6-transaction-100m] required dataset: prepared 100m transaction read model hot/cold accounts"
   echo "[k6-transaction-100m] archive results: ${K6_ARCHIVE_RESULTS}"
 }
@@ -150,7 +163,11 @@ fi
 assert_k6_preflight
 
 set +e
-docker compose "${compose_files[@]}" --profile loadtest run --rm \
+run_args=(--rm)
+if [[ "${run_dependencies}" != "true" ]]; then
+  run_args+=(--no-deps)
+fi
+docker compose "${compose_files[@]}" --profile loadtest run "${run_args[@]}" \
   -e K6_REPORT_NAME="${K6_REPORT_NAME}" \
   -e K6_HOT_ACCOUNT_ID="${K6_HOT_ACCOUNT_ID}" \
   -e K6_HOT_FROM="${K6_HOT_FROM}" \
