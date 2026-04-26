@@ -109,6 +109,10 @@ tools/test/archive-admission-guard-telemetry-snapshot.sh \
   build/reports/admission/<name>/http-admission-raw.tsv
 ```
 
+## Staging RDS gp3 smoke
+
+RDS db.t4g.small + gp3 staging read-only smoke는 [Transaction 100m Staging RDS gp3 Smoke](../transaction-100m-staging-rds-gp3-smoke.md)를 기준으로 실행합니다.
+
 ## 월별 chunk lifecycle
 
 월별 partition 선생성, archive detach/drop guard, partition별 `ANALYZE`/`VACUUM` 절차는 [Transaction Read Model Chunk Lifecycle Runbook](../transaction-read-model-chunk-lifecycle.md)을 기준으로 실행합니다.
