@@ -24,6 +24,7 @@ Optional environment:
   CAPACITY_READINESS_TIMEOUT_SECONDS default 120
   CAPACITY_METRIC_SCRAPE_WAIT_SECONDS default 6
   CAPACITY_CPU_SAMPLE_INTERVAL_SECONDS default 5
+  CAPACITY_ADAPTIVE_ENABLED default true
   CAPACITY_HARD_THRESHOLD_ENABLED default true
   CAPACITY_HOT_P95_THRESHOLD_MS default 350
   CAPACITY_COLD_P95_THRESHOLD_MS default 750
@@ -72,6 +73,7 @@ long_soak_duration="${CAPACITY_LONG_SOAK_DURATION:-30m}"
 readiness_timeout_seconds="${CAPACITY_READINESS_TIMEOUT_SECONDS:-120}"
 metric_scrape_wait_seconds="${CAPACITY_METRIC_SCRAPE_WAIT_SECONDS:-6}"
 cpu_sample_interval_seconds="${CAPACITY_CPU_SAMPLE_INTERVAL_SECONDS:-5}"
+adaptive_enabled="${CAPACITY_ADAPTIVE_ENABLED:-${OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_ADAPTIVE_ENABLED:-true}}"
 hard_threshold_enabled="${CAPACITY_HARD_THRESHOLD_ENABLED:-true}"
 hot_p95_threshold_ms="${CAPACITY_HOT_P95_THRESHOLD_MS:-350}"
 cold_p95_threshold_ms="${CAPACITY_COLD_P95_THRESHOLD_MS:-750}"
@@ -217,6 +219,32 @@ validate_profiles() {
   done
 }
 
+assert_adaptive_strict_guard() {
+  local group="$1"
+  local profile="$2"
+  IFS=':' read -r name admission vus _backend_cpus _backend_memory _postgres_cpus _postgres_memory _db_pool overload_mode _duration <<<"${profile}"
+  if [[ "${adaptive_enabled}" != "true" || "${overload_mode}" == "true" ]]; then
+    return 0
+  fi
+  if ((vus <= admission)); then
+    return 0
+  fi
+  # adaptive strict profile은 첫 429 이후 min limit으로 내려가므로 overload/backoff 없이 실행하지 않습니다.
+  echo "${group} strict profile uses overload mode or VU <= admission: profile=${name} admission=${admission} vus=${vus}" >&2
+  echo "Set overload_mode=true for protected 429 ratio testing, reduce vus to ${admission}, or set CAPACITY_ADAPTIVE_ENABLED=false only for a non-adaptive baseline." >&2
+  exit 1
+}
+
+assert_adaptive_strict_guards() {
+  local group="$1"
+  local csv="$2"
+  IFS=',' read -r -a profiles <<<"${csv}"
+  local profile
+  for profile in "${profiles[@]}"; do
+    assert_adaptive_strict_guard "${group}" "${profile}"
+  done
+}
+
 profile_names() {
   local csv="$1"
   IFS=',' read -r -a profiles <<<"${csv}"
@@ -246,6 +274,7 @@ require_bool "CAPACITY_RUN_SINGLE_HOST" "${run_single_host}"
 require_bool "CAPACITY_RUN_CPU_SPLIT" "${run_cpu_split}"
 require_bool "CAPACITY_RUN_LONG_SOAK" "${run_long_soak}"
 require_bool "CAPACITY_CONTINUE_ON_FAILURE" "${continue_on_failure}"
+require_bool "CAPACITY_ADAPTIVE_ENABLED" "${adaptive_enabled}"
 require_bool "CAPACITY_HARD_THRESHOLD_ENABLED" "${hard_threshold_enabled}"
 require_duration_value "CAPACITY_LONG_SOAK_DURATION" "${long_soak_duration}"
 require_positive_integer_value "CAPACITY_READINESS_TIMEOUT_SECONDS" "${readiness_timeout_seconds}"
@@ -261,6 +290,9 @@ require_non_negative_integer_value "CAPACITY_HIKARI_PENDING_THRESHOLD" "${hikari
 validate_profiles "CAPACITY_SINGLE_HOST_PROFILES" "${single_host_profiles}"
 validate_profiles "CAPACITY_CPU_SPLIT_PROFILES" "${cpu_split_profiles}"
 validate_profile "CAPACITY_LONG_SOAK_PROFILE" "${long_soak_profile}"
+assert_adaptive_strict_guards "CAPACITY_SINGLE_HOST_PROFILES" "${single_host_profiles}"
+assert_adaptive_strict_guards "CAPACITY_CPU_SPLIT_PROFILES" "${cpu_split_profiles}"
+assert_adaptive_strict_guard "CAPACITY_LONG_SOAK_PROFILE" "${long_soak_profile}"
 
 print_plan() {
   echo "[transaction-100m-capacity] capacity=${capacity_name}"
@@ -277,6 +309,7 @@ print_plan() {
   echo "[transaction-100m-capacity] readiness_timeout_seconds=${readiness_timeout_seconds}"
   echo "[transaction-100m-capacity] metric_scrape_wait_seconds=${metric_scrape_wait_seconds}"
   echo "[transaction-100m-capacity] cpu_sample_interval_seconds=${cpu_sample_interval_seconds}"
+  echo "[transaction-100m-capacity] adaptive_enabled=${adaptive_enabled}"
   echo "[transaction-100m-capacity] hard_thresholds=${hard_threshold_enabled}"
   echo "[transaction-100m-capacity] hot_p95_threshold_ms=${hot_p95_threshold_ms}"
   echo "[transaction-100m-capacity] cold_p95_threshold_ms=${cold_p95_threshold_ms}"
@@ -514,6 +547,7 @@ run_profile() {
   T3MICRO_POSTGRES_MEMORY="${postgres_memory}" \
   T3MICRO_POSTGRES_MEMORY_SWAP="${postgres_memory}" \
   OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_MAX="${admission}" \
+  OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_ADAPTIVE_ENABLED="${adaptive_enabled}" \
   DB_POOL_MAX_SIZE="${db_pool}" \
     docker compose "${compose_files[@]}" --profile loadtest up -d --force-recreate \
       postgres aquila-bank-backend prometheus grafana alertmanager postgres-exporter

@@ -16,6 +16,7 @@ grep -F "capacity=transaction-capacity-check" <<<"${plan}" >/dev/null
 grep -F "single_host_profiles=single-host-default,single-host-high-traffic" <<<"${plan}" >/dev/null
 grep -F "cpu_split_profiles=cpu-backend040-postgres060,cpu-backend100-postgres060" <<<"${plan}" >/dev/null
 grep -F "long_soak_profile=long-soak-high-traffic duration=30m" <<<"${plan}" >/dev/null
+grep -F "adaptive_enabled=true" <<<"${plan}" >/dev/null
 grep -F "hard_thresholds=true" <<<"${plan}" >/dev/null
 grep -F "hot_p95_threshold_ms=350" <<<"${plan}" >/dev/null
 grep -F "cold_p95_threshold_ms=750" <<<"${plan}" >/dev/null
@@ -35,6 +36,9 @@ grep -F "CAPACITY_OVERLOAD_429_RATE_THRESHOLD" "${script}" >/dev/null
 grep -F "CAPACITY_BACKEND_CPU_THRESHOLD_PERCENT" "${script}" >/dev/null
 grep -F "CAPACITY_POSTGRES_CPU_THRESHOLD_PERCENT" "${script}" >/dev/null
 grep -F "CAPACITY_HIKARI_PENDING_THRESHOLD" "${script}" >/dev/null
+grep -F "CAPACITY_ADAPTIVE_ENABLED" "${script}" >/dev/null
+grep -F "assert_adaptive_strict_guard" "${script}" >/dev/null
+grep -F "strict profile uses overload mode or VU <= admission" "${script}" >/dev/null
 grep -F "check_capacity_thresholds" "${script}" >/dev/null
 grep -F "T3MICRO_BACKEND_CPUS" "${script}" >/dev/null
 grep -F "T3MICRO_POSTGRES_CPUS" "${script}" >/dev/null
@@ -64,5 +68,9 @@ if CAPACITY_HOT_P95_THRESHOLD_MS=bad "${script}" --print-plan >/dev/null 2>&1; t
 fi
 if CAPACITY_OVERLOAD_429_RATE_THRESHOLD=1.5 "${script}" --print-plan >/dev/null 2>&1; then
   echo "CAPACITY_OVERLOAD_429_RATE_THRESHOLD=1.5 unexpectedly succeeded" >&2
+  exit 1
+fi
+if CAPACITY_SINGLE_HOST_PROFILES=bad-strict:3:8:0.40:512m:0.60:384m:4:false:1m "${script}" --print-plan >/dev/null 2>&1; then
+  echo "adaptive strict profile without overload unexpectedly succeeded" >&2
   exit 1
 fi
