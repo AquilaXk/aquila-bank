@@ -30,8 +30,12 @@ const coldP95ThresholdMs = Number(__ENV.K6_COLD_P95_THRESHOLD_MS || "750");
 const failedRate = Number(__ENV.K6_HTTP_FAILED_RATE || "0.01");
 const reportName = __ENV.K6_REPORT_NAME || "transaction-100m";
 const overloadMode = booleanEnv(__ENV.K6_OVERLOAD_MODE);
+const overload429RateThreshold = nonNegativeNumberEnv(__ENV.K6_OVERLOAD_429_RATE_THRESHOLD, 0.05);
 const maxRetryAfterSleepSeconds = nonNegativeNumberEnv(__ENV.K6_MAX_RETRY_AFTER_SLEEP_SECONDS, 1);
 const httpFailedRateThreshold = overloadMode ? "disabled in overload mode" : failedRate;
+const overload429RateThresholdText = overloadMode
+  ? overload429RateThreshold
+  : "disabled outside overload mode";
 
 const hotFirst = new Trend("aquila_transaction_hot_first_ms", true);
 const hotCursor = new Trend("aquila_transaction_hot_cursor_ms", true);
@@ -49,6 +53,8 @@ function thresholds() {
   };
   if (!overloadMode) {
     result.http_req_failed = [`rate<${failedRate}`];
+  } else {
+    result.aquila_transaction_429_rate = [`rate<${overload429RateThreshold}`];
   }
   return result;
 }
@@ -261,6 +267,7 @@ function markdownSummary(data) {
 - hot p95 threshold ms: ${hotP95ThresholdMs}
 - cold p95 threshold ms: ${coldP95ThresholdMs}
 - http failed rate threshold: ${httpFailedRateThreshold}
+- overload 429 rate threshold: ${overload429RateThresholdText}
 
 ## Results
 

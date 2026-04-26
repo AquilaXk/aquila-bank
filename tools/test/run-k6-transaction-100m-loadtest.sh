@@ -22,6 +22,8 @@ Optional environment:
   K6_ARCHIVE_RESULTS   copy markdown summary to docs/performance-results, default true
   K6_PREFLIGHT         check PostgreSQL OOM/index readiness before k6, default true
   K6_OVERLOAD_MODE     treat 429 as expected rejected samples, default false
+  K6_OVERLOAD_429_RATE_THRESHOLD
+                       max 429 rate in overload mode, default 0.05
   K6_MAX_RETRY_AFTER_SLEEP_SECONDS
                        cap Retry-After backoff in overload mode, default 1
 
@@ -59,6 +61,20 @@ require_non_negative_integer() {
   fi
 }
 
+require_rate() {
+  local name="$1"
+  local value="${!name:-}"
+  if ! [[ "${value}" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+    echo "${name} must be a rate between 0 and 1" >&2
+    exit 1
+  fi
+  awk -v value="${value}" 'BEGIN { exit !(value >= 0 && value <= 1) }' \
+    || {
+      echo "${name} must be a rate between 0 and 1" >&2
+      exit 1
+    }
+}
+
 mode="run"
 run_dependencies="true"
 while [[ "$#" -gt 0 ]]; do
@@ -89,13 +105,15 @@ K6_LIMIT="${K6_LIMIT:-50}"
 K6_ARCHIVE_RESULTS="${K6_ARCHIVE_RESULTS:-true}"
 K6_PREFLIGHT="${K6_PREFLIGHT:-true}"
 K6_OVERLOAD_MODE="${K6_OVERLOAD_MODE:-false}"
+K6_OVERLOAD_429_RATE_THRESHOLD="${K6_OVERLOAD_429_RATE_THRESHOLD:-0.05}"
 K6_MAX_RETRY_AFTER_SLEEP_SECONDS="${K6_MAX_RETRY_AFTER_SLEEP_SECONDS:-1}"
 K6_REPORT_NAME="${K6_REPORT_NAME:-transaction-100m-$(date +%Y-%m-%d-%H%M%S)}"
-export K6_VUS K6_LIMIT K6_ARCHIVE_RESULTS K6_PREFLIGHT K6_OVERLOAD_MODE K6_MAX_RETRY_AFTER_SLEEP_SECONDS K6_REPORT_NAME
+export K6_VUS K6_LIMIT K6_ARCHIVE_RESULTS K6_PREFLIGHT K6_OVERLOAD_MODE K6_OVERLOAD_429_RATE_THRESHOLD K6_MAX_RETRY_AFTER_SLEEP_SECONDS K6_REPORT_NAME
 
 require_positive_integer K6_VUS
 require_positive_integer K6_LIMIT
 require_non_negative_integer K6_MAX_RETRY_AFTER_SLEEP_SECONDS
+require_rate K6_OVERLOAD_429_RATE_THRESHOLD
 
 compose_files=(-f compose.yml -f compose.t3micro.yml -f compose.loadtest.yml)
 report_dir="build/reports/k6"
@@ -110,6 +128,7 @@ print_plan() {
   echo "[k6-transaction-100m] k6 report name: ${K6_REPORT_NAME}"
   echo "[k6-transaction-100m] k6 vus=${K6_VUS} duration=${K6_DURATION:-1m} limit=${K6_LIMIT}"
   echo "[k6-transaction-100m] overload mode=${K6_OVERLOAD_MODE} max retry-after sleep seconds=${K6_MAX_RETRY_AFTER_SLEEP_SECONDS}"
+  echo "[k6-transaction-100m] overload 429 rate threshold=${K6_OVERLOAD_429_RATE_THRESHOLD}"
   echo "[k6-transaction-100m] preflight=${K6_PREFLIGHT}"
   if [[ "${run_dependencies}" == "true" ]]; then
     echo "[k6-transaction-100m] dependencies=compose-default"
