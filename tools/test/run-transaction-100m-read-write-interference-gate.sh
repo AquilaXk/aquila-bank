@@ -257,8 +257,6 @@ require_env K6_HOT_TO
 require_env K6_COLD_ACCOUNT_ID
 require_env K6_COLD_FROM
 require_env K6_COLD_TO
-require_env INTERFERENCE_WRITE_SOURCE_ACCOUNT_ID
-require_env INTERFERENCE_WRITE_TARGET_ACCOUNT_ID
 
 mkdir -p "${report_dir}" build/reports/k6
 
@@ -311,106 +309,71 @@ psql_sql() {
 cleanup_write_fixture() {
   echo "[transaction-read-write-interference] cleaning write fixture accounts"
   psql_sql "
-    DELETE FROM notification_channel_outbox
-    WHERE account_id IN (
-      SELECT id
-      FROM bank_account
-      WHERE (id = ${write_source_account_id} AND account_number = 'IFX${write_source_account_id}')
-         OR (id = ${write_target_account_id} AND account_number = 'IFX${write_target_account_id}')
-    );
-    DELETE FROM notification_inbox
-    WHERE account_id IN (
-      SELECT id
-      FROM bank_account
-      WHERE (id = ${write_source_account_id} AND account_number = 'IFX${write_source_account_id}')
-         OR (id = ${write_target_account_id} AND account_number = 'IFX${write_target_account_id}')
-    );
-    DELETE FROM auth_status_change_audit
-    WHERE target_account_id IN (
-      SELECT id
-      FROM bank_account
-      WHERE (id = ${write_source_account_id} AND account_number = 'IFX${write_source_account_id}')
-         OR (id = ${write_target_account_id} AND account_number = 'IFX${write_target_account_id}')
-    );
-    DELETE FROM account_status_change_audit
-    WHERE target_account_id IN (
-      SELECT id
-      FROM bank_account
-      WHERE (id = ${write_source_account_id} AND account_number = 'IFX${write_source_account_id}')
-         OR (id = ${write_target_account_id} AND account_number = 'IFX${write_target_account_id}')
-    );
-    DELETE FROM user_account_membership
-    WHERE account_id IN (
-      SELECT id
-      FROM bank_account
-      WHERE (id = ${write_source_account_id} AND account_number = 'IFX${write_source_account_id}')
-         OR (id = ${write_target_account_id} AND account_number = 'IFX${write_target_account_id}')
-    );
-    DELETE FROM outbox_event
-    WHERE aggregate_id IN (
-      SELECT transaction_reference
-      FROM ledger_entry
-      WHERE account_id IN (
-        SELECT id
-        FROM bank_account
-        WHERE (id = ${write_source_account_id} AND account_number = 'IFX${write_source_account_id}')
-           OR (id = ${write_target_account_id} AND account_number = 'IFX${write_target_account_id}')
-      )
-    )
-       OR payload->>'sourceAccountId' IN ('${write_source_account_id}', '${write_target_account_id}')
-       OR payload->>'targetAccountId' IN ('${write_source_account_id}', '${write_target_account_id}');
-    DELETE FROM command_idempotency
-    WHERE idempotency_key LIKE 'interference-${write_source_account_id}-%'
-      AND EXISTS (
-        SELECT 1
-        FROM bank_account
-        WHERE id = ${write_source_account_id}
-          AND account_number = 'IFX${write_source_account_id}'
-      );
-    DELETE FROM transfer_reversal
-    WHERE source_account_id IN (
-      SELECT id
-      FROM bank_account
-      WHERE (id = ${write_source_account_id} AND account_number = 'IFX${write_source_account_id}')
-         OR (id = ${write_target_account_id} AND account_number = 'IFX${write_target_account_id}')
-    )
-       OR target_account_id IN (
-      SELECT id
-      FROM bank_account
-      WHERE (id = ${write_source_account_id} AND account_number = 'IFX${write_source_account_id}')
-         OR (id = ${write_target_account_id} AND account_number = 'IFX${write_target_account_id}')
-    );
-    DELETE FROM transaction_read_model
-    WHERE account_id IN (
-      SELECT id
-      FROM bank_account
-      WHERE (id = ${write_source_account_id} AND account_number = 'IFX${write_source_account_id}')
-         OR (id = ${write_target_account_id} AND account_number = 'IFX${write_target_account_id}')
-    );
-    DELETE FROM transaction_read_model_archive
-    WHERE account_id IN (
-      SELECT id
-      FROM bank_account
-      WHERE (id = ${write_source_account_id} AND account_number = 'IFX${write_source_account_id}')
-         OR (id = ${write_target_account_id} AND account_number = 'IFX${write_target_account_id}')
-    );
-    DELETE FROM account_balance_snapshot
-    WHERE account_id IN (
-      SELECT id
-      FROM bank_account
-      WHERE (id = ${write_source_account_id} AND account_number = 'IFX${write_source_account_id}')
-         OR (id = ${write_target_account_id} AND account_number = 'IFX${write_target_account_id}')
-    );
-    DELETE FROM ledger_entry
-    WHERE account_id IN (
-      SELECT id
-      FROM bank_account
-      WHERE (id = ${write_source_account_id} AND account_number = 'IFX${write_source_account_id}')
-         OR (id = ${write_target_account_id} AND account_number = 'IFX${write_target_account_id}')
-    );
-    DELETE FROM bank_account
+    BEGIN;
+
+    -- fixture marker 계좌만 삭제 후보로 고정해 운영 계좌 오삭제를 막습니다.
+    CREATE TEMP TABLE interference_fixture_account_ids ON COMMIT DROP AS
+    SELECT id
+    FROM bank_account
     WHERE (id = ${write_source_account_id} AND account_number = 'IFX${write_source_account_id}')
        OR (id = ${write_target_account_id} AND account_number = 'IFX${write_target_account_id}');
+
+    CREATE TEMP TABLE interference_fixture_transaction_references ON COMMIT DROP AS
+    SELECT DISTINCT transaction_reference
+    FROM ledger_entry
+    WHERE account_id IN (SELECT id FROM interference_fixture_account_ids);
+
+    DELETE FROM notification_channel_outbox
+    WHERE account_id IN (SELECT id FROM interference_fixture_account_ids);
+
+    DELETE FROM notification_inbox
+    WHERE account_id IN (SELECT id FROM interference_fixture_account_ids);
+
+    DELETE FROM auth_status_change_audit
+    WHERE target_account_id IN (SELECT id FROM interference_fixture_account_ids);
+
+    DELETE FROM account_status_change_audit
+    WHERE target_account_id IN (SELECT id FROM interference_fixture_account_ids);
+
+    DELETE FROM user_account_membership
+    WHERE account_id IN (SELECT id FROM interference_fixture_account_ids);
+
+    DELETE FROM outbox_event
+    WHERE aggregate_id IN (SELECT transaction_reference FROM interference_fixture_transaction_references)
+       OR payload->>'transactionReference' IN (SELECT transaction_reference FROM interference_fixture_transaction_references)
+       OR payload->>'sourceAccountId' IN (SELECT id::text FROM interference_fixture_account_ids)
+       OR payload->>'targetAccountId' IN (SELECT id::text FROM interference_fixture_account_ids);
+
+    DELETE FROM command_idempotency
+    WHERE (
+        idempotency_key LIKE 'interference-${write_source_account_id}-%'
+        AND EXISTS (SELECT 1 FROM interference_fixture_account_ids WHERE id = ${write_source_account_id})
+      )
+       OR (
+        idempotency_key LIKE 'interference-${write_target_account_id}-%'
+        AND EXISTS (SELECT 1 FROM interference_fixture_account_ids WHERE id = ${write_target_account_id})
+      );
+
+    DELETE FROM transfer_reversal
+    WHERE source_account_id IN (SELECT id FROM interference_fixture_account_ids)
+       OR target_account_id IN (SELECT id FROM interference_fixture_account_ids);
+
+    DELETE FROM transaction_read_model
+    WHERE account_id IN (SELECT id FROM interference_fixture_account_ids);
+
+    DELETE FROM transaction_read_model_archive
+    WHERE account_id IN (SELECT id FROM interference_fixture_account_ids);
+
+    DELETE FROM account_balance_snapshot
+    WHERE account_id IN (SELECT id FROM interference_fixture_account_ids);
+
+    DELETE FROM ledger_entry
+    WHERE account_id IN (SELECT id FROM interference_fixture_account_ids);
+
+    DELETE FROM bank_account
+    WHERE id IN (SELECT id FROM interference_fixture_account_ids);
+
+    COMMIT;
   "
 }
 
@@ -607,10 +570,17 @@ stop_write_pressure() {
 }
 
 on_exit() {
+  local status=$?
   stop_write_pressure
   if [[ "${write_fixture_enabled}" == "true" && "${write_fixture_cleanup}" == "true" ]]; then
-    cleanup_write_fixture >/dev/null 2>&1 || true
+    if ! cleanup_write_fixture; then
+      echo "[transaction-read-write-interference] cleanup failed; fixture rows may remain" >&2
+      if [[ "${status}" -eq 0 ]]; then
+        status=1
+      fi
+    fi
   fi
+  exit "${status}"
 }
 
 write_header() {

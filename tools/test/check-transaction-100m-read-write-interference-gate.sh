@@ -61,6 +61,25 @@ grep -F "read-write-interference-summary.tsv" "${runner}" >/dev/null
 grep -F "check_interference_thresholds" "${runner}" >/dev/null
 grep -F "aquila_transaction_429_rate" "${runner}" >/dev/null
 grep -F "aquila_transfer_write_429_rate" "${runner}" >/dev/null
+source_require_count="$(grep -c '^[[:space:]]*require_env INTERFERENCE_WRITE_SOURCE_ACCOUNT_ID$' "${runner}")"
+target_require_count="$(grep -c '^[[:space:]]*require_env INTERFERENCE_WRITE_TARGET_ACCOUNT_ID$' "${runner}")"
+if [[ "${source_require_count}" -ne 1 ]]; then
+  echo "INTERFERENCE_WRITE_SOURCE_ACCOUNT_ID must be required only when fixture is disabled" >&2
+  exit 1
+fi
+if [[ "${target_require_count}" -ne 1 ]]; then
+  echo "INTERFERENCE_WRITE_TARGET_ACCOUNT_ID must be required only when fixture is disabled" >&2
+  exit 1
+fi
+if grep -F "cleanup_write_fixture >/dev/null 2>&1 || true" "${runner}" >/dev/null; then
+  echo "cleanup_write_fixture must not suppress cleanup failures silently" >&2
+  exit 1
+fi
+grep -F "cleanup failed; fixture rows may remain" "${runner}" >/dev/null
+grep -F "interference_fixture_account_ids" "${runner}" >/dev/null
+grep -F "interference_fixture_transaction_references" "${runner}" >/dev/null
+grep -F "payload->>'transactionReference'" "${runner}" >/dev/null
+grep -F "idempotency_key LIKE 'interference-\${write_target_account_id}-%'" "${runner}" >/dev/null
 
 echo "[transaction-read-write-interference] k6 write contract"
 grep -F "K6_WRITE_SOURCE_ACCOUNT_ID" "${write_script}" >/dev/null
