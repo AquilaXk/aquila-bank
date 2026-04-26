@@ -18,7 +18,17 @@ plan="$(
 grep -F "backend: aquila-bank-backend:8080 with t3.micro budget" <<<"${plan}" >/dev/null
 grep -F "observability: prometheus:9090 grafana:3000 alertmanager:9093 postgres-exporter:9187" <<<"${plan}" >/dev/null
 grep -F "k6 report name: transaction-100m-check" <<<"${plan}" >/dev/null
+grep -F "overload mode=false max retry-after sleep seconds=1" <<<"${plan}" >/dev/null
 grep -F "preflight=true" <<<"${plan}" >/dev/null
+
+overload_plan="$(
+  K6_REPORT_NAME=transaction-100m-overload-check \
+  K6_OVERLOAD_MODE=true \
+  K6_MAX_RETRY_AFTER_SLEEP_SECONDS=2 \
+    tools/test/run-k6-transaction-100m-loadtest.sh --print-plan
+)"
+grep -F "k6 report name: transaction-100m-overload-check" <<<"${overload_plan}" >/dev/null
+grep -F "overload mode=true max retry-after sleep seconds=2" <<<"${overload_plan}" >/dev/null
 
 echo "[k6-transaction-100m] k6 script contract"
 grep -F "experimental-prometheus-rw" compose.loadtest.yml >/dev/null
@@ -31,6 +41,11 @@ grep -F "idx_transaction_read_model_account_cursor" tools/test/run-k6-transactio
 grep -F "OOMKilled" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "aquila_transaction_hot_first_ms" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "aquila_transaction_cold_cursor_ms" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "K6_OVERLOAD_MODE" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "K6_MAX_RETRY_AFTER_SLEEP_SECONDS" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "aquila_transaction_429_rate" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "Retry-After" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "K6_OVERLOAD_MODE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "handleSummary" ops/k6/transaction-read-100m.js >/dev/null
 grep -F '/reports/${reportName}-summary.md' ops/k6/transaction-read-100m.js >/dev/null
 

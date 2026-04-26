@@ -21,6 +21,9 @@ Optional environment:
   K6_AUTH_TOKEN        bearer token, optional when bootstrap header auth is enabled
   K6_ARCHIVE_RESULTS   copy markdown summary to docs/performance-results, default true
   K6_PREFLIGHT         check PostgreSQL OOM/index readiness before k6, default true
+  K6_OVERLOAD_MODE     treat 429 as expected rejected samples, default false
+  K6_MAX_RETRY_AFTER_SLEEP_SECONDS
+                       cap Retry-After backoff in overload mode, default 1
 
 Examples:
   K6_HOT_ACCOUNT_ID=101 K6_HOT_FROM=2026-04-01T00:00:00Z K6_HOT_TO=2026-04-30T00:00:00Z \
@@ -43,6 +46,15 @@ require_positive_integer() {
   local value="${!name:-}"
   if ! [[ "${value}" =~ ^[1-9][0-9]*$ ]]; then
     echo "${name} must be a positive integer" >&2
+    exit 1
+  fi
+}
+
+require_non_negative_integer() {
+  local name="$1"
+  local value="${!name:-}"
+  if ! [[ "${value}" =~ ^[0-9]+$ ]]; then
+    echo "${name} must be a non-negative integer" >&2
     exit 1
   fi
 }
@@ -76,11 +88,14 @@ K6_VUS="${K6_VUS:-8}"
 K6_LIMIT="${K6_LIMIT:-50}"
 K6_ARCHIVE_RESULTS="${K6_ARCHIVE_RESULTS:-true}"
 K6_PREFLIGHT="${K6_PREFLIGHT:-true}"
+K6_OVERLOAD_MODE="${K6_OVERLOAD_MODE:-false}"
+K6_MAX_RETRY_AFTER_SLEEP_SECONDS="${K6_MAX_RETRY_AFTER_SLEEP_SECONDS:-1}"
 K6_REPORT_NAME="${K6_REPORT_NAME:-transaction-100m-$(date +%Y-%m-%d-%H%M%S)}"
-export K6_VUS K6_LIMIT K6_ARCHIVE_RESULTS K6_PREFLIGHT K6_REPORT_NAME
+export K6_VUS K6_LIMIT K6_ARCHIVE_RESULTS K6_PREFLIGHT K6_OVERLOAD_MODE K6_MAX_RETRY_AFTER_SLEEP_SECONDS K6_REPORT_NAME
 
 require_positive_integer K6_VUS
 require_positive_integer K6_LIMIT
+require_non_negative_integer K6_MAX_RETRY_AFTER_SLEEP_SECONDS
 
 compose_files=(-f compose.yml -f compose.t3micro.yml -f compose.loadtest.yml)
 report_dir="build/reports/k6"
@@ -94,6 +109,7 @@ print_plan() {
   echo "[k6-transaction-100m] observability: prometheus:9090 grafana:3000 alertmanager:9093 postgres-exporter:9187"
   echo "[k6-transaction-100m] k6 report name: ${K6_REPORT_NAME}"
   echo "[k6-transaction-100m] k6 vus=${K6_VUS} duration=${K6_DURATION:-1m} limit=${K6_LIMIT}"
+  echo "[k6-transaction-100m] overload mode=${K6_OVERLOAD_MODE} max retry-after sleep seconds=${K6_MAX_RETRY_AFTER_SLEEP_SECONDS}"
   echo "[k6-transaction-100m] preflight=${K6_PREFLIGHT}"
   if [[ "${run_dependencies}" == "true" ]]; then
     echo "[k6-transaction-100m] dependencies=compose-default"
@@ -179,6 +195,8 @@ docker compose "${compose_files[@]}" --profile loadtest run "${run_args[@]}" \
   -e K6_VUS="${K6_VUS}" \
   -e K6_DURATION="${K6_DURATION:-1m}" \
   -e K6_LIMIT="${K6_LIMIT}" \
+  -e K6_OVERLOAD_MODE="${K6_OVERLOAD_MODE}" \
+  -e K6_MAX_RETRY_AFTER_SLEEP_SECONDS="${K6_MAX_RETRY_AFTER_SLEEP_SECONDS}" \
   k6-transaction-read-100m
 status=$?
 set -e
