@@ -25,7 +25,7 @@ services:
       start_period: 10s
 
   kafka:
-    image: bitnami/kafka:4.2
+    image: ${KAFKA_IMAGE:-bitnamilegacy/kafka:4.0.0-debian-12-r10}
     container_name: aquila-bank-kafka
     restart: unless-stopped
     ports:

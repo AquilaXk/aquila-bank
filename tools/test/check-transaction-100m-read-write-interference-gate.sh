@@ -25,16 +25,36 @@ grep -F "write_vus=2" <<<"${plan}" >/dev/null
 grep -F "write_amount_minor=1" <<<"${plan}" >/dev/null
 grep -F "read_hot_p95_threshold_ms=350" <<<"${plan}" >/dev/null
 grep -F "read_cold_p95_threshold_ms=750" <<<"${plan}" >/dev/null
+grep -F "read_overload_mode=false" <<<"${plan}" >/dev/null
 grep -F "read_429_rate_threshold=0" <<<"${plan}" >/dev/null
+grep -F "read_overload_429_rate_threshold=0.05" <<<"${plan}" >/dev/null
 grep -F "write_429_rate_threshold=0.05" <<<"${plan}" >/dev/null
 grep -F "services=postgres,kafka,aquila-bank-backend,prometheus,grafana,alertmanager,postgres-exporter" <<<"${plan}" >/dev/null
+grep -F "write_fixture_enabled=true" <<<"${plan}" >/dev/null
+grep -F "write_fixture_cleanup=true" <<<"${plan}" >/dev/null
+grep -F "write_source_account_id=920000001" <<<"${plan}" >/dev/null
+grep -F "write_target_account_id=920000002" <<<"${plan}" >/dev/null
 grep -F "summary=build/reports/k6/transaction-interference-check/read-write-interference-summary.tsv" <<<"${plan}" >/dev/null
 
+overload_plan="$(
+  INTERFERENCE_NAME=transaction-interference-overload-check \
+  INTERFERENCE_READ_OVERLOAD_MODE=true \
+    "${runner}" --print-plan
+)"
+grep -F "read_overload_mode=true" <<<"${overload_plan}" >/dev/null
+grep -F "read_429_rate_threshold=0.05" <<<"${overload_plan}" >/dev/null
+
 echo "[transaction-read-write-interference] runner contract"
+grep -F "bootstrap_write_fixture" "${runner}" >/dev/null
+grep -F "cleanup_write_fixture" "${runner}" >/dev/null
+grep -F "OVERRIDING SYSTEM VALUE" "${runner}" >/dev/null
+grep -F "INTERFERENCE_WRITE_FIXTURE_ENABLED" "${runner}" >/dev/null
 grep -F "KAFKA_ADVERTISED_HOST=kafka" "${runner}" >/dev/null
 grep -F "OUTBOX_KAFKA_ENABLED=true" "${runner}" >/dev/null
 grep -F "NOTIFICATION_INBOX_CONSUMER_ENABLED=true" "${runner}" >/dev/null
 grep -F "KAFKA_TOPIC_PROVISIONING_ENABLED=true" "${runner}" >/dev/null
+grep -F 'K6_OVERLOAD_MODE="${read_overload_mode}"' "${runner}" >/dev/null
+grep -F 'K6_OVERLOAD_429_RATE_THRESHOLD="${read_overload_429_rate_threshold}"' "${runner}" >/dev/null
 grep -F "run-k6-transaction-100m-loadtest.sh --no-up --no-deps" "${runner}" >/dev/null
 grep -F "transfer-write-interference.js" "${runner}" >/dev/null
 grep -F "read-write-interference-summary.tsv" "${runner}" >/dev/null
@@ -52,6 +72,7 @@ grep -F "aquila_transfer_write_duration_ms" "${write_script}" >/dev/null
 grep -F "Retry-After" "${write_script}" >/dev/null
 
 echo "[transaction-read-write-interference] compose kafka override"
+grep -F 'image: ${KAFKA_IMAGE:-bitnamilegacy/kafka:4.0.0-debian-12-r10}' compose.yml >/dev/null
 grep -F 'KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://${KAFKA_ADVERTISED_HOST:-localhost}:${KAFKA_PORT:-9092}' compose.yml >/dev/null
 grep -F 'OUTBOX_KAFKA_BOOTSTRAP_SERVERS: ${OUTBOX_KAFKA_BOOTSTRAP_SERVERS:-}' compose.loadtest.yml >/dev/null
 grep -F 'NOTIFICATION_INBOX_CONSUMER_BOOTSTRAP_SERVERS: ${NOTIFICATION_INBOX_CONSUMER_BOOTSTRAP_SERVERS:-}' compose.loadtest.yml >/dev/null
@@ -67,5 +88,13 @@ if INTERFERENCE_WRITE_VUS=0 "${runner}" --print-plan >/dev/null 2>&1; then
 fi
 if INTERFERENCE_WRITE_429_RATE_THRESHOLD=1.5 "${runner}" --print-plan >/dev/null 2>&1; then
   echo "INTERFERENCE_WRITE_429_RATE_THRESHOLD=1.5 unexpectedly succeeded" >&2
+  exit 1
+fi
+if INTERFERENCE_READ_OVERLOAD_MODE=maybe "${runner}" --print-plan >/dev/null 2>&1; then
+  echo "INTERFERENCE_READ_OVERLOAD_MODE=maybe unexpectedly succeeded" >&2
+  exit 1
+fi
+if INTERFERENCE_READ_OVERLOAD_429_RATE_THRESHOLD=1.5 "${runner}" --print-plan >/dev/null 2>&1; then
+  echo "INTERFERENCE_READ_OVERLOAD_429_RATE_THRESHOLD=1.5 unexpectedly succeeded" >&2
   exit 1
 fi
