@@ -20,6 +20,8 @@ Optional environment:
   MATRIX_VU_VALUES         default 3,4,6,8
   MATRIX_CONTINUE_ON_FAILURE default true
   MATRIX_BUILD_BACKEND     default true
+  MATRIX_READINESS_TIMEOUT_SECONDS default 90
+  MATRIX_BACKEND_HEALTH_URL default http://localhost:${BACKEND_PORT:-8080}/actuator/health
   PROMETHEUS_URL           default http://localhost:9090
   K6_DURATION              default 1m
   K6_LIMIT                 default 50
@@ -56,6 +58,9 @@ vu_values="${MATRIX_VU_VALUES-3,4,6,8}"
 continue_on_failure="${MATRIX_CONTINUE_ON_FAILURE:-true}"
 build_backend="${MATRIX_BUILD_BACKEND:-true}"
 prometheus_url="${PROMETHEUS_URL:-http://localhost:9090}"
+prometheus_base_url="${prometheus_url%/}"
+readiness_timeout_seconds="${MATRIX_READINESS_TIMEOUT_SECONDS:-90}"
+backend_health_url="${MATRIX_BACKEND_HEALTH_URL:-http://localhost:${BACKEND_PORT:-8080}/actuator/health}"
 report_dir="build/reports/k6/${matrix_name}"
 summary_tsv="${report_dir}/matrix-summary.tsv"
 compose_files=(-f compose.yml -f compose.t3micro.yml -f compose.loadtest.yml)
@@ -86,6 +91,10 @@ csv_count() {
 require_csv_positive_integers "MATRIX_ADMISSION_VALUES" "${admission_values}"
 require_csv_positive_integers "MATRIX_DB_POOL_VALUES" "${db_pool_values}"
 require_csv_positive_integers "MATRIX_VU_VALUES" "${vu_values}"
+if ! [[ "${readiness_timeout_seconds}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "MATRIX_READINESS_TIMEOUT_SECONDS must be a positive integer" >&2
+  exit 1
+fi
 
 admission_count="$(csv_count "${admission_values}")"
 db_pool_count="$(csv_count "${db_pool_values}")"
@@ -102,6 +111,8 @@ print_plan() {
   echo "[transaction-read-matrix] continue_on_failure=${continue_on_failure}"
   echo "[transaction-read-matrix] build_backend=${build_backend}"
   echo "[transaction-read-matrix] prometheus_url=${prometheus_url}"
+  echo "[transaction-read-matrix] backend_health_url=${backend_health_url}"
+  echo "[transaction-read-matrix] readiness_timeout_seconds=${readiness_timeout_seconds}"
   echo "[transaction-read-matrix] summary=${summary_tsv}"
 }
 
@@ -139,7 +150,7 @@ prometheus_value() {
     echo "n/a"
     return 0
   fi
-  curl -fsS --get "${prometheus_url}/api/v1/query" \
+  curl -fsS --get "${prometheus_base_url}/api/v1/query" \
     --data-urlencode "query=${query}" 2>/dev/null \
     | jq -r '.data.result[0].value[1] // "0"' 2>/dev/null \
     || echo "n/a"
@@ -183,6 +194,42 @@ container_cpu_percent() {
   echo "${value:-n/a}"
 }
 
+wait_for_backend_readiness() {
+  local deadline=$((SECONDS + readiness_timeout_seconds))
+  local body=""
+
+  echo "[transaction-read-matrix] waiting backend readiness: ${backend_health_url}"
+  while ((SECONDS < deadline)); do
+    body="$(curl -sS --max-time 2 "${backend_health_url}" 2>/dev/null || true)"
+    # 전체 health는 outbox 등 선택 기능 때문에 DOWN일 수 있어 readinessState만 본다.
+    if grep -F '"readinessState":{"status":"UP"}' <<<"${body}" >/dev/null; then
+      return 0
+    fi
+    sleep 1
+  done
+
+  echo "backend readiness timeout: ${backend_health_url}" >&2
+  if [[ -n "${body}" ]]; then
+    echo "${body}" >&2
+  fi
+  exit 1
+}
+
+wait_for_prometheus_readiness() {
+  local deadline=$((SECONDS + readiness_timeout_seconds))
+
+  echo "[transaction-read-matrix] waiting prometheus readiness: ${prometheus_base_url}/-/ready"
+  while ((SECONDS < deadline)); do
+    if curl -fsS --max-time 2 "${prometheus_base_url}/-/ready" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+
+  echo "prometheus readiness timeout: ${prometheus_base_url}/-/ready" >&2
+  exit 1
+}
+
 write_header() {
   printf "status\tadmission\tdb_pool\tvus\treport\thttp_failed_rate\thttp_reqs\tadmission_429_rate\tadmission_accepted\tadmission_rejected\thot_first_p95_ms\thot_cursor_p95_ms\tcold_first_p95_ms\tcold_cursor_p95_ms\tbackend_cpu_percent\tpostgres_cpu_percent\thikari_active\thikari_pending\thikari_max\tlog_path\tsummary_json\n" >"${summary_tsv}"
 }
@@ -208,6 +255,9 @@ run_combination() {
   OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_MAX="${admission}" \
   DB_POOL_MAX_SIZE="${db_pool}" \
     docker compose "${compose_files[@]}" --profile loadtest up -d --force-recreate aquila-bank-backend prometheus grafana
+
+  wait_for_backend_readiness
+  wait_for_prometheus_readiness
 
   # 조합별 backend env가 docker compose run 의존성 처리로 바뀌지 않도록 k6는 --no-deps로 실행합니다.
   accepted_before="$(prometheus_value 'aquila_api_admission_requests_total{group="transaction-read",outcome="accepted"}')"
