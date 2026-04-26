@@ -19,6 +19,8 @@ Optional environment:
   PROFILE_ADMISSION         default 8
   PROFILE_DB_POOL_MAX_SIZE  default 4
   PROFILE_BUILD_BACKEND     default true
+  PROFILE_READINESS_TIMEOUT_SECONDS default 90
+  PROFILE_BACKEND_HEALTH_URL default http://localhost:${BACKEND_PORT:-8080}/actuator/health
   K6_VUS                    default 8
   K6_DURATION               default 1m
   K6_LIMIT                  default 50
@@ -54,6 +56,8 @@ profile_duration="${PROFILE_DURATION-75s}"
 profile_admission="${PROFILE_ADMISSION:-8}"
 profile_db_pool_max_size="${PROFILE_DB_POOL_MAX_SIZE:-4}"
 profile_build_backend="${PROFILE_BUILD_BACKEND:-true}"
+profile_readiness_timeout_seconds="${PROFILE_READINESS_TIMEOUT_SECONDS:-90}"
+backend_health_url="${PROFILE_BACKEND_HEALTH_URL:-http://localhost:${BACKEND_PORT:-8080}/actuator/health}"
 k6_vus="${K6_VUS:-8}"
 k6_duration="${K6_DURATION:-1m}"
 k6_limit="${K6_LIMIT:-50}"
@@ -62,6 +66,10 @@ report_dir="build/reports/profiling/${profile_name}"
 jfr_container_path="/tmp/${profile_name}.jfr"
 jfr_artifact="${report_dir}/${profile_name}.jfr"
 jfr_summary_txt="${report_dir}/${profile_name}-jfr-summary.txt"
+jfr_hot_methods_txt="${report_dir}/${profile_name}-jfr-hot-methods.txt"
+jfr_cpu_hot_methods_txt="${report_dir}/${profile_name}-jfr-cpu-time-hot-methods.txt"
+jfr_allocation_by_class_txt="${report_dir}/${profile_name}-jfr-allocation-by-class.txt"
+jfr_allocation_by_site_txt="${report_dir}/${profile_name}-jfr-allocation-by-site.txt"
 run_log="${report_dir}/${profile_name}.log"
 summary_md="${report_dir}/${profile_name}-summary.md"
 k6_summary_json="build/reports/k6/${k6_report_name}-summary.json"
@@ -99,8 +107,46 @@ require_duration "PROFILE_DURATION" "${profile_duration}"
 require_duration "K6_DURATION" "${k6_duration}"
 require_positive_integer "PROFILE_ADMISSION" "${profile_admission}"
 require_positive_integer "PROFILE_DB_POOL_MAX_SIZE" "${profile_db_pool_max_size}"
+require_positive_integer "PROFILE_READINESS_TIMEOUT_SECONDS" "${profile_readiness_timeout_seconds}"
 require_positive_integer "K6_VUS" "${k6_vus}"
 require_positive_integer "K6_LIMIT" "${k6_limit}"
+
+find_jfr_cli() {
+  if command -v jfr >/dev/null 2>&1; then
+    command -v jfr
+    return 0
+  fi
+  if command -v /usr/libexec/java_home >/dev/null 2>&1; then
+    local java_home
+    java_home="$(/usr/libexec/java_home 2>/dev/null || true)"
+    if [[ -x "${java_home}/bin/jfr" ]]; then
+      echo "${java_home}/bin/jfr"
+      return 0
+    fi
+  fi
+  return 1
+}
+
+wait_for_backend_readiness() {
+  local deadline=$((SECONDS + profile_readiness_timeout_seconds))
+  local body=""
+
+  echo "[transaction-read-hotpath-profile] waiting backend readiness: ${backend_health_url}"
+  while ((SECONDS < deadline)); do
+    body="$(curl -sS --max-time 2 "${backend_health_url}" 2>/dev/null || true)"
+    # 전체 health는 optional outbox 상태 때문에 DOWN일 수 있어 readinessState만 확인합니다.
+    if grep -F '"readinessState":{"status":"UP"}' <<<"${body}" >/dev/null; then
+      return 0
+    fi
+    sleep 1
+  done
+
+  echo "backend readiness timeout: ${backend_health_url}" >&2
+  if [[ -n "${body}" ]]; then
+    echo "${body}" >&2
+  fi
+  exit 1
+}
 
 print_plan() {
   echo "[transaction-read-hotpath-profile] profile=${profile_name}"
@@ -108,6 +154,8 @@ print_plan() {
   echo "[transaction-read-hotpath-profile] admission=${profile_admission} db_pool=${profile_db_pool_max_size}"
   echo "[transaction-read-hotpath-profile] k6 vus=${k6_vus} duration=${k6_duration} limit=${k6_limit} report=${k6_report_name}"
   echo "[transaction-read-hotpath-profile] jfr duration=${profile_duration}"
+  echo "[transaction-read-hotpath-profile] backend_health_url=${backend_health_url}"
+  echo "[transaction-read-hotpath-profile] readiness_timeout_seconds=${profile_readiness_timeout_seconds}"
   echo "[transaction-read-hotpath-profile] artifact=${jfr_artifact}"
   echo "[transaction-read-hotpath-profile] jfr_summary=${jfr_summary_txt}"
   echo "[transaction-read-hotpath-profile] summary=${summary_md}"
@@ -145,6 +193,8 @@ OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_MAX="${profile_admission}" \
 DB_POOL_MAX_SIZE="${profile_db_pool_max_size}" \
   docker compose "${compose_files[@]}" --profile loadtest up -d --force-recreate aquila-bank-backend prometheus grafana
 
+wait_for_backend_readiness
+
 echo "[transaction-read-hotpath-profile] running k6"
 set +e
 docker compose "${compose_files[@]}" --profile loadtest run --rm --no-deps \
@@ -174,10 +224,18 @@ if [[ ! -s "${jfr_artifact}" ]]; then
   exit 1
 fi
 
-if command -v jfr >/dev/null 2>&1; then
-  jfr summary "${jfr_artifact}" >"${jfr_summary_txt}" 2>&1 || true
+if jfr_cli="$(find_jfr_cli)"; then
+  "${jfr_cli}" summary "${jfr_artifact}" >"${jfr_summary_txt}" 2>&1 || true
+  "${jfr_cli}" view --width 160 hot-methods "${jfr_artifact}" >"${jfr_hot_methods_txt}" 2>&1 || true
+  "${jfr_cli}" view --width 160 cpu-time-hot-methods "${jfr_artifact}" >"${jfr_cpu_hot_methods_txt}" 2>&1 || true
+  "${jfr_cli}" view --width 160 allocation-by-class "${jfr_artifact}" >"${jfr_allocation_by_class_txt}" 2>&1 || true
+  "${jfr_cli}" view --width 160 allocation-by-site "${jfr_artifact}" >"${jfr_allocation_by_site_txt}" 2>&1 || true
 else
   echo "jfr CLI is not available on host; inspect ${jfr_artifact} with a JDK." >"${jfr_summary_txt}"
+  echo "jfr CLI is not available on host." >"${jfr_hot_methods_txt}"
+  echo "jfr CLI is not available on host." >"${jfr_cpu_hot_methods_txt}"
+  echo "jfr CLI is not available on host." >"${jfr_allocation_by_class_txt}"
+  echo "jfr CLI is not available on host." >"${jfr_allocation_by_site_txt}"
 fi
 
 cat >"${summary_md}" <<SUMMARY
@@ -197,6 +255,10 @@ cat >"${summary_md}" <<SUMMARY
 
 - jfr: ${jfr_artifact}
 - jfr summary: ${jfr_summary_txt}
+- jfr hot methods: ${jfr_hot_methods_txt}
+- jfr cpu hot methods: ${jfr_cpu_hot_methods_txt}
+- jfr allocation by class: ${jfr_allocation_by_class_txt}
+- jfr allocation by site: ${jfr_allocation_by_site_txt}
 - k6 summary json: ${k6_summary_json}
 - k6 summary markdown: ${k6_summary_md}
 - run log: ${run_log}
