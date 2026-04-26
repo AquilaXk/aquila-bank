@@ -19,7 +19,9 @@ print_plan() {
 - KAFKA_TOPIC_PROVISIONING_ENABLED=true
 - KAFKA_TOPIC_STARTUP_VALIDATION_ENABLED=true
 - OPS_API_ADMISSION_CONTROL_ENABLED=true
+- OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_MAX=8
 - OPS_T3MICRO_SATURATION_GUARD_ENABLED=true
+- DB_POOL_MAX_SIZE=6
 - Redis/read replica/Kafka/admission/t3.micro required env values must be present
 PLAN
 }
@@ -126,7 +128,7 @@ validate_kafka() {
 
 validate_admission_and_t3micro() {
   require_true OPS_API_ADMISSION_CONTROL_ENABLED
-  require_positive_integer OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_MAX
+  require_equal OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_MAX 8
   require_positive_integer OPS_API_ADMISSION_CONTROL_ACCOUNT_READ_MAX
   require_positive_integer OPS_API_ADMISSION_CONTROL_TRANSFER_WRITE_MAX
   require_positive_integer OPS_API_ADMISSION_CONTROL_NOTIFICATION_STREAM_MAX
@@ -138,7 +140,7 @@ validate_admission_and_t3micro() {
   require_positive_integer OPS_T3MICRO_SATURATION_GUARD_THREADS_BUSY_THRESHOLD_PERCENT
   require_positive_integer OPS_T3MICRO_SATURATION_GUARD_QUERY_TIMEOUT_THRESHOLD
 
-  require_positive_integer DB_POOL_MAX_SIZE
+  require_equal DB_POOL_MAX_SIZE 6
   require_lte_integer NOTIFICATION_INBOX_CONSUMER_CONCURRENCY DB_POOL_MAX_SIZE
   require_positive_integer SERVER_THREADS_MAX
   require_positive_integer NOTIFICATION_SSE_MAX_TOTAL_SESSIONS

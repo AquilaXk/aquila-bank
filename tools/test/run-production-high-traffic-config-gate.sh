@@ -56,6 +56,8 @@ grep -F "TRANSACTION_READ_REPLICA_ENABLED=true" <<<"${plan}" >/dev/null
 grep -F "OUTBOX_KAFKA_ENABLED=true" <<<"${plan}" >/dev/null
 grep -F "NOTIFICATION_INBOX_CONSUMER_CONCURRENCY>=2" <<<"${plan}" >/dev/null
 grep -F "OPS_API_ADMISSION_CONTROL_ENABLED=true" <<<"${plan}" >/dev/null
+grep -F "OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_MAX=8" <<<"${plan}" >/dev/null
+grep -F "DB_POOL_MAX_SIZE=6" <<<"${plan}" >/dev/null
 
 echo "[production-high-traffic-config] guard: missing env fails"
 if "${script}" >/dev/null 2>&1; then
@@ -95,7 +97,7 @@ valid_gate_env=(
   KAFKA_TOPIC_PROVISIONING_REPLICATION_FACTOR=3
   KAFKA_TOPIC_PROVISIONING_MIN_IN_SYNC_REPLICAS=2
   OPS_API_ADMISSION_CONTROL_ENABLED=true
-  OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_MAX=3
+  OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_MAX=8
   OPS_API_ADMISSION_CONTROL_ACCOUNT_READ_MAX=4
   OPS_API_ADMISSION_CONTROL_TRANSFER_WRITE_MAX=2
   OPS_API_ADMISSION_CONTROL_NOTIFICATION_STREAM_MAX=4
@@ -105,13 +107,25 @@ valid_gate_env=(
   OPS_T3MICRO_SATURATION_GUARD_POOL_ACTIVE_THRESHOLD_PERCENT=90
   OPS_T3MICRO_SATURATION_GUARD_THREADS_BUSY_THRESHOLD_PERCENT=90
   OPS_T3MICRO_SATURATION_GUARD_QUERY_TIMEOUT_THRESHOLD=1
-  DB_POOL_MAX_SIZE=4
+  DB_POOL_MAX_SIZE=6
   SERVER_THREADS_MAX=16
   NOTIFICATION_SSE_MAX_TOTAL_SESSIONS=64
 )
 
 echo "[production-high-traffic-config] valid production baseline passes"
 env "${valid_gate_env[@]}" "${script}" >/dev/null
+
+echo "[production-high-traffic-config] guard: t3.micro transaction read default fails"
+if env "${valid_gate_env[@]}" OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_MAX=3 "${script}" >/dev/null 2>&1; then
+  echo "t3.micro transaction read admission default unexpectedly succeeded" >&2
+  exit 1
+fi
+
+echo "[production-high-traffic-config] guard: t3.micro DB pool default fails"
+if env "${valid_gate_env[@]}" DB_POOL_MAX_SIZE=4 "${script}" >/dev/null 2>&1; then
+  echo "t3.micro DB pool default unexpectedly succeeded" >&2
+  exit 1
+fi
 
 echo "[production-high-traffic-config] guard: Redis memory fallback fails"
 if env "${valid_gate_env[@]}" SECURITY_LOGIN_THROTTLING_STORE=memory "${script}" >/dev/null 2>&1; then
@@ -138,7 +152,7 @@ if env "${valid_gate_env[@]}" NOTIFICATION_INBOX_CONSUMER_CONCURRENCY=7 "${scrip
 fi
 
 echo "[production-high-traffic-config] guard: consumer concurrency above DB pool fails"
-if env "${valid_gate_env[@]}" NOTIFICATION_INBOX_CONSUMER_CONCURRENCY=5 "${script}" >/dev/null 2>&1; then
+if env "${valid_gate_env[@]}" KAFKA_TOPIC_PROVISIONING_PARTITIONS=8 NOTIFICATION_INBOX_CONSUMER_CONCURRENCY=7 "${script}" >/dev/null 2>&1; then
   echo "consumer concurrency above DB pool unexpectedly succeeded" >&2
   exit 1
 fi
