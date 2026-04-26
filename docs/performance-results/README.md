@@ -97,6 +97,16 @@ tools/test/archive-k6-transaction-100m-result.sh \
   build/reports/k6/<name>-summary.json
 ```
 
+## Admission guard telemetry
+
+방어형 HTTP admission smoke 결과는 summary TSV와 raw TSV를 Markdown으로 보관합니다. token, Authorization header, 운영 URL은 결과 문서에 남기지 않습니다.
+
+```bash
+tools/test/archive-admission-guard-telemetry-snapshot.sh \
+  build/reports/admission/<name>/http-admission-summary.tsv \
+  build/reports/admission/<name>/http-admission-raw.tsv
+```
+
 ## 월별 chunk lifecycle
 
 월별 partition 선생성, archive detach/drop guard, partition별 `ANALYZE`/`VACUUM` 절차는 [Transaction Read Model Chunk Lifecycle Runbook](../transaction-read-model-chunk-lifecycle.md)을 기준으로 실행합니다.
