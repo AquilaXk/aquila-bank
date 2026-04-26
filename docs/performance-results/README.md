@@ -97,34 +97,6 @@ tools/test/archive-k6-transaction-100m-result.sh \
   build/reports/k6/<name>-summary.json
 ```
 
-### Admission / DB pool / VU matrix
-
-1억 row fixture가 이미 준비된 상태에서 transaction read admission, Hikari pool, k6 VU 조합을 직렬로 측정합니다.
-
-```bash
-MATRIX_NAME=transaction-read-admission-pool-$(date +%Y%m%d-%H%M%S) \
-MATRIX_ADMISSION_VALUES=3,4,6,8 \
-MATRIX_DB_POOL_VALUES=4,6,8 \
-MATRIX_VU_VALUES=3,4,6,8 \
-K6_HOT_ACCOUNT_ID=910000001 \
-K6_COLD_ACCOUNT_ID=910000002 \
-K6_HOT_FROM=2026-04-01T00:00:00Z \
-K6_HOT_TO=2026-04-30T00:00:00Z \
-K6_COLD_FROM=2026-01-01T00:00:00Z \
-K6_COLD_TO=2026-01-31T00:00:00Z \
-tools/test/run-transaction-read-admission-pool-matrix.sh
-```
-
-실행 전 plan을 먼저 확인합니다.
-
-```bash
-tools/test/run-transaction-read-admission-pool-matrix.sh --print-plan
-```
-
-결과는 `build/reports/k6/<matrix-name>/matrix-summary.tsv`에 남깁니다. 각 row는 admission, `DB_POOL_MAX_SIZE`, VU, k6 p95, HTTP failure rate, admission 429 rate, backend/PostgreSQL CPU sample, Hikari active/pending/max snapshot, 조합별 log path를 포함합니다.
-
-matrix runner는 조합마다 backend를 `OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_MAX`와 `DB_POOL_MAX_SIZE`로 force-recreate하고, k6는 `--no-up --no-deps`로 실행합니다. 이 순서를 지키는 이유는 Docker Compose dependency 처리로 backend가 기본 env로 다시 뜨면 report name과 실제 admission 값이 달라질 수 있기 때문입니다.
-
 ## 월별 chunk lifecycle
 
 월별 partition 선생성, archive detach/drop guard, partition별 `ANALYZE`/`VACUUM` 절차는 [Transaction Read Model Chunk Lifecycle Runbook](../transaction-read-model-chunk-lifecycle.md)을 기준으로 실행합니다.
