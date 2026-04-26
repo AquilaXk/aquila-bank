@@ -6,6 +6,7 @@ services:
     pids_limit: ${T3MICRO_POSTGRES_PIDS_LIMIT:-128}
 
   kafka:
+    # Kafka는 기본 runtime에서 제외하고 opt-in 검증 때만 같은 budget 규칙을 적용합니다.
     cpus: "${T3MICRO_KAFKA_CPUS:-0.90}"
     mem_limit: "${T3MICRO_KAFKA_MEMORY:-448m}"
     memswap_limit: "${T3MICRO_KAFKA_MEMORY_SWAP:-448m}"

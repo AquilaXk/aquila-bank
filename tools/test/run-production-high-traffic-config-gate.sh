@@ -32,32 +32,30 @@ abort('gate step must call validation script') unless run.include?('tools/ops/va
   SECURITY_LOGIN_THROTTLING_REQUIRE_REDIS
   REDIS_HOST
   TRANSACTION_READ_REPLICA_ENABLED
-  TRANSACTION_READ_REPLICA_URL
   OUTBOX_KAFKA_ENABLED
-  OUTBOX_KAFKA_BOOTSTRAP_SERVERS
   NOTIFICATION_INBOX_CONSUMER_ENABLED
-  NOTIFICATION_INBOX_CONSUMER_CONCURRENCY
-  KAFKA_TOPIC_PROVISIONING_REPLICATION_FACTOR
+  KAFKA_TOPIC_STARTUP_VALIDATION_ENABLED
   OPS_API_ADMISSION_CONTROL_ENABLED
   OPS_T3MICRO_SATURATION_GUARD_ENABLED
   DB_POOL_MAX_SIZE
+  SERVER_THREADS_MAX
+  NOTIFICATION_SSE_MAX_TOTAL_SESSIONS
 ].each do |key|
   abort("missing gate env: #{key}") unless env.key?(key)
 end
 
-abort('read replica url must come from secret') unless env.fetch('TRANSACTION_READ_REPLICA_URL').include?('secrets.TRANSACTION_READ_REPLICA_URL')
 abort('admission flag must come from variable') unless env.fetch('OPS_API_ADMISSION_CONTROL_ENABLED').include?('vars.OPS_API_ADMISSION_CONTROL_ENABLED')
 RUBY
 
 echo "[production-high-traffic-config] required key plan"
 plan="$("${script}" --print-plan)"
-grep -F "SECURITY_LOGIN_THROTTLING_STORE=redis" <<<"${plan}" >/dev/null
-grep -F "TRANSACTION_READ_REPLICA_ENABLED=true" <<<"${plan}" >/dev/null
-grep -F "OUTBOX_KAFKA_ENABLED=true" <<<"${plan}" >/dev/null
-grep -F "NOTIFICATION_INBOX_CONSUMER_CONCURRENCY>=2" <<<"${plan}" >/dev/null
+grep -F "SECURITY_LOGIN_THROTTLING_STORE=memory 또는 redis" <<<"${plan}" >/dev/null
+grep -F "TRANSACTION_READ_REPLICA_ENABLED=false by default" <<<"${plan}" >/dev/null
+grep -F "OUTBOX_KAFKA_ENABLED=false by default" <<<"${plan}" >/dev/null
 grep -F "OPS_API_ADMISSION_CONTROL_ENABLED=true" <<<"${plan}" >/dev/null
-grep -F "OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_MAX=8" <<<"${plan}" >/dev/null
-grep -F "DB_POOL_MAX_SIZE=6" <<<"${plan}" >/dev/null
+grep -F "OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_MAX<=3" <<<"${plan}" >/dev/null
+grep -F "DB_POOL_MAX_SIZE<=4" <<<"${plan}" >/dev/null
+grep -F "NOTIFICATION_SSE_MAX_TOTAL_SESSIONS<=64" <<<"${plan}" >/dev/null
 
 echo "[production-high-traffic-config] guard: missing env fails"
 if "${script}" >/dev/null 2>&1; then
@@ -66,16 +64,81 @@ if "${script}" >/dev/null 2>&1; then
 fi
 
 valid_gate_env=(
-  SECURITY_LOGIN_THROTTLING_STORE=redis
-  SECURITY_LOGIN_THROTTLING_REQUIRE_REDIS=true
-  REDIS_HOST=redis.production.internal
-  REDIS_PORT=6379
-  TRANSACTION_READ_REPLICA_ENABLED=true
-  TRANSACTION_READ_REPLICA_URL=jdbc:postgresql://replica/aquila_bank
-  TRANSACTION_READ_REPLICA_USERNAME=replica_user
-  TRANSACTION_READ_REPLICA_PASSWORD=replica_password
-  TRANSACTION_READ_REPLICA_POOL_MAX_SIZE=2
-  TRANSACTION_READ_REPLICA_LAG_THRESHOLD_MS=3000
+  SECURITY_LOGIN_THROTTLING_STORE=memory
+  SECURITY_LOGIN_THROTTLING_REQUIRE_REDIS=false
+  TRANSACTION_READ_REPLICA_ENABLED=false
+  OUTBOX_KAFKA_ENABLED=false
+  NOTIFICATION_INBOX_CONSUMER_ENABLED=false
+  KAFKA_TOPIC_PROVISIONING_ENABLED=false
+  KAFKA_TOPIC_STARTUP_VALIDATION_ENABLED=false
+  OPS_API_ADMISSION_CONTROL_ENABLED=true
+  OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_MAX=3
+  OPS_API_ADMISSION_CONTROL_ACCOUNT_READ_MAX=4
+  OPS_API_ADMISSION_CONTROL_TRANSFER_WRITE_MAX=2
+  OPS_API_ADMISSION_CONTROL_NOTIFICATION_STREAM_MAX=4
+  OPS_API_ADMISSION_CONTROL_NOTIFICATION_READ_MAX=4
+  OPS_API_ADMISSION_CONTROL_INTERNAL_OPS_MAX=2
+  OPS_T3MICRO_SATURATION_GUARD_ENABLED=true
+  OPS_T3MICRO_SATURATION_GUARD_POOL_ACTIVE_THRESHOLD_PERCENT=90
+  OPS_T3MICRO_SATURATION_GUARD_THREADS_BUSY_THRESHOLD_PERCENT=90
+  OPS_T3MICRO_SATURATION_GUARD_QUERY_TIMEOUT_THRESHOLD=1
+  DB_POOL_MAX_SIZE=4
+  SERVER_THREADS_MAX=16
+  NOTIFICATION_SSE_MAX_TOTAL_SESSIONS=64
+  OUTBOX_POLLER_BATCH_SIZE=20
+  NOTIFICATION_CHANNEL_PROVIDER_WORKER_BATCH_SIZE=10
+)
+
+echo "[production-high-traffic-config] valid defensive baseline passes"
+env "${valid_gate_env[@]}" "${script}" >/dev/null
+
+echo "[production-high-traffic-config] guard: transaction read admission above defensive cap fails"
+if env "${valid_gate_env[@]}" OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_MAX=4 "${script}" >/dev/null 2>&1; then
+  echo "transaction read admission above defensive cap unexpectedly succeeded" >&2
+  exit 1
+fi
+
+echo "[production-high-traffic-config] guard: DB pool above defensive cap fails"
+if env "${valid_gate_env[@]}" DB_POOL_MAX_SIZE=5 "${script}" >/dev/null 2>&1; then
+  echo "DB pool above defensive cap unexpectedly succeeded" >&2
+  exit 1
+fi
+
+echo "[production-high-traffic-config] guard: SSE cap above defensive cap fails"
+if env "${valid_gate_env[@]}" NOTIFICATION_SSE_MAX_TOTAL_SESSIONS=65 "${script}" >/dev/null 2>&1; then
+  echo "SSE cap above defensive cap unexpectedly succeeded" >&2
+  exit 1
+fi
+
+echo "[production-high-traffic-config] guard: worker batch above defensive cap fails"
+if env "${valid_gate_env[@]}" OUTBOX_POLLER_BATCH_SIZE=21 "${script}" >/dev/null 2>&1; then
+  echo "worker batch above defensive cap unexpectedly succeeded" >&2
+  exit 1
+fi
+
+echo "[production-high-traffic-config] optional: Redis throttling passes when explicitly configured"
+env \
+  "${valid_gate_env[@]}" \
+  SECURITY_LOGIN_THROTTLING_STORE=redis \
+  SECURITY_LOGIN_THROTTLING_REQUIRE_REDIS=true \
+  REDIS_HOST=redis.production.internal \
+  REDIS_PORT=6379 \
+  "${script}" >/dev/null
+
+echo "[production-high-traffic-config] guard: read replica enabled without env fails"
+if env "${valid_gate_env[@]}" TRANSACTION_READ_REPLICA_ENABLED=true "${script}" >/dev/null 2>&1; then
+  echo "read replica without env unexpectedly succeeded" >&2
+  exit 1
+fi
+
+echo "[production-high-traffic-config] guard: Kafka enabled without env fails"
+if env "${valid_gate_env[@]}" OUTBOX_KAFKA_ENABLED=true "${script}" >/dev/null 2>&1; then
+  echo "Kafka without env unexpectedly succeeded" >&2
+  exit 1
+fi
+
+kafka_gate_env=(
+  "${valid_gate_env[@]}"
   OUTBOX_KAFKA_ENABLED=true
   OUTBOX_KAFKA_BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9092,kafka-3:9092
   OUTBOX_KAFKA_TOPIC_DEFAULT=bank.notification.outbox.v1
@@ -87,72 +150,28 @@ valid_gate_env=(
   NOTIFICATION_INBOX_CONSUMER_ENABLED=true
   NOTIFICATION_INBOX_CONSUMER_OPS_ENABLED=true
   NOTIFICATION_INBOX_CONSUMER_BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9092,kafka-3:9092
-  NOTIFICATION_INBOX_CONSUMER_CONCURRENCY=4
+  NOTIFICATION_INBOX_CONSUMER_CONCURRENCY=1
   NOTIFICATION_INBOX_CONSUMER_TRANSFER_BOOKED_TOPIC=bank.transfer.booked.v1
   NOTIFICATION_INBOX_CONSUMER_TRANSFER_REVERSED_TOPIC=bank.transfer.reversed.v1
   NOTIFICATION_INBOX_CONSUMER_DLQ_TOPIC=bank.notification.inbox.dlq.v1
   KAFKA_TOPIC_PROVISIONING_ENABLED=true
   KAFKA_TOPIC_STARTUP_VALIDATION_ENABLED=true
-  KAFKA_TOPIC_PROVISIONING_PARTITIONS=6
+  KAFKA_TOPIC_PROVISIONING_PARTITIONS=3
   KAFKA_TOPIC_PROVISIONING_REPLICATION_FACTOR=3
   KAFKA_TOPIC_PROVISIONING_MIN_IN_SYNC_REPLICAS=2
-  OPS_API_ADMISSION_CONTROL_ENABLED=true
-  OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_MAX=8
-  OPS_API_ADMISSION_CONTROL_ACCOUNT_READ_MAX=4
-  OPS_API_ADMISSION_CONTROL_TRANSFER_WRITE_MAX=2
-  OPS_API_ADMISSION_CONTROL_NOTIFICATION_STREAM_MAX=4
-  OPS_API_ADMISSION_CONTROL_NOTIFICATION_READ_MAX=4
-  OPS_API_ADMISSION_CONTROL_INTERNAL_OPS_MAX=2
-  OPS_T3MICRO_SATURATION_GUARD_ENABLED=true
-  OPS_T3MICRO_SATURATION_GUARD_POOL_ACTIVE_THRESHOLD_PERCENT=90
-  OPS_T3MICRO_SATURATION_GUARD_THREADS_BUSY_THRESHOLD_PERCENT=90
-  OPS_T3MICRO_SATURATION_GUARD_QUERY_TIMEOUT_THRESHOLD=1
-  DB_POOL_MAX_SIZE=6
-  SERVER_THREADS_MAX=16
-  NOTIFICATION_SSE_MAX_TOTAL_SESSIONS=64
 )
 
-echo "[production-high-traffic-config] valid production baseline passes"
-env "${valid_gate_env[@]}" "${script}" >/dev/null
+echo "[production-high-traffic-config] optional: Kafka baseline passes when explicitly configured"
+env "${kafka_gate_env[@]}" "${script}" >/dev/null
 
-echo "[production-high-traffic-config] guard: t3.micro transaction read default fails"
-if env "${valid_gate_env[@]}" OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_MAX=3 "${script}" >/dev/null 2>&1; then
-  echo "t3.micro transaction read admission default unexpectedly succeeded" >&2
-  exit 1
-fi
-
-echo "[production-high-traffic-config] guard: t3.micro DB pool default fails"
-if env "${valid_gate_env[@]}" DB_POOL_MAX_SIZE=4 "${script}" >/dev/null 2>&1; then
-  echo "t3.micro DB pool default unexpectedly succeeded" >&2
-  exit 1
-fi
-
-echo "[production-high-traffic-config] guard: Redis memory fallback fails"
-if env "${valid_gate_env[@]}" SECURITY_LOGIN_THROTTLING_STORE=memory "${script}" >/dev/null 2>&1; then
-  echo "memory fallback unexpectedly succeeded" >&2
-  exit 1
-fi
-
-echo "[production-high-traffic-config] guard: unsafe Kafka replication fails"
-if env "${valid_gate_env[@]}" KAFKA_TOPIC_PROVISIONING_REPLICATION_FACTOR=1 "${script}" >/dev/null 2>&1; then
+echo "[production-high-traffic-config] guard: unsafe Kafka replication fails when Kafka is enabled"
+if env "${kafka_gate_env[@]}" KAFKA_TOPIC_PROVISIONING_REPLICATION_FACTOR=1 "${script}" >/dev/null 2>&1; then
   echo "unsafe Kafka replication unexpectedly succeeded" >&2
   exit 1
 fi
 
-echo "[production-high-traffic-config] guard: notification consumer default concurrency fails"
-if env "${valid_gate_env[@]}" NOTIFICATION_INBOX_CONSUMER_CONCURRENCY=1 "${script}" >/dev/null 2>&1; then
-  echo "default notification consumer concurrency unexpectedly succeeded" >&2
-  exit 1
-fi
-
-echo "[production-high-traffic-config] guard: consumer concurrency above partitions fails"
-if env "${valid_gate_env[@]}" NOTIFICATION_INBOX_CONSUMER_CONCURRENCY=7 "${script}" >/dev/null 2>&1; then
-  echo "consumer concurrency above partitions unexpectedly succeeded" >&2
-  exit 1
-fi
-
-echo "[production-high-traffic-config] guard: consumer concurrency above DB pool fails"
-if env "${valid_gate_env[@]}" KAFKA_TOPIC_PROVISIONING_PARTITIONS=8 NOTIFICATION_INBOX_CONSUMER_CONCURRENCY=7 "${script}" >/dev/null 2>&1; then
+echo "[production-high-traffic-config] guard: consumer concurrency above DB pool fails when Kafka is enabled"
+if env "${kafka_gate_env[@]}" KAFKA_TOPIC_PROVISIONING_PARTITIONS=8 NOTIFICATION_INBOX_CONSUMER_CONCURRENCY=5 "${script}" >/dev/null 2>&1; then
   echo "consumer concurrency above DB pool unexpectedly succeeded" >&2
   exit 1
 fi

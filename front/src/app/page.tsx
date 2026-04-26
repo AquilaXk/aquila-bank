@@ -11,8 +11,8 @@ const highlights = [
     text: "이벤트 기반 알림 흐름을 기준으로 중복 발행 방지와 재시도 전략을 프런트 UX와 함께 검증합니다.",
   },
   {
-    title: "Massive Transaction Search",
-    text: "1억 건 규모 거래 조회를 가정하고 기간, 계좌, 상태, 금액 축을 빠르게 좁히는 인터페이스를 준비합니다.",
+    title: "Bounded Transaction Query",
+    text: "1억 건 저장 규모에서도 accountId, 기간, keyset pagination으로 조회 범위를 작게 유지합니다.",
   },
   {
     title: "Operational Readiness",
@@ -33,14 +33,14 @@ export default function HomePage() {
         <p className="eyebrow">Aquila Bank Workspace</p>
         <h1>고신뢰 웹뱅킹을 위한 front/back 분리 워크스페이스</h1>
         <p className="lead">
-          실시간 알림과 초대형 거래 조회를 함께 다루는 구조를 기준으로 프런트와
+          실시간 알림과 방어형 거래 조회를 함께 다루는 구조를 기준으로 프런트와
           백엔드를 분리했습니다. 이제 고객 채널, 운영 콘솔, API, 비동기 처리
-          경계를 독립적으로 확장할 수 있습니다.
+          경계를 작은 인프라 예산 안에서 독립적으로 제한할 수 있습니다.
         </p>
         <div className="hero-grid">
           <div className="metric">
-            <span className="metric-label">Target Volume</span>
-            <strong>100M+</strong>
+            <span className="metric-label">Data Scale</span>
+            <strong>100M rows</strong>
           </div>
           <div className="metric">
             <span className="metric-label">Notification Mode</span>
