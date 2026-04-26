@@ -19,6 +19,7 @@ grep -F "backend: aquila-bank-backend:8080 with t3.micro budget" <<<"${plan}" >/
 grep -F "observability: prometheus:9090 grafana:3000 alertmanager:9093 postgres-exporter:9187" <<<"${plan}" >/dev/null
 grep -F "k6 report name: transaction-100m-check" <<<"${plan}" >/dev/null
 grep -F "overload mode=false max retry-after sleep seconds=1" <<<"${plan}" >/dev/null
+grep -F "overload 429 rate threshold=0.05" <<<"${plan}" >/dev/null
 grep -F "preflight=true" <<<"${plan}" >/dev/null
 
 overload_plan="$(
@@ -29,6 +30,7 @@ overload_plan="$(
 )"
 grep -F "k6 report name: transaction-100m-overload-check" <<<"${overload_plan}" >/dev/null
 grep -F "overload mode=true max retry-after sleep seconds=2" <<<"${overload_plan}" >/dev/null
+grep -F "overload 429 rate threshold=0.05" <<<"${overload_plan}" >/dev/null
 
 echo "[k6-transaction-100m] k6 script contract"
 grep -F "experimental-prometheus-rw" compose.loadtest.yml >/dev/null
@@ -42,12 +44,21 @@ grep -F "OOMKilled" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "aquila_transaction_hot_first_ms" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "aquila_transaction_cold_cursor_ms" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_OVERLOAD_MODE" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "K6_OVERLOAD_429_RATE_THRESHOLD" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_MAX_RETRY_AFTER_SLEEP_SECONDS" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "aquila_transaction_429_rate" ops/k6/transaction-read-100m.js >/dev/null
+grep -F 'rate<${overload429RateThreshold}' ops/k6/transaction-read-100m.js >/dev/null
 grep -F "Retry-After" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_OVERLOAD_MODE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "K6_OVERLOAD_429_RATE_THRESHOLD" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "handleSummary" ops/k6/transaction-read-100m.js >/dev/null
 grep -F '/reports/${reportName}-summary.md' ops/k6/transaction-read-100m.js >/dev/null
+
+echo "[k6-transaction-100m] invalid input fails"
+if K6_OVERLOAD_429_RATE_THRESHOLD=1.5 tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
+  echo "K6_OVERLOAD_429_RATE_THRESHOLD=1.5 unexpectedly succeeded" >&2
+  exit 1
+fi
 
 echo "[k6-transaction-100m] archive script"
 temp_dir="$(mktemp -d)"
