@@ -2,6 +2,8 @@
 
 `ops/prometheus`는 Aquila Bank backend가 이미 export 중인 metric을 기준으로 Grafana dashboard와 Prometheus alert rule baseline을 보관하는 디렉터리입니다. 실제 Prometheus server, Grafana provisioning, Alertmanager routing은 환경별로 다르므로 이번 baseline은 import/apply 가능한 자산만 저장소에 고정합니다.
 
+EC2 `t3.micro` + RDS `db.t4g.small` + gp3 방어형 runtime에서는 Prometheus/Grafana/Alertmanager를 같은 t3.micro host에 상시 필수 운영하지 않습니다. 이 디렉터리의 자산은 부하테스트 overlay, 별도 관측 host, 또는 장애 분석을 위한 단기 실행 기준으로 사용합니다.
+
 ## 포함 파일
 
 - dashboard:
@@ -123,7 +125,7 @@ cp ops/prometheus/rules/aquila-bank-alerts.yml /etc/prometheus/rules/
 
 ## Provisioning Apply
 
-저장소 baseline은 runtime을 강제하지 않고, compose/Kubernetes/systemd 어디서든 같은 mount path로 적용할 수 있게 둡니다.
+저장소 baseline은 runtime을 강제하지 않고, compose/Kubernetes/systemd 어디서든 같은 mount path로 적용할 수 있게 둡니다. t3.micro 애플리케이션 host에 상시 동거시키는 방식은 기본 운영 목표에서 제외합니다.
 
 - Prometheus:
   - `ops/prometheus/prometheus.yml` -> `/etc/prometheus/prometheus.yml`
