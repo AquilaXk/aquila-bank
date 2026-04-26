@@ -8,6 +8,9 @@ usage: tools/test/run-transaction-100m-fixture-restore.sh [--print-plan]
 Environment:
   FIXTURE_MODE              verify|dump|restore, default verify
   FIXTURE_NAME              default transaction-100m-fixture
+  FIXTURE_RECOVERY_PREFLIGHT default true
+  FIXTURE_REQUIRE_DUMP      require local dump artifact before mode, default false; restore always requires it
+  FIXTURE_VERIFY_MIN_ROWS   sampled minimum rows for verify, default 0
   FIXTURE_RESTORE_TRUNCATE  must be true for restore
 USAGE
 }
@@ -27,6 +30,10 @@ fixture_mode="${FIXTURE_MODE:-verify}"
 fixture_name="${FIXTURE_NAME:-transaction-100m-fixture}"
 fixture_dir="${FIXTURE_DIR:-build/fixtures}"
 fixture_path="${FIXTURE_PATH:-${fixture_dir}/${fixture_name}.dump}"
+fixture_recovery_preflight="${FIXTURE_RECOVERY_PREFLIGHT:-true}"
+fixture_require_dump="${FIXTURE_REQUIRE_DUMP:-false}"
+fixture_verify_min_rows="${FIXTURE_VERIFY_MIN_ROWS:-0}"
+postgres_container_name="${FIXTURE_POSTGRES_CONTAINER_NAME:-aquila-bank-postgres}"
 compose_files=(-f compose.yml -f compose.t3micro.yml -f compose.loadtest.yml)
 container_dump_path="/tmp/${fixture_name}.dump"
 
@@ -34,10 +41,28 @@ case "${fixture_mode}" in
   verify|dump|restore) ;;
   *) echo "FIXTURE_MODE must be verify, dump, or restore" >&2; exit 1 ;;
 esac
+case "${fixture_recovery_preflight}" in
+  true|false) ;;
+  *) echo "FIXTURE_RECOVERY_PREFLIGHT must be true or false" >&2; exit 1 ;;
+esac
+case "${fixture_require_dump}" in
+  true|false) ;;
+  *) echo "FIXTURE_REQUIRE_DUMP must be true or false" >&2; exit 1 ;;
+esac
+if ! [[ "${fixture_verify_min_rows}" =~ ^[0-9]+$ ]]; then
+  echo "FIXTURE_VERIFY_MIN_ROWS must be zero or a positive integer" >&2
+  exit 1
+fi
+if [[ "${fixture_mode}" == "restore" ]]; then
+  fixture_require_dump="true"
+fi
 
 echo "[transaction-fixture-restore] fixture=${fixture_name}"
 echo "[transaction-fixture-restore] mode=${fixture_mode}"
 echo "[transaction-fixture-restore] dump=${fixture_path}"
+echo "[transaction-fixture-restore] recovery_preflight=${fixture_recovery_preflight}"
+echo "[transaction-fixture-restore] require_dump=${fixture_require_dump}"
+echo "[transaction-fixture-restore] verify_min_rows=${fixture_verify_min_rows}"
 echo "[transaction-fixture-restore] modes=verify,dump,restore"
 
 if [[ "${print_plan}" == "true" ]]; then
@@ -51,7 +76,49 @@ fi
 
 mkdir -p "${fixture_dir}"
 
-if [[ "${fixture_mode}" == "verify" ]]; then
+assert_fixture_dump_present() {
+  test -s "${fixture_path}" || { echo "fixture dump not found: ${fixture_path}" >&2; exit 1; }
+}
+
+assert_postgres_recovery_safe() {
+  if [[ "${fixture_recovery_preflight}" != "true" ]]; then
+    echo "[transaction-fixture-restore] recovery preflight skipped"
+    return 0
+  fi
+
+  local state running restarting oom_killed status
+  if ! state="$(docker inspect "${postgres_container_name}" --format '{{.State.Running}} {{.State.Restarting}} {{.State.OOMKilled}} {{.State.Status}}' 2>/dev/null)"; then
+    echo "PostgreSQL container not found for recovery preflight: ${postgres_container_name}" >&2
+    exit 1
+  fi
+  read -r running restarting oom_killed status <<<"${state}"
+  if [[ "${oom_killed}" == "true" ]]; then
+    echo "PostgreSQL container has OOMKilled=true. Recreate or restore from fixture dump before retry." >&2
+    exit 1
+  fi
+  if [[ "${restarting}" == "true" || "${status}" != "running" || "${running}" != "true" ]]; then
+    echo "PostgreSQL container is not ready. Running=${running} Restarting=${restarting} Status=${status}" >&2
+    exit 1
+  fi
+
+  local in_recovery
+  if ! in_recovery="$(
+    docker compose "${compose_files[@]}" exec -T postgres psql -v ON_ERROR_STOP=1 \
+      -U "${DB_USERNAME:-postgres}" -d "${DB_NAME:-aquila_bank}" \
+      --no-align --tuples-only --command "SELECT pg_is_in_recovery();" 2>&1
+  )"; then
+    echo "PostgreSQL recovery preflight query failed; database may still be starting or in recovery loop." >&2
+    echo "${in_recovery}" >&2
+    exit 1
+  fi
+  in_recovery="$(tr -d '[:space:]' <<<"${in_recovery}")"
+  if [[ "${in_recovery}" == "t" ]]; then
+    echo "PostgreSQL reports pg_is_in_recovery()=true. Do not run fixture restore/k6 until recovery is closed." >&2
+    exit 1
+  fi
+}
+
+verify_fixture_schema() {
   docker compose "${compose_files[@]}" exec -T postgres psql -v ON_ERROR_STOP=1 \
     -U "${DB_USERNAME:-postgres}" -d "${DB_NAME:-aquila_bank}" \
     --no-align --tuples-only --command "
@@ -59,6 +126,48 @@ if [[ "${fixture_mode}" == "verify" ]]; then
           AND to_regclass('public.transaction_read_model_archive') IS NOT NULL
           AND to_regclass('public.idx_transaction_read_model_account_cursor') IS NOT NULL
           AND to_regclass('public.idx_transaction_read_model_archive_account_cursor') IS NOT NULL;"
+}
+
+verify_fixture_rows() {
+  if [[ "${fixture_verify_min_rows}" -eq 0 ]]; then
+    return 0
+  fi
+
+  local sampled_rows
+  sampled_rows="$(
+    docker compose "${compose_files[@]}" exec -T postgres psql -v ON_ERROR_STOP=1 \
+      -U "${DB_USERNAME:-postgres}" -d "${DB_NAME:-aquila_bank}" \
+      --no-align --tuples-only --command "
+        SELECT count(*)
+        FROM (
+          SELECT 1 FROM public.transaction_read_model
+          UNION ALL
+          SELECT 1 FROM public.transaction_read_model_archive
+          LIMIT ${fixture_verify_min_rows}
+        ) rows;"
+  )"
+  sampled_rows="$(tr -d '[:space:]' <<<"${sampled_rows}")"
+  echo "[transaction-fixture-restore] transaction_read_model rows sampled=${sampled_rows} min=${fixture_verify_min_rows}"
+  if ! [[ "${sampled_rows}" =~ ^[0-9]+$ ]] || ((sampled_rows < fixture_verify_min_rows)); then
+    echo "transaction_read_model rows below fixture verify minimum: sampled=${sampled_rows} min=${fixture_verify_min_rows}" >&2
+    exit 1
+  fi
+}
+
+if [[ "${fixture_require_dump}" == "true" ]]; then
+  assert_fixture_dump_present
+fi
+
+assert_postgres_recovery_safe
+
+if [[ "${fixture_mode}" == "verify" ]]; then
+  schema_ready="$(verify_fixture_schema)"
+  echo "${schema_ready}"
+  if [[ "$(tr -d '[:space:]' <<<"${schema_ready}")" != "t" ]]; then
+    echo "transaction read fixture schema/index preflight failed" >&2
+    exit 1
+  fi
+  verify_fixture_rows
 elif [[ "${fixture_mode}" == "dump" ]]; then
   docker compose "${compose_files[@]}" exec -T postgres pg_dump \
     -U "${DB_USERNAME:-postgres}" -d "${DB_NAME:-aquila_bank}" \
@@ -67,8 +176,9 @@ elif [[ "${fixture_mode}" == "dump" ]]; then
     --table=public.transaction_read_model \
     --table=public.transaction_read_model_archive
   docker cp "aquila-bank-postgres:${container_dump_path}" "${fixture_path}"
+  assert_fixture_dump_present
 else
-  test -s "${fixture_path}" || { echo "fixture dump not found: ${fixture_path}" >&2; exit 1; }
+  assert_fixture_dump_present
   docker cp "${fixture_path}" "aquila-bank-postgres:${container_dump_path}"
   docker compose "${compose_files[@]}" exec -T postgres psql -v ON_ERROR_STOP=1 \
     -U "${DB_USERNAME:-postgres}" -d "${DB_NAME:-aquila_bank}" \
