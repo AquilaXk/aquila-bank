@@ -27,6 +27,10 @@ const vus = Number(__ENV.K6_VUS || "8");
 const duration = __ENV.K6_DURATION || "1m";
 const hotP95ThresholdMs = Number(__ENV.K6_HOT_P95_THRESHOLD_MS || "350");
 const coldP95ThresholdMs = Number(__ENV.K6_COLD_P95_THRESHOLD_MS || "750");
+const hotP99ThresholdMs = Number(__ENV.K6_HOT_P99_THRESHOLD_MS || "750");
+const coldP99ThresholdMs = Number(__ENV.K6_COLD_P99_THRESHOLD_MS || "1500");
+const hotMaxThresholdMs = Number(__ENV.K6_HOT_MAX_THRESHOLD_MS || "3000");
+const coldMaxThresholdMs = Number(__ENV.K6_COLD_MAX_THRESHOLD_MS || "5000");
 const failedRate = Number(__ENV.K6_HTTP_FAILED_RATE || "0.01");
 const reportName = __ENV.K6_REPORT_NAME || "transaction-100m";
 const overloadMode = booleanEnv(__ENV.K6_OVERLOAD_MODE);
@@ -46,10 +50,26 @@ const transaction429Rate = new Rate("aquila_transaction_429_rate");
 function thresholds() {
   const result = {
     checks: ["rate>0.99"],
-    aquila_transaction_hot_first_ms: [`p(95)<${hotP95ThresholdMs}`],
-    aquila_transaction_hot_cursor_ms: [`p(95)<${hotP95ThresholdMs}`],
-    aquila_transaction_cold_first_ms: [`p(95)<${coldP95ThresholdMs}`],
-    aquila_transaction_cold_cursor_ms: [`p(95)<${coldP95ThresholdMs}`],
+    aquila_transaction_hot_first_ms: [
+      `p(95)<${hotP95ThresholdMs}`,
+      `p(99)<${hotP99ThresholdMs}`,
+      `max<${hotMaxThresholdMs}`,
+    ],
+    aquila_transaction_hot_cursor_ms: [
+      `p(95)<${hotP95ThresholdMs}`,
+      `p(99)<${hotP99ThresholdMs}`,
+      `max<${hotMaxThresholdMs}`,
+    ],
+    aquila_transaction_cold_first_ms: [
+      `p(95)<${coldP95ThresholdMs}`,
+      `p(99)<${coldP99ThresholdMs}`,
+      `max<${coldMaxThresholdMs}`,
+    ],
+    aquila_transaction_cold_cursor_ms: [
+      `p(95)<${coldP95ThresholdMs}`,
+      `p(99)<${coldP99ThresholdMs}`,
+      `max<${coldMaxThresholdMs}`,
+    ],
   };
   if (!overloadMode) {
     result.http_req_failed = [`rate<${failedRate}`];
@@ -266,6 +286,10 @@ function markdownSummary(data) {
 - cold account id: ${coldAccountId}
 - hot p95 threshold ms: ${hotP95ThresholdMs}
 - cold p95 threshold ms: ${coldP95ThresholdMs}
+- hot p99 threshold ms: ${hotP99ThresholdMs}
+- cold p99 threshold ms: ${coldP99ThresholdMs}
+- hot max threshold ms: ${hotMaxThresholdMs}
+- cold max threshold ms: ${coldMaxThresholdMs}
 - http failed rate threshold: ${httpFailedRateThreshold}
 - overload 429 rate threshold: ${overload429RateThresholdText}
 
@@ -275,9 +299,17 @@ function markdownSummary(data) {
 - checks rate: ${metric(data, "checks", "rate")}
 - transaction 429 rate: ${metric(data, "aquila_transaction_429_rate", "rate")}
 - hot first p95 ms: ${metric(data, "aquila_transaction_hot_first_ms", "p(95)")}
+- hot first p99 ms: ${metric(data, "aquila_transaction_hot_first_ms", "p(99)")}
+- hot first max ms: ${metric(data, "aquila_transaction_hot_first_ms", "max")}
 - hot cursor p95 ms: ${metric(data, "aquila_transaction_hot_cursor_ms", "p(95)")}
+- hot cursor p99 ms: ${metric(data, "aquila_transaction_hot_cursor_ms", "p(99)")}
+- hot cursor max ms: ${metric(data, "aquila_transaction_hot_cursor_ms", "max")}
 - cold first p95 ms: ${metric(data, "aquila_transaction_cold_first_ms", "p(95)")}
+- cold first p99 ms: ${metric(data, "aquila_transaction_cold_first_ms", "p(99)")}
+- cold first max ms: ${metric(data, "aquila_transaction_cold_first_ms", "max")}
 - cold cursor p95 ms: ${metric(data, "aquila_transaction_cold_cursor_ms", "p(95)")}
+- cold cursor p99 ms: ${metric(data, "aquila_transaction_cold_cursor_ms", "p(99)")}
+- cold cursor max ms: ${metric(data, "aquila_transaction_cold_cursor_ms", "max")}
 
 ## Notes
 
