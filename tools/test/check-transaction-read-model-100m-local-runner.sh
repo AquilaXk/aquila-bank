@@ -4,6 +4,7 @@ set -euo pipefail
 echo "[transaction-100m-local-runner] shell syntax"
 bash -n tools/test/seed-transaction-read-model-100m.sh
 bash -n tools/test/run-transaction-read-model-100m-k6-local.sh
+bash -n tools/test/prepare-transaction-read-model-100m-fixture.sh
 
 echo "[transaction-100m-local-runner] compose config"
 docker compose -f compose.yml -f compose.t3micro.yml -f compose.loadtest.yml config >/dev/null
@@ -79,3 +80,24 @@ grep -F "flyway latest applied" tools/test/run-transaction-read-model-100m-k6-lo
 grep -F "assert_k6_preflight" tools/test/run-transaction-read-model-100m-k6-local.sh >/dev/null
 grep -F "run-k6-transaction-100m-loadtest.sh --no-up" tools/test/run-transaction-read-model-100m-k6-local.sh >/dev/null
 grep -F "seed-transaction-read-model-100m.sh" tools/test/run-transaction-read-model-100m-k6-local.sh >/dev/null
+
+echo "[transaction-100m-local-runner] fixture prepare plan"
+fixture_plan="$(
+  SEED_TOTAL_ROWS=1000 \
+  K6_REPORT_NAME=transaction-100m-check \
+    tools/test/prepare-transaction-read-model-100m-fixture.sh --print-plan
+)"
+grep -F "mode=print-plan" <<<"${fixture_plan}" >/dev/null
+grep -F "fixture phase only" <<<"${fixture_plan}" >/dev/null
+grep -F "seed_total_rows=1000" <<<"${fixture_plan}" >/dev/null
+grep -F "seed_batch_size=250000" <<<"${fixture_plan}" >/dev/null
+grep -F "seed_conflict_mode=fail" <<<"${fixture_plan}" >/dev/null
+grep -F "observability=off" <<<"${fixture_plan}" >/dev/null
+grep -F "read phase: tools/test/run-transaction-read-model-100m-k6-local.sh --k6-only" <<<"${fixture_plan}" >/dev/null
+
+echo "[transaction-100m-local-runner] fixture prepare contract"
+grep -F "fixture phase only" tools/test/prepare-transaction-read-model-100m-fixture.sh >/dev/null
+grep -F "run-transaction-read-model-100m-k6-local.sh --k6-only" tools/test/prepare-transaction-read-model-100m-fixture.sh >/dev/null
+grep -F "SEED_TOTAL_ROWS" tools/test/prepare-transaction-read-model-100m-fixture.sh >/dev/null
+grep -F "SEED_BATCH_SIZE" tools/test/prepare-transaction-read-model-100m-fixture.sh >/dev/null
+grep -F "assert_flyway_latest" tools/test/prepare-transaction-read-model-100m-fixture.sh >/dev/null
