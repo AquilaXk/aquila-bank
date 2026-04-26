@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE' >&2
-usage: tools/test/run-transaction-read-model-100m-k6-local.sh [--print-plan|--seed-only|--k6-only]
+usage: tools/test/run-transaction-read-model-100m-k6-local.sh [--print-plan|--seed-only|--k6-only] [--no-deps]
 
 Environment:
   SEED_TOTAL_ROWS      default 100000000
@@ -17,31 +17,42 @@ Environment:
 
 Examples:
   tools/test/run-transaction-read-model-100m-k6-local.sh --print-plan
+  tools/test/run-transaction-read-model-100m-k6-local.sh --k6-only --no-deps
   SEED_TOTAL_ROWS=100000000 tools/test/run-transaction-read-model-100m-k6-local.sh
 USAGE
 }
 
 mode="run"
-if [[ "${1:-}" == "--print-plan" ]]; then
-  mode="print-plan"
+start_dependencies="true"
+while [[ "$#" -gt 0 ]]; do
+  case "$1" in
+    --print-plan)
+      mode="print-plan"
+      ;;
+    --seed-only)
+      mode="seed-only"
+      ;;
+    --k6-only)
+      mode="k6-only"
+      ;;
+    --no-deps)
+      start_dependencies="false"
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage
+      exit 1
+      ;;
+  esac
   shift
-elif [[ "${1:-}" == "--seed-only" ]]; then
-  mode="seed-only"
-  shift
-elif [[ "${1:-}" == "--k6-only" ]]; then
-  mode="k6-only"
-  shift
-elif [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-  usage
-  exit 0
-fi
-
-if [[ "$#" -ne 0 ]]; then
-  usage
-  exit 1
-fi
+done
 
 compose_files=(-f compose.yml -f compose.t3micro.yml -f compose.loadtest.yml)
+db_username="${DB_USERNAME:-postgres}"
+db_name="${DB_NAME:-aquila_bank}"
 seed_total_rows="${SEED_TOTAL_ROWS:-100000000}"
 seed_batch_size="${SEED_BATCH_SIZE:-250000}"
 seed_hot_account_id="${SEED_HOT_ACCOUNT_ID:-910000001}"
@@ -55,10 +66,16 @@ seed_index_strategy="${SEED_INDEX_STRATEGY:-required}"
 seed_conflict_mode="${SEED_CONFLICT_MODE:-fail}"
 k6_report_name="${K6_REPORT_NAME:-transaction-100m-local-$(date +%Y-%m-%d-%H%M%S)}"
 
-psql_base=(docker compose "${compose_files[@]}" exec -T postgres psql -v ON_ERROR_STOP=1 -U "${DB_USERNAME:-postgres}" -d "${DB_NAME:-aquila_bank}")
+psql_base=(docker compose "${compose_files[@]}" exec -T postgres psql -v ON_ERROR_STOP=1 -U "${db_username}" -d "${db_name}")
 
 print_plan() {
   echo "[transaction-100m-local] mode=${mode}"
+  if [[ "${start_dependencies}" == "true" ]]; then
+    echo "[transaction-100m-local] dependencies=compose-runtime"
+  else
+    echo "[transaction-100m-local] dependencies=no-deps"
+  fi
+  echo "[transaction-100m-local] backend env DB_USERNAME=${db_username} DB_NAME=${db_name}"
   echo "[transaction-100m-local] seed_total_rows=${seed_total_rows} seed_batch_size=${seed_batch_size} seed_truncate=${seed_truncate} seed_index_strategy=${seed_index_strategy} seed_conflict_mode=${seed_conflict_mode}"
   echo "[transaction-100m-local] hot account=${seed_hot_account_id} window=${seed_hot_from}..${seed_hot_to}"
   echo "[transaction-100m-local] cold account=${seed_cold_account_id} window=${seed_cold_from}..${seed_cold_to}"
@@ -67,17 +84,47 @@ print_plan() {
   echo "[transaction-100m-local] observability: Prometheus http://localhost:9090, Grafana http://localhost:3001"
 }
 
+validate_backend_env() {
+  if [[ -z "${db_username}" ]]; then
+    echo "DB_USERNAME must not be empty for backend/postgres preflight" >&2
+    exit 1
+  fi
+  if [[ -z "${db_name}" ]]; then
+    echo "DB_NAME must not be empty for backend/postgres preflight" >&2
+    exit 1
+  fi
+}
+
+log_psql_failure() {
+  local attempt="$1"
+  local output="$2"
+  if (( attempt == 1 || attempt % 15 == 0 || attempt == 90 )); then
+    echo "[transaction-100m-local] psql schema check failed attempt=${attempt}/90" >&2
+    echo "[transaction-100m-local] psql output:" >&2
+    echo "${output}" >&2
+  fi
+}
+
 wait_for_schema() {
-  local attempt exists
+  local attempt exists psql_output last_psql_output
   for attempt in $(seq 1 90); do
-    if exists="$("${psql_base[@]}" --no-align --tuples-only --command "SELECT to_regclass('public.transaction_read_model') IS NOT NULL;" 2>/dev/null)"; then
+    if psql_output="$("${psql_base[@]}" --no-align --tuples-only --command "SELECT to_regclass('public.transaction_read_model') IS NOT NULL;" 2>&1)"; then
+      last_psql_output="${psql_output}"
+      exists="$(tr -d '[:space:]' <<<"${psql_output}")"
       if [[ "${exists}" == "t" ]]; then
         return 0
       fi
+    else
+      last_psql_output="${psql_output}"
+      log_psql_failure "${attempt}" "${psql_output}"
     fi
     sleep 2
   done
   echo "transaction_read_model schema was not created in time" >&2
+  if [[ -n "${last_psql_output:-}" ]]; then
+    echo "[transaction-100m-local] psql output:" >&2
+    echo "${last_psql_output}" >&2
+  fi
   exit 1
 }
 
@@ -178,8 +225,15 @@ if [[ "${mode}" == "print-plan" ]]; then
   exit 0
 fi
 
-if [[ "${mode}" != "k6-only" ]]; then
+validate_backend_env
+
+if [[ "${mode}" != "k6-only" && "${start_dependencies}" == "true" ]]; then
   start_runtime
+elif [[ "${mode}" != "k6-only" ]]; then
+  echo "[transaction-100m-local] dependency start skipped by --no-deps"
+fi
+
+if [[ "${mode}" != "k6-only" ]]; then
   run_seed
 fi
 

@@ -71,10 +71,21 @@ grep -F "seed_batch_size=250000" <<<"${wrapper_plan}" >/dev/null
 grep -F "seed_conflict_mode=fail" <<<"${wrapper_plan}" >/dev/null
 grep -F "flyway preflight=latest local migration" <<<"${wrapper_plan}" >/dev/null
 grep -F "k6 report=transaction-100m-check" <<<"${wrapper_plan}" >/dev/null
+grep -F "backend env DB_USERNAME=postgres DB_NAME=aquila_bank" <<<"${wrapper_plan}" >/dev/null
 grep -F "Prometheus http://localhost:9090, Grafana http://localhost:3001" <<<"${wrapper_plan}" >/dev/null
 
+no_deps_plan="$(
+  SEED_TOTAL_ROWS=1000 \
+  K6_REPORT_NAME=transaction-100m-check \
+    tools/test/run-transaction-read-model-100m-k6-local.sh --print-plan --no-deps
+)"
+grep -F "dependencies=no-deps" <<<"${no_deps_plan}" >/dev/null
+
 echo "[transaction-100m-local-runner] wrapper contract"
+grep -F -- "--no-deps" tools/test/run-transaction-read-model-100m-k6-local.sh >/dev/null
 grep -F -- "--force-recreate aquila-bank-backend" tools/test/run-transaction-read-model-100m-k6-local.sh >/dev/null
+grep -F "validate_backend_env" tools/test/run-transaction-read-model-100m-k6-local.sh >/dev/null
+grep -F "psql output" tools/test/run-transaction-read-model-100m-k6-local.sh >/dev/null
 grep -F "assert_flyway_latest" tools/test/run-transaction-read-model-100m-k6-local.sh >/dev/null
 grep -F "flyway latest applied" tools/test/run-transaction-read-model-100m-k6-local.sh >/dev/null
 grep -F "assert_k6_preflight" tools/test/run-transaction-read-model-100m-k6-local.sh >/dev/null
