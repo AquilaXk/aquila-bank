@@ -37,6 +37,13 @@ grep -F "docker stats --no-stream" "${script}" >/dev/null
 grep -F "hikaricp_connections_active" "${script}" >/dev/null
 grep -F "aquila_api_admission_requests_total" "${script}" >/dev/null
 grep -F "run-k6-transaction-100m-loadtest.sh --no-up --no-deps" "${script}" >/dev/null
+grep -F "wait_for_backend_readiness" "${script}" >/dev/null
+grep -F "wait_for_prometheus_readiness" "${script}" >/dev/null
+grep -F "/actuator/health" "${script}" >/dev/null
+grep -F "MATRIX_METRIC_SCRAPE_WAIT_SECONDS" "${script}" >/dev/null
+grep -F "returned HTTP 429" "${script}" >/dev/null
+grep -F "MATRIX_CPU_SAMPLE_INTERVAL_SECONDS" "${script}" >/dev/null
+grep -F "start_cpu_sampler" "${script}" >/dev/null
 grep -F "matrix-summary.tsv" "${script}" >/dev/null
 grep -F "continue_on_failure" "${script}" >/dev/null
 

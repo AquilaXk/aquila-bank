@@ -20,6 +20,10 @@ Optional environment:
   MATRIX_VU_VALUES         default 3,4,6,8
   MATRIX_CONTINUE_ON_FAILURE default true
   MATRIX_BUILD_BACKEND     default true
+  MATRIX_READINESS_TIMEOUT_SECONDS default 90
+  MATRIX_METRIC_SCRAPE_WAIT_SECONDS default 6
+  MATRIX_CPU_SAMPLE_INTERVAL_SECONDS default 2
+  MATRIX_BACKEND_HEALTH_URL default http://localhost:${BACKEND_PORT:-8080}/actuator/health
   PROMETHEUS_URL           default http://localhost:9090
   K6_DURATION              default 1m
   K6_LIMIT                 default 50
@@ -56,9 +60,15 @@ vu_values="${MATRIX_VU_VALUES-3,4,6,8}"
 continue_on_failure="${MATRIX_CONTINUE_ON_FAILURE:-true}"
 build_backend="${MATRIX_BUILD_BACKEND:-true}"
 prometheus_url="${PROMETHEUS_URL:-http://localhost:9090}"
+prometheus_base_url="${prometheus_url%/}"
+readiness_timeout_seconds="${MATRIX_READINESS_TIMEOUT_SECONDS:-90}"
+metric_scrape_wait_seconds="${MATRIX_METRIC_SCRAPE_WAIT_SECONDS:-6}"
+cpu_sample_interval_seconds="${MATRIX_CPU_SAMPLE_INTERVAL_SECONDS:-2}"
+backend_health_url="${MATRIX_BACKEND_HEALTH_URL:-http://localhost:${BACKEND_PORT:-8080}/actuator/health}"
 report_dir="build/reports/k6/${matrix_name}"
 summary_tsv="${report_dir}/matrix-summary.tsv"
 compose_files=(-f compose.yml -f compose.t3micro.yml -f compose.loadtest.yml)
+CPU_SAMPLER_PID=""
 
 require_csv_positive_integers() {
   local name="$1"
@@ -86,6 +96,18 @@ csv_count() {
 require_csv_positive_integers "MATRIX_ADMISSION_VALUES" "${admission_values}"
 require_csv_positive_integers "MATRIX_DB_POOL_VALUES" "${db_pool_values}"
 require_csv_positive_integers "MATRIX_VU_VALUES" "${vu_values}"
+if ! [[ "${readiness_timeout_seconds}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "MATRIX_READINESS_TIMEOUT_SECONDS must be a positive integer" >&2
+  exit 1
+fi
+if ! [[ "${metric_scrape_wait_seconds}" =~ ^[0-9]+$ ]]; then
+  echo "MATRIX_METRIC_SCRAPE_WAIT_SECONDS must be zero or a positive integer" >&2
+  exit 1
+fi
+if ! [[ "${cpu_sample_interval_seconds}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "MATRIX_CPU_SAMPLE_INTERVAL_SECONDS must be a positive integer" >&2
+  exit 1
+fi
 
 admission_count="$(csv_count "${admission_values}")"
 db_pool_count="$(csv_count "${db_pool_values}")"
@@ -102,6 +124,10 @@ print_plan() {
   echo "[transaction-read-matrix] continue_on_failure=${continue_on_failure}"
   echo "[transaction-read-matrix] build_backend=${build_backend}"
   echo "[transaction-read-matrix] prometheus_url=${prometheus_url}"
+  echo "[transaction-read-matrix] backend_health_url=${backend_health_url}"
+  echo "[transaction-read-matrix] readiness_timeout_seconds=${readiness_timeout_seconds}"
+  echo "[transaction-read-matrix] metric_scrape_wait_seconds=${metric_scrape_wait_seconds}"
+  echo "[transaction-read-matrix] cpu_sample_interval_seconds=${cpu_sample_interval_seconds}"
   echo "[transaction-read-matrix] summary=${summary_tsv}"
 }
 
@@ -139,7 +165,7 @@ prometheus_value() {
     echo "n/a"
     return 0
   fi
-  curl -fsS --get "${prometheus_url}/api/v1/query" \
+  curl -fsS --get "${prometheus_base_url}/api/v1/query" \
     --data-urlencode "query=${query}" 2>/dev/null \
     | jq -r '.data.result[0].value[1] // "0"' 2>/dev/null \
     || echo "n/a"
@@ -163,6 +189,17 @@ numeric_sum() {
   }'
 }
 
+numeric_subtract() {
+  local left="$1"
+  local right="$2"
+  awk -v left="${left}" -v right="${right}" 'BEGIN {
+    if (left == "n/a" || right == "n/a") { print "n/a"; exit }
+    result = left - right
+    if (result < 0) result = 0
+    print result
+  }'
+}
+
 ratio() {
   local numerator="$1"
   local denominator="$2"
@@ -170,6 +207,66 @@ ratio() {
     if (numerator == "n/a" || denominator == "n/a" || denominator <= 0) { print "n/a"; exit }
     printf "%.6f", numerator / denominator
   }'
+}
+
+log_count() {
+  local log_path="$1"
+  local pattern="$2"
+  if [[ ! -f "${log_path}" ]]; then
+    echo "0"
+    return 0
+  fi
+  grep -F -c "${pattern}" "${log_path}" 2>/dev/null || true
+}
+
+start_cpu_sampler() {
+  local stats_path="$1"
+  : >"${stats_path}"
+  (
+    while true; do
+      docker stats --no-stream --format '{{.Name}}	{{.CPUPerc}}' \
+          aquila-bank-backend-loadtest aquila-bank-postgres 2>/dev/null \
+        | awk -F '\t' -v ts="$(date +%s)" '{
+            gsub("%", "", $2)
+            print ts "\t" $1 "\t" $2
+          }' >>"${stats_path}" || true
+      sleep "${cpu_sample_interval_seconds}"
+    done
+  ) &
+  CPU_SAMPLER_PID="$!"
+}
+
+stop_cpu_sampler() {
+  if [[ -n "${CPU_SAMPLER_PID}" ]]; then
+    kill "${CPU_SAMPLER_PID}" >/dev/null 2>&1 || true
+    wait "${CPU_SAMPLER_PID}" >/dev/null 2>&1 || true
+    CPU_SAMPLER_PID=""
+  fi
+}
+
+container_cpu_max_percent() {
+  local stats_path="$1"
+  local container_name="$2"
+  if [[ ! -f "${stats_path}" ]]; then
+    echo "n/a"
+    return 0
+  fi
+  awk -F '\t' -v name="${container_name}" '
+    $2 == name {
+      value = $3 + 0
+      if (!found || value > max) {
+        max = value
+      }
+      found = 1
+    }
+    END {
+      if (found) {
+        printf "%.2f", max
+      } else {
+        print "n/a"
+      }
+    }
+  ' "${stats_path}"
 }
 
 container_cpu_percent() {
@@ -181,6 +278,42 @@ container_cpu_percent() {
       || true
   )"
   echo "${value:-n/a}"
+}
+
+wait_for_backend_readiness() {
+  local deadline=$((SECONDS + readiness_timeout_seconds))
+  local body=""
+
+  echo "[transaction-read-matrix] waiting backend readiness: ${backend_health_url}"
+  while ((SECONDS < deadline)); do
+    body="$(curl -sS --max-time 2 "${backend_health_url}" 2>/dev/null || true)"
+    # 전체 health는 outbox 등 선택 기능 때문에 DOWN일 수 있어 readinessState만 본다.
+    if grep -F '"readinessState":{"status":"UP"}' <<<"${body}" >/dev/null; then
+      return 0
+    fi
+    sleep 1
+  done
+
+  echo "backend readiness timeout: ${backend_health_url}" >&2
+  if [[ -n "${body}" ]]; then
+    echo "${body}" >&2
+  fi
+  exit 1
+}
+
+wait_for_prometheus_readiness() {
+  local deadline=$((SECONDS + readiness_timeout_seconds))
+
+  echo "[transaction-read-matrix] waiting prometheus readiness: ${prometheus_base_url}/-/ready"
+  while ((SECONDS < deadline)); do
+    if curl -fsS --max-time 2 "${prometheus_base_url}/-/ready" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+
+  echo "prometheus readiness timeout: ${prometheus_base_url}/-/ready" >&2
+  exit 1
 }
 
 write_header() {
@@ -198,8 +331,10 @@ run_combination() {
   local report_name="${matrix_name}-admission${admission}-pool${db_pool}-vu${vus}"
   local log_path="${report_dir}/${report_name}.log"
   local summary_json="build/reports/k6/${report_name}-summary.json"
+  local stats_path="${report_dir}/${report_name}-docker-stats.tsv"
   local accepted_before rejected_before accepted_after rejected_after
   local accepted_delta rejected_delta total_admission admission_429_rate
+  local log_429_count
   local status http_failed_rate http_reqs hot_first hot_cursor cold_first cold_cursor
   local backend_cpu postgres_cpu hikari_active hikari_pending hikari_max
 
@@ -209,17 +344,26 @@ run_combination() {
   DB_POOL_MAX_SIZE="${db_pool}" \
     docker compose "${compose_files[@]}" --profile loadtest up -d --force-recreate aquila-bank-backend prometheus grafana
 
+  wait_for_backend_readiness
+  wait_for_prometheus_readiness
+
   # 조합별 backend env가 docker compose run 의존성 처리로 바뀌지 않도록 k6는 --no-deps로 실행합니다.
   accepted_before="$(prometheus_value 'aquila_api_admission_requests_total{group="transaction-read",outcome="accepted"}')"
   rejected_before="$(prometheus_value 'aquila_api_admission_requests_total{group="transaction-read",outcome="rejected"}')"
 
+  start_cpu_sampler "${stats_path}"
   set +e
   K6_REPORT_NAME="${report_name}" \
   K6_VUS="${vus}" \
-  K6_ARCHIVE_RESULTS=false \
+    K6_ARCHIVE_RESULTS=false \
     tools/test/run-k6-transaction-100m-loadtest.sh --no-up --no-deps >"${log_path}" 2>&1
   status=$?
   set -e
+  stop_cpu_sampler
+
+  if [[ "${metric_scrape_wait_seconds}" -gt 0 ]]; then
+    sleep "${metric_scrape_wait_seconds}"
+  fi
 
   accepted_after="$(prometheus_value 'aquila_api_admission_requests_total{group="transaction-read",outcome="accepted"}')"
   rejected_after="$(prometheus_value 'aquila_api_admission_requests_total{group="transaction-read",outcome="rejected"}')"
@@ -230,12 +374,25 @@ run_combination() {
 
   http_failed_rate="$(metric_from_json "${summary_json}" "http_req_failed" "rate")"
   http_reqs="$(metric_from_json "${summary_json}" "http_reqs" "count")"
+  log_429_count="$(log_count "${log_path}" "returned HTTP 429")"
+  # k6 status log는 scrape 지연 영향을 받지 않아 admission 429 rate의 1차 근거로 사용합니다.
+  if [[ "${http_reqs}" != "n/a" ]]; then
+    rejected_delta="${log_429_count}"
+    accepted_delta="$(numeric_subtract "${http_reqs}" "${log_429_count}")"
+    admission_429_rate="$(ratio "${log_429_count}" "${http_reqs}")"
+  fi
   hot_first="$(metric_from_json "${summary_json}" "aquila_transaction_hot_first_ms" "p(95)")"
   hot_cursor="$(metric_from_json "${summary_json}" "aquila_transaction_hot_cursor_ms" "p(95)")"
   cold_first="$(metric_from_json "${summary_json}" "aquila_transaction_cold_first_ms" "p(95)")"
   cold_cursor="$(metric_from_json "${summary_json}" "aquila_transaction_cold_cursor_ms" "p(95)")"
-  backend_cpu="$(container_cpu_percent aquila-bank-backend-loadtest)"
-  postgres_cpu="$(container_cpu_percent aquila-bank-postgres)"
+  backend_cpu="$(container_cpu_max_percent "${stats_path}" aquila-bank-backend-loadtest)"
+  postgres_cpu="$(container_cpu_max_percent "${stats_path}" aquila-bank-postgres)"
+  if [[ "${backend_cpu}" == "n/a" ]]; then
+    backend_cpu="$(container_cpu_percent aquila-bank-backend-loadtest)"
+  fi
+  if [[ "${postgres_cpu}" == "n/a" ]]; then
+    postgres_cpu="$(container_cpu_percent aquila-bank-postgres)"
+  fi
   hikari_active="$(prometheus_value 'max(hikaricp_connections_active{pool="aquila-bank-pool"})')"
   hikari_pending="$(prometheus_value 'max(hikaricp_connections_pending{pool="aquila-bank-pool"})')"
   hikari_max="$(prometheus_value 'max(hikaricp_connections_max{pool="aquila-bank-pool"})')"
