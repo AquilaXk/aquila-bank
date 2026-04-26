@@ -35,6 +35,10 @@ jq -e '
   and (.panels | type == "array" and length >= 8)
   and any(.panels[]?.targets[]?.expr?; contains("aquila_api_admission_requests_total"))
   and any(.panels[]?.targets[]?.expr?; contains("aquila_api_admission_inflight"))
+  and any(.panels[]?; .title == "Transaction Read Accepted P95 SLO" and any(.targets[]?.expr?; contains("aquila_transaction_query_latency_seconds_bucket{outcome=\"success\"") and contains("histogram_quantile(0.95")))
+  and any(.panels[]?; .title == "Transaction Read Rejected Ratio" and any(.targets[]?.expr?; contains("aquila_api_admission_requests_total{group=\"transaction-read\",outcome=\"rejected\"")))
+  and any(.panels[]?; .title == "Transaction Read Inflight and 429" and any(.targets[]?.expr?; contains("aquila_api_admission_inflight{group=\"transaction-read\"")))
+  and any(.panels[]?.targets[]?.expr?; contains("aquila_transaction_429_rate"))
   and any(.panels[]?.targets[]?.expr?; contains("aquila_t3micro_saturation_guard_requests_total"))
   and any(.panels[]?.targets[]?.expr?; contains("aquila_t3micro_saturation_guard_saturated"))
 ' "${DASHBOARD_FILE}" >/dev/null
