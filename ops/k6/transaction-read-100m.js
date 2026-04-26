@@ -1,6 +1,18 @@
 import http from "k6/http";
-import {check, fail} from "k6";
-import {Trend} from "k6/metrics";
+import {check, fail, sleep} from "k6";
+import {Rate, Trend} from "k6/metrics";
+
+function booleanEnv(value) {
+  return ["1", "true", "yes", "on"].includes(String(value || "").toLowerCase());
+}
+
+function nonNegativeNumberEnv(value, fallback) {
+  const result = Number(value || fallback);
+  if (!Number.isFinite(result) || result < 0) {
+    return fallback;
+  }
+  return result;
+}
 
 const baseUrl = (__ENV.BASE_URL || "http://aquila-bank-backend:8080").replace(/\/$/, "");
 const hotAccountId = __ENV.K6_HOT_ACCOUNT_ID || "";
@@ -17,11 +29,29 @@ const hotP95ThresholdMs = Number(__ENV.K6_HOT_P95_THRESHOLD_MS || "350");
 const coldP95ThresholdMs = Number(__ENV.K6_COLD_P95_THRESHOLD_MS || "750");
 const failedRate = Number(__ENV.K6_HTTP_FAILED_RATE || "0.01");
 const reportName = __ENV.K6_REPORT_NAME || "transaction-100m";
+const overloadMode = booleanEnv(__ENV.K6_OVERLOAD_MODE);
+const maxRetryAfterSleepSeconds = nonNegativeNumberEnv(__ENV.K6_MAX_RETRY_AFTER_SLEEP_SECONDS, 1);
+const httpFailedRateThreshold = overloadMode ? "disabled in overload mode" : failedRate;
 
 const hotFirst = new Trend("aquila_transaction_hot_first_ms", true);
 const hotCursor = new Trend("aquila_transaction_hot_cursor_ms", true);
 const coldFirst = new Trend("aquila_transaction_cold_first_ms", true);
 const coldCursor = new Trend("aquila_transaction_cold_cursor_ms", true);
+const transaction429Rate = new Rate("aquila_transaction_429_rate");
+
+function thresholds() {
+  const result = {
+    checks: ["rate>0.99"],
+    aquila_transaction_hot_first_ms: [`p(95)<${hotP95ThresholdMs}`],
+    aquila_transaction_hot_cursor_ms: [`p(95)<${hotP95ThresholdMs}`],
+    aquila_transaction_cold_first_ms: [`p(95)<${coldP95ThresholdMs}`],
+    aquila_transaction_cold_cursor_ms: [`p(95)<${coldP95ThresholdMs}`],
+  };
+  if (!overloadMode) {
+    result.http_req_failed = [`rate<${failedRate}`];
+  }
+  return result;
+}
 
 export const options = {
   scenarios: {
@@ -31,14 +61,7 @@ export const options = {
       duration,
     },
   },
-  thresholds: {
-    http_req_failed: [`rate<${failedRate}`],
-    checks: ["rate>0.99"],
-    aquila_transaction_hot_first_ms: [`p(95)<${hotP95ThresholdMs}`],
-    aquila_transaction_hot_cursor_ms: [`p(95)<${hotP95ThresholdMs}`],
-    aquila_transaction_cold_first_ms: [`p(95)<${coldP95ThresholdMs}`],
-    aquila_transaction_cold_cursor_ms: [`p(95)<${coldP95ThresholdMs}`],
-  },
+  thresholds: thresholds(),
   tags: {
     service: "aquila-bank",
     workload: "transaction-read-100m",
@@ -89,6 +112,24 @@ function record(shape, durationMs) {
   }
 }
 
+function header(response, name) {
+  const target = name.toLowerCase();
+  for (const [key, value] of Object.entries(response.headers || {})) {
+    if (key.toLowerCase() === target) {
+      return value;
+    }
+  }
+  return "";
+}
+
+function sleepAfter429(response) {
+  const retryAfter = Number(header(response, "Retry-After"));
+  if (!Number.isFinite(retryAfter) || retryAfter <= 0 || maxRetryAfterSleepSeconds <= 0) {
+    return;
+  }
+  sleep(Math.min(retryAfter, maxRetryAfterSleepSeconds));
+}
+
 function requestPage(shape, path, accountId, from, to, cursor) {
   const query = queryString({
     accountId,
@@ -104,6 +145,17 @@ function requestPage(shape, path, accountId, from, to, cursor) {
       query_shape: shape,
     },
   });
+
+  const is429 = response.status === 429;
+  transaction429Rate.add(is429);
+  if (is429 && overloadMode) {
+    // 429는 admission guard의 정상 보호 신호라 overload mode에서만 예외 없이 집계합니다.
+    check(response, {
+      [`${shape} overload returned 429`]: (item) => item.status === 429,
+    });
+    sleepAfter429(response);
+    return null;
+  }
 
   record(shape, response.timings.duration);
 
@@ -140,10 +192,23 @@ export default function () {
     hotTo,
     "",
   );
+  if (!hotFirstBody) {
+    return;
+  }
   if (!hotFirstBody.nextCursor) {
     fail("hot_first did not return nextCursor");
   }
-  requestPage("hot_cursor", "/api/v1/transactions", hotAccountId, hotFrom, hotTo, hotFirstBody.nextCursor);
+  const hotCursorBody = requestPage(
+    "hot_cursor",
+    "/api/v1/transactions",
+    hotAccountId,
+    hotFrom,
+    hotTo,
+    hotFirstBody.nextCursor,
+  );
+  if (!hotCursorBody) {
+    return;
+  }
 
   const coldFirstBody = requestPage(
     "cold_first",
@@ -153,10 +218,13 @@ export default function () {
     coldTo,
     "",
   );
+  if (!coldFirstBody) {
+    return;
+  }
   if (!coldFirstBody.nextCursor) {
     fail("cold_first did not return nextCursor");
   }
-  requestPage(
+  const coldCursorBody = requestPage(
     "cold_cursor",
     "/api/v1/transactions/archive",
     coldAccountId,
@@ -164,6 +232,9 @@ export default function () {
     coldTo,
     coldFirstBody.nextCursor,
   );
+  if (!coldCursorBody) {
+    return;
+  }
 }
 
 function metric(data, name, valueName) {
@@ -183,16 +254,19 @@ function markdownSummary(data) {
 - vus: ${vus}
 - duration: ${duration}
 - limit: ${limit}
+- overload mode: ${overloadMode}
+- max retry-after sleep seconds: ${maxRetryAfterSleepSeconds}
 - hot account id: ${hotAccountId}
 - cold account id: ${coldAccountId}
 - hot p95 threshold ms: ${hotP95ThresholdMs}
 - cold p95 threshold ms: ${coldP95ThresholdMs}
-- http failed rate threshold: ${failedRate}
+- http failed rate threshold: ${httpFailedRateThreshold}
 
 ## Results
 
 - http_req_failed rate: ${metric(data, "http_req_failed", "rate")}
 - checks rate: ${metric(data, "checks", "rate")}
+- transaction 429 rate: ${metric(data, "aquila_transaction_429_rate", "rate")}
 - hot first p95 ms: ${metric(data, "aquila_transaction_hot_first_ms", "p(95)")}
 - hot cursor p95 ms: ${metric(data, "aquila_transaction_hot_cursor_ms", "p(95)")}
 - cold first p95 ms: ${metric(data, "aquila_transaction_cold_first_ms", "p(95)")}
@@ -201,6 +275,7 @@ function markdownSummary(data) {
 ## Notes
 
 - 이 결과는 k6 HTTP replay 기준입니다.
+- overload mode에서는 admission guard 429를 rejected sample로 집계합니다.
 - 1억 건 분포는 실행 전 DB에 준비되어 있어야 합니다.
 - Prometheus remote write 대상은 \`K6_PROMETHEUS_RW_SERVER_URL\`입니다.
 `;
