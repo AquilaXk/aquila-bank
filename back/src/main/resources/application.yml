@@ -80,6 +80,12 @@ ops:
       - group: transaction-read
         # t3.micro 기본 보호값. high-traffic 승격값은 production gate에서 별도 검증합니다.
         max-concurrency: ${OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_MAX:3}
+        adaptive:
+          enabled: ${OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_ADAPTIVE_ENABLED:true}
+          min-concurrency: ${OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_ADAPTIVE_MIN:3}
+          max-concurrency: ${OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_ADAPTIVE_MAX:8}
+          increase-every-successes: ${OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_ADAPTIVE_INCREASE_EVERY_SUCCESSES:200}
+          decrease-on-rejections: ${OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_ADAPTIVE_DECREASE_ON_REJECTIONS:1}
         path-prefixes:
           - /api/v1/transactions
       - group: account-read

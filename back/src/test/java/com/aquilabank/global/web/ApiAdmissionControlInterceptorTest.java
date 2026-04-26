@@ -59,7 +59,7 @@ class ApiAdmissionControlInterceptorTest {
             1,
             List.of(
                 new ApiAdmissionControlProperties.EndpointLimit(
-                    "transaction-read", 1, List.of("/api/v1/transactions")))),
+                    "transaction-read", 1, List.of("/api/v1/transactions"), null))),
         new SimpleMeterRegistry());
   }
 }
