@@ -1,15 +1,10 @@
 package com.aquilabank.global.persistence.transaction;
 
 import com.aquilabank.domain.transaction.model.TransactionCursor;
-import com.aquilabank.domain.transaction.model.TransactionDirection;
 import com.aquilabank.domain.transaction.model.TransactionQuery;
 import com.aquilabank.domain.transaction.model.TransactionSlice;
-import com.aquilabank.domain.transaction.model.TransactionStatus;
 import com.aquilabank.domain.transaction.model.TransactionSummary;
 import com.aquilabank.domain.transaction.port.TransactionArchiveReadPort;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -22,7 +17,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Repository
 public class JdbcTransactionArchiveReadRepository implements TransactionArchiveReadPort {
 
-  private static final RowMapper<TransactionSummary> ROW_MAPPER = (rs, rowNum) -> mapRow(rs);
+  private static final RowMapper<TransactionSummary> ROW_MAPPER =
+      TransactionSummaryRowMapper.INSTANCE;
 
   private final NamedParameterJdbcTemplate jdbcTemplate;
 
@@ -44,22 +40,6 @@ public class JdbcTransactionArchiveReadRepository implements TransactionArchiveR
         hasNext ? new ArrayList<>(rows.subList(0, query.limit())) : rows;
     TransactionCursor nextCursor = hasNext ? toCursor(items.getLast()) : null;
     return new TransactionSlice(items, nextCursor, hasNext, query.limit());
-  }
-
-  private static TransactionSummary mapRow(ResultSet rs) throws SQLException {
-    OffsetDateTime bookedAt = rs.getObject("booked_at", OffsetDateTime.class);
-    return new TransactionSummary(
-        rs.getLong("id"),
-        rs.getLong("account_id"),
-        rs.getString("transaction_reference"),
-        TransactionDirection.valueOf(rs.getString("direction")),
-        TransactionStatus.valueOf(rs.getString("transaction_status")),
-        rs.getLong("amount_minor"),
-        rs.getLong("balance_after_minor"),
-        rs.getString("currency_code"),
-        rs.getString("summary"),
-        rs.getString("counterparty_masked_name"),
-        bookedAt.toInstant());
   }
 
   private static TransactionCursor toCursor(TransactionSummary item) {
