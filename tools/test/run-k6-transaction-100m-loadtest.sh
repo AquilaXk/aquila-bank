@@ -18,6 +18,10 @@ Optional environment:
   K6_VUS               default 8
   K6_DURATION          default 1m
   K6_LIMIT             default 50
+  K6_HOT_P99_THRESHOLD_MS default 750
+  K6_COLD_P99_THRESHOLD_MS default 1500
+  K6_HOT_MAX_THRESHOLD_MS default 3000
+  K6_COLD_MAX_THRESHOLD_MS default 5000
   K6_AUTH_TOKEN        bearer token, optional when bootstrap header auth is enabled
   K6_ARCHIVE_RESULTS   copy markdown summary to docs/performance-results, default true
   K6_PREFLIGHT         check PostgreSQL OOM/index readiness before k6, default true
@@ -65,6 +69,20 @@ require_non_negative_integer() {
     echo "${name} must be a non-negative integer" >&2
     exit 1
   fi
+}
+
+require_positive_number() {
+  local name="$1"
+  local value="${!name:-}"
+  if ! [[ "${value}" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+    echo "${name} must be a positive number" >&2
+    exit 1
+  fi
+  awk -v value="${value}" 'BEGIN { exit !(value > 0) }' \
+    || {
+      echo "${name} must be greater than zero" >&2
+      exit 1
+    }
 }
 
 require_rate() {
@@ -119,6 +137,13 @@ done
 
 K6_VUS="${K6_VUS:-8}"
 K6_LIMIT="${K6_LIMIT:-50}"
+K6_HOT_P95_THRESHOLD_MS="${K6_HOT_P95_THRESHOLD_MS:-350}"
+K6_COLD_P95_THRESHOLD_MS="${K6_COLD_P95_THRESHOLD_MS:-750}"
+K6_HOT_P99_THRESHOLD_MS="${K6_HOT_P99_THRESHOLD_MS:-750}"
+K6_COLD_P99_THRESHOLD_MS="${K6_COLD_P99_THRESHOLD_MS:-1500}"
+K6_HOT_MAX_THRESHOLD_MS="${K6_HOT_MAX_THRESHOLD_MS:-3000}"
+K6_COLD_MAX_THRESHOLD_MS="${K6_COLD_MAX_THRESHOLD_MS:-5000}"
+K6_HTTP_FAILED_RATE="${K6_HTTP_FAILED_RATE:-0.01}"
 K6_ARCHIVE_RESULTS="${K6_ARCHIVE_RESULTS:-true}"
 K6_PREFLIGHT="${K6_PREFLIGHT:-true}"
 K6_OVERLOAD_MODE="${K6_OVERLOAD_MODE:-false}"
@@ -130,10 +155,17 @@ K6_REMOTE_BASE_URL="${K6_REMOTE_BASE_URL:-}"
 K6_REMOTE_PROMETHEUS_RW_SERVER_URL="${K6_REMOTE_PROMETHEUS_RW_SERVER_URL:-}"
 K6_REMOTE_WORKDIR="${K6_REMOTE_WORKDIR:-$(pwd)}"
 K6_REPORT_NAME="${K6_REPORT_NAME:-transaction-100m-$(date +%Y-%m-%d-%H%M%S)}"
-export K6_VUS K6_LIMIT K6_ARCHIVE_RESULTS K6_PREFLIGHT K6_OVERLOAD_MODE K6_OVERLOAD_429_RATE_THRESHOLD K6_MAX_RETRY_AFTER_SLEEP_SECONDS K6_GENERATOR_MODE K6_DOCKER_CONTEXT K6_REMOTE_BASE_URL K6_REMOTE_PROMETHEUS_RW_SERVER_URL K6_REMOTE_WORKDIR K6_REPORT_NAME
+export K6_VUS K6_LIMIT K6_HOT_P95_THRESHOLD_MS K6_COLD_P95_THRESHOLD_MS K6_HOT_P99_THRESHOLD_MS K6_COLD_P99_THRESHOLD_MS K6_HOT_MAX_THRESHOLD_MS K6_COLD_MAX_THRESHOLD_MS K6_HTTP_FAILED_RATE K6_ARCHIVE_RESULTS K6_PREFLIGHT K6_OVERLOAD_MODE K6_OVERLOAD_429_RATE_THRESHOLD K6_MAX_RETRY_AFTER_SLEEP_SECONDS K6_GENERATOR_MODE K6_DOCKER_CONTEXT K6_REMOTE_BASE_URL K6_REMOTE_PROMETHEUS_RW_SERVER_URL K6_REMOTE_WORKDIR K6_REPORT_NAME
 
 require_positive_integer K6_VUS
 require_positive_integer K6_LIMIT
+require_positive_number K6_HOT_P95_THRESHOLD_MS
+require_positive_number K6_COLD_P95_THRESHOLD_MS
+require_positive_number K6_HOT_P99_THRESHOLD_MS
+require_positive_number K6_COLD_P99_THRESHOLD_MS
+require_positive_number K6_HOT_MAX_THRESHOLD_MS
+require_positive_number K6_COLD_MAX_THRESHOLD_MS
+require_rate K6_HTTP_FAILED_RATE
 require_non_negative_integer K6_MAX_RETRY_AFTER_SLEEP_SECONDS
 require_rate K6_OVERLOAD_429_RATE_THRESHOLD
 require_generator_mode
@@ -156,6 +188,13 @@ print_plan() {
   echo "[k6-transaction-100m] observability: prometheus:9090 grafana:3000 alertmanager:9093 postgres-exporter:9187"
   echo "[k6-transaction-100m] k6 report name: ${K6_REPORT_NAME}"
   echo "[k6-transaction-100m] k6 vus=${K6_VUS} duration=${K6_DURATION:-1m} limit=${K6_LIMIT}"
+  echo "[k6-transaction-100m] hot p95 threshold ms=${K6_HOT_P95_THRESHOLD_MS}"
+  echo "[k6-transaction-100m] cold p95 threshold ms=${K6_COLD_P95_THRESHOLD_MS}"
+  echo "[k6-transaction-100m] hot p99 threshold ms=${K6_HOT_P99_THRESHOLD_MS}"
+  echo "[k6-transaction-100m] cold p99 threshold ms=${K6_COLD_P99_THRESHOLD_MS}"
+  echo "[k6-transaction-100m] hot max threshold ms=${K6_HOT_MAX_THRESHOLD_MS}"
+  echo "[k6-transaction-100m] cold max threshold ms=${K6_COLD_MAX_THRESHOLD_MS}"
+  echo "[k6-transaction-100m] http failed rate threshold=${K6_HTTP_FAILED_RATE}"
   echo "[k6-transaction-100m] overload mode=${K6_OVERLOAD_MODE} max retry-after sleep seconds=${K6_MAX_RETRY_AFTER_SLEEP_SECONDS}"
   echo "[k6-transaction-100m] overload 429 rate threshold=${K6_OVERLOAD_429_RATE_THRESHOLD}"
   echo "[k6-transaction-100m] generator mode=${K6_GENERATOR_MODE}"
@@ -254,6 +293,13 @@ run_k6_local() {
     -e K6_VUS="${K6_VUS}" \
     -e K6_DURATION="${K6_DURATION:-1m}" \
     -e K6_LIMIT="${K6_LIMIT}" \
+    -e K6_HOT_P95_THRESHOLD_MS="${K6_HOT_P95_THRESHOLD_MS}" \
+    -e K6_COLD_P95_THRESHOLD_MS="${K6_COLD_P95_THRESHOLD_MS}" \
+    -e K6_HOT_P99_THRESHOLD_MS="${K6_HOT_P99_THRESHOLD_MS}" \
+    -e K6_COLD_P99_THRESHOLD_MS="${K6_COLD_P99_THRESHOLD_MS}" \
+    -e K6_HOT_MAX_THRESHOLD_MS="${K6_HOT_MAX_THRESHOLD_MS}" \
+    -e K6_COLD_MAX_THRESHOLD_MS="${K6_COLD_MAX_THRESHOLD_MS}" \
+    -e K6_HTTP_FAILED_RATE="${K6_HTTP_FAILED_RATE}" \
     -e K6_OVERLOAD_MODE="${K6_OVERLOAD_MODE}" \
     -e K6_OVERLOAD_429_RATE_THRESHOLD="${K6_OVERLOAD_429_RATE_THRESHOLD}" \
     -e K6_MAX_RETRY_AFTER_SLEEP_SECONDS="${K6_MAX_RETRY_AFTER_SLEEP_SECONDS}" \
@@ -282,9 +328,13 @@ run_k6_docker_context() {
     -e K6_VUS="${K6_VUS}" \
     -e K6_DURATION="${K6_DURATION:-1m}" \
     -e K6_LIMIT="${K6_LIMIT}" \
-    -e K6_HOT_P95_THRESHOLD_MS="${K6_HOT_P95_THRESHOLD_MS:-350}" \
-    -e K6_COLD_P95_THRESHOLD_MS="${K6_COLD_P95_THRESHOLD_MS:-750}" \
-    -e K6_HTTP_FAILED_RATE="${K6_HTTP_FAILED_RATE:-0.01}" \
+    -e K6_HOT_P95_THRESHOLD_MS="${K6_HOT_P95_THRESHOLD_MS}" \
+    -e K6_COLD_P95_THRESHOLD_MS="${K6_COLD_P95_THRESHOLD_MS}" \
+    -e K6_HOT_P99_THRESHOLD_MS="${K6_HOT_P99_THRESHOLD_MS}" \
+    -e K6_COLD_P99_THRESHOLD_MS="${K6_COLD_P99_THRESHOLD_MS}" \
+    -e K6_HOT_MAX_THRESHOLD_MS="${K6_HOT_MAX_THRESHOLD_MS}" \
+    -e K6_COLD_MAX_THRESHOLD_MS="${K6_COLD_MAX_THRESHOLD_MS}" \
+    -e K6_HTTP_FAILED_RATE="${K6_HTTP_FAILED_RATE}" \
     -e K6_OVERLOAD_MODE="${K6_OVERLOAD_MODE}" \
     -e K6_OVERLOAD_429_RATE_THRESHOLD="${K6_OVERLOAD_429_RATE_THRESHOLD}" \
     -e K6_MAX_RETRY_AFTER_SLEEP_SECONDS="${K6_MAX_RETRY_AFTER_SLEEP_SECONDS}" \
