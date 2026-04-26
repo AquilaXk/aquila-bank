@@ -33,6 +33,7 @@ const hotMaxThresholdMs = Number(__ENV.K6_HOT_MAX_THRESHOLD_MS || "3000");
 const coldMaxThresholdMs = Number(__ENV.K6_COLD_MAX_THRESHOLD_MS || "5000");
 const failedRate = Number(__ENV.K6_HTTP_FAILED_RATE || "0.01");
 const reportName = __ENV.K6_REPORT_NAME || "transaction-100m";
+const observabilityMode = __ENV.K6_OBSERVABILITY_MODE || "prometheus";
 const overloadMode = booleanEnv(__ENV.K6_OVERLOAD_MODE);
 const overload429RateThreshold = nonNegativeNumberEnv(__ENV.K6_OVERLOAD_429_RATE_THRESHOLD, 0.05);
 const maxRetryAfterSleepSeconds = nonNegativeNumberEnv(__ENV.K6_MAX_RETRY_AFTER_SLEEP_SECONDS, 1);
@@ -280,6 +281,7 @@ function markdownSummary(data) {
 - vus: ${vus}
 - duration: ${duration}
 - limit: ${limit}
+- observability mode: ${observabilityMode}
 - overload mode: ${overloadMode}
 - max retry-after sleep seconds: ${maxRetryAfterSleepSeconds}
 - hot account id: ${hotAccountId}
@@ -316,7 +318,7 @@ function markdownSummary(data) {
 - 이 결과는 k6 HTTP replay 기준입니다.
 - overload mode에서는 admission guard 429를 rejected sample로 집계합니다.
 - 1억 건 분포는 실행 전 DB에 준비되어 있어야 합니다.
-- Prometheus remote write 대상은 \`K6_PROMETHEUS_RW_SERVER_URL\`입니다.
+- observability mode가 \`summary-only\`이면 Prometheus remote write 없이 summary 파일만 남깁니다.
 `;
 }
 

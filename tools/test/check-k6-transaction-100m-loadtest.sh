@@ -26,14 +26,24 @@ grep -F "overload mode=false max retry-after sleep seconds=1" <<<"${plan}" >/dev
 grep -F "overload 429 rate threshold=0.05" <<<"${plan}" >/dev/null
 grep -F "generator mode=local" <<<"${plan}" >/dev/null
 grep -F "generator runner=docker compose service k6-transaction-read-100m" <<<"${plan}" >/dev/null
+grep -F "observability mode=prometheus" <<<"${plan}" >/dev/null
 grep -F "preflight=true" <<<"${plan}" >/dev/null
+
+summary_only_plan="$(
+  K6_REPORT_NAME=transaction-100m-summary-only-check \
+  K6_OBSERVABILITY_MODE=summary-only \
+    tools/test/run-k6-transaction-100m-loadtest.sh --print-plan
+)"
+grep -F "k6 report name: transaction-100m-summary-only-check" <<<"${summary_only_plan}" >/dev/null
+grep -F "observability mode=summary-only" <<<"${summary_only_plan}" >/dev/null
+grep -F "generator runner=docker compose service k6-transaction-read-100m without prometheus remote-write" <<<"${summary_only_plan}" >/dev/null
 
 remote_plan="$(
   K6_REPORT_NAME=transaction-100m-remote-check \
+  K6_OBSERVABILITY_MODE=summary-only \
   K6_GENERATOR_MODE=docker-context \
   K6_DOCKER_CONTEXT=transaction-k6-remote \
   K6_REMOTE_BASE_URL=http://192.0.2.10:8080 \
-  K6_REMOTE_PROMETHEUS_RW_SERVER_URL=http://192.0.2.10:9090/api/v1/write \
   K6_REMOTE_WORKDIR=/srv/aquila-bank \
     tools/test/run-k6-transaction-100m-loadtest.sh --print-plan
 )"
@@ -41,7 +51,7 @@ grep -F "k6 report name: transaction-100m-remote-check" <<<"${remote_plan}" >/de
 grep -F "generator mode=docker-context" <<<"${remote_plan}" >/dev/null
 grep -F "generator runner=docker --context transaction-k6-remote run grafana/k6:0.54.0" <<<"${remote_plan}" >/dev/null
 grep -F "remote base url=http://192.0.2.10:8080" <<<"${remote_plan}" >/dev/null
-grep -F "remote prometheus rw=http://192.0.2.10:9090/api/v1/write" <<<"${remote_plan}" >/dev/null
+grep -F "remote prometheus rw=disabled" <<<"${remote_plan}" >/dev/null
 grep -F "remote workdir=/srv/aquila-bank" <<<"${remote_plan}" >/dev/null
 
 overload_plan="$(
@@ -84,6 +94,10 @@ grep -F "K6_HOT_MAX_THRESHOLD_MS" tools/test/run-k6-transaction-100m-loadtest.sh
 grep -F "K6_COLD_MAX_THRESHOLD_MS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_OVERLOAD_429_RATE_THRESHOLD" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_GENERATOR_MODE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "K6_OBSERVABILITY_MODE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "require_observability_mode" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "experimental-prometheus-rw" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "without prometheus remote-write" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_DOCKER_CONTEXT" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_REMOTE_BASE_URL" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_REMOTE_PROMETHEUS_RW_SERVER_URL" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
@@ -104,8 +118,12 @@ if K6_GENERATOR_MODE=unknown tools/test/run-k6-transaction-100m-loadtest.sh --pr
   echo "K6_GENERATOR_MODE=unknown unexpectedly succeeded" >&2
   exit 1
 fi
-if K6_GENERATOR_MODE=docker-context tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
-  echo "K6_GENERATOR_MODE=docker-context without remote inputs unexpectedly succeeded" >&2
+if K6_OBSERVABILITY_MODE=bad tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
+  echo "K6_OBSERVABILITY_MODE=bad unexpectedly succeeded" >&2
+  exit 1
+fi
+if K6_OBSERVABILITY_MODE=prometheus K6_GENERATOR_MODE=docker-context tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
+  echo "prometheus docker-context without remote prometheus unexpectedly succeeded" >&2
   exit 1
 fi
 
