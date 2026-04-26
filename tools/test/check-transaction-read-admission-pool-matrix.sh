@@ -40,6 +40,8 @@ grep -F "run-k6-transaction-100m-loadtest.sh --no-up --no-deps" "${script}" >/de
 grep -F "wait_for_backend_readiness" "${script}" >/dev/null
 grep -F "wait_for_prometheus_readiness" "${script}" >/dev/null
 grep -F "/actuator/health" "${script}" >/dev/null
+grep -F "MATRIX_METRIC_SCRAPE_WAIT_SECONDS" "${script}" >/dev/null
+grep -F "returned HTTP 429" "${script}" >/dev/null
 grep -F "matrix-summary.tsv" "${script}" >/dev/null
 grep -F "continue_on_failure" "${script}" >/dev/null
 

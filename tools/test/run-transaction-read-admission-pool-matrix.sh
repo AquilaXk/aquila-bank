@@ -21,6 +21,7 @@ Optional environment:
   MATRIX_CONTINUE_ON_FAILURE default true
   MATRIX_BUILD_BACKEND     default true
   MATRIX_READINESS_TIMEOUT_SECONDS default 90
+  MATRIX_METRIC_SCRAPE_WAIT_SECONDS default 6
   MATRIX_BACKEND_HEALTH_URL default http://localhost:${BACKEND_PORT:-8080}/actuator/health
   PROMETHEUS_URL           default http://localhost:9090
   K6_DURATION              default 1m
@@ -60,6 +61,7 @@ build_backend="${MATRIX_BUILD_BACKEND:-true}"
 prometheus_url="${PROMETHEUS_URL:-http://localhost:9090}"
 prometheus_base_url="${prometheus_url%/}"
 readiness_timeout_seconds="${MATRIX_READINESS_TIMEOUT_SECONDS:-90}"
+metric_scrape_wait_seconds="${MATRIX_METRIC_SCRAPE_WAIT_SECONDS:-6}"
 backend_health_url="${MATRIX_BACKEND_HEALTH_URL:-http://localhost:${BACKEND_PORT:-8080}/actuator/health}"
 report_dir="build/reports/k6/${matrix_name}"
 summary_tsv="${report_dir}/matrix-summary.tsv"
@@ -95,6 +97,10 @@ if ! [[ "${readiness_timeout_seconds}" =~ ^[1-9][0-9]*$ ]]; then
   echo "MATRIX_READINESS_TIMEOUT_SECONDS must be a positive integer" >&2
   exit 1
 fi
+if ! [[ "${metric_scrape_wait_seconds}" =~ ^[0-9]+$ ]]; then
+  echo "MATRIX_METRIC_SCRAPE_WAIT_SECONDS must be zero or a positive integer" >&2
+  exit 1
+fi
 
 admission_count="$(csv_count "${admission_values}")"
 db_pool_count="$(csv_count "${db_pool_values}")"
@@ -113,6 +119,7 @@ print_plan() {
   echo "[transaction-read-matrix] prometheus_url=${prometheus_url}"
   echo "[transaction-read-matrix] backend_health_url=${backend_health_url}"
   echo "[transaction-read-matrix] readiness_timeout_seconds=${readiness_timeout_seconds}"
+  echo "[transaction-read-matrix] metric_scrape_wait_seconds=${metric_scrape_wait_seconds}"
   echo "[transaction-read-matrix] summary=${summary_tsv}"
 }
 
@@ -174,6 +181,17 @@ numeric_sum() {
   }'
 }
 
+numeric_subtract() {
+  local left="$1"
+  local right="$2"
+  awk -v left="${left}" -v right="${right}" 'BEGIN {
+    if (left == "n/a" || right == "n/a") { print "n/a"; exit }
+    result = left - right
+    if (result < 0) result = 0
+    print result
+  }'
+}
+
 ratio() {
   local numerator="$1"
   local denominator="$2"
@@ -181,6 +199,16 @@ ratio() {
     if (numerator == "n/a" || denominator == "n/a" || denominator <= 0) { print "n/a"; exit }
     printf "%.6f", numerator / denominator
   }'
+}
+
+log_count() {
+  local log_path="$1"
+  local pattern="$2"
+  if [[ ! -f "${log_path}" ]]; then
+    echo "0"
+    return 0
+  fi
+  grep -F -c "${pattern}" "${log_path}" 2>/dev/null || true
 }
 
 container_cpu_percent() {
@@ -247,6 +275,7 @@ run_combination() {
   local summary_json="build/reports/k6/${report_name}-summary.json"
   local accepted_before rejected_before accepted_after rejected_after
   local accepted_delta rejected_delta total_admission admission_429_rate
+  local log_429_count
   local status http_failed_rate http_reqs hot_first hot_cursor cold_first cold_cursor
   local backend_cpu postgres_cpu hikari_active hikari_pending hikari_max
 
@@ -271,6 +300,10 @@ run_combination() {
   status=$?
   set -e
 
+  if [[ "${metric_scrape_wait_seconds}" -gt 0 ]]; then
+    sleep "${metric_scrape_wait_seconds}"
+  fi
+
   accepted_after="$(prometheus_value 'aquila_api_admission_requests_total{group="transaction-read",outcome="accepted"}')"
   rejected_after="$(prometheus_value 'aquila_api_admission_requests_total{group="transaction-read",outcome="rejected"}')"
   accepted_delta="$(numeric_delta "${accepted_before}" "${accepted_after}")"
@@ -280,6 +313,13 @@ run_combination() {
 
   http_failed_rate="$(metric_from_json "${summary_json}" "http_req_failed" "rate")"
   http_reqs="$(metric_from_json "${summary_json}" "http_reqs" "count")"
+  log_429_count="$(log_count "${log_path}" "returned HTTP 429")"
+  # k6 status log는 scrape 지연 영향을 받지 않아 admission 429 rate의 1차 근거로 사용합니다.
+  if [[ "${http_reqs}" != "n/a" ]]; then
+    rejected_delta="${log_429_count}"
+    accepted_delta="$(numeric_subtract "${http_reqs}" "${log_429_count}")"
+    admission_429_rate="$(ratio "${log_429_count}" "${http_reqs}")"
+  fi
   hot_first="$(metric_from_json "${summary_json}" "aquila_transaction_hot_first_ms" "p(95)")"
   hot_cursor="$(metric_from_json "${summary_json}" "aquila_transaction_hot_cursor_ms" "p(95)")"
   cold_first="$(metric_from_json "${summary_json}" "aquila_transaction_cold_first_ms" "p(95)")"
