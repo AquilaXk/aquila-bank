@@ -24,6 +24,14 @@ Optional environment:
   CAPACITY_READINESS_TIMEOUT_SECONDS default 120
   CAPACITY_METRIC_SCRAPE_WAIT_SECONDS default 6
   CAPACITY_CPU_SAMPLE_INTERVAL_SECONDS default 5
+  CAPACITY_HARD_THRESHOLD_ENABLED default true
+  CAPACITY_HOT_P95_THRESHOLD_MS default 350
+  CAPACITY_COLD_P95_THRESHOLD_MS default 750
+  CAPACITY_STRICT_429_RATE_THRESHOLD default 0
+  CAPACITY_OVERLOAD_429_RATE_THRESHOLD default 0.20
+  CAPACITY_BACKEND_CPU_THRESHOLD_PERCENT default 120
+  CAPACITY_POSTGRES_CPU_THRESHOLD_PERCENT default 90
+  CAPACITY_HIKARI_PENDING_THRESHOLD default 0
   PROMETHEUS_URL             default http://localhost:9090
 
 Profile format:
@@ -64,6 +72,14 @@ long_soak_duration="${CAPACITY_LONG_SOAK_DURATION:-30m}"
 readiness_timeout_seconds="${CAPACITY_READINESS_TIMEOUT_SECONDS:-120}"
 metric_scrape_wait_seconds="${CAPACITY_METRIC_SCRAPE_WAIT_SECONDS:-6}"
 cpu_sample_interval_seconds="${CAPACITY_CPU_SAMPLE_INTERVAL_SECONDS:-5}"
+hard_threshold_enabled="${CAPACITY_HARD_THRESHOLD_ENABLED:-true}"
+hot_p95_threshold_ms="${CAPACITY_HOT_P95_THRESHOLD_MS:-350}"
+cold_p95_threshold_ms="${CAPACITY_COLD_P95_THRESHOLD_MS:-750}"
+strict_429_rate_threshold="${CAPACITY_STRICT_429_RATE_THRESHOLD:-0}"
+overload_429_rate_threshold="${CAPACITY_OVERLOAD_429_RATE_THRESHOLD:-0.20}"
+backend_cpu_threshold_percent="${CAPACITY_BACKEND_CPU_THRESHOLD_PERCENT:-120}"
+postgres_cpu_threshold_percent="${CAPACITY_POSTGRES_CPU_THRESHOLD_PERCENT:-90}"
+hikari_pending_threshold="${CAPACITY_HIKARI_PENDING_THRESHOLD:-0}"
 prometheus_url="${PROMETHEUS_URL:-http://localhost:9090}"
 prometheus_base_url="${prometheus_url%/}"
 backend_health_url="${CAPACITY_BACKEND_HEALTH_URL:-http://localhost:${BACKEND_PORT:-8080}/actuator/health}"
@@ -71,6 +87,7 @@ report_dir="build/reports/k6/${capacity_name}"
 summary_tsv="${report_dir}/capacity-summary.tsv"
 compose_files=(-f compose.yml -f compose.t3micro.yml -f compose.loadtest.yml)
 CPU_SAMPLER_PID=""
+threshold_failed=false
 
 single_host_profiles="${CAPACITY_SINGLE_HOST_PROFILES:-single-host-default:3:8:0.40:512m:0.60:384m:4:true:1m,single-host-high-traffic:8:8:0.80:640m:0.60:384m:6:false:1m}"
 cpu_split_profiles="${CAPACITY_CPU_SPLIT_PROFILES:-cpu-backend040-postgres060:8:8:0.40:512m:0.60:384m:4:false:1m,cpu-backend100-postgres060:8:8:1.00:640m:0.60:384m:6:false:1m}"
@@ -101,6 +118,34 @@ require_non_negative_integer_value() {
     echo "${name} must be zero or a positive integer: ${value}" >&2
     exit 1
   fi
+}
+
+require_positive_number_value() {
+  local name="$1"
+  local value="$2"
+  if ! [[ "${value}" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+    echo "${name} must be a positive number: ${value}" >&2
+    exit 1
+  fi
+  awk -v value="${value}" 'BEGIN { exit !(value > 0) }' \
+    || {
+      echo "${name} must be greater than zero: ${value}" >&2
+      exit 1
+    }
+}
+
+require_rate_value() {
+  local name="$1"
+  local value="$2"
+  if ! [[ "${value}" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+    echo "${name} must be a rate between 0 and 1: ${value}" >&2
+    exit 1
+  fi
+  awk -v value="${value}" 'BEGIN { exit !(value >= 0 && value <= 1) }' \
+    || {
+      echo "${name} must be a rate between 0 and 1: ${value}" >&2
+      exit 1
+    }
 }
 
 require_duration_value() {
@@ -201,10 +246,18 @@ require_bool "CAPACITY_RUN_SINGLE_HOST" "${run_single_host}"
 require_bool "CAPACITY_RUN_CPU_SPLIT" "${run_cpu_split}"
 require_bool "CAPACITY_RUN_LONG_SOAK" "${run_long_soak}"
 require_bool "CAPACITY_CONTINUE_ON_FAILURE" "${continue_on_failure}"
+require_bool "CAPACITY_HARD_THRESHOLD_ENABLED" "${hard_threshold_enabled}"
 require_duration_value "CAPACITY_LONG_SOAK_DURATION" "${long_soak_duration}"
 require_positive_integer_value "CAPACITY_READINESS_TIMEOUT_SECONDS" "${readiness_timeout_seconds}"
 require_non_negative_integer_value "CAPACITY_METRIC_SCRAPE_WAIT_SECONDS" "${metric_scrape_wait_seconds}"
 require_positive_integer_value "CAPACITY_CPU_SAMPLE_INTERVAL_SECONDS" "${cpu_sample_interval_seconds}"
+require_positive_number_value "CAPACITY_HOT_P95_THRESHOLD_MS" "${hot_p95_threshold_ms}"
+require_positive_number_value "CAPACITY_COLD_P95_THRESHOLD_MS" "${cold_p95_threshold_ms}"
+require_rate_value "CAPACITY_STRICT_429_RATE_THRESHOLD" "${strict_429_rate_threshold}"
+require_rate_value "CAPACITY_OVERLOAD_429_RATE_THRESHOLD" "${overload_429_rate_threshold}"
+require_positive_number_value "CAPACITY_BACKEND_CPU_THRESHOLD_PERCENT" "${backend_cpu_threshold_percent}"
+require_positive_number_value "CAPACITY_POSTGRES_CPU_THRESHOLD_PERCENT" "${postgres_cpu_threshold_percent}"
+require_non_negative_integer_value "CAPACITY_HIKARI_PENDING_THRESHOLD" "${hikari_pending_threshold}"
 validate_profiles "CAPACITY_SINGLE_HOST_PROFILES" "${single_host_profiles}"
 validate_profiles "CAPACITY_CPU_SPLIT_PROFILES" "${cpu_split_profiles}"
 validate_profile "CAPACITY_LONG_SOAK_PROFILE" "${long_soak_profile}"
@@ -224,6 +277,14 @@ print_plan() {
   echo "[transaction-100m-capacity] readiness_timeout_seconds=${readiness_timeout_seconds}"
   echo "[transaction-100m-capacity] metric_scrape_wait_seconds=${metric_scrape_wait_seconds}"
   echo "[transaction-100m-capacity] cpu_sample_interval_seconds=${cpu_sample_interval_seconds}"
+  echo "[transaction-100m-capacity] hard_thresholds=${hard_threshold_enabled}"
+  echo "[transaction-100m-capacity] hot_p95_threshold_ms=${hot_p95_threshold_ms}"
+  echo "[transaction-100m-capacity] cold_p95_threshold_ms=${cold_p95_threshold_ms}"
+  echo "[transaction-100m-capacity] strict_429_rate_threshold=${strict_429_rate_threshold}"
+  echo "[transaction-100m-capacity] overload_429_rate_threshold=${overload_429_rate_threshold}"
+  echo "[transaction-100m-capacity] backend_cpu_threshold_percent=${backend_cpu_threshold_percent}"
+  echo "[transaction-100m-capacity] postgres_cpu_threshold_percent=${postgres_cpu_threshold_percent}"
+  echo "[transaction-100m-capacity] hikari_pending_threshold=${hikari_pending_threshold}"
   echo "[transaction-100m-capacity] summary=${summary_tsv}"
 }
 
@@ -358,6 +419,79 @@ append_summary() {
   printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" "$@" >>"${summary_tsv}"
 }
 
+is_numeric_value() {
+  [[ "$1" =~ ^[0-9]+([.][0-9]+)?$ ]]
+}
+
+number_greater_than() {
+  local value="$1"
+  local threshold="$2"
+  awk -v value="${value}" -v threshold="${threshold}" 'BEGIN { exit !(value > threshold) }'
+}
+
+record_threshold_violation() {
+  local phase="$1"
+  local profile="$2"
+  local metric="$3"
+  local value="$4"
+  local threshold="$5"
+  echo "[transaction-100m-capacity] hard threshold violation phase=${phase} profile=${profile} metric=${metric} value=${value} threshold=${threshold}" >&2
+  threshold_failed=true
+}
+
+check_metric_lte() {
+  local phase="$1"
+  local profile="$2"
+  local metric="$3"
+  local value="$4"
+  local threshold="$5"
+
+  if ! is_numeric_value "${value}"; then
+    record_threshold_violation "${phase}" "${profile}" "${metric}" "${value}" "${threshold}"
+    return 0
+  fi
+  if number_greater_than "${value}" "${threshold}"; then
+    record_threshold_violation "${phase}" "${profile}" "${metric}" "${value}" "${threshold}"
+  fi
+}
+
+check_capacity_thresholds() {
+  local phase="$1"
+  local profile="$2"
+  local status="$3"
+  local overload_mode="$4"
+  local transaction_429_rate="$5"
+  local hot_first_p95="$6"
+  local hot_cursor_p95="$7"
+  local cold_first_p95="$8"
+  local cold_cursor_p95="$9"
+  local backend_cpu="${10}"
+  local postgres_cpu="${11}"
+  local hikari_pending="${12}"
+
+  if [[ "${hard_threshold_enabled}" != "true" ]]; then
+    return 0
+  fi
+
+  if [[ "${status}" -ne 0 ]]; then
+    record_threshold_violation "${phase}" "${profile}" "k6_status" "${status}" "0"
+  fi
+
+  local rate_threshold="${strict_429_rate_threshold}"
+  if [[ "${overload_mode}" == "true" ]]; then
+    rate_threshold="${overload_429_rate_threshold}"
+  fi
+
+  check_metric_lte "${phase}" "${profile}" "transaction_429_rate" "${transaction_429_rate}" "${rate_threshold}"
+  check_metric_lte "${phase}" "${profile}" "hot_first_p95_ms" "${hot_first_p95}" "${hot_p95_threshold_ms}"
+  check_metric_lte "${phase}" "${profile}" "hot_cursor_p95_ms" "${hot_cursor_p95}" "${hot_p95_threshold_ms}"
+  check_metric_lte "${phase}" "${profile}" "cold_first_p95_ms" "${cold_first_p95}" "${cold_p95_threshold_ms}"
+  check_metric_lte "${phase}" "${profile}" "cold_cursor_p95_ms" "${cold_cursor_p95}" "${cold_p95_threshold_ms}"
+  check_metric_lte "${phase}" "${profile}" "backend_cpu_percent" "${backend_cpu}" "${backend_cpu_threshold_percent}"
+  check_metric_lte "${phase}" "${profile}" "postgres_cpu_percent" "${postgres_cpu}" "${postgres_cpu_threshold_percent}"
+  check_metric_lte "${phase}" "${profile}" "hikari_pending" "${hikari_pending}" "${hikari_pending_threshold}"
+}
+
 run_profile() {
   local phase="$1"
   local profile="$2"
@@ -366,6 +500,9 @@ run_profile() {
   local log_path="${report_dir}/${report_name}.log"
   local summary_json="build/reports/k6/${report_name}-summary.json"
   local stats_path="${report_dir}/${report_name}-docker-stats.tsv"
+  local http_failed_rate http_reqs transaction_429_rate
+  local hot_first_p95 hot_cursor_p95 cold_first_p95 cold_cursor_p95
+  local backend_cpu postgres_cpu hikari_active hikari_pending hikari_max
   local status
 
   echo "[transaction-100m-capacity] running phase=${phase} profile=${name}"
@@ -400,23 +537,32 @@ run_profile() {
     sleep "${metric_scrape_wait_seconds}"
   fi
 
+  http_failed_rate="$(metric_from_json "${summary_json}" "http_req_failed" "rate")"
+  http_reqs="$(metric_from_json "${summary_json}" "http_reqs" "count")"
+  transaction_429_rate="$(metric_from_json "${summary_json}" "aquila_transaction_429_rate" "rate")"
+  hot_first_p95="$(metric_from_json "${summary_json}" "aquila_transaction_hot_first_ms" "p(95)")"
+  hot_cursor_p95="$(metric_from_json "${summary_json}" "aquila_transaction_hot_cursor_ms" "p(95)")"
+  cold_first_p95="$(metric_from_json "${summary_json}" "aquila_transaction_cold_first_ms" "p(95)")"
+  cold_cursor_p95="$(metric_from_json "${summary_json}" "aquila_transaction_cold_cursor_ms" "p(95)")"
+  backend_cpu="$(container_cpu_max_percent "${stats_path}" aquila-bank-backend-loadtest)"
+  postgres_cpu="$(container_cpu_max_percent "${stats_path}" aquila-bank-postgres)"
+  hikari_active="$(prometheus_value 'max(hikaricp_connections_active{pool="aquila-bank-pool"})')"
+  hikari_pending="$(prometheus_value 'max(hikaricp_connections_pending{pool="aquila-bank-pool"})')"
+  hikari_max="$(prometheus_value 'max(hikaricp_connections_max{pool="aquila-bank-pool"})')"
+
   append_summary \
     "${phase}" "${name}" "${status}" "${admission}" "${vus}" \
     "${backend_cpus}" "${backend_memory}" "${postgres_cpus}" "${postgres_memory}" \
     "${db_pool}" "${overload_mode}" "${duration}" \
-    "$(metric_from_json "${summary_json}" "http_req_failed" "rate")" \
-    "$(metric_from_json "${summary_json}" "http_reqs" "count")" \
-    "$(metric_from_json "${summary_json}" "aquila_transaction_429_rate" "rate")" \
-    "$(metric_from_json "${summary_json}" "aquila_transaction_hot_first_ms" "p(95)")" \
-    "$(metric_from_json "${summary_json}" "aquila_transaction_hot_cursor_ms" "p(95)")" \
-    "$(metric_from_json "${summary_json}" "aquila_transaction_cold_first_ms" "p(95)")" \
-    "$(metric_from_json "${summary_json}" "aquila_transaction_cold_cursor_ms" "p(95)")" \
-    "$(container_cpu_max_percent "${stats_path}" aquila-bank-backend-loadtest)" \
-    "$(container_cpu_max_percent "${stats_path}" aquila-bank-postgres)" \
-    "$(prometheus_value 'max(hikaricp_connections_active{pool="aquila-bank-pool"})')" \
-    "$(prometheus_value 'max(hikaricp_connections_pending{pool="aquila-bank-pool"})')" \
-    "$(prometheus_value 'max(hikaricp_connections_max{pool="aquila-bank-pool"})')" \
+    "${http_failed_rate}" "${http_reqs}" "${transaction_429_rate}" \
+    "${hot_first_p95}" "${hot_cursor_p95}" "${cold_first_p95}" "${cold_cursor_p95}" \
+    "${backend_cpu}" "${postgres_cpu}" "${hikari_active}" "${hikari_pending}" "${hikari_max}" \
     "${log_path}" "${summary_json}"
+
+  check_capacity_thresholds \
+    "${phase}" "${name}" "${status}" "${overload_mode}" "${transaction_429_rate}" \
+    "${hot_first_p95}" "${hot_cursor_p95}" "${cold_first_p95}" "${cold_cursor_p95}" \
+    "${backend_cpu}" "${postgres_cpu}" "${hikari_pending}"
 
   if [[ "${status}" -ne 0 && "${continue_on_failure}" != "true" ]]; then
     echo "[transaction-100m-capacity] profile failed and CAPACITY_CONTINUE_ON_FAILURE=false: ${name}" >&2
@@ -444,6 +590,11 @@ if [[ "${run_cpu_split}" == "true" ]]; then
 fi
 if [[ "${run_long_soak}" == "true" ]]; then
   run_profile "long-soak" "${long_soak_profile}"
+fi
+
+if [[ "${threshold_failed}" == "true" ]]; then
+  echo "[transaction-100m-capacity] hard threshold failed; see ${summary_tsv}" >&2
+  exit 1
 fi
 
 echo "[transaction-100m-capacity] summary=${summary_tsv}"
