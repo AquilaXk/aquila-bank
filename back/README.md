@@ -4,7 +4,9 @@ Spring Boot 4 기반 백엔드 애플리케이션입니다.
 
 ## Goal
 
-- 초대량 트래픽, 실시간 알림, 1억 건 규모의 거래 조회를 `t3.micro` 환경에서도 원활하게 처리하는 구조를 목표로 합니다.
+- EC2 `t3.micro` + RDS `db.t4g.small` + gp3 기준에서 대용량 트래픽을 무제한 처리하지 않고, API admission/SSE cap/작은 worker batch로 과부하를 방어합니다.
+- 거래 조회는 1억 건 저장 규모에서도 `accountId + 기간 + keyset pagination`으로 범위를 제한한 bounded query만 온라인 목표로 둡니다.
+- 전체 1억 건 검색/집계/정렬, Kafka 상시 필수 운영, Prometheus/Grafana 같은 host 상시 운영은 기본 목표에서 제외합니다.
 - 로컬/배포 환경 모두 `PostgreSQL 18`을 표준 DB 버전으로 사용합니다.
 
 ## Package Structure
@@ -34,7 +36,7 @@ com.aquilabank
 - `redis`는 분산 login throttling 이 필요할 때만 opt-in 으로 사용합니다.
 - multi-node 운영에서는 `SECURITY_LOGIN_THROTTLING_REQUIRE_REDIS=true`로 memory fallback 부팅을 차단합니다.
 - Redis 경로는 login throttling counter 에만 쓰고, SSE fan-out 은 계속 PostgreSQL `LISTEN/NOTIFY` 를 사용합니다.
-- local Redis는 compose `redis` profile로만 뜨며 기본 `postgres kafka` 경로에는 포함하지 않습니다.
+- local Redis는 compose `redis` profile로만 뜨며 기본 `postgres` 경로에는 포함하지 않습니다.
 - 같은 counter/guard는 password recovery request entrypoint에도 적용되어 token write 전 burst를 차단합니다.
 
 재현 명령:
@@ -238,7 +240,7 @@ tools/test/with-resource-lock.sh back-transaction-partition-fit \
 ```bash
 cp ../.env.example ../.env
 cd ..
-docker compose up -d postgres kafka
+docker compose up -d postgres
 ```
 
 PostgreSQL 18로 올린 뒤 기존 local named volume 때문에 `aquila-bank-postgres`가 `Restarting (1)` 상태면 Postgres volume을 한 번 재생성해야 합니다.
@@ -246,28 +248,34 @@ PostgreSQL 18로 올린 뒤 기존 local named volume 때문에 `aquila-bank-pos
 ```bash
 docker compose down
 docker volume rm aquila-bank_aquila-bank-postgres-data
-docker compose up -d postgres kafka
+docker compose up -d postgres
 ```
 
-루트 [compose.yml](/Users/aquila/Custom/GitProjects/aquila-bank/compose.yml)은 `postgres:18`과 단일 노드 Kafka broker를 함께 올립니다.
+루트 [compose.yml](/Users/aquila/Custom/GitProjects/aquila-bank/compose.yml)은 기본으로 `postgres:18`만 올리고, 단일 노드 Kafka broker는 `kafka` profile을 켰을 때만 올립니다.
 
 - PostgreSQL 기본 포트: `localhost:5432`
-- Kafka 기본 포트: `localhost:9092`
+- Kafka profile 기본 포트: `localhost:9092`
 - Redis profile 기본 포트: `localhost:6379`
 - 로컬 Kafka broker는 topic auto-create를 끄고, app startup provisioning이 configured topic을 명시적으로 준비합니다.
-- 로컬 기본 baseline은 `KAFKA_TOPIC_PROVISIONING_REPLICATION_FACTOR=1`, `KAFKA_TOPIC_PROVISIONING_MIN_IN_SYNC_REPLICAS=1` 입니다.
-- 기본 topic 이름은 `bank.notification.outbox.v1`, `bank.transfer.booked.v1`, `bank.transfer.reversed.v1`, `bank.transfer.booked.dlq.v1` 입니다.
+- Kafka profile 기본 baseline은 `KAFKA_TOPIC_PROVISIONING_REPLICATION_FACTOR=1`, `KAFKA_TOPIC_PROVISIONING_MIN_IN_SYNC_REPLICAS=1` 입니다.
+- Kafka profile 기본 topic 이름은 `bank.notification.outbox.v1`, `bank.transfer.booked.v1`, `bank.transfer.reversed.v1`, `bank.transfer.booked.dlq.v1` 입니다.
 - startup validation은 configured topic 존재, 최소 partition 수, replication factor, `min.insync.replicas`를 확인하고, outbox/consumer bootstrap server가 다르면 fail-fast 합니다.
 - topic partition을 늘릴 때는 `KAFKA_TOPIC_PROVISIONING_PARTITIONS`와 `NOTIFICATION_INBOX_CONSUMER_CONCURRENCY`를 같이 조정합니다.
-- 이 경로는 로컬 개발 전용입니다.
+- Kafka notification E2E가 필요하면 `docker compose --profile kafka up -d kafka`로 별도 실행합니다. 이 경로는 로컬 개발 전용입니다.
 
 t3.micro에 가까운 작은 로컬 인프라 budget으로 띄울 때는 override 파일을 함께 지정합니다.
 
 ```bash
-docker compose -f compose.yml -f compose.t3micro.yml up -d postgres kafka
+docker compose -f compose.yml -f compose.t3micro.yml up -d postgres
 ```
 
-- [compose.t3micro.yml](/Users/aquila/Custom/GitProjects/aquila-bank/compose.t3micro.yml)은 Postgres/Kafka/Redis에 CPU, memory, swap, pids 상한을 겁니다.
+Kafka까지 같은 작은 budget으로 검증할 때만 `kafka` profile을 명시합니다.
+
+```bash
+docker compose -f compose.yml -f compose.t3micro.yml --profile kafka up -d postgres kafka
+```
+
+- [compose.t3micro.yml](/Users/aquila/Custom/GitProjects/aquila-bank/compose.t3micro.yml)은 Postgres/Kafka/Redis에 CPU, memory, swap, pids 상한을 겁니다. Kafka와 Redis 상한은 해당 profile을 켰을 때만 적용됩니다.
 - 이 override는 로컬 병목 신호를 빨리 보기 위한 근사값이며, AWS `t3.micro`의 CPU credit, EBS 지연, 실제 네트워크를 재현하지 않습니다.
 - Redis까지 같은 budget으로 올릴 때는 `docker compose -f compose.yml -f compose.t3micro.yml --profile redis up -d redis`를 사용합니다.
 
@@ -291,8 +299,6 @@ docker compose --profile redis up -d redis
 cp back/.env.example back/.env
 set -a
 source back/.env
-export OUTBOX_KAFKA_ENABLED=true
-export NOTIFICATION_INBOX_CONSUMER_ENABLED=true
 set +a
 ./back/gradlew -p back bootRun
 ```
@@ -301,7 +307,20 @@ set +a
 - 기본값은 `t3.micro`를 전제로 작은 커넥션 풀과 짧은 DB 타임아웃을 사용합니다.
 - 운영 기본 인증 방식은 bearer JWT 입니다.
 - `dev`/`test` 프로필에서는 필요 시 `X-Account-Id` 헤더 fallback을 사용할 수 있습니다.
-- `dev` 프로필은 `OUTBOX_KAFKA_ENABLED=true`, `NOTIFICATION_INBOX_CONSUMER_ENABLED=true`만 주면 `localhost:9092`, 기본 topic 이름, provisioning/validation 기본값을 자동 사용합니다.
+- Kafka notification E2E가 필요할 때만 `docker compose --profile kafka up -d kafka`를 먼저 실행하고 `OUTBOX_KAFKA_ENABLED=true`, `NOTIFICATION_INBOX_CONSUMER_ENABLED=true`를 지정합니다.
+- `dev` 프로필은 Kafka opt-in 시 `localhost:9092`, 기본 topic 이름, provisioning/validation 기본값을 자동 사용합니다.
+
+Kafka opt-in 예시:
+
+```bash
+docker compose --profile kafka up -d kafka
+set -a
+source back/.env
+export OUTBOX_KAFKA_ENABLED=true
+export NOTIFICATION_INBOX_CONSUMER_ENABLED=true
+set +a
+./back/gradlew -p back bootRun
+```
 - Kafka 포트를 바꾸면 `OUTBOX_KAFKA_BOOTSTRAP_SERVERS`, `NOTIFICATION_INBOX_CONSUMER_BOOTSTRAP_SERVERS`를 같은 값으로 같이 넘깁니다.
 - `NOTIFICATION_INBOX_CONSUMER_CONCURRENCY` 기본값은 `1`입니다. partition 확장 검증 없이 값을 올리지 않고, 운영에서는 topic partition 수와 DB pool 여유 안에서만 올립니다.
 - multi-broker 운영 baseline은 `KAFKA_TOPIC_PROVISIONING_REPLICATION_FACTOR=3`, `KAFKA_TOPIC_PROVISIONING_MIN_IN_SYNC_REPLICAS=2`, `OUTBOX_KAFKA_PRODUCER_ACKS=all`, `OUTBOX_KAFKA_PRODUCER_ENABLE_IDEMPOTENCE=true` 조합을 기본값으로 둡니다.
@@ -312,6 +331,9 @@ set +a
 
 - export endpoint:
   - `GET /actuator/prometheus`
+- 운영 기준:
+  - metric export endpoint는 유지하지만, EC2 `t3.micro` 애플리케이션 host에서 Prometheus/Grafana를 상시 동거시키는 구성은 기본 목표에서 제외합니다.
+  - 부하테스트 overlay, 별도 관측 host, 또는 장애 분석용 단기 실행으로 수집합니다.
 - 보안 기준:
   - application security는 `/actuator/prometheus`를 permitAll 로 열어 Prometheus scrape를 단순화합니다.
   - 운영에서는 security group, private subnet, Nginx allowlist 같은 네트워크 경계로 외부 공개를 막는 것을 기본값으로 둡니다.
