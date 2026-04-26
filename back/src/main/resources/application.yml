@@ -44,7 +44,9 @@ server:
   port: ${SERVER_PORT:8080}
   shutdown: graceful
   compression:
-    enabled: true
+    enabled: ${SERVER_COMPRESSION_ENABLED:true}
+    min-response-size: ${SERVER_COMPRESSION_MIN_RESPONSE_SIZE:2KB}
+    mime-types: ${SERVER_COMPRESSION_MIME_TYPES:application/json,application/problem+json}
   tomcat:
     threads:
       max: ${SERVER_THREADS_MAX:16}
