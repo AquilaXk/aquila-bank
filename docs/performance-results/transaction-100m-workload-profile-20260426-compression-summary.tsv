@@ -1,0 +1,4 @@
+profile	status	enabled	min_response_size_bytes	summary_json	log_path
+off	0	false	0	build/reports/k6/transaction-compression-20260426-actual-off-summary.json	build/reports/k6/transaction-compression-20260426-actual/transaction-compression-20260426-actual-off.log
+on-2kb	0	true	2048	build/reports/k6/transaction-compression-20260426-actual-on-2kb-summary.json	build/reports/k6/transaction-compression-20260426-actual/transaction-compression-20260426-actual-on-2kb.log
+on-8kb	0	true	8192	build/reports/k6/transaction-compression-20260426-actual-on-8kb-summary.json	build/reports/k6/transaction-compression-20260426-actual/transaction-compression-20260426-actual-on-8kb.log
