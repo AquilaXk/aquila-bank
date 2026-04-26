@@ -25,6 +25,7 @@ Optional environment:
   K6_AUTH_TOKEN        bearer token, optional when bootstrap header auth is enabled
   K6_ARCHIVE_RESULTS   copy markdown summary to docs/performance-results, default true
   K6_PREFLIGHT         check PostgreSQL OOM/index readiness before k6, default true
+  K6_OBSERVABILITY_MODE prometheus|summary-only, default prometheus
   K6_OVERLOAD_MODE     treat 429 as expected rejected samples, default false
   K6_OVERLOAD_429_RATE_THRESHOLD
                        max 429 rate in overload mode, default 0.05
@@ -110,6 +111,17 @@ require_generator_mode() {
   esac
 }
 
+require_observability_mode() {
+  case "${K6_OBSERVABILITY_MODE}" in
+    prometheus|summary-only)
+      ;;
+    *)
+      echo "K6_OBSERVABILITY_MODE must be prometheus or summary-only" >&2
+      exit 1
+      ;;
+  esac
+}
+
 mode="run"
 run_dependencies="true"
 while [[ "$#" -gt 0 ]]; do
@@ -146,6 +158,7 @@ K6_COLD_MAX_THRESHOLD_MS="${K6_COLD_MAX_THRESHOLD_MS:-5000}"
 K6_HTTP_FAILED_RATE="${K6_HTTP_FAILED_RATE:-0.01}"
 K6_ARCHIVE_RESULTS="${K6_ARCHIVE_RESULTS:-true}"
 K6_PREFLIGHT="${K6_PREFLIGHT:-true}"
+K6_OBSERVABILITY_MODE="${K6_OBSERVABILITY_MODE:-prometheus}"
 K6_OVERLOAD_MODE="${K6_OVERLOAD_MODE:-false}"
 K6_OVERLOAD_429_RATE_THRESHOLD="${K6_OVERLOAD_429_RATE_THRESHOLD:-0.05}"
 K6_MAX_RETRY_AFTER_SLEEP_SECONDS="${K6_MAX_RETRY_AFTER_SLEEP_SECONDS:-1}"
@@ -155,7 +168,7 @@ K6_REMOTE_BASE_URL="${K6_REMOTE_BASE_URL:-}"
 K6_REMOTE_PROMETHEUS_RW_SERVER_URL="${K6_REMOTE_PROMETHEUS_RW_SERVER_URL:-}"
 K6_REMOTE_WORKDIR="${K6_REMOTE_WORKDIR:-$(pwd)}"
 K6_REPORT_NAME="${K6_REPORT_NAME:-transaction-100m-$(date +%Y-%m-%d-%H%M%S)}"
-export K6_VUS K6_LIMIT K6_HOT_P95_THRESHOLD_MS K6_COLD_P95_THRESHOLD_MS K6_HOT_P99_THRESHOLD_MS K6_COLD_P99_THRESHOLD_MS K6_HOT_MAX_THRESHOLD_MS K6_COLD_MAX_THRESHOLD_MS K6_HTTP_FAILED_RATE K6_ARCHIVE_RESULTS K6_PREFLIGHT K6_OVERLOAD_MODE K6_OVERLOAD_429_RATE_THRESHOLD K6_MAX_RETRY_AFTER_SLEEP_SECONDS K6_GENERATOR_MODE K6_DOCKER_CONTEXT K6_REMOTE_BASE_URL K6_REMOTE_PROMETHEUS_RW_SERVER_URL K6_REMOTE_WORKDIR K6_REPORT_NAME
+export K6_VUS K6_LIMIT K6_HOT_P95_THRESHOLD_MS K6_COLD_P95_THRESHOLD_MS K6_HOT_P99_THRESHOLD_MS K6_COLD_P99_THRESHOLD_MS K6_HOT_MAX_THRESHOLD_MS K6_COLD_MAX_THRESHOLD_MS K6_HTTP_FAILED_RATE K6_ARCHIVE_RESULTS K6_PREFLIGHT K6_OBSERVABILITY_MODE K6_OVERLOAD_MODE K6_OVERLOAD_429_RATE_THRESHOLD K6_MAX_RETRY_AFTER_SLEEP_SECONDS K6_GENERATOR_MODE K6_DOCKER_CONTEXT K6_REMOTE_BASE_URL K6_REMOTE_PROMETHEUS_RW_SERVER_URL K6_REMOTE_WORKDIR K6_REPORT_NAME
 
 require_positive_integer K6_VUS
 require_positive_integer K6_LIMIT
@@ -169,11 +182,14 @@ require_rate K6_HTTP_FAILED_RATE
 require_non_negative_integer K6_MAX_RETRY_AFTER_SLEEP_SECONDS
 require_rate K6_OVERLOAD_429_RATE_THRESHOLD
 require_generator_mode
+require_observability_mode
 
 if [[ "${K6_GENERATOR_MODE}" == "docker-context" ]]; then
   require_env K6_DOCKER_CONTEXT
   require_env K6_REMOTE_BASE_URL
-  require_env K6_REMOTE_PROMETHEUS_RW_SERVER_URL
+  if [[ "${K6_OBSERVABILITY_MODE}" == "prometheus" ]]; then
+    require_env K6_REMOTE_PROMETHEUS_RW_SERVER_URL
+  fi
 fi
 
 compose_files=(-f compose.yml -f compose.t3micro.yml -f compose.loadtest.yml)
@@ -185,7 +201,12 @@ psql_base=(docker compose "${compose_files[@]}" exec -T postgres psql -v ON_ERRO
 print_plan() {
   echo "[k6-transaction-100m] compose files: ${compose_files[*]}"
   echo "[k6-transaction-100m] backend: aquila-bank-backend:8080 with t3.micro budget"
-  echo "[k6-transaction-100m] observability: prometheus:9090 grafana:3000 alertmanager:9093 postgres-exporter:9187"
+  if [[ "${K6_OBSERVABILITY_MODE}" == "prometheus" ]]; then
+    echo "[k6-transaction-100m] observability: prometheus:9090 grafana:3000 alertmanager:9093 postgres-exporter:9187"
+  else
+    echo "[k6-transaction-100m] observability: summary-only local markdown/json"
+  fi
+  echo "[k6-transaction-100m] observability mode=${K6_OBSERVABILITY_MODE}"
   echo "[k6-transaction-100m] k6 report name: ${K6_REPORT_NAME}"
   echo "[k6-transaction-100m] k6 vus=${K6_VUS} duration=${K6_DURATION:-1m} limit=${K6_LIMIT}"
   echo "[k6-transaction-100m] hot p95 threshold ms=${K6_HOT_P95_THRESHOLD_MS}"
@@ -201,10 +222,18 @@ print_plan() {
   if [[ "${K6_GENERATOR_MODE}" == "docker-context" ]]; then
     echo "[k6-transaction-100m] generator runner=docker --context ${K6_DOCKER_CONTEXT} run grafana/k6:0.54.0"
     echo "[k6-transaction-100m] remote base url=${K6_REMOTE_BASE_URL}"
-    echo "[k6-transaction-100m] remote prometheus rw=${K6_REMOTE_PROMETHEUS_RW_SERVER_URL}"
+    if [[ "${K6_OBSERVABILITY_MODE}" == "prometheus" ]]; then
+      echo "[k6-transaction-100m] remote prometheus rw=${K6_REMOTE_PROMETHEUS_RW_SERVER_URL}"
+    else
+      echo "[k6-transaction-100m] remote prometheus rw=disabled"
+    fi
     echo "[k6-transaction-100m] remote workdir=${K6_REMOTE_WORKDIR}"
   else
-    echo "[k6-transaction-100m] generator runner=docker compose service k6-transaction-read-100m"
+    if [[ "${K6_OBSERVABILITY_MODE}" == "prometheus" ]]; then
+      echo "[k6-transaction-100m] generator runner=docker compose service k6-transaction-read-100m"
+    else
+      echo "[k6-transaction-100m] generator runner=docker compose service k6-transaction-read-100m without prometheus remote-write"
+    fi
   fi
   echo "[k6-transaction-100m] preflight=${K6_PREFLIGHT}"
   if [[ "${run_dependencies}" == "true" ]]; then
@@ -268,21 +297,32 @@ if [[ "${mode}" != "no-up" ]]; then
   tools/test/with-resource-lock.sh back-gradle-loadtest-bootjar ./back/gradlew -p back bootJar
 
   echo "[k6-transaction-100m] starting loadtest services"
-  docker compose "${compose_files[@]}" --profile loadtest up -d \
-    postgres aquila-bank-backend prometheus grafana alertmanager postgres-exporter
+  services=(postgres aquila-bank-backend)
+  if [[ "${K6_OBSERVABILITY_MODE}" == "prometheus" ]]; then
+    services+=(prometheus grafana alertmanager postgres-exporter)
+  fi
+  docker compose "${compose_files[@]}" --profile loadtest up -d "${services[@]}"
 fi
 
 assert_k6_preflight
 
 run_k6_local() {
   local run_args
+  local k6_command
   run_args=(--rm)
   if [[ "${run_dependencies}" != "true" ]]; then
     run_args+=(--no-deps)
   fi
+  k6_command=(run)
+  if [[ "${K6_OBSERVABILITY_MODE}" == "prometheus" ]]; then
+    k6_command+=(--out experimental-prometheus-rw)
+  fi
+  k6_command+=(/scripts/transaction-read-100m.js)
 
+  # summary-only는 k6 결과 파일만 남겨 same-host observability 비용을 제외합니다.
   docker compose "${compose_files[@]}" --profile loadtest run "${run_args[@]}" \
     -e K6_REPORT_NAME="${K6_REPORT_NAME}" \
+    -e K6_OBSERVABILITY_MODE="${K6_OBSERVABILITY_MODE}" \
     -e K6_HOT_ACCOUNT_ID="${K6_HOT_ACCOUNT_ID}" \
     -e K6_HOT_FROM="${K6_HOT_FROM}" \
     -e K6_HOT_TO="${K6_HOT_TO}" \
@@ -303,11 +343,18 @@ run_k6_local() {
     -e K6_OVERLOAD_MODE="${K6_OVERLOAD_MODE}" \
     -e K6_OVERLOAD_429_RATE_THRESHOLD="${K6_OVERLOAD_429_RATE_THRESHOLD}" \
     -e K6_MAX_RETRY_AFTER_SLEEP_SECONDS="${K6_MAX_RETRY_AFTER_SLEEP_SECONDS}" \
-    k6-transaction-read-100m
+    k6-transaction-read-100m \
+    "${k6_command[@]}"
 }
 
 run_k6_docker_context() {
   local remote_report_dir="${K6_REMOTE_WORKDIR}/build/reports/k6"
+  local k6_command
+  k6_command=(run)
+  if [[ "${K6_OBSERVABILITY_MODE}" == "prometheus" ]]; then
+    k6_command+=(--out experimental-prometheus-rw)
+  fi
+  k6_command+=(/scripts/transaction-read-100m.js)
 
   # backend/PostgreSQL CPU와 k6 CPU를 분리하기 위한 별도 Docker context 실행 경로.
   echo "[k6-transaction-100m] running remote k6 generator on docker context ${K6_DOCKER_CONTEXT}"
@@ -318,6 +365,7 @@ run_k6_docker_context() {
     -e K6_PROMETHEUS_RW_SERVER_URL="${K6_REMOTE_PROMETHEUS_RW_SERVER_URL}" \
     -e K6_PROMETHEUS_RW_TREND_STATS="p(50),p(90),p(95),p(99),min,max,avg" \
     -e K6_REPORT_NAME="${K6_REPORT_NAME}" \
+    -e K6_OBSERVABILITY_MODE="${K6_OBSERVABILITY_MODE}" \
     -e K6_HOT_ACCOUNT_ID="${K6_HOT_ACCOUNT_ID}" \
     -e K6_HOT_FROM="${K6_HOT_FROM}" \
     -e K6_HOT_TO="${K6_HOT_TO}" \
@@ -341,10 +389,7 @@ run_k6_docker_context() {
     -v "${K6_REMOTE_WORKDIR}/ops/k6:/scripts:ro" \
     -v "${remote_report_dir}:/reports" \
     grafana/k6:0.54.0 \
-    run \
-    --out \
-    experimental-prometheus-rw \
-    /scripts/transaction-read-100m.js
+    "${k6_command[@]}"
 }
 
 set +e
