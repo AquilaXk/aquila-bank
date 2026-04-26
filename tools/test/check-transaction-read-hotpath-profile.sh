@@ -35,6 +35,7 @@ grep -F -- "--no-deps" "${script}" >/dev/null
 grep -F "jfr summary" "${script}" >/dev/null
 grep -F "view --width 160 hot-methods" "${script}" >/dev/null
 grep -F "view --width 160 allocation-by-class" "${script}" >/dev/null
+grep -F '\`build/reports/profiling\`' "${script}" >/dev/null
 grep -F "artifact missing or empty" "${script}" >/dev/null
 
 echo "[transaction-read-hotpath-profile] invalid input fails"

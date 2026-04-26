@@ -291,7 +291,7 @@ cat >"${summary_md}" <<SUMMARY
 
 ## Notes
 
-- JFR artifact는 저장소에 commit하지 않고 `build/reports/profiling` 아래에만 둡니다.
+- JFR artifact는 저장소에 commit하지 않고 \`build/reports/profiling\` 아래에만 둡니다.
 - response mapping/serialization 최적화는 이 artifact를 분석한 뒤 별도 PR에서 진행합니다.
 SUMMARY
 
