@@ -89,6 +89,8 @@ tools/test/run-transaction-read-model-100m-k6-local.sh --k6-only
 - `tools/test/run-transaction-read-model-100m-k6-local.sh --k6-only` 실행 전 hot/cold account와 기간 값
 - hot/cold account와 기간 기본값이 테스트 의도와 맞는지 여부
 
+volume이 `OOMKilled=true` 또는 recovery loop 상태로 남으면 [Transaction Read Volume Corruption Runbook](../transaction-read-volume-corruption-runbook.md)을 기준으로 복구/폐기/재생성을 판단합니다.
+
 수동 보관이 필요하면 아래 명령을 사용합니다.
 
 ```bash
