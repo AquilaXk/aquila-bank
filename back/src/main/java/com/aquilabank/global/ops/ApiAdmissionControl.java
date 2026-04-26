@@ -4,7 +4,6 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.List;
-import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class ApiAdmissionControl {
@@ -31,11 +30,11 @@ public class ApiAdmissionControl {
     if (endpoint == null) {
       return ApiAdmissionPermit.ignored();
     }
-    if (!endpoint.semaphore().tryAcquire()) {
+    if (!endpoint.tryAcquire()) {
+      endpoint.recordRejection();
       increment(endpoint.group(), "rejected");
       return ApiAdmissionPermit.rejected(endpoint.group(), properties.retryAfterSeconds());
     }
-    endpoint.inFlight().incrementAndGet();
     increment(endpoint.group(), "accepted");
     return ApiAdmissionPermit.acquired(endpoint.group(), endpoint::release);
   }
@@ -64,18 +63,29 @@ public class ApiAdmissionControl {
   }
 
   private record EndpointState(
-      String group, List<String> pathPrefixes, Semaphore semaphore, AtomicInteger inFlight) {
+      String group,
+      List<String> pathPrefixes,
+      ApiAdmissionControlProperties.AdaptiveLimit adaptive,
+      AtomicInteger currentLimit,
+      AtomicInteger inFlight,
+      AtomicInteger healthyCompletions) {
 
     private EndpointState(
         ApiAdmissionControlProperties.EndpointLimit endpoint, MeterRegistry meterRegistry) {
       this(
           endpoint.group(),
           endpoint.pathPrefixes(),
-          new Semaphore(endpoint.maxConcurrency()),
+          endpoint.adaptive(),
+          new AtomicInteger(endpoint.maxConcurrency()),
+          new AtomicInteger(),
           new AtomicInteger());
       Gauge.builder("aquila.api.admission.inflight", inFlight, AtomicInteger::get)
           .tag("group", group)
           .description("endpoint admission control in-flight requests")
+          .register(meterRegistry);
+      Gauge.builder("aquila.api.admission.limit", currentLimit, AtomicInteger::get)
+          .tag("group", group)
+          .description("endpoint admission control current concurrency limit")
           .register(meterRegistry);
     }
 
@@ -83,9 +93,44 @@ public class ApiAdmissionControl {
       return pathPrefixes.stream().anyMatch(path::startsWith);
     }
 
+    private boolean tryAcquire() {
+      while (true) {
+        int current = inFlight.get();
+        if (current >= currentLimit.get()) {
+          return false;
+        }
+        if (inFlight.compareAndSet(current, current + 1)) {
+          return true;
+        }
+      }
+    }
+
+    private void recordRejection() {
+      if (!adaptive.enabled()) {
+        return;
+      }
+      healthyCompletions.set(0);
+      // 429는 이미 포화 신호이므로 다음 요청부터 즉시 낮은 한도로 되돌립니다.
+      currentLimit.updateAndGet(
+          value -> Math.max(adaptive.minConcurrency(), value - adaptive.decreaseOnRejections()));
+    }
+
     private void release() {
       inFlight.decrementAndGet();
-      semaphore.release();
+      recordHealthyCompletion();
+    }
+
+    private void recordHealthyCompletion() {
+      if (!adaptive.enabled() || currentLimit.get() >= adaptive.maxConcurrency()) {
+        return;
+      }
+      int completions = healthyCompletions.incrementAndGet();
+      if (completions < adaptive.increaseEverySuccesses()) {
+        return;
+      }
+      if (healthyCompletions.compareAndSet(completions, 0)) {
+        currentLimit.updateAndGet(value -> Math.min(adaptive.maxConcurrency(), value + 1));
+      }
     }
   }
 }
