@@ -210,7 +210,7 @@ elif [[ "${fixture_mode}" == "dump" ]]; then
     --file="${container_dump_path}" \
     --table=public.transaction_read_model \
     --table=public.transaction_read_model_archive
-  docker cp "aquila-bank-postgres:${container_dump_path}" "${fixture_path}"
+  docker cp "${postgres_container_name}:${container_dump_path}" "${fixture_path}"
   assert_fixture_dump_present
   if [[ "${fixture_write_manifest}" == "true" ]]; then
     FIXTURE_NAME="${fixture_name}" \
@@ -224,7 +224,7 @@ else
     FIXTURE_PATH="${fixture_path}" \
       tools/test/validate-transaction-100m-fixture-artifact.sh --verify
   fi
-  docker cp "${fixture_path}" "aquila-bank-postgres:${container_dump_path}"
+  docker cp "${fixture_path}" "${postgres_container_name}:${container_dump_path}"
   docker compose "${compose_files[@]}" exec -T postgres psql -v ON_ERROR_STOP=1 \
     -U "${DB_USERNAME:-postgres}" -d "${DB_NAME:-aquila_bank}" \
     --command "TRUNCATE public.transaction_read_model, public.transaction_read_model_archive;"

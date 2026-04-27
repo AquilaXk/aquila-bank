@@ -13,6 +13,7 @@ echo "[transaction-fixture-restore] print plan"
 plan="$(
   FIXTURE_MODE=verify \
   FIXTURE_NAME=transaction-100m-check \
+  FIXTURE_POSTGRES_CONTAINER_NAME=transaction-100m-postgres-check \
   FIXTURE_REQUIRE_DUMP=true \
   FIXTURE_VERIFY_MIN_ROWS=1000 \
     "${script}" --print-plan
@@ -21,6 +22,7 @@ grep -F "fixture=transaction-100m-check" <<<"${plan}" >/dev/null
 grep -F "mode=verify" <<<"${plan}" >/dev/null
 grep -F "dump=build/fixtures/transaction-100m-check.dump" <<<"${plan}" >/dev/null
 grep -F "recovery_preflight=true" <<<"${plan}" >/dev/null
+grep -F "postgres_container=transaction-100m-postgres-check" <<<"${plan}" >/dev/null
 grep -F "require_dump=true" <<<"${plan}" >/dev/null
 grep -F "verify_min_rows=1000" <<<"${plan}" >/dev/null
 grep -F "modes=verify,dump,restore" <<<"${plan}" >/dev/null
@@ -31,6 +33,12 @@ grep -F "FIXTURE_REQUIRE_DUMP" "${script}" >/dev/null
 grep -F "FIXTURE_VERIFY_MIN_ROWS" "${script}" >/dev/null
 grep -F "assert_postgres_recovery_safe" "${script}" >/dev/null
 grep -F "assert_fixture_dump_present" "${script}" >/dev/null
+grep -F "docker cp \"\${postgres_container_name}:" "${script}" >/dev/null
+grep -F "docker cp \"\${fixture_path}\" \"\${postgres_container_name}:" "${script}" >/dev/null
+if grep -F "docker cp \"aquila-bank-postgres:" "${script}" >/dev/null; then
+  echo "docker cp still hard-codes aquila-bank-postgres" >&2
+  exit 1
+fi
 grep -F "OOMKilled" "${script}" >/dev/null
 grep -F "Restarting" "${script}" >/dev/null
 grep -F "pg_is_in_recovery()" "${script}" >/dev/null
