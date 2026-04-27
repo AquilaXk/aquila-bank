@@ -10,6 +10,10 @@ echo "[transaction-100m-capacity] print plan"
 plan="$(
   CAPACITY_NAME=transaction-capacity-check \
   CAPACITY_LONG_SOAK_DURATION=30m \
+  CAPACITY_K6_DOCKER_CONTEXT=capacity-k6-remote \
+  CAPACITY_K6_REMOTE_BASE_URL=http://192.0.2.20:8080 \
+  CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL=http://192.0.2.20:9090/api/v1/write \
+  CAPACITY_K6_REMOTE_WORKDIR=/srv/aquila-bank \
     "${script}" --print-plan
 )"
 grep -F "capacity=transaction-capacity-check" <<<"${plan}" >/dev/null
@@ -25,9 +29,17 @@ grep -F "overload_429_rate_threshold=0.20" <<<"${plan}" >/dev/null
 grep -F "backend_cpu_threshold_percent=120" <<<"${plan}" >/dev/null
 grep -F "postgres_cpu_threshold_percent=90" <<<"${plan}" >/dev/null
 grep -F "hikari_pending_threshold=0" <<<"${plan}" >/dev/null
+grep -F "k6_generator_mode=docker-context" <<<"${plan}" >/dev/null
+grep -F "allow_local_k6_generator=false" <<<"${plan}" >/dev/null
+grep -F "k6_docker_context=capacity-k6-remote" <<<"${plan}" >/dev/null
+grep -F "k6_remote_base_url=http://192.0.2.20:8080" <<<"${plan}" >/dev/null
+grep -F "k6_remote_workdir=/srv/aquila-bank" <<<"${plan}" >/dev/null
 grep -F "summary=build/reports/k6/transaction-capacity-check/capacity-summary.tsv" <<<"${plan}" >/dev/null
 
 echo "[transaction-100m-capacity] runner contract"
+grep -F "CAPACITY_K6_GENERATOR_MODE" "${script}" >/dev/null
+grep -F "CAPACITY_ALLOW_LOCAL_K6_GENERATOR" "${script}" >/dev/null
+grep -F "K6_GENERATOR_MODE=\"\${capacity_k6_generator_mode}\"" "${script}" >/dev/null
 grep -F "CAPACITY_HARD_THRESHOLD_ENABLED" "${script}" >/dev/null
 grep -F "CAPACITY_HOT_P95_THRESHOLD_MS" "${script}" >/dev/null
 grep -F "CAPACITY_COLD_P95_THRESHOLD_MS" "${script}" >/dev/null
@@ -72,5 +84,14 @@ if CAPACITY_OVERLOAD_429_RATE_THRESHOLD=1.5 "${script}" --print-plan >/dev/null 
 fi
 if CAPACITY_SINGLE_HOST_PROFILES=bad-strict:3:8:0.40:512m:0.60:384m:4:false:1m "${script}" --print-plan >/dev/null 2>&1; then
   echo "adaptive strict profile without overload unexpectedly succeeded" >&2
+  exit 1
+fi
+if CAPACITY_K6_GENERATOR_MODE=local "${script}" --print-plan >/dev/null 2>&1; then
+  echo "local k6 generator without explicit allowance unexpectedly succeeded" >&2
+  exit 1
+fi
+CAPACITY_K6_GENERATOR_MODE=local CAPACITY_ALLOW_LOCAL_K6_GENERATOR=true "${script}" --print-plan >/dev/null
+if CAPACITY_K6_GENERATOR_MODE=docker-context "${script}" --print-plan >/dev/null 2>&1; then
+  echo "docker-context k6 generator without remote runtime unexpectedly succeeded" >&2
   exit 1
 fi

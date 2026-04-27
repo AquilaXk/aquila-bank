@@ -24,6 +24,12 @@ Optional environment:
   CAPACITY_READINESS_TIMEOUT_SECONDS default 120
   CAPACITY_METRIC_SCRAPE_WAIT_SECONDS default 6
   CAPACITY_CPU_SAMPLE_INTERVAL_SECONDS default 5
+  CAPACITY_K6_GENERATOR_MODE default docker-context
+  CAPACITY_ALLOW_LOCAL_K6_GENERATOR default false
+  CAPACITY_K6_DOCKER_CONTEXT docker context for off-host k6, required when generator mode=docker-context
+  CAPACITY_K6_REMOTE_BASE_URL backend URL reachable from off-host k6
+  CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL Prometheus remote-write URL reachable from off-host k6
+  CAPACITY_K6_REMOTE_WORKDIR repo path visible from docker context host, default current working directory
   CAPACITY_ADAPTIVE_ENABLED default true
   CAPACITY_HARD_THRESHOLD_ENABLED default true
   CAPACITY_HOT_P95_THRESHOLD_MS default 350
@@ -73,6 +79,12 @@ long_soak_duration="${CAPACITY_LONG_SOAK_DURATION:-30m}"
 readiness_timeout_seconds="${CAPACITY_READINESS_TIMEOUT_SECONDS:-120}"
 metric_scrape_wait_seconds="${CAPACITY_METRIC_SCRAPE_WAIT_SECONDS:-6}"
 cpu_sample_interval_seconds="${CAPACITY_CPU_SAMPLE_INTERVAL_SECONDS:-5}"
+capacity_k6_generator_mode="${CAPACITY_K6_GENERATOR_MODE:-docker-context}"
+allow_local_k6_generator="${CAPACITY_ALLOW_LOCAL_K6_GENERATOR:-false}"
+capacity_k6_docker_context="${CAPACITY_K6_DOCKER_CONTEXT:-${K6_DOCKER_CONTEXT:-}}"
+capacity_k6_remote_base_url="${CAPACITY_K6_REMOTE_BASE_URL:-${K6_REMOTE_BASE_URL:-}}"
+capacity_k6_remote_prometheus_rw_server_url="${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL:-${K6_REMOTE_PROMETHEUS_RW_SERVER_URL:-}}"
+capacity_k6_remote_workdir="${CAPACITY_K6_REMOTE_WORKDIR:-${K6_REMOTE_WORKDIR:-$(pwd)}}"
 adaptive_enabled="${CAPACITY_ADAPTIVE_ENABLED:-${OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_ADAPTIVE_ENABLED:-true}}"
 hard_threshold_enabled="${CAPACITY_HARD_THRESHOLD_ENABLED:-true}"
 hot_p95_threshold_ms="${CAPACITY_HOT_P95_THRESHOLD_MS:-350}"
@@ -269,11 +281,26 @@ require_env() {
   fi
 }
 
+require_generator_mode_value() {
+  local name="$1"
+  local value="$2"
+  case "${value}" in
+    local|docker-context)
+      ;;
+    *)
+      echo "${name} must be local or docker-context: ${value}" >&2
+      exit 1
+      ;;
+  esac
+}
+
 require_bool "CAPACITY_BUILD_BACKEND" "${build_backend}"
 require_bool "CAPACITY_RUN_SINGLE_HOST" "${run_single_host}"
 require_bool "CAPACITY_RUN_CPU_SPLIT" "${run_cpu_split}"
 require_bool "CAPACITY_RUN_LONG_SOAK" "${run_long_soak}"
 require_bool "CAPACITY_CONTINUE_ON_FAILURE" "${continue_on_failure}"
+require_bool "CAPACITY_ALLOW_LOCAL_K6_GENERATOR" "${allow_local_k6_generator}"
+require_generator_mode_value "CAPACITY_K6_GENERATOR_MODE" "${capacity_k6_generator_mode}"
 require_bool "CAPACITY_ADAPTIVE_ENABLED" "${adaptive_enabled}"
 require_bool "CAPACITY_HARD_THRESHOLD_ENABLED" "${hard_threshold_enabled}"
 require_duration_value "CAPACITY_LONG_SOAK_DURATION" "${long_soak_duration}"
@@ -294,6 +321,26 @@ assert_adaptive_strict_guards "CAPACITY_SINGLE_HOST_PROFILES" "${single_host_pro
 assert_adaptive_strict_guards "CAPACITY_CPU_SPLIT_PROFILES" "${cpu_split_profiles}"
 assert_adaptive_strict_guard "CAPACITY_LONG_SOAK_PROFILE" "${long_soak_profile}"
 
+if [[ "${capacity_k6_generator_mode}" == "local" && "${allow_local_k6_generator}" != "true" ]]; then
+  echo "CAPACITY_K6_GENERATOR_MODE=local requires CAPACITY_ALLOW_LOCAL_K6_GENERATOR=true" >&2
+  exit 1
+fi
+
+if [[ "${capacity_k6_generator_mode}" == "docker-context" ]]; then
+  [[ -n "${capacity_k6_docker_context}" ]] || {
+    echo "CAPACITY_K6_DOCKER_CONTEXT is required when CAPACITY_K6_GENERATOR_MODE=docker-context" >&2
+    exit 1
+  }
+  [[ -n "${capacity_k6_remote_base_url}" ]] || {
+    echo "CAPACITY_K6_REMOTE_BASE_URL is required when CAPACITY_K6_GENERATOR_MODE=docker-context" >&2
+    exit 1
+  }
+  [[ -n "${capacity_k6_remote_prometheus_rw_server_url}" ]] || {
+    echo "CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL is required when CAPACITY_K6_GENERATOR_MODE=docker-context" >&2
+    exit 1
+  }
+fi
+
 print_plan() {
   echo "[transaction-100m-capacity] capacity=${capacity_name}"
   echo "[transaction-100m-capacity] build_backend=${build_backend}"
@@ -309,6 +356,11 @@ print_plan() {
   echo "[transaction-100m-capacity] readiness_timeout_seconds=${readiness_timeout_seconds}"
   echo "[transaction-100m-capacity] metric_scrape_wait_seconds=${metric_scrape_wait_seconds}"
   echo "[transaction-100m-capacity] cpu_sample_interval_seconds=${cpu_sample_interval_seconds}"
+  echo "[transaction-100m-capacity] k6_generator_mode=${capacity_k6_generator_mode}"
+  echo "[transaction-100m-capacity] allow_local_k6_generator=${allow_local_k6_generator}"
+  echo "[transaction-100m-capacity] k6_docker_context=${capacity_k6_docker_context:-missing}"
+  echo "[transaction-100m-capacity] k6_remote_base_url=${capacity_k6_remote_base_url:-missing}"
+  echo "[transaction-100m-capacity] k6_remote_workdir=${capacity_k6_remote_workdir}"
   echo "[transaction-100m-capacity] adaptive_enabled=${adaptive_enabled}"
   echo "[transaction-100m-capacity] hard_thresholds=${hard_threshold_enabled}"
   echo "[transaction-100m-capacity] hot_p95_threshold_ms=${hot_p95_threshold_ms}"
@@ -562,6 +614,11 @@ run_profile() {
   K6_DURATION="${duration}" \
   K6_OVERLOAD_MODE="${overload_mode}" \
   K6_ARCHIVE_RESULTS=false \
+  K6_GENERATOR_MODE="${capacity_k6_generator_mode}" \
+  K6_DOCKER_CONTEXT="${capacity_k6_docker_context}" \
+  K6_REMOTE_BASE_URL="${capacity_k6_remote_base_url}" \
+  K6_REMOTE_PROMETHEUS_RW_SERVER_URL="${capacity_k6_remote_prometheus_rw_server_url}" \
+  K6_REMOTE_WORKDIR="${capacity_k6_remote_workdir}" \
     tools/test/run-k6-transaction-100m-loadtest.sh --no-up --no-deps >"${log_path}" 2>&1
   status=$?
   set -e
