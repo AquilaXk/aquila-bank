@@ -13,6 +13,8 @@ Environment:
   T3MICRO_ADMISSION_SUMMARY_TSV optional admission summary TSV
   T3MICRO_OUTBOX_SUMMARY_TSV   optional outbox summary TSV
   T3MICRO_K6_SUMMARY_MD        optional k6 transaction 100m summary markdown
+  T3MICRO_AGGREGATE_AUTO_INPUTS default true
+  T3MICRO_AGGREGATE_SEARCH_ROOTS default "docs/performance-results build/reports"
 
 Examples:
   tools/test/run-t3micro-defensive-gates-aggregate-report.sh --print-plan
@@ -50,10 +52,54 @@ sse_result="${T3MICRO_SSE_RESULT_MD:-}"
 admission_summary="${T3MICRO_ADMISSION_SUMMARY_TSV:-}"
 outbox_summary="${T3MICRO_OUTBOX_SUMMARY_TSV:-}"
 k6_summary="${T3MICRO_K6_SUMMARY_MD:-}"
+auto_inputs="${T3MICRO_AGGREGATE_AUTO_INPUTS:-true}"
+search_roots="${T3MICRO_AGGREGATE_SEARCH_ROOTS:-docs/performance-results build/reports}"
+
+require_bool() {
+  local name="$1"
+  local value="$2"
+  if [[ "${value}" != "true" && "${value}" != "false" ]]; then
+    echo "${name} must be true or false: ${value}" >&2
+    exit 1
+  fi
+}
+
+latest_file() {
+  local pattern="$1"
+  local matches=()
+  local root path
+  for root in ${search_roots}; do
+    if [[ -d "${root}" ]]; then
+      while IFS= read -r path; do
+        matches+=("${path}")
+      done < <(find "${root}" -type f -name "${pattern}" 2>/dev/null)
+    fi
+  done
+  if [[ "${#matches[@]}" -eq 0 ]]; then
+    return 0
+  fi
+  ls -t "${matches[@]}" 2>/dev/null | head -1
+}
+
+resolve_auto_inputs() {
+  if [[ "${auto_inputs}" != "true" ]]; then
+    return 0
+  fi
+  capacity_result="${capacity_result:-$(latest_file '*capacity*.md')}"
+  sse_result="${sse_result:-$(latest_file '*sse*.md')}"
+  admission_summary="${admission_summary:-$(latest_file 'http-admission-summary.tsv')}"
+  outbox_summary="${outbox_summary:-$(latest_file 'outbox-provider-backlog-summary.tsv')}"
+  k6_summary="${k6_summary:-$(latest_file '*transaction-100m*-summary.md')}"
+}
+
+require_bool "T3MICRO_AGGREGATE_AUTO_INPUTS" "${auto_inputs}"
+resolve_auto_inputs
 
 print_plan() {
   echo "[t3micro-defensive-aggregate] mode=${mode}"
   echo "[t3micro-defensive-aggregate] output=${output_path}"
+  echo "[t3micro-defensive-aggregate] auto_inputs=${auto_inputs}"
+  echo "[t3micro-defensive-aggregate] search_roots=${search_roots}"
   echo "[t3micro-defensive-aggregate] capacity=${capacity_result:-missing}"
   echo "[t3micro-defensive-aggregate] sse=${sse_result:-missing}"
   echo "[t3micro-defensive-aggregate] admission=${admission_summary:-missing}"

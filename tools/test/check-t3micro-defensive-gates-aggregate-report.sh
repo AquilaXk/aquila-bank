@@ -58,6 +58,33 @@ grep -F "output=${temp_dir}/aggregate-check.md" <<<"${plan}" >/dev/null
 grep -F "capacity=${capacity}" <<<"${plan}" >/dev/null
 grep -F "admission=${admission}" <<<"${plan}" >/dev/null
 grep -F "k6=${k6}" <<<"${plan}" >/dev/null
+grep -F "auto_inputs=true" <<<"${plan}" >/dev/null
+
+auto_root="${temp_dir}/auto"
+mkdir -p "${auto_root}/docs/performance-results" "${auto_root}/build/reports/admission/run" "${auto_root}/build/reports/outbox/run" "${auto_root}/build/reports/k6"
+auto_capacity="${auto_root}/docs/performance-results/docker-t3micro-capacity-auto.md"
+auto_sse="${auto_root}/docs/performance-results/sse-reconnect-auto.md"
+auto_admission="${auto_root}/build/reports/admission/run/http-admission-summary.tsv"
+auto_outbox="${auto_root}/build/reports/outbox/run/outbox-provider-backlog-summary.tsv"
+auto_k6="${auto_root}/build/reports/k6/transaction-100m-auto-summary.md"
+cp "${capacity}" "${auto_capacity}"
+cp "${sse}" "${auto_sse}"
+cp "${admission}" "${auto_admission}"
+cp "${outbox}" "${auto_outbox}"
+cp "${k6}" "${auto_k6}"
+
+echo "[t3micro-defensive-aggregate] auto inputs"
+auto_plan="$(
+  T3MICRO_AGGREGATE_NAME=aggregate-auto-check \
+  T3MICRO_AGGREGATE_OUTPUT_DIR="${temp_dir}" \
+  T3MICRO_AGGREGATE_SEARCH_ROOTS="${auto_root}/docs/performance-results ${auto_root}/build/reports" \
+    "${script}" --print-plan
+)"
+grep -F "capacity=${auto_capacity}" <<<"${auto_plan}" >/dev/null
+grep -F "sse=${auto_sse}" <<<"${auto_plan}" >/dev/null
+grep -F "admission=${auto_admission}" <<<"${auto_plan}" >/dev/null
+grep -F "outbox=${auto_outbox}" <<<"${auto_plan}" >/dev/null
+grep -F "k6=${auto_k6}" <<<"${auto_plan}" >/dev/null
 
 echo "[t3micro-defensive-aggregate] report"
 output="$(
