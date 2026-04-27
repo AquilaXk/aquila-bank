@@ -209,6 +209,7 @@ services:
       K6_HOT_MAX_THRESHOLD_MS: ${K6_HOT_MAX_THRESHOLD_MS:-3000}
       K6_COLD_MAX_THRESHOLD_MS: ${K6_COLD_MAX_THRESHOLD_MS:-5000}
       K6_HTTP_FAILED_RATE: ${K6_HTTP_FAILED_RATE:-0.01}
+      K6_OVERLOAD_503_RATE_THRESHOLD: ${K6_OVERLOAD_503_RATE_THRESHOLD:-0}
     volumes:
       - ./ops/k6:/scripts:ro
       - ./build/reports/k6:/reports
