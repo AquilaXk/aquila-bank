@@ -105,6 +105,11 @@ require_env() {
   fi
 }
 
+stop_backend_before_bootjar() {
+  # JFR profile도 host jar를 mount하므로 build 전 기존 backend JVM을 내립니다.
+  docker compose "${compose_files[@]}" --profile loadtest stop aquila-bank-backend >/dev/null 2>&1 || true
+}
+
 require_duration "PROFILE_DURATION" "${profile_duration}"
 require_duration "K6_DURATION" "${k6_duration}"
 require_positive_integer "PROFILE_ADMISSION" "${profile_admission}"
@@ -197,6 +202,8 @@ require_env K6_COLD_TO
 mkdir -p "${report_dir}" build/reports/k6
 
 if [[ "${profile_build_backend}" == "true" ]]; then
+  stop_backend_before_bootjar
+
   echo "[transaction-read-hotpath-profile] building backend bootJar"
   tools/test/with-resource-lock.sh back-gradle-loadtest-bootjar ./back/gradlew -p back bootJar
 fi

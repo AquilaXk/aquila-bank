@@ -27,6 +27,9 @@ echo "[transaction-read-hotpath-profile] runner contract"
 grep -F "StartFlightRecording" "${script}" >/dev/null
 grep -F "wait_for_backend_readiness" "${script}" >/dev/null
 grep -F "wait_for_jfr_dump" "${script}" >/dev/null
+grep -F "stop_backend_before_bootjar" "${script}" >/dev/null
+grep -F "docker compose \"\${compose_files[@]}\" --profile loadtest stop aquila-bank-backend" "${script}" >/dev/null
+grep -F -- "--force-recreate aquila-bank-backend" "${script}" >/dev/null
 grep -F "LOADTEST_BACKEND_JAVA_TOOL_OPTIONS" "${script}" >/dev/null
 grep -F "docker cp" "${script}" >/dev/null
 grep -F "docker compose" "${script}" >/dev/null

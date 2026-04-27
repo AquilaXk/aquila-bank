@@ -281,6 +281,11 @@ require_env() {
   fi
 }
 
+stop_backend_before_bootjar() {
+  # host jar hot-swap 방지: bootJar 전 실행 중인 backend JVM만 내립니다.
+  docker compose "${compose_files[@]}" --profile loadtest stop aquila-bank-backend >/dev/null 2>&1 || true
+}
+
 require_generator_mode_value() {
   local name="$1"
   local value="$2"
@@ -388,6 +393,8 @@ require_env K6_COLD_TO
 mkdir -p "${report_dir}" build/reports/k6
 
 if [[ "${build_backend}" == "true" ]]; then
+  stop_backend_before_bootjar
+
   echo "[transaction-100m-capacity] building backend bootJar"
   tools/test/with-resource-lock.sh back-gradle-loadtest-bootjar ./back/gradlew -p back bootJar
 fi

@@ -89,6 +89,9 @@ grep -F "checkpoint_timeout" compose.loadtest.yml >/dev/null
 grep -F "assert_k6_preflight" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "idx_transaction_read_model_account_cursor" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "OOMKilled" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "stop_backend_before_bootjar" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "docker compose \"\${compose_files[@]}\" --profile loadtest stop aquila-bank-backend" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F -- "--force-recreate aquila-bank-backend" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "aquila_transaction_hot_first_ms" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "aquila_transaction_cold_cursor_ms" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_HOT_P99_THRESHOLD_MS" ops/k6/transaction-read-100m.js >/dev/null

@@ -391,16 +391,24 @@ run_explain_snapshot() {
   K6_EXPLAIN_PHASE="${phase}" tools/test/run-transaction-100m-k6-explain-snapshot.sh
 }
 
+stop_backend_before_bootjar() {
+  # host jar 교체 중 실행 중인 JVM이 classpath를 다시 읽지 않도록 backend만 먼저 내립니다.
+  docker compose "${compose_files[@]}" --profile loadtest stop aquila-bank-backend >/dev/null 2>&1 || true
+}
+
 if [[ "${mode}" != "no-up" ]]; then
+  stop_backend_before_bootjar
+
   echo "[k6-transaction-100m] building backend bootJar"
   tools/test/with-resource-lock.sh back-gradle-loadtest-bootjar ./back/gradlew -p back bootJar
 
   echo "[k6-transaction-100m] starting loadtest services"
-  services=(postgres aquila-bank-backend)
+  docker compose "${compose_files[@]}" --profile loadtest up -d postgres
+  docker compose "${compose_files[@]}" --profile loadtest up -d --force-recreate aquila-bank-backend
   if [[ "${K6_OBSERVABILITY_MODE}" == "prometheus" ]]; then
-    services+=(prometheus grafana alertmanager postgres-exporter)
+    docker compose "${compose_files[@]}" --profile loadtest up -d \
+      prometheus grafana alertmanager postgres-exporter
   fi
-  docker compose "${compose_files[@]}" --profile loadtest up -d "${services[@]}"
 fi
 
 assert_k6_preflight

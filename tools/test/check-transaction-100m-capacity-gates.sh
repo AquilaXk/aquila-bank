@@ -40,6 +40,9 @@ echo "[transaction-100m-capacity] runner contract"
 grep -F "CAPACITY_K6_GENERATOR_MODE" "${script}" >/dev/null
 grep -F "CAPACITY_ALLOW_LOCAL_K6_GENERATOR" "${script}" >/dev/null
 grep -F "K6_GENERATOR_MODE=\"\${capacity_k6_generator_mode}\"" "${script}" >/dev/null
+grep -F "stop_backend_before_bootjar" "${script}" >/dev/null
+grep -F "docker compose \"\${compose_files[@]}\" --profile loadtest stop aquila-bank-backend" "${script}" >/dev/null
+grep -F -- "up -d --force-recreate" "${script}" >/dev/null
 grep -F "CAPACITY_HARD_THRESHOLD_ENABLED" "${script}" >/dev/null
 grep -F "CAPACITY_HOT_P95_THRESHOLD_MS" "${script}" >/dev/null
 grep -F "CAPACITY_COLD_P95_THRESHOLD_MS" "${script}" >/dev/null
