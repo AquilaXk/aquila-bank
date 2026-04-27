@@ -220,10 +220,15 @@ K6_RATE="${K6_RATE:-8}"
 K6_TIME_UNIT="${K6_TIME_UNIT:-1s}"
 K6_BURST_RATE="${K6_BURST_RATE:-16}"
 K6_BURST_DURATION="${K6_BURST_DURATION:-20s}"
+K6_GENERATOR_MODE="${K6_GENERATOR_MODE:-local}"
 K6_PRE_ALLOCATED_VUS="${K6_PRE_ALLOCATED_VUS:-}"
 if [[ -z "${K6_PRE_ALLOCATED_VUS}" ]]; then
   if [[ "${K6_SCENARIO_MODE}" == "burst" ]]; then
-    K6_PRE_ALLOCATED_VUS="${K6_BURST_RATE}"
+    if [[ "${K6_GENERATOR_MODE}" == "docker-context" && "${K6_BURST_RATE}" =~ ^[1-9][0-9]*$ ]]; then
+      K6_PRE_ALLOCATED_VUS="$((K6_BURST_RATE * 2))"
+    else
+      K6_PRE_ALLOCATED_VUS="${K6_BURST_RATE}"
+    fi
   else
     K6_PRE_ALLOCATED_VUS="${K6_VUS}"
   fi
@@ -232,7 +237,11 @@ K6_MAX_VUS="${K6_MAX_VUS:-}"
 if [[ -z "${K6_MAX_VUS}" ]]; then
   if [[ "${K6_SCENARIO_MODE}" == "burst" ]]; then
     if [[ "${K6_BURST_RATE}" =~ ^[1-9][0-9]*$ ]]; then
-      K6_MAX_VUS="$((K6_BURST_RATE * 2))"
+      if [[ "${K6_GENERATOR_MODE}" == "docker-context" ]]; then
+        K6_MAX_VUS="$((K6_BURST_RATE * 4))"
+      else
+        K6_MAX_VUS="$((K6_BURST_RATE * 2))"
+      fi
     else
       K6_MAX_VUS="${K6_BURST_RATE}"
     fi
@@ -271,7 +280,6 @@ K6_SUMMARY_GATE="${K6_SUMMARY_GATE:-true}"
 K6_BACKEND_READINESS_GATE="${K6_BACKEND_READINESS_GATE:-true}"
 K6_BACKEND_READINESS_PATH="${K6_BACKEND_READINESS_PATH:-/actuator/health/readiness}"
 K6_BACKEND_READINESS_TIMEOUT_SECONDS="${K6_BACKEND_READINESS_TIMEOUT_SECONDS:-120}"
-K6_GENERATOR_MODE="${K6_GENERATOR_MODE:-local}"
 K6_DOCKER_CONTEXT="${K6_DOCKER_CONTEXT:-}"
 K6_REMOTE_BASE_URL="${K6_REMOTE_BASE_URL:-}"
 K6_REMOTE_PROMETHEUS_RW_SERVER_URL="${K6_REMOTE_PROMETHEUS_RW_SERVER_URL:-}"

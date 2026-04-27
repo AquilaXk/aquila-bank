@@ -115,6 +115,21 @@ burst_plan="$(
 grep -F "scenario mode=burst" <<<"${burst_plan}" >/dev/null
 grep -F "burst rate=16 duration=20s preAllocatedVUs=8 maxVUs=32" <<<"${burst_plan}" >/dev/null
 
+burst_offhost_plan="$(
+  K6_REPORT_NAME=transaction-100m-burst-offhost-check \
+  K6_SCENARIO_MODE=burst \
+  K6_BURST_RATE=256 \
+  K6_BURST_DURATION=20s \
+  K6_GENERATOR_MODE=docker-context \
+  K6_DOCKER_CONTEXT=transaction-k6-remote \
+  K6_REMOTE_BASE_URL=http://192.0.2.10:8080 \
+  K6_REMOTE_PROMETHEUS_RW_SERVER_URL=http://192.0.2.10:9090/api/v1/write \
+    tools/test/run-k6-transaction-100m-loadtest.sh --print-plan
+)"
+grep -F "k6 report name: transaction-100m-burst-offhost-check" <<<"${burst_offhost_plan}" >/dev/null
+grep -F "generator mode=docker-context" <<<"${burst_offhost_plan}" >/dev/null
+grep -F "burst rate=256 duration=20s preAllocatedVUs=512 maxVUs=1024" <<<"${burst_offhost_plan}" >/dev/null
+
 echo "[k6-transaction-100m] k6 script contract"
 grep -F "experimental-prometheus-rw" compose.loadtest.yml >/dev/null
 grep -F "K6_PROMETHEUS_RW_SERVER_URL" compose.loadtest.yml >/dev/null
