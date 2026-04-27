@@ -35,6 +35,11 @@ grep -F "EXPLAIN (FORMAT TEXT)" <<<"${sql}" >/dev/null
 grep -F "FROM public.transaction_read_model" <<<"${sql}" >/dev/null
 grep -F "FROM public.transaction_read_model_archive" <<<"${sql}" >/dev/null
 grep -F "(booked_at, id) <" <<<"${sql}" >/dev/null
+grep -F ">\"\${output}\"" "${script}" >/dev/null
+if grep -F -- "--output \"\${output}\"" "${script}" >/dev/null; then
+  echo "psql --output writes inside the postgres container, not host artifact path" >&2
+  exit 1
+fi
 
 k6_plan="$(tools/test/run-k6-transaction-100m-loadtest.sh --print-plan)"
 grep -F "explain_snapshot=true" <<<"${k6_plan}" >/dev/null
