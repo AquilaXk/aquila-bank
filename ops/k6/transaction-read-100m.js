@@ -44,6 +44,7 @@ const hotMaxThresholdMs = Number(__ENV.K6_HOT_MAX_THRESHOLD_MS || "3000");
 const coldMaxThresholdMs = Number(__ENV.K6_COLD_MAX_THRESHOLD_MS || "5000");
 const failedRate = Number(__ENV.K6_HTTP_FAILED_RATE || "0.01");
 const reportName = __ENV.K6_REPORT_NAME || "transaction-100m";
+const runId = __ENV.K6_RUN_ID || reportName;
 const observabilityMode = __ENV.K6_OBSERVABILITY_MODE || "prometheus";
 const overloadMode = booleanEnv(__ENV.K6_OVERLOAD_MODE);
 const overload429RateThreshold = nonNegativeNumberEnv(__ENV.K6_OVERLOAD_429_RATE_THRESHOLD, 0.015);
@@ -188,6 +189,7 @@ export const options = {
   tags: {
     service: "aquila-bank",
     workload: "transaction-read-100m",
+    run_id: runId,
   },
 };
 
@@ -399,6 +401,7 @@ function markdownSummary(data) {
 ## Environment
 
 - baseUrl: ${baseUrl}
+- run id: ${runId}
 - vus: ${vus}
 - duration: ${duration}
 - warmup duration: ${warmupDuration}

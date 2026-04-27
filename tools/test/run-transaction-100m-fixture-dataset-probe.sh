@@ -21,6 +21,11 @@ Environment:
   FIXTURE_DATASET_QUERY_STATEMENT_TIMEOUT_MS default 3000
   FIXTURE_DATASET_QUERY_LOCK_TIMEOUT_MS default 1000
   FIXTURE_DATASET_QUERY_WORK_MEM       default 2MB
+  FIXTURE_DATASET_QUERY_TEMP_FILE_LIMIT default 8MB
+  FIXTURE_DATASET_RUN_ID               default timestamp
+  FIXTURE_DATASET_DB_FAILURE_REPORT_PATH default <FIXTURE_PATH>.db-gate-<run-id>.failure.env
+  FIXTURE_DATASET_RECOVERY_ON_FAILURE  true|false, default true
+  FIXTURE_DATASET_RECOVERY_WAIT_SECONDS default 90
 
 Manifest keys:
   hot_account_id hot_from hot_to cold_account_id cold_from cold_to
@@ -76,6 +81,12 @@ estimate_tolerance_rows="${FIXTURE_DATASET_ESTIMATE_TOLERANCE_ROWS:-1000}"
 query_statement_timeout_ms="${FIXTURE_DATASET_QUERY_STATEMENT_TIMEOUT_MS:-3000}"
 query_lock_timeout_ms="${FIXTURE_DATASET_QUERY_LOCK_TIMEOUT_MS:-1000}"
 query_work_mem="${FIXTURE_DATASET_QUERY_WORK_MEM:-2MB}"
+query_temp_file_limit="${FIXTURE_DATASET_QUERY_TEMP_FILE_LIMIT:-8MB}"
+run_id="${FIXTURE_DATASET_RUN_ID:-$(date +%Y-%m-%d-%H%M%S)}"
+db_failure_report_path="${FIXTURE_DATASET_DB_FAILURE_REPORT_PATH:-${fixture_path}.db-gate-${run_id}.failure.env}"
+recovery_on_failure="${FIXTURE_DATASET_RECOVERY_ON_FAILURE:-true}"
+recovery_wait_seconds="${FIXTURE_DATASET_RECOVERY_WAIT_SECONDS:-90}"
+postgres_container_name="${FIXTURE_POSTGRES_CONTAINER_NAME:-${LOADTEST_POSTGRES_CONTAINER_NAME:-aquila-bank-postgres-loadtest}}"
 assert_estimate_label="${FIXTURE_DATASET_ASSERT_LABEL:-estimate}"
 assert_estimate_actual="${FIXTURE_DATASET_ASSERT_ACTUAL:-}"
 assert_estimate_minimum="${FIXTURE_DATASET_ASSERT_MINIMUM:-}"
@@ -84,6 +95,7 @@ psql_base=(docker compose "${compose_files[@]}" exec -T postgres psql --quiet -v
 
 require_bool_value "FIXTURE_DATASET_DB_GATE" "${db_gate}"
 require_bool_value "FIXTURE_DATASET_PROBE_DB_FALLBACK" "${db_fallback}"
+require_bool_value "FIXTURE_DATASET_RECOVERY_ON_FAILURE" "${recovery_on_failure}"
 
 require_non_negative_integer_value() {
   local key="$1"
@@ -110,10 +122,22 @@ require_positive_integer_value "FIXTURE_DATASET_MIN_WINDOW_ROWS" "${min_window_r
 require_non_negative_integer_value "FIXTURE_DATASET_ESTIMATE_TOLERANCE_ROWS" "${estimate_tolerance_rows}"
 require_positive_integer_value "FIXTURE_DATASET_QUERY_STATEMENT_TIMEOUT_MS" "${query_statement_timeout_ms}"
 require_positive_integer_value "FIXTURE_DATASET_QUERY_LOCK_TIMEOUT_MS" "${query_lock_timeout_ms}"
-if ! [[ "${query_work_mem}" =~ ^[1-9][0-9]*(kB|KB|MB|GB)$ ]]; then
-  echo "FIXTURE_DATASET_QUERY_WORK_MEM must use PostgreSQL memory units such as 2048kB or 2MB: ${query_work_mem}" >&2
-  exit 1
-fi
+require_non_negative_integer_value "FIXTURE_DATASET_RECOVERY_WAIT_SECONDS" "${recovery_wait_seconds}"
+require_postgres_memory_value() {
+  local key="$1"
+  local value="$2"
+  if ! [[ "${value}" =~ ^[1-9][0-9]*(kB|KB|MB|GB)$ ]]; then
+    echo "${key} must use PostgreSQL memory units such as 2048kB or 2MB: ${value}" >&2
+    exit 1
+  fi
+}
+
+require_postgres_memory_value "FIXTURE_DATASET_QUERY_WORK_MEM" "${query_work_mem}"
+require_postgres_memory_value "FIXTURE_DATASET_QUERY_TEMP_FILE_LIMIT" "${query_temp_file_limit}"
+
+sanitize_report_value() {
+  tr '\n\r' '  ' | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//'
+}
 
 manifest_value() {
   local key="$1"
@@ -152,7 +176,7 @@ probe_from_db() {
       SELECT MIN(booked_at), MAX(booked_at)
       FROM public.${table}
       WHERE account_id = '${account_id}';
-    ")"
+    " "db_fallback_window:${table}")"
   tr -d '[:space:]' <<<"${from_to}"
 }
 
@@ -170,25 +194,114 @@ manifest_integer_or_default() {
 
 guarded_sql() {
   local sql="$1"
-  printf "BEGIN READ ONLY;\nSET LOCAL statement_timeout = '%sms';\nSET LOCAL lock_timeout = '%sms';\nSET LOCAL work_mem = '%s';\n%s\nCOMMIT;\n" \
+  printf "BEGIN READ ONLY;\nSET LOCAL statement_timeout = '%sms';\nSET LOCAL lock_timeout = '%sms';\nSET LOCAL work_mem = '%s';\nSET LOCAL temp_file_limit = '%s';\n%s\nCOMMIT;\n" \
     "${query_statement_timeout_ms}" \
     "${query_lock_timeout_ms}" \
     "${query_work_mem}" \
+    "${query_temp_file_limit}" \
     "${sql}"
 }
 
 db_scalar() {
   local sql="$1"
+  local stage="${2:-db_scalar}"
   local output
-  output="$("${psql_base[@]}" --no-align --tuples-only --command "$(guarded_sql "${sql}")")"
+  local status
+  set +e
+  output="$("${psql_base[@]}" --no-align --tuples-only --command "$(guarded_sql "${sql}")" 2>&1)"
+  status=$?
+  set -e
+  if ((status != 0)); then
+    handle_db_gate_query_failure "${stage}" "${status}" "${output}"
+  fi
   awk 'NF {line=$0} END {gsub(/[[:space:]]/, "", line); print line}' <<<"${output}"
 }
 
 db_tuple() {
   local sql="$1"
+  local stage="${2:-db_tuple}"
   local output
-  output="$("${psql_base[@]}" --no-align --tuples-only --field-separator='|' --command "$(guarded_sql "${sql}")")"
+  local status
+  set +e
+  output="$("${psql_base[@]}" --no-align --tuples-only --field-separator='|' --command "$(guarded_sql "${sql}")" 2>&1)"
+  status=$?
+  set -e
+  if ((status != 0)); then
+    handle_db_gate_query_failure "${stage}" "${status}" "${output}"
+  fi
   awk 'NF {line=$0} END {gsub(/[[:space:]]/, "", line); print line}' <<<"${output}"
+}
+
+write_db_gate_failure_report() {
+  local stage="$1"
+  local status="$2"
+  local message="$3"
+  mkdir -p "$(dirname "${db_failure_report_path}")"
+  {
+    echo "FIXTURE_DATASET_DB_GATE_STATUS=failed"
+    echo "FIXTURE_DATASET_RUN_ID=${run_id}"
+    echo "FIXTURE_DATASET_DB_FAILURE_STAGE=${stage}"
+    echo "FIXTURE_DATASET_DB_FAILURE_EXIT_STATUS=${status}"
+    echo "FIXTURE_DATASET_DB_FAILURE_MESSAGE=$(sanitize_report_value <<<"${message}")"
+    echo "FIXTURE_DATASET_DB_REPORT_PATH=${db_report_path}"
+    echo "FIXTURE_DATASET_DB_FAILURE_REPORT_PATH=${db_failure_report_path}"
+    echo "FIXTURE_DATASET_QUERY_STATEMENT_TIMEOUT_MS=${query_statement_timeout_ms}"
+    echo "FIXTURE_DATASET_QUERY_LOCK_TIMEOUT_MS=${query_lock_timeout_ms}"
+    echo "FIXTURE_DATASET_QUERY_WORK_MEM=${query_work_mem}"
+    echo "FIXTURE_DATASET_QUERY_TEMP_FILE_LIMIT=${query_temp_file_limit}"
+    echo "FIXTURE_DATASET_RECOVERY_ON_FAILURE=${recovery_on_failure}"
+    echo "FIXTURE_DATASET_RECOVERY_WAIT_SECONDS=${recovery_wait_seconds}"
+  } >"${db_failure_report_path}"
+  echo "[transaction-100m-dataset-probe] db gate failure report written=${db_failure_report_path}" >&2
+}
+
+wait_for_postgres_recovery_after_failure() {
+  if [[ "${recovery_on_failure}" != "true" ]]; then
+    echo "[transaction-100m-dataset-probe] recovery wait after failure skipped" >&2
+    return 0
+  fi
+
+  local deadline=$((SECONDS + recovery_wait_seconds))
+  local state running restarting oom_killed status in_recovery last_error
+  while ((SECONDS <= deadline)); do
+    if ! state="$(docker inspect "${postgres_container_name}" --format '{{.State.Running}} {{.State.Restarting}} {{.State.OOMKilled}} {{.State.Status}}' 2>/dev/null)"; then
+      last_error="PostgreSQL container not found: ${postgres_container_name}"
+    else
+      read -r running restarting oom_killed status <<<"${state}"
+      if [[ "${oom_killed}" == "true" ]]; then
+        echo "[transaction-100m-dataset-probe] PostgreSQL OOMKilled=true after DB gate failure" >&2
+        return 1
+      fi
+      if [[ "${running}" == "true" && "${restarting}" == "false" && "${status}" == "running" ]]; then
+        if in_recovery="$("${psql_base[@]}" --no-align --tuples-only --command "SELECT pg_is_in_recovery();" 2>/dev/null)"; then
+          in_recovery="$(tr -d '[:space:]' <<<"${in_recovery}")"
+          if [[ "${in_recovery}" != "t" ]]; then
+            echo "[transaction-100m-dataset-probe] postgres recovery closed after DB gate failure" >&2
+            return 0
+          fi
+          last_error="pg_is_in_recovery()=true"
+        else
+          last_error="pg_is_in_recovery query failed"
+        fi
+      else
+        last_error="Running=${running:-unknown} Restarting=${restarting:-unknown} Status=${status:-unknown}"
+      fi
+    fi
+    echo "[transaction-100m-dataset-probe] waiting postgres recovery after DB gate failure: ${last_error}" >&2
+    sleep 5
+  done
+  echo "[transaction-100m-dataset-probe] PostgreSQL recovery wait exceeded after DB gate failure: seconds=${recovery_wait_seconds}" >&2
+  return 1
+}
+
+handle_db_gate_query_failure() {
+  local stage="$1"
+  local status="$2"
+  local output="$3"
+  write_db_gate_failure_report "${stage}" "${status}" "${output}"
+  wait_for_postgres_recovery_after_failure || true
+  echo "dataset probe DB gate query failed: stage=${stage} status=${status} failure_report=${db_failure_report_path}" >&2
+  exit 1
 }
 
 table_estimate() {
@@ -202,21 +315,27 @@ table_estimate() {
     SELECT COALESCE(SUM(GREATEST(item.reltuples, 0))::bigint, 0)
     FROM leaf
     JOIN pg_class item ON item.oid = leaf.relid;
-  "
+  " "table_estimate:${table}"
 }
 
-window_count() {
+index_only_window_probe() {
   local table="$1"
   local account_id="$2"
   local from="$3"
   local to="$4"
+  # account cursor index 순서로 필요한 최소 sample까지만 읽어 full window count를 피합니다.
   db_scalar "
     SELECT count(*)
-    FROM public.${table}
-    WHERE account_id = '${account_id}'
-      AND booked_at >= '${from}'::timestamptz
-      AND booked_at < '${to}'::timestamptz;
-  "
+    FROM (
+      SELECT 1
+      FROM public.${table}
+      WHERE account_id = '${account_id}'
+        AND booked_at >= '${from}'::timestamptz
+        AND booked_at < '${to}'::timestamptz
+      ORDER BY booked_at DESC, id DESC
+      LIMIT ${min_window_rows}
+    ) sample;
+  " "index_only_window_probe:${table}"
 }
 
 partition_name_for_month() {
@@ -236,7 +355,7 @@ assert_partition_exists() {
   local timestamp="$2"
   local partition exists
   partition="$(partition_name_for_month "${table}" "${timestamp}")"
-  exists="$(db_scalar "SELECT to_regclass('public.${partition}') IS NOT NULL;")"
+  exists="$(db_scalar "SELECT to_regclass('public.${partition}') IS NOT NULL;" "partition_exists:${partition}")"
   if [[ "${exists}" != "t" ]]; then
     echo "dataset probe monthly partition is missing: ${partition}" >&2
     exit 1
@@ -298,6 +417,8 @@ write_db_gate_report() {
   mkdir -p "$(dirname "${db_report_path}")"
   {
     echo "FIXTURE_DATASET_DB_GATE=passed"
+    echo "FIXTURE_DATASET_DB_GATE_STATUS=passed"
+    echo "FIXTURE_DATASET_RUN_ID=${run_id}"
     echo "FIXTURE_DATASET_TOTAL_MIN=${total_min}"
     echo "FIXTURE_DATASET_HOT_MIN=${hot_min}"
     echo "FIXTURE_DATASET_ARCHIVE_MIN=${archive_min}"
@@ -313,7 +434,10 @@ write_db_gate_report() {
     echo "FIXTURE_DATASET_QUERY_STATEMENT_TIMEOUT_MS=${query_statement_timeout_ms}"
     echo "FIXTURE_DATASET_QUERY_LOCK_TIMEOUT_MS=${query_lock_timeout_ms}"
     echo "FIXTURE_DATASET_QUERY_WORK_MEM=${query_work_mem}"
+    echo "FIXTURE_DATASET_QUERY_TEMP_FILE_LIMIT=${query_temp_file_limit}"
     echo "FIXTURE_DATASET_QUERY_READ_ONLY=true"
+    echo "FIXTURE_DATASET_WINDOW_PROBE_MODE=index-only-bounded"
+    echo "FIXTURE_DATASET_WINDOW_PROBE_LIMIT=${min_window_rows}"
   } >"${db_report_path}"
   echo "[transaction-100m-dataset-probe] db gate report written=${db_report_path}"
 }
@@ -346,8 +470,8 @@ assert_dataset_db_gate() {
   assert_estimate_at_least archive_estimate "${archive_estimate}" "${archive_min}"
   assert_estimate_at_least total_estimate "${total_estimate}" "${total_min}"
 
-  hot_count="$(window_count transaction_read_model "${hot_account_id}" "${hot_from}" "${hot_to}")"
-  cold_count="$(window_count transaction_read_model_archive "${cold_account_id}" "${cold_from}" "${cold_to}")"
+  hot_count="$(index_only_window_probe transaction_read_model "${hot_account_id}" "${hot_from}" "${hot_to}")"
+  cold_count="$(index_only_window_probe transaction_read_model_archive "${cold_account_id}" "${cold_from}" "${cold_to}")"
   assert_integer_at_least hot_window_count "${hot_count}" "${min_window_rows}"
   assert_integer_at_least cold_window_count "${cold_count}" "${min_window_rows}"
   hot_partition="$(assert_partition_exists transaction_read_model "${hot_from}")"
@@ -383,8 +507,10 @@ print_plan() {
   echo "[transaction-100m-dataset-probe] manifest=${manifest_path}"
   echo "[transaction-100m-dataset-probe] dataset_env=${dataset_env_path}"
   echo "[transaction-100m-dataset-probe] db_report=${db_report_path}"
+  echo "[transaction-100m-dataset-probe] db_failure_report=${db_failure_report_path}"
   echo "[transaction-100m-dataset-probe] db_gate=${db_gate}"
   echo "[transaction-100m-dataset-probe] db_fallback=${db_fallback}"
+  echo "[transaction-100m-dataset-probe] run_id=${run_id}"
   echo "[transaction-100m-dataset-probe] min_total_rows=${min_total_rows:-manifest-total_rows-or-100000000}"
   echo "[transaction-100m-dataset-probe] min_hot_rows=${min_hot_rows:-manifest-hot_rows-or-1}"
   echo "[transaction-100m-dataset-probe] min_archive_rows=${min_archive_rows:-manifest-archive_rows-or-1}"
@@ -393,8 +519,13 @@ print_plan() {
   echo "[transaction-100m-dataset-probe] query_statement_timeout_ms=${query_statement_timeout_ms}"
   echo "[transaction-100m-dataset-probe] query_lock_timeout_ms=${query_lock_timeout_ms}"
   echo "[transaction-100m-dataset-probe] query_work_mem=${query_work_mem}"
+  echo "[transaction-100m-dataset-probe] query_temp_file_limit=${query_temp_file_limit}"
   echo "[transaction-100m-dataset-probe] query_read_only=true"
-  echo "[transaction-100m-dataset-probe] db_gate_checks=partition-estimate-tolerance,bounded-window-count,monthly-partition"
+  echo "[transaction-100m-dataset-probe] recovery_on_failure=${recovery_on_failure}"
+  echo "[transaction-100m-dataset-probe] recovery_wait_seconds=${recovery_wait_seconds}"
+  echo "[transaction-100m-dataset-probe] window_probe_mode=index-only-bounded"
+  echo "[transaction-100m-dataset-probe] window_probe_limit=${min_window_rows}"
+  echo "[transaction-100m-dataset-probe] db_gate_checks=partition-estimate-tolerance,index-only-bounded-window-probe,monthly-partition"
   echo "[transaction-100m-dataset-probe] source_order=manifest,env,db-fallback"
 }
 

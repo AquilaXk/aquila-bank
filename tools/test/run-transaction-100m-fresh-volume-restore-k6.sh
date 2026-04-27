@@ -70,6 +70,7 @@ fixture_name="${FIXTURE_NAME:-transaction-100m-fixture}"
 fixture_dir="${FIXTURE_DIR:-build/fixtures}"
 fixture_path="${FIXTURE_PATH:-${fixture_dir}/${fixture_name}.dump}"
 dataset_env_path="${FIXTURE_DATASET_ENV_PATH:-${fixture_path}.dataset.env}"
+db_gate_artifact_path="${FIXTURE_DATASET_DB_REPORT_PATH:-${fixture_path}.db-gate.env}"
 volume_name="${FRESH_VOLUME_NAME:-aquila-bank-postgres-data}"
 build_backend="${FRESH_VOLUME_BUILD_BACKEND:-true}"
 k6_enabled="${FRESH_VOLUME_K6_ENABLED:-true}"
@@ -107,6 +108,8 @@ print_plan() {
   echo "[transaction-100m-fresh-volume] dump=${fixture_path}"
   echo "[transaction-100m-fresh-volume] dataset_probe=tools/test/run-transaction-100m-fixture-dataset-probe.sh"
   echo "[transaction-100m-fresh-volume] dataset_env=${dataset_env_path}"
+  echo "[transaction-100m-fresh-volume] db_gate_artifact=${db_gate_artifact_path}"
+  echo "[transaction-100m-fresh-volume] dataset_source=existing-artifact-or-probe"
   echo "[transaction-100m-fresh-volume] build_backend=${build_backend}"
   echo "[transaction-100m-fresh-volume] artifact_preflight=${artifact_preflight}"
   echo "[transaction-100m-fresh-volume] dump_missing_mode=${dump_missing_mode}"
@@ -133,6 +136,8 @@ print_dry_run() {
   echo "docker compose ${compose_files[*]} --profile loadtest up -d postgres aquila-bank-backend prometheus grafana alertmanager postgres-exporter"
   echo "FIXTURE_MODE=restore FIXTURE_RESTORE_TRUNCATE=true FIXTURE_NAME=${fixture_name} FIXTURE_PATH=${fixture_path} tools/test/run-transaction-100m-fixture-restore.sh"
   echo "FIXTURE_MODE=verify FIXTURE_VERIFY_MIN_ROWS=${restore_verify_min_rows} FIXTURE_NAME=${fixture_name} FIXTURE_PATH=${fixture_path} tools/test/run-transaction-100m-fixture-restore.sh"
+  echo "db gate artifact: ${db_gate_artifact_path}"
+  echo "source existing dataset env when db gate artifact passed"
   echo "FIXTURE_NAME=${fixture_name} FIXTURE_PATH=${fixture_path} FIXTURE_DATASET_ENV_PATH=${dataset_env_path} tools/test/run-transaction-100m-fixture-dataset-probe.sh"
   if [[ "${dump_missing_mode}" == "seed-only" ]]; then
     echo "if fixture dump is absent: tools/test/prepare-transaction-read-model-100m-fixture.sh"
@@ -263,13 +268,24 @@ verify_fixture() {
     tools/test/run-transaction-100m-fixture-restore.sh
 }
 
-load_dataset_probe() {
-  FIXTURE_NAME="${fixture_name}" \
-  FIXTURE_PATH="${fixture_path}" \
-  FIXTURE_DATASET_ENV_PATH="${dataset_env_path}" \
-    tools/test/run-transaction-100m-fixture-dataset-probe.sh
+dataset_artifacts_ready() {
+  [[ -s "${dataset_env_path}" && -s "${db_gate_artifact_path}" ]] || return 1
+  grep -F "FIXTURE_DATASET_DB_GATE_STATUS=passed" "${db_gate_artifact_path}" >/dev/null \
+    || grep -F "FIXTURE_DATASET_DB_GATE=passed" "${db_gate_artifact_path}" >/dev/null
+}
+
+load_dataset_env_or_probe() {
+  if dataset_artifacts_ready; then
+    echo "[transaction-100m-fresh-volume] using existing dataset env and db gate artifact"
+  else
+    FIXTURE_NAME="${fixture_name}" \
+    FIXTURE_PATH="${fixture_path}" \
+    FIXTURE_DATASET_ENV_PATH="${dataset_env_path}" \
+    FIXTURE_DATASET_DB_REPORT_PATH="${db_gate_artifact_path}" \
+      tools/test/run-transaction-100m-fixture-dataset-probe.sh
+  fi
   set -a
-  # restore 이후 k6 계정/window는 manifest metadata에서 받아 DB full scan을 피합니다.
+  # restore 이후 k6 계정/window는 준비된 artifact에서 받아 DB 검증 쿼리 반복을 피합니다.
   source "${dataset_env_path}"
   set +a
   hot_account_id="${K6_HOT_ACCOUNT_ID:-${hot_account_id}}"
@@ -325,7 +341,7 @@ if [[ "${artifact_ready}" == "true" ]]; then
   start_runtime
   restore_fixture
   verify_fixture
-  load_dataset_probe
+  load_dataset_env_or_probe
 else
   seed_fixture
 fi
