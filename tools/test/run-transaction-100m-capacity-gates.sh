@@ -30,6 +30,10 @@ Optional environment:
   CAPACITY_K6_REMOTE_BASE_URL backend URL reachable from off-host k6
   CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL Prometheus remote-write URL reachable from off-host k6
   CAPACITY_K6_REMOTE_WORKDIR repo path visible from docker context host, default current working directory
+  CAPACITY_REMOTE_PREFLIGHT default true
+  CAPACITY_REMOTE_PREFLIGHT_TIMEOUT_SECONDS default 30
+  CAPACITY_REMOTE_PREFLIGHT_IMAGE default curlimages/curl:8.11.1
+  CAPACITY_REMOTE_READINESS_PATH default /actuator/health/readiness
   CAPACITY_ADAPTIVE_ENABLED default true
   CAPACITY_HARD_THRESHOLD_ENABLED default true
   CAPACITY_HOT_P95_THRESHOLD_MS default 350
@@ -85,6 +89,10 @@ capacity_k6_docker_context="${CAPACITY_K6_DOCKER_CONTEXT:-${K6_DOCKER_CONTEXT:-}
 capacity_k6_remote_base_url="${CAPACITY_K6_REMOTE_BASE_URL:-${K6_REMOTE_BASE_URL:-}}"
 capacity_k6_remote_prometheus_rw_server_url="${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL:-${K6_REMOTE_PROMETHEUS_RW_SERVER_URL:-}}"
 capacity_k6_remote_workdir="${CAPACITY_K6_REMOTE_WORKDIR:-${K6_REMOTE_WORKDIR:-$(pwd)}}"
+capacity_remote_preflight="${CAPACITY_REMOTE_PREFLIGHT:-true}"
+capacity_remote_preflight_timeout_seconds="${CAPACITY_REMOTE_PREFLIGHT_TIMEOUT_SECONDS:-30}"
+capacity_remote_preflight_image="${CAPACITY_REMOTE_PREFLIGHT_IMAGE:-curlimages/curl:8.11.1}"
+capacity_remote_readiness_path="${CAPACITY_REMOTE_READINESS_PATH:-/actuator/health/readiness}"
 adaptive_enabled="${CAPACITY_ADAPTIVE_ENABLED:-${OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_ADAPTIVE_ENABLED:-true}}"
 hard_threshold_enabled="${CAPACITY_HARD_THRESHOLD_ENABLED:-true}"
 hot_p95_threshold_ms="${CAPACITY_HOT_P95_THRESHOLD_MS:-350}"
@@ -99,6 +107,7 @@ prometheus_base_url="${prometheus_url%/}"
 backend_health_url="${CAPACITY_BACKEND_HEALTH_URL:-http://localhost:${BACKEND_PORT:-8080}/actuator/health}"
 report_dir="build/reports/k6/${capacity_name}"
 summary_tsv="${report_dir}/capacity-summary.tsv"
+run_context_path="${report_dir}/capacity-run-context.env"
 compose_files=(-f compose.yml -f compose.t3micro.yml -f compose.loadtest.yml)
 CPU_SAMPLER_PID=""
 threshold_failed=false
@@ -306,6 +315,8 @@ require_bool "CAPACITY_RUN_LONG_SOAK" "${run_long_soak}"
 require_bool "CAPACITY_CONTINUE_ON_FAILURE" "${continue_on_failure}"
 require_bool "CAPACITY_ALLOW_LOCAL_K6_GENERATOR" "${allow_local_k6_generator}"
 require_generator_mode_value "CAPACITY_K6_GENERATOR_MODE" "${capacity_k6_generator_mode}"
+require_bool "CAPACITY_REMOTE_PREFLIGHT" "${capacity_remote_preflight}"
+require_positive_integer_value "CAPACITY_REMOTE_PREFLIGHT_TIMEOUT_SECONDS" "${capacity_remote_preflight_timeout_seconds}"
 require_bool "CAPACITY_ADAPTIVE_ENABLED" "${adaptive_enabled}"
 require_bool "CAPACITY_HARD_THRESHOLD_ENABLED" "${hard_threshold_enabled}"
 require_duration_value "CAPACITY_LONG_SOAK_DURATION" "${long_soak_duration}"
@@ -367,7 +378,7 @@ print_plan() {
   echo "[transaction-100m-capacity] k6_remote_base_url=${capacity_k6_remote_base_url:-missing}"
   echo "[transaction-100m-capacity] k6_remote_prometheus_rw_server_url=${capacity_k6_remote_prometheus_rw_server_url:-missing}"
   echo "[transaction-100m-capacity] k6_remote_workdir=${capacity_k6_remote_workdir}"
-  echo "[transaction-100m-capacity] k6_remote_preflight=delegated-to-k6-runner"
+  echo "[transaction-100m-capacity] capacity_remote_preflight=${capacity_remote_preflight} timeout=${capacity_remote_preflight_timeout_seconds} readiness_path=${capacity_remote_readiness_path} image=${capacity_remote_preflight_image}"
   echo "[transaction-100m-capacity] adaptive_enabled=${adaptive_enabled}"
   echo "[transaction-100m-capacity] hard_thresholds=${hard_threshold_enabled}"
   echo "[transaction-100m-capacity] hot_p95_threshold_ms=${hot_p95_threshold_ms}"
@@ -378,6 +389,7 @@ print_plan() {
   echo "[transaction-100m-capacity] postgres_cpu_threshold_percent=${postgres_cpu_threshold_percent}"
   echo "[transaction-100m-capacity] hikari_pending_threshold=${hikari_pending_threshold}"
   echo "[transaction-100m-capacity] summary=${summary_tsv}"
+  echo "[transaction-100m-capacity] run_context=${run_context_path}"
 }
 
 print_plan
@@ -393,6 +405,25 @@ require_env K6_COLD_FROM
 require_env K6_COLD_TO
 
 mkdir -p "${report_dir}" build/reports/k6
+
+write_capacity_run_context() {
+  {
+    echo "CAPACITY_RUN_PURPOSE=capacity"
+    echo "CAPACITY_NAME=${capacity_name}"
+    echo "CAPACITY_GENERATOR_MODE=${capacity_k6_generator_mode}"
+    echo "CAPACITY_K6_DOCKER_CONTEXT=${capacity_k6_docker_context}"
+    echo "CAPACITY_K6_REMOTE_BASE_URL=${capacity_k6_remote_base_url}"
+    echo "CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL=${capacity_k6_remote_prometheus_rw_server_url}"
+    echo "CAPACITY_K6_REMOTE_WORKDIR=${capacity_k6_remote_workdir}"
+    echo "CAPACITY_REMOTE_PREFLIGHT=${capacity_remote_preflight}"
+    echo "CAPACITY_REMOTE_PREFLIGHT_TIMEOUT_SECONDS=${capacity_remote_preflight_timeout_seconds}"
+    echo "CAPACITY_REMOTE_READINESS_PATH=${capacity_remote_readiness_path}"
+    echo "CAPACITY_REMOTE_PREFLIGHT_IMAGE=${capacity_remote_preflight_image}"
+    echo "CAPACITY_SUMMARY_TSV=${summary_tsv}"
+  } >"${run_context_path}"
+}
+
+write_capacity_run_context
 
 if [[ "${build_backend}" == "true" ]]; then
   stop_backend_before_bootjar
@@ -453,6 +484,28 @@ wait_for_prometheus_readiness() {
   done
   echo "prometheus readiness timeout: ${prometheus_base_url}/-/ready" >&2
   exit 1
+}
+
+assert_capacity_remote_preflight() {
+  if [[ "${capacity_k6_generator_mode}" != "docker-context" ]]; then
+    return 0
+  fi
+  if [[ "${capacity_remote_preflight}" != "true" ]]; then
+    echo "[transaction-100m-capacity] remote preflight skipped"
+    return 0
+  fi
+
+  local readiness_url="${capacity_k6_remote_base_url%/}${capacity_remote_readiness_path}"
+  echo "[transaction-100m-capacity] remote docker context preflight: ${capacity_k6_docker_context}"
+  docker --context "${capacity_k6_docker_context}" info >/dev/null
+  echo "[transaction-100m-capacity] remote backend readiness preflight: ${readiness_url}"
+  docker --context "${capacity_k6_docker_context}" run --rm "${capacity_remote_preflight_image}" \
+    -fsS --max-time "${capacity_remote_preflight_timeout_seconds}" "${readiness_url}" >/dev/null
+
+  echo "[transaction-100m-capacity] remote prometheus remote-write preflight: ${capacity_k6_remote_prometheus_rw_server_url}"
+  docker --context "${capacity_k6_docker_context}" run --rm --entrypoint sh "${capacity_remote_preflight_image}" \
+    -c 'status="$(curl -sS -o /dev/null -w "%{http_code}" --max-time "$1" -X POST "$2" || echo 000)"; case "${status}" in 2*|3*|4*) exit 0 ;; *) echo "remote prometheus remote-write preflight failed: status=${status}" >&2; exit 1 ;; esac' \
+    sh "${capacity_remote_preflight_timeout_seconds}" "${capacity_k6_remote_prometheus_rw_server_url}"
 }
 
 start_cpu_sampler() {
@@ -615,6 +668,7 @@ run_profile() {
 
   wait_for_backend_readiness
   wait_for_prometheus_readiness
+  assert_capacity_remote_preflight
 
   start_cpu_sampler "${stats_path}"
   set +e
@@ -629,7 +683,10 @@ run_profile() {
   K6_REMOTE_BASE_URL="${capacity_k6_remote_base_url}" \
   K6_REMOTE_PROMETHEUS_RW_SERVER_URL="${capacity_k6_remote_prometheus_rw_server_url}" \
   K6_REMOTE_WORKDIR="${capacity_k6_remote_workdir}" \
-  K6_REMOTE_PREFLIGHT=true \
+  K6_REMOTE_PREFLIGHT="${capacity_remote_preflight}" \
+  K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS="${capacity_remote_preflight_timeout_seconds}" \
+  K6_REMOTE_PREFLIGHT_IMAGE="${capacity_remote_preflight_image}" \
+  K6_REMOTE_READINESS_PATH="${capacity_remote_readiness_path}" \
     tools/test/run-k6-transaction-100m-loadtest.sh --no-up --no-deps >"${log_path}" 2>&1
   status=$?
   set -e

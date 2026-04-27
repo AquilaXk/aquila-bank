@@ -35,6 +35,7 @@ Optional environment:
   K6_COLD_MAX_THRESHOLD_MS default 5000
   K6_AUTH_TOKEN        bearer token, optional when bootstrap header auth is enabled
   K6_ARCHIVE_RESULTS   copy markdown summary to docs/performance-results, default true
+  K6_ARCHIVE_OUTPUT_ROOT default docs/performance-results
   K6_PREFLIGHT         check PostgreSQL OOM/index readiness before k6, default true
   K6_POSTGRES_HEALTH_GATE require PostgreSQL Docker health=healthy before k6, default true
   K6_POSTGRES_RECOVERY_GATE require pg_is_in_recovery()=false before k6, default true
@@ -265,6 +266,7 @@ K6_HOT_MAX_THRESHOLD_MS="${K6_HOT_MAX_THRESHOLD_MS:-3000}"
 K6_COLD_MAX_THRESHOLD_MS="${K6_COLD_MAX_THRESHOLD_MS:-5000}"
 K6_HTTP_FAILED_RATE="${K6_HTTP_FAILED_RATE:-0.01}"
 K6_ARCHIVE_RESULTS="${K6_ARCHIVE_RESULTS:-true}"
+K6_ARCHIVE_OUTPUT_ROOT="${K6_ARCHIVE_OUTPUT_ROOT:-docs/performance-results}"
 K6_PREFLIGHT="${K6_PREFLIGHT:-true}"
 K6_POSTGRES_HEALTH_GATE="${K6_POSTGRES_HEALTH_GATE:-true}"
 K6_POSTGRES_RECOVERY_GATE="${K6_POSTGRES_RECOVERY_GATE:-true}"
@@ -382,6 +384,7 @@ summary_md="${report_dir}/${K6_REPORT_NAME}-summary.md"
 summary_json="${report_dir}/${K6_REPORT_NAME}-summary.json"
 k6_runner_log="${report_dir}/${K6_REPORT_NAME}-runner.log"
 run_context_env="${report_dir}/${K6_REPORT_NAME}-run-context.env"
+archive_output_dir="${K6_ARCHIVE_OUTPUT_ROOT%/}/k6-${K6_RUN_PURPOSE}"
 psql_base=(docker compose "${compose_files[@]}" exec -T postgres psql -v ON_ERROR_STOP=1 -U "${DB_USERNAME:-postgres}" -d "${DB_NAME:-aquila_bank}")
 
 require_command() {
@@ -533,6 +536,7 @@ print_plan() {
   fi
   echo "[k6-transaction-100m] required dataset: prepared 100m transaction read model hot/cold accounts"
   echo "[k6-transaction-100m] archive results: ${K6_ARCHIVE_RESULTS}"
+  echo "[k6-transaction-100m] archive output dir=${archive_output_dir}"
 }
 
 print_plan
@@ -912,7 +916,9 @@ status=$?
 run_explain_snapshot post
 
 if [[ "${K6_ARCHIVE_RESULTS}" == "true" && -f "${summary_md}" ]]; then
-  tools/test/archive-k6-transaction-100m-result.sh "${summary_md}" "${summary_json}"
+  PERFORMANCE_RESULT_PURPOSE="${K6_RUN_PURPOSE}" \
+  PERFORMANCE_RESULT_OUTPUT_DIR="${archive_output_dir}" \
+    tools/test/archive-k6-transaction-100m-result.sh "${summary_md}" "${summary_json}"
 elif [[ "${K6_ARCHIVE_RESULTS}" == "true" ]]; then
   echo "k6 summary markdown was not produced: ${summary_md}" >&2
   if [[ "${K6_GENERATOR_MODE}" == "docker-context" ]]; then

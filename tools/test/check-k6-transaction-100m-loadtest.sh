@@ -33,6 +33,7 @@ grep -F "burst 429 rate threshold=0.1" <<<"${plan}" >/dev/null
 grep -F "overload 503 rate threshold=0" <<<"${plan}" >/dev/null
 grep -F "warmup duration=10s" <<<"${plan}" >/dev/null
 grep -F "run purpose=smoke" <<<"${plan}" >/dev/null
+grep -F "archive output dir=docs/performance-results/k6-smoke" <<<"${plan}" >/dev/null
 grep -F "summary gate=true" <<<"${plan}" >/dev/null
 grep -F "backend readiness gate=true path=/actuator/health/readiness timeout=120" <<<"${plan}" >/dev/null
 grep -F "postgres health gate=true required_status=healthy" <<<"${plan}" >/dev/null
@@ -85,6 +86,18 @@ remote_prometheus_plan="$(
 grep -F "k6 report name: transaction-100m-remote-prometheus-check" <<<"${remote_prometheus_plan}" >/dev/null
 grep -F "remote prometheus rw=http://192.0.2.10:9090/api/v1/write" <<<"${remote_prometheus_plan}" >/dev/null
 grep -F "remote prometheus preflight=enabled" <<<"${remote_prometheus_plan}" >/dev/null
+
+capacity_archive_plan="$(
+  K6_REPORT_NAME=transaction-100m-capacity-archive-check \
+  K6_RUN_PURPOSE=capacity \
+  K6_OBSERVABILITY_MODE=summary-only \
+  K6_GENERATOR_MODE=docker-context \
+  K6_DOCKER_CONTEXT=transaction-k6-remote \
+  K6_REMOTE_BASE_URL=http://192.0.2.10:8080 \
+    tools/test/run-k6-transaction-100m-loadtest.sh --print-plan
+)"
+grep -F "run purpose=capacity" <<<"${capacity_archive_plan}" >/dev/null
+grep -F "archive output dir=docs/performance-results/k6-capacity" <<<"${capacity_archive_plan}" >/dev/null
 
 overload_plan="$(
   K6_REPORT_NAME=transaction-100m-overload-check \
@@ -252,6 +265,10 @@ grep -F "docker --context \"\${K6_DOCKER_CONTEXT}\" info" tools/test/run-k6-tran
 grep -F "remote prometheus remote-write preflight" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_REMOTE_WORKDIR" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_RUN_PURPOSE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "PERFORMANCE_RESULT_PURPOSE=\"\${K6_RUN_PURPOSE}\"" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "PERFORMANCE_RESULT_OUTPUT_DIR=\"\${archive_output_dir}\"" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "resultPurpose" tools/test/archive-k6-transaction-100m-result.sh >/dev/null
+grep -F "reportClass" tools/test/archive-k6-transaction-100m-result.sh >/dev/null
 grep -F "assert_k6_summary_gate" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "interrupted_iterations" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "dropped_iterations" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
@@ -384,14 +401,31 @@ echo "[k6-transaction-100m] archive script"
 echo "# sample" >"${temp_dir}/transaction-100m-summary.md"
 echo "{}" >"${temp_dir}/transaction-100m-summary.json"
 output="$(
+  PERFORMANCE_RESULT_OUTPUT_DIR="${temp_dir}/k6-smoke" \
+  PERFORMANCE_RESULT_PURPOSE=smoke \
   PERFORMANCE_RESULT_NAME=transaction-100m-check-result \
     tools/test/archive-k6-transaction-100m-result.sh \
     "${temp_dir}/transaction-100m-summary.md" \
     "${temp_dir}/transaction-100m-summary.json"
 )"
-test "${output}" = "docs/performance-results/transaction-100m-check-result.md"
+test "${output}" = "${temp_dir}/k6-smoke/transaction-100m-check-result.md"
+grep -F "resultPurpose: smoke" "${output}" >/dev/null
+grep -F "reportClass: transaction-100m-smoke" "${output}" >/dev/null
 grep -F "sourceMarkdown: ${temp_dir}/transaction-100m-summary.md" "${output}" >/dev/null
 rm -f "${output}"
+
+capacity_output="$(
+  PERFORMANCE_RESULT_OUTPUT_DIR="${temp_dir}/k6-capacity" \
+  PERFORMANCE_RESULT_PURPOSE=capacity \
+  PERFORMANCE_RESULT_NAME=transaction-100m-capacity-check-result \
+    tools/test/archive-k6-transaction-100m-result.sh \
+    "${temp_dir}/transaction-100m-summary.md" \
+    "${temp_dir}/transaction-100m-summary.json"
+)"
+test "${capacity_output}" = "${temp_dir}/k6-capacity/transaction-100m-capacity-check-result.md"
+grep -F "resultPurpose: capacity" "${capacity_output}" >/dev/null
+grep -F "reportClass: transaction-100m-capacity" "${capacity_output}" >/dev/null
+rm -f "${capacity_output}"
 
 echo "[k6-transaction-100m] optional k6 inspect"
 if docker image inspect grafana/k6:0.54.0 >/dev/null 2>&1; then

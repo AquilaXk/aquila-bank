@@ -9,6 +9,8 @@ Environment:
   T3MICRO_AGGREGATE_NAME       default t3micro-defensive-gates-aggregate-<timestamp>
   T3MICRO_AGGREGATE_OUTPUT_DIR default docs/performance-results
   T3MICRO_CAPACITY_RESULT_MD   optional Docker capacity archive markdown
+  T3MICRO_CAPACITY_SUMMARY_TSV optional off-host transaction 100m capacity summary TSV
+  T3MICRO_CAPACITY_RUN_CONTEXT_ENV optional run context next to capacity summary TSV
   T3MICRO_SSE_RESULT_MD        optional SSE reconnect archive markdown
   T3MICRO_ADMISSION_SUMMARY_TSV optional admission summary TSV
   T3MICRO_OUTBOX_SUMMARY_TSV   optional outbox summary TSV
@@ -51,6 +53,8 @@ name="${T3MICRO_AGGREGATE_NAME:-t3micro-defensive-gates-aggregate-$(date +%Y-%m-
 output_dir="${T3MICRO_AGGREGATE_OUTPUT_DIR:-docs/performance-results}"
 output_path="${output_dir}/${name}.md"
 capacity_result="${T3MICRO_CAPACITY_RESULT_MD:-}"
+capacity_summary="${T3MICRO_CAPACITY_SUMMARY_TSV:-}"
+capacity_run_context="${T3MICRO_CAPACITY_RUN_CONTEXT_ENV:-}"
 sse_result="${T3MICRO_SSE_RESULT_MD:-}"
 admission_summary="${T3MICRO_ADMISSION_SUMMARY_TSV:-}"
 outbox_summary="${T3MICRO_OUTBOX_SUMMARY_TSV:-}"
@@ -96,11 +100,51 @@ latest_file() {
   ls -t "${matches[@]}" 2>/dev/null | head -1
 }
 
+capacity_context_for_summary() {
+  local summary="$1"
+  local dir
+  dir="$(dirname "${summary}")"
+  echo "${dir}/capacity-run-context.env"
+}
+
+capacity_context_is_offhost() {
+  local context="$1"
+  [[ -f "${context}" ]] || return 1
+  grep -Fx "CAPACITY_RUN_PURPOSE=capacity" "${context}" >/dev/null \
+    && grep -Fx "CAPACITY_GENERATOR_MODE=docker-context" "${context}" >/dev/null \
+    && grep -E '^CAPACITY_K6_DOCKER_CONTEXT=.' "${context}" >/dev/null \
+    && grep -E '^CAPACITY_K6_REMOTE_BASE_URL=.' "${context}" >/dev/null \
+    && grep -E '^CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL=.' "${context}" >/dev/null
+}
+
+latest_capacity_summary() {
+  local matches=()
+  local root path context
+  for root in ${search_roots}; do
+    if [[ -d "${root}" ]]; then
+      while IFS= read -r path; do
+        context="$(capacity_context_for_summary "${path}")"
+        if capacity_context_is_offhost "${context}"; then
+          matches+=("${path}")
+        fi
+      done < <(find "${root}" -type f -name "capacity-summary.tsv" 2>/dev/null)
+    fi
+  done
+  if [[ "${#matches[@]}" -eq 0 ]]; then
+    return 0
+  fi
+  ls -t "${matches[@]}" 2>/dev/null | head -1
+}
+
 resolve_auto_inputs() {
   if [[ "${auto_inputs}" != "true" ]]; then
     return 0
   fi
-  capacity_result="${capacity_result:-$(latest_file '*capacity*.md')}"
+  capacity_summary="${capacity_summary:-$(latest_capacity_summary)}"
+  if [[ -z "${capacity_run_context}" && -n "${capacity_summary}" ]]; then
+    capacity_run_context="$(capacity_context_for_summary "${capacity_summary}")"
+  fi
+  capacity_result="${capacity_result:-$(latest_file 'docker-t3micro-capacity*.md')}"
   sse_result="${sse_result:-$(latest_file '*sse*.md')}"
   admission_summary="${admission_summary:-$(latest_file 'http-admission-summary.tsv')}"
   outbox_summary="${outbox_summary:-$(latest_file 'outbox-provider-backlog-summary.tsv')}"
@@ -115,7 +159,7 @@ resolve_auto_inputs
 gate_path() {
   local gate="$1"
   case "${gate}" in
-    capacity) echo "${capacity_result}" ;;
+    capacity) echo "${capacity_summary}" ;;
     sse) echo "${sse_result}" ;;
     admission) echo "${admission_summary}" ;;
     outbox) echo "${outbox_summary}" ;;
@@ -149,6 +193,8 @@ print_plan() {
   echo "[t3micro-defensive-aggregate] auto_inputs=${auto_inputs}"
   echo "[t3micro-defensive-aggregate] search_roots=${search_roots}"
   echo "[t3micro-defensive-aggregate] capacity=${capacity_result:-missing}"
+  echo "[t3micro-defensive-aggregate] capacity_summary=${capacity_summary:-missing}"
+  echo "[t3micro-defensive-aggregate] capacity_run_context=${capacity_run_context:-missing}"
   echo "[t3micro-defensive-aggregate] sse=${sse_result:-missing}"
   echo "[t3micro-defensive-aggregate] admission=${admission_summary:-missing}"
   echo "[t3micro-defensive-aggregate] outbox=${outbox_summary:-missing}"
@@ -168,6 +214,155 @@ md_value() {
   local value
   value="$(awk -F ': ' -v key="- ${key}" '$1 == key {print $2}' "${file}" | tail -1)"
   printf "%s" "${value:-missing}"
+}
+
+capacity_summary_status() {
+  local file="$1"
+  if [[ -z "${file}" || ! -f "${file}" ]]; then
+    printf "missing"
+    return 0
+  fi
+  awk -F '\t' '
+    NR == 1 {
+      for (i = 1; i <= NF; i++) {
+        if ($i == "status") status_column = i
+      }
+      next
+    }
+    status_column {
+      rows += 1
+      if ($status_column != "0") failed = 1
+    }
+    END {
+      if (!status_column || rows == 0) {
+        print "invalid"
+      } else if (failed) {
+        print "fail"
+      } else {
+        print "pass"
+      }
+    }
+  ' "${file}"
+}
+
+capacity_profile_count() {
+  local file="$1"
+  if [[ -z "${file}" || ! -f "${file}" ]]; then
+    printf "missing"
+    return 0
+  fi
+  awk 'NR > 1 {count += 1} END {print count + 0}' "${file}"
+}
+
+capacity_tsv_column_max() {
+  local file="$1"
+  local key="$2"
+  if [[ -z "${file}" || ! -f "${file}" ]]; then
+    printf "n/a"
+    return 0
+  fi
+  awk -F '\t' -v key="${key}" '
+    NR == 1 {
+      for (i = 1; i <= NF; i++) {
+        if ($i == key) column = i
+      }
+      next
+    }
+    column && $column ~ /^[0-9]+([.][0-9]+)?$/ {
+      value = $column + 0
+      if (!found || value > max) {
+        max = value
+        text = $column
+      }
+      found = 1
+    }
+    END {
+      if (found) {
+        print text
+      } else {
+        print "n/a"
+      }
+    }
+  ' "${file}"
+}
+
+capacity_cpu_peak() {
+  local file="$1"
+  if [[ -z "${file}" || ! -f "${file}" ]]; then
+    printf "n/a"
+    return 0
+  fi
+  awk -F '\t' '
+    NR == 1 {
+      for (i = 1; i <= NF; i++) {
+        if ($i == "backend_cpu_percent") backend_column = i
+        if ($i == "postgres_cpu_percent") postgres_column = i
+      }
+      next
+    }
+    {
+      for (i = 1; i <= NF; i++) {
+        if ((i == backend_column || i == postgres_column) && $i ~ /^[0-9]+([.][0-9]+)?$/) {
+          value = $i + 0
+          if (!found || value > max) {
+            max = value
+            text = $i
+          }
+          found = 1
+        }
+      }
+    }
+    END {
+      if (found) {
+        print text
+      } else {
+        print "n/a"
+      }
+    }
+  ' "${file}"
+}
+
+capacity_status_value() {
+  if [[ -n "${capacity_summary}" ]]; then
+    capacity_summary_status "${capacity_summary}"
+  else
+    md_value "${capacity_result}" "capacity smoke status"
+  fi
+}
+
+capacity_cpu_value() {
+  if [[ -n "${capacity_summary}" ]]; then
+    capacity_cpu_peak "${capacity_summary}"
+  else
+    md_value "${capacity_result}" "peakCpuPercent"
+  fi
+}
+
+capacity_memory_value() {
+  if [[ -n "${capacity_summary}" ]]; then
+    printf "n/a"
+  else
+    md_value "${capacity_result}" "peakMemoryMiB"
+  fi
+}
+
+capacity_signal_value() {
+  if [[ -n "${capacity_summary}" ]]; then
+    printf "429Rate=%s hikariPending=%s profiles=%s" \
+      "$(capacity_tsv_column_max "${capacity_summary}" "transaction_429_rate")" \
+      "$(capacity_tsv_column_max "${capacity_summary}" "hikari_pending")" \
+      "$(capacity_profile_count "${capacity_summary}")"
+  else
+    printf "repeat=%s" "$(md_value "${capacity_result}" "repeat")"
+  fi
+}
+
+capacity_source_value() {
+  if [[ -n "${capacity_summary}" ]]; then
+    printf "%s" "${capacity_summary}"
+  else
+    printf "%s" "${capacity_result:-missing}"
+  fi
 }
 
 tsv_value() {
@@ -245,6 +440,34 @@ assert_memory_budget() {
   fi
 }
 
+assert_capacity_summary() {
+  if [[ -z "${capacity_summary}" ]]; then
+    return 0
+  fi
+  if [[ ! -f "${capacity_summary}" ]]; then
+    echo "capacity summary not found: ${capacity_summary}" >&2
+    exit 1
+  fi
+  if [[ -z "${capacity_run_context}" ]]; then
+    capacity_run_context="$(capacity_context_for_summary "${capacity_summary}")"
+  fi
+  if ! capacity_context_is_offhost "${capacity_run_context}"; then
+    echo "capacity summary requires off-host docker-context run context: ${capacity_run_context}" >&2
+    exit 1
+  fi
+  case "$(capacity_summary_status "${capacity_summary}")" in
+    pass) ;;
+    fail)
+      echo "capacity summary contains failed profiles: ${capacity_summary}" >&2
+      exit 1
+      ;;
+    *)
+      echo "capacity summary is invalid: ${capacity_summary}" >&2
+      exit 1
+      ;;
+  esac
+}
+
 write_report() {
   mkdir -p "${output_dir}"
   {
@@ -253,6 +476,8 @@ write_report() {
     echo "## Inputs"
     echo
     echo "- capacityResult: ${capacity_result:-missing}"
+    echo "- capacitySummary: ${capacity_summary:-missing}"
+    echo "- capacityRunContext: ${capacity_run_context:-missing}"
     echo "- sseResult: ${sse_result:-missing}"
     echo "- admissionSummary: ${admission_summary:-missing}"
     echo "- outboxSummary: ${outbox_summary:-missing}"
@@ -263,7 +488,7 @@ write_report() {
     echo
     echo "| Gate | Status | Peak CPU % | Peak Memory MiB | Backlog / Reject Signal | Source |"
     echo "| --- | --- | ---: | ---: | --- | --- |"
-    echo "| capacity | $(md_value "${capacity_result}" "capacity smoke status") | $(md_value "${capacity_result}" "peakCpuPercent") | $(md_value "${capacity_result}" "peakMemoryMiB") | repeat=$(md_value "${capacity_result}" "repeat") | ${capacity_result:-missing} |"
+    echo "| capacity | $(capacity_status_value) | $(capacity_cpu_value) | $(capacity_memory_value) | $(capacity_signal_value) | $(capacity_source_value) |"
     echo "| sse reconnect | $(md_value "${sse_result}" "status") | $(md_value "${sse_result}" "peakCpuPercent") | $(md_value "${sse_result}" "peakMemoryMiB") | clients=$(md_value "${sse_result}" "reconnectClients") rounds=$(md_value "${sse_result}" "reconnectRounds") | ${sse_result:-missing} |"
     echo "| http admission | n/a | n/a | n/a | rejected=$(tsv_value "${admission_summary}" "rejected_count") failed_rate=$(tsv_value "${admission_summary}" "failed_rate") | ${admission_summary:-missing} |"
     echo "| outbox backlog | n/a | n/a | n/a | lag=$(tsv_value "${outbox_summary}" "lag_seconds") failed=$(tsv_value "${outbox_summary}" "failed_count") dlq=$(tsv_value "${outbox_summary}" "dlq_count") | ${outbox_summary:-missing} |"
@@ -281,6 +506,7 @@ write_report() {
 }
 
 print_plan
+assert_capacity_summary
 assert_required_gates
 assert_memory_budget
 if [[ "${mode}" == "print-plan" ]]; then

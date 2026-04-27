@@ -7,6 +7,8 @@ usage: tools/test/archive-k6-transaction-100m-result.sh <summary-md> [summary-js
 
 Environment:
   PERFORMANCE_RESULT_NAME   output basename without .md, default summary-md basename
+  PERFORMANCE_RESULT_OUTPUT_DIR default docs/performance-results
+  PERFORMANCE_RESULT_PURPOSE default ${K6_RUN_PURPOSE:-smoke}
 
 Examples:
   tools/test/archive-k6-transaction-100m-result.sh build/reports/k6/transaction-100m-summary.md
@@ -36,7 +38,8 @@ if [[ -n "${summary_json}" && ! -f "${summary_json}" ]]; then
 fi
 
 base_name="${PERFORMANCE_RESULT_NAME:-$(basename "${summary_md}" .md)}"
-output_dir="docs/performance-results"
+output_dir="${PERFORMANCE_RESULT_OUTPUT_DIR:-docs/performance-results}"
+purpose="${PERFORMANCE_RESULT_PURPOSE:-${K6_RUN_PURPOSE:-smoke}}"
 output_path="${output_dir}/${base_name}.md"
 mkdir -p "${output_dir}"
 
@@ -46,6 +49,8 @@ mkdir -p "${output_dir}"
   echo "## Archive Metadata"
   echo
   echo "- archivedAt: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  echo "- resultPurpose: ${purpose}"
+  echo "- reportClass: transaction-100m-${purpose}"
   echo "- sourceMarkdown: ${summary_md}"
   if [[ -n "${summary_json}" ]]; then
     echo "- sourceJson: ${summary_json}"
