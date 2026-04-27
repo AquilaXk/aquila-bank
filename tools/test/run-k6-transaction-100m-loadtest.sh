@@ -17,6 +17,13 @@ Optional environment:
   K6_REPORT_NAME       default transaction-100m-<timestamp>
   K6_VUS               default 8
   K6_DURATION          default 1m
+  K6_SCENARIO_MODE     constant-vus|constant-arrival-rate|burst, default constant-vus
+  K6_RATE              iterations per K6_TIME_UNIT for constant-arrival-rate, default 8
+  K6_TIME_UNIT         default 1s
+  K6_PRE_ALLOCATED_VUS default K6_VUS
+  K6_MAX_VUS           default K6_PRE_ALLOCATED_VUS
+  K6_BURST_RATE        iterations per second for burst mode, default 16
+  K6_BURST_DURATION    default 20s
   K6_LIMIT             default 50
   K6_HOT_P99_THRESHOLD_MS default 750
   K6_COLD_P99_THRESHOLD_MS default 1500
@@ -27,6 +34,7 @@ Optional environment:
   K6_PREFLIGHT         check PostgreSQL OOM/index readiness before k6, default true
   K6_OUTBOX_PREFLIGHT  run local outbox backlog gate before k6, default false
   K6_OUTBOX_PREFLIGHT_BASE_URL default http://localhost:${LOADTEST_BACKEND_PORT:-18080}
+  K6_EXPLAIN_SNAPSHOT  write pre/post hot/cold query plans, default true
   K6_OBSERVABILITY_MODE prometheus|summary-only, default prometheus
   K6_OVERLOAD_MODE     treat 429 as expected rejected samples, default false
   K6_OVERLOAD_429_RATE_THRESHOLD
@@ -124,6 +132,17 @@ require_observability_mode() {
   esac
 }
 
+require_scenario_mode() {
+  case "${K6_SCENARIO_MODE}" in
+    constant-vus|constant-arrival-rate|burst)
+      ;;
+    *)
+      echo "K6_SCENARIO_MODE must be constant-vus, constant-arrival-rate, or burst" >&2
+      exit 1
+      ;;
+  esac
+}
+
 mode="run"
 run_dependencies="true"
 while [[ "$#" -gt 0 ]]; do
@@ -150,6 +169,13 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 K6_VUS="${K6_VUS:-8}"
+K6_SCENARIO_MODE="${K6_SCENARIO_MODE:-constant-vus}"
+K6_RATE="${K6_RATE:-8}"
+K6_TIME_UNIT="${K6_TIME_UNIT:-1s}"
+K6_PRE_ALLOCATED_VUS="${K6_PRE_ALLOCATED_VUS:-${K6_VUS}}"
+K6_MAX_VUS="${K6_MAX_VUS:-${K6_PRE_ALLOCATED_VUS}}"
+K6_BURST_RATE="${K6_BURST_RATE:-16}"
+K6_BURST_DURATION="${K6_BURST_DURATION:-20s}"
 K6_LIMIT="${K6_LIMIT:-50}"
 K6_HOT_P95_THRESHOLD_MS="${K6_HOT_P95_THRESHOLD_MS:-350}"
 K6_COLD_P95_THRESHOLD_MS="${K6_COLD_P95_THRESHOLD_MS:-750}"
@@ -162,6 +188,7 @@ K6_ARCHIVE_RESULTS="${K6_ARCHIVE_RESULTS:-true}"
 K6_PREFLIGHT="${K6_PREFLIGHT:-true}"
 K6_OUTBOX_PREFLIGHT="${K6_OUTBOX_PREFLIGHT:-false}"
 K6_OUTBOX_PREFLIGHT_BASE_URL="${K6_OUTBOX_PREFLIGHT_BASE_URL:-http://localhost:${LOADTEST_BACKEND_PORT:-18080}}"
+K6_EXPLAIN_SNAPSHOT="${K6_EXPLAIN_SNAPSHOT:-true}"
 K6_OBSERVABILITY_MODE="${K6_OBSERVABILITY_MODE:-prometheus}"
 K6_OVERLOAD_MODE="${K6_OVERLOAD_MODE:-false}"
 K6_OVERLOAD_429_RATE_THRESHOLD="${K6_OVERLOAD_429_RATE_THRESHOLD:-0.05}"
@@ -180,9 +207,13 @@ loadtest_alertmanager_port="${LOADTEST_ALERTMANAGER_PORT:-19093}"
 loadtest_postgres_exporter_port="${LOADTEST_POSTGRES_EXPORTER_PORT:-19187}"
 loadtest_postgres_container="${LOADTEST_POSTGRES_CONTAINER_NAME:-aquila-bank-postgres-loadtest}"
 loadtest_backend_container="${LOADTEST_BACKEND_CONTAINER_NAME:-aquila-bank-backend-loadtest}"
-export K6_VUS K6_LIMIT K6_HOT_P95_THRESHOLD_MS K6_COLD_P95_THRESHOLD_MS K6_HOT_P99_THRESHOLD_MS K6_COLD_P99_THRESHOLD_MS K6_HOT_MAX_THRESHOLD_MS K6_COLD_MAX_THRESHOLD_MS K6_HTTP_FAILED_RATE K6_ARCHIVE_RESULTS K6_PREFLIGHT K6_OUTBOX_PREFLIGHT K6_OUTBOX_PREFLIGHT_BASE_URL K6_OBSERVABILITY_MODE K6_OVERLOAD_MODE K6_OVERLOAD_429_RATE_THRESHOLD K6_MAX_RETRY_AFTER_SLEEP_SECONDS K6_GENERATOR_MODE K6_DOCKER_CONTEXT K6_REMOTE_BASE_URL K6_REMOTE_PROMETHEUS_RW_SERVER_URL K6_REMOTE_WORKDIR K6_REPORT_NAME
+export K6_VUS K6_SCENARIO_MODE K6_RATE K6_TIME_UNIT K6_PRE_ALLOCATED_VUS K6_MAX_VUS K6_BURST_RATE K6_BURST_DURATION K6_LIMIT K6_HOT_P95_THRESHOLD_MS K6_COLD_P95_THRESHOLD_MS K6_HOT_P99_THRESHOLD_MS K6_COLD_P99_THRESHOLD_MS K6_HOT_MAX_THRESHOLD_MS K6_COLD_MAX_THRESHOLD_MS K6_HTTP_FAILED_RATE K6_ARCHIVE_RESULTS K6_PREFLIGHT K6_OUTBOX_PREFLIGHT K6_OUTBOX_PREFLIGHT_BASE_URL K6_EXPLAIN_SNAPSHOT K6_OBSERVABILITY_MODE K6_OVERLOAD_MODE K6_OVERLOAD_429_RATE_THRESHOLD K6_MAX_RETRY_AFTER_SLEEP_SECONDS K6_GENERATOR_MODE K6_DOCKER_CONTEXT K6_REMOTE_BASE_URL K6_REMOTE_PROMETHEUS_RW_SERVER_URL K6_REMOTE_WORKDIR K6_REPORT_NAME
 
 require_positive_integer K6_VUS
+require_positive_integer K6_RATE
+require_positive_integer K6_PRE_ALLOCATED_VUS
+require_positive_integer K6_MAX_VUS
+require_positive_integer K6_BURST_RATE
 require_positive_integer K6_LIMIT
 require_positive_number K6_HOT_P95_THRESHOLD_MS
 require_positive_number K6_COLD_P95_THRESHOLD_MS
@@ -200,10 +231,12 @@ require_bool_value() {
   fi
 }
 require_bool_value K6_OUTBOX_PREFLIGHT
+require_bool_value K6_EXPLAIN_SNAPSHOT
 require_non_negative_integer K6_MAX_RETRY_AFTER_SLEEP_SECONDS
 require_rate K6_OVERLOAD_429_RATE_THRESHOLD
 require_generator_mode
 require_observability_mode
+require_scenario_mode
 
 if [[ "${K6_GENERATOR_MODE}" == "docker-context" ]]; then
   require_env K6_DOCKER_CONTEXT
@@ -232,6 +265,9 @@ print_plan() {
   echo "[k6-transaction-100m] observability mode=${K6_OBSERVABILITY_MODE}"
   echo "[k6-transaction-100m] k6 report name: ${K6_REPORT_NAME}"
   echo "[k6-transaction-100m] k6 vus=${K6_VUS} duration=${K6_DURATION:-1m} limit=${K6_LIMIT}"
+  echo "[k6-transaction-100m] scenario mode=${K6_SCENARIO_MODE}"
+  echo "[k6-transaction-100m] arrival rate=${K6_RATE} timeUnit=${K6_TIME_UNIT} preAllocatedVUs=${K6_PRE_ALLOCATED_VUS} maxVUs=${K6_MAX_VUS}"
+  echo "[k6-transaction-100m] burst rate=${K6_BURST_RATE} duration=${K6_BURST_DURATION} preAllocatedVUs=${K6_PRE_ALLOCATED_VUS} maxVUs=${K6_MAX_VUS}"
   echo "[k6-transaction-100m] hot p95 threshold ms=${K6_HOT_P95_THRESHOLD_MS}"
   echo "[k6-transaction-100m] cold p95 threshold ms=${K6_COLD_P95_THRESHOLD_MS}"
   echo "[k6-transaction-100m] hot p99 threshold ms=${K6_HOT_P99_THRESHOLD_MS}"
@@ -261,6 +297,7 @@ print_plan() {
   echo "[k6-transaction-100m] preflight=${K6_PREFLIGHT}"
   echo "[k6-transaction-100m] outbox_preflight=${K6_OUTBOX_PREFLIGHT}"
   echo "[k6-transaction-100m] outbox_preflight_base_url=${K6_OUTBOX_PREFLIGHT_BASE_URL}"
+  echo "[k6-transaction-100m] explain_snapshot=${K6_EXPLAIN_SNAPSHOT}"
   if [[ "${run_dependencies}" == "true" ]]; then
     echo "[k6-transaction-100m] dependencies=compose-default"
   else
@@ -327,6 +364,15 @@ run_outbox_preflight() {
     tools/test/run-outbox-provider-backlog-local-gate.sh
 }
 
+run_explain_snapshot() {
+  local phase="$1"
+  if [[ "${K6_EXPLAIN_SNAPSHOT}" != "true" ]]; then
+    echo "[k6-transaction-100m] explain snapshot skipped phase=${phase}"
+    return 0
+  fi
+  K6_EXPLAIN_PHASE="${phase}" tools/test/run-transaction-100m-k6-explain-snapshot.sh
+}
+
 if [[ "${mode}" != "no-up" ]]; then
   echo "[k6-transaction-100m] building backend bootJar"
   tools/test/with-resource-lock.sh back-gradle-loadtest-bootjar ./back/gradlew -p back bootJar
@@ -341,6 +387,7 @@ fi
 
 assert_k6_preflight
 run_outbox_preflight
+run_explain_snapshot pre
 
 run_k6_local() {
   local run_args
@@ -359,6 +406,13 @@ run_k6_local() {
   docker compose "${compose_files[@]}" --profile loadtest run "${run_args[@]}" \
     -e K6_REPORT_NAME="${K6_REPORT_NAME}" \
     -e K6_OBSERVABILITY_MODE="${K6_OBSERVABILITY_MODE}" \
+    -e K6_SCENARIO_MODE="${K6_SCENARIO_MODE}" \
+    -e K6_RATE="${K6_RATE}" \
+    -e K6_TIME_UNIT="${K6_TIME_UNIT}" \
+    -e K6_PRE_ALLOCATED_VUS="${K6_PRE_ALLOCATED_VUS}" \
+    -e K6_MAX_VUS="${K6_MAX_VUS}" \
+    -e K6_BURST_RATE="${K6_BURST_RATE}" \
+    -e K6_BURST_DURATION="${K6_BURST_DURATION}" \
     -e K6_HOT_ACCOUNT_ID="${K6_HOT_ACCOUNT_ID}" \
     -e K6_HOT_FROM="${K6_HOT_FROM}" \
     -e K6_HOT_TO="${K6_HOT_TO}" \
@@ -402,6 +456,13 @@ run_k6_docker_context() {
     -e K6_PROMETHEUS_RW_TREND_STATS="p(50),p(90),p(95),p(99),min,max,avg" \
     -e K6_REPORT_NAME="${K6_REPORT_NAME}" \
     -e K6_OBSERVABILITY_MODE="${K6_OBSERVABILITY_MODE}" \
+    -e K6_SCENARIO_MODE="${K6_SCENARIO_MODE}" \
+    -e K6_RATE="${K6_RATE}" \
+    -e K6_TIME_UNIT="${K6_TIME_UNIT}" \
+    -e K6_PRE_ALLOCATED_VUS="${K6_PRE_ALLOCATED_VUS}" \
+    -e K6_MAX_VUS="${K6_MAX_VUS}" \
+    -e K6_BURST_RATE="${K6_BURST_RATE}" \
+    -e K6_BURST_DURATION="${K6_BURST_DURATION}" \
     -e K6_HOT_ACCOUNT_ID="${K6_HOT_ACCOUNT_ID}" \
     -e K6_HOT_FROM="${K6_HOT_FROM}" \
     -e K6_HOT_TO="${K6_HOT_TO}" \
@@ -436,6 +497,8 @@ else
 fi
 status=$?
 set -e
+
+run_explain_snapshot post
 
 if [[ "${K6_ARCHIVE_RESULTS}" == "true" && -f "${summary_md}" ]]; then
   tools/test/archive-k6-transaction-100m-result.sh "${summary_md}" "${summary_json}"

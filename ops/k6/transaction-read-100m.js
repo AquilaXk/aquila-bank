@@ -25,6 +25,13 @@ const authToken = __ENV.K6_AUTH_TOKEN || "";
 const limit = Number(__ENV.K6_LIMIT || "50");
 const vus = Number(__ENV.K6_VUS || "8");
 const duration = __ENV.K6_DURATION || "1m";
+const scenarioMode = __ENV.K6_SCENARIO_MODE || "constant-vus";
+const rate = Number(__ENV.K6_RATE || "8");
+const timeUnit = __ENV.K6_TIME_UNIT || "1s";
+const preAllocatedVUs = Number(__ENV.K6_PRE_ALLOCATED_VUS || String(vus));
+const maxVUs = Number(__ENV.K6_MAX_VUS || String(preAllocatedVUs));
+const burstRate = Number(__ENV.K6_BURST_RATE || "16");
+const burstDuration = __ENV.K6_BURST_DURATION || "20s";
 const hotP95ThresholdMs = Number(__ENV.K6_HOT_P95_THRESHOLD_MS || "350");
 const coldP95ThresholdMs = Number(__ENV.K6_COLD_P95_THRESHOLD_MS || "750");
 const hotP99ThresholdMs = Number(__ENV.K6_HOT_P99_THRESHOLD_MS || "750");
@@ -80,14 +87,42 @@ function thresholds() {
   return result;
 }
 
-export const options = {
-  scenarios: {
+function scenarios() {
+  if (scenarioMode === "constant-arrival-rate") {
+    return {
+      transaction_read_100m_arrival: {
+        executor: "constant-arrival-rate",
+        rate,
+        timeUnit,
+        duration,
+        preAllocatedVUs,
+        maxVUs,
+      },
+    };
+  }
+  if (scenarioMode === "burst") {
+    return {
+      burst_admission: {
+        executor: "constant-arrival-rate",
+        rate: burstRate,
+        timeUnit: "1s",
+        duration: burstDuration,
+        preAllocatedVUs,
+        maxVUs,
+      },
+    };
+  }
+  return {
     transaction_read_100m: {
       executor: "constant-vus",
       vus,
       duration,
     },
-  },
+  };
+}
+
+export const options = {
+  scenarios: scenarios(),
   thresholds: thresholds(),
   tags: {
     service: "aquila-bank",
@@ -280,6 +315,12 @@ function markdownSummary(data) {
 - baseUrl: ${baseUrl}
 - vus: ${vus}
 - duration: ${duration}
+- scenario mode: ${scenarioMode}
+- arrival rate: ${rate}/${timeUnit}
+- burst rate: ${burstRate}/1s
+- burst duration: ${burstDuration}
+- pre allocated VUs: ${preAllocatedVUs}
+- max VUs: ${maxVUs}
 - limit: ${limit}
 - observability mode: ${observabilityMode}
 - overload mode: ${overloadMode}

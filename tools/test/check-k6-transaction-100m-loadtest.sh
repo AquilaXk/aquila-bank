@@ -28,6 +28,7 @@ grep -F "generator mode=local" <<<"${plan}" >/dev/null
 grep -F "generator runner=docker compose service k6-transaction-read-100m" <<<"${plan}" >/dev/null
 grep -F "observability mode=prometheus" <<<"${plan}" >/dev/null
 grep -F "preflight=true" <<<"${plan}" >/dev/null
+grep -F "scenario mode=constant-vus" <<<"${plan}" >/dev/null
 
 summary_only_plan="$(
   K6_REPORT_NAME=transaction-100m-summary-only-check \
@@ -64,6 +65,18 @@ grep -F "k6 report name: transaction-100m-overload-check" <<<"${overload_plan}" 
 grep -F "overload mode=true max retry-after sleep seconds=2" <<<"${overload_plan}" >/dev/null
 grep -F "overload 429 rate threshold=0.05" <<<"${overload_plan}" >/dev/null
 
+burst_plan="$(
+  K6_REPORT_NAME=transaction-100m-burst-check \
+  K6_SCENARIO_MODE=burst \
+  K6_BURST_RATE=16 \
+  K6_BURST_DURATION=20s \
+  K6_PRE_ALLOCATED_VUS=8 \
+  K6_MAX_VUS=32 \
+    tools/test/run-k6-transaction-100m-loadtest.sh --print-plan
+)"
+grep -F "scenario mode=burst" <<<"${burst_plan}" >/dev/null
+grep -F "burst rate=16 duration=20s preAllocatedVUs=8 maxVUs=32" <<<"${burst_plan}" >/dev/null
+
 echo "[k6-transaction-100m] k6 script contract"
 grep -F "experimental-prometheus-rw" compose.loadtest.yml >/dev/null
 grep -F "K6_PROMETHEUS_RW_SERVER_URL" compose.loadtest.yml >/dev/null
@@ -82,12 +95,17 @@ grep -F "K6_COLD_MAX_THRESHOLD_MS" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "p(99)<" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "max<" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_OVERLOAD_MODE" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "K6_SCENARIO_MODE" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "constant-arrival-rate" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "burst_admission" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_OVERLOAD_429_RATE_THRESHOLD" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_MAX_RETRY_AFTER_SLEEP_SECONDS" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "aquila_transaction_429_rate" ops/k6/transaction-read-100m.js >/dev/null
 grep -F 'rate<${overload429RateThreshold}' ops/k6/transaction-read-100m.js >/dev/null
 grep -F "Retry-After" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_OVERLOAD_MODE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "K6_SCENARIO_MODE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "require_scenario_mode" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_HOT_P99_THRESHOLD_MS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_COLD_P99_THRESHOLD_MS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_HOT_MAX_THRESHOLD_MS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
@@ -120,6 +138,10 @@ if K6_GENERATOR_MODE=unknown tools/test/run-k6-transaction-100m-loadtest.sh --pr
 fi
 if K6_OBSERVABILITY_MODE=bad tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
   echo "K6_OBSERVABILITY_MODE=bad unexpectedly succeeded" >&2
+  exit 1
+fi
+if K6_SCENARIO_MODE=unknown tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
+  echo "K6_SCENARIO_MODE=unknown unexpectedly succeeded" >&2
   exit 1
 fi
 if K6_OBSERVABILITY_MODE=prometheus K6_GENERATOR_MODE=docker-context tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
