@@ -24,6 +24,7 @@ Optional environment:
   K6_MAX_VUS           default K6_PRE_ALLOCATED_VUS
   K6_BURST_RATE        iterations per second for burst mode, default 16
   K6_BURST_DURATION    default 20s
+  K6_WARMUP_DURATION   warmup phase before measured phase, default 10s
   K6_LIMIT             default 50
   K6_HOT_P99_THRESHOLD_MS default 750
   K6_COLD_P99_THRESHOLD_MS default 1500
@@ -47,6 +48,9 @@ Optional environment:
                        cap Retry-After backoff in overload mode, default 1
   K6_RUN_PURPOSE      smoke|capacity|profile|benchmark, default smoke
   K6_SUMMARY_GATE     require non-empty k6 work and no generator sizing loss, default true
+  K6_BACKEND_READINESS_GATE wait for actuator readiness before k6, default true
+  K6_BACKEND_READINESS_PATH default /actuator/health/readiness
+  K6_BACKEND_READINESS_TIMEOUT_SECONDS default 120
   K6_GENERATOR_MODE   local|docker-context, default local
   K6_DOCKER_CONTEXT   docker context for remote k6 generator, required when mode=docker-context
   K6_REMOTE_BASE_URL  backend URL reachable from remote k6, required when mode=docker-context
@@ -205,10 +209,29 @@ K6_VUS="${K6_VUS:-8}"
 K6_SCENARIO_MODE="${K6_SCENARIO_MODE:-constant-vus}"
 K6_RATE="${K6_RATE:-8}"
 K6_TIME_UNIT="${K6_TIME_UNIT:-1s}"
-K6_PRE_ALLOCATED_VUS="${K6_PRE_ALLOCATED_VUS:-${K6_VUS}}"
-K6_MAX_VUS="${K6_MAX_VUS:-${K6_PRE_ALLOCATED_VUS}}"
 K6_BURST_RATE="${K6_BURST_RATE:-16}"
 K6_BURST_DURATION="${K6_BURST_DURATION:-20s}"
+K6_PRE_ALLOCATED_VUS="${K6_PRE_ALLOCATED_VUS:-}"
+if [[ -z "${K6_PRE_ALLOCATED_VUS}" ]]; then
+  if [[ "${K6_SCENARIO_MODE}" == "burst" ]]; then
+    K6_PRE_ALLOCATED_VUS="${K6_BURST_RATE}"
+  else
+    K6_PRE_ALLOCATED_VUS="${K6_VUS}"
+  fi
+fi
+K6_MAX_VUS="${K6_MAX_VUS:-}"
+if [[ -z "${K6_MAX_VUS}" ]]; then
+  if [[ "${K6_SCENARIO_MODE}" == "burst" ]]; then
+    if [[ "${K6_BURST_RATE}" =~ ^[1-9][0-9]*$ ]]; then
+      K6_MAX_VUS="$((K6_BURST_RATE * 2))"
+    else
+      K6_MAX_VUS="${K6_BURST_RATE}"
+    fi
+  else
+    K6_MAX_VUS="${K6_PRE_ALLOCATED_VUS}"
+  fi
+fi
+K6_WARMUP_DURATION="${K6_WARMUP_DURATION:-10s}"
 K6_LIMIT="${K6_LIMIT:-50}"
 K6_HOT_P95_THRESHOLD_MS="${K6_HOT_P95_THRESHOLD_MS:-350}"
 K6_COLD_P95_THRESHOLD_MS="${K6_COLD_P95_THRESHOLD_MS:-750}"
@@ -226,11 +249,14 @@ K6_OUTBOX_PREFLIGHT_BASE_URL="${K6_OUTBOX_PREFLIGHT_BASE_URL:-http://localhost:$
 K6_EXPLAIN_SNAPSHOT="${K6_EXPLAIN_SNAPSHOT:-true}"
 K6_OBSERVABILITY_MODE="${K6_OBSERVABILITY_MODE:-prometheus}"
 K6_OVERLOAD_MODE="${K6_OVERLOAD_MODE:-false}"
-K6_OVERLOAD_429_RATE_THRESHOLD="${K6_OVERLOAD_429_RATE_THRESHOLD:-0.05}"
+K6_OVERLOAD_429_RATE_THRESHOLD="${K6_OVERLOAD_429_RATE_THRESHOLD:-0.02}"
 K6_OVERLOAD_503_RATE_THRESHOLD="${K6_OVERLOAD_503_RATE_THRESHOLD:-0}"
 K6_MAX_RETRY_AFTER_SLEEP_SECONDS="${K6_MAX_RETRY_AFTER_SLEEP_SECONDS:-1}"
 K6_RUN_PURPOSE="${K6_RUN_PURPOSE:-smoke}"
 K6_SUMMARY_GATE="${K6_SUMMARY_GATE:-true}"
+K6_BACKEND_READINESS_GATE="${K6_BACKEND_READINESS_GATE:-true}"
+K6_BACKEND_READINESS_PATH="${K6_BACKEND_READINESS_PATH:-/actuator/health/readiness}"
+K6_BACKEND_READINESS_TIMEOUT_SECONDS="${K6_BACKEND_READINESS_TIMEOUT_SECONDS:-120}"
 K6_GENERATOR_MODE="${K6_GENERATOR_MODE:-local}"
 K6_DOCKER_CONTEXT="${K6_DOCKER_CONTEXT:-}"
 K6_REMOTE_BASE_URL="${K6_REMOTE_BASE_URL:-}"
@@ -253,13 +279,17 @@ loadtest_postgres_exporter_cpus="${LOADTEST_POSTGRES_EXPORTER_CPUS:-0.10}"
 loadtest_postgres_exporter_memory="${LOADTEST_POSTGRES_EXPORTER_MEMORY:-128m}"
 loadtest_postgres_container="${LOADTEST_POSTGRES_CONTAINER_NAME:-aquila-bank-postgres-loadtest}"
 loadtest_backend_container="${LOADTEST_BACKEND_CONTAINER_NAME:-aquila-bank-backend-loadtest}"
-export K6_VUS K6_SCENARIO_MODE K6_RATE K6_TIME_UNIT K6_PRE_ALLOCATED_VUS K6_MAX_VUS K6_BURST_RATE K6_BURST_DURATION K6_LIMIT K6_HOT_P95_THRESHOLD_MS K6_COLD_P95_THRESHOLD_MS K6_HOT_P99_THRESHOLD_MS K6_COLD_P99_THRESHOLD_MS K6_HOT_P999_THRESHOLD_MS K6_COLD_P999_THRESHOLD_MS K6_HOT_MAX_THRESHOLD_MS K6_COLD_MAX_THRESHOLD_MS K6_HTTP_FAILED_RATE K6_ARCHIVE_RESULTS K6_PREFLIGHT K6_OUTBOX_PREFLIGHT K6_OUTBOX_PREFLIGHT_BASE_URL K6_EXPLAIN_SNAPSHOT K6_OBSERVABILITY_MODE K6_OVERLOAD_MODE K6_OVERLOAD_429_RATE_THRESHOLD K6_OVERLOAD_503_RATE_THRESHOLD K6_MAX_RETRY_AFTER_SLEEP_SECONDS K6_RUN_PURPOSE K6_SUMMARY_GATE K6_GENERATOR_MODE K6_DOCKER_CONTEXT K6_REMOTE_BASE_URL K6_REMOTE_PROMETHEUS_RW_SERVER_URL K6_REMOTE_WORKDIR K6_REPORT_NAME
+export K6_VUS K6_SCENARIO_MODE K6_RATE K6_TIME_UNIT K6_PRE_ALLOCATED_VUS K6_MAX_VUS K6_BURST_RATE K6_BURST_DURATION K6_WARMUP_DURATION K6_LIMIT K6_HOT_P95_THRESHOLD_MS K6_COLD_P95_THRESHOLD_MS K6_HOT_P99_THRESHOLD_MS K6_COLD_P99_THRESHOLD_MS K6_HOT_P999_THRESHOLD_MS K6_COLD_P999_THRESHOLD_MS K6_HOT_MAX_THRESHOLD_MS K6_COLD_MAX_THRESHOLD_MS K6_HTTP_FAILED_RATE K6_ARCHIVE_RESULTS K6_PREFLIGHT K6_OUTBOX_PREFLIGHT K6_OUTBOX_PREFLIGHT_BASE_URL K6_EXPLAIN_SNAPSHOT K6_OBSERVABILITY_MODE K6_OVERLOAD_MODE K6_OVERLOAD_429_RATE_THRESHOLD K6_OVERLOAD_503_RATE_THRESHOLD K6_MAX_RETRY_AFTER_SLEEP_SECONDS K6_RUN_PURPOSE K6_SUMMARY_GATE K6_BACKEND_READINESS_GATE K6_BACKEND_READINESS_PATH K6_BACKEND_READINESS_TIMEOUT_SECONDS K6_GENERATOR_MODE K6_DOCKER_CONTEXT K6_REMOTE_BASE_URL K6_REMOTE_PROMETHEUS_RW_SERVER_URL K6_REMOTE_WORKDIR K6_REPORT_NAME
 
 require_positive_integer K6_VUS
 require_positive_integer K6_RATE
 require_positive_integer K6_PRE_ALLOCATED_VUS
 require_positive_integer K6_MAX_VUS
 require_positive_integer K6_BURST_RATE
+if ! [[ "${K6_WARMUP_DURATION}" =~ ^[0-9]+(s|m|h)$ ]]; then
+  echo "K6_WARMUP_DURATION must use a duration such as 0s, 10s, or 1m" >&2
+  exit 1
+fi
 require_positive_integer K6_LIMIT
 require_positive_number K6_HOT_P95_THRESHOLD_MS
 require_positive_number K6_COLD_P95_THRESHOLD_MS
@@ -281,6 +311,8 @@ require_bool_value() {
 require_bool_value K6_OUTBOX_PREFLIGHT
 require_bool_value K6_EXPLAIN_SNAPSHOT
 require_bool_value K6_SUMMARY_GATE
+require_bool_value K6_BACKEND_READINESS_GATE
+require_positive_integer K6_BACKEND_READINESS_TIMEOUT_SECONDS
 require_non_negative_integer K6_MAX_RETRY_AFTER_SLEEP_SECONDS
 require_rate K6_OVERLOAD_429_RATE_THRESHOLD
 require_rate K6_OVERLOAD_503_RATE_THRESHOLD
@@ -320,7 +352,18 @@ require_command() {
 k6_metric_count() {
   local path="$1"
   local metric="$2"
-  jq -r --arg metric "${metric}" '.metrics[$metric].values.count // 0' "${path}"
+  jq -r --arg metric "${metric}" '
+    (.metrics[$metric].values // {}) as $values
+    | if $values.count != null then
+        $values.count
+      elif ($values.passes != null or $values.fails != null) then
+        (($values.passes // 0) + ($values.fails // 0))
+      elif ($values.rate != null and (($values.rate | tonumber) > 0)) then
+        1
+      else
+        0
+      end
+  ' "${path}"
 }
 
 assert_k6_summary_gate() {
@@ -389,6 +432,7 @@ print_plan() {
   echo "[k6-transaction-100m] scenario mode=${K6_SCENARIO_MODE}"
   echo "[k6-transaction-100m] arrival rate=${K6_RATE} timeUnit=${K6_TIME_UNIT} preAllocatedVUs=${K6_PRE_ALLOCATED_VUS} maxVUs=${K6_MAX_VUS}"
   echo "[k6-transaction-100m] burst rate=${K6_BURST_RATE} duration=${K6_BURST_DURATION} preAllocatedVUs=${K6_PRE_ALLOCATED_VUS} maxVUs=${K6_MAX_VUS}"
+  echo "[k6-transaction-100m] warmup duration=${K6_WARMUP_DURATION}"
   echo "[k6-transaction-100m] hot p95 threshold ms=${K6_HOT_P95_THRESHOLD_MS}"
   echo "[k6-transaction-100m] cold p95 threshold ms=${K6_COLD_P95_THRESHOLD_MS}"
   echo "[k6-transaction-100m] hot p99 threshold ms=${K6_HOT_P99_THRESHOLD_MS}"
@@ -403,6 +447,7 @@ print_plan() {
   echo "[k6-transaction-100m] overload 503 rate threshold=${K6_OVERLOAD_503_RATE_THRESHOLD}"
   echo "[k6-transaction-100m] run purpose=${K6_RUN_PURPOSE}"
   echo "[k6-transaction-100m] summary gate=${K6_SUMMARY_GATE}"
+  echo "[k6-transaction-100m] backend readiness gate=${K6_BACKEND_READINESS_GATE} path=${K6_BACKEND_READINESS_PATH} timeout=${K6_BACKEND_READINESS_TIMEOUT_SECONDS}"
   echo "[k6-transaction-100m] generator mode=${K6_GENERATOR_MODE}"
   if [[ "${K6_GENERATOR_MODE}" == "docker-context" ]]; then
     echo "[k6-transaction-100m] generator runner=docker --context ${K6_DOCKER_CONTEXT} run grafana/k6:0.54.0"
@@ -494,6 +539,26 @@ run_outbox_preflight() {
     tools/test/run-outbox-provider-backlog-local-gate.sh
 }
 
+wait_for_backend_readiness() {
+  if [[ "${K6_BACKEND_READINESS_GATE}" != "true" ]]; then
+    echo "[k6-transaction-100m] backend readiness skipped"
+    return 0
+  fi
+
+  require_command curl
+  local url="http://localhost:${loadtest_backend_port}${K6_BACKEND_READINESS_PATH}"
+  local deadline=$((SECONDS + K6_BACKEND_READINESS_TIMEOUT_SECONDS))
+  echo "[k6-transaction-100m] waiting backend readiness: ${url}"
+  while ((SECONDS < deadline)); do
+    if curl -fsS --max-time 2 "${url}" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 2
+  done
+  echo "backend readiness timeout: ${url}" >&2
+  exit 1
+}
+
 run_explain_snapshot() {
   local phase="$1"
   if [[ "${K6_EXPLAIN_SNAPSHOT}" != "true" ]]; then
@@ -523,6 +588,7 @@ if [[ "${mode}" != "no-up" ]]; then
   fi
 fi
 
+wait_for_backend_readiness
 assert_k6_preflight
 run_outbox_preflight
 run_explain_snapshot pre
@@ -552,6 +618,7 @@ run_k6_local() {
     -e AQUILA_K6_MAX_VUS="${K6_MAX_VUS}" \
     -e AQUILA_K6_BURST_RATE="${K6_BURST_RATE}" \
     -e AQUILA_K6_BURST_DURATION="${K6_BURST_DURATION}" \
+    -e AQUILA_K6_WARMUP_DURATION="${K6_WARMUP_DURATION}" \
     -e K6_HOT_ACCOUNT_ID="${K6_HOT_ACCOUNT_ID}" \
     -e K6_HOT_FROM="${K6_HOT_FROM}" \
     -e K6_HOT_TO="${K6_HOT_TO}" \
@@ -605,6 +672,7 @@ run_k6_docker_context() {
     -e AQUILA_K6_MAX_VUS="${K6_MAX_VUS}" \
     -e AQUILA_K6_BURST_RATE="${K6_BURST_RATE}" \
     -e AQUILA_K6_BURST_DURATION="${K6_BURST_DURATION}" \
+    -e AQUILA_K6_WARMUP_DURATION="${K6_WARMUP_DURATION}" \
     -e K6_HOT_ACCOUNT_ID="${K6_HOT_ACCOUNT_ID}" \
     -e K6_HOT_FROM="${K6_HOT_FROM}" \
     -e K6_HOT_TO="${K6_HOT_TO}" \

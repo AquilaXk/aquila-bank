@@ -40,12 +40,16 @@ plan="$(
 grep -F "mode=print-plan" <<<"${plan}" >/dev/null
 grep -F "manifest=${manifest_path}" <<<"${plan}" >/dev/null
 grep -F "dataset_env=${env_path}" <<<"${plan}" >/dev/null
+grep -F "db_gate=true" <<<"${plan}" >/dev/null
 grep -F "db_fallback=false" <<<"${plan}" >/dev/null
+grep -F "min_window_rows=51" <<<"${plan}" >/dev/null
+grep -F "db_gate_checks=estimate,window-count,monthly-partition" <<<"${plan}" >/dev/null
 
 echo "[transaction-100m-dataset-probe] manifest probe writes k6 env"
 FIXTURE_PATH="${dump_path}" \
 FIXTURE_MANIFEST_PATH="${manifest_path}" \
 FIXTURE_DATASET_ENV_PATH="${env_path}" \
+FIXTURE_DATASET_DB_GATE=false \
   "${script}" >/dev/null
 grep -F "K6_HOT_ACCOUNT_ID=910000001" "${env_path}" >/dev/null
 grep -F "K6_HOT_FROM=2026-04-01T00:00:00Z" "${env_path}" >/dev/null
@@ -59,11 +63,17 @@ sed -i.bak '/hot_account_id=/d' "${manifest_path}"
 if FIXTURE_PATH="${dump_path}" \
   FIXTURE_MANIFEST_PATH="${manifest_path}" \
   FIXTURE_DATASET_ENV_PATH="${env_path}" \
+  FIXTURE_DATASET_DB_GATE=false \
     "${script}" >/dev/null 2>&1; then
   echo "missing manifest metadata unexpectedly passed without explicit DB fallback" >&2
   exit 1
 fi
 
 echo "[transaction-100m-dataset-probe] wrapper contract"
+grep -F "assert_dataset_db_gate" "${script}" >/dev/null
+grep -F "partition_name_for_month" "${script}" >/dev/null
+grep -F "assert_partition_exists transaction_read_model" "${script}" >/dev/null
+grep -F "assert_partition_exists transaction_read_model_archive" "${script}" >/dev/null
+grep -F "FIXTURE_DATASET_MIN_WINDOW_ROWS" "${script}" >/dev/null
 grep -F "run-transaction-100m-fixture-dataset-probe.sh" tools/test/run-transaction-100m-artifact-ready-k6.sh >/dev/null
 grep -F "run-transaction-100m-fixture-dataset-probe.sh" tools/test/run-transaction-100m-fresh-volume-restore-k6.sh >/dev/null

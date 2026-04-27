@@ -25,7 +25,7 @@ grep -F "hard_thresholds=true" <<<"${plan}" >/dev/null
 grep -F "hot_p95_threshold_ms=350" <<<"${plan}" >/dev/null
 grep -F "cold_p95_threshold_ms=750" <<<"${plan}" >/dev/null
 grep -F "strict_429_rate_threshold=0" <<<"${plan}" >/dev/null
-grep -F "overload_429_rate_threshold=0.20" <<<"${plan}" >/dev/null
+grep -F "overload_429_rate_threshold=0.02" <<<"${plan}" >/dev/null
 grep -F "backend_cpu_threshold_percent=120" <<<"${plan}" >/dev/null
 grep -F "postgres_cpu_threshold_percent=90" <<<"${plan}" >/dev/null
 grep -F "hikari_pending_threshold=0" <<<"${plan}" >/dev/null
@@ -39,6 +39,7 @@ grep -F "summary=build/reports/k6/transaction-capacity-check/capacity-summary.ts
 echo "[transaction-100m-capacity] runner contract"
 grep -F "CAPACITY_K6_GENERATOR_MODE" "${script}" >/dev/null
 grep -F "CAPACITY_ALLOW_LOCAL_K6_GENERATOR" "${script}" >/dev/null
+grep -F "CAPACITY_K6_DOCKER_CONTEXT is required" "${script}" >/dev/null
 grep -F "K6_GENERATOR_MODE=\"\${capacity_k6_generator_mode}\"" "${script}" >/dev/null
 grep -F "K6_RUN_PURPOSE=capacity" "${script}" >/dev/null
 grep -F "stop_backend_before_bootjar" "${script}" >/dev/null

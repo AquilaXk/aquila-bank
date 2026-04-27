@@ -1,6 +1,7 @@
 import http from "k6/http";
 import {check, fail, sleep} from "k6";
 import {Counter, Rate, Trend} from "k6/metrics";
+import exec from "k6/execution";
 
 function booleanEnv(value) {
   return ["1", "true", "yes", "on"].includes(String(value || "").toLowerCase());
@@ -32,6 +33,7 @@ const preAllocatedVUs = Number(__ENV.AQUILA_K6_PRE_ALLOCATED_VUS || String(vus))
 const maxVUs = Number(__ENV.AQUILA_K6_MAX_VUS || String(preAllocatedVUs));
 const burstRate = Number(__ENV.AQUILA_K6_BURST_RATE || "16");
 const burstDuration = __ENV.AQUILA_K6_BURST_DURATION || "20s";
+const warmupDuration = __ENV.AQUILA_K6_WARMUP_DURATION || "10s";
 const hotP95ThresholdMs = Number(__ENV.K6_HOT_P95_THRESHOLD_MS || "350");
 const coldP95ThresholdMs = Number(__ENV.K6_COLD_P95_THRESHOLD_MS || "750");
 const hotP99ThresholdMs = Number(__ENV.K6_HOT_P99_THRESHOLD_MS || "750");
@@ -44,7 +46,7 @@ const failedRate = Number(__ENV.K6_HTTP_FAILED_RATE || "0.01");
 const reportName = __ENV.K6_REPORT_NAME || "transaction-100m";
 const observabilityMode = __ENV.K6_OBSERVABILITY_MODE || "prometheus";
 const overloadMode = booleanEnv(__ENV.K6_OVERLOAD_MODE);
-const overload429RateThreshold = nonNegativeNumberEnv(__ENV.K6_OVERLOAD_429_RATE_THRESHOLD, 0.05);
+const overload429RateThreshold = nonNegativeNumberEnv(__ENV.K6_OVERLOAD_429_RATE_THRESHOLD, 0.02);
 const overload503RateThreshold = nonNegativeNumberEnv(__ENV.K6_OVERLOAD_503_RATE_THRESHOLD, 0);
 const maxRetryAfterSleepSeconds = nonNegativeNumberEnv(__ENV.K6_MAX_RETRY_AFTER_SLEEP_SECONDS, 1);
 const httpFailedRateThreshold = overloadMode ? "disabled in overload mode" : failedRate;
@@ -101,38 +103,76 @@ function thresholds() {
   return result;
 }
 
-function scenarios() {
-  if (scenarioMode === "constant-arrival-rate") {
-    return {
-      transaction_read_100m_arrival: {
-        executor: "constant-arrival-rate",
-        rate,
-        timeUnit,
-        duration,
-        preAllocatedVUs,
-        maxVUs,
-      },
-    };
-  }
-  if (scenarioMode === "burst") {
-    return {
-      burst_admission: {
-        executor: "constant-arrival-rate",
-        rate: burstRate,
-        timeUnit: "1s",
-        duration: burstDuration,
-        preAllocatedVUs,
-        maxVUs,
-      },
-    };
+function warmupEnabled() {
+  return !["0s", "0m", "0h"].includes(warmupDuration);
+}
+
+function withMeasuredStart(scenario) {
+  if (!warmupEnabled()) {
+    return scenario;
   }
   return {
-    transaction_read_100m: {
+    ...scenario,
+    startTime: warmupDuration,
+  };
+}
+
+function warmupScenario() {
+  if (!warmupEnabled()) {
+    return {};
+  }
+  return {
+    transaction_read_100m_warmup: {
       executor: "constant-vus",
-      vus,
-      duration,
+      vus: 1,
+      duration: warmupDuration,
+      gracefulStop: "0s",
+      tags: {
+        phase: "warmup",
+      },
     },
   };
+}
+
+function measuredScenarioTags() {
+  return {
+    phase: "measured",
+  };
+}
+
+function scenarios() {
+  const result = warmupScenario();
+  if (scenarioMode === "constant-arrival-rate") {
+    result.transaction_read_100m_arrival = withMeasuredStart({
+      executor: "constant-arrival-rate",
+      rate,
+      timeUnit,
+      duration,
+      preAllocatedVUs,
+      maxVUs,
+      tags: measuredScenarioTags(),
+    });
+    return result;
+  }
+  if (scenarioMode === "burst") {
+    result.burst_admission = withMeasuredStart({
+      executor: "constant-arrival-rate",
+      rate: burstRate,
+      timeUnit: "1s",
+      duration: burstDuration,
+      preAllocatedVUs,
+      maxVUs,
+      tags: measuredScenarioTags(),
+    });
+    return result;
+  }
+  result.transaction_read_100m = withMeasuredStart({
+    executor: "constant-vus",
+    vus,
+    duration,
+    tags: measuredScenarioTags(),
+  });
+  return result;
 }
 
 export const options = {
@@ -178,6 +218,9 @@ function parseJson(response, shape) {
 }
 
 function record(shape, durationMs) {
+  if (exec.scenario.name.endsWith("_warmup")) {
+    return;
+  }
   if (shape === "hot_first") {
     hotFirst.add(durationMs);
   } else if (shape === "hot_cursor") {
@@ -225,9 +268,12 @@ function requestPage(shape, path, accountId, from, to, cursor) {
 
   const is429 = response.status === 429;
   const is503 = response.status === 503;
-  transaction429Rate.add(is429);
-  transaction503Rate.add(is503);
-  if (is503) {
+  const measured = !exec.scenario.name.endsWith("_warmup");
+  if (measured) {
+    transaction429Rate.add(is429);
+    transaction503Rate.add(is503);
+  }
+  if (is503 && measured) {
     transaction503Count.add(1);
   }
   if (is429 && overloadMode) {
@@ -349,6 +395,7 @@ function markdownSummary(data) {
 - baseUrl: ${baseUrl}
 - vus: ${vus}
 - duration: ${duration}
+- warmup duration: ${warmupDuration}
 - scenario mode: ${scenarioMode}
 - arrival rate: ${rate}/${timeUnit}
 - burst rate: ${burstRate}/1s
@@ -402,6 +449,7 @@ function markdownSummary(data) {
 - 이 결과는 k6 HTTP replay 기준입니다.
 - overload mode에서는 admission guard 429를 rejected sample로 집계합니다.
 - overload mode에서도 503은 app/backend failure 신호라 hard fail로 분리합니다.
+- warmup phase는 endpoint/JVM/cache/pool 초기화를 분리하고, custom latency Trend는 measured phase만 기록합니다.
 - 1억 건 분포는 실행 전 DB에 준비되어 있어야 합니다.
 ${observabilityNote()}
 `;
