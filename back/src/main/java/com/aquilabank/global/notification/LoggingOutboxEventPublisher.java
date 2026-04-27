@@ -2,6 +2,7 @@ package com.aquilabank.global.notification;
 
 import com.aquilabank.domain.notification.model.OutboxEvent;
 import com.aquilabank.domain.notification.port.OutboxEventPublishPort;
+import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -9,12 +10,28 @@ import org.slf4j.LoggerFactory;
 public class LoggingOutboxEventPublisher implements OutboxEventPublishPort {
 
   private static final Logger log = LoggerFactory.getLogger(LoggingOutboxEventPublisher.class);
+  private static final long INFO_SAMPLE_INTERVAL = 1000L;
+
+  private final AtomicLong publishedCount = new AtomicLong();
 
   @Override
   public void publish(OutboxEvent event) {
-    // delivery channel이 없을 때도 outbox publish 흐름과 운영 로그 형태는 먼저 검증 가능하게 둡니다.
-    log.info(
-        "publishing outbox event. id={}, key={}, type={}, aggregateType={}, aggregateId={}",
+    long count = publishedCount.incrementAndGet();
+    if (count == 1 || count % INFO_SAMPLE_INTERVAL == 0) {
+      // 대량 backlog 처리 중 event별 INFO I/O가 t3.micro 측정을 오염시키지 않게 샘플링합니다.
+      log.info(
+          "publishing outbox event sample. count={}, id={}, key={}, type={}, aggregateType={}, aggregateId={}",
+          count,
+          event.id(),
+          event.eventKey(),
+          event.eventType(),
+          event.aggregateType(),
+          event.aggregateId());
+      return;
+    }
+    log.debug(
+        "publishing outbox event. count={}, id={}, key={}, type={}, aggregateType={}, aggregateId={}",
+        count,
         event.id(),
         event.eventKey(),
         event.eventType(),

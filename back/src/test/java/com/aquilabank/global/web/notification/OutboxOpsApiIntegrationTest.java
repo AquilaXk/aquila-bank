@@ -168,6 +168,34 @@ class OutboxOpsApiIntegrationTest extends PostgresContainerTestSupport {
         .andExpect(jsonPath("$.status").value("OUT_OF_SERVICE"));
   }
 
+  @Test
+  void keepsReadinessUpWhenOutboxThresholdIsExceeded() throws Exception {
+    Instant base = Instant.now();
+    commit(
+        transactionManager,
+        () -> {
+          insertOutboxEvent(
+              "evt-readiness-pending-old",
+              "PENDING",
+              0,
+              null,
+              base.minusSeconds(20),
+              base.minusSeconds(40));
+          insertOutboxEvent(
+              "evt-readiness-sending-stale",
+              "SENDING",
+              1,
+              null,
+              base.minusSeconds(5),
+              base.minusSeconds(50));
+        });
+
+    mockMvc
+        .perform(get("/actuator/health/readiness"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("UP"));
+  }
+
   private long insertOutboxEvent(
       String eventKey,
       String publishStatus,

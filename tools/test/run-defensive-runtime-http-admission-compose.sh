@@ -9,8 +9,9 @@ Environment:
   ADMISSION_COMPOSE_BUILD_BACKEND default true
   ADMISSION_COMPOSE_SEED_ROWS     default 1000
   ADMISSION_COMPOSE_SKIP_SEED     default false
+  ADMISSION_OUTBOX_PREFLIGHT      run local outbox backlog gate before smoke, default false
   ADMISSION_COMPOSE_READINESS_TIMEOUT_SECONDS default 120
-  ADMISSION_BASE_URL              default http://localhost:8080
+  ADMISSION_BASE_URL              default http://localhost:${LOADTEST_BACKEND_PORT:-18080}
   ADMISSION_NAME                  passed to run-defensive-runtime-http-admission-smoke.sh
 
 Examples:
@@ -62,13 +63,15 @@ require_positive_integer_value() {
 build_backend="${ADMISSION_COMPOSE_BUILD_BACKEND:-true}"
 seed_rows="${ADMISSION_COMPOSE_SEED_ROWS:-1000}"
 skip_seed="${ADMISSION_COMPOSE_SKIP_SEED:-false}"
+outbox_preflight="${ADMISSION_OUTBOX_PREFLIGHT:-false}"
 readiness_timeout_seconds="${ADMISSION_COMPOSE_READINESS_TIMEOUT_SECONDS:-120}"
-base_url="${ADMISSION_BASE_URL:-http://localhost:8080}"
+base_url="${ADMISSION_BASE_URL:-http://localhost:${LOADTEST_BACKEND_PORT:-18080}}"
 base_url="${base_url%/}"
 compose_files=(-f compose.yml -f compose.t3micro.yml -f compose.loadtest.yml)
 
 require_bool_value "ADMISSION_COMPOSE_BUILD_BACKEND" "${build_backend}"
 require_bool_value "ADMISSION_COMPOSE_SKIP_SEED" "${skip_seed}"
+require_bool_value "ADMISSION_OUTBOX_PREFLIGHT" "${outbox_preflight}"
 require_positive_integer_value "ADMISSION_COMPOSE_SEED_ROWS" "${seed_rows}"
 require_positive_integer_value "ADMISSION_COMPOSE_READINESS_TIMEOUT_SECONDS" "${readiness_timeout_seconds}"
 
@@ -77,6 +80,7 @@ print_plan() {
   echo "[defensive-http-admission-compose] build_backend=${build_backend}"
   echo "[defensive-http-admission-compose] seed_rows=${seed_rows}"
   echo "[defensive-http-admission-compose] skip_seed=${skip_seed}"
+  echo "[defensive-http-admission-compose] outbox_preflight=${outbox_preflight}"
   echo "[defensive-http-admission-compose] readiness_timeout_seconds=${readiness_timeout_seconds}"
   echo "[defensive-http-admission-compose] services=postgres,aquila-bank-backend"
   echo "[defensive-http-admission-compose] smoke=tools/test/run-defensive-runtime-http-admission-smoke.sh"
@@ -90,6 +94,9 @@ print_dry_run() {
   echo "docker compose ${compose_files[*]} --profile loadtest up -d postgres aquila-bank-backend"
   if [[ "${skip_seed}" != "true" ]]; then
     echo "SEED_TOTAL_ROWS=${seed_rows} SEED_TRUNCATE=true tools/test/seed-transaction-read-model-100m.sh"
+  fi
+  if [[ "${outbox_preflight}" == "true" ]]; then
+    echo "OUTBOX_LOCAL_BUILD_BACKEND=false OUTBOX_BACKLOG_BASE_URL=${base_url} tools/test/run-outbox-provider-backlog-local-gate.sh"
   fi
   echo "ADMISSION_BASE_URL=${base_url} tools/test/run-defensive-runtime-http-admission-smoke.sh"
 }
@@ -126,6 +133,16 @@ seed_fixture() {
     tools/test/seed-transaction-read-model-100m.sh
 }
 
+run_outbox_preflight() {
+  if [[ "${outbox_preflight}" != "true" ]]; then
+    echo "[defensive-http-admission-compose] outbox preflight skipped"
+    return 0
+  fi
+  OUTBOX_LOCAL_BUILD_BACKEND=false \
+  OUTBOX_BACKLOG_BASE_URL="${base_url}" \
+    tools/test/run-outbox-provider-backlog-local-gate.sh
+}
+
 run_smoke() {
   ADMISSION_BASE_URL="${base_url}" tools/test/run-defensive-runtime-http-admission-smoke.sh
 }
@@ -141,4 +158,5 @@ fi
 
 start_runtime
 seed_fixture
+run_outbox_preflight
 run_smoke
