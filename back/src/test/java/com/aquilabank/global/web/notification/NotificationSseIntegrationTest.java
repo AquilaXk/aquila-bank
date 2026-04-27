@@ -379,8 +379,10 @@ class NotificationSseIntegrationTest extends PostgresContainerTestSupport {
       replayIds.add(notificationId);
     }
 
-    int clientCount = Math.min(3, notificationSseProperties.maxUserSessions());
-    for (int round = 0; round < 3; round++) {
+    int requestedClientCount = Integer.getInteger("sse.reconnect.client-count", 3);
+    int rounds = Integer.getInteger("sse.reconnect.rounds", 3);
+    int clientCount = Math.min(requestedClientCount, notificationSseProperties.maxUserSessions());
+    for (int round = 0; round < rounds; round++) {
       List<NotificationSseStream> streams = new ArrayList<>();
       try {
         // session limit 안에서 burst reconnect를 반복해 replay pull 누락/중복을 짧게 검증합니다.
