@@ -1,0 +1,94 @@
+name: Transaction 100m Fixture Dump Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      fixture_name:
+        description: Fixture artifact basename
+        required: true
+        default: transaction-100m-fixture
+        type: string
+      seed_total_rows:
+        description: Total transaction read model rows to seed before dump
+        required: true
+        default: "100000000"
+        type: string
+      seed_batch_size:
+        description: Seed batch size
+        required: true
+        default: "250000"
+        type: string
+      fixture_postgres_memory:
+        description: PostgreSQL memory budget for fixture generation
+        required: true
+        default: "2g"
+        type: string
+      artifact_retention_days:
+        description: GitHub artifact retention days
+        required: true
+        default: "7"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: transaction-100m-fixture-dump-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Generate and publish 100m fixture dump
+    runs-on: ubuntu-latest
+    timeout-minutes: 720
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Grant script execute permission
+        run: chmod +x back/gradlew tools/test/*.sh
+
+      - name: Generate fixture rows
+        env:
+          FIXTURE_POSTGRES_MEMORY: ${{ inputs.fixture_postgres_memory }}
+          FIXTURE_POSTGRES_MEMORY_SWAP: ${{ inputs.fixture_postgres_memory }}
+          SEED_TOTAL_ROWS: ${{ inputs.seed_total_rows }}
+          SEED_BATCH_SIZE: ${{ inputs.seed_batch_size }}
+          SEED_TRUNCATE: "true"
+          SEED_INDEX_STRATEGY: required
+          SEED_CONFLICT_MODE: fail
+        run: tools/test/prepare-transaction-read-model-100m-fixture.sh
+
+      - name: Dump fixture and write manifest
+        env:
+          FIXTURE_MODE: dump
+          FIXTURE_NAME: ${{ inputs.fixture_name }}
+          FIXTURE_WRITE_MANIFEST: "true"
+        run: tools/test/run-transaction-100m-fixture-restore.sh
+
+      - name: Verify fixture artifact
+        env:
+          FIXTURE_NAME: ${{ inputs.fixture_name }}
+          FIXTURE_ARTIFACT_MIN_ROWS: ${{ inputs.seed_total_rows }}
+        run: tools/test/validate-transaction-100m-fixture-artifact.sh --verify
+
+      - name: Upload fixture dump artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.fixture_name }}
+          path: |
+            build/fixtures/${{ inputs.fixture_name }}.dump
+            build/fixtures/${{ inputs.fixture_name }}.dump.manifest
+            build/fixtures/${{ inputs.fixture_name }}.dump.sha256
+          if-no-files-found: error
+          retention-days: ${{ inputs.artifact_retention_days }}
+          compression-level: 0
