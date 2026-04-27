@@ -1,7 +1,7 @@
 services:
   postgres:
     container_name: ${LOADTEST_POSTGRES_CONTAINER_NAME:-aquila-bank-postgres-loadtest}
-    ports:
+    ports: !override
       - "${LOADTEST_DB_PORT:-15432}:5432"
     command:
       [
@@ -110,6 +110,10 @@ services:
     profiles:
       - loadtest
     restart: unless-stopped
+    cpus: "${LOADTEST_PROMETHEUS_CPUS:-0.25}"
+    mem_limit: "${LOADTEST_PROMETHEUS_MEMORY:-256m}"
+    memswap_limit: "${LOADTEST_PROMETHEUS_MEMORY_SWAP:-256m}"
+    pids_limit: ${LOADTEST_PROMETHEUS_PIDS_LIMIT:-128}
     ports:
       - "${LOADTEST_PROMETHEUS_PORT:-19090}:9090"
     volumes:
@@ -131,6 +135,10 @@ services:
     profiles:
       - loadtest
     restart: unless-stopped
+    cpus: "${LOADTEST_GRAFANA_CPUS:-0.20}"
+    mem_limit: "${LOADTEST_GRAFANA_MEMORY:-256m}"
+    memswap_limit: "${LOADTEST_GRAFANA_MEMORY_SWAP:-256m}"
+    pids_limit: ${LOADTEST_GRAFANA_PIDS_LIMIT:-128}
     ports:
       - "${LOADTEST_GRAFANA_PORT:-13001}:3000"
     environment:
@@ -152,6 +160,10 @@ services:
     profiles:
       - loadtest
     restart: unless-stopped
+    cpus: "${LOADTEST_ALERTMANAGER_CPUS:-0.10}"
+    mem_limit: "${LOADTEST_ALERTMANAGER_MEMORY:-128m}"
+    memswap_limit: "${LOADTEST_ALERTMANAGER_MEMORY_SWAP:-128m}"
+    pids_limit: ${LOADTEST_ALERTMANAGER_PIDS_LIMIT:-64}
     ports:
       - "${LOADTEST_ALERTMANAGER_PORT:-19093}:9093"
     volumes:
@@ -165,6 +177,10 @@ services:
     profiles:
       - loadtest
     restart: unless-stopped
+    cpus: "${LOADTEST_POSTGRES_EXPORTER_CPUS:-0.10}"
+    mem_limit: "${LOADTEST_POSTGRES_EXPORTER_MEMORY:-128m}"
+    memswap_limit: "${LOADTEST_POSTGRES_EXPORTER_MEMORY_SWAP:-128m}"
+    pids_limit: ${LOADTEST_POSTGRES_EXPORTER_PIDS_LIMIT:-64}
     ports:
       - "${LOADTEST_POSTGRES_EXPORTER_PORT:-19187}:9187"
     environment:

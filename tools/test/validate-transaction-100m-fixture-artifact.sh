@@ -153,11 +153,18 @@ write_manifest() {
   mkdir -p "$(dirname "${manifest_path}")" "$(dirname "${checksum_path}")"
 
   local checksum flyway_version hot_rows archive_rows total_rows
+  local hot_account_id hot_from hot_to cold_account_id cold_from cold_to
   checksum="$(sha256_file "${fixture_path}")"
   flyway_version="$(applied_flyway_version)"
   hot_rows="$(table_count transaction_read_model)"
   archive_rows="$(table_count transaction_read_model_archive)"
   total_rows=$((hot_rows + archive_rows))
+  hot_account_id="${FIXTURE_HOT_ACCOUNT_ID:-${K6_HOT_ACCOUNT_ID:-${SEED_HOT_ACCOUNT_ID:-910000001}}}"
+  hot_from="${FIXTURE_HOT_FROM:-${K6_HOT_FROM:-${SEED_HOT_FROM:-2026-04-01T00:00:00Z}}}"
+  hot_to="${FIXTURE_HOT_TO:-${K6_HOT_TO:-${SEED_HOT_TO:-2026-04-30T00:00:00Z}}}"
+  cold_account_id="${FIXTURE_COLD_ACCOUNT_ID:-${K6_COLD_ACCOUNT_ID:-${SEED_COLD_ACCOUNT_ID:-910000002}}}"
+  cold_from="${FIXTURE_COLD_FROM:-${K6_COLD_FROM:-${SEED_COLD_FROM:-2026-01-01T00:00:00Z}}}"
+  cold_to="${FIXTURE_COLD_TO:-${K6_COLD_TO:-${SEED_COLD_TO:-2026-01-31T00:00:00Z}}}"
 
   printf "%s  %s\n" "${checksum}" "$(basename "${fixture_path}")" >"${checksum_path}"
   {
@@ -168,6 +175,12 @@ write_manifest() {
     echo "total_rows=${total_rows}"
     echo "hot_rows=${hot_rows}"
     echo "archive_rows=${archive_rows}"
+    echo "hot_account_id=${hot_account_id}"
+    echo "hot_from=${hot_from}"
+    echo "hot_to=${hot_to}"
+    echo "cold_account_id=${cold_account_id}"
+    echo "cold_from=${cold_from}"
+    echo "cold_to=${cold_to}"
     echo "generated_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   } >"${manifest_path}"
   echo "[transaction-100m-artifact] manifest written=${manifest_path}"

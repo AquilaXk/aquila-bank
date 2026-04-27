@@ -49,6 +49,10 @@ Optional environment:
   K6_REMOTE_PROMETHEUS_RW_SERVER_URL
                        Prometheus remote-write URL reachable from remote k6, required when mode=docker-context
   K6_REMOTE_WORKDIR   repo path visible from docker context host, default current working directory
+  LOADTEST_PROMETHEUS_CPUS/MEMORY default 0.25/256m
+  LOADTEST_GRAFANA_CPUS/MEMORY default 0.20/256m
+  LOADTEST_ALERTMANAGER_CPUS/MEMORY default 0.10/128m
+  LOADTEST_POSTGRES_EXPORTER_CPUS/MEMORY default 0.10/128m
 
 Examples:
   K6_HOT_ACCOUNT_ID=101 K6_HOT_FROM=2026-04-01T00:00:00Z K6_HOT_TO=2026-04-30T00:00:00Z \
@@ -208,6 +212,14 @@ loadtest_prometheus_port="${LOADTEST_PROMETHEUS_PORT:-19090}"
 loadtest_grafana_port="${LOADTEST_GRAFANA_PORT:-13001}"
 loadtest_alertmanager_port="${LOADTEST_ALERTMANAGER_PORT:-19093}"
 loadtest_postgres_exporter_port="${LOADTEST_POSTGRES_EXPORTER_PORT:-19187}"
+loadtest_prometheus_cpus="${LOADTEST_PROMETHEUS_CPUS:-0.25}"
+loadtest_prometheus_memory="${LOADTEST_PROMETHEUS_MEMORY:-256m}"
+loadtest_grafana_cpus="${LOADTEST_GRAFANA_CPUS:-0.20}"
+loadtest_grafana_memory="${LOADTEST_GRAFANA_MEMORY:-256m}"
+loadtest_alertmanager_cpus="${LOADTEST_ALERTMANAGER_CPUS:-0.10}"
+loadtest_alertmanager_memory="${LOADTEST_ALERTMANAGER_MEMORY:-128m}"
+loadtest_postgres_exporter_cpus="${LOADTEST_POSTGRES_EXPORTER_CPUS:-0.10}"
+loadtest_postgres_exporter_memory="${LOADTEST_POSTGRES_EXPORTER_MEMORY:-128m}"
 loadtest_postgres_container="${LOADTEST_POSTGRES_CONTAINER_NAME:-aquila-bank-postgres-loadtest}"
 loadtest_backend_container="${LOADTEST_BACKEND_CONTAINER_NAME:-aquila-bank-backend-loadtest}"
 export K6_VUS K6_SCENARIO_MODE K6_RATE K6_TIME_UNIT K6_PRE_ALLOCATED_VUS K6_MAX_VUS K6_BURST_RATE K6_BURST_DURATION K6_LIMIT K6_HOT_P95_THRESHOLD_MS K6_COLD_P95_THRESHOLD_MS K6_HOT_P99_THRESHOLD_MS K6_COLD_P99_THRESHOLD_MS K6_HOT_MAX_THRESHOLD_MS K6_COLD_MAX_THRESHOLD_MS K6_HTTP_FAILED_RATE K6_ARCHIVE_RESULTS K6_PREFLIGHT K6_OUTBOX_PREFLIGHT K6_OUTBOX_PREFLIGHT_BASE_URL K6_EXPLAIN_SNAPSHOT K6_OBSERVABILITY_MODE K6_OVERLOAD_MODE K6_OVERLOAD_429_RATE_THRESHOLD K6_OVERLOAD_503_RATE_THRESHOLD K6_MAX_RETRY_AFTER_SLEEP_SECONDS K6_GENERATOR_MODE K6_DOCKER_CONTEXT K6_REMOTE_BASE_URL K6_REMOTE_PROMETHEUS_RW_SERVER_URL K6_REMOTE_WORKDIR K6_REPORT_NAME
@@ -266,6 +278,7 @@ print_plan() {
   else
     echo "[k6-transaction-100m] observability: summary-only local markdown/json"
   fi
+  echo "[k6-transaction-100m] observability resources: prometheus=${loadtest_prometheus_cpus}/${loadtest_prometheus_memory} grafana=${loadtest_grafana_cpus}/${loadtest_grafana_memory} alertmanager=${loadtest_alertmanager_cpus}/${loadtest_alertmanager_memory} postgres-exporter=${loadtest_postgres_exporter_cpus}/${loadtest_postgres_exporter_memory}"
   echo "[k6-transaction-100m] observability mode=${K6_OBSERVABILITY_MODE}"
   echo "[k6-transaction-100m] k6 report name: ${K6_REPORT_NAME}"
   echo "[k6-transaction-100m] k6 vus=${K6_VUS} duration=${K6_DURATION:-1m} limit=${K6_LIMIT}"
