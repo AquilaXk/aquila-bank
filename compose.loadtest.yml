@@ -1,7 +1,7 @@
 services:
   postgres:
     container_name: ${LOADTEST_POSTGRES_CONTAINER_NAME:-aquila-bank-postgres-loadtest}
-    ports:
+    ports: !override
       - "${LOADTEST_DB_PORT:-15432}:5432"
     command:
       [

@@ -2,7 +2,12 @@
 set -euo pipefail
 
 echo "[loadtest-compose-port-isolation] compose contract"
-docker compose -f compose.yml -f compose.t3micro.yml -f compose.loadtest.yml config >/dev/null
+compose_config="$(docker compose -f compose.yml -f compose.t3micro.yml -f compose.loadtest.yml config)"
+grep -F 'published: "15432"' <<<"${compose_config}" >/dev/null
+if grep -F 'published: "5432"' <<<"${compose_config}" >/dev/null; then
+  echo "loadtest postgres still publishes the dev DB port 5432" >&2
+  exit 1
+fi
 
 grep -F 'container_name: ${LOADTEST_POSTGRES_CONTAINER_NAME:-aquila-bank-postgres-loadtest}' compose.loadtest.yml >/dev/null
 grep -F '${LOADTEST_DB_PORT:-15432}:5432' compose.loadtest.yml >/dev/null
