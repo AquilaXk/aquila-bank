@@ -10,6 +10,8 @@ temp_dir="$(mktemp -d)"
 trap 'rm -rf "${temp_dir}"' EXIT
 
 capacity="${temp_dir}/capacity.md"
+capacity_summary="${temp_dir}/capacity-summary.tsv"
+capacity_context="${temp_dir}/capacity-run-context.env"
 sse="${temp_dir}/sse.md"
 admission="${temp_dir}/admission.tsv"
 outbox="${temp_dir}/outbox.tsv"
@@ -23,6 +25,14 @@ cat >"${capacity}" <<'MD'
 - peakCpuPercent: 82.50
 - peakMemoryMiB: 712.00
 MD
+cat >"${capacity_context}" <<'ENV'
+CAPACITY_RUN_PURPOSE=capacity
+CAPACITY_GENERATOR_MODE=docker-context
+CAPACITY_K6_DOCKER_CONTEXT=capacity-k6-remote
+CAPACITY_K6_REMOTE_BASE_URL=http://192.0.2.20:8080
+CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL=http://192.0.2.20:9090/api/v1/write
+ENV
+printf "phase\tprofile\tstatus\tadmission\tvus\tbackend_cpus\tbackend_memory\tpostgres_cpus\tpostgres_memory\tdb_pool\toverload_mode\tduration\thttp_failed_rate\thttp_reqs\ttransaction_429_rate\thot_first_p95_ms\thot_cursor_p95_ms\tcold_first_p95_ms\tcold_cursor_p95_ms\tbackend_cpu_percent\tpostgres_cpu_percent\thikari_active\thikari_pending\thikari_max\tlog_path\tsummary_json\nsingle-host\tsingle-host-default\t0\t3\t8\t0.40\t512m\t0.60\t384m\t4\ttrue\t1m\t0\t1200\t0.010000\t210\t220\t610\t640\t82.50\t41.00\t3\t0\t4\tcapacity.log\tcapacity-summary.json\n" >"${capacity_summary}"
 
 cat >"${sse}" <<'MD'
 # sse
@@ -50,6 +60,8 @@ plan="$(
   T3MICRO_AGGREGATE_NAME=aggregate-check \
   T3MICRO_AGGREGATE_OUTPUT_DIR="${temp_dir}" \
   T3MICRO_CAPACITY_RESULT_MD="${capacity}" \
+  T3MICRO_CAPACITY_SUMMARY_TSV="${capacity_summary}" \
+  T3MICRO_CAPACITY_RUN_CONTEXT_ENV="${capacity_context}" \
   T3MICRO_SSE_RESULT_MD="${sse}" \
   T3MICRO_ADMISSION_SUMMARY_TSV="${admission}" \
   T3MICRO_OUTBOX_SUMMARY_TSV="${outbox}" \
@@ -60,6 +72,8 @@ plan="$(
 )"
 grep -F "output=${temp_dir}/aggregate-check.md" <<<"${plan}" >/dev/null
 grep -F "capacity=${capacity}" <<<"${plan}" >/dev/null
+grep -F "capacity_summary=${capacity_summary}" <<<"${plan}" >/dev/null
+grep -F "capacity_run_context=${capacity_context}" <<<"${plan}" >/dev/null
 grep -F "admission=${admission}" <<<"${plan}" >/dev/null
 grep -F "k6=${k6}" <<<"${plan}" >/dev/null
 grep -F "memory=${memory}" <<<"${plan}" >/dev/null
@@ -70,12 +84,18 @@ grep -F "total_memory_budget_mib=900" <<<"${plan}" >/dev/null
 auto_root="${temp_dir}/auto"
 mkdir -p "${auto_root}/docs/performance-results" "${auto_root}/build/reports/admission/run" "${auto_root}/build/reports/outbox/run" "${auto_root}/build/reports/k6" "${auto_root}/build/reports/t3micro"
 auto_capacity="${auto_root}/docs/performance-results/docker-t3micro-capacity-auto.md"
+auto_capacity_dir="${auto_root}/build/reports/k6/transaction-100m-capacity-auto"
+auto_capacity_summary="${auto_capacity_dir}/capacity-summary.tsv"
+auto_capacity_context="${auto_capacity_dir}/capacity-run-context.env"
 auto_sse="${auto_root}/docs/performance-results/sse-reconnect-auto.md"
 auto_admission="${auto_root}/build/reports/admission/run/http-admission-summary.tsv"
 auto_outbox="${auto_root}/build/reports/outbox/run/outbox-provider-backlog-summary.tsv"
 auto_k6="${auto_root}/build/reports/k6/transaction-100m-auto-summary.md"
 auto_memory="${auto_root}/build/reports/t3micro/t3micro-memory-summary.tsv"
 cp "${capacity}" "${auto_capacity}"
+mkdir -p "${auto_capacity_dir}"
+cp "${capacity_summary}" "${auto_capacity_summary}"
+cp "${capacity_context}" "${auto_capacity_context}"
 cp "${sse}" "${auto_sse}"
 cp "${admission}" "${auto_admission}"
 cp "${outbox}" "${auto_outbox}"
@@ -90,6 +110,8 @@ auto_plan="$(
     "${script}" --print-plan
 )"
 grep -F "capacity=${auto_capacity}" <<<"${auto_plan}" >/dev/null
+grep -F "capacity_summary=${auto_capacity_summary}" <<<"${auto_plan}" >/dev/null
+grep -F "capacity_run_context=${auto_capacity_context}" <<<"${auto_plan}" >/dev/null
 grep -F "sse=${auto_sse}" <<<"${auto_plan}" >/dev/null
 grep -F "admission=${auto_admission}" <<<"${auto_plan}" >/dev/null
 grep -F "outbox=${auto_outbox}" <<<"${auto_plan}" >/dev/null
@@ -103,6 +125,26 @@ if T3MICRO_AGGREGATE_NAME=aggregate-required-check \
   T3MICRO_AGGREGATE_REQUIRED_GATES=capacity \
     "${script}" --print-plan >/dev/null 2>&1; then
   echo "required capacity input unexpectedly passed when missing" >&2
+  exit 1
+fi
+if T3MICRO_AGGREGATE_NAME=aggregate-required-smoke-only-check \
+  T3MICRO_AGGREGATE_OUTPUT_DIR="${temp_dir}" \
+  T3MICRO_AGGREGATE_AUTO_INPUTS=false \
+  T3MICRO_CAPACITY_RESULT_MD="${capacity}" \
+  T3MICRO_AGGREGATE_REQUIRED_GATES=capacity \
+    "${script}" --print-plan >/dev/null 2>&1; then
+  echo "required capacity input unexpectedly accepted local smoke markdown" >&2
+  exit 1
+fi
+bad_context="${temp_dir}/bad-capacity-run-context.env"
+sed 's/CAPACITY_GENERATOR_MODE=docker-context/CAPACITY_GENERATOR_MODE=local/' "${capacity_context}" >"${bad_context}"
+if T3MICRO_AGGREGATE_NAME=aggregate-required-local-context-check \
+  T3MICRO_AGGREGATE_OUTPUT_DIR="${temp_dir}" \
+  T3MICRO_CAPACITY_SUMMARY_TSV="${capacity_summary}" \
+  T3MICRO_CAPACITY_RUN_CONTEXT_ENV="${bad_context}" \
+  T3MICRO_AGGREGATE_REQUIRED_GATES=capacity \
+    "${script}" --print-plan >/dev/null 2>&1; then
+  echo "required capacity input unexpectedly accepted local generator context" >&2
   exit 1
 fi
 
@@ -121,6 +163,8 @@ output="$(
   T3MICRO_AGGREGATE_NAME=aggregate-check \
   T3MICRO_AGGREGATE_OUTPUT_DIR="${temp_dir}" \
   T3MICRO_CAPACITY_RESULT_MD="${capacity}" \
+  T3MICRO_CAPACITY_SUMMARY_TSV="${capacity_summary}" \
+  T3MICRO_CAPACITY_RUN_CONTEXT_ENV="${capacity_context}" \
   T3MICRO_SSE_RESULT_MD="${sse}" \
   T3MICRO_ADMISSION_SUMMARY_TSV="${admission}" \
   T3MICRO_OUTBOX_SUMMARY_TSV="${outbox}" \
@@ -131,7 +175,7 @@ output="$(
 )"
 output="$(tail -1 <<<"${output}")"
 test "${output}" = "${temp_dir}/aggregate-check.md"
-grep -F "| capacity | 0 | 82.50 | 712.00 | repeat=3 | ${capacity} |" "${output}" >/dev/null
+grep -F "| capacity | pass | 82.50 | n/a | 429Rate=0.010000 hikariPending=0 profiles=1 | ${capacity_summary} |" "${output}" >/dev/null
 grep -F "| sse reconnect | 0 | 61.00 | 512.00 | clients=8 rounds=3 | ${sse} |" "${output}" >/dev/null
 grep -F "rejected=4 failed_rate=0.000000" "${output}" >/dev/null
 grep -F "lag=1 failed=0 dlq=0" "${output}" >/dev/null
