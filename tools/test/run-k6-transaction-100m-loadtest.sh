@@ -35,6 +35,11 @@ Optional environment:
   K6_AUTH_TOKEN        bearer token, optional when bootstrap header auth is enabled
   K6_ARCHIVE_RESULTS   copy markdown summary to docs/performance-results, default true
   K6_PREFLIGHT         check PostgreSQL OOM/index readiness before k6, default true
+  K6_POSTGRES_HEALTH_GATE require PostgreSQL Docker health=healthy before k6, default true
+  K6_POSTGRES_RECOVERY_GATE require pg_is_in_recovery()=false before k6, default true
+  K6_POSTGRES_RECOVERY_STABLE_SECONDS re-check non-recovery after this delay, default 10
+  K6_POSTGRES_EXPORTER_STABLE_GATE require pg_up=1 before k6 when prometheus mode, default true
+  K6_POSTGRES_EXPORTER_STABLE_TIMEOUT_SECONDS default 60
   K6_OUTBOX_PREFLIGHT  run local outbox backlog gate before k6, default false
   K6_OUTBOX_PREFLIGHT_BASE_URL default http://localhost:${LOADTEST_BACKEND_PORT:-18080}
   K6_EXPLAIN_SNAPSHOT  write pre/post hot/cold query plans, default true
@@ -244,6 +249,11 @@ K6_COLD_MAX_THRESHOLD_MS="${K6_COLD_MAX_THRESHOLD_MS:-5000}"
 K6_HTTP_FAILED_RATE="${K6_HTTP_FAILED_RATE:-0.01}"
 K6_ARCHIVE_RESULTS="${K6_ARCHIVE_RESULTS:-true}"
 K6_PREFLIGHT="${K6_PREFLIGHT:-true}"
+K6_POSTGRES_HEALTH_GATE="${K6_POSTGRES_HEALTH_GATE:-true}"
+K6_POSTGRES_RECOVERY_GATE="${K6_POSTGRES_RECOVERY_GATE:-true}"
+K6_POSTGRES_RECOVERY_STABLE_SECONDS="${K6_POSTGRES_RECOVERY_STABLE_SECONDS:-10}"
+K6_POSTGRES_EXPORTER_STABLE_GATE="${K6_POSTGRES_EXPORTER_STABLE_GATE:-true}"
+K6_POSTGRES_EXPORTER_STABLE_TIMEOUT_SECONDS="${K6_POSTGRES_EXPORTER_STABLE_TIMEOUT_SECONDS:-60}"
 K6_OUTBOX_PREFLIGHT="${K6_OUTBOX_PREFLIGHT:-false}"
 K6_OUTBOX_PREFLIGHT_BASE_URL="${K6_OUTBOX_PREFLIGHT_BASE_URL:-http://localhost:${LOADTEST_BACKEND_PORT:-18080}}"
 K6_EXPLAIN_SNAPSHOT="${K6_EXPLAIN_SNAPSHOT:-true}"
@@ -279,7 +289,7 @@ loadtest_postgres_exporter_cpus="${LOADTEST_POSTGRES_EXPORTER_CPUS:-0.10}"
 loadtest_postgres_exporter_memory="${LOADTEST_POSTGRES_EXPORTER_MEMORY:-128m}"
 loadtest_postgres_container="${LOADTEST_POSTGRES_CONTAINER_NAME:-aquila-bank-postgres-loadtest}"
 loadtest_backend_container="${LOADTEST_BACKEND_CONTAINER_NAME:-aquila-bank-backend-loadtest}"
-export K6_VUS K6_SCENARIO_MODE K6_RATE K6_TIME_UNIT K6_PRE_ALLOCATED_VUS K6_MAX_VUS K6_BURST_RATE K6_BURST_DURATION K6_WARMUP_DURATION K6_LIMIT K6_HOT_P95_THRESHOLD_MS K6_COLD_P95_THRESHOLD_MS K6_HOT_P99_THRESHOLD_MS K6_COLD_P99_THRESHOLD_MS K6_HOT_P999_THRESHOLD_MS K6_COLD_P999_THRESHOLD_MS K6_HOT_MAX_THRESHOLD_MS K6_COLD_MAX_THRESHOLD_MS K6_HTTP_FAILED_RATE K6_ARCHIVE_RESULTS K6_PREFLIGHT K6_OUTBOX_PREFLIGHT K6_OUTBOX_PREFLIGHT_BASE_URL K6_EXPLAIN_SNAPSHOT K6_OBSERVABILITY_MODE K6_OVERLOAD_MODE K6_OVERLOAD_429_RATE_THRESHOLD K6_OVERLOAD_503_RATE_THRESHOLD K6_MAX_RETRY_AFTER_SLEEP_SECONDS K6_RUN_PURPOSE K6_SUMMARY_GATE K6_BACKEND_READINESS_GATE K6_BACKEND_READINESS_PATH K6_BACKEND_READINESS_TIMEOUT_SECONDS K6_GENERATOR_MODE K6_DOCKER_CONTEXT K6_REMOTE_BASE_URL K6_REMOTE_PROMETHEUS_RW_SERVER_URL K6_REMOTE_WORKDIR K6_REPORT_NAME
+export K6_VUS K6_SCENARIO_MODE K6_RATE K6_TIME_UNIT K6_PRE_ALLOCATED_VUS K6_MAX_VUS K6_BURST_RATE K6_BURST_DURATION K6_WARMUP_DURATION K6_LIMIT K6_HOT_P95_THRESHOLD_MS K6_COLD_P95_THRESHOLD_MS K6_HOT_P99_THRESHOLD_MS K6_COLD_P99_THRESHOLD_MS K6_HOT_P999_THRESHOLD_MS K6_COLD_P999_THRESHOLD_MS K6_HOT_MAX_THRESHOLD_MS K6_COLD_MAX_THRESHOLD_MS K6_HTTP_FAILED_RATE K6_ARCHIVE_RESULTS K6_PREFLIGHT K6_POSTGRES_HEALTH_GATE K6_POSTGRES_RECOVERY_GATE K6_POSTGRES_RECOVERY_STABLE_SECONDS K6_POSTGRES_EXPORTER_STABLE_GATE K6_POSTGRES_EXPORTER_STABLE_TIMEOUT_SECONDS K6_OUTBOX_PREFLIGHT K6_OUTBOX_PREFLIGHT_BASE_URL K6_EXPLAIN_SNAPSHOT K6_OBSERVABILITY_MODE K6_OVERLOAD_MODE K6_OVERLOAD_429_RATE_THRESHOLD K6_OVERLOAD_503_RATE_THRESHOLD K6_MAX_RETRY_AFTER_SLEEP_SECONDS K6_RUN_PURPOSE K6_SUMMARY_GATE K6_BACKEND_READINESS_GATE K6_BACKEND_READINESS_PATH K6_BACKEND_READINESS_TIMEOUT_SECONDS K6_GENERATOR_MODE K6_DOCKER_CONTEXT K6_REMOTE_BASE_URL K6_REMOTE_PROMETHEUS_RW_SERVER_URL K6_REMOTE_WORKDIR K6_REPORT_NAME
 
 require_positive_integer K6_VUS
 require_positive_integer K6_RATE
@@ -312,7 +322,12 @@ require_bool_value K6_OUTBOX_PREFLIGHT
 require_bool_value K6_EXPLAIN_SNAPSHOT
 require_bool_value K6_SUMMARY_GATE
 require_bool_value K6_BACKEND_READINESS_GATE
+require_bool_value K6_POSTGRES_HEALTH_GATE
+require_bool_value K6_POSTGRES_RECOVERY_GATE
+require_bool_value K6_POSTGRES_EXPORTER_STABLE_GATE
 require_positive_integer K6_BACKEND_READINESS_TIMEOUT_SECONDS
+require_non_negative_integer K6_POSTGRES_RECOVERY_STABLE_SECONDS
+require_positive_integer K6_POSTGRES_EXPORTER_STABLE_TIMEOUT_SECONDS
 require_non_negative_integer K6_MAX_RETRY_AFTER_SLEEP_SECONDS
 require_rate K6_OVERLOAD_429_RATE_THRESHOLD
 require_rate K6_OVERLOAD_503_RATE_THRESHOLD
@@ -448,6 +463,9 @@ print_plan() {
   echo "[k6-transaction-100m] run purpose=${K6_RUN_PURPOSE}"
   echo "[k6-transaction-100m] summary gate=${K6_SUMMARY_GATE}"
   echo "[k6-transaction-100m] backend readiness gate=${K6_BACKEND_READINESS_GATE} path=${K6_BACKEND_READINESS_PATH} timeout=${K6_BACKEND_READINESS_TIMEOUT_SECONDS}"
+  echo "[k6-transaction-100m] postgres health gate=${K6_POSTGRES_HEALTH_GATE} required_status=healthy"
+  echo "[k6-transaction-100m] postgres recovery gate=${K6_POSTGRES_RECOVERY_GATE} stable_seconds=${K6_POSTGRES_RECOVERY_STABLE_SECONDS}"
+  echo "[k6-transaction-100m] postgres exporter stable gate=${K6_POSTGRES_EXPORTER_STABLE_GATE} timeout=${K6_POSTGRES_EXPORTER_STABLE_TIMEOUT_SECONDS}"
   echo "[k6-transaction-100m] generator mode=${K6_GENERATOR_MODE}"
   if [[ "${K6_GENERATOR_MODE}" == "docker-context" ]]; then
     echo "[k6-transaction-100m] generator runner=docker --context ${K6_DOCKER_CONTEXT} run grafana/k6:0.54.0"
@@ -510,6 +528,9 @@ assert_k6_preflight() {
     exit 1
   fi
 
+  assert_postgres_health_preflight
+  assert_postgres_recovery_preflight
+
   local missing_indexes
   missing_indexes="$("${psql_base[@]}" --no-align --tuples-only --command "
     WITH required(index_name) AS (
@@ -527,6 +548,86 @@ assert_k6_preflight() {
     echo "${missing_indexes}" >&2
     exit 1
   fi
+
+  wait_for_postgres_exporter_stability
+}
+
+assert_postgres_health_preflight() {
+  if [[ "${K6_POSTGRES_HEALTH_GATE}" != "true" ]]; then
+    echo "[k6-transaction-100m] postgres health gate skipped"
+    return 0
+  fi
+
+  local health_status
+  health_status="$(docker inspect "${loadtest_postgres_container}" --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' 2>/dev/null || echo missing)"
+  if [[ "${health_status}" != "healthy" ]]; then
+    echo "postgres health status must be healthy: actual=${health_status}" >&2
+    exit 1
+  fi
+}
+
+query_postgres_recovery_state() {
+  local output
+  if ! output="$("${psql_base[@]}" --no-align --tuples-only --command "SELECT pg_is_in_recovery();" 2>&1)"; then
+    echo "${output}"
+    return 1
+  fi
+  tr -d '[:space:]' <<<"${output}"
+}
+
+assert_postgres_recovery_preflight() {
+  if [[ "${K6_POSTGRES_RECOVERY_GATE}" != "true" ]]; then
+    echo "[k6-transaction-100m] postgres recovery gate skipped"
+    return 0
+  fi
+
+  local in_recovery
+  if ! in_recovery="$(query_postgres_recovery_state)"; then
+    echo "PostgreSQL recovery preflight query failed: ${in_recovery}" >&2
+    exit 1
+  fi
+  if [[ "${in_recovery}" != "f" ]]; then
+    echo "pg_is_in_recovery()=false required before k6: actual=${in_recovery}" >&2
+    exit 1
+  fi
+  if ((K6_POSTGRES_RECOVERY_STABLE_SECONDS > 0)); then
+    sleep "${K6_POSTGRES_RECOVERY_STABLE_SECONDS}"
+    if ! in_recovery="$(query_postgres_recovery_state)"; then
+      echo "PostgreSQL recovery preflight recheck failed: ${in_recovery}" >&2
+      exit 1
+    fi
+    if [[ "${in_recovery}" != "f" ]]; then
+      echo "pg_is_in_recovery()=false required after stable wait: actual=${in_recovery}" >&2
+      exit 1
+    fi
+  fi
+  echo "[k6-transaction-100m] pg_is_in_recovery()=false stable_seconds=${K6_POSTGRES_RECOVERY_STABLE_SECONDS}"
+}
+
+wait_for_postgres_exporter_stability() {
+  if [[ "${K6_OBSERVABILITY_MODE}" != "prometheus" ]]; then
+    echo "[k6-transaction-100m] postgres exporter stable gate skipped for summary-only"
+    return 0
+  fi
+  if [[ "${K6_POSTGRES_EXPORTER_STABLE_GATE}" != "true" ]]; then
+    echo "[k6-transaction-100m] postgres exporter stable gate skipped"
+    return 0
+  fi
+
+  require_command curl
+  local url="http://localhost:${loadtest_postgres_exporter_port}/metrics"
+  local deadline=$((SECONDS + K6_POSTGRES_EXPORTER_STABLE_TIMEOUT_SECONDS))
+  local metrics
+  echo "[k6-transaction-100m] waiting postgres exporter stability: ${url}"
+  while ((SECONDS < deadline)); do
+    if metrics="$(curl -fsS --max-time 2 "${url}" 2>/dev/null)" \
+      && awk '$1 ~ /^pg_up/ && $2 == 1 {found=1} END {exit !found}' <<<"${metrics}"; then
+      return 0
+    fi
+    sleep 2
+  done
+  echo "postgres exporter pg_up did not become stable: ${url}" >&2
+  exit 1
 }
 
 run_outbox_preflight() {

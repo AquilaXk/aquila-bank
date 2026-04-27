@@ -32,6 +32,9 @@ grep -F "warmup duration=10s" <<<"${plan}" >/dev/null
 grep -F "run purpose=smoke" <<<"${plan}" >/dev/null
 grep -F "summary gate=true" <<<"${plan}" >/dev/null
 grep -F "backend readiness gate=true path=/actuator/health/readiness timeout=120" <<<"${plan}" >/dev/null
+grep -F "postgres health gate=true required_status=healthy" <<<"${plan}" >/dev/null
+grep -F "postgres recovery gate=true stable_seconds=10" <<<"${plan}" >/dev/null
+grep -F "postgres exporter stable gate=true timeout=60" <<<"${plan}" >/dev/null
 grep -F "generator mode=local" <<<"${plan}" >/dev/null
 grep -F "generator runner=docker compose service k6-transaction-read-100m" <<<"${plan}" >/dev/null
 grep -F "observability mode=prometheus" <<<"${plan}" >/dev/null
@@ -107,6 +110,11 @@ grep -F "auth_modules:" ops/prometheus/postgres-exporter/postgres_exporter.yml >
 grep -F "max_wal_size" compose.loadtest.yml >/dev/null
 grep -F "checkpoint_timeout" compose.loadtest.yml >/dev/null
 grep -F "assert_k6_preflight" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "assert_postgres_recovery_preflight" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "wait_for_postgres_exporter_stability" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "pg_is_in_recovery()" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "postgres health status must be healthy" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "pg_up" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "idx_transaction_read_model_account_cursor" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "OOMKilled" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "stop_backend_before_bootjar" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
@@ -275,6 +283,22 @@ if K6_SCENARIO_MODE=unknown tools/test/run-k6-transaction-100m-loadtest.sh --pri
 fi
 if K6_WARMUP_DURATION=bad tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
   echo "K6_WARMUP_DURATION=bad unexpectedly succeeded" >&2
+  exit 1
+fi
+if K6_POSTGRES_HEALTH_GATE=bad tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
+  echo "K6_POSTGRES_HEALTH_GATE=bad unexpectedly succeeded" >&2
+  exit 1
+fi
+if K6_POSTGRES_RECOVERY_STABLE_SECONDS=bad tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
+  echo "K6_POSTGRES_RECOVERY_STABLE_SECONDS=bad unexpectedly succeeded" >&2
+  exit 1
+fi
+if K6_POSTGRES_EXPORTER_STABLE_GATE=bad tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
+  echo "K6_POSTGRES_EXPORTER_STABLE_GATE=bad unexpectedly succeeded" >&2
+  exit 1
+fi
+if K6_POSTGRES_EXPORTER_STABLE_TIMEOUT_SECONDS=0 tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
+  echo "K6_POSTGRES_EXPORTER_STABLE_TIMEOUT_SECONDS=0 unexpectedly succeeded" >&2
   exit 1
 fi
 if K6_RUN_PURPOSE=unknown tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
