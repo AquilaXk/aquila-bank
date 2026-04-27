@@ -74,6 +74,8 @@ k6_plan="$(
     "${runner}" --print-plan
 )"
 grep -F "artifact_gate=tools/test/validate-transaction-100m-fixture-artifact.sh --verify" <<<"${k6_plan}" >/dev/null
+grep -F "db_gate_artifact=${dump_path}.db-gate.env" <<<"${k6_plan}" >/dev/null
+grep -F "dataset_source=existing-artifact-or-probe" <<<"${k6_plan}" >/dev/null
 grep -F "k6_no_deps=true" <<<"${k6_plan}" >/dev/null
 
 echo "[transaction-100m-artifact] fresh-volume dry-run preflight order"
@@ -89,6 +91,16 @@ if [[ -z "${preflight_line}" || -z "${volume_line}" || "${preflight_line}" -ge "
   echo "artifact preflight must be planned before docker volume rm" >&2
   exit 1
 fi
+grep -F "db gate artifact: ${dump_path}.db-gate.env" <<<"${dry_run}" >/dev/null
+grep -F "source existing dataset env when db gate artifact passed" <<<"${dry_run}" >/dev/null
+
+echo "[transaction-100m-artifact] wrapper artifact reuse contract"
+grep -F "dataset_artifacts_ready" "${runner}" >/dev/null
+grep -F "load_dataset_env_or_probe" "${runner}" >/dev/null
+grep -F "FIXTURE_DATASET_DB_GATE_STATUS=passed" "${runner}" >/dev/null
+grep -F "dataset_artifacts_ready" "${fresh_runner}" >/dev/null
+grep -F "load_dataset_env_or_probe" "${fresh_runner}" >/dev/null
+grep -F "FIXTURE_DATASET_DB_GATE_STATUS=passed" "${fresh_runner}" >/dev/null
 
 echo "[transaction-100m-artifact] invalid input fails"
 if FRESH_VOLUME_DUMP_MISSING_MODE=bad "${fresh_runner}" --print-plan >/dev/null 2>&1; then
