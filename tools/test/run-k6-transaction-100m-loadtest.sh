@@ -34,6 +34,7 @@ Optional environment:
   K6_PREFLIGHT         check PostgreSQL OOM/index readiness before k6, default true
   K6_OUTBOX_PREFLIGHT  run local outbox backlog gate before k6, default false
   K6_OUTBOX_PREFLIGHT_BASE_URL default http://localhost:${LOADTEST_BACKEND_PORT:-18080}
+  K6_EXPLAIN_SNAPSHOT  write pre/post hot/cold query plans, default true
   K6_OBSERVABILITY_MODE prometheus|summary-only, default prometheus
   K6_OVERLOAD_MODE     treat 429 as expected rejected samples, default false
   K6_OVERLOAD_429_RATE_THRESHOLD
@@ -187,6 +188,7 @@ K6_ARCHIVE_RESULTS="${K6_ARCHIVE_RESULTS:-true}"
 K6_PREFLIGHT="${K6_PREFLIGHT:-true}"
 K6_OUTBOX_PREFLIGHT="${K6_OUTBOX_PREFLIGHT:-false}"
 K6_OUTBOX_PREFLIGHT_BASE_URL="${K6_OUTBOX_PREFLIGHT_BASE_URL:-http://localhost:${LOADTEST_BACKEND_PORT:-18080}}"
+K6_EXPLAIN_SNAPSHOT="${K6_EXPLAIN_SNAPSHOT:-true}"
 K6_OBSERVABILITY_MODE="${K6_OBSERVABILITY_MODE:-prometheus}"
 K6_OVERLOAD_MODE="${K6_OVERLOAD_MODE:-false}"
 K6_OVERLOAD_429_RATE_THRESHOLD="${K6_OVERLOAD_429_RATE_THRESHOLD:-0.05}"
@@ -205,7 +207,7 @@ loadtest_alertmanager_port="${LOADTEST_ALERTMANAGER_PORT:-19093}"
 loadtest_postgres_exporter_port="${LOADTEST_POSTGRES_EXPORTER_PORT:-19187}"
 loadtest_postgres_container="${LOADTEST_POSTGRES_CONTAINER_NAME:-aquila-bank-postgres-loadtest}"
 loadtest_backend_container="${LOADTEST_BACKEND_CONTAINER_NAME:-aquila-bank-backend-loadtest}"
-export K6_VUS K6_SCENARIO_MODE K6_RATE K6_TIME_UNIT K6_PRE_ALLOCATED_VUS K6_MAX_VUS K6_BURST_RATE K6_BURST_DURATION K6_LIMIT K6_HOT_P95_THRESHOLD_MS K6_COLD_P95_THRESHOLD_MS K6_HOT_P99_THRESHOLD_MS K6_COLD_P99_THRESHOLD_MS K6_HOT_MAX_THRESHOLD_MS K6_COLD_MAX_THRESHOLD_MS K6_HTTP_FAILED_RATE K6_ARCHIVE_RESULTS K6_PREFLIGHT K6_OUTBOX_PREFLIGHT K6_OUTBOX_PREFLIGHT_BASE_URL K6_OBSERVABILITY_MODE K6_OVERLOAD_MODE K6_OVERLOAD_429_RATE_THRESHOLD K6_MAX_RETRY_AFTER_SLEEP_SECONDS K6_GENERATOR_MODE K6_DOCKER_CONTEXT K6_REMOTE_BASE_URL K6_REMOTE_PROMETHEUS_RW_SERVER_URL K6_REMOTE_WORKDIR K6_REPORT_NAME
+export K6_VUS K6_SCENARIO_MODE K6_RATE K6_TIME_UNIT K6_PRE_ALLOCATED_VUS K6_MAX_VUS K6_BURST_RATE K6_BURST_DURATION K6_LIMIT K6_HOT_P95_THRESHOLD_MS K6_COLD_P95_THRESHOLD_MS K6_HOT_P99_THRESHOLD_MS K6_COLD_P99_THRESHOLD_MS K6_HOT_MAX_THRESHOLD_MS K6_COLD_MAX_THRESHOLD_MS K6_HTTP_FAILED_RATE K6_ARCHIVE_RESULTS K6_PREFLIGHT K6_OUTBOX_PREFLIGHT K6_OUTBOX_PREFLIGHT_BASE_URL K6_EXPLAIN_SNAPSHOT K6_OBSERVABILITY_MODE K6_OVERLOAD_MODE K6_OVERLOAD_429_RATE_THRESHOLD K6_MAX_RETRY_AFTER_SLEEP_SECONDS K6_GENERATOR_MODE K6_DOCKER_CONTEXT K6_REMOTE_BASE_URL K6_REMOTE_PROMETHEUS_RW_SERVER_URL K6_REMOTE_WORKDIR K6_REPORT_NAME
 
 require_positive_integer K6_VUS
 require_positive_integer K6_RATE
@@ -229,6 +231,7 @@ require_bool_value() {
   fi
 }
 require_bool_value K6_OUTBOX_PREFLIGHT
+require_bool_value K6_EXPLAIN_SNAPSHOT
 require_non_negative_integer K6_MAX_RETRY_AFTER_SLEEP_SECONDS
 require_rate K6_OVERLOAD_429_RATE_THRESHOLD
 require_generator_mode
@@ -294,6 +297,7 @@ print_plan() {
   echo "[k6-transaction-100m] preflight=${K6_PREFLIGHT}"
   echo "[k6-transaction-100m] outbox_preflight=${K6_OUTBOX_PREFLIGHT}"
   echo "[k6-transaction-100m] outbox_preflight_base_url=${K6_OUTBOX_PREFLIGHT_BASE_URL}"
+  echo "[k6-transaction-100m] explain_snapshot=${K6_EXPLAIN_SNAPSHOT}"
   if [[ "${run_dependencies}" == "true" ]]; then
     echo "[k6-transaction-100m] dependencies=compose-default"
   else
@@ -360,6 +364,15 @@ run_outbox_preflight() {
     tools/test/run-outbox-provider-backlog-local-gate.sh
 }
 
+run_explain_snapshot() {
+  local phase="$1"
+  if [[ "${K6_EXPLAIN_SNAPSHOT}" != "true" ]]; then
+    echo "[k6-transaction-100m] explain snapshot skipped phase=${phase}"
+    return 0
+  fi
+  K6_EXPLAIN_PHASE="${phase}" tools/test/run-transaction-100m-k6-explain-snapshot.sh
+}
+
 if [[ "${mode}" != "no-up" ]]; then
   echo "[k6-transaction-100m] building backend bootJar"
   tools/test/with-resource-lock.sh back-gradle-loadtest-bootjar ./back/gradlew -p back bootJar
@@ -374,6 +387,7 @@ fi
 
 assert_k6_preflight
 run_outbox_preflight
+run_explain_snapshot pre
 
 run_k6_local() {
   local run_args
@@ -483,6 +497,8 @@ else
 fi
 status=$?
 set -e
+
+run_explain_snapshot post
 
 if [[ "${K6_ARCHIVE_RESULTS}" == "true" && -f "${summary_md}" ]]; then
   tools/test/archive-k6-transaction-100m-result.sh "${summary_md}" "${summary_json}"
