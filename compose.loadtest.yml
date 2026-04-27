@@ -185,7 +185,10 @@ services:
       - "${LOADTEST_POSTGRES_EXPORTER_PORT:-19187}:9187"
     environment:
       DATA_SOURCE_NAME: "postgresql://${DB_USERNAME:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-aquila_bank}?sslmode=disable"
+    volumes:
+      - ./ops/prometheus/postgres-exporter/postgres_exporter.yml:/etc/postgres_exporter/postgres_exporter.yml:ro
     command:
+      - "--config.file=/etc/postgres_exporter/postgres_exporter.yml"
       - "--no-collector.stat_bgwriter"
     depends_on:
       postgres:

@@ -101,6 +101,9 @@ grep -F "experimental-prometheus-rw" compose.loadtest.yml >/dev/null
 grep -F "K6_PROMETHEUS_RW_SERVER_URL" compose.loadtest.yml >/dev/null
 grep -F 'K6_PROMETHEUS_RW_TREND_STATS: "p(50),p(90),p(95),p(99),p(99.9),min,max,avg"' compose.loadtest.yml >/dev/null
 grep -F -- "--no-collector.stat_bgwriter" compose.loadtest.yml >/dev/null
+grep -F -- "--config.file=/etc/postgres_exporter/postgres_exporter.yml" compose.loadtest.yml >/dev/null
+grep -F "./ops/prometheus/postgres-exporter/postgres_exporter.yml:/etc/postgres_exporter/postgres_exporter.yml:ro" compose.loadtest.yml >/dev/null
+grep -F "auth_modules:" ops/prometheus/postgres-exporter/postgres_exporter.yml >/dev/null
 grep -F "max_wal_size" compose.loadtest.yml >/dev/null
 grep -F "checkpoint_timeout" compose.loadtest.yml >/dev/null
 grep -F "assert_k6_preflight" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
