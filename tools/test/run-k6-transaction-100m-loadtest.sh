@@ -168,6 +168,14 @@ K6_REMOTE_BASE_URL="${K6_REMOTE_BASE_URL:-}"
 K6_REMOTE_PROMETHEUS_RW_SERVER_URL="${K6_REMOTE_PROMETHEUS_RW_SERVER_URL:-}"
 K6_REMOTE_WORKDIR="${K6_REMOTE_WORKDIR:-$(pwd)}"
 K6_REPORT_NAME="${K6_REPORT_NAME:-transaction-100m-$(date +%Y-%m-%d-%H%M%S)}"
+loadtest_db_port="${LOADTEST_DB_PORT:-15432}"
+loadtest_backend_port="${LOADTEST_BACKEND_PORT:-18080}"
+loadtest_prometheus_port="${LOADTEST_PROMETHEUS_PORT:-19090}"
+loadtest_grafana_port="${LOADTEST_GRAFANA_PORT:-13001}"
+loadtest_alertmanager_port="${LOADTEST_ALERTMANAGER_PORT:-19093}"
+loadtest_postgres_exporter_port="${LOADTEST_POSTGRES_EXPORTER_PORT:-19187}"
+loadtest_postgres_container="${LOADTEST_POSTGRES_CONTAINER_NAME:-aquila-bank-postgres-loadtest}"
+loadtest_backend_container="${LOADTEST_BACKEND_CONTAINER_NAME:-aquila-bank-backend-loadtest}"
 export K6_VUS K6_LIMIT K6_HOT_P95_THRESHOLD_MS K6_COLD_P95_THRESHOLD_MS K6_HOT_P99_THRESHOLD_MS K6_COLD_P99_THRESHOLD_MS K6_HOT_MAX_THRESHOLD_MS K6_COLD_MAX_THRESHOLD_MS K6_HTTP_FAILED_RATE K6_ARCHIVE_RESULTS K6_PREFLIGHT K6_OBSERVABILITY_MODE K6_OVERLOAD_MODE K6_OVERLOAD_429_RATE_THRESHOLD K6_MAX_RETRY_AFTER_SLEEP_SECONDS K6_GENERATOR_MODE K6_DOCKER_CONTEXT K6_REMOTE_BASE_URL K6_REMOTE_PROMETHEUS_RW_SERVER_URL K6_REMOTE_WORKDIR K6_REPORT_NAME
 
 require_positive_integer K6_VUS
@@ -201,6 +209,8 @@ psql_base=(docker compose "${compose_files[@]}" exec -T postgres psql -v ON_ERRO
 print_plan() {
   echo "[k6-transaction-100m] compose files: ${compose_files[*]}"
   echo "[k6-transaction-100m] backend: aquila-bank-backend:8080 with t3.micro budget"
+  echo "[k6-transaction-100m] ports: db=${loadtest_db_port} backend=${loadtest_backend_port} prometheus=${loadtest_prometheus_port} grafana=${loadtest_grafana_port} alertmanager=${loadtest_alertmanager_port} postgres-exporter=${loadtest_postgres_exporter_port}"
+  echo "[k6-transaction-100m] containers: postgres=${loadtest_postgres_container} backend=${loadtest_backend_container}"
   if [[ "${K6_OBSERVABILITY_MODE}" == "prometheus" ]]; then
     echo "[k6-transaction-100m] observability: prometheus:9090 grafana:3000 alertmanager:9093 postgres-exporter:9187"
   else
@@ -267,7 +277,7 @@ assert_k6_preflight() {
   fi
 
   local oom_killed
-  oom_killed="$(docker inspect aquila-bank-postgres --format '{{.State.OOMKilled}}' 2>/dev/null || echo unknown)"
+  oom_killed="$(docker inspect "${loadtest_postgres_container}" --format '{{.State.OOMKilled}}' 2>/dev/null || echo unknown)"
   if [[ "${oom_killed}" == "true" ]]; then
     echo "PostgreSQL container has OOMKilled=true. Recreate postgres before running k6." >&2
     exit 1

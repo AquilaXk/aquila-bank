@@ -1,5 +1,8 @@
 services:
   postgres:
+    container_name: ${LOADTEST_POSTGRES_CONTAINER_NAME:-aquila-bank-postgres-loadtest}
+    ports:
+      - "${LOADTEST_DB_PORT:-15432}:5432"
     command:
       [
         "postgres",
@@ -25,7 +28,7 @@ services:
 
   aquila-bank-backend:
     image: eclipse-temurin:21-jre
-    container_name: aquila-bank-backend-loadtest
+    container_name: ${LOADTEST_BACKEND_CONTAINER_NAME:-aquila-bank-backend-loadtest}
     profiles:
       - loadtest
     restart: unless-stopped
@@ -34,7 +37,7 @@ services:
     memswap_limit: "${T3MICRO_BACKEND_MEMORY_SWAP:-1024m}"
     pids_limit: ${T3MICRO_BACKEND_PIDS_LIMIT:-384}
     ports:
-      - "${BACKEND_PORT:-8080}:8080"
+      - "${LOADTEST_BACKEND_PORT:-18080}:8080"
     environment:
       TZ: Asia/Seoul
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
@@ -99,12 +102,12 @@ services:
 
   prometheus:
     image: prom/prometheus:v2.55.1
-    container_name: aquila-bank-prometheus-loadtest
+    container_name: ${LOADTEST_PROMETHEUS_CONTAINER_NAME:-aquila-bank-prometheus-loadtest}
     profiles:
       - loadtest
     restart: unless-stopped
     ports:
-      - "${PROMETHEUS_PORT:-9090}:9090"
+      - "${LOADTEST_PROMETHEUS_PORT:-19090}:9090"
     volumes:
       - ./ops/prometheus/prometheus.local-loadtest.yml:/etc/prometheus/prometheus.yml:ro
       - ./ops/prometheus/rules/aquila-bank-alerts.yml:/etc/prometheus/rules/aquila-bank-alerts.yml:ro
@@ -120,12 +123,12 @@ services:
 
   grafana:
     image: grafana/grafana:11.3.0
-    container_name: aquila-bank-grafana-loadtest
+    container_name: ${LOADTEST_GRAFANA_CONTAINER_NAME:-aquila-bank-grafana-loadtest}
     profiles:
       - loadtest
     restart: unless-stopped
     ports:
-      - "${GRAFANA_PORT:-3001}:3000"
+      - "${LOADTEST_GRAFANA_PORT:-13001}:3000"
     environment:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
@@ -141,12 +144,12 @@ services:
 
   alertmanager:
     image: prom/alertmanager:v0.27.0
-    container_name: aquila-bank-alertmanager-loadtest
+    container_name: ${LOADTEST_ALERTMANAGER_CONTAINER_NAME:-aquila-bank-alertmanager-loadtest}
     profiles:
       - loadtest
     restart: unless-stopped
     ports:
-      - "${ALERTMANAGER_PORT:-9093}:9093"
+      - "${LOADTEST_ALERTMANAGER_PORT:-19093}:9093"
     volumes:
       - ./ops/prometheus/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
     command:
@@ -154,12 +157,12 @@ services:
 
   postgres-exporter:
     image: prometheuscommunity/postgres-exporter:v0.15.0
-    container_name: aquila-bank-postgres-exporter-loadtest
+    container_name: ${LOADTEST_POSTGRES_EXPORTER_CONTAINER_NAME:-aquila-bank-postgres-exporter-loadtest}
     profiles:
       - loadtest
     restart: unless-stopped
     ports:
-      - "${POSTGRES_EXPORTER_PORT:-9187}:9187"
+      - "${LOADTEST_POSTGRES_EXPORTER_PORT:-19187}:9187"
     environment:
       DATA_SOURCE_NAME: "postgresql://${DB_USERNAME:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-aquila_bank}?sslmode=disable"
     command:
