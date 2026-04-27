@@ -19,6 +19,8 @@ grep -F "backend: aquila-bank-backend:8080 with t3.micro budget" <<<"${plan}" >/
 grep -F "observability: prometheus:9090 grafana:3000 alertmanager:9093 postgres-exporter:9187" <<<"${plan}" >/dev/null
 grep -F "observability resources: prometheus=0.25/256m grafana=0.20/256m alertmanager=0.10/128m postgres-exporter=0.10/128m" <<<"${plan}" >/dev/null
 grep -F "k6 report name: transaction-100m-check" <<<"${plan}" >/dev/null
+grep -F "run id=transaction-100m-check" <<<"${plan}" >/dev/null
+grep -F "run context=build/reports/k6/transaction-100m-check-run-context.env" <<<"${plan}" >/dev/null
 grep -F "hot p99 threshold ms=750" <<<"${plan}" >/dev/null
 grep -F "cold p99 threshold ms=1500" <<<"${plan}" >/dev/null
 grep -F "hot p99.9 threshold ms=1200" <<<"${plan}" >/dev/null
@@ -35,6 +37,7 @@ grep -F "summary gate=true" <<<"${plan}" >/dev/null
 grep -F "backend readiness gate=true path=/actuator/health/readiness timeout=120" <<<"${plan}" >/dev/null
 grep -F "postgres health gate=true required_status=healthy" <<<"${plan}" >/dev/null
 grep -F "postgres recovery gate=true stable_seconds=10" <<<"${plan}" >/dev/null
+grep -F "postgres recovery noise window seconds=30" <<<"${plan}" >/dev/null
 grep -F "postgres exporter stable gate=true timeout=60" <<<"${plan}" >/dev/null
 grep -F "generator mode=local" <<<"${plan}" >/dev/null
 grep -F "generator runner=docker compose service k6-transaction-read-100m" <<<"${plan}" >/dev/null
@@ -165,6 +168,8 @@ grep -F "p(99)<" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "p(99.9)<" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "max<" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_OVERLOAD_MODE" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "K6_RUN_ID" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "run_id: runId" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "AQUILA_K6_SCENARIO_MODE" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "AQUILA_K6_VUS" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "AQUILA_K6_DURATION" ops/k6/transaction-read-100m.js >/dev/null
@@ -224,6 +229,10 @@ grep -F "K6_OVERLOAD_503_RATE_THRESHOLD" tools/test/run-k6-transaction-100m-load
 grep -F "K6_GENERATOR_MODE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_OBSERVABILITY_MODE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_BACKEND_READINESS_GATE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "K6_RUN_ID" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "K6_POSTGRES_RECOVERY_NOISE_WINDOW_SECONDS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "write_run_context" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "RECOVERY_NOISE_WINDOW_SECONDS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "wait_for_backend_readiness" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "LOADTEST_PROMETHEUS_CPUS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "LOADTEST_GRAFANA_MEMORY" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
@@ -336,6 +345,10 @@ if K6_POSTGRES_HEALTH_GATE=bad tools/test/run-k6-transaction-100m-loadtest.sh --
 fi
 if K6_POSTGRES_RECOVERY_STABLE_SECONDS=bad tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
   echo "K6_POSTGRES_RECOVERY_STABLE_SECONDS=bad unexpectedly succeeded" >&2
+  exit 1
+fi
+if K6_POSTGRES_RECOVERY_NOISE_WINDOW_SECONDS=bad tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
+  echo "K6_POSTGRES_RECOVERY_NOISE_WINDOW_SECONDS=bad unexpectedly succeeded" >&2
   exit 1
 fi
 if K6_POSTGRES_EXPORTER_STABLE_GATE=bad tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then

@@ -15,6 +15,7 @@ Required environment:
 
 Optional environment:
   K6_REPORT_NAME       default transaction-100m-<timestamp>
+  K6_RUN_ID            default K6_REPORT_NAME; propagated to k6 tags and run context
   K6_VUS               default 8
   K6_DURATION          default 1m
   K6_SCENARIO_MODE     constant-vus|constant-arrival-rate|burst, default constant-vus
@@ -38,6 +39,7 @@ Optional environment:
   K6_POSTGRES_HEALTH_GATE require PostgreSQL Docker health=healthy before k6, default true
   K6_POSTGRES_RECOVERY_GATE require pg_is_in_recovery()=false before k6, default true
   K6_POSTGRES_RECOVERY_STABLE_SECONDS re-check non-recovery after this delay, default 10
+  K6_POSTGRES_RECOVERY_NOISE_WINDOW_SECONDS wait after recovery gate before measured run, default 30
   K6_POSTGRES_EXPORTER_STABLE_GATE require pg_up=1 before k6 when prometheus mode, default true
   K6_POSTGRES_EXPORTER_STABLE_TIMEOUT_SECONDS default 60
   K6_OUTBOX_PREFLIGHT  run local outbox backlog gate before k6, default false
@@ -267,6 +269,7 @@ K6_PREFLIGHT="${K6_PREFLIGHT:-true}"
 K6_POSTGRES_HEALTH_GATE="${K6_POSTGRES_HEALTH_GATE:-true}"
 K6_POSTGRES_RECOVERY_GATE="${K6_POSTGRES_RECOVERY_GATE:-true}"
 K6_POSTGRES_RECOVERY_STABLE_SECONDS="${K6_POSTGRES_RECOVERY_STABLE_SECONDS:-10}"
+K6_POSTGRES_RECOVERY_NOISE_WINDOW_SECONDS="${K6_POSTGRES_RECOVERY_NOISE_WINDOW_SECONDS:-30}"
 K6_POSTGRES_EXPORTER_STABLE_GATE="${K6_POSTGRES_EXPORTER_STABLE_GATE:-true}"
 K6_POSTGRES_EXPORTER_STABLE_TIMEOUT_SECONDS="${K6_POSTGRES_EXPORTER_STABLE_TIMEOUT_SECONDS:-60}"
 K6_OUTBOX_PREFLIGHT="${K6_OUTBOX_PREFLIGHT:-false}"
@@ -292,6 +295,7 @@ K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS="${K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS:-30}"
 K6_REMOTE_PREFLIGHT_IMAGE="${K6_REMOTE_PREFLIGHT_IMAGE:-curlimages/curl:8.11.1}"
 K6_REMOTE_READINESS_PATH="${K6_REMOTE_READINESS_PATH:-/actuator/health/readiness}"
 K6_REPORT_NAME="${K6_REPORT_NAME:-transaction-100m-$(date +%Y-%m-%d-%H%M%S)}"
+K6_RUN_ID="${K6_RUN_ID:-${K6_REPORT_NAME}}"
 loadtest_db_port="${LOADTEST_DB_PORT:-15432}"
 loadtest_backend_port="${LOADTEST_BACKEND_PORT:-18080}"
 loadtest_prometheus_port="${LOADTEST_PROMETHEUS_PORT:-19090}"
@@ -308,7 +312,7 @@ loadtest_postgres_exporter_cpus="${LOADTEST_POSTGRES_EXPORTER_CPUS:-0.10}"
 loadtest_postgres_exporter_memory="${LOADTEST_POSTGRES_EXPORTER_MEMORY:-128m}"
 loadtest_postgres_container="${LOADTEST_POSTGRES_CONTAINER_NAME:-aquila-bank-postgres-loadtest}"
 loadtest_backend_container="${LOADTEST_BACKEND_CONTAINER_NAME:-aquila-bank-backend-loadtest}"
-export K6_VUS K6_SCENARIO_MODE K6_RATE K6_TIME_UNIT K6_PRE_ALLOCATED_VUS K6_MAX_VUS K6_BURST_RATE K6_BURST_DURATION K6_WARMUP_DURATION K6_LIMIT K6_HOT_P95_THRESHOLD_MS K6_COLD_P95_THRESHOLD_MS K6_HOT_P99_THRESHOLD_MS K6_COLD_P99_THRESHOLD_MS K6_HOT_P999_THRESHOLD_MS K6_COLD_P999_THRESHOLD_MS K6_HOT_MAX_THRESHOLD_MS K6_COLD_MAX_THRESHOLD_MS K6_HTTP_FAILED_RATE K6_ARCHIVE_RESULTS K6_PREFLIGHT K6_POSTGRES_HEALTH_GATE K6_POSTGRES_RECOVERY_GATE K6_POSTGRES_RECOVERY_STABLE_SECONDS K6_POSTGRES_EXPORTER_STABLE_GATE K6_POSTGRES_EXPORTER_STABLE_TIMEOUT_SECONDS K6_OUTBOX_PREFLIGHT K6_OUTBOX_PREFLIGHT_BASE_URL K6_EXPLAIN_SNAPSHOT K6_OBSERVABILITY_MODE K6_OVERLOAD_MODE K6_OVERLOAD_429_RATE_THRESHOLD K6_BURST_429_RATE_THRESHOLD K6_OVERLOAD_503_RATE_THRESHOLD K6_MAX_RETRY_AFTER_SLEEP_SECONDS K6_RUN_PURPOSE K6_SUMMARY_GATE K6_BACKEND_READINESS_GATE K6_BACKEND_READINESS_PATH K6_BACKEND_READINESS_TIMEOUT_SECONDS K6_GENERATOR_MODE K6_DOCKER_CONTEXT K6_REMOTE_BASE_URL K6_REMOTE_PROMETHEUS_RW_SERVER_URL K6_REMOTE_WORKDIR K6_REMOTE_PREFLIGHT K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS K6_REMOTE_PREFLIGHT_IMAGE K6_REMOTE_READINESS_PATH K6_REPORT_NAME
+export K6_VUS K6_SCENARIO_MODE K6_RATE K6_TIME_UNIT K6_PRE_ALLOCATED_VUS K6_MAX_VUS K6_BURST_RATE K6_BURST_DURATION K6_WARMUP_DURATION K6_LIMIT K6_HOT_P95_THRESHOLD_MS K6_COLD_P95_THRESHOLD_MS K6_HOT_P99_THRESHOLD_MS K6_COLD_P99_THRESHOLD_MS K6_HOT_P999_THRESHOLD_MS K6_COLD_P999_THRESHOLD_MS K6_HOT_MAX_THRESHOLD_MS K6_COLD_MAX_THRESHOLD_MS K6_HTTP_FAILED_RATE K6_ARCHIVE_RESULTS K6_PREFLIGHT K6_POSTGRES_HEALTH_GATE K6_POSTGRES_RECOVERY_GATE K6_POSTGRES_RECOVERY_STABLE_SECONDS K6_POSTGRES_RECOVERY_NOISE_WINDOW_SECONDS K6_POSTGRES_EXPORTER_STABLE_GATE K6_POSTGRES_EXPORTER_STABLE_TIMEOUT_SECONDS K6_OUTBOX_PREFLIGHT K6_OUTBOX_PREFLIGHT_BASE_URL K6_EXPLAIN_SNAPSHOT K6_OBSERVABILITY_MODE K6_OVERLOAD_MODE K6_OVERLOAD_429_RATE_THRESHOLD K6_BURST_429_RATE_THRESHOLD K6_OVERLOAD_503_RATE_THRESHOLD K6_MAX_RETRY_AFTER_SLEEP_SECONDS K6_RUN_PURPOSE K6_SUMMARY_GATE K6_BACKEND_READINESS_GATE K6_BACKEND_READINESS_PATH K6_BACKEND_READINESS_TIMEOUT_SECONDS K6_GENERATOR_MODE K6_DOCKER_CONTEXT K6_REMOTE_BASE_URL K6_REMOTE_PROMETHEUS_RW_SERVER_URL K6_REMOTE_WORKDIR K6_REMOTE_PREFLIGHT K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS K6_REMOTE_PREFLIGHT_IMAGE K6_REMOTE_READINESS_PATH K6_REPORT_NAME K6_RUN_ID
 
 require_positive_integer K6_VUS
 require_positive_integer K6_RATE
@@ -346,6 +350,7 @@ require_bool_value K6_POSTGRES_RECOVERY_GATE
 require_bool_value K6_POSTGRES_EXPORTER_STABLE_GATE
 require_positive_integer K6_BACKEND_READINESS_TIMEOUT_SECONDS
 require_non_negative_integer K6_POSTGRES_RECOVERY_STABLE_SECONDS
+require_non_negative_integer K6_POSTGRES_RECOVERY_NOISE_WINDOW_SECONDS
 require_positive_integer K6_POSTGRES_EXPORTER_STABLE_TIMEOUT_SECONDS
 require_bool_value K6_REMOTE_PREFLIGHT
 require_positive_integer K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS
@@ -376,6 +381,7 @@ report_dir="build/reports/k6"
 summary_md="${report_dir}/${K6_REPORT_NAME}-summary.md"
 summary_json="${report_dir}/${K6_REPORT_NAME}-summary.json"
 k6_runner_log="${report_dir}/${K6_REPORT_NAME}-runner.log"
+run_context_env="${report_dir}/${K6_REPORT_NAME}-run-context.env"
 psql_base=(docker compose "${compose_files[@]}" exec -T postgres psql -v ON_ERROR_STOP=1 -U "${DB_USERNAME:-postgres}" -d "${DB_NAME:-aquila_bank}")
 
 require_command() {
@@ -465,6 +471,8 @@ print_plan() {
   echo "[k6-transaction-100m] observability resources: prometheus=${loadtest_prometheus_cpus}/${loadtest_prometheus_memory} grafana=${loadtest_grafana_cpus}/${loadtest_grafana_memory} alertmanager=${loadtest_alertmanager_cpus}/${loadtest_alertmanager_memory} postgres-exporter=${loadtest_postgres_exporter_cpus}/${loadtest_postgres_exporter_memory}"
   echo "[k6-transaction-100m] observability mode=${K6_OBSERVABILITY_MODE}"
   echo "[k6-transaction-100m] k6 report name: ${K6_REPORT_NAME}"
+  echo "[k6-transaction-100m] run id=${K6_RUN_ID}"
+  echo "[k6-transaction-100m] run context=${run_context_env}"
   echo "[k6-transaction-100m] k6 vus=${K6_VUS} duration=${K6_DURATION:-1m} limit=${K6_LIMIT}"
   echo "[k6-transaction-100m] scenario mode=${K6_SCENARIO_MODE}"
   echo "[k6-transaction-100m] arrival rate=${K6_RATE} timeUnit=${K6_TIME_UNIT} preAllocatedVUs=${K6_PRE_ALLOCATED_VUS} maxVUs=${K6_MAX_VUS}"
@@ -488,6 +496,7 @@ print_plan() {
   echo "[k6-transaction-100m] backend readiness gate=${K6_BACKEND_READINESS_GATE} path=${K6_BACKEND_READINESS_PATH} timeout=${K6_BACKEND_READINESS_TIMEOUT_SECONDS}"
   echo "[k6-transaction-100m] postgres health gate=${K6_POSTGRES_HEALTH_GATE} required_status=healthy"
   echo "[k6-transaction-100m] postgres recovery gate=${K6_POSTGRES_RECOVERY_GATE} stable_seconds=${K6_POSTGRES_RECOVERY_STABLE_SECONDS}"
+  echo "[k6-transaction-100m] postgres recovery noise window seconds=${K6_POSTGRES_RECOVERY_NOISE_WINDOW_SECONDS}"
   echo "[k6-transaction-100m] postgres exporter stable gate=${K6_POSTGRES_EXPORTER_STABLE_GATE} timeout=${K6_POSTGRES_EXPORTER_STABLE_TIMEOUT_SECONDS}"
   echo "[k6-transaction-100m] generator mode=${K6_GENERATOR_MODE}"
   if [[ "${K6_GENERATOR_MODE}" == "docker-context" ]]; then
@@ -544,6 +553,24 @@ require_env K6_COLD_FROM
 require_env K6_COLD_TO
 
 mkdir -p "${report_dir}"
+
+write_run_context() {
+  {
+    echo "K6_RUN_ID=${K6_RUN_ID}"
+    echo "K6_REPORT_NAME=${K6_REPORT_NAME}"
+    echo "K6_RUN_PURPOSE=${K6_RUN_PURPOSE}"
+    echo "K6_SCENARIO_MODE=${K6_SCENARIO_MODE}"
+    echo "RECOVERY_GATE=${K6_POSTGRES_RECOVERY_GATE}"
+    echo "RECOVERY_STABLE_SECONDS=${K6_POSTGRES_RECOVERY_STABLE_SECONDS}"
+    echo "RECOVERY_NOISE_WINDOW_SECONDS=${K6_POSTGRES_RECOVERY_NOISE_WINDOW_SECONDS}"
+    echo "POSTGRES_CONTAINER=${loadtest_postgres_container}"
+    echo "SUMMARY_JSON=${summary_json}"
+    echo "RUNNER_LOG=${k6_runner_log}"
+  } >"${run_context_env}"
+  echo "[k6-transaction-100m] run context written=${run_context_env}"
+}
+
+write_run_context
 
 assert_k6_preflight() {
   if [[ "${K6_PREFLIGHT}" != "true" ]]; then
@@ -632,6 +659,14 @@ assert_postgres_recovery_preflight() {
     fi
   fi
   echo "[k6-transaction-100m] pg_is_in_recovery()=false stable_seconds=${K6_POSTGRES_RECOVERY_STABLE_SECONDS}"
+}
+
+wait_for_postgres_recovery_noise_window() {
+  if [[ "${K6_POSTGRES_RECOVERY_GATE}" != "true" || "${K6_POSTGRES_RECOVERY_NOISE_WINDOW_SECONDS}" -eq 0 ]]; then
+    return 0
+  fi
+  echo "[k6-transaction-100m] isolating post-crash recovery noise window seconds=${K6_POSTGRES_RECOVERY_NOISE_WINDOW_SECONDS}"
+  sleep "${K6_POSTGRES_RECOVERY_NOISE_WINDOW_SECONDS}"
 }
 
 wait_for_postgres_exporter_stability() {
@@ -745,6 +780,7 @@ fi
 
 wait_for_backend_readiness
 assert_k6_preflight
+wait_for_postgres_recovery_noise_window
 run_outbox_preflight
 assert_remote_k6_preflight
 run_explain_snapshot pre
@@ -765,6 +801,7 @@ run_k6_local() {
   # summary-only는 k6 결과 파일만 남겨 same-host observability 비용을 제외합니다.
   docker compose "${compose_files[@]}" --profile loadtest run "${run_args[@]}" \
     -e K6_REPORT_NAME="${K6_REPORT_NAME}" \
+    -e K6_RUN_ID="${K6_RUN_ID}" \
     -e K6_OBSERVABILITY_MODE="${K6_OBSERVABILITY_MODE}" \
     -e K6_PROMETHEUS_RW_TREND_STATS="p(50),p(90),p(95),p(99),p(99.9),min,max,avg" \
     -e AQUILA_K6_SCENARIO_MODE="${K6_SCENARIO_MODE}" \
@@ -821,6 +858,7 @@ run_k6_docker_context() {
     -e K6_PROMETHEUS_RW_SERVER_URL="${K6_REMOTE_PROMETHEUS_RW_SERVER_URL}" \
     -e K6_PROMETHEUS_RW_TREND_STATS="p(50),p(90),p(95),p(99),p(99.9),min,max,avg" \
     -e K6_REPORT_NAME="${K6_REPORT_NAME}" \
+    -e K6_RUN_ID="${K6_RUN_ID}" \
     -e K6_OBSERVABILITY_MODE="${K6_OBSERVABILITY_MODE}" \
     -e AQUILA_K6_SCENARIO_MODE="${K6_SCENARIO_MODE}" \
     -e AQUILA_K6_RATE="${K6_RATE}" \
