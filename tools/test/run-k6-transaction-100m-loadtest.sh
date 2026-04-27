@@ -62,6 +62,10 @@ Optional environment:
   K6_REMOTE_PROMETHEUS_RW_SERVER_URL
                        Prometheus remote-write URL reachable from remote k6, required when mode=docker-context
   K6_REMOTE_WORKDIR   repo path visible from docker context host, default current working directory
+  K6_REMOTE_PREFLIGHT validate remote context/backend/prometheus reachability, default true
+  K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS default 30
+  K6_REMOTE_PREFLIGHT_IMAGE default curlimages/curl:8.11.1
+  K6_REMOTE_READINESS_PATH default /actuator/health/readiness
   LOADTEST_PROMETHEUS_CPUS/MEMORY default 0.25/256m
   LOADTEST_GRAFANA_CPUS/MEMORY default 0.20/256m
   LOADTEST_ALERTMANAGER_CPUS/MEMORY default 0.10/128m
@@ -216,10 +220,15 @@ K6_RATE="${K6_RATE:-8}"
 K6_TIME_UNIT="${K6_TIME_UNIT:-1s}"
 K6_BURST_RATE="${K6_BURST_RATE:-16}"
 K6_BURST_DURATION="${K6_BURST_DURATION:-20s}"
+K6_GENERATOR_MODE="${K6_GENERATOR_MODE:-local}"
 K6_PRE_ALLOCATED_VUS="${K6_PRE_ALLOCATED_VUS:-}"
 if [[ -z "${K6_PRE_ALLOCATED_VUS}" ]]; then
   if [[ "${K6_SCENARIO_MODE}" == "burst" ]]; then
-    K6_PRE_ALLOCATED_VUS="${K6_BURST_RATE}"
+    if [[ "${K6_GENERATOR_MODE}" == "docker-context" && "${K6_BURST_RATE}" =~ ^[1-9][0-9]*$ ]]; then
+      K6_PRE_ALLOCATED_VUS="$((K6_BURST_RATE * 2))"
+    else
+      K6_PRE_ALLOCATED_VUS="${K6_BURST_RATE}"
+    fi
   else
     K6_PRE_ALLOCATED_VUS="${K6_VUS}"
   fi
@@ -228,7 +237,11 @@ K6_MAX_VUS="${K6_MAX_VUS:-}"
 if [[ -z "${K6_MAX_VUS}" ]]; then
   if [[ "${K6_SCENARIO_MODE}" == "burst" ]]; then
     if [[ "${K6_BURST_RATE}" =~ ^[1-9][0-9]*$ ]]; then
-      K6_MAX_VUS="$((K6_BURST_RATE * 2))"
+      if [[ "${K6_GENERATOR_MODE}" == "docker-context" ]]; then
+        K6_MAX_VUS="$((K6_BURST_RATE * 4))"
+      else
+        K6_MAX_VUS="$((K6_BURST_RATE * 2))"
+      fi
     else
       K6_MAX_VUS="${K6_BURST_RATE}"
     fi
@@ -267,11 +280,14 @@ K6_SUMMARY_GATE="${K6_SUMMARY_GATE:-true}"
 K6_BACKEND_READINESS_GATE="${K6_BACKEND_READINESS_GATE:-true}"
 K6_BACKEND_READINESS_PATH="${K6_BACKEND_READINESS_PATH:-/actuator/health/readiness}"
 K6_BACKEND_READINESS_TIMEOUT_SECONDS="${K6_BACKEND_READINESS_TIMEOUT_SECONDS:-120}"
-K6_GENERATOR_MODE="${K6_GENERATOR_MODE:-local}"
 K6_DOCKER_CONTEXT="${K6_DOCKER_CONTEXT:-}"
 K6_REMOTE_BASE_URL="${K6_REMOTE_BASE_URL:-}"
 K6_REMOTE_PROMETHEUS_RW_SERVER_URL="${K6_REMOTE_PROMETHEUS_RW_SERVER_URL:-}"
 K6_REMOTE_WORKDIR="${K6_REMOTE_WORKDIR:-$(pwd)}"
+K6_REMOTE_PREFLIGHT="${K6_REMOTE_PREFLIGHT:-true}"
+K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS="${K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS:-30}"
+K6_REMOTE_PREFLIGHT_IMAGE="${K6_REMOTE_PREFLIGHT_IMAGE:-curlimages/curl:8.11.1}"
+K6_REMOTE_READINESS_PATH="${K6_REMOTE_READINESS_PATH:-/actuator/health/readiness}"
 K6_REPORT_NAME="${K6_REPORT_NAME:-transaction-100m-$(date +%Y-%m-%d-%H%M%S)}"
 loadtest_db_port="${LOADTEST_DB_PORT:-15432}"
 loadtest_backend_port="${LOADTEST_BACKEND_PORT:-18080}"
@@ -289,7 +305,7 @@ loadtest_postgres_exporter_cpus="${LOADTEST_POSTGRES_EXPORTER_CPUS:-0.10}"
 loadtest_postgres_exporter_memory="${LOADTEST_POSTGRES_EXPORTER_MEMORY:-128m}"
 loadtest_postgres_container="${LOADTEST_POSTGRES_CONTAINER_NAME:-aquila-bank-postgres-loadtest}"
 loadtest_backend_container="${LOADTEST_BACKEND_CONTAINER_NAME:-aquila-bank-backend-loadtest}"
-export K6_VUS K6_SCENARIO_MODE K6_RATE K6_TIME_UNIT K6_PRE_ALLOCATED_VUS K6_MAX_VUS K6_BURST_RATE K6_BURST_DURATION K6_WARMUP_DURATION K6_LIMIT K6_HOT_P95_THRESHOLD_MS K6_COLD_P95_THRESHOLD_MS K6_HOT_P99_THRESHOLD_MS K6_COLD_P99_THRESHOLD_MS K6_HOT_P999_THRESHOLD_MS K6_COLD_P999_THRESHOLD_MS K6_HOT_MAX_THRESHOLD_MS K6_COLD_MAX_THRESHOLD_MS K6_HTTP_FAILED_RATE K6_ARCHIVE_RESULTS K6_PREFLIGHT K6_POSTGRES_HEALTH_GATE K6_POSTGRES_RECOVERY_GATE K6_POSTGRES_RECOVERY_STABLE_SECONDS K6_POSTGRES_EXPORTER_STABLE_GATE K6_POSTGRES_EXPORTER_STABLE_TIMEOUT_SECONDS K6_OUTBOX_PREFLIGHT K6_OUTBOX_PREFLIGHT_BASE_URL K6_EXPLAIN_SNAPSHOT K6_OBSERVABILITY_MODE K6_OVERLOAD_MODE K6_OVERLOAD_429_RATE_THRESHOLD K6_OVERLOAD_503_RATE_THRESHOLD K6_MAX_RETRY_AFTER_SLEEP_SECONDS K6_RUN_PURPOSE K6_SUMMARY_GATE K6_BACKEND_READINESS_GATE K6_BACKEND_READINESS_PATH K6_BACKEND_READINESS_TIMEOUT_SECONDS K6_GENERATOR_MODE K6_DOCKER_CONTEXT K6_REMOTE_BASE_URL K6_REMOTE_PROMETHEUS_RW_SERVER_URL K6_REMOTE_WORKDIR K6_REPORT_NAME
+export K6_VUS K6_SCENARIO_MODE K6_RATE K6_TIME_UNIT K6_PRE_ALLOCATED_VUS K6_MAX_VUS K6_BURST_RATE K6_BURST_DURATION K6_WARMUP_DURATION K6_LIMIT K6_HOT_P95_THRESHOLD_MS K6_COLD_P95_THRESHOLD_MS K6_HOT_P99_THRESHOLD_MS K6_COLD_P99_THRESHOLD_MS K6_HOT_P999_THRESHOLD_MS K6_COLD_P999_THRESHOLD_MS K6_HOT_MAX_THRESHOLD_MS K6_COLD_MAX_THRESHOLD_MS K6_HTTP_FAILED_RATE K6_ARCHIVE_RESULTS K6_PREFLIGHT K6_POSTGRES_HEALTH_GATE K6_POSTGRES_RECOVERY_GATE K6_POSTGRES_RECOVERY_STABLE_SECONDS K6_POSTGRES_EXPORTER_STABLE_GATE K6_POSTGRES_EXPORTER_STABLE_TIMEOUT_SECONDS K6_OUTBOX_PREFLIGHT K6_OUTBOX_PREFLIGHT_BASE_URL K6_EXPLAIN_SNAPSHOT K6_OBSERVABILITY_MODE K6_OVERLOAD_MODE K6_OVERLOAD_429_RATE_THRESHOLD K6_OVERLOAD_503_RATE_THRESHOLD K6_MAX_RETRY_AFTER_SLEEP_SECONDS K6_RUN_PURPOSE K6_SUMMARY_GATE K6_BACKEND_READINESS_GATE K6_BACKEND_READINESS_PATH K6_BACKEND_READINESS_TIMEOUT_SECONDS K6_GENERATOR_MODE K6_DOCKER_CONTEXT K6_REMOTE_BASE_URL K6_REMOTE_PROMETHEUS_RW_SERVER_URL K6_REMOTE_WORKDIR K6_REMOTE_PREFLIGHT K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS K6_REMOTE_PREFLIGHT_IMAGE K6_REMOTE_READINESS_PATH K6_REPORT_NAME
 
 require_positive_integer K6_VUS
 require_positive_integer K6_RATE
@@ -328,6 +344,8 @@ require_bool_value K6_POSTGRES_EXPORTER_STABLE_GATE
 require_positive_integer K6_BACKEND_READINESS_TIMEOUT_SECONDS
 require_non_negative_integer K6_POSTGRES_RECOVERY_STABLE_SECONDS
 require_positive_integer K6_POSTGRES_EXPORTER_STABLE_TIMEOUT_SECONDS
+require_bool_value K6_REMOTE_PREFLIGHT
+require_positive_integer K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS
 require_non_negative_integer K6_MAX_RETRY_AFTER_SLEEP_SECONDS
 require_rate K6_OVERLOAD_429_RATE_THRESHOLD
 require_rate K6_OVERLOAD_503_RATE_THRESHOLD
@@ -476,6 +494,13 @@ print_plan() {
       echo "[k6-transaction-100m] remote prometheus rw=disabled"
     fi
     echo "[k6-transaction-100m] remote workdir=${K6_REMOTE_WORKDIR}"
+    echo "[k6-transaction-100m] remote preflight=${K6_REMOTE_PREFLIGHT} timeout=${K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS} readiness_path=${K6_REMOTE_READINESS_PATH}"
+    echo "[k6-transaction-100m] remote preflight image=${K6_REMOTE_PREFLIGHT_IMAGE}"
+    if [[ "${K6_OBSERVABILITY_MODE}" == "prometheus" ]]; then
+      echo "[k6-transaction-100m] remote prometheus preflight=enabled"
+    else
+      echo "[k6-transaction-100m] remote prometheus preflight=disabled"
+    fi
   else
     if [[ "${K6_OBSERVABILITY_MODE}" == "prometheus" ]]; then
       echo "[k6-transaction-100m] generator runner=docker compose service k6-transaction-read-100m"
@@ -660,6 +685,30 @@ wait_for_backend_readiness() {
   exit 1
 }
 
+assert_remote_k6_preflight() {
+  if [[ "${K6_GENERATOR_MODE}" != "docker-context" ]]; then
+    return 0
+  fi
+  if [[ "${K6_REMOTE_PREFLIGHT}" != "true" ]]; then
+    echo "[k6-transaction-100m] remote k6 preflight skipped"
+    return 0
+  fi
+
+  local readiness_url="${K6_REMOTE_BASE_URL%/}${K6_REMOTE_READINESS_PATH}"
+  echo "[k6-transaction-100m] remote docker context preflight: ${K6_DOCKER_CONTEXT}"
+  docker --context "${K6_DOCKER_CONTEXT}" info >/dev/null
+  echo "[k6-transaction-100m] remote backend readiness preflight: ${readiness_url}"
+  docker --context "${K6_DOCKER_CONTEXT}" run --rm "${K6_REMOTE_PREFLIGHT_IMAGE}" \
+    -fsS --max-time "${K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS}" "${readiness_url}" >/dev/null
+
+  if [[ "${K6_OBSERVABILITY_MODE}" == "prometheus" ]]; then
+    echo "[k6-transaction-100m] remote prometheus remote-write preflight: ${K6_REMOTE_PROMETHEUS_RW_SERVER_URL}"
+    docker --context "${K6_DOCKER_CONTEXT}" run --rm --entrypoint sh "${K6_REMOTE_PREFLIGHT_IMAGE}" \
+      -c 'status="$(curl -sS -o /dev/null -w "%{http_code}" --max-time "$1" -X POST "$2" || echo 000)"; case "${status}" in 2*|3*|4*) exit 0 ;; *) echo "remote prometheus remote-write preflight failed: status=${status}" >&2; exit 1 ;; esac' \
+      sh "${K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS}" "${K6_REMOTE_PROMETHEUS_RW_SERVER_URL}"
+  fi
+}
+
 run_explain_snapshot() {
   local phase="$1"
   if [[ "${K6_EXPLAIN_SNAPSHOT}" != "true" ]]; then
@@ -692,6 +741,7 @@ fi
 wait_for_backend_readiness
 assert_k6_preflight
 run_outbox_preflight
+assert_remote_k6_preflight
 run_explain_snapshot pre
 
 run_k6_local() {

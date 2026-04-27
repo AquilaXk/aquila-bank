@@ -365,7 +365,9 @@ print_plan() {
   echo "[transaction-100m-capacity] allow_local_k6_generator=${allow_local_k6_generator}"
   echo "[transaction-100m-capacity] k6_docker_context=${capacity_k6_docker_context:-missing}"
   echo "[transaction-100m-capacity] k6_remote_base_url=${capacity_k6_remote_base_url:-missing}"
+  echo "[transaction-100m-capacity] k6_remote_prometheus_rw_server_url=${capacity_k6_remote_prometheus_rw_server_url:-missing}"
   echo "[transaction-100m-capacity] k6_remote_workdir=${capacity_k6_remote_workdir}"
+  echo "[transaction-100m-capacity] k6_remote_preflight=delegated-to-k6-runner"
   echo "[transaction-100m-capacity] adaptive_enabled=${adaptive_enabled}"
   echo "[transaction-100m-capacity] hard_thresholds=${hard_threshold_enabled}"
   echo "[transaction-100m-capacity] hot_p95_threshold_ms=${hot_p95_threshold_ms}"
@@ -627,6 +629,7 @@ run_profile() {
   K6_REMOTE_BASE_URL="${capacity_k6_remote_base_url}" \
   K6_REMOTE_PROMETHEUS_RW_SERVER_URL="${capacity_k6_remote_prometheus_rw_server_url}" \
   K6_REMOTE_WORKDIR="${capacity_k6_remote_workdir}" \
+  K6_REMOTE_PREFLIGHT=true \
     tools/test/run-k6-transaction-100m-loadtest.sh --no-up --no-deps >"${log_path}" 2>&1
   status=$?
   set -e

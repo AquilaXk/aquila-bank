@@ -33,15 +33,19 @@ grep -F "k6_generator_mode=docker-context" <<<"${plan}" >/dev/null
 grep -F "allow_local_k6_generator=false" <<<"${plan}" >/dev/null
 grep -F "k6_docker_context=capacity-k6-remote" <<<"${plan}" >/dev/null
 grep -F "k6_remote_base_url=http://192.0.2.20:8080" <<<"${plan}" >/dev/null
+grep -F "k6_remote_prometheus_rw_server_url=http://192.0.2.20:9090/api/v1/write" <<<"${plan}" >/dev/null
 grep -F "k6_remote_workdir=/srv/aquila-bank" <<<"${plan}" >/dev/null
+grep -F "k6_remote_preflight=delegated-to-k6-runner" <<<"${plan}" >/dev/null
 grep -F "summary=build/reports/k6/transaction-capacity-check/capacity-summary.tsv" <<<"${plan}" >/dev/null
 
 echo "[transaction-100m-capacity] runner contract"
 grep -F "CAPACITY_K6_GENERATOR_MODE" "${script}" >/dev/null
 grep -F "CAPACITY_ALLOW_LOCAL_K6_GENERATOR" "${script}" >/dev/null
 grep -F "CAPACITY_K6_DOCKER_CONTEXT is required" "${script}" >/dev/null
+grep -F "CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL is required" "${script}" >/dev/null
 grep -F "K6_GENERATOR_MODE=\"\${capacity_k6_generator_mode}\"" "${script}" >/dev/null
 grep -F "K6_RUN_PURPOSE=capacity" "${script}" >/dev/null
+grep -F "K6_REMOTE_PREFLIGHT=true" "${script}" >/dev/null
 grep -F "stop_backend_before_bootjar" "${script}" >/dev/null
 grep -F "docker compose \"\${compose_files[@]}\" --profile loadtest stop aquila-bank-backend" "${script}" >/dev/null
 grep -F -- "up -d --force-recreate" "${script}" >/dev/null
