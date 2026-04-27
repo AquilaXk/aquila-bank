@@ -2,9 +2,13 @@
 set -euo pipefail
 
 script="tools/test/run-outbox-provider-small-batch-backlog-gate.sh"
+local_script="tools/test/run-outbox-provider-backlog-local-gate.sh"
+token_script="tools/test/issue-internal-service-token.sh"
 
 echo "[outbox-provider-backlog] shell syntax"
 bash -n "${script}"
+bash -n "${local_script}"
+bash -n "${token_script}"
 
 echo "[outbox-provider-backlog] print plan"
 plan="$(
@@ -34,6 +38,23 @@ grep -F "staleSendingCount" "${script}" >/dev/null
 grep -F "lagCount" "${script}" >/dev/null
 grep -F "dlqCount" "${script}" >/dev/null
 grep -F "channel_quarantined_count" "${script}" >/dev/null
+grep -F "OUTBOX_OPS_ENABLED" compose.loadtest.yml >/dev/null
+grep -F "NOTIFICATION_CHANNEL_PROVIDER_OPS_ENABLED" compose.loadtest.yml >/dev/null
+
+echo "[outbox-provider-backlog] local launcher plan"
+local_plan="$(
+  OUTBOX_BACKLOG_NAME=outbox-backlog-local-check \
+    "${local_script}" --print-plan
+)"
+grep -F "mode=print-plan" <<<"${local_plan}" >/dev/null
+grep -F "token_mode=generate" <<<"${local_plan}" >/dev/null
+grep -F "gate=tools/test/run-outbox-provider-small-batch-backlog-gate.sh" <<<"${local_plan}" >/dev/null
+
+echo "[outbox-provider-backlog] local launcher dry-run"
+local_dry_run="$("${local_script}" --dry-run)"
+grep -F "OUTBOX_OPS_ENABLED=true" <<<"${local_dry_run}" >/dev/null
+grep -F "issue-internal-service-token.sh internal:outbox-ops" <<<"${local_dry_run}" >/dev/null
+grep -F "tools/test/run-outbox-provider-small-batch-backlog-gate.sh" <<<"${local_dry_run}" >/dev/null
 
 echo "[outbox-provider-backlog] invalid input fails"
 if OUTBOX_BACKLOG_MAX_LAG_SECONDS=bad "${script}" --print-plan >/dev/null 2>&1; then
@@ -46,5 +67,9 @@ if OUTBOX_BACKLOG_MAX_FAILED_COUNT=-1 "${script}" --print-plan >/dev/null 2>&1; 
 fi
 if OUTBOX_BACKLOG_CHANNEL_LIMIT=0 "${script}" --print-plan >/dev/null 2>&1; then
   echo "OUTBOX_BACKLOG_CHANNEL_LIMIT=0 unexpectedly succeeded" >&2
+  exit 1
+fi
+if OUTBOX_LOCAL_TOKEN_MODE=bad "${local_script}" --print-plan >/dev/null 2>&1; then
+  echo "OUTBOX_LOCAL_TOKEN_MODE=bad unexpectedly succeeded" >&2
   exit 1
 fi
