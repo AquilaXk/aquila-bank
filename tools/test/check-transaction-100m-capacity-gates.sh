@@ -35,17 +35,29 @@ grep -F "k6_docker_context=capacity-k6-remote" <<<"${plan}" >/dev/null
 grep -F "k6_remote_base_url=http://192.0.2.20:8080" <<<"${plan}" >/dev/null
 grep -F "k6_remote_prometheus_rw_server_url=http://192.0.2.20:9090/api/v1/write" <<<"${plan}" >/dev/null
 grep -F "k6_remote_workdir=/srv/aquila-bank" <<<"${plan}" >/dev/null
-grep -F "k6_remote_preflight=delegated-to-k6-runner" <<<"${plan}" >/dev/null
+grep -F "capacity_remote_preflight=true timeout=30 readiness_path=/actuator/health/readiness image=curlimages/curl:8.11.1" <<<"${plan}" >/dev/null
 grep -F "summary=build/reports/k6/transaction-capacity-check/capacity-summary.tsv" <<<"${plan}" >/dev/null
+grep -F "run_context=build/reports/k6/transaction-capacity-check/capacity-run-context.env" <<<"${plan}" >/dev/null
 
 echo "[transaction-100m-capacity] runner contract"
 grep -F "CAPACITY_K6_GENERATOR_MODE" "${script}" >/dev/null
 grep -F "CAPACITY_ALLOW_LOCAL_K6_GENERATOR" "${script}" >/dev/null
+grep -F "CAPACITY_REMOTE_PREFLIGHT" "${script}" >/dev/null
+grep -F "CAPACITY_REMOTE_PREFLIGHT_TIMEOUT_SECONDS" "${script}" >/dev/null
+grep -F "CAPACITY_REMOTE_READINESS_PATH" "${script}" >/dev/null
+grep -F "CAPACITY_REMOTE_PREFLIGHT_IMAGE" "${script}" >/dev/null
 grep -F "CAPACITY_K6_DOCKER_CONTEXT is required" "${script}" >/dev/null
 grep -F "CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL is required" "${script}" >/dev/null
 grep -F "K6_GENERATOR_MODE=\"\${capacity_k6_generator_mode}\"" "${script}" >/dev/null
 grep -F "K6_RUN_PURPOSE=capacity" "${script}" >/dev/null
-grep -F "K6_REMOTE_PREFLIGHT=true" "${script}" >/dev/null
+grep -F "K6_REMOTE_PREFLIGHT=\"\${capacity_remote_preflight}\"" "${script}" >/dev/null
+grep -F "K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS=\"\${capacity_remote_preflight_timeout_seconds}\"" "${script}" >/dev/null
+grep -F "K6_REMOTE_PREFLIGHT_IMAGE=\"\${capacity_remote_preflight_image}\"" "${script}" >/dev/null
+grep -F "K6_REMOTE_READINESS_PATH=\"\${capacity_remote_readiness_path}\"" "${script}" >/dev/null
+grep -F "assert_capacity_remote_preflight" "${script}" >/dev/null
+grep -F "remote backend readiness preflight" "${script}" >/dev/null
+grep -F "remote prometheus remote-write preflight" "${script}" >/dev/null
+grep -F "capacity-run-context.env" "${script}" >/dev/null
 grep -F "stop_backend_before_bootjar" "${script}" >/dev/null
 grep -F "docker compose \"\${compose_files[@]}\" --profile loadtest stop aquila-bank-backend" "${script}" >/dev/null
 grep -F -- "up -d --force-recreate" "${script}" >/dev/null
