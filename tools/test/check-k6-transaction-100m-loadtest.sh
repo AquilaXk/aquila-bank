@@ -65,6 +65,22 @@ grep -F "generator runner=docker --context transaction-k6-remote run grafana/k6:
 grep -F "remote base url=http://192.0.2.10:8080" <<<"${remote_plan}" >/dev/null
 grep -F "remote prometheus rw=disabled" <<<"${remote_plan}" >/dev/null
 grep -F "remote workdir=/srv/aquila-bank" <<<"${remote_plan}" >/dev/null
+grep -F "remote preflight=true timeout=30 readiness_path=/actuator/health/readiness" <<<"${remote_plan}" >/dev/null
+grep -F "remote preflight image=curlimages/curl:8.11.1" <<<"${remote_plan}" >/dev/null
+
+remote_prometheus_plan="$(
+  K6_REPORT_NAME=transaction-100m-remote-prometheus-check \
+  K6_OBSERVABILITY_MODE=prometheus \
+  K6_GENERATOR_MODE=docker-context \
+  K6_DOCKER_CONTEXT=transaction-k6-remote \
+  K6_REMOTE_BASE_URL=http://192.0.2.10:8080 \
+  K6_REMOTE_PROMETHEUS_RW_SERVER_URL=http://192.0.2.10:9090/api/v1/write \
+  K6_REMOTE_WORKDIR=/srv/aquila-bank \
+    tools/test/run-k6-transaction-100m-loadtest.sh --print-plan
+)"
+grep -F "k6 report name: transaction-100m-remote-prometheus-check" <<<"${remote_prometheus_plan}" >/dev/null
+grep -F "remote prometheus rw=http://192.0.2.10:9090/api/v1/write" <<<"${remote_prometheus_plan}" >/dev/null
+grep -F "remote prometheus preflight=enabled" <<<"${remote_prometheus_plan}" >/dev/null
 
 overload_plan="$(
   K6_REPORT_NAME=transaction-100m-overload-check \
@@ -200,6 +216,12 @@ grep -F "without prometheus remote-write" tools/test/run-k6-transaction-100m-loa
 grep -F "K6_DOCKER_CONTEXT" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_REMOTE_BASE_URL" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_REMOTE_PROMETHEUS_RW_SERVER_URL" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "K6_REMOTE_PREFLIGHT" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "K6_REMOTE_READINESS_PATH" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "assert_remote_k6_preflight" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "docker --context \"\${K6_DOCKER_CONTEXT}\" info" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "remote prometheus remote-write preflight" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_REMOTE_WORKDIR" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_RUN_PURPOSE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "assert_k6_summary_gate" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
@@ -299,6 +321,14 @@ if K6_POSTGRES_EXPORTER_STABLE_GATE=bad tools/test/run-k6-transaction-100m-loadt
 fi
 if K6_POSTGRES_EXPORTER_STABLE_TIMEOUT_SECONDS=0 tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
   echo "K6_POSTGRES_EXPORTER_STABLE_TIMEOUT_SECONDS=0 unexpectedly succeeded" >&2
+  exit 1
+fi
+if K6_REMOTE_PREFLIGHT=bad tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
+  echo "K6_REMOTE_PREFLIGHT=bad unexpectedly succeeded" >&2
+  exit 1
+fi
+if K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS=0 tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
+  echo "K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS=0 unexpectedly succeeded" >&2
   exit 1
 fi
 if K6_RUN_PURPOSE=unknown tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
