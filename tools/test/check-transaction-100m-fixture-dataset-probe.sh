@@ -43,7 +43,28 @@ grep -F "dataset_env=${env_path}" <<<"${plan}" >/dev/null
 grep -F "db_gate=true" <<<"${plan}" >/dev/null
 grep -F "db_fallback=false" <<<"${plan}" >/dev/null
 grep -F "min_window_rows=51" <<<"${plan}" >/dev/null
-grep -F "db_gate_checks=estimate,window-count,monthly-partition" <<<"${plan}" >/dev/null
+grep -F "estimate_tolerance_rows=1000" <<<"${plan}" >/dev/null
+grep -F "db_report=${dump_path}.db-gate.env" <<<"${plan}" >/dev/null
+grep -F "query_statement_timeout_ms=3000" <<<"${plan}" >/dev/null
+grep -F "query_lock_timeout_ms=1000" <<<"${plan}" >/dev/null
+grep -F "query_work_mem=2MB" <<<"${plan}" >/dev/null
+grep -F "query_read_only=true" <<<"${plan}" >/dev/null
+grep -F "db_gate_checks=partition-estimate-tolerance,bounded-window-count,monthly-partition" <<<"${plan}" >/dev/null
+
+echo "[transaction-100m-dataset-probe] estimate tolerance contract"
+FIXTURE_DATASET_ASSERT_LABEL=total_estimate \
+FIXTURE_DATASET_ASSERT_ACTUAL=99999884 \
+FIXTURE_DATASET_ASSERT_MINIMUM=100000000 \
+FIXTURE_DATASET_ESTIMATE_TOLERANCE_ROWS=1000 \
+  "${script}" --assert-estimate >/dev/null
+if FIXTURE_DATASET_ASSERT_LABEL=total_estimate \
+  FIXTURE_DATASET_ASSERT_ACTUAL=99900000 \
+  FIXTURE_DATASET_ASSERT_MINIMUM=100000000 \
+  FIXTURE_DATASET_ESTIMATE_TOLERANCE_ROWS=1000 \
+    "${script}" --assert-estimate >/dev/null 2>&1; then
+  echo "estimate outside tolerance unexpectedly passed" >&2
+  exit 1
+fi
 
 echo "[transaction-100m-dataset-probe] manifest probe writes k6 env"
 FIXTURE_PATH="${dump_path}" \
@@ -74,6 +95,12 @@ grep -F "assert_dataset_db_gate" "${script}" >/dev/null
 grep -F "partition_name_for_month" "${script}" >/dev/null
 grep -F "assert_partition_exists transaction_read_model" "${script}" >/dev/null
 grep -F "assert_partition_exists transaction_read_model_archive" "${script}" >/dev/null
+grep -F "assert_estimate_at_least" "${script}" >/dev/null
+grep -F "write_db_gate_report" "${script}" >/dev/null
+grep -F "BEGIN READ ONLY" "${script}" >/dev/null
+grep -F "SET LOCAL statement_timeout" "${script}" >/dev/null
+grep -F "SET LOCAL lock_timeout" "${script}" >/dev/null
+grep -F "SET LOCAL work_mem" "${script}" >/dev/null
 grep -F "FIXTURE_DATASET_MIN_WINDOW_ROWS" "${script}" >/dev/null
 grep -F "run-transaction-100m-fixture-dataset-probe.sh" tools/test/run-transaction-100m-artifact-ready-k6.sh >/dev/null
 grep -F "run-transaction-100m-fixture-dataset-probe.sh" tools/test/run-transaction-100m-fresh-volume-restore-k6.sh >/dev/null
