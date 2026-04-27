@@ -5,6 +5,8 @@ echo "[transaction-100m-local-runner] shell syntax"
 bash -n tools/test/seed-transaction-read-model-100m.sh
 bash -n tools/test/run-transaction-read-model-100m-k6-local.sh
 bash -n tools/test/prepare-transaction-read-model-100m-fixture.sh
+bash -n tools/test/validate-transaction-100m-fixture-artifact.sh
+bash -n tools/test/run-transaction-100m-artifact-ready-k6.sh
 
 echo "[transaction-100m-local-runner] compose config"
 docker compose -f compose.yml -f compose.t3micro.yml -f compose.loadtest.yml config >/dev/null
@@ -112,3 +114,4 @@ grep -F "run-transaction-read-model-100m-k6-local.sh --k6-only" tools/test/prepa
 grep -F "SEED_TOTAL_ROWS" tools/test/prepare-transaction-read-model-100m-fixture.sh >/dev/null
 grep -F "SEED_BATCH_SIZE" tools/test/prepare-transaction-read-model-100m-fixture.sh >/dev/null
 grep -F "assert_flyway_latest" tools/test/prepare-transaction-read-model-100m-fixture.sh >/dev/null
+grep -F "validate-transaction-100m-fixture-artifact.sh --write-manifest" tools/test/run-transaction-100m-fixture-restore.sh >/dev/null
