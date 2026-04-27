@@ -26,10 +26,12 @@ grep -F "cold p99.9 threshold ms=2500" <<<"${plan}" >/dev/null
 grep -F "hot max threshold ms=3000" <<<"${plan}" >/dev/null
 grep -F "cold max threshold ms=5000" <<<"${plan}" >/dev/null
 grep -F "overload mode=false max retry-after sleep seconds=1" <<<"${plan}" >/dev/null
-grep -F "overload 429 rate threshold=0.05" <<<"${plan}" >/dev/null
+grep -F "overload 429 rate threshold=0.02" <<<"${plan}" >/dev/null
 grep -F "overload 503 rate threshold=0" <<<"${plan}" >/dev/null
+grep -F "warmup duration=10s" <<<"${plan}" >/dev/null
 grep -F "run purpose=smoke" <<<"${plan}" >/dev/null
 grep -F "summary gate=true" <<<"${plan}" >/dev/null
+grep -F "backend readiness gate=true path=/actuator/health/readiness timeout=120" <<<"${plan}" >/dev/null
 grep -F "generator mode=local" <<<"${plan}" >/dev/null
 grep -F "generator runner=docker compose service k6-transaction-read-100m" <<<"${plan}" >/dev/null
 grep -F "observability mode=prometheus" <<<"${plan}" >/dev/null
@@ -69,8 +71,18 @@ overload_plan="$(
 )"
 grep -F "k6 report name: transaction-100m-overload-check" <<<"${overload_plan}" >/dev/null
 grep -F "overload mode=true max retry-after sleep seconds=2" <<<"${overload_plan}" >/dev/null
-grep -F "overload 429 rate threshold=0.05" <<<"${overload_plan}" >/dev/null
+grep -F "overload 429 rate threshold=0.02" <<<"${overload_plan}" >/dev/null
 grep -F "overload 503 rate threshold=0" <<<"${overload_plan}" >/dev/null
+
+burst_default_plan="$(
+  K6_REPORT_NAME=transaction-100m-burst-default-check \
+  K6_SCENARIO_MODE=burst \
+  K6_BURST_RATE=16 \
+  K6_BURST_DURATION=20s \
+    tools/test/run-k6-transaction-100m-loadtest.sh --print-plan
+)"
+grep -F "scenario mode=burst" <<<"${burst_default_plan}" >/dev/null
+grep -F "burst rate=16 duration=20s preAllocatedVUs=16 maxVUs=32" <<<"${burst_default_plan}" >/dev/null
 
 burst_plan="$(
   K6_REPORT_NAME=transaction-100m-burst-check \
@@ -142,6 +154,9 @@ grep -F "K6_MAX_RETRY_AFTER_SLEEP_SECONDS" ops/k6/transaction-read-100m.js >/dev
 grep -F "aquila_transaction_429_rate" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "aquila_transaction_503_rate" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "aquila_transaction_503_count" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "AQUILA_K6_WARMUP_DURATION" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "transaction_read_100m_warmup" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "exec.scenario.name" ops/k6/transaction-read-100m.js >/dev/null
 grep -F 'rate<${overload429RateThreshold}' ops/k6/transaction-read-100m.js >/dev/null
 grep -F 'rate<=${overload503RateThreshold}' ops/k6/transaction-read-100m.js >/dev/null
 grep -F "count<1" ops/k6/transaction-read-100m.js >/dev/null
@@ -162,6 +177,8 @@ grep -F "K6_OVERLOAD_429_RATE_THRESHOLD" tools/test/run-k6-transaction-100m-load
 grep -F "K6_OVERLOAD_503_RATE_THRESHOLD" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_GENERATOR_MODE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_OBSERVABILITY_MODE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "K6_BACKEND_READINESS_GATE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "wait_for_backend_readiness" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "LOADTEST_PROMETHEUS_CPUS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "LOADTEST_GRAFANA_MEMORY" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "LOADTEST_ALERTMANAGER_CPUS" compose.loadtest.yml >/dev/null
@@ -193,7 +210,7 @@ summary_dropped="${temp_dir}/summary-dropped.json"
 empty_log="${temp_dir}/empty.log"
 insufficient_log="${temp_dir}/insufficient.log"
 cat >"${summary_ok}" <<'JSON'
-{"metrics":{"iterations":{"values":{"count":3}},"checks":{"values":{"count":12}},"interrupted_iterations":{"values":{"count":0}},"dropped_iterations":{"values":{"count":0}}}}
+{"metrics":{"iterations":{"values":{"count":3}},"checks":{"values":{"rate":1,"passes":12,"fails":0}},"interrupted_iterations":{"values":{"count":0}},"dropped_iterations":{"values":{"count":0}}}}
 JSON
 cat >"${summary_zero}" <<'JSON'
 {"metrics":{"iterations":{"values":{"count":0}},"checks":{"values":{"count":0}},"interrupted_iterations":{"values":{"count":0}},"dropped_iterations":{"values":{"count":0}}}}
@@ -251,6 +268,10 @@ if K6_OBSERVABILITY_MODE=bad tools/test/run-k6-transaction-100m-loadtest.sh --pr
 fi
 if K6_SCENARIO_MODE=unknown tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
   echo "K6_SCENARIO_MODE=unknown unexpectedly succeeded" >&2
+  exit 1
+fi
+if K6_WARMUP_DURATION=bad tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
+  echo "K6_WARMUP_DURATION=bad unexpectedly succeeded" >&2
   exit 1
 fi
 if K6_RUN_PURPOSE=unknown tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
