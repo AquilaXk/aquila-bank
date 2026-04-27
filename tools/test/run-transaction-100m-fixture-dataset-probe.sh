@@ -3,19 +3,24 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE' >&2
-usage: tools/test/run-transaction-100m-fixture-dataset-probe.sh [--print-plan|--dry-run]
+usage: tools/test/run-transaction-100m-fixture-dataset-probe.sh [--print-plan|--dry-run|--assert-estimate]
 
 Environment:
   FIXTURE_NAME                         default transaction-100m-fixture
   FIXTURE_PATH                         default build/fixtures/<FIXTURE_NAME>.dump
   FIXTURE_MANIFEST_PATH                default <FIXTURE_PATH>.manifest
   FIXTURE_DATASET_ENV_PATH             default <FIXTURE_PATH>.dataset.env
+  FIXTURE_DATASET_DB_REPORT_PATH       default <FIXTURE_PATH>.db-gate.env
   FIXTURE_DATASET_DB_GATE              true|false, default true
   FIXTURE_DATASET_PROBE_DB_FALLBACK    true|false, default false
   FIXTURE_DATASET_MIN_TOTAL_ROWS       default manifest total_rows or 100000000
   FIXTURE_DATASET_MIN_HOT_ROWS         default manifest hot_rows or 1
   FIXTURE_DATASET_MIN_ARCHIVE_ROWS     default manifest archive_rows or 1
   FIXTURE_DATASET_MIN_WINDOW_ROWS      default 51
+  FIXTURE_DATASET_ESTIMATE_TOLERANCE_ROWS default 1000
+  FIXTURE_DATASET_QUERY_STATEMENT_TIMEOUT_MS default 3000
+  FIXTURE_DATASET_QUERY_LOCK_TIMEOUT_MS default 1000
+  FIXTURE_DATASET_QUERY_WORK_MEM       default 2MB
 
 Manifest keys:
   hot_account_id hot_from hot_to cold_account_id cold_from cold_to
@@ -30,6 +35,9 @@ while [[ "$#" -gt 0 ]]; do
       ;;
     --dry-run)
       mode="dry-run"
+      ;;
+    --assert-estimate)
+      mode="assert-estimate"
       ;;
     -h|--help)
       usage
@@ -57,14 +65,22 @@ fixture_dir="${FIXTURE_DIR:-build/fixtures}"
 fixture_path="${FIXTURE_PATH:-${fixture_dir}/${fixture_name}.dump}"
 manifest_path="${FIXTURE_MANIFEST_PATH:-${fixture_path}.manifest}"
 dataset_env_path="${FIXTURE_DATASET_ENV_PATH:-${fixture_path}.dataset.env}"
+db_report_path="${FIXTURE_DATASET_DB_REPORT_PATH:-${fixture_path}.db-gate.env}"
 db_gate="${FIXTURE_DATASET_DB_GATE:-true}"
 db_fallback="${FIXTURE_DATASET_PROBE_DB_FALLBACK:-false}"
 min_total_rows="${FIXTURE_DATASET_MIN_TOTAL_ROWS:-}"
 min_hot_rows="${FIXTURE_DATASET_MIN_HOT_ROWS:-}"
 min_archive_rows="${FIXTURE_DATASET_MIN_ARCHIVE_ROWS:-}"
 min_window_rows="${FIXTURE_DATASET_MIN_WINDOW_ROWS:-51}"
+estimate_tolerance_rows="${FIXTURE_DATASET_ESTIMATE_TOLERANCE_ROWS:-1000}"
+query_statement_timeout_ms="${FIXTURE_DATASET_QUERY_STATEMENT_TIMEOUT_MS:-3000}"
+query_lock_timeout_ms="${FIXTURE_DATASET_QUERY_LOCK_TIMEOUT_MS:-1000}"
+query_work_mem="${FIXTURE_DATASET_QUERY_WORK_MEM:-2MB}"
+assert_estimate_label="${FIXTURE_DATASET_ASSERT_LABEL:-estimate}"
+assert_estimate_actual="${FIXTURE_DATASET_ASSERT_ACTUAL:-}"
+assert_estimate_minimum="${FIXTURE_DATASET_ASSERT_MINIMUM:-}"
 compose_files=(-f compose.yml -f compose.t3micro.yml -f compose.loadtest.yml)
-psql_base=(docker compose "${compose_files[@]}" exec -T postgres psql -v ON_ERROR_STOP=1 -U "${DB_USERNAME:-postgres}" -d "${DB_NAME:-aquila_bank}")
+psql_base=(docker compose "${compose_files[@]}" exec -T postgres psql --quiet -v ON_ERROR_STOP=1 -U "${DB_USERNAME:-postgres}" -d "${DB_NAME:-aquila_bank}")
 
 require_bool_value "FIXTURE_DATASET_DB_GATE" "${db_gate}"
 require_bool_value "FIXTURE_DATASET_PROBE_DB_FALLBACK" "${db_fallback}"
@@ -91,6 +107,13 @@ require_non_negative_integer_value "FIXTURE_DATASET_MIN_TOTAL_ROWS" "${min_total
 require_non_negative_integer_value "FIXTURE_DATASET_MIN_HOT_ROWS" "${min_hot_rows}"
 require_non_negative_integer_value "FIXTURE_DATASET_MIN_ARCHIVE_ROWS" "${min_archive_rows}"
 require_positive_integer_value "FIXTURE_DATASET_MIN_WINDOW_ROWS" "${min_window_rows}"
+require_non_negative_integer_value "FIXTURE_DATASET_ESTIMATE_TOLERANCE_ROWS" "${estimate_tolerance_rows}"
+require_positive_integer_value "FIXTURE_DATASET_QUERY_STATEMENT_TIMEOUT_MS" "${query_statement_timeout_ms}"
+require_positive_integer_value "FIXTURE_DATASET_QUERY_LOCK_TIMEOUT_MS" "${query_lock_timeout_ms}"
+if ! [[ "${query_work_mem}" =~ ^[1-9][0-9]*(kB|KB|MB|GB)$ ]]; then
+  echo "FIXTURE_DATASET_QUERY_WORK_MEM must use PostgreSQL memory units such as 2048kB or 2MB: ${query_work_mem}" >&2
+  exit 1
+fi
 
 manifest_value() {
   local key="$1"
@@ -125,13 +148,11 @@ probe_from_db() {
   local table="$1"
   local account_id="$2"
   local from_to
-  from_to="$(
-    "${psql_base[@]}" --no-align --tuples-only --field-separator='|' --command "
+  from_to="$(db_tuple "
       SELECT MIN(booked_at), MAX(booked_at)
       FROM public.${table}
       WHERE account_id = '${account_id}';
-    "
-  )"
+    ")"
   tr -d '[:space:]' <<<"${from_to}"
 }
 
@@ -147,9 +168,27 @@ manifest_integer_or_default() {
   echo "${fallback}"
 }
 
+guarded_sql() {
+  local sql="$1"
+  printf "BEGIN READ ONLY;\nSET LOCAL statement_timeout = '%sms';\nSET LOCAL lock_timeout = '%sms';\nSET LOCAL work_mem = '%s';\n%s\nCOMMIT;\n" \
+    "${query_statement_timeout_ms}" \
+    "${query_lock_timeout_ms}" \
+    "${query_work_mem}" \
+    "${sql}"
+}
+
 db_scalar() {
   local sql="$1"
-  "${psql_base[@]}" --no-align --tuples-only --command "${sql}" | tr -d '[:space:]'
+  local output
+  output="$("${psql_base[@]}" --no-align --tuples-only --command "$(guarded_sql "${sql}")")"
+  awk 'NF {line=$0} END {gsub(/[[:space:]]/, "", line); print line}' <<<"${output}"
+}
+
+db_tuple() {
+  local sql="$1"
+  local output
+  output="$("${psql_base[@]}" --no-align --tuples-only --field-separator='|' --command "$(guarded_sql "${sql}")")"
+  awk 'NF {line=$0} END {gsub(/[[:space:]]/, "", line); print line}' <<<"${output}"
 }
 
 table_estimate() {
@@ -202,6 +241,7 @@ assert_partition_exists() {
     echo "dataset probe monthly partition is missing: ${partition}" >&2
     exit 1
   fi
+  echo "${partition}"
 }
 
 assert_integer_at_least() {
@@ -218,6 +258,66 @@ assert_integer_at_least() {
   fi
 }
 
+assert_estimate_at_least() {
+  local label="$1"
+  local actual="$2"
+  local minimum="$3"
+  local tolerance="${estimate_tolerance_rows}"
+  local allowed_min
+  if ! [[ "${actual}" =~ ^[0-9]+$ ]]; then
+    echo "dataset probe ${label} returned invalid estimate: ${actual}" >&2
+    exit 1
+  fi
+  if ((minimum <= tolerance)); then
+    tolerance=0
+  fi
+  allowed_min=$((minimum - tolerance))
+  if ((allowed_min < 0)); then
+    allowed_min=0
+  fi
+  if ((actual < allowed_min)); then
+    echo "dataset probe ${label} below estimate tolerance: actual=${actual} min=${minimum} tolerance_rows=${tolerance} allowed_min=${allowed_min}" >&2
+    exit 1
+  fi
+  if ((actual < minimum)); then
+    echo "[transaction-100m-dataset-probe] ${label} accepted within estimate tolerance: actual=${actual} min=${minimum} tolerance_rows=${tolerance}"
+  fi
+}
+
+write_db_gate_report() {
+  local hot_min="$1"
+  local archive_min="$2"
+  local total_min="$3"
+  local hot_estimate="$4"
+  local archive_estimate="$5"
+  local total_estimate="$6"
+  local hot_count="$7"
+  local cold_count="$8"
+  local hot_partition="$9"
+  local cold_partition="${10}"
+  mkdir -p "$(dirname "${db_report_path}")"
+  {
+    echo "FIXTURE_DATASET_DB_GATE=passed"
+    echo "FIXTURE_DATASET_TOTAL_MIN=${total_min}"
+    echo "FIXTURE_DATASET_HOT_MIN=${hot_min}"
+    echo "FIXTURE_DATASET_ARCHIVE_MIN=${archive_min}"
+    echo "FIXTURE_DATASET_TOTAL_ESTIMATE=${total_estimate}"
+    echo "FIXTURE_DATASET_HOT_ESTIMATE=${hot_estimate}"
+    echo "FIXTURE_DATASET_ARCHIVE_ESTIMATE=${archive_estimate}"
+    echo "FIXTURE_DATASET_ESTIMATE_TOLERANCE_ROWS=${estimate_tolerance_rows}"
+    echo "FIXTURE_DATASET_HOT_WINDOW_COUNT=${hot_count}"
+    echo "FIXTURE_DATASET_COLD_WINDOW_COUNT=${cold_count}"
+    echo "FIXTURE_DATASET_MIN_WINDOW_ROWS=${min_window_rows}"
+    echo "FIXTURE_DATASET_HOT_PARTITION=${hot_partition}"
+    echo "FIXTURE_DATASET_COLD_PARTITION=${cold_partition}"
+    echo "FIXTURE_DATASET_QUERY_STATEMENT_TIMEOUT_MS=${query_statement_timeout_ms}"
+    echo "FIXTURE_DATASET_QUERY_LOCK_TIMEOUT_MS=${query_lock_timeout_ms}"
+    echo "FIXTURE_DATASET_QUERY_WORK_MEM=${query_work_mem}"
+    echo "FIXTURE_DATASET_QUERY_READ_ONLY=true"
+  } >"${db_report_path}"
+  echo "[transaction-100m-dataset-probe] db gate report written=${db_report_path}"
+}
+
 assert_dataset_db_gate() {
   local hot_account_id="$1"
   local hot_from="$2"
@@ -231,7 +331,7 @@ assert_dataset_db_gate() {
   fi
 
   local total_min hot_min archive_min
-  local hot_estimate archive_estimate total_estimate hot_count cold_count
+  local hot_estimate archive_estimate total_estimate hot_count cold_count hot_partition cold_partition
   total_min="${min_total_rows:-$(manifest_integer_or_default total_rows 100000000)}"
   hot_min="${min_hot_rows:-$(manifest_integer_or_default hot_rows 1)}"
   archive_min="${min_archive_rows:-$(manifest_integer_or_default archive_rows 1)}"
@@ -242,18 +342,19 @@ assert_dataset_db_gate() {
   assert_integer_at_least hot_estimate "${hot_estimate}" 0
   assert_integer_at_least archive_estimate "${archive_estimate}" 0
   total_estimate=$((hot_estimate + archive_estimate))
-  assert_integer_at_least hot_estimate "${hot_estimate}" "${hot_min}"
-  assert_integer_at_least archive_estimate "${archive_estimate}" "${archive_min}"
-  assert_integer_at_least total_estimate "${total_estimate}" "${total_min}"
+  assert_estimate_at_least hot_estimate "${hot_estimate}" "${hot_min}"
+  assert_estimate_at_least archive_estimate "${archive_estimate}" "${archive_min}"
+  assert_estimate_at_least total_estimate "${total_estimate}" "${total_min}"
 
   hot_count="$(window_count transaction_read_model "${hot_account_id}" "${hot_from}" "${hot_to}")"
   cold_count="$(window_count transaction_read_model_archive "${cold_account_id}" "${cold_from}" "${cold_to}")"
   assert_integer_at_least hot_window_count "${hot_count}" "${min_window_rows}"
   assert_integer_at_least cold_window_count "${cold_count}" "${min_window_rows}"
-  assert_partition_exists transaction_read_model "${hot_from}"
-  assert_partition_exists transaction_read_model_archive "${cold_from}"
+  hot_partition="$(assert_partition_exists transaction_read_model "${hot_from}")"
+  cold_partition="$(assert_partition_exists transaction_read_model_archive "${cold_from}")"
+  write_db_gate_report "${hot_min}" "${archive_min}" "${total_min}" "${hot_estimate}" "${archive_estimate}" "${total_estimate}" "${hot_count}" "${cold_count}" "${hot_partition}" "${cold_partition}"
 
-  echo "[transaction-100m-dataset-probe] db gate hot_estimate=${hot_estimate} archive_estimate=${archive_estimate} hot_window_count=${hot_count} cold_window_count=${cold_count}"
+  echo "[transaction-100m-dataset-probe] db gate hot_estimate=${hot_estimate} archive_estimate=${archive_estimate} total_estimate=${total_estimate} hot_window_count=${hot_count} cold_window_count=${cold_count}"
 }
 
 write_dataset_env() {
@@ -281,13 +382,19 @@ print_plan() {
   echo "[transaction-100m-dataset-probe] dump=${fixture_path}"
   echo "[transaction-100m-dataset-probe] manifest=${manifest_path}"
   echo "[transaction-100m-dataset-probe] dataset_env=${dataset_env_path}"
+  echo "[transaction-100m-dataset-probe] db_report=${db_report_path}"
   echo "[transaction-100m-dataset-probe] db_gate=${db_gate}"
   echo "[transaction-100m-dataset-probe] db_fallback=${db_fallback}"
   echo "[transaction-100m-dataset-probe] min_total_rows=${min_total_rows:-manifest-total_rows-or-100000000}"
   echo "[transaction-100m-dataset-probe] min_hot_rows=${min_hot_rows:-manifest-hot_rows-or-1}"
   echo "[transaction-100m-dataset-probe] min_archive_rows=${min_archive_rows:-manifest-archive_rows-or-1}"
   echo "[transaction-100m-dataset-probe] min_window_rows=${min_window_rows}"
-  echo "[transaction-100m-dataset-probe] db_gate_checks=estimate,window-count,monthly-partition"
+  echo "[transaction-100m-dataset-probe] estimate_tolerance_rows=${estimate_tolerance_rows}"
+  echo "[transaction-100m-dataset-probe] query_statement_timeout_ms=${query_statement_timeout_ms}"
+  echo "[transaction-100m-dataset-probe] query_lock_timeout_ms=${query_lock_timeout_ms}"
+  echo "[transaction-100m-dataset-probe] query_work_mem=${query_work_mem}"
+  echo "[transaction-100m-dataset-probe] query_read_only=true"
+  echo "[transaction-100m-dataset-probe] db_gate_checks=partition-estimate-tolerance,bounded-window-count,monthly-partition"
   echo "[transaction-100m-dataset-probe] source_order=manifest,env,db-fallback"
 }
 
@@ -328,6 +435,12 @@ if [[ "${mode}" == "dry-run" ]]; then
   if [[ "${db_fallback}" == "true" ]]; then
     echo "db fallback enabled for missing windows"
   fi
+  exit 0
+fi
+if [[ "${mode}" == "assert-estimate" ]]; then
+  require_value FIXTURE_DATASET_ASSERT_ACTUAL "${assert_estimate_actual}"
+  require_value FIXTURE_DATASET_ASSERT_MINIMUM "${assert_estimate_minimum}"
+  assert_estimate_at_least "${assert_estimate_label}" "${assert_estimate_actual}" "${assert_estimate_minimum}"
   exit 0
 fi
 

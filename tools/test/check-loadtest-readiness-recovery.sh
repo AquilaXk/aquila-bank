@@ -29,4 +29,10 @@ k6_plan="$(
     tools/test/run-k6-transaction-100m-loadtest.sh --print-plan
 )"
 grep -F "backend readiness gate=true path=/actuator/health/readiness timeout=120" <<<"${k6_plan}" >/dev/null
+grep -F "postgres health gate=true required_status=healthy" <<<"${k6_plan}" >/dev/null
+grep -F "postgres recovery gate=true stable_seconds=10" <<<"${k6_plan}" >/dev/null
+grep -F "postgres exporter stable gate=true timeout=60" <<<"${k6_plan}" >/dev/null
 grep -F "wait_for_backend_readiness" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "assert_postgres_recovery_preflight" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "pg_is_in_recovery()=false" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "wait_for_postgres_exporter_stability" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
