@@ -17,6 +17,7 @@ plan="$(
 )"
 grep -F "backend: aquila-bank-backend:8080 with t3.micro budget" <<<"${plan}" >/dev/null
 grep -F "observability: prometheus:9090 grafana:3000 alertmanager:9093 postgres-exporter:9187" <<<"${plan}" >/dev/null
+grep -F "observability resources: prometheus=0.25/256m grafana=0.20/256m alertmanager=0.10/128m postgres-exporter=0.10/128m" <<<"${plan}" >/dev/null
 grep -F "k6 report name: transaction-100m-check" <<<"${plan}" >/dev/null
 grep -F "hot p99 threshold ms=750" <<<"${plan}" >/dev/null
 grep -F "cold p99 threshold ms=1500" <<<"${plan}" >/dev/null
@@ -147,6 +148,10 @@ grep -F "K6_OVERLOAD_429_RATE_THRESHOLD" tools/test/run-k6-transaction-100m-load
 grep -F "K6_OVERLOAD_503_RATE_THRESHOLD" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_GENERATOR_MODE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_OBSERVABILITY_MODE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "LOADTEST_PROMETHEUS_CPUS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "LOADTEST_GRAFANA_MEMORY" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "LOADTEST_ALERTMANAGER_CPUS" compose.loadtest.yml >/dev/null
+grep -F "LOADTEST_POSTGRES_EXPORTER_MEMORY" compose.loadtest.yml >/dev/null
 grep -F "require_observability_mode" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "experimental-prometheus-rw" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "without prometheus remote-write" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null

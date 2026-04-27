@@ -17,6 +17,10 @@ grep -F '${LOADTEST_PROMETHEUS_PORT:-19090}:9090' compose.loadtest.yml >/dev/nul
 grep -F '${LOADTEST_GRAFANA_PORT:-13001}:3000' compose.loadtest.yml >/dev/null
 grep -F '${LOADTEST_ALERTMANAGER_PORT:-19093}:9093' compose.loadtest.yml >/dev/null
 grep -F '${LOADTEST_POSTGRES_EXPORTER_PORT:-19187}:9187' compose.loadtest.yml >/dev/null
+grep -F 'cpus: "${LOADTEST_PROMETHEUS_CPUS:-0.25}"' compose.loadtest.yml >/dev/null
+grep -F 'mem_limit: "${LOADTEST_GRAFANA_MEMORY:-256m}"' compose.loadtest.yml >/dev/null
+grep -F 'pids_limit: ${LOADTEST_ALERTMANAGER_PIDS_LIMIT:-64}' compose.loadtest.yml >/dev/null
+grep -F 'memswap_limit: "${LOADTEST_POSTGRES_EXPORTER_MEMORY_SWAP:-128m}"' compose.loadtest.yml >/dev/null
 grep -F 'BASE_URL: ${K6_BASE_URL:-http://aquila-bank-backend:8080}' compose.loadtest.yml >/dev/null
 
 plan="$(
@@ -27,7 +31,16 @@ plan="$(
   LOADTEST_GRAFANA_PORT=23001 \
   LOADTEST_ALERTMANAGER_PORT=29093 \
   LOADTEST_POSTGRES_EXPORTER_PORT=29187 \
+  LOADTEST_PROMETHEUS_CPUS=0.15 \
+  LOADTEST_PROMETHEUS_MEMORY=192m \
+  LOADTEST_GRAFANA_CPUS=0.12 \
+  LOADTEST_GRAFANA_MEMORY=160m \
+  LOADTEST_ALERTMANAGER_CPUS=0.05 \
+  LOADTEST_ALERTMANAGER_MEMORY=96m \
+  LOADTEST_POSTGRES_EXPORTER_CPUS=0.05 \
+  LOADTEST_POSTGRES_EXPORTER_MEMORY=96m \
     tools/test/run-k6-transaction-100m-loadtest.sh --print-plan
 )"
 grep -F "ports: db=25432 backend=28080 prometheus=29090 grafana=23001 alertmanager=29093 postgres-exporter=29187" <<<"${plan}" >/dev/null
 grep -F "containers: postgres=aquila-bank-postgres-loadtest backend=aquila-bank-backend-loadtest" <<<"${plan}" >/dev/null
+grep -F "observability resources: prometheus=0.15/192m grafana=0.12/160m alertmanager=0.05/96m postgres-exporter=0.05/96m" <<<"${plan}" >/dev/null
