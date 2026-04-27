@@ -58,10 +58,16 @@ t3micro_write_peak_summary() {
   awk -F '\t' '
     function to_mib(value) {
       gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
-      if (value ~ /GiB$/) { sub(/GiB$/, "", value); return value * 1024 }
-      if (value ~ /MiB$/) { sub(/MiB$/, "", value); return value + 0 }
-      if (value ~ /KiB$/) { sub(/KiB$/, "", value); return value / 1024 }
-      if (value ~ /B$/) { sub(/B$/, "", value); return value / 1048576 }
+      value = tolower(value)
+      gsub(/,/, ".", value)
+      gsub(/[[:space:]]+/, "", value)
+      if (value ~ /gib$/) { sub(/gib$/, "", value); return value * 1024 }
+      if (value ~ /gb$/) { sub(/gb$/, "", value); return value * 1024 }
+      if (value ~ /mib$/) { sub(/mib$/, "", value); return value + 0 }
+      if (value ~ /mb$/) { sub(/mb$/, "", value); return value + 0 }
+      if (value ~ /kib$/) { sub(/kib$/, "", value); return value / 1024 }
+      if (value ~ /kb$/) { sub(/kb$/, "", value); return value / 1024 }
+      if (value ~ /b$/) { sub(/b$/, "", value); return value / 1048576 }
       return value + 0
     }
     NR > 1 {
