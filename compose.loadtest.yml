@@ -177,7 +177,7 @@ services:
 
   k6-transaction-read-100m:
     image: grafana/k6:0.54.0
-    container_name: aquila-bank-k6-transaction-100m
+    container_name: ${LOADTEST_K6_CONTAINER_NAME:-aquila-bank-k6-transaction-100m-loadtest}
     profiles:
       - loadtest
     environment:
