@@ -6,12 +6,7 @@ usage() {
 usage: tools/test/run-transaction-100m-artifact-ready-k6.sh [--print-plan|--dry-run]
 
 Required environment:
-  K6_HOT_ACCOUNT_ID
-  K6_HOT_FROM
-  K6_HOT_TO
-  K6_COLD_ACCOUNT_ID
-  K6_COLD_FROM
-  K6_COLD_TO
+  K6_HOT_ACCOUNT_ID/K6_HOT_FROM/... or fixture manifest dataset metadata
 
 Optional environment:
   FIXTURE_NAME              default transaction-100m-fixture
@@ -61,6 +56,7 @@ require_bool_value() {
 fixture_name="${FIXTURE_NAME:-transaction-100m-fixture}"
 fixture_dir="${FIXTURE_DIR:-build/fixtures}"
 fixture_path="${FIXTURE_PATH:-${fixture_dir}/${fixture_name}.dump}"
+dataset_env_path="${FIXTURE_DATASET_ENV_PATH:-${fixture_path}.dataset.env}"
 k6_no_deps="${ARTIFACT_READY_K6_NO_DEPS:-true}"
 K6_REPORT_NAME="${K6_REPORT_NAME:-transaction-100m-artifact-ready-$(date +%Y-%m-%d-%H%M%S)}"
 export K6_REPORT_NAME
@@ -72,6 +68,8 @@ print_plan() {
   echo "[transaction-100m-artifact-ready-k6] fixture=${fixture_name}"
   echo "[transaction-100m-artifact-ready-k6] dump=${fixture_path}"
   echo "[transaction-100m-artifact-ready-k6] artifact_gate=tools/test/validate-transaction-100m-fixture-artifact.sh --verify"
+  echo "[transaction-100m-artifact-ready-k6] dataset_probe=tools/test/run-transaction-100m-fixture-dataset-probe.sh"
+  echo "[transaction-100m-artifact-ready-k6] dataset_env=${dataset_env_path}"
   echo "[transaction-100m-artifact-ready-k6] k6_runner=tools/test/run-k6-transaction-100m-loadtest.sh --no-up"
   echo "[transaction-100m-artifact-ready-k6] k6_no_deps=${k6_no_deps}"
   echo "[transaction-100m-artifact-ready-k6] k6 report=${K6_REPORT_NAME}"
@@ -79,6 +77,7 @@ print_plan() {
 
 print_dry_run() {
   echo "FIXTURE_NAME=${fixture_name} FIXTURE_PATH=${fixture_path} tools/test/validate-transaction-100m-fixture-artifact.sh --verify"
+  echo "FIXTURE_NAME=${fixture_name} FIXTURE_PATH=${fixture_path} FIXTURE_DATASET_ENV_PATH=${dataset_env_path} tools/test/run-transaction-100m-fixture-dataset-probe.sh"
   if [[ "${k6_no_deps}" == "true" ]]; then
     echo "K6_REPORT_NAME=${K6_REPORT_NAME} tools/test/run-k6-transaction-100m-loadtest.sh --no-up --no-deps"
   else
@@ -91,6 +90,10 @@ run_k6() {
   if [[ "${k6_no_deps}" == "true" ]]; then
     args+=(--no-deps)
   fi
+  set -a
+  # manifest 기반 probe 결과만 k6 입력으로 노출해 1억 row 탐색을 피합니다.
+  source "${dataset_env_path}"
+  set +a
   tools/test/run-k6-transaction-100m-loadtest.sh "${args[@]}"
 }
 
@@ -106,4 +109,8 @@ fi
 FIXTURE_NAME="${fixture_name}" \
 FIXTURE_PATH="${fixture_path}" \
   tools/test/validate-transaction-100m-fixture-artifact.sh --verify
+FIXTURE_NAME="${fixture_name}" \
+FIXTURE_PATH="${fixture_path}" \
+FIXTURE_DATASET_ENV_PATH="${dataset_env_path}" \
+  tools/test/run-transaction-100m-fixture-dataset-probe.sh
 run_k6
