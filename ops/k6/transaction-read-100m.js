@@ -36,6 +36,8 @@ const hotP95ThresholdMs = Number(__ENV.K6_HOT_P95_THRESHOLD_MS || "350");
 const coldP95ThresholdMs = Number(__ENV.K6_COLD_P95_THRESHOLD_MS || "750");
 const hotP99ThresholdMs = Number(__ENV.K6_HOT_P99_THRESHOLD_MS || "750");
 const coldP99ThresholdMs = Number(__ENV.K6_COLD_P99_THRESHOLD_MS || "1500");
+const hotP999ThresholdMs = Number(__ENV.K6_HOT_P999_THRESHOLD_MS || "1200");
+const coldP999ThresholdMs = Number(__ENV.K6_COLD_P999_THRESHOLD_MS || "2500");
 const hotMaxThresholdMs = Number(__ENV.K6_HOT_MAX_THRESHOLD_MS || "3000");
 const coldMaxThresholdMs = Number(__ENV.K6_COLD_MAX_THRESHOLD_MS || "5000");
 const failedRate = Number(__ENV.K6_HTTP_FAILED_RATE || "0.01");
@@ -67,21 +69,25 @@ function thresholds() {
     aquila_transaction_hot_first_ms: [
       `p(95)<${hotP95ThresholdMs}`,
       `p(99)<${hotP99ThresholdMs}`,
+      `p(99.9)<${hotP999ThresholdMs}`,
       `max<${hotMaxThresholdMs}`,
     ],
     aquila_transaction_hot_cursor_ms: [
       `p(95)<${hotP95ThresholdMs}`,
       `p(99)<${hotP99ThresholdMs}`,
+      `p(99.9)<${hotP999ThresholdMs}`,
       `max<${hotMaxThresholdMs}`,
     ],
     aquila_transaction_cold_first_ms: [
       `p(95)<${coldP95ThresholdMs}`,
       `p(99)<${coldP99ThresholdMs}`,
+      `p(99.9)<${coldP999ThresholdMs}`,
       `max<${coldMaxThresholdMs}`,
     ],
     aquila_transaction_cold_cursor_ms: [
       `p(95)<${coldP95ThresholdMs}`,
       `p(99)<${coldP99ThresholdMs}`,
+      `p(99.9)<${coldP999ThresholdMs}`,
       `max<${coldMaxThresholdMs}`,
     ],
   };
@@ -132,7 +138,7 @@ function scenarios() {
 export const options = {
   scenarios: scenarios(),
   thresholds: thresholds(),
-  summaryTrendStats: ["avg", "min", "med", "max", "p(90)", "p(95)", "p(99)"],
+  summaryTrendStats: ["avg", "min", "med", "max", "p(90)", "p(95)", "p(99)", "p(99.9)"],
   tags: {
     service: "aquila-bank",
     workload: "transaction-read-100m",
@@ -328,6 +334,13 @@ function metric(data, name, valueName) {
   return item.values[valueName];
 }
 
+function observabilityNote() {
+  if (observabilityMode === "prometheus") {
+    return "- observability mode가 `prometheus`이면 Prometheus remote write와 summary 파일을 함께 남깁니다.";
+  }
+  return "- observability mode가 `summary-only`이면 Prometheus remote write 없이 summary 파일만 남깁니다.";
+}
+
 function markdownSummary(data) {
   return `# k6 Transaction 100m Load Test
 
@@ -352,6 +365,8 @@ function markdownSummary(data) {
 - cold p95 threshold ms: ${coldP95ThresholdMs}
 - hot p99 threshold ms: ${hotP99ThresholdMs}
 - cold p99 threshold ms: ${coldP99ThresholdMs}
+- hot p99.9 threshold ms: ${hotP999ThresholdMs}
+- cold p99.9 threshold ms: ${coldP999ThresholdMs}
 - hot max threshold ms: ${hotMaxThresholdMs}
 - cold max threshold ms: ${coldMaxThresholdMs}
 - http failed rate threshold: ${httpFailedRateThreshold}
@@ -367,15 +382,19 @@ function markdownSummary(data) {
 - transaction 503 count: ${metric(data, "aquila_transaction_503_count", "count")}
 - hot first p95 ms: ${metric(data, "aquila_transaction_hot_first_ms", "p(95)")}
 - hot first p99 ms: ${metric(data, "aquila_transaction_hot_first_ms", "p(99)")}
+- hot first p99.9 ms: ${metric(data, "aquila_transaction_hot_first_ms", "p(99.9)")}
 - hot first max ms: ${metric(data, "aquila_transaction_hot_first_ms", "max")}
 - hot cursor p95 ms: ${metric(data, "aquila_transaction_hot_cursor_ms", "p(95)")}
 - hot cursor p99 ms: ${metric(data, "aquila_transaction_hot_cursor_ms", "p(99)")}
+- hot cursor p99.9 ms: ${metric(data, "aquila_transaction_hot_cursor_ms", "p(99.9)")}
 - hot cursor max ms: ${metric(data, "aquila_transaction_hot_cursor_ms", "max")}
 - cold first p95 ms: ${metric(data, "aquila_transaction_cold_first_ms", "p(95)")}
 - cold first p99 ms: ${metric(data, "aquila_transaction_cold_first_ms", "p(99)")}
+- cold first p99.9 ms: ${metric(data, "aquila_transaction_cold_first_ms", "p(99.9)")}
 - cold first max ms: ${metric(data, "aquila_transaction_cold_first_ms", "max")}
 - cold cursor p95 ms: ${metric(data, "aquila_transaction_cold_cursor_ms", "p(95)")}
 - cold cursor p99 ms: ${metric(data, "aquila_transaction_cold_cursor_ms", "p(99)")}
+- cold cursor p99.9 ms: ${metric(data, "aquila_transaction_cold_cursor_ms", "p(99.9)")}
 - cold cursor max ms: ${metric(data, "aquila_transaction_cold_cursor_ms", "max")}
 
 ## Notes
@@ -384,7 +403,7 @@ function markdownSummary(data) {
 - overload mode에서는 admission guard 429를 rejected sample로 집계합니다.
 - overload mode에서도 503은 app/backend failure 신호라 hard fail로 분리합니다.
 - 1억 건 분포는 실행 전 DB에 준비되어 있어야 합니다.
-- observability mode가 \`summary-only\`이면 Prometheus remote write 없이 summary 파일만 남깁니다.
+${observabilityNote()}
 `;
 }
 

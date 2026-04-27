@@ -40,6 +40,10 @@ echo "[transaction-100m-capacity] runner contract"
 grep -F "CAPACITY_K6_GENERATOR_MODE" "${script}" >/dev/null
 grep -F "CAPACITY_ALLOW_LOCAL_K6_GENERATOR" "${script}" >/dev/null
 grep -F "K6_GENERATOR_MODE=\"\${capacity_k6_generator_mode}\"" "${script}" >/dev/null
+grep -F "K6_RUN_PURPOSE=capacity" "${script}" >/dev/null
+grep -F "stop_backend_before_bootjar" "${script}" >/dev/null
+grep -F "docker compose \"\${compose_files[@]}\" --profile loadtest stop aquila-bank-backend" "${script}" >/dev/null
+grep -F -- "up -d --force-recreate" "${script}" >/dev/null
 grep -F "CAPACITY_HARD_THRESHOLD_ENABLED" "${script}" >/dev/null
 grep -F "CAPACITY_HOT_P95_THRESHOLD_MS" "${script}" >/dev/null
 grep -F "CAPACITY_COLD_P95_THRESHOLD_MS" "${script}" >/dev/null
@@ -90,7 +94,10 @@ if CAPACITY_K6_GENERATOR_MODE=local "${script}" --print-plan >/dev/null 2>&1; th
   echo "local k6 generator without explicit allowance unexpectedly succeeded" >&2
   exit 1
 fi
-CAPACITY_K6_GENERATOR_MODE=local CAPACITY_ALLOW_LOCAL_K6_GENERATOR=true "${script}" --print-plan >/dev/null
+if CAPACITY_K6_GENERATOR_MODE=local CAPACITY_ALLOW_LOCAL_K6_GENERATOR=true "${script}" --print-plan >/dev/null 2>&1; then
+  echo "capacity local k6 generator unexpectedly succeeded" >&2
+  exit 1
+fi
 if CAPACITY_K6_GENERATOR_MODE=docker-context "${script}" --print-plan >/dev/null 2>&1; then
   echo "docker-context k6 generator without remote runtime unexpectedly succeeded" >&2
   exit 1

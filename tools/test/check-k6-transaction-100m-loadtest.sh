@@ -21,11 +21,15 @@ grep -F "observability resources: prometheus=0.25/256m grafana=0.20/256m alertma
 grep -F "k6 report name: transaction-100m-check" <<<"${plan}" >/dev/null
 grep -F "hot p99 threshold ms=750" <<<"${plan}" >/dev/null
 grep -F "cold p99 threshold ms=1500" <<<"${plan}" >/dev/null
+grep -F "hot p99.9 threshold ms=1200" <<<"${plan}" >/dev/null
+grep -F "cold p99.9 threshold ms=2500" <<<"${plan}" >/dev/null
 grep -F "hot max threshold ms=3000" <<<"${plan}" >/dev/null
 grep -F "cold max threshold ms=5000" <<<"${plan}" >/dev/null
 grep -F "overload mode=false max retry-after sleep seconds=1" <<<"${plan}" >/dev/null
 grep -F "overload 429 rate threshold=0.05" <<<"${plan}" >/dev/null
 grep -F "overload 503 rate threshold=0" <<<"${plan}" >/dev/null
+grep -F "run purpose=smoke" <<<"${plan}" >/dev/null
+grep -F "summary gate=true" <<<"${plan}" >/dev/null
 grep -F "generator mode=local" <<<"${plan}" >/dev/null
 grep -F "generator runner=docker compose service k6-transaction-read-100m" <<<"${plan}" >/dev/null
 grep -F "observability mode=prometheus" <<<"${plan}" >/dev/null
@@ -83,19 +87,26 @@ grep -F "burst rate=16 duration=20s preAllocatedVUs=8 maxVUs=32" <<<"${burst_pla
 echo "[k6-transaction-100m] k6 script contract"
 grep -F "experimental-prometheus-rw" compose.loadtest.yml >/dev/null
 grep -F "K6_PROMETHEUS_RW_SERVER_URL" compose.loadtest.yml >/dev/null
+grep -F 'K6_PROMETHEUS_RW_TREND_STATS: "p(50),p(90),p(95),p(99),p(99.9),min,max,avg"' compose.loadtest.yml >/dev/null
 grep -F -- "--no-collector.stat_bgwriter" compose.loadtest.yml >/dev/null
 grep -F "max_wal_size" compose.loadtest.yml >/dev/null
 grep -F "checkpoint_timeout" compose.loadtest.yml >/dev/null
 grep -F "assert_k6_preflight" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "idx_transaction_read_model_account_cursor" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "OOMKilled" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "stop_backend_before_bootjar" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "docker compose \"\${compose_files[@]}\" --profile loadtest stop aquila-bank-backend" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F -- "--force-recreate aquila-bank-backend" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "aquila_transaction_hot_first_ms" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "aquila_transaction_cold_cursor_ms" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_HOT_P99_THRESHOLD_MS" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_COLD_P99_THRESHOLD_MS" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "K6_HOT_P999_THRESHOLD_MS" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "K6_COLD_P999_THRESHOLD_MS" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_HOT_MAX_THRESHOLD_MS" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_COLD_MAX_THRESHOLD_MS" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "p(99)<" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "p(99.9)<" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "max<" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_OVERLOAD_MODE" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "AQUILA_K6_SCENARIO_MODE" ops/k6/transaction-read-100m.js >/dev/null
@@ -136,12 +147,15 @@ grep -F 'rate<=${overload503RateThreshold}' ops/k6/transaction-read-100m.js >/de
 grep -F "count<1" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "summaryTrendStats" ops/k6/transaction-read-100m.js >/dev/null
 grep -F '"p(99)"' ops/k6/transaction-read-100m.js >/dev/null
+grep -F '"p(99.9)"' ops/k6/transaction-read-100m.js >/dev/null
 grep -F "Retry-After" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_OVERLOAD_MODE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_SCENARIO_MODE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "require_scenario_mode" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_HOT_P99_THRESHOLD_MS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_COLD_P99_THRESHOLD_MS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "K6_HOT_P999_THRESHOLD_MS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "K6_COLD_P999_THRESHOLD_MS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_HOT_MAX_THRESHOLD_MS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_COLD_MAX_THRESHOLD_MS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_OVERLOAD_429_RATE_THRESHOLD" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
@@ -159,8 +173,56 @@ grep -F "K6_DOCKER_CONTEXT" tools/test/run-k6-transaction-100m-loadtest.sh >/dev
 grep -F "K6_REMOTE_BASE_URL" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_REMOTE_PROMETHEUS_RW_SERVER_URL" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_REMOTE_WORKDIR" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "K6_RUN_PURPOSE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "assert_k6_summary_gate" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "interrupted_iterations" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "dropped_iterations" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "Insufficient VUs" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "handleSummary" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "observabilityNote" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "Prometheus remote write와 summary 파일을 함께 남깁니다" ops/k6/transaction-read-100m.js >/dev/null
 grep -F '/reports/${reportName}-summary.md' ops/k6/transaction-read-100m.js >/dev/null
+
+echo "[k6-transaction-100m] summary hard gate"
+temp_dir="$(mktemp -d)"
+trap 'rm -rf "${temp_dir}"' EXIT
+summary_ok="${temp_dir}/summary-ok.json"
+summary_zero="${temp_dir}/summary-zero.json"
+summary_interrupted="${temp_dir}/summary-interrupted.json"
+summary_dropped="${temp_dir}/summary-dropped.json"
+empty_log="${temp_dir}/empty.log"
+insufficient_log="${temp_dir}/insufficient.log"
+cat >"${summary_ok}" <<'JSON'
+{"metrics":{"iterations":{"values":{"count":3}},"checks":{"values":{"count":12}},"interrupted_iterations":{"values":{"count":0}},"dropped_iterations":{"values":{"count":0}}}}
+JSON
+cat >"${summary_zero}" <<'JSON'
+{"metrics":{"iterations":{"values":{"count":0}},"checks":{"values":{"count":0}},"interrupted_iterations":{"values":{"count":0}},"dropped_iterations":{"values":{"count":0}}}}
+JSON
+cat >"${summary_interrupted}" <<'JSON'
+{"metrics":{"iterations":{"values":{"count":3}},"checks":{"values":{"count":12}},"interrupted_iterations":{"values":{"count":1}},"dropped_iterations":{"values":{"count":0}}}}
+JSON
+cat >"${summary_dropped}" <<'JSON'
+{"metrics":{"iterations":{"values":{"count":3}},"checks":{"values":{"count":12}},"interrupted_iterations":{"values":{"count":0}},"dropped_iterations":{"values":{"count":1}}}}
+JSON
+: >"${empty_log}"
+echo 'level=warning msg="Insufficient VUs, reached 8 active VUs and cannot initialize more"' >"${insufficient_log}"
+tools/test/run-k6-transaction-100m-loadtest.sh --assert-summary "${summary_ok}" "${empty_log}" >/dev/null
+if tools/test/run-k6-transaction-100m-loadtest.sh --assert-summary "${summary_zero}" "${empty_log}" >/dev/null 2>&1; then
+  echo "zero iteration/check summary unexpectedly succeeded" >&2
+  exit 1
+fi
+if tools/test/run-k6-transaction-100m-loadtest.sh --assert-summary "${summary_interrupted}" "${empty_log}" >/dev/null 2>&1; then
+  echo "interrupted iteration summary unexpectedly succeeded" >&2
+  exit 1
+fi
+if tools/test/run-k6-transaction-100m-loadtest.sh --assert-summary "${summary_dropped}" "${empty_log}" >/dev/null 2>&1; then
+  echo "dropped iteration summary unexpectedly succeeded" >&2
+  exit 1
+fi
+if tools/test/run-k6-transaction-100m-loadtest.sh --assert-summary "${summary_ok}" "${insufficient_log}" >/dev/null 2>&1; then
+  echo "Insufficient VUs log unexpectedly succeeded" >&2
+  exit 1
+fi
 
 echo "[k6-transaction-100m] invalid input fails"
 if K6_OVERLOAD_429_RATE_THRESHOLD=1.5 tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
@@ -175,6 +237,10 @@ if K6_HOT_P99_THRESHOLD_MS=0 tools/test/run-k6-transaction-100m-loadtest.sh --pr
   echo "K6_HOT_P99_THRESHOLD_MS=0 unexpectedly succeeded" >&2
   exit 1
 fi
+if K6_HOT_P999_THRESHOLD_MS=0 tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
+  echo "K6_HOT_P999_THRESHOLD_MS=0 unexpectedly succeeded" >&2
+  exit 1
+fi
 if K6_GENERATOR_MODE=unknown tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
   echo "K6_GENERATOR_MODE=unknown unexpectedly succeeded" >&2
   exit 1
@@ -187,14 +253,20 @@ if K6_SCENARIO_MODE=unknown tools/test/run-k6-transaction-100m-loadtest.sh --pri
   echo "K6_SCENARIO_MODE=unknown unexpectedly succeeded" >&2
   exit 1
 fi
+if K6_RUN_PURPOSE=unknown tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
+  echo "K6_RUN_PURPOSE=unknown unexpectedly succeeded" >&2
+  exit 1
+fi
+if K6_RUN_PURPOSE=capacity K6_GENERATOR_MODE=local tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
+  echo "capacity purpose local generator unexpectedly succeeded" >&2
+  exit 1
+fi
 if K6_OBSERVABILITY_MODE=prometheus K6_GENERATOR_MODE=docker-context tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
   echo "prometheus docker-context without remote prometheus unexpectedly succeeded" >&2
   exit 1
 fi
 
 echo "[k6-transaction-100m] archive script"
-temp_dir="$(mktemp -d)"
-trap 'rm -rf "${temp_dir}"' EXIT
 echo "# sample" >"${temp_dir}/transaction-100m-summary.md"
 echo "{}" >"${temp_dir}/transaction-100m-summary.json"
 output="$(

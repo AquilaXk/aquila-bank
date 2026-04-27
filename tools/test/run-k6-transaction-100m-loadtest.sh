@@ -27,6 +27,8 @@ Optional environment:
   K6_LIMIT             default 50
   K6_HOT_P99_THRESHOLD_MS default 750
   K6_COLD_P99_THRESHOLD_MS default 1500
+  K6_HOT_P999_THRESHOLD_MS default 1200
+  K6_COLD_P999_THRESHOLD_MS default 2500
   K6_HOT_MAX_THRESHOLD_MS default 3000
   K6_COLD_MAX_THRESHOLD_MS default 5000
   K6_AUTH_TOKEN        bearer token, optional when bootstrap header auth is enabled
@@ -43,6 +45,8 @@ Optional environment:
                        max 503 rate in overload mode, default 0
   K6_MAX_RETRY_AFTER_SLEEP_SECONDS
                        cap Retry-After backoff in overload mode, default 1
+  K6_RUN_PURPOSE      smoke|capacity|profile|benchmark, default smoke
+  K6_SUMMARY_GATE     require non-empty k6 work and no generator sizing loss, default true
   K6_GENERATOR_MODE   local|docker-context, default local
   K6_DOCKER_CONTEXT   docker context for remote k6 generator, required when mode=docker-context
   K6_REMOTE_BASE_URL  backend URL reachable from remote k6, required when mode=docker-context
@@ -149,12 +153,35 @@ require_scenario_mode() {
   esac
 }
 
+require_run_purpose() {
+  case "${K6_RUN_PURPOSE}" in
+    smoke|capacity|profile|benchmark)
+      ;;
+    *)
+      echo "K6_RUN_PURPOSE must be smoke, capacity, profile, or benchmark" >&2
+      exit 1
+      ;;
+  esac
+}
+
 mode="run"
 run_dependencies="true"
+summary_gate_json=""
+summary_gate_log=""
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
     --print-plan)
       mode="print-plan"
+      ;;
+    --assert-summary)
+      if [[ "$#" -lt 3 ]]; then
+        usage
+        exit 1
+      fi
+      mode="assert-summary"
+      summary_gate_json="$2"
+      summary_gate_log="$3"
+      shift 2
       ;;
     --no-up)
       mode="no-up"
@@ -187,6 +214,8 @@ K6_HOT_P95_THRESHOLD_MS="${K6_HOT_P95_THRESHOLD_MS:-350}"
 K6_COLD_P95_THRESHOLD_MS="${K6_COLD_P95_THRESHOLD_MS:-750}"
 K6_HOT_P99_THRESHOLD_MS="${K6_HOT_P99_THRESHOLD_MS:-750}"
 K6_COLD_P99_THRESHOLD_MS="${K6_COLD_P99_THRESHOLD_MS:-1500}"
+K6_HOT_P999_THRESHOLD_MS="${K6_HOT_P999_THRESHOLD_MS:-1200}"
+K6_COLD_P999_THRESHOLD_MS="${K6_COLD_P999_THRESHOLD_MS:-2500}"
 K6_HOT_MAX_THRESHOLD_MS="${K6_HOT_MAX_THRESHOLD_MS:-3000}"
 K6_COLD_MAX_THRESHOLD_MS="${K6_COLD_MAX_THRESHOLD_MS:-5000}"
 K6_HTTP_FAILED_RATE="${K6_HTTP_FAILED_RATE:-0.01}"
@@ -200,6 +229,8 @@ K6_OVERLOAD_MODE="${K6_OVERLOAD_MODE:-false}"
 K6_OVERLOAD_429_RATE_THRESHOLD="${K6_OVERLOAD_429_RATE_THRESHOLD:-0.05}"
 K6_OVERLOAD_503_RATE_THRESHOLD="${K6_OVERLOAD_503_RATE_THRESHOLD:-0}"
 K6_MAX_RETRY_AFTER_SLEEP_SECONDS="${K6_MAX_RETRY_AFTER_SLEEP_SECONDS:-1}"
+K6_RUN_PURPOSE="${K6_RUN_PURPOSE:-smoke}"
+K6_SUMMARY_GATE="${K6_SUMMARY_GATE:-true}"
 K6_GENERATOR_MODE="${K6_GENERATOR_MODE:-local}"
 K6_DOCKER_CONTEXT="${K6_DOCKER_CONTEXT:-}"
 K6_REMOTE_BASE_URL="${K6_REMOTE_BASE_URL:-}"
@@ -222,7 +253,7 @@ loadtest_postgres_exporter_cpus="${LOADTEST_POSTGRES_EXPORTER_CPUS:-0.10}"
 loadtest_postgres_exporter_memory="${LOADTEST_POSTGRES_EXPORTER_MEMORY:-128m}"
 loadtest_postgres_container="${LOADTEST_POSTGRES_CONTAINER_NAME:-aquila-bank-postgres-loadtest}"
 loadtest_backend_container="${LOADTEST_BACKEND_CONTAINER_NAME:-aquila-bank-backend-loadtest}"
-export K6_VUS K6_SCENARIO_MODE K6_RATE K6_TIME_UNIT K6_PRE_ALLOCATED_VUS K6_MAX_VUS K6_BURST_RATE K6_BURST_DURATION K6_LIMIT K6_HOT_P95_THRESHOLD_MS K6_COLD_P95_THRESHOLD_MS K6_HOT_P99_THRESHOLD_MS K6_COLD_P99_THRESHOLD_MS K6_HOT_MAX_THRESHOLD_MS K6_COLD_MAX_THRESHOLD_MS K6_HTTP_FAILED_RATE K6_ARCHIVE_RESULTS K6_PREFLIGHT K6_OUTBOX_PREFLIGHT K6_OUTBOX_PREFLIGHT_BASE_URL K6_EXPLAIN_SNAPSHOT K6_OBSERVABILITY_MODE K6_OVERLOAD_MODE K6_OVERLOAD_429_RATE_THRESHOLD K6_OVERLOAD_503_RATE_THRESHOLD K6_MAX_RETRY_AFTER_SLEEP_SECONDS K6_GENERATOR_MODE K6_DOCKER_CONTEXT K6_REMOTE_BASE_URL K6_REMOTE_PROMETHEUS_RW_SERVER_URL K6_REMOTE_WORKDIR K6_REPORT_NAME
+export K6_VUS K6_SCENARIO_MODE K6_RATE K6_TIME_UNIT K6_PRE_ALLOCATED_VUS K6_MAX_VUS K6_BURST_RATE K6_BURST_DURATION K6_LIMIT K6_HOT_P95_THRESHOLD_MS K6_COLD_P95_THRESHOLD_MS K6_HOT_P99_THRESHOLD_MS K6_COLD_P99_THRESHOLD_MS K6_HOT_P999_THRESHOLD_MS K6_COLD_P999_THRESHOLD_MS K6_HOT_MAX_THRESHOLD_MS K6_COLD_MAX_THRESHOLD_MS K6_HTTP_FAILED_RATE K6_ARCHIVE_RESULTS K6_PREFLIGHT K6_OUTBOX_PREFLIGHT K6_OUTBOX_PREFLIGHT_BASE_URL K6_EXPLAIN_SNAPSHOT K6_OBSERVABILITY_MODE K6_OVERLOAD_MODE K6_OVERLOAD_429_RATE_THRESHOLD K6_OVERLOAD_503_RATE_THRESHOLD K6_MAX_RETRY_AFTER_SLEEP_SECONDS K6_RUN_PURPOSE K6_SUMMARY_GATE K6_GENERATOR_MODE K6_DOCKER_CONTEXT K6_REMOTE_BASE_URL K6_REMOTE_PROMETHEUS_RW_SERVER_URL K6_REMOTE_WORKDIR K6_REPORT_NAME
 
 require_positive_integer K6_VUS
 require_positive_integer K6_RATE
@@ -234,6 +265,8 @@ require_positive_number K6_HOT_P95_THRESHOLD_MS
 require_positive_number K6_COLD_P95_THRESHOLD_MS
 require_positive_number K6_HOT_P99_THRESHOLD_MS
 require_positive_number K6_COLD_P99_THRESHOLD_MS
+require_positive_number K6_HOT_P999_THRESHOLD_MS
+require_positive_number K6_COLD_P999_THRESHOLD_MS
 require_positive_number K6_HOT_MAX_THRESHOLD_MS
 require_positive_number K6_COLD_MAX_THRESHOLD_MS
 require_rate K6_HTTP_FAILED_RATE
@@ -247,12 +280,19 @@ require_bool_value() {
 }
 require_bool_value K6_OUTBOX_PREFLIGHT
 require_bool_value K6_EXPLAIN_SNAPSHOT
+require_bool_value K6_SUMMARY_GATE
 require_non_negative_integer K6_MAX_RETRY_AFTER_SLEEP_SECONDS
 require_rate K6_OVERLOAD_429_RATE_THRESHOLD
 require_rate K6_OVERLOAD_503_RATE_THRESHOLD
 require_generator_mode
 require_observability_mode
 require_scenario_mode
+require_run_purpose
+
+if [[ "${K6_GENERATOR_MODE}" == "local" && "${K6_RUN_PURPOSE}" != "smoke" ]]; then
+  echo "K6_GENERATOR_MODE=local is limited to K6_RUN_PURPOSE=smoke" >&2
+  exit 1
+fi
 
 if [[ "${K6_GENERATOR_MODE}" == "docker-context" ]]; then
   require_env K6_DOCKER_CONTEXT
@@ -266,7 +306,71 @@ compose_files=(-f compose.yml -f compose.t3micro.yml -f compose.loadtest.yml)
 report_dir="build/reports/k6"
 summary_md="${report_dir}/${K6_REPORT_NAME}-summary.md"
 summary_json="${report_dir}/${K6_REPORT_NAME}-summary.json"
+k6_runner_log="${report_dir}/${K6_REPORT_NAME}-runner.log"
 psql_base=(docker compose "${compose_files[@]}" exec -T postgres psql -v ON_ERROR_STOP=1 -U "${DB_USERNAME:-postgres}" -d "${DB_NAME:-aquila_bank}")
+
+require_command() {
+  local command_name="$1"
+  if ! command -v "${command_name}" >/dev/null 2>&1; then
+    echo "${command_name} is required" >&2
+    exit 1
+  fi
+}
+
+k6_metric_count() {
+  local path="$1"
+  local metric="$2"
+  jq -r --arg metric "${metric}" '.metrics[$metric].values.count // 0' "${path}"
+}
+
+assert_k6_summary_gate() {
+  local json_path="$1"
+  local log_path="$2"
+  local current_status="$3"
+  local iterations checks interrupted dropped
+  local gate_failed=false
+
+  if [[ "${K6_SUMMARY_GATE}" != "true" ]]; then
+    return "${current_status}"
+  fi
+
+  require_command jq
+  if [[ ! -s "${json_path}" ]]; then
+    echo "k6 summary json is required for hard gate: ${json_path}" >&2
+    return 1
+  fi
+
+  iterations="$(k6_metric_count "${json_path}" iterations)"
+  checks="$(k6_metric_count "${json_path}" checks)"
+  interrupted="$(k6_metric_count "${json_path}" interrupted_iterations)"
+  dropped="$(k6_metric_count "${json_path}" dropped_iterations)"
+
+  if ! awk -v value="${iterations}" 'BEGIN { exit !(value > 0) }'; then
+    echo "k6 hard gate failed: iterations must be > 0, actual=${iterations}" >&2
+    gate_failed=true
+  fi
+  if ! awk -v value="${checks}" 'BEGIN { exit !(value > 0) }'; then
+    echo "k6 hard gate failed: checks must be > 0, actual=${checks}" >&2
+    gate_failed=true
+  fi
+  if ! awk -v value="${interrupted}" 'BEGIN { exit !(value == 0) }'; then
+    echo "k6 hard gate failed: interrupted_iterations must be 0, actual=${interrupted}" >&2
+    gate_failed=true
+  fi
+  if ! awk -v value="${dropped}" 'BEGIN { exit !(value == 0) }'; then
+    echo "k6 hard gate failed: dropped_iterations must be 0, actual=${dropped}" >&2
+    gate_failed=true
+  fi
+  if [[ -s "${log_path}" ]] && grep -Fi "Insufficient VUs" "${log_path}" >/dev/null; then
+    echo "k6 hard gate failed: Insufficient VUs warning detected in ${log_path}" >&2
+    gate_failed=true
+  fi
+
+  if [[ "${gate_failed}" == "true" ]]; then
+    return 1
+  fi
+  return "${current_status}"
+}
 
 print_plan() {
   echo "[k6-transaction-100m] compose files: ${compose_files[*]}"
@@ -289,12 +393,16 @@ print_plan() {
   echo "[k6-transaction-100m] cold p95 threshold ms=${K6_COLD_P95_THRESHOLD_MS}"
   echo "[k6-transaction-100m] hot p99 threshold ms=${K6_HOT_P99_THRESHOLD_MS}"
   echo "[k6-transaction-100m] cold p99 threshold ms=${K6_COLD_P99_THRESHOLD_MS}"
+  echo "[k6-transaction-100m] hot p99.9 threshold ms=${K6_HOT_P999_THRESHOLD_MS}"
+  echo "[k6-transaction-100m] cold p99.9 threshold ms=${K6_COLD_P999_THRESHOLD_MS}"
   echo "[k6-transaction-100m] hot max threshold ms=${K6_HOT_MAX_THRESHOLD_MS}"
   echo "[k6-transaction-100m] cold max threshold ms=${K6_COLD_MAX_THRESHOLD_MS}"
   echo "[k6-transaction-100m] http failed rate threshold=${K6_HTTP_FAILED_RATE}"
   echo "[k6-transaction-100m] overload mode=${K6_OVERLOAD_MODE} max retry-after sleep seconds=${K6_MAX_RETRY_AFTER_SLEEP_SECONDS}"
   echo "[k6-transaction-100m] overload 429 rate threshold=${K6_OVERLOAD_429_RATE_THRESHOLD}"
   echo "[k6-transaction-100m] overload 503 rate threshold=${K6_OVERLOAD_503_RATE_THRESHOLD}"
+  echo "[k6-transaction-100m] run purpose=${K6_RUN_PURPOSE}"
+  echo "[k6-transaction-100m] summary gate=${K6_SUMMARY_GATE}"
   echo "[k6-transaction-100m] generator mode=${K6_GENERATOR_MODE}"
   if [[ "${K6_GENERATOR_MODE}" == "docker-context" ]]; then
     echo "[k6-transaction-100m] generator runner=docker --context ${K6_DOCKER_CONTEXT} run grafana/k6:0.54.0"
@@ -329,6 +437,10 @@ print_plan
 
 if [[ "${mode}" == "print-plan" ]]; then
   exit 0
+fi
+if [[ "${mode}" == "assert-summary" ]]; then
+  assert_k6_summary_gate "${summary_gate_json}" "${summary_gate_log}" 0
+  exit $?
 fi
 
 require_env K6_HOT_ACCOUNT_ID
@@ -391,16 +503,24 @@ run_explain_snapshot() {
   K6_EXPLAIN_PHASE="${phase}" tools/test/run-transaction-100m-k6-explain-snapshot.sh
 }
 
+stop_backend_before_bootjar() {
+  # host jar 교체 중 실행 중인 JVM이 classpath를 다시 읽지 않도록 backend만 먼저 내립니다.
+  docker compose "${compose_files[@]}" --profile loadtest stop aquila-bank-backend >/dev/null 2>&1 || true
+}
+
 if [[ "${mode}" != "no-up" ]]; then
+  stop_backend_before_bootjar
+
   echo "[k6-transaction-100m] building backend bootJar"
   tools/test/with-resource-lock.sh back-gradle-loadtest-bootjar ./back/gradlew -p back bootJar
 
   echo "[k6-transaction-100m] starting loadtest services"
-  services=(postgres aquila-bank-backend)
+  docker compose "${compose_files[@]}" --profile loadtest up -d postgres
+  docker compose "${compose_files[@]}" --profile loadtest up -d --force-recreate aquila-bank-backend
   if [[ "${K6_OBSERVABILITY_MODE}" == "prometheus" ]]; then
-    services+=(prometheus grafana alertmanager postgres-exporter)
+    docker compose "${compose_files[@]}" --profile loadtest up -d \
+      prometheus grafana alertmanager postgres-exporter
   fi
-  docker compose "${compose_files[@]}" --profile loadtest up -d "${services[@]}"
 fi
 
 assert_k6_preflight
@@ -424,6 +544,7 @@ run_k6_local() {
   docker compose "${compose_files[@]}" --profile loadtest run "${run_args[@]}" \
     -e K6_REPORT_NAME="${K6_REPORT_NAME}" \
     -e K6_OBSERVABILITY_MODE="${K6_OBSERVABILITY_MODE}" \
+    -e K6_PROMETHEUS_RW_TREND_STATS="p(50),p(90),p(95),p(99),p(99.9),min,max,avg" \
     -e AQUILA_K6_SCENARIO_MODE="${K6_SCENARIO_MODE}" \
     -e AQUILA_K6_RATE="${K6_RATE}" \
     -e AQUILA_K6_TIME_UNIT="${K6_TIME_UNIT}" \
@@ -445,6 +566,8 @@ run_k6_local() {
     -e K6_COLD_P95_THRESHOLD_MS="${K6_COLD_P95_THRESHOLD_MS}" \
     -e K6_HOT_P99_THRESHOLD_MS="${K6_HOT_P99_THRESHOLD_MS}" \
     -e K6_COLD_P99_THRESHOLD_MS="${K6_COLD_P99_THRESHOLD_MS}" \
+    -e K6_HOT_P999_THRESHOLD_MS="${K6_HOT_P999_THRESHOLD_MS}" \
+    -e K6_COLD_P999_THRESHOLD_MS="${K6_COLD_P999_THRESHOLD_MS}" \
     -e K6_HOT_MAX_THRESHOLD_MS="${K6_HOT_MAX_THRESHOLD_MS}" \
     -e K6_COLD_MAX_THRESHOLD_MS="${K6_COLD_MAX_THRESHOLD_MS}" \
     -e K6_HTTP_FAILED_RATE="${K6_HTTP_FAILED_RATE}" \
@@ -472,7 +595,7 @@ run_k6_docker_context() {
   docker --context "${K6_DOCKER_CONTEXT}" run --rm \
     -e BASE_URL="${K6_REMOTE_BASE_URL}" \
     -e K6_PROMETHEUS_RW_SERVER_URL="${K6_REMOTE_PROMETHEUS_RW_SERVER_URL}" \
-    -e K6_PROMETHEUS_RW_TREND_STATS="p(50),p(90),p(95),p(99),min,max,avg" \
+    -e K6_PROMETHEUS_RW_TREND_STATS="p(50),p(90),p(95),p(99),p(99.9),min,max,avg" \
     -e K6_REPORT_NAME="${K6_REPORT_NAME}" \
     -e K6_OBSERVABILITY_MODE="${K6_OBSERVABILITY_MODE}" \
     -e AQUILA_K6_SCENARIO_MODE="${K6_SCENARIO_MODE}" \
@@ -496,6 +619,8 @@ run_k6_docker_context() {
     -e K6_COLD_P95_THRESHOLD_MS="${K6_COLD_P95_THRESHOLD_MS}" \
     -e K6_HOT_P99_THRESHOLD_MS="${K6_HOT_P99_THRESHOLD_MS}" \
     -e K6_COLD_P99_THRESHOLD_MS="${K6_COLD_P99_THRESHOLD_MS}" \
+    -e K6_HOT_P999_THRESHOLD_MS="${K6_HOT_P999_THRESHOLD_MS}" \
+    -e K6_COLD_P999_THRESHOLD_MS="${K6_COLD_P999_THRESHOLD_MS}" \
     -e K6_HOT_MAX_THRESHOLD_MS="${K6_HOT_MAX_THRESHOLD_MS}" \
     -e K6_COLD_MAX_THRESHOLD_MS="${K6_COLD_MAX_THRESHOLD_MS}" \
     -e K6_HTTP_FAILED_RATE="${K6_HTTP_FAILED_RATE}" \
@@ -514,9 +639,11 @@ if [[ "${K6_GENERATOR_MODE}" == "docker-context" ]]; then
   run_k6_docker_context
 else
   run_k6_local
-fi
-status=$?
+fi 2>&1 | tee "${k6_runner_log}"
+status=${PIPESTATUS[0]}
 set -e
+assert_k6_summary_gate "${summary_json}" "${k6_runner_log}" "${status}"
+status=$?
 
 run_explain_snapshot post
 

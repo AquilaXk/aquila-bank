@@ -281,6 +281,11 @@ require_env() {
   fi
 }
 
+stop_backend_before_bootjar() {
+  # host jar hot-swap 방지: bootJar 전 실행 중인 backend JVM만 내립니다.
+  docker compose "${compose_files[@]}" --profile loadtest stop aquila-bank-backend >/dev/null 2>&1 || true
+}
+
 require_generator_mode_value() {
   local name="$1"
   local value="$2"
@@ -321,8 +326,8 @@ assert_adaptive_strict_guards "CAPACITY_SINGLE_HOST_PROFILES" "${single_host_pro
 assert_adaptive_strict_guards "CAPACITY_CPU_SPLIT_PROFILES" "${cpu_split_profiles}"
 assert_adaptive_strict_guard "CAPACITY_LONG_SOAK_PROFILE" "${long_soak_profile}"
 
-if [[ "${capacity_k6_generator_mode}" == "local" && "${allow_local_k6_generator}" != "true" ]]; then
-  echo "CAPACITY_K6_GENERATOR_MODE=local requires CAPACITY_ALLOW_LOCAL_K6_GENERATOR=true" >&2
+if [[ "${capacity_k6_generator_mode}" == "local" ]]; then
+  echo "CAPACITY_K6_GENERATOR_MODE=local is limited to smoke runners; capacity requires docker-context" >&2
   exit 1
 fi
 
@@ -388,6 +393,8 @@ require_env K6_COLD_TO
 mkdir -p "${report_dir}" build/reports/k6
 
 if [[ "${build_backend}" == "true" ]]; then
+  stop_backend_before_bootjar
+
   echo "[transaction-100m-capacity] building backend bootJar"
   tools/test/with-resource-lock.sh back-gradle-loadtest-bootjar ./back/gradlew -p back bootJar
 fi
@@ -614,6 +621,7 @@ run_profile() {
   K6_DURATION="${duration}" \
   K6_OVERLOAD_MODE="${overload_mode}" \
   K6_ARCHIVE_RESULTS=false \
+  K6_RUN_PURPOSE=capacity \
   K6_GENERATOR_MODE="${capacity_k6_generator_mode}" \
   K6_DOCKER_CONTEXT="${capacity_k6_docker_context}" \
   K6_REMOTE_BASE_URL="${capacity_k6_remote_base_url}" \
