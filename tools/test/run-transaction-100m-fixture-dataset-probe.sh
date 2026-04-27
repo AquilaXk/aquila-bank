@@ -21,6 +21,7 @@ Environment:
   FIXTURE_DATASET_QUERY_STATEMENT_TIMEOUT_MS default 3000
   FIXTURE_DATASET_QUERY_LOCK_TIMEOUT_MS default 1000
   FIXTURE_DATASET_QUERY_WORK_MEM       default 2MB
+  FIXTURE_DATASET_QUERY_TEMP_FILE_LIMIT default 8MB
 
 Manifest keys:
   hot_account_id hot_from hot_to cold_account_id cold_from cold_to
@@ -76,6 +77,7 @@ estimate_tolerance_rows="${FIXTURE_DATASET_ESTIMATE_TOLERANCE_ROWS:-1000}"
 query_statement_timeout_ms="${FIXTURE_DATASET_QUERY_STATEMENT_TIMEOUT_MS:-3000}"
 query_lock_timeout_ms="${FIXTURE_DATASET_QUERY_LOCK_TIMEOUT_MS:-1000}"
 query_work_mem="${FIXTURE_DATASET_QUERY_WORK_MEM:-2MB}"
+query_temp_file_limit="${FIXTURE_DATASET_QUERY_TEMP_FILE_LIMIT:-8MB}"
 assert_estimate_label="${FIXTURE_DATASET_ASSERT_LABEL:-estimate}"
 assert_estimate_actual="${FIXTURE_DATASET_ASSERT_ACTUAL:-}"
 assert_estimate_minimum="${FIXTURE_DATASET_ASSERT_MINIMUM:-}"
@@ -110,10 +112,17 @@ require_positive_integer_value "FIXTURE_DATASET_MIN_WINDOW_ROWS" "${min_window_r
 require_non_negative_integer_value "FIXTURE_DATASET_ESTIMATE_TOLERANCE_ROWS" "${estimate_tolerance_rows}"
 require_positive_integer_value "FIXTURE_DATASET_QUERY_STATEMENT_TIMEOUT_MS" "${query_statement_timeout_ms}"
 require_positive_integer_value "FIXTURE_DATASET_QUERY_LOCK_TIMEOUT_MS" "${query_lock_timeout_ms}"
-if ! [[ "${query_work_mem}" =~ ^[1-9][0-9]*(kB|KB|MB|GB)$ ]]; then
-  echo "FIXTURE_DATASET_QUERY_WORK_MEM must use PostgreSQL memory units such as 2048kB or 2MB: ${query_work_mem}" >&2
-  exit 1
-fi
+require_postgres_memory_value() {
+  local key="$1"
+  local value="$2"
+  if ! [[ "${value}" =~ ^[1-9][0-9]*(kB|KB|MB|GB)$ ]]; then
+    echo "${key} must use PostgreSQL memory units such as 2048kB or 2MB: ${value}" >&2
+    exit 1
+  fi
+}
+
+require_postgres_memory_value "FIXTURE_DATASET_QUERY_WORK_MEM" "${query_work_mem}"
+require_postgres_memory_value "FIXTURE_DATASET_QUERY_TEMP_FILE_LIMIT" "${query_temp_file_limit}"
 
 manifest_value() {
   local key="$1"
@@ -170,10 +179,11 @@ manifest_integer_or_default() {
 
 guarded_sql() {
   local sql="$1"
-  printf "BEGIN READ ONLY;\nSET LOCAL statement_timeout = '%sms';\nSET LOCAL lock_timeout = '%sms';\nSET LOCAL work_mem = '%s';\n%s\nCOMMIT;\n" \
+  printf "BEGIN READ ONLY;\nSET LOCAL statement_timeout = '%sms';\nSET LOCAL lock_timeout = '%sms';\nSET LOCAL work_mem = '%s';\nSET LOCAL temp_file_limit = '%s';\n%s\nCOMMIT;\n" \
     "${query_statement_timeout_ms}" \
     "${query_lock_timeout_ms}" \
     "${query_work_mem}" \
+    "${query_temp_file_limit}" \
     "${sql}"
 }
 
@@ -205,17 +215,23 @@ table_estimate() {
   "
 }
 
-window_count() {
+index_only_window_probe() {
   local table="$1"
   local account_id="$2"
   local from="$3"
   local to="$4"
+  # account cursor index 순서로 필요한 최소 sample까지만 읽어 full window count를 피합니다.
   db_scalar "
     SELECT count(*)
-    FROM public.${table}
-    WHERE account_id = '${account_id}'
-      AND booked_at >= '${from}'::timestamptz
-      AND booked_at < '${to}'::timestamptz;
+    FROM (
+      SELECT 1
+      FROM public.${table}
+      WHERE account_id = '${account_id}'
+        AND booked_at >= '${from}'::timestamptz
+        AND booked_at < '${to}'::timestamptz
+      ORDER BY booked_at DESC, id DESC
+      LIMIT ${min_window_rows}
+    ) sample;
   "
 }
 
@@ -313,7 +329,10 @@ write_db_gate_report() {
     echo "FIXTURE_DATASET_QUERY_STATEMENT_TIMEOUT_MS=${query_statement_timeout_ms}"
     echo "FIXTURE_DATASET_QUERY_LOCK_TIMEOUT_MS=${query_lock_timeout_ms}"
     echo "FIXTURE_DATASET_QUERY_WORK_MEM=${query_work_mem}"
+    echo "FIXTURE_DATASET_QUERY_TEMP_FILE_LIMIT=${query_temp_file_limit}"
     echo "FIXTURE_DATASET_QUERY_READ_ONLY=true"
+    echo "FIXTURE_DATASET_WINDOW_PROBE_MODE=index-only-bounded"
+    echo "FIXTURE_DATASET_WINDOW_PROBE_LIMIT=${min_window_rows}"
   } >"${db_report_path}"
   echo "[transaction-100m-dataset-probe] db gate report written=${db_report_path}"
 }
@@ -346,8 +365,8 @@ assert_dataset_db_gate() {
   assert_estimate_at_least archive_estimate "${archive_estimate}" "${archive_min}"
   assert_estimate_at_least total_estimate "${total_estimate}" "${total_min}"
 
-  hot_count="$(window_count transaction_read_model "${hot_account_id}" "${hot_from}" "${hot_to}")"
-  cold_count="$(window_count transaction_read_model_archive "${cold_account_id}" "${cold_from}" "${cold_to}")"
+  hot_count="$(index_only_window_probe transaction_read_model "${hot_account_id}" "${hot_from}" "${hot_to}")"
+  cold_count="$(index_only_window_probe transaction_read_model_archive "${cold_account_id}" "${cold_from}" "${cold_to}")"
   assert_integer_at_least hot_window_count "${hot_count}" "${min_window_rows}"
   assert_integer_at_least cold_window_count "${cold_count}" "${min_window_rows}"
   hot_partition="$(assert_partition_exists transaction_read_model "${hot_from}")"
@@ -393,8 +412,11 @@ print_plan() {
   echo "[transaction-100m-dataset-probe] query_statement_timeout_ms=${query_statement_timeout_ms}"
   echo "[transaction-100m-dataset-probe] query_lock_timeout_ms=${query_lock_timeout_ms}"
   echo "[transaction-100m-dataset-probe] query_work_mem=${query_work_mem}"
+  echo "[transaction-100m-dataset-probe] query_temp_file_limit=${query_temp_file_limit}"
   echo "[transaction-100m-dataset-probe] query_read_only=true"
-  echo "[transaction-100m-dataset-probe] db_gate_checks=partition-estimate-tolerance,bounded-window-count,monthly-partition"
+  echo "[transaction-100m-dataset-probe] window_probe_mode=index-only-bounded"
+  echo "[transaction-100m-dataset-probe] window_probe_limit=${min_window_rows}"
+  echo "[transaction-100m-dataset-probe] db_gate_checks=partition-estimate-tolerance,index-only-bounded-window-probe,monthly-partition"
   echo "[transaction-100m-dataset-probe] source_order=manifest,env,db-fallback"
 }
 
