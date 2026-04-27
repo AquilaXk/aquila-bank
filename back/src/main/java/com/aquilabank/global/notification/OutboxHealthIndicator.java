@@ -41,9 +41,12 @@ public final class OutboxHealthIndicator implements HealthIndicator {
       }
       Health.Builder builder =
           reasons.isEmpty() ? Health.up() : Health.status(Status.OUT_OF_SERVICE);
+      Object oldestDispatchableAt =
+          summary.oldestDispatchableAt() == null ? "none" : summary.oldestDispatchableAt();
       return builder
           .withDetail("observedAt", summary.observedAt())
-          .withDetail("oldestDispatchableAt", summary.oldestDispatchableAt())
+          // backlog 없음은 정상 상태이므로 actuator detail에는 null 대신 sentinel을 남깁니다.
+          .withDetail("oldestDispatchableAt", oldestDispatchableAt)
           .withDetail("lagSeconds", lagSeconds)
           .withDetail("failedCount", summary.failedCount())
           .withDetail("quarantinedCount", summary.quarantinedCount())
