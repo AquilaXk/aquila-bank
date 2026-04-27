@@ -46,12 +46,18 @@ const failedRate = Number(__ENV.K6_HTTP_FAILED_RATE || "0.01");
 const reportName = __ENV.K6_REPORT_NAME || "transaction-100m";
 const observabilityMode = __ENV.K6_OBSERVABILITY_MODE || "prometheus";
 const overloadMode = booleanEnv(__ENV.K6_OVERLOAD_MODE);
-const overload429RateThreshold = nonNegativeNumberEnv(__ENV.K6_OVERLOAD_429_RATE_THRESHOLD, 0.02);
+const overload429RateThreshold = nonNegativeNumberEnv(__ENV.K6_OVERLOAD_429_RATE_THRESHOLD, 0.015);
+const burst429RateThreshold = nonNegativeNumberEnv(__ENV.K6_BURST_429_RATE_THRESHOLD, 0.10);
 const overload503RateThreshold = nonNegativeNumberEnv(__ENV.K6_OVERLOAD_503_RATE_THRESHOLD, 0);
 const maxRetryAfterSleepSeconds = nonNegativeNumberEnv(__ENV.K6_MAX_RETRY_AFTER_SLEEP_SECONDS, 1);
+const effectiveOverload429RateThreshold =
+  scenarioMode === "burst" ? burst429RateThreshold : overload429RateThreshold;
 const httpFailedRateThreshold = overloadMode ? "disabled in overload mode" : failedRate;
 const overload429RateThresholdText = overloadMode
   ? overload429RateThreshold
+  : "disabled outside overload mode";
+const burst429RateThresholdText = overloadMode
+  ? burst429RateThreshold
   : "disabled outside overload mode";
 const overload503RateThresholdText = overloadMode
   ? overload503RateThreshold
@@ -96,7 +102,7 @@ function thresholds() {
   if (!overloadMode) {
     result.http_req_failed = [`rate<${failedRate}`];
   } else {
-    result.aquila_transaction_429_rate = [`rate<${overload429RateThreshold}`];
+    result.aquila_transaction_429_rate = [`rate<${effectiveOverload429RateThreshold}`];
     result.aquila_transaction_503_rate = [`rate<=${overload503RateThreshold}`];
     result.aquila_transaction_503_count = ["count<1"];
   }
@@ -418,6 +424,8 @@ function markdownSummary(data) {
 - cold max threshold ms: ${coldMaxThresholdMs}
 - http failed rate threshold: ${httpFailedRateThreshold}
 - overload 429 rate threshold: ${overload429RateThresholdText}
+- burst 429 rate threshold: ${burst429RateThresholdText}
+- effective overload 429 rate threshold: ${overloadMode ? effectiveOverload429RateThreshold : "disabled outside overload mode"}
 - overload 503 rate threshold: ${overload503RateThresholdText}
 
 ## Results

@@ -26,7 +26,8 @@ grep -F "cold p99.9 threshold ms=2500" <<<"${plan}" >/dev/null
 grep -F "hot max threshold ms=3000" <<<"${plan}" >/dev/null
 grep -F "cold max threshold ms=5000" <<<"${plan}" >/dev/null
 grep -F "overload mode=false max retry-after sleep seconds=1" <<<"${plan}" >/dev/null
-grep -F "overload 429 rate threshold=0.02" <<<"${plan}" >/dev/null
+grep -F "overload 429 rate threshold=0.015" <<<"${plan}" >/dev/null
+grep -F "burst 429 rate threshold=0.1" <<<"${plan}" >/dev/null
 grep -F "overload 503 rate threshold=0" <<<"${plan}" >/dev/null
 grep -F "warmup duration=10s" <<<"${plan}" >/dev/null
 grep -F "run purpose=smoke" <<<"${plan}" >/dev/null
@@ -90,7 +91,8 @@ overload_plan="$(
 )"
 grep -F "k6 report name: transaction-100m-overload-check" <<<"${overload_plan}" >/dev/null
 grep -F "overload mode=true max retry-after sleep seconds=2" <<<"${overload_plan}" >/dev/null
-grep -F "overload 429 rate threshold=0.02" <<<"${overload_plan}" >/dev/null
+grep -F "overload 429 rate threshold=0.015" <<<"${overload_plan}" >/dev/null
+grep -F "burst 429 rate threshold=0.1" <<<"${overload_plan}" >/dev/null
 grep -F "overload 503 rate threshold=0" <<<"${overload_plan}" >/dev/null
 
 burst_default_plan="$(
@@ -191,6 +193,7 @@ fi
 grep -F "constant-arrival-rate" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "burst_admission" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_OVERLOAD_429_RATE_THRESHOLD" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "K6_BURST_429_RATE_THRESHOLD" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_OVERLOAD_503_RATE_THRESHOLD" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_MAX_RETRY_AFTER_SLEEP_SECONDS" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "aquila_transaction_429_rate" ops/k6/transaction-read-100m.js >/dev/null
@@ -199,7 +202,7 @@ grep -F "aquila_transaction_503_count" ops/k6/transaction-read-100m.js >/dev/nul
 grep -F "AQUILA_K6_WARMUP_DURATION" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "transaction_read_100m_warmup" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "exec.scenario.name" ops/k6/transaction-read-100m.js >/dev/null
-grep -F 'rate<${overload429RateThreshold}' ops/k6/transaction-read-100m.js >/dev/null
+grep -F 'rate<${effectiveOverload429RateThreshold}' ops/k6/transaction-read-100m.js >/dev/null
 grep -F 'rate<=${overload503RateThreshold}' ops/k6/transaction-read-100m.js >/dev/null
 grep -F "count<1" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "summaryTrendStats" ops/k6/transaction-read-100m.js >/dev/null
@@ -216,6 +219,7 @@ grep -F "K6_COLD_P999_THRESHOLD_MS" tools/test/run-k6-transaction-100m-loadtest.
 grep -F "K6_HOT_MAX_THRESHOLD_MS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_COLD_MAX_THRESHOLD_MS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_OVERLOAD_429_RATE_THRESHOLD" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "K6_BURST_429_RATE_THRESHOLD" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_OVERLOAD_503_RATE_THRESHOLD" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_GENERATOR_MODE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_OBSERVABILITY_MODE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
@@ -292,6 +296,10 @@ fi
 echo "[k6-transaction-100m] invalid input fails"
 if K6_OVERLOAD_429_RATE_THRESHOLD=1.5 tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
   echo "K6_OVERLOAD_429_RATE_THRESHOLD=1.5 unexpectedly succeeded" >&2
+  exit 1
+fi
+if K6_BURST_429_RATE_THRESHOLD=1.5 tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
+  echo "K6_BURST_429_RATE_THRESHOLD=1.5 unexpectedly succeeded" >&2
   exit 1
 fi
 if K6_OVERLOAD_503_RATE_THRESHOLD=1.5 tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
