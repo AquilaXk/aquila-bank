@@ -19,6 +19,11 @@ Optional environment:
   PROFILE_ADMISSION         default 8
   PROFILE_DB_POOL_MAX_SIZE  default 4
   PROFILE_BUILD_BACKEND     default true
+  PROFILE_K6_GENERATOR_MODE default docker-context
+  PROFILE_K6_DOCKER_CONTEXT docker context for off-host k6, required when generator mode=docker-context
+  PROFILE_K6_REMOTE_BASE_URL backend URL reachable from off-host k6
+  PROFILE_K6_REMOTE_PROMETHEUS_RW_SERVER_URL Prometheus remote-write URL reachable from off-host k6
+  PROFILE_K6_REMOTE_WORKDIR repo path visible from docker context host, default current working directory
   PROFILE_READINESS_TIMEOUT_SECONDS default 90
   PROFILE_JFR_DUMP_TIMEOUT_SECONDS default 60
   PROFILE_BACKEND_HEALTH_URL default http://localhost:${BACKEND_PORT:-8080}/actuator/health
@@ -57,6 +62,11 @@ profile_duration="${PROFILE_DURATION-75s}"
 profile_admission="${PROFILE_ADMISSION:-8}"
 profile_db_pool_max_size="${PROFILE_DB_POOL_MAX_SIZE:-4}"
 profile_build_backend="${PROFILE_BUILD_BACKEND:-true}"
+profile_k6_generator_mode="${PROFILE_K6_GENERATOR_MODE:-docker-context}"
+profile_k6_docker_context="${PROFILE_K6_DOCKER_CONTEXT:-${K6_DOCKER_CONTEXT:-}}"
+profile_k6_remote_base_url="${PROFILE_K6_REMOTE_BASE_URL:-${K6_REMOTE_BASE_URL:-}}"
+profile_k6_remote_prometheus_rw_server_url="${PROFILE_K6_REMOTE_PROMETHEUS_RW_SERVER_URL:-${K6_REMOTE_PROMETHEUS_RW_SERVER_URL:-}}"
+profile_k6_remote_workdir="${PROFILE_K6_REMOTE_WORKDIR:-${K6_REMOTE_WORKDIR:-$(pwd)}}"
 profile_readiness_timeout_seconds="${PROFILE_READINESS_TIMEOUT_SECONDS:-90}"
 profile_jfr_dump_timeout_seconds="${PROFILE_JFR_DUMP_TIMEOUT_SECONDS:-60}"
 backend_health_url="${PROFILE_BACKEND_HEALTH_URL:-http://localhost:${BACKEND_PORT:-8080}/actuator/health}"
@@ -105,6 +115,23 @@ require_env() {
   fi
 }
 
+require_generator_mode() {
+  local name="$1"
+  local value="$2"
+  case "${value}" in
+    docker-context)
+      ;;
+    local)
+      echo "${name}=local is limited to smoke runners; profile requires docker-context" >&2
+      exit 1
+      ;;
+    *)
+      echo "${name} must be docker-context: ${value}" >&2
+      exit 1
+      ;;
+  esac
+}
+
 stop_backend_before_bootjar() {
   # JFR profile도 host jar를 mount하므로 build 전 기존 backend JVM을 내립니다.
   docker compose "${compose_files[@]}" --profile loadtest stop aquila-bank-backend >/dev/null 2>&1 || true
@@ -118,6 +145,22 @@ require_positive_integer "PROFILE_READINESS_TIMEOUT_SECONDS" "${profile_readines
 require_positive_integer "PROFILE_JFR_DUMP_TIMEOUT_SECONDS" "${profile_jfr_dump_timeout_seconds}"
 require_positive_integer "K6_VUS" "${k6_vus}"
 require_positive_integer "K6_LIMIT" "${k6_limit}"
+require_generator_mode "PROFILE_K6_GENERATOR_MODE" "${profile_k6_generator_mode}"
+
+if [[ "${profile_k6_generator_mode}" == "docker-context" ]]; then
+  [[ -n "${profile_k6_docker_context}" ]] || {
+    echo "PROFILE_K6_DOCKER_CONTEXT is required when PROFILE_K6_GENERATOR_MODE=docker-context" >&2
+    exit 1
+  }
+  [[ -n "${profile_k6_remote_base_url}" ]] || {
+    echo "PROFILE_K6_REMOTE_BASE_URL is required when PROFILE_K6_GENERATOR_MODE=docker-context" >&2
+    exit 1
+  }
+  [[ -n "${profile_k6_remote_prometheus_rw_server_url}" ]] || {
+    echo "PROFILE_K6_REMOTE_PROMETHEUS_RW_SERVER_URL is required when PROFILE_K6_GENERATOR_MODE=docker-context" >&2
+    exit 1
+  }
+fi
 
 find_jfr_cli() {
   if command -v jfr >/dev/null 2>&1; then
@@ -177,6 +220,10 @@ print_plan() {
   echo "[transaction-read-hotpath-profile] profiler=jfr"
   echo "[transaction-read-hotpath-profile] admission=${profile_admission} db_pool=${profile_db_pool_max_size}"
   echo "[transaction-read-hotpath-profile] k6 vus=${k6_vus} duration=${k6_duration} limit=${k6_limit} report=${k6_report_name}"
+  echo "[transaction-read-hotpath-profile] k6_generator_mode=${profile_k6_generator_mode}"
+  echo "[transaction-read-hotpath-profile] k6_docker_context=${profile_k6_docker_context:-missing}"
+  echo "[transaction-read-hotpath-profile] k6_remote_base_url=${profile_k6_remote_base_url:-missing}"
+  echo "[transaction-read-hotpath-profile] k6_remote_workdir=${profile_k6_remote_workdir}"
   echo "[transaction-read-hotpath-profile] jfr duration=${profile_duration}"
   echo "[transaction-read-hotpath-profile] jfr_dump_timeout_seconds=${profile_jfr_dump_timeout_seconds}"
   echo "[transaction-read-hotpath-profile] backend_health_url=${backend_health_url}"
@@ -224,19 +271,26 @@ wait_for_backend_readiness
 
 echo "[transaction-read-hotpath-profile] running k6"
 set +e
-docker compose "${compose_files[@]}" --profile loadtest run --rm --no-deps \
-  -e K6_REPORT_NAME="${k6_report_name}" \
-  -e K6_HOT_ACCOUNT_ID="${K6_HOT_ACCOUNT_ID}" \
-  -e K6_HOT_FROM="${K6_HOT_FROM}" \
-  -e K6_HOT_TO="${K6_HOT_TO}" \
-  -e K6_COLD_ACCOUNT_ID="${K6_COLD_ACCOUNT_ID}" \
-  -e K6_COLD_FROM="${K6_COLD_FROM}" \
-  -e K6_COLD_TO="${K6_COLD_TO}" \
-  -e K6_AUTH_TOKEN="${K6_AUTH_TOKEN:-}" \
-  -e K6_VUS="${k6_vus}" \
-  -e K6_DURATION="${k6_duration}" \
-  -e K6_LIMIT="${k6_limit}" \
-  k6-transaction-read-100m >"${run_log}" 2>&1
+K6_RUN_PURPOSE=profile \
+K6_GENERATOR_MODE="${profile_k6_generator_mode}" \
+K6_DOCKER_CONTEXT="${profile_k6_docker_context}" \
+K6_REMOTE_BASE_URL="${profile_k6_remote_base_url}" \
+K6_REMOTE_PROMETHEUS_RW_SERVER_URL="${profile_k6_remote_prometheus_rw_server_url}" \
+K6_REMOTE_WORKDIR="${profile_k6_remote_workdir}" \
+K6_REPORT_NAME="${k6_report_name}" \
+K6_HOT_ACCOUNT_ID="${K6_HOT_ACCOUNT_ID}" \
+K6_HOT_FROM="${K6_HOT_FROM}" \
+K6_HOT_TO="${K6_HOT_TO}" \
+K6_COLD_ACCOUNT_ID="${K6_COLD_ACCOUNT_ID}" \
+K6_COLD_FROM="${K6_COLD_FROM}" \
+K6_COLD_TO="${K6_COLD_TO}" \
+K6_AUTH_TOKEN="${K6_AUTH_TOKEN:-}" \
+K6_VUS="${k6_vus}" \
+K6_DURATION="${k6_duration}" \
+K6_LIMIT="${k6_limit}" \
+K6_ARCHIVE_RESULTS=false \
+K6_EXPLAIN_SNAPSHOT=false \
+  tools/test/run-k6-transaction-100m-loadtest.sh --no-up --no-deps >"${run_log}" 2>&1
 k6_status=$?
 set -e
 
