@@ -159,13 +159,14 @@ public class ApiExceptionHandler {
   @ExceptionHandler(T3MicroSaturationRejectedException.class)
   ResponseEntity<ApiErrorResponse> handleT3MicroSaturationRejected(
       T3MicroSaturationRejectedException ex, HttpServletRequest request) {
-    return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+    // 정상 방어 거절은 429로 분리해 query timeout 503 hard fail과 섞이지 않게 합니다.
+    return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
         .header("Retry-After", Integer.toString(ex.retryAfterSeconds()))
         .body(
             new ApiErrorResponse(
                 Instant.now(),
-                HttpStatus.SERVICE_UNAVAILABLE.value(),
-                HttpStatus.SERVICE_UNAVAILABLE.getReasonPhrase(),
+                HttpStatus.TOO_MANY_REQUESTS.value(),
+                HttpStatus.TOO_MANY_REQUESTS.getReasonPhrase(),
                 ex.getMessage(),
                 request.getRequestURI()));
   }

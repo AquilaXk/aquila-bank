@@ -15,14 +15,14 @@ import org.springframework.mock.web.MockHttpServletRequest;
 class ApiExceptionHandlerT3MicroSaturationTest {
 
   @Test
-  void handlesSaturationRejectionAsServiceUnavailableWithRetryAfter() {
+  void handlesSaturationRejectionAsTooManyRequestsWithRetryAfter() {
     ApiExceptionHandler handler = new ApiExceptionHandler();
     MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/transactions");
 
     ResponseEntity<ApiExceptionHandler.ApiErrorResponse> response =
         handler.handleT3MicroSaturationRejected(new T3MicroSaturationRejectedException(2), request);
 
-    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
     assertThat(response.getHeaders().getFirst("Retry-After")).isEqualTo("2");
     assertThat(response.getBody().message()).isEqualTo("server is saturated; retry later");
     assertThat(response.getBody().path()).isEqualTo("/api/v1/transactions");
