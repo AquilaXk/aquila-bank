@@ -99,6 +99,89 @@ tools/test/archive-k6-transaction-100m-result.sh \
   build/reports/k6/<name>-summary.json
 ```
 
+### Fixture artifact ready gate
+
+fresh-volume restore/k6는 local PostgreSQL volume 삭제 전에 dump artifact를 먼저 검증합니다. dump, manifest, checksum, Flyway version, row distribution 기준을 모두 통과해야 restore 경로로 들어갑니다.
+
+```bash
+tools/test/validate-transaction-100m-fixture-artifact.sh --verify
+tools/test/run-transaction-100m-fresh-volume-restore-k6.sh --dry-run
+```
+
+dump가 없는 환경은 기본값 `FRESH_VOLUME_DUMP_MISSING_MODE=fail-only`로 즉시 실패합니다. dump 없이 새로 seed만 수행할 때만 `FRESH_VOLUME_DUMP_MISSING_MODE=seed-only`를 명시합니다. 이 fallback은 이름 그대로 seed-only 기준이며, k6까지 이어서 실행하려면 `FRESH_VOLUME_K6_AFTER_SEED=true`를 별도로 켭니다.
+
+이미 restore된 local DB에서 actual k6만 실행할 때는 artifact-ready gate를 통과한 뒤 `--no-up --no-deps` k6 runner로 연결합니다.
+
+```bash
+K6_HOT_ACCOUNT_ID=910000001 \
+K6_HOT_FROM=2026-04-01T00:00:00Z \
+K6_HOT_TO=2026-04-30T00:00:00Z \
+K6_COLD_ACCOUNT_ID=910000002 \
+K6_COLD_FROM=2026-01-01T00:00:00Z \
+K6_COLD_TO=2026-01-31T00:00:00Z \
+tools/test/run-transaction-100m-artifact-ready-k6.sh
+```
+
+### Fixture dump publish workflow
+
+100m dump는 Git에 넣지 않습니다. `.github/workflows/transaction-100m-fixture-dump-publish.yml`를 수동 실행해 `build/fixtures/<name>.dump`, `<name>.dump.manifest`, `<name>.dump.sha256`를 GitHub artifact로 게시합니다.
+
+workflow는 `prepare-transaction-read-model-100m-fixture.sh`로 seed를 만든 뒤 `run-transaction-100m-fixture-restore.sh`의 dump mode에서 manifest/checksum을 기록하고, 업로드 직전 `validate-transaction-100m-fixture-artifact.sh --verify`로 다시 검증합니다.
+
+### Defensive local launchers
+
+HTTP admission smoke는 live backend와 test data가 준비돼 있어야 의미가 있습니다. local compose에서 backend와 PostgreSQL을 띄우고 작은 seed를 넣은 뒤 admission smoke를 실행합니다.
+
+```bash
+ADMISSION_NAME=local-admission-smoke \
+tools/test/run-defensive-runtime-http-admission-compose.sh
+```
+
+outbox backlog gate는 internal service JWT와 ops endpoint enable이 필요합니다. local runner는 compose backend에 ops endpoint를 켜고, `issue-internal-service-token.sh`로 `internal:outbox-ops` service JWT를 발급한 뒤 backlog gate를 실행합니다. token 값은 report에 기록하지 않습니다.
+
+```bash
+OUTBOX_BACKLOG_NAME=local-outbox-backlog \
+tools/test/run-outbox-provider-backlog-local-gate.sh
+```
+
+### t3.micro defensive matrix and aggregate
+
+Docker cgroup smoke archive에는 status/budget뿐 아니라 Docker stats sample과 GC log 경로도 남깁니다. peak CPU, peak memory, peak pid는 aggregate runner가 같은 표로 묶습니다.
+
+```bash
+tools/test/run-docker-t3micro-capacity-smoke.sh --dry-run
+tools/test/run-sse-reconnect-storm-t3micro-gate.sh --dry-run
+```
+
+반복 안정성은 capacity repeat matrix와 SSE reconnect concurrent-user matrix로 분리합니다.
+
+```bash
+T3MICRO_CAPACITY_SOAK_REPEATS=1,3 \
+tools/test/run-t3micro-capacity-repeat-soak-matrix.sh --dry-run
+
+SSE_RECONNECT_CLIENT_MATRIX=1,3,8 \
+SSE_RECONNECT_ROUNDS=3 \
+tools/test/run-sse-reconnect-concurrent-user-matrix.sh --dry-run
+```
+
+개별 gate 결과가 준비되면 한 Markdown report로 묶습니다.
+
+```bash
+T3MICRO_CAPACITY_RESULT_MD=docs/performance-results/<capacity>.md \
+T3MICRO_SSE_RESULT_MD=docs/performance-results/<sse>.md \
+T3MICRO_ADMISSION_SUMMARY_TSV=build/reports/admission/<name>/http-admission-summary.tsv \
+T3MICRO_OUTBOX_SUMMARY_TSV=build/reports/outbox/<name>/outbox-provider-backlog-summary.tsv \
+tools/test/run-t3micro-defensive-gates-aggregate-report.sh
+```
+
+local Docker 100m 결과와 staging RDS gp3 결과는 같은 k6 archive Markdown 형식끼리 비교합니다.
+
+```bash
+LOCAL_K6_SUMMARY_MD=docs/performance-results/<local-100m>.md \
+STAGING_RDS_K6_SUMMARY_MD=docs/performance-results/<staging-rds-gp3>.md \
+tools/test/compare-transaction-100m-local-vs-staging-rds.sh
+```
+
 ## Admission guard telemetry
 
 방어형 HTTP admission smoke 결과는 summary TSV와 raw TSV를 Markdown으로 보관합니다. token, Authorization header, 운영 URL은 결과 문서에 남기지 않습니다.
