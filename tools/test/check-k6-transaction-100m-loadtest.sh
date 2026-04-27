@@ -95,7 +95,31 @@ grep -F "K6_COLD_MAX_THRESHOLD_MS" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "p(99)<" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "max<" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_OVERLOAD_MODE" ops/k6/transaction-read-100m.js >/dev/null
-grep -F "K6_SCENARIO_MODE" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "AQUILA_K6_SCENARIO_MODE" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "AQUILA_K6_VUS" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "AQUILA_K6_DURATION" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "AQUILA_K6_SCENARIO_MODE" compose.loadtest.yml >/dev/null
+grep -F "AQUILA_K6_VUS" compose.loadtest.yml >/dev/null
+grep -F "AQUILA_K6_DURATION" compose.loadtest.yml >/dev/null
+grep -F -- "-e AQUILA_K6_SCENARIO_MODE=\"\${K6_SCENARIO_MODE}\"" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F -- "-e AQUILA_K6_VUS=\"\${K6_VUS}\"" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F -- "-e AQUILA_K6_DURATION=\"\${K6_DURATION:-1m}\"" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+if grep -F "const vus = Number(__ENV.K6_VUS" ops/k6/transaction-read-100m.js >/dev/null; then
+  echo "transaction-read-100m.js still reads k6 runtime-reserved K6_VUS" >&2
+  exit 1
+fi
+if grep -F "const duration = __ENV.K6_DURATION" ops/k6/transaction-read-100m.js >/dev/null; then
+  echo "transaction-read-100m.js still reads k6 runtime-reserved K6_DURATION" >&2
+  exit 1
+fi
+if grep -F -- "-e K6_VUS=\"\${K6_VUS}\"" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null; then
+  echo "runner still passes k6 runtime-reserved K6_VUS into the k6 container" >&2
+  exit 1
+fi
+if grep -F -- "-e K6_DURATION=\"\${K6_DURATION:-1m}\"" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null; then
+  echo "runner still passes k6 runtime-reserved K6_DURATION into the k6 container" >&2
+  exit 1
+fi
 grep -F "constant-arrival-rate" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "burst_admission" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_OVERLOAD_429_RATE_THRESHOLD" ops/k6/transaction-read-100m.js >/dev/null
