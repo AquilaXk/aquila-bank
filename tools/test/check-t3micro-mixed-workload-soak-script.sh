@@ -28,3 +28,22 @@ if SOAK_REPEAT=abc "${script}" --print-plan >/dev/null 2>&1; then
   echo "SOAK_REPEAT=abc unexpectedly succeeded" >&2
   exit 1
 fi
+
+matrix_script="tools/test/run-t3micro-capacity-repeat-soak-matrix.sh"
+
+echo "[t3micro-capacity-repeat-matrix] syntax"
+bash -n "${matrix_script}"
+
+echo "[t3micro-capacity-repeat-matrix] plan and dry-run"
+matrix_plan="$(T3MICRO_CAPACITY_SOAK_REPEATS=1,3 "${matrix_script}" --print-plan)"
+grep -F "repeats=1,3" <<<"${matrix_plan}" >/dev/null
+grep -F "runner=tools/test/run-docker-t3micro-capacity-smoke.sh" <<<"${matrix_plan}" >/dev/null
+
+matrix_dry_run="$(T3MICRO_CAPACITY_SOAK_REPEATS=1,3 "${matrix_script}" --dry-run)"
+grep -F "SOAK_REPEAT=1" <<<"${matrix_dry_run}" >/dev/null
+grep -F "SOAK_REPEAT=3" <<<"${matrix_dry_run}" >/dev/null
+
+if T3MICRO_CAPACITY_SOAK_REPEATS=1,bad "${matrix_script}" --print-plan >/dev/null 2>&1; then
+  echo "bad T3MICRO_CAPACITY_SOAK_REPEATS unexpectedly succeeded" >&2
+  exit 1
+fi

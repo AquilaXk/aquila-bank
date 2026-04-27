@@ -2,9 +2,11 @@
 set -euo pipefail
 
 script="tools/test/run-defensive-runtime-http-admission-smoke.sh"
+compose_script="tools/test/run-defensive-runtime-http-admission-compose.sh"
 
 echo "[defensive-http-admission] shell syntax"
 bash -n "${script}"
+bash -n "${compose_script}"
 
 echo "[defensive-http-admission] print plan"
 plan="$(
@@ -37,6 +39,23 @@ grep -F "rejected_count" "${script}" >/dev/null
 grep -F "failed_rate" "${script}" >/dev/null
 grep -F "Authorization: Bearer ***" "${script}" >/dev/null
 
+echo "[defensive-http-admission] compose launcher plan"
+compose_plan="$(
+  ADMISSION_COMPOSE_SEED_ROWS=1000 \
+  ADMISSION_NAME=admission-compose-check \
+    "${compose_script}" --print-plan
+)"
+grep -F "mode=print-plan" <<<"${compose_plan}" >/dev/null
+grep -F "seed_rows=1000" <<<"${compose_plan}" >/dev/null
+grep -F "services=postgres,aquila-bank-backend" <<<"${compose_plan}" >/dev/null
+grep -F "smoke=tools/test/run-defensive-runtime-http-admission-smoke.sh" <<<"${compose_plan}" >/dev/null
+
+echo "[defensive-http-admission] compose launcher dry-run"
+compose_dry_run="$("${compose_script}" --dry-run)"
+grep -F "docker compose -f compose.yml -f compose.t3micro.yml -f compose.loadtest.yml --profile loadtest up -d postgres aquila-bank-backend" <<<"${compose_dry_run}" >/dev/null
+grep -F "SEED_TOTAL_ROWS=1000" <<<"${compose_dry_run}" >/dev/null
+grep -F "tools/test/run-defensive-runtime-http-admission-smoke.sh" <<<"${compose_dry_run}" >/dev/null
+
 echo "[defensive-http-admission] invalid input fails"
 if ADMISSION_REQUESTS=0 "${script}" --print-plan >/dev/null 2>&1; then
   echo "ADMISSION_REQUESTS=0 unexpectedly succeeded" >&2
@@ -52,5 +71,9 @@ if ADMISSION_EXPECT_429=maybe "${script}" --print-plan >/dev/null 2>&1; then
 fi
 if ADMISSION_MAX_FAILED_RATE=1.5 "${script}" --print-plan >/dev/null 2>&1; then
   echo "ADMISSION_MAX_FAILED_RATE=1.5 unexpectedly succeeded" >&2
+  exit 1
+fi
+if ADMISSION_COMPOSE_SEED_ROWS=0 "${compose_script}" --print-plan >/dev/null 2>&1; then
+  echo "ADMISSION_COMPOSE_SEED_ROWS=0 unexpectedly succeeded" >&2
   exit 1
 fi

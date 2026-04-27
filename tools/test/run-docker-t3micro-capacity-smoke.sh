@@ -14,6 +14,8 @@ Environment:
   DOCKER_T3MICRO_GRADLE_USER_HOME  Host Gradle cache mount, default $HOME/.gradle
   DOCKER_T3MICRO_PREPARE_TEST_CLASSES  compile test classes on host before Docker run, default true
   DOCKER_T3MICRO_ARCHIVE_RESULT     write Markdown result to docs/performance-results, default true
+  DOCKER_T3MICRO_TELEMETRY_ENABLED  sample docker stats and GC log, default true
+  DOCKER_T3MICRO_TELEMETRY_INTERVAL_SECONDS default 2
   DOCKER_T3MICRO_RESULT_NAME        output basename, default docker-t3micro-capacity-<timestamp>
   SOAK_REPEAT                      repeat count passed to production smoke, default 1
 
@@ -23,6 +25,8 @@ Examples:
   tools/test/run-docker-t3micro-capacity-smoke.sh
 USAGE
 }
+
+source "tools/test/t3micro-cgroup-telemetry-lib.sh"
 
 require_positive_number() {
   local name="$1"
@@ -92,6 +96,8 @@ sse_max_total_sessions="${PRODUCTION_T3MICRO_SSE_MAX_TOTAL_SESSIONS:-64}"
 notification_stream_max="${PRODUCTION_T3MICRO_NOTIFICATION_STREAM_MAX:-4}"
 prepare_test_classes="${DOCKER_T3MICRO_PREPARE_TEST_CLASSES:-true}"
 archive_result="${DOCKER_T3MICRO_ARCHIVE_RESULT:-true}"
+telemetry_enabled="${DOCKER_T3MICRO_TELEMETRY_ENABLED:-true}"
+telemetry_interval_seconds="${DOCKER_T3MICRO_TELEMETRY_INTERVAL_SECONDS:-2}"
 result_name="${DOCKER_T3MICRO_RESULT_NAME:-docker-t3micro-capacity-$(date +%Y-%m-%d-%H%M%S)}"
 
 require_positive_number "DOCKER_T3MICRO_CPUS" "${cpus}"
@@ -105,12 +111,24 @@ require_positive_integer "PRODUCTION_T3MICRO_SSE_MAX_TOTAL_SESSIONS" "${sse_max_
 require_positive_integer "PRODUCTION_T3MICRO_NOTIFICATION_STREAM_MAX" "${notification_stream_max}"
 require_boolean "DOCKER_T3MICRO_PREPARE_TEST_CLASSES" "${prepare_test_classes}"
 require_boolean "DOCKER_T3MICRO_ARCHIVE_RESULT" "${archive_result}"
+require_boolean "DOCKER_T3MICRO_TELEMETRY_ENABLED" "${telemetry_enabled}"
+require_positive_integer "DOCKER_T3MICRO_TELEMETRY_INTERVAL_SECONDS" "${telemetry_interval_seconds}"
 
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 host_gradle_home="${DOCKER_T3MICRO_GRADLE_USER_HOME:-${HOME}/.gradle}"
 container_workdir="/workspace"
 container_name="aquila-bank-docker-t3micro-capacity-${USER:-local}-$$"
 container_command="tools/test/run-production-t3micro-capacity-smoke.sh"
+telemetry_dir="build/reports/t3micro"
+stats_path="${telemetry_dir}/${result_name}-docker-stats.tsv"
+gc_log_path="${telemetry_dir}/${result_name}-gc.log"
+telemetry_summary_path="${telemetry_dir}/${result_name}-telemetry.env"
+telemetry_marker_path="${telemetry_dir}/${result_name}-telemetry.running"
+base_java_tool_options="${JAVA_TOOL_OPTIONS:--XX:MaxRAMPercentage=70 -XX:InitialRAMPercentage=40}"
+java_tool_options="${base_java_tool_options}"
+if [[ "${telemetry_enabled}" == "true" ]]; then
+  java_tool_options="$(t3micro_gc_java_tool_options "${base_java_tool_options}" "${container_workdir}/${gc_log_path}")"
+fi
 
 print_plan() {
   echo "[docker-t3micro-capacity] source=tools/test/run-production-t3micro-capacity-smoke.sh"
@@ -118,6 +136,10 @@ print_plan() {
   echo "[docker-t3micro-capacity] docker limit: cpus=${cpus} memory=${memory} memory-swap=${memory_swap} pids-limit=${pids_limit}"
   echo "[docker-t3micro-capacity] prepare-test-classes=${prepare_test_classes}"
   echo "[docker-t3micro-capacity] archive-result=${archive_result}"
+  echo "[docker-t3micro-capacity] telemetry-enabled=${telemetry_enabled}"
+  echo "[docker-t3micro-capacity] telemetry-interval-seconds=${telemetry_interval_seconds}"
+  echo "[docker-t3micro-capacity] telemetry-stats=${stats_path}"
+  echo "[docker-t3micro-capacity] telemetry-gc-log=${gc_log_path}"
   echo "[docker-t3micro-capacity] gradle cache=${host_gradle_home}"
   echo "[docker-t3micro-capacity] caveat: Docker cgroup은 CPU credit, EBS latency, 실제 AWS network를 재현하지 않습니다."
   SOAK_REPEAT="${repeat}" \
@@ -140,7 +162,7 @@ docker_args=(
   --user "$(id -u):$(id -g)"
   -e "HOME=/tmp"
   -e "GRADLE_USER_HOME=/tmp/.gradle"
-  -e "JAVA_TOOL_OPTIONS=${JAVA_TOOL_OPTIONS:--XX:MaxRAMPercentage=70 -XX:InitialRAMPercentage=40}"
+  -e "JAVA_TOOL_OPTIONS=${java_tool_options}"
   -e "GRADLE_OPTS=${GRADLE_OPTS:--Dorg.gradle.jvmargs=-Xmx512m -Dorg.gradle.daemon=false -Dorg.gradle.parallel=false}"
   -e "SOAK_REPEAT=${repeat}"
   -e "PRODUCTION_T3MICRO_DB_POOL_MAX_SIZE=${db_pool_max_size}"
@@ -184,6 +206,16 @@ archive_capacity_result() {
     echo "- serverThreadsMax: ${server_threads_max}"
     echo "- sseMaxTotalSessions: ${sse_max_total_sessions}"
     echo "- notificationStreamMax: ${notification_stream_max}"
+    if [[ -f "${telemetry_summary_path}" ]]; then
+      echo "- telemetryStats: ${stats_path}"
+      echo "- telemetrySummary: ${telemetry_summary_path}"
+      while IFS= read -r line; do
+        echo "- ${line}"
+      done <"${telemetry_summary_path}"
+    else
+      echo "- telemetryStats: ${stats_path}"
+      echo "- telemetrySummary: unavailable"
+    fi
     echo
     echo "## Notes"
     echo
@@ -211,6 +243,7 @@ command -v docker >/dev/null 2>&1 || {
 }
 
 mkdir -p "${host_gradle_home}"
+mkdir -p "${telemetry_dir}"
 
 if [[ "${prepare_test_classes}" == "true" ]]; then
   echo "[docker-t3micro-capacity] preparing testClasses on host before cgroup smoke"
@@ -219,8 +252,17 @@ if [[ "${prepare_test_classes}" == "true" ]]; then
 fi
 
 set +e
+telemetry_pid=""
+if [[ "${telemetry_enabled}" == "true" ]]; then
+  t3micro_start_container_telemetry "${container_name}" "${stats_path}" "${telemetry_marker_path}" "${telemetry_interval_seconds}"
+  telemetry_pid="${T3MICRO_TELEMETRY_PID}"
+fi
 docker "${docker_args[@]}" "${image}" bash -lc "${container_command}"
 status=$?
+if [[ "${telemetry_enabled}" == "true" ]]; then
+  t3micro_stop_container_telemetry "${telemetry_marker_path}" "${telemetry_pid}"
+  t3micro_write_peak_summary "${stats_path}" "${gc_log_path}" "${telemetry_summary_path}"
+fi
 set -e
 archive_capacity_result "${status}"
 exit "${status}"

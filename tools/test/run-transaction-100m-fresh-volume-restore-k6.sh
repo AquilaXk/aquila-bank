@@ -10,6 +10,9 @@ Environment:
   FRESH_VOLUME_NAME                 default aquila-bank-postgres-data
   FRESH_VOLUME_BUILD_BACKEND        default true
   FRESH_VOLUME_K6_ENABLED           default true
+  FRESH_VOLUME_ARTIFACT_PREFLIGHT   default true
+  FRESH_VOLUME_DUMP_MISSING_MODE    fail-only|seed-only, default fail-only
+  FRESH_VOLUME_K6_AFTER_SEED        run k6 after seed-only fallback, default false
   FRESH_VOLUME_RESTORE_VERIFY_MIN_ROWS default 1000
   FRESH_VOLUME_READINESS_TIMEOUT_SECONDS default 120
   FIXTURE_NAME                      default transaction-100m-fixture
@@ -68,6 +71,9 @@ fixture_path="${FIXTURE_PATH:-${fixture_dir}/${fixture_name}.dump}"
 volume_name="${FRESH_VOLUME_NAME:-aquila-bank-postgres-data}"
 build_backend="${FRESH_VOLUME_BUILD_BACKEND:-true}"
 k6_enabled="${FRESH_VOLUME_K6_ENABLED:-true}"
+artifact_preflight="${FRESH_VOLUME_ARTIFACT_PREFLIGHT:-true}"
+dump_missing_mode="${FRESH_VOLUME_DUMP_MISSING_MODE:-fail-only}"
+k6_after_seed="${FRESH_VOLUME_K6_AFTER_SEED:-false}"
 restore_verify_min_rows="${FRESH_VOLUME_RESTORE_VERIFY_MIN_ROWS:-1000}"
 readiness_timeout_seconds="${FRESH_VOLUME_READINESS_TIMEOUT_SECONDS:-120}"
 k6_report_name="${K6_REPORT_NAME:-transaction-100m-fresh-volume-$(date +%Y-%m-%d-%H%M%S)}"
@@ -82,8 +88,14 @@ psql_base=(docker compose "${compose_files[@]}" exec -T postgres psql -v ON_ERRO
 
 require_bool_value "FRESH_VOLUME_BUILD_BACKEND" "${build_backend}"
 require_bool_value "FRESH_VOLUME_K6_ENABLED" "${k6_enabled}"
+require_bool_value "FRESH_VOLUME_ARTIFACT_PREFLIGHT" "${artifact_preflight}"
+require_bool_value "FRESH_VOLUME_K6_AFTER_SEED" "${k6_after_seed}"
 require_non_negative_integer_value "FRESH_VOLUME_RESTORE_VERIFY_MIN_ROWS" "${restore_verify_min_rows}"
 require_non_negative_integer_value "FRESH_VOLUME_READINESS_TIMEOUT_SECONDS" "${readiness_timeout_seconds}"
+case "${dump_missing_mode}" in
+  fail-only|seed-only) ;;
+  *) echo "FRESH_VOLUME_DUMP_MISSING_MODE must be fail-only or seed-only: ${dump_missing_mode}" >&2; exit 1 ;;
+esac
 
 print_plan() {
   echo "[transaction-100m-fresh-volume] mode=${mode}"
@@ -92,6 +104,9 @@ print_plan() {
   echo "[transaction-100m-fresh-volume] fixture=${fixture_name}"
   echo "[transaction-100m-fresh-volume] dump=${fixture_path}"
   echo "[transaction-100m-fresh-volume] build_backend=${build_backend}"
+  echo "[transaction-100m-fresh-volume] artifact_preflight=${artifact_preflight}"
+  echo "[transaction-100m-fresh-volume] dump_missing_mode=${dump_missing_mode}"
+  echo "[transaction-100m-fresh-volume] k6_after_seed=${k6_after_seed}"
   echo "[transaction-100m-fresh-volume] restore_verify_min_rows=${restore_verify_min_rows}"
   echo "[transaction-100m-fresh-volume] readiness_timeout_seconds=${readiness_timeout_seconds}"
   echo "[transaction-100m-fresh-volume] restore_runner=tools/test/run-transaction-100m-fixture-restore.sh"
@@ -100,16 +115,23 @@ print_plan() {
   echo "[transaction-100m-fresh-volume] k6 report=${k6_report_name}"
   echo "[transaction-100m-fresh-volume] hot account=${hot_account_id} window=${hot_from}..${hot_to}"
   echo "[transaction-100m-fresh-volume] cold account=${cold_account_id} window=${cold_from}..${cold_to}"
-  echo "[transaction-100m-fresh-volume] steps=stop-runtime,remove-postgres-volume,start-runtime,restore,verify,k6"
+  echo "[transaction-100m-fresh-volume] artifact_gate=tools/test/validate-transaction-100m-fixture-artifact.sh --verify"
+  echo "[transaction-100m-fresh-volume] steps=artifact-preflight,stop-runtime,remove-postgres-volume,start-runtime,restore-or-seed,verify,k6"
 }
 
 print_dry_run() {
+  if [[ "${artifact_preflight}" == "true" ]]; then
+    echo "FIXTURE_NAME=${fixture_name} FIXTURE_PATH=${fixture_path} FIXTURE_ARTIFACT_MIN_ROWS=${restore_verify_min_rows} tools/test/validate-transaction-100m-fixture-artifact.sh --verify"
+  fi
   echo "docker compose ${compose_files[*]} --profile loadtest stop aquila-bank-backend postgres prometheus grafana alertmanager postgres-exporter"
   echo "docker compose ${compose_files[*]} --profile loadtest rm -f -s postgres"
   echo "docker volume rm ${volume_name}"
   echo "docker compose ${compose_files[*]} --profile loadtest up -d postgres aquila-bank-backend prometheus grafana alertmanager postgres-exporter"
   echo "FIXTURE_MODE=restore FIXTURE_RESTORE_TRUNCATE=true FIXTURE_NAME=${fixture_name} FIXTURE_PATH=${fixture_path} tools/test/run-transaction-100m-fixture-restore.sh"
   echo "FIXTURE_MODE=verify FIXTURE_VERIFY_MIN_ROWS=${restore_verify_min_rows} FIXTURE_NAME=${fixture_name} FIXTURE_PATH=${fixture_path} tools/test/run-transaction-100m-fixture-restore.sh"
+  if [[ "${dump_missing_mode}" == "seed-only" ]]; then
+    echo "if fixture dump is absent: tools/test/prepare-transaction-read-model-100m-fixture.sh"
+  fi
   echo "K6_REPORT_NAME=${k6_report_name} K6_HOT_ACCOUNT_ID=${hot_account_id} K6_COLD_ACCOUNT_ID=${cold_account_id} tools/test/run-k6-transaction-100m-loadtest.sh --no-up"
 }
 
@@ -179,6 +201,33 @@ reset_postgres_volume() {
   fi
 }
 
+artifact_ready="true"
+seed_fallback_used="false"
+
+preflight_fixture_artifact() {
+  artifact_ready="true"
+  if [[ "${artifact_preflight}" != "true" ]]; then
+    echo "[transaction-100m-fresh-volume] artifact preflight skipped"
+    return 0
+  fi
+
+  if FIXTURE_NAME="${fixture_name}" \
+    FIXTURE_PATH="${fixture_path}" \
+    FIXTURE_ARTIFACT_MIN_ROWS="${restore_verify_min_rows}" \
+      tools/test/validate-transaction-100m-fixture-artifact.sh --verify; then
+    return 0
+  fi
+
+  if [[ ! -s "${fixture_path}" && "${dump_missing_mode}" == "seed-only" ]]; then
+    artifact_ready="false"
+    echo "[transaction-100m-fresh-volume] fixture dump missing; seed-only fallback selected"
+    return 0
+  fi
+
+  echo "fixture artifact preflight failed before volume reset" >&2
+  exit 1
+}
+
 start_runtime() {
   if [[ "${build_backend}" == "true" ]]; then
     echo "[transaction-100m-fresh-volume] building backend bootJar"
@@ -195,6 +244,7 @@ start_runtime() {
 restore_fixture() {
   FIXTURE_MODE=restore \
   FIXTURE_RESTORE_TRUNCATE=true \
+  FIXTURE_ARTIFACT_VERIFY=true \
   FIXTURE_NAME="${fixture_name}" \
   FIXTURE_PATH="${fixture_path}" \
     tools/test/run-transaction-100m-fixture-restore.sh
@@ -208,9 +258,18 @@ verify_fixture() {
     tools/test/run-transaction-100m-fixture-restore.sh
 }
 
+seed_fixture() {
+  seed_fallback_used="true"
+  tools/test/prepare-transaction-read-model-100m-fixture.sh
+}
+
 run_k6() {
   if [[ "${k6_enabled}" != "true" ]]; then
     echo "[transaction-100m-fresh-volume] k6 skipped"
+    return 0
+  fi
+  if [[ "${seed_fallback_used}" == "true" && "${k6_after_seed}" != "true" ]]; then
+    echo "[transaction-100m-fresh-volume] k6 skipped after seed-only fallback"
     return 0
   fi
 
@@ -238,8 +297,13 @@ if [[ "${FRESH_VOLUME_CONFIRM:-}" != "erase-postgres-volume" ]]; then
   exit 1
 fi
 
+preflight_fixture_artifact
 reset_postgres_volume
-start_runtime
-restore_fixture
-verify_fixture
+if [[ "${artifact_ready}" == "true" ]]; then
+  start_runtime
+  restore_fixture
+  verify_fixture
+else
+  seed_fixture
+fi
 run_k6

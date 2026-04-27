@@ -10,6 +10,8 @@ Environment:
   FIXTURE_NAME              default transaction-100m-fixture
   FIXTURE_RECOVERY_PREFLIGHT default true
   FIXTURE_REQUIRE_DUMP      require local dump artifact before mode, default false; restore always requires it
+  FIXTURE_WRITE_MANIFEST    write manifest/checksum after dump, default true
+  FIXTURE_ARTIFACT_VERIFY   verify manifest/checksum before restore, default false
   FIXTURE_VERIFY_MIN_ROWS   sampled minimum rows for verify, default 0
   FIXTURE_RESTORE_TRUNCATE  must be true for restore
 USAGE
@@ -32,6 +34,8 @@ fixture_dir="${FIXTURE_DIR:-build/fixtures}"
 fixture_path="${FIXTURE_PATH:-${fixture_dir}/${fixture_name}.dump}"
 fixture_recovery_preflight="${FIXTURE_RECOVERY_PREFLIGHT:-true}"
 fixture_require_dump="${FIXTURE_REQUIRE_DUMP:-false}"
+fixture_write_manifest="${FIXTURE_WRITE_MANIFEST:-true}"
+fixture_artifact_verify="${FIXTURE_ARTIFACT_VERIFY:-false}"
 fixture_verify_min_rows="${FIXTURE_VERIFY_MIN_ROWS:-0}"
 postgres_container_name="${FIXTURE_POSTGRES_CONTAINER_NAME:-aquila-bank-postgres}"
 compose_files=(-f compose.yml -f compose.t3micro.yml -f compose.loadtest.yml)
@@ -49,6 +53,14 @@ case "${fixture_require_dump}" in
   true|false) ;;
   *) echo "FIXTURE_REQUIRE_DUMP must be true or false" >&2; exit 1 ;;
 esac
+case "${fixture_write_manifest}" in
+  true|false) ;;
+  *) echo "FIXTURE_WRITE_MANIFEST must be true or false" >&2; exit 1 ;;
+esac
+case "${fixture_artifact_verify}" in
+  true|false) ;;
+  *) echo "FIXTURE_ARTIFACT_VERIFY must be true or false" >&2; exit 1 ;;
+esac
 if ! [[ "${fixture_verify_min_rows}" =~ ^[0-9]+$ ]]; then
   echo "FIXTURE_VERIFY_MIN_ROWS must be zero or a positive integer" >&2
   exit 1
@@ -62,6 +74,8 @@ echo "[transaction-fixture-restore] mode=${fixture_mode}"
 echo "[transaction-fixture-restore] dump=${fixture_path}"
 echo "[transaction-fixture-restore] recovery_preflight=${fixture_recovery_preflight}"
 echo "[transaction-fixture-restore] require_dump=${fixture_require_dump}"
+echo "[transaction-fixture-restore] write_manifest=${fixture_write_manifest}"
+echo "[transaction-fixture-restore] artifact_verify=${fixture_artifact_verify}"
 echo "[transaction-fixture-restore] verify_min_rows=${fixture_verify_min_rows}"
 echo "[transaction-fixture-restore] modes=verify,dump,restore"
 
@@ -177,8 +191,18 @@ elif [[ "${fixture_mode}" == "dump" ]]; then
     --table=public.transaction_read_model_archive
   docker cp "aquila-bank-postgres:${container_dump_path}" "${fixture_path}"
   assert_fixture_dump_present
+  if [[ "${fixture_write_manifest}" == "true" ]]; then
+    FIXTURE_NAME="${fixture_name}" \
+    FIXTURE_PATH="${fixture_path}" \
+      tools/test/validate-transaction-100m-fixture-artifact.sh --write-manifest
+  fi
 else
   assert_fixture_dump_present
+  if [[ "${fixture_artifact_verify}" == "true" ]]; then
+    FIXTURE_NAME="${fixture_name}" \
+    FIXTURE_PATH="${fixture_path}" \
+      tools/test/validate-transaction-100m-fixture-artifact.sh --verify
+  fi
   docker cp "${fixture_path}" "aquila-bank-postgres:${container_dump_path}"
   docker compose "${compose_files[@]}" exec -T postgres psql -v ON_ERROR_STOP=1 \
     -U "${DB_USERNAME:-postgres}" -d "${DB_NAME:-aquila_bank}" \
