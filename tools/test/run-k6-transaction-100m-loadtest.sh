@@ -25,6 +25,8 @@ Optional environment:
   K6_AUTH_TOKEN        bearer token, optional when bootstrap header auth is enabled
   K6_ARCHIVE_RESULTS   copy markdown summary to docs/performance-results, default true
   K6_PREFLIGHT         check PostgreSQL OOM/index readiness before k6, default true
+  K6_OUTBOX_PREFLIGHT  run local outbox backlog gate before k6, default false
+  K6_OUTBOX_PREFLIGHT_BASE_URL default http://localhost:${LOADTEST_BACKEND_PORT:-18080}
   K6_OBSERVABILITY_MODE prometheus|summary-only, default prometheus
   K6_OVERLOAD_MODE     treat 429 as expected rejected samples, default false
   K6_OVERLOAD_429_RATE_THRESHOLD
@@ -158,6 +160,8 @@ K6_COLD_MAX_THRESHOLD_MS="${K6_COLD_MAX_THRESHOLD_MS:-5000}"
 K6_HTTP_FAILED_RATE="${K6_HTTP_FAILED_RATE:-0.01}"
 K6_ARCHIVE_RESULTS="${K6_ARCHIVE_RESULTS:-true}"
 K6_PREFLIGHT="${K6_PREFLIGHT:-true}"
+K6_OUTBOX_PREFLIGHT="${K6_OUTBOX_PREFLIGHT:-false}"
+K6_OUTBOX_PREFLIGHT_BASE_URL="${K6_OUTBOX_PREFLIGHT_BASE_URL:-http://localhost:${LOADTEST_BACKEND_PORT:-18080}}"
 K6_OBSERVABILITY_MODE="${K6_OBSERVABILITY_MODE:-prometheus}"
 K6_OVERLOAD_MODE="${K6_OVERLOAD_MODE:-false}"
 K6_OVERLOAD_429_RATE_THRESHOLD="${K6_OVERLOAD_429_RATE_THRESHOLD:-0.05}"
@@ -176,7 +180,7 @@ loadtest_alertmanager_port="${LOADTEST_ALERTMANAGER_PORT:-19093}"
 loadtest_postgres_exporter_port="${LOADTEST_POSTGRES_EXPORTER_PORT:-19187}"
 loadtest_postgres_container="${LOADTEST_POSTGRES_CONTAINER_NAME:-aquila-bank-postgres-loadtest}"
 loadtest_backend_container="${LOADTEST_BACKEND_CONTAINER_NAME:-aquila-bank-backend-loadtest}"
-export K6_VUS K6_LIMIT K6_HOT_P95_THRESHOLD_MS K6_COLD_P95_THRESHOLD_MS K6_HOT_P99_THRESHOLD_MS K6_COLD_P99_THRESHOLD_MS K6_HOT_MAX_THRESHOLD_MS K6_COLD_MAX_THRESHOLD_MS K6_HTTP_FAILED_RATE K6_ARCHIVE_RESULTS K6_PREFLIGHT K6_OBSERVABILITY_MODE K6_OVERLOAD_MODE K6_OVERLOAD_429_RATE_THRESHOLD K6_MAX_RETRY_AFTER_SLEEP_SECONDS K6_GENERATOR_MODE K6_DOCKER_CONTEXT K6_REMOTE_BASE_URL K6_REMOTE_PROMETHEUS_RW_SERVER_URL K6_REMOTE_WORKDIR K6_REPORT_NAME
+export K6_VUS K6_LIMIT K6_HOT_P95_THRESHOLD_MS K6_COLD_P95_THRESHOLD_MS K6_HOT_P99_THRESHOLD_MS K6_COLD_P99_THRESHOLD_MS K6_HOT_MAX_THRESHOLD_MS K6_COLD_MAX_THRESHOLD_MS K6_HTTP_FAILED_RATE K6_ARCHIVE_RESULTS K6_PREFLIGHT K6_OUTBOX_PREFLIGHT K6_OUTBOX_PREFLIGHT_BASE_URL K6_OBSERVABILITY_MODE K6_OVERLOAD_MODE K6_OVERLOAD_429_RATE_THRESHOLD K6_MAX_RETRY_AFTER_SLEEP_SECONDS K6_GENERATOR_MODE K6_DOCKER_CONTEXT K6_REMOTE_BASE_URL K6_REMOTE_PROMETHEUS_RW_SERVER_URL K6_REMOTE_WORKDIR K6_REPORT_NAME
 
 require_positive_integer K6_VUS
 require_positive_integer K6_LIMIT
@@ -187,6 +191,15 @@ require_positive_number K6_COLD_P99_THRESHOLD_MS
 require_positive_number K6_HOT_MAX_THRESHOLD_MS
 require_positive_number K6_COLD_MAX_THRESHOLD_MS
 require_rate K6_HTTP_FAILED_RATE
+require_bool_value() {
+  local name="$1"
+  local value="${!name:-}"
+  if [[ "${value}" != "true" && "${value}" != "false" ]]; then
+    echo "${name} must be true or false" >&2
+    exit 1
+  fi
+}
+require_bool_value K6_OUTBOX_PREFLIGHT
 require_non_negative_integer K6_MAX_RETRY_AFTER_SLEEP_SECONDS
 require_rate K6_OVERLOAD_429_RATE_THRESHOLD
 require_generator_mode
@@ -246,6 +259,8 @@ print_plan() {
     fi
   fi
   echo "[k6-transaction-100m] preflight=${K6_PREFLIGHT}"
+  echo "[k6-transaction-100m] outbox_preflight=${K6_OUTBOX_PREFLIGHT}"
+  echo "[k6-transaction-100m] outbox_preflight_base_url=${K6_OUTBOX_PREFLIGHT_BASE_URL}"
   if [[ "${run_dependencies}" == "true" ]]; then
     echo "[k6-transaction-100m] dependencies=compose-default"
   else
@@ -302,6 +317,16 @@ assert_k6_preflight() {
   fi
 }
 
+run_outbox_preflight() {
+  if [[ "${K6_OUTBOX_PREFLIGHT}" != "true" ]]; then
+    echo "[k6-transaction-100m] outbox preflight skipped"
+    return 0
+  fi
+  OUTBOX_LOCAL_BUILD_BACKEND=false \
+  OUTBOX_BACKLOG_BASE_URL="${K6_OUTBOX_PREFLIGHT_BASE_URL}" \
+    tools/test/run-outbox-provider-backlog-local-gate.sh
+}
+
 if [[ "${mode}" != "no-up" ]]; then
   echo "[k6-transaction-100m] building backend bootJar"
   tools/test/with-resource-lock.sh back-gradle-loadtest-bootjar ./back/gradlew -p back bootJar
@@ -315,6 +340,7 @@ if [[ "${mode}" != "no-up" ]]; then
 fi
 
 assert_k6_preflight
+run_outbox_preflight
 
 run_k6_local() {
   local run_args
