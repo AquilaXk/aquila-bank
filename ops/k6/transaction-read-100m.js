@@ -1,6 +1,6 @@
 import http from "k6/http";
 import {check, fail, sleep} from "k6";
-import {Rate, Trend} from "k6/metrics";
+import {Counter, Rate, Trend} from "k6/metrics";
 
 function booleanEnv(value) {
   return ["1", "true", "yes", "on"].includes(String(value || "").toLowerCase());
@@ -23,15 +23,15 @@ const coldFrom = __ENV.K6_COLD_FROM || "";
 const coldTo = __ENV.K6_COLD_TO || "";
 const authToken = __ENV.K6_AUTH_TOKEN || "";
 const limit = Number(__ENV.K6_LIMIT || "50");
-const vus = Number(__ENV.K6_VUS || "8");
-const duration = __ENV.K6_DURATION || "1m";
-const scenarioMode = __ENV.K6_SCENARIO_MODE || "constant-vus";
-const rate = Number(__ENV.K6_RATE || "8");
-const timeUnit = __ENV.K6_TIME_UNIT || "1s";
-const preAllocatedVUs = Number(__ENV.K6_PRE_ALLOCATED_VUS || String(vus));
-const maxVUs = Number(__ENV.K6_MAX_VUS || String(preAllocatedVUs));
-const burstRate = Number(__ENV.K6_BURST_RATE || "16");
-const burstDuration = __ENV.K6_BURST_DURATION || "20s";
+const vus = Number(__ENV.AQUILA_K6_VUS || "8");
+const duration = __ENV.AQUILA_K6_DURATION || "1m";
+const scenarioMode = __ENV.AQUILA_K6_SCENARIO_MODE || "constant-vus";
+const rate = Number(__ENV.AQUILA_K6_RATE || "8");
+const timeUnit = __ENV.AQUILA_K6_TIME_UNIT || "1s";
+const preAllocatedVUs = Number(__ENV.AQUILA_K6_PRE_ALLOCATED_VUS || String(vus));
+const maxVUs = Number(__ENV.AQUILA_K6_MAX_VUS || String(preAllocatedVUs));
+const burstRate = Number(__ENV.AQUILA_K6_BURST_RATE || "16");
+const burstDuration = __ENV.AQUILA_K6_BURST_DURATION || "20s";
 const hotP95ThresholdMs = Number(__ENV.K6_HOT_P95_THRESHOLD_MS || "350");
 const coldP95ThresholdMs = Number(__ENV.K6_COLD_P95_THRESHOLD_MS || "750");
 const hotP99ThresholdMs = Number(__ENV.K6_HOT_P99_THRESHOLD_MS || "750");
@@ -43,10 +43,14 @@ const reportName = __ENV.K6_REPORT_NAME || "transaction-100m";
 const observabilityMode = __ENV.K6_OBSERVABILITY_MODE || "prometheus";
 const overloadMode = booleanEnv(__ENV.K6_OVERLOAD_MODE);
 const overload429RateThreshold = nonNegativeNumberEnv(__ENV.K6_OVERLOAD_429_RATE_THRESHOLD, 0.05);
+const overload503RateThreshold = nonNegativeNumberEnv(__ENV.K6_OVERLOAD_503_RATE_THRESHOLD, 0);
 const maxRetryAfterSleepSeconds = nonNegativeNumberEnv(__ENV.K6_MAX_RETRY_AFTER_SLEEP_SECONDS, 1);
 const httpFailedRateThreshold = overloadMode ? "disabled in overload mode" : failedRate;
 const overload429RateThresholdText = overloadMode
   ? overload429RateThreshold
+  : "disabled outside overload mode";
+const overload503RateThresholdText = overloadMode
+  ? overload503RateThreshold
   : "disabled outside overload mode";
 
 const hotFirst = new Trend("aquila_transaction_hot_first_ms", true);
@@ -54,6 +58,8 @@ const hotCursor = new Trend("aquila_transaction_hot_cursor_ms", true);
 const coldFirst = new Trend("aquila_transaction_cold_first_ms", true);
 const coldCursor = new Trend("aquila_transaction_cold_cursor_ms", true);
 const transaction429Rate = new Rate("aquila_transaction_429_rate");
+const transaction503Rate = new Rate("aquila_transaction_503_rate");
+const transaction503Count = new Counter("aquila_transaction_503_count");
 
 function thresholds() {
   const result = {
@@ -83,6 +89,8 @@ function thresholds() {
     result.http_req_failed = [`rate<${failedRate}`];
   } else {
     result.aquila_transaction_429_rate = [`rate<${overload429RateThreshold}`];
+    result.aquila_transaction_503_rate = [`rate<=${overload503RateThreshold}`];
+    result.aquila_transaction_503_count = ["count<1"];
   }
   return result;
 }
@@ -124,6 +132,7 @@ function scenarios() {
 export const options = {
   scenarios: scenarios(),
   thresholds: thresholds(),
+  summaryTrendStats: ["avg", "min", "med", "max", "p(90)", "p(95)", "p(99)"],
   tags: {
     service: "aquila-bank",
     workload: "transaction-read-100m",
@@ -209,7 +218,12 @@ function requestPage(shape, path, accountId, from, to, cursor) {
   });
 
   const is429 = response.status === 429;
+  const is503 = response.status === 503;
   transaction429Rate.add(is429);
+  transaction503Rate.add(is503);
+  if (is503) {
+    transaction503Count.add(1);
+  }
   if (is429 && overloadMode) {
     // 429는 admission guard의 정상 보호 신호라 overload mode에서만 예외 없이 집계합니다.
     check(response, {
@@ -299,10 +313,17 @@ export default function () {
   }
 }
 
+function normalizedMetricKey(value) {
+  return String(value).replace(/p\((\d+)\.0+\)/, "p($1)");
+}
+
 function metric(data, name, valueName) {
   const item = data.metrics[name];
   if (!item || !item.values || item.values[valueName] === undefined) {
-    return "n/a";
+    const expectedKey = normalizedMetricKey(valueName);
+    const fallbackKey = Object.keys((item && item.values) || {})
+      .find((key) => normalizedMetricKey(key) === expectedKey);
+    return fallbackKey ? item.values[fallbackKey] : "n/a";
   }
   return item.values[valueName];
 }
@@ -335,12 +356,15 @@ function markdownSummary(data) {
 - cold max threshold ms: ${coldMaxThresholdMs}
 - http failed rate threshold: ${httpFailedRateThreshold}
 - overload 429 rate threshold: ${overload429RateThresholdText}
+- overload 503 rate threshold: ${overload503RateThresholdText}
 
 ## Results
 
 - http_req_failed rate: ${metric(data, "http_req_failed", "rate")}
 - checks rate: ${metric(data, "checks", "rate")}
 - transaction 429 rate: ${metric(data, "aquila_transaction_429_rate", "rate")}
+- transaction 503 rate: ${metric(data, "aquila_transaction_503_rate", "rate")}
+- transaction 503 count: ${metric(data, "aquila_transaction_503_count", "count")}
 - hot first p95 ms: ${metric(data, "aquila_transaction_hot_first_ms", "p(95)")}
 - hot first p99 ms: ${metric(data, "aquila_transaction_hot_first_ms", "p(99)")}
 - hot first max ms: ${metric(data, "aquila_transaction_hot_first_ms", "max")}
@@ -358,6 +382,7 @@ function markdownSummary(data) {
 
 - 이 결과는 k6 HTTP replay 기준입니다.
 - overload mode에서는 admission guard 429를 rejected sample로 집계합니다.
+- overload mode에서도 503은 app/backend failure 신호라 hard fail로 분리합니다.
 - 1억 건 분포는 실행 전 DB에 준비되어 있어야 합니다.
 - observability mode가 \`summary-only\`이면 Prometheus remote write 없이 summary 파일만 남깁니다.
 `;

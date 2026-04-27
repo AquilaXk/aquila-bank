@@ -128,8 +128,9 @@ write_explain() {
   local to="$4"
   local cursor="$5"
   local output="$6"
+  # docker exec 내부 --output은 container path로 해석되므로 host redirect로 artifact를 남깁니다.
   query_sql "${table}" "${account_id}" "${from}" "${to}" "${cursor}" \
-    | "${psql_base[@]}" --output "${output}"
+    | "${psql_base[@]}" >"${output}"
 }
 
 require_inputs() {
