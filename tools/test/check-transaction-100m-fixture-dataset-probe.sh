@@ -35,6 +35,7 @@ plan="$(
   FIXTURE_PATH="${dump_path}" \
   FIXTURE_MANIFEST_PATH="${manifest_path}" \
   FIXTURE_DATASET_ENV_PATH="${env_path}" \
+  FIXTURE_DATASET_RUN_ID=dataset-probe-check \
     "${script}" --print-plan
 )"
 grep -F "mode=print-plan" <<<"${plan}" >/dev/null
@@ -42,6 +43,7 @@ grep -F "manifest=${manifest_path}" <<<"${plan}" >/dev/null
 grep -F "dataset_env=${env_path}" <<<"${plan}" >/dev/null
 grep -F "db_gate=true" <<<"${plan}" >/dev/null
 grep -F "db_fallback=false" <<<"${plan}" >/dev/null
+grep -F "run_id=dataset-probe-check" <<<"${plan}" >/dev/null
 grep -F "min_window_rows=51" <<<"${plan}" >/dev/null
 grep -F "estimate_tolerance_rows=1000" <<<"${plan}" >/dev/null
 grep -F "db_report=${dump_path}.db-gate.env" <<<"${plan}" >/dev/null
@@ -50,6 +52,9 @@ grep -F "query_lock_timeout_ms=1000" <<<"${plan}" >/dev/null
 grep -F "query_work_mem=2MB" <<<"${plan}" >/dev/null
 grep -F "query_temp_file_limit=8MB" <<<"${plan}" >/dev/null
 grep -F "query_read_only=true" <<<"${plan}" >/dev/null
+grep -F "db_failure_report=${dump_path}.db-gate-dataset-probe-check.failure.env" <<<"${plan}" >/dev/null
+grep -F "recovery_on_failure=true" <<<"${plan}" >/dev/null
+grep -F "recovery_wait_seconds=90" <<<"${plan}" >/dev/null
 grep -F "window_probe_mode=index-only-bounded" <<<"${plan}" >/dev/null
 grep -F "window_probe_limit=51" <<<"${plan}" >/dev/null
 grep -F "db_gate_checks=partition-estimate-tolerance,index-only-bounded-window-probe,monthly-partition" <<<"${plan}" >/dev/null
@@ -103,6 +108,10 @@ grep -F "index_only_window_probe" "${script}" >/dev/null
 grep -F "ORDER BY booked_at DESC, id DESC" "${script}" >/dev/null
 grep -F "LIMIT \${min_window_rows}" "${script}" >/dev/null
 grep -F "write_db_gate_report" "${script}" >/dev/null
+grep -F "write_db_gate_failure_report" "${script}" >/dev/null
+grep -F "wait_for_postgres_recovery_after_failure" "${script}" >/dev/null
+grep -F "FIXTURE_DATASET_DB_GATE_STATUS=failed" "${script}" >/dev/null
+grep -F "FIXTURE_DATASET_DB_FAILURE_STAGE" "${script}" >/dev/null
 grep -F "BEGIN READ ONLY" "${script}" >/dev/null
 grep -F "SET LOCAL statement_timeout" "${script}" >/dev/null
 grep -F "SET LOCAL lock_timeout" "${script}" >/dev/null
@@ -119,5 +128,13 @@ grep -F "run-transaction-100m-fixture-dataset-probe.sh" tools/test/run-transacti
 echo "[transaction-100m-dataset-probe] invalid input fails"
 if FIXTURE_DATASET_QUERY_TEMP_FILE_LIMIT=bad "${script}" --print-plan >/dev/null 2>&1; then
   echo "FIXTURE_DATASET_QUERY_TEMP_FILE_LIMIT=bad unexpectedly succeeded" >&2
+  exit 1
+fi
+if FIXTURE_DATASET_RECOVERY_ON_FAILURE=bad "${script}" --print-plan >/dev/null 2>&1; then
+  echo "FIXTURE_DATASET_RECOVERY_ON_FAILURE=bad unexpectedly succeeded" >&2
+  exit 1
+fi
+if FIXTURE_DATASET_RECOVERY_WAIT_SECONDS=bad "${script}" --print-plan >/dev/null 2>&1; then
+  echo "FIXTURE_DATASET_RECOVERY_WAIT_SECONDS=bad unexpectedly succeeded" >&2
   exit 1
 fi
