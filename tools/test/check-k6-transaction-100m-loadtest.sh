@@ -21,6 +21,8 @@ grep -F "observability resources: prometheus=0.25/256m grafana=0.20/256m alertma
 grep -F "k6 report name: transaction-100m-check" <<<"${plan}" >/dev/null
 grep -F "hot p99 threshold ms=750" <<<"${plan}" >/dev/null
 grep -F "cold p99 threshold ms=1500" <<<"${plan}" >/dev/null
+grep -F "hot p99.9 threshold ms=1200" <<<"${plan}" >/dev/null
+grep -F "cold p99.9 threshold ms=2500" <<<"${plan}" >/dev/null
 grep -F "hot max threshold ms=3000" <<<"${plan}" >/dev/null
 grep -F "cold max threshold ms=5000" <<<"${plan}" >/dev/null
 grep -F "overload mode=false max retry-after sleep seconds=1" <<<"${plan}" >/dev/null
@@ -85,6 +87,7 @@ grep -F "burst rate=16 duration=20s preAllocatedVUs=8 maxVUs=32" <<<"${burst_pla
 echo "[k6-transaction-100m] k6 script contract"
 grep -F "experimental-prometheus-rw" compose.loadtest.yml >/dev/null
 grep -F "K6_PROMETHEUS_RW_SERVER_URL" compose.loadtest.yml >/dev/null
+grep -F 'K6_PROMETHEUS_RW_TREND_STATS: "p(50),p(90),p(95),p(99),p(99.9),min,max,avg"' compose.loadtest.yml >/dev/null
 grep -F -- "--no-collector.stat_bgwriter" compose.loadtest.yml >/dev/null
 grep -F "max_wal_size" compose.loadtest.yml >/dev/null
 grep -F "checkpoint_timeout" compose.loadtest.yml >/dev/null
@@ -98,9 +101,12 @@ grep -F "aquila_transaction_hot_first_ms" ops/k6/transaction-read-100m.js >/dev/
 grep -F "aquila_transaction_cold_cursor_ms" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_HOT_P99_THRESHOLD_MS" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_COLD_P99_THRESHOLD_MS" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "K6_HOT_P999_THRESHOLD_MS" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "K6_COLD_P999_THRESHOLD_MS" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_HOT_MAX_THRESHOLD_MS" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_COLD_MAX_THRESHOLD_MS" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "p(99)<" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "p(99.9)<" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "max<" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_OVERLOAD_MODE" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "AQUILA_K6_SCENARIO_MODE" ops/k6/transaction-read-100m.js >/dev/null
@@ -141,12 +147,15 @@ grep -F 'rate<=${overload503RateThreshold}' ops/k6/transaction-read-100m.js >/de
 grep -F "count<1" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "summaryTrendStats" ops/k6/transaction-read-100m.js >/dev/null
 grep -F '"p(99)"' ops/k6/transaction-read-100m.js >/dev/null
+grep -F '"p(99.9)"' ops/k6/transaction-read-100m.js >/dev/null
 grep -F "Retry-After" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_OVERLOAD_MODE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_SCENARIO_MODE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "require_scenario_mode" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_HOT_P99_THRESHOLD_MS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_COLD_P99_THRESHOLD_MS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "K6_HOT_P999_THRESHOLD_MS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "K6_COLD_P999_THRESHOLD_MS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_HOT_MAX_THRESHOLD_MS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_COLD_MAX_THRESHOLD_MS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_OVERLOAD_429_RATE_THRESHOLD" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
@@ -170,6 +179,8 @@ grep -F "interrupted_iterations" tools/test/run-k6-transaction-100m-loadtest.sh 
 grep -F "dropped_iterations" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "Insufficient VUs" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "handleSummary" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "observabilityNote" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "Prometheus remote write와 summary 파일을 함께 남깁니다" ops/k6/transaction-read-100m.js >/dev/null
 grep -F '/reports/${reportName}-summary.md' ops/k6/transaction-read-100m.js >/dev/null
 
 echo "[k6-transaction-100m] summary hard gate"
@@ -224,6 +235,10 @@ if K6_OVERLOAD_503_RATE_THRESHOLD=1.5 tools/test/run-k6-transaction-100m-loadtes
 fi
 if K6_HOT_P99_THRESHOLD_MS=0 tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
   echo "K6_HOT_P99_THRESHOLD_MS=0 unexpectedly succeeded" >&2
+  exit 1
+fi
+if K6_HOT_P999_THRESHOLD_MS=0 tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
+  echo "K6_HOT_P999_THRESHOLD_MS=0 unexpectedly succeeded" >&2
   exit 1
 fi
 if K6_GENERATOR_MODE=unknown tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
