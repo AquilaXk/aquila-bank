@@ -9,7 +9,8 @@ Environment:
   OUTBOX_LOCAL_BUILD_BACKEND default true
   OUTBOX_LOCAL_TOKEN_MODE    generate|provided, default generate
   OUTBOX_LOCAL_READINESS_TIMEOUT_SECONDS default 120
-  OUTBOX_BACKLOG_BASE_URL    default http://localhost:8080
+  OUTBOX_BACKLOG_BASE_URL    default http://localhost:${LOADTEST_BACKEND_PORT:-18080}
+  OUTBOX_LOCAL_READINESS_PATH default /actuator/health/readiness
   OUTBOX_BACKLOG_TOKEN       required when OUTBOX_LOCAL_TOKEN_MODE=provided
 
 Examples:
@@ -61,7 +62,8 @@ require_positive_integer_value() {
 build_backend="${OUTBOX_LOCAL_BUILD_BACKEND:-true}"
 token_mode="${OUTBOX_LOCAL_TOKEN_MODE:-generate}"
 readiness_timeout_seconds="${OUTBOX_LOCAL_READINESS_TIMEOUT_SECONDS:-120}"
-base_url="${OUTBOX_BACKLOG_BASE_URL:-http://localhost:8080}"
+readiness_path="${OUTBOX_LOCAL_READINESS_PATH:-/actuator/health/readiness}"
+base_url="${OUTBOX_BACKLOG_BASE_URL:-http://localhost:${LOADTEST_BACKEND_PORT:-18080}}"
 base_url="${base_url%/}"
 compose_files=(-f compose.yml -f compose.t3micro.yml -f compose.loadtest.yml)
 
@@ -77,6 +79,7 @@ print_plan() {
   echo "[outbox-backlog-local] build_backend=${build_backend}"
   echo "[outbox-backlog-local] token_mode=${token_mode}"
   echo "[outbox-backlog-local] readiness_timeout_seconds=${readiness_timeout_seconds}"
+  echo "[outbox-backlog-local] readiness_path=${readiness_path}"
   echo "[outbox-backlog-local] base_url=${base_url}"
   echo "[outbox-backlog-local] services=postgres,aquila-bank-backend"
   echo "[outbox-backlog-local] gate=tools/test/run-outbox-provider-small-batch-backlog-gate.sh"
@@ -98,7 +101,7 @@ print_dry_run() {
 wait_for_backend() {
   local deadline=$((SECONDS + readiness_timeout_seconds))
   while ((SECONDS < deadline)); do
-    if curl -fsS "${base_url}/actuator/health/readiness" >/dev/null 2>&1; then
+    if curl -fsS "${base_url}${readiness_path}" >/dev/null 2>&1; then
       return 0
     fi
     sleep 2
