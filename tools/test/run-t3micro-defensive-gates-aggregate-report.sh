@@ -12,6 +12,7 @@ Environment:
   T3MICRO_SSE_RESULT_MD        optional SSE reconnect archive markdown
   T3MICRO_ADMISSION_SUMMARY_TSV optional admission summary TSV
   T3MICRO_OUTBOX_SUMMARY_TSV   optional outbox summary TSV
+  T3MICRO_K6_SUMMARY_MD        optional k6 transaction 100m summary markdown
 
 Examples:
   tools/test/run-t3micro-defensive-gates-aggregate-report.sh --print-plan
@@ -48,6 +49,7 @@ capacity_result="${T3MICRO_CAPACITY_RESULT_MD:-}"
 sse_result="${T3MICRO_SSE_RESULT_MD:-}"
 admission_summary="${T3MICRO_ADMISSION_SUMMARY_TSV:-}"
 outbox_summary="${T3MICRO_OUTBOX_SUMMARY_TSV:-}"
+k6_summary="${T3MICRO_K6_SUMMARY_MD:-}"
 
 print_plan() {
   echo "[t3micro-defensive-aggregate] mode=${mode}"
@@ -56,6 +58,7 @@ print_plan() {
   echo "[t3micro-defensive-aggregate] sse=${sse_result:-missing}"
   echo "[t3micro-defensive-aggregate] admission=${admission_summary:-missing}"
   echo "[t3micro-defensive-aggregate] outbox=${outbox_summary:-missing}"
+  echo "[t3micro-defensive-aggregate] k6=${k6_summary:-missing}"
 }
 
 md_value() {
@@ -99,6 +102,7 @@ write_report() {
     echo "- sseResult: ${sse_result:-missing}"
     echo "- admissionSummary: ${admission_summary:-missing}"
     echo "- outboxSummary: ${outbox_summary:-missing}"
+    echo "- k6Summary: ${k6_summary:-missing}"
     echo
     echo "## Gate Summary"
     echo
@@ -108,6 +112,7 @@ write_report() {
     echo "| sse reconnect | $(md_value "${sse_result}" "status") | $(md_value "${sse_result}" "peakCpuPercent") | $(md_value "${sse_result}" "peakMemoryMiB") | clients=$(md_value "${sse_result}" "reconnectClients") rounds=$(md_value "${sse_result}" "reconnectRounds") | ${sse_result:-missing} |"
     echo "| http admission | n/a | n/a | n/a | rejected=$(tsv_value "${admission_summary}" "rejected_count") failed_rate=$(tsv_value "${admission_summary}" "failed_rate") | ${admission_summary:-missing} |"
     echo "| outbox backlog | n/a | n/a | n/a | lag=$(tsv_value "${outbox_summary}" "lag_seconds") failed=$(tsv_value "${outbox_summary}" "failed_count") dlq=$(tsv_value "${outbox_summary}" "dlq_count") | ${outbox_summary:-missing} |"
+    echo "| k6 transaction 100m | n/a | n/a | n/a | hotFirstP95=$(md_value "${k6_summary}" "hot first p95 ms") hotCursorP95=$(md_value "${k6_summary}" "hot cursor p95 ms") coldFirstP95=$(md_value "${k6_summary}" "cold first p95 ms") coldCursorP95=$(md_value "${k6_summary}" "cold cursor p95 ms") 429Rate=$(md_value "${k6_summary}" "transaction 429 rate") | ${k6_summary:-missing} |"
     echo
     echo "## Notes"
     echo
