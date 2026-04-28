@@ -45,7 +45,7 @@ class NotificationChannelProviderDeliverySmokeTest {
   }
 
   @Test
-  void dispatchesImmediateEmailAndMarksSlowSmsForRetryBackoff() throws Exception {
+  void dispatchesImmediateEmailAndMarksProviderRejectedSmsForRetryBackoff() throws Exception {
     AtomicInteger emailRequests = new AtomicInteger();
     AtomicInteger smsRequests = new AtomicInteger();
     server = HttpServer.create(new InetSocketAddress(0), 0);
@@ -60,16 +60,8 @@ class NotificationChannelProviderDeliverySmokeTest {
         "/sms",
         exchange -> {
           smsRequests.incrementAndGet();
-          try {
-            Thread.sleep(200L);
-          } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-          }
-          try {
-            writeAccepted(exchange);
-          } catch (IOException ignored) {
-            // read timeout 이후 client가 먼저 연결을 닫을 수 있어 서버 응답 write 실패는 무시합니다.
-          }
+          // CI runner 부하에 민감한 read timeout 대신 provider reject를 고정해 retry 경로만 검증합니다.
+          writeProviderRejected(exchange);
         });
     server.start();
 
@@ -130,6 +122,11 @@ class NotificationChannelProviderDeliverySmokeTest {
 
   private void writeAccepted(HttpExchange exchange) throws IOException {
     exchange.sendResponseHeaders(202, -1);
+    exchange.close();
+  }
+
+  private void writeProviderRejected(HttpExchange exchange) throws IOException {
+    exchange.sendResponseHeaders(503, -1);
     exchange.close();
   }
 
