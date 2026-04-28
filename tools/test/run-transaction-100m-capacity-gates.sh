@@ -108,6 +108,8 @@ backend_health_url="${CAPACITY_BACKEND_HEALTH_URL:-http://localhost:${BACKEND_PO
 report_dir="build/reports/k6/${capacity_name}"
 summary_tsv="${report_dir}/capacity-summary.tsv"
 run_context_path="${report_dir}/capacity-run-context.env"
+prerequisite_failure_path="${CAPACITY_PREREQUISITE_FAILURE_REPORT_PATH:-${report_dir}/capacity-prerequisite-failure.env}"
+capacity_run_grade="${CAPACITY_RUN_GRADE:-capacity}"
 compose_files=(-f compose.yml -f compose.t3micro.yml -f compose.loadtest.yml)
 CPU_SAMPLER_PID=""
 threshold_failed=false
@@ -290,6 +292,46 @@ require_env() {
   fi
 }
 
+present_flag() {
+  if [[ -n "$1" ]]; then
+    echo "true"
+  else
+    echo "false"
+  fi
+}
+
+write_capacity_prerequisite_failure_report() {
+  local reason="$1"
+  local missing_vars="$2"
+  mkdir -p "$(dirname "${prerequisite_failure_path}")"
+  {
+    echo "CAPACITY_PREREQUISITE_STATUS=failed"
+    echo "CAPACITY_RUN_PURPOSE=capacity"
+    echo "CAPACITY_NAME=${capacity_name}"
+    echo "CAPACITY_PREREQUISITE_GRADE=${capacity_run_grade}"
+    echo "CAPACITY_PREREQUISITE_FAILURE_REASON=${reason}"
+    echo "CAPACITY_PREREQUISITE_MISSING_VARS=${missing_vars}"
+    echo "CAPACITY_GENERATOR_MODE=${capacity_k6_generator_mode}"
+    echo "CAPACITY_K6_DOCKER_CONTEXT_PRESENT=$(present_flag "${capacity_k6_docker_context}")"
+    echo "CAPACITY_K6_REMOTE_BASE_URL_PRESENT=$(present_flag "${capacity_k6_remote_base_url}")"
+    echo "CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL_PRESENT=$(present_flag "${capacity_k6_remote_prometheus_rw_server_url}")"
+    echo "CAPACITY_SUMMARY_TSV=${summary_tsv}"
+    echo "CAPACITY_RUN_CONTEXT_ENV=${run_context_path}"
+    echo "CAPACITY_PREREQUISITE_FAILURE_REPORT=${prerequisite_failure_path}"
+  } >"${prerequisite_failure_path}"
+  echo "[transaction-100m-capacity] prerequisite failure report written=${prerequisite_failure_path}" >&2
+}
+
+fail_capacity_prerequisite() {
+  local reason="$1"
+  local missing_vars="$2"
+  local message="$3"
+  write_capacity_prerequisite_failure_report "${reason}" "${missing_vars}"
+  echo "${message}" >&2
+  echo "capacity prerequisite failure report: ${prerequisite_failure_path}" >&2
+  exit 1
+}
+
 stop_backend_before_bootjar() {
   # host jar hot-swap 방지: bootJar 전 실행 중인 backend JVM만 내립니다.
   docker compose "${compose_files[@]}" --profile loadtest stop aquila-bank-backend >/dev/null 2>&1 || true
@@ -338,23 +380,24 @@ assert_adaptive_strict_guards "CAPACITY_CPU_SPLIT_PROFILES" "${cpu_split_profile
 assert_adaptive_strict_guard "CAPACITY_LONG_SOAK_PROFILE" "${long_soak_profile}"
 
 if [[ "${capacity_k6_generator_mode}" == "local" ]]; then
-  echo "CAPACITY_K6_GENERATOR_MODE=local is limited to smoke runners; capacity requires docker-context" >&2
-  exit 1
+  fail_capacity_prerequisite \
+    "local-generator-not-allowed" \
+    "" \
+    "CAPACITY_K6_GENERATOR_MODE=local is limited to smoke runners; capacity requires docker-context"
 fi
 
 if [[ "${capacity_k6_generator_mode}" == "docker-context" ]]; then
-  [[ -n "${capacity_k6_docker_context}" ]] || {
-    echo "CAPACITY_K6_DOCKER_CONTEXT is required when CAPACITY_K6_GENERATOR_MODE=docker-context" >&2
-    exit 1
-  }
-  [[ -n "${capacity_k6_remote_base_url}" ]] || {
-    echo "CAPACITY_K6_REMOTE_BASE_URL is required when CAPACITY_K6_GENERATOR_MODE=docker-context" >&2
-    exit 1
-  }
-  [[ -n "${capacity_k6_remote_prometheus_rw_server_url}" ]] || {
-    echo "CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL is required when CAPACITY_K6_GENERATOR_MODE=docker-context" >&2
-    exit 1
-  }
+  missing_vars=()
+  [[ -n "${capacity_k6_docker_context}" ]] || missing_vars+=("CAPACITY_K6_DOCKER_CONTEXT")
+  [[ -n "${capacity_k6_remote_base_url}" ]] || missing_vars+=("CAPACITY_K6_REMOTE_BASE_URL")
+  [[ -n "${capacity_k6_remote_prometheus_rw_server_url}" ]] || missing_vars+=("CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL")
+  if [[ "${#missing_vars[@]}" -gt 0 ]]; then
+    missing_csv="$(IFS=,; echo "${missing_vars[*]}")"
+    fail_capacity_prerequisite \
+      "missing-required-env" \
+      "${missing_csv}" \
+      "${missing_csv} is required when CAPACITY_K6_GENERATOR_MODE=docker-context"
+  fi
 fi
 
 print_plan() {
@@ -390,6 +433,7 @@ print_plan() {
   echo "[transaction-100m-capacity] hikari_pending_threshold=${hikari_pending_threshold}"
   echo "[transaction-100m-capacity] summary=${summary_tsv}"
   echo "[transaction-100m-capacity] run_context=${run_context_path}"
+  echo "[transaction-100m-capacity] prerequisite_failure=${prerequisite_failure_path}"
 }
 
 print_plan

@@ -38,6 +38,7 @@ grep -F "k6_remote_workdir=/srv/aquila-bank" <<<"${plan}" >/dev/null
 grep -F "capacity_remote_preflight=true timeout=30 readiness_path=/actuator/health/readiness image=curlimages/curl:8.11.1" <<<"${plan}" >/dev/null
 grep -F "summary=build/reports/k6/transaction-capacity-check/capacity-summary.tsv" <<<"${plan}" >/dev/null
 grep -F "run_context=build/reports/k6/transaction-capacity-check/capacity-run-context.env" <<<"${plan}" >/dev/null
+grep -F "prerequisite_failure=build/reports/k6/transaction-capacity-check/capacity-prerequisite-failure.env" <<<"${plan}" >/dev/null
 
 echo "[transaction-100m-capacity] runner contract"
 grep -F "CAPACITY_K6_GENERATOR_MODE" "${script}" >/dev/null
@@ -46,8 +47,9 @@ grep -F "CAPACITY_REMOTE_PREFLIGHT" "${script}" >/dev/null
 grep -F "CAPACITY_REMOTE_PREFLIGHT_TIMEOUT_SECONDS" "${script}" >/dev/null
 grep -F "CAPACITY_REMOTE_READINESS_PATH" "${script}" >/dev/null
 grep -F "CAPACITY_REMOTE_PREFLIGHT_IMAGE" "${script}" >/dev/null
-grep -F "CAPACITY_K6_DOCKER_CONTEXT is required" "${script}" >/dev/null
-grep -F "CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL is required" "${script}" >/dev/null
+grep -F "write_capacity_prerequisite_failure_report" "${script}" >/dev/null
+grep -F "fail_capacity_prerequisite" "${script}" >/dev/null
+grep -F "CAPACITY_PREREQUISITE_MISSING_VARS" "${script}" >/dev/null
 grep -F "K6_GENERATOR_MODE=\"\${capacity_k6_generator_mode}\"" "${script}" >/dev/null
 grep -F "K6_RUN_PURPOSE=capacity" "${script}" >/dev/null
 grep -F "K6_REMOTE_PREFLIGHT=\"\${capacity_remote_preflight}\"" "${script}" >/dev/null
@@ -115,7 +117,16 @@ if CAPACITY_K6_GENERATOR_MODE=local CAPACITY_ALLOW_LOCAL_K6_GENERATOR=true "${sc
   echo "capacity local k6 generator unexpectedly succeeded" >&2
   exit 1
 fi
-if CAPACITY_K6_GENERATOR_MODE=docker-context "${script}" --print-plan >/dev/null 2>&1; then
+prereq_name="transaction-capacity-prereq-missing-check"
+prereq_failure="build/reports/k6/${prereq_name}/capacity-prerequisite-failure.env"
+rm -f "${prereq_failure}"
+if CAPACITY_NAME="${prereq_name}" CAPACITY_K6_GENERATOR_MODE=docker-context "${script}" --print-plan >/dev/null 2>&1; then
   echo "docker-context k6 generator without remote runtime unexpectedly succeeded" >&2
   exit 1
 fi
+test -f "${prereq_failure}"
+grep -F "CAPACITY_PREREQUISITE_STATUS=failed" "${prereq_failure}" >/dev/null
+grep -F "CAPACITY_PREREQUISITE_FAILURE_REASON=missing-required-env" "${prereq_failure}" >/dev/null
+grep -F "CAPACITY_PREREQUISITE_MISSING_VARS=CAPACITY_K6_DOCKER_CONTEXT,CAPACITY_K6_REMOTE_BASE_URL,CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL" "${prereq_failure}" >/dev/null
+grep -F "CAPACITY_PREREQUISITE_GRADE=capacity" "${prereq_failure}" >/dev/null
+grep -F "CAPACITY_PREREQUISITE_FAILURE_REPORT=${prereq_failure}" "${prereq_failure}" >/dev/null
