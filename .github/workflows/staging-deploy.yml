@@ -161,6 +161,12 @@ jobs:
             COLD_ACCOUNT_ID
             COLD_FROM
             COLD_TO
+            STAGING_REPLAY_USER_ID
+            STAGING_REPLAY_LOGIN_ID
+            STAGING_REPLAY_USER_PASSWORD_HASH
+            STAGING_REPLAY_USER_DISPLAY_NAME
+            STAGING_REPLAY_HOT_ACCOUNT_NUMBER
+            STAGING_REPLAY_COLD_ACCOUNT_NUMBER
             ITERATIONS
             PAGE_LIMIT
             REQUEST_TIMEOUT_SECONDS
@@ -359,6 +365,13 @@ jobs:
             -o UserKnownHostsFile="${known_hosts_path}"
           )
           ssh "${ssh_args[@]}" "${OCI_A1_SSH_USER}@${OCI_A1_SSH_HOST}" "bash -se" <<<"${remote_command}"
+
+      - name: Ensure staging fixture principal
+        if: steps.validate.outputs.should_deploy == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          tools/ops/staging-fixture-principal-bootstrap.sh
 
       - name: Run staging post-deploy smoke
         if: steps.validate.outputs.should_deploy == 'true'

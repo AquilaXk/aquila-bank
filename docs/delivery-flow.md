@@ -44,6 +44,7 @@
 - required OCI deploy secret이 없으면 workflow는 fail-fast하며 staging GitHub deployment status를 성공으로 만들지 않습니다.
 - workflow는 OCI A1 SSH deploy와 post-deploy smoke를 통과한 경우에만 staging GitHub deployment status를 `success`로 갱신합니다.
 - transaction replay gate는 post-deploy smoke 뒤에 실행되며, `pg_class.reltuples` 검증 전에 planner stats freshness guard로 stale stats를 차단합니다.
+- fixture principal bootstrap은 smoke/replay 전에 `STAGING_REPLAY_USER_ID`와 hot/cold 계좌 membership을 idempotent하게 보장해 fixture JWT 403을 차단합니다.
 - replay gate가 실패하면 staging deployment status는 `success`로 올라가지 않으므로 production promotion guard가 같은 SHA를 자동으로 거부합니다.
 - post-deploy smoke는 health/read/write endpoint를 호출하며, read/write path는 환경별 smoke 전용 endpoint를 secret으로 주입합니다.
 - smoke 또는 OCI deploy 실패 시 deployment status는 `failure`가 되고, rollback hook이 설정된 경우 `sha`, `repository`, `runUrl`, `deploymentId`와 함께 호출합니다.
@@ -75,12 +76,18 @@ STAGING_SMOKE_AUTH_HEADER_VALUE='Bearer REPLACE_FIXTURE_TOKEN'
 
 STAGING_REPLAY_TOKEN=REPLACE_FIXTURE_TOKEN
 STAGING_OCI_A1_DATABASE_URL='postgresql://aquila:<password>@127.0.0.1:5432/aquila'
+STAGING_REPLAY_USER_ID=55
+STAGING_REPLAY_LOGIN_ID=staging-fixture-user
+STAGING_REPLAY_USER_PASSWORD_HASH=staging-fixture-password-hash-not-for-login
+STAGING_REPLAY_USER_DISPLAY_NAME='Staging Fixture User'
 STAGING_REPLAY_HOT_ACCOUNT_ID=910000001
+STAGING_REPLAY_HOT_ACCOUNT_NUMBER=STG-HOT-910000001
 STAGING_REPLAY_HOT_FROM=2026-04-01T00:00:00Z
 STAGING_REPLAY_HOT_TO=2026-04-30T00:00:00Z
 STAGING_REPLAY_COLD_ACCOUNT_ID=910000002
-STAGING_REPLAY_COLD_FROM=2025-04-01T00:00:00Z
-STAGING_REPLAY_COLD_TO=2025-04-30T00:00:00Z
+STAGING_REPLAY_COLD_ACCOUNT_NUMBER=STG-COLD-910000002
+STAGING_REPLAY_COLD_FROM=2026-01-01T00:00:00Z
+STAGING_REPLAY_COLD_TO=2026-01-31T00:00:00Z
 STAGING_REPLAY_ITERATIONS=40
 STAGING_REPLAY_PAGE_LIMIT=50
 STAGING_REPLAY_REQUEST_TIMEOUT_SECONDS=5
@@ -104,6 +111,7 @@ SERVER_PORT=8080
 SPRING_DATASOURCE_URL=jdbc:postgresql://host.docker.internal:5432/aquila
 SPRING_DATASOURCE_USERNAME=aquila
 SPRING_DATASOURCE_PASSWORD=<secret>
+SECURITY_JWT_SECRET=<secret>
 DB_POOL_MAX_SIZE=4
 SERVER_THREADS_MAX=16
 OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_MAX=3

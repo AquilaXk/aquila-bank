@@ -3,6 +3,7 @@ set -euo pipefail
 
 workflow=".github/workflows/staging-deploy.yml"
 deploy_script="ops/deploy/oci/bluegreen-deploy.sh"
+fixture_principal_script="tools/ops/staging-fixture-principal-bootstrap.sh"
 delivery_doc="docs/delivery-flow.md"
 production_doc="docs/production-promotion.md"
 terraform_dir="infra/terraform/oci/always-free-a1-flex"
@@ -46,6 +47,7 @@ reject_pattern() {
 echo "[oci-a1-bluegreen-cd] required files"
 require_file "$workflow"
 require_file "$deploy_script"
+require_file "$fixture_principal_script"
 require_file "$delivery_doc"
 require_file "$production_doc"
 require_file "back/Dockerfile"
@@ -53,6 +55,7 @@ require_file "front/Dockerfile"
 
 echo "[oci-a1-bluegreen-cd] shell syntax"
 bash -n "$deploy_script"
+bash -n "$fixture_principal_script"
 bash -n "$0"
 
 if command -v ruby >/dev/null 2>&1; then
@@ -72,6 +75,8 @@ workflow_patterns=(
   "OCI_A1_SSH_PRIVATE_KEY_B64"
   "OCI_A1_BACKEND_ENV_B64"
   "ops/deploy/oci/bluegreen-deploy.sh"
+  "Ensure staging fixture principal"
+  "tools/ops/staging-fixture-principal-bootstrap.sh"
   'ssh "${ssh_args[@]}"'
   "Mark staging deployment success"
   "Run staging post-deploy smoke"
@@ -115,6 +120,20 @@ for pattern in "${script_patterns[@]}"; do
   require_pattern "$pattern" "$deploy_script"
 done
 
+echo "[oci-a1-bluegreen-cd] fixture principal contract"
+fixture_principal_patterns=(
+  "STAGING_REPLAY_USER_ID"
+  "OVERRIDING SYSTEM VALUE"
+  "INSERT INTO bank_account"
+  "INSERT INTO bank_user"
+  "INSERT INTO user_account_membership"
+  "ON CONFLICT (user_id, account_id)"
+  "pg_get_serial_sequence('bank_user', 'id')"
+)
+for pattern in "${fixture_principal_patterns[@]}"; do
+  require_pattern "$pattern" "$fixture_principal_script"
+done
+
 echo "[oci-a1-bluegreen-cd] terraform contract"
 require_pattern "http_ingress_cidr" "${terraform_dir}/variables.tf"
 require_pattern "HTTP ingress for OCI A1 staging" "${terraform_dir}/network.tf"
@@ -127,6 +146,7 @@ doc_patterns=(
   "OCI_A1_SSH_PRIVATE_KEY_B64"
   "OCI_A1_BACKEND_ENV_B64"
   "STAGING_OCI_A1_DATABASE_URL"
+  "STAGING_REPLAY_USER_ID"
   "STAGING_BASE_URL"
 )
 for pattern in "${doc_patterns[@]}"; do
