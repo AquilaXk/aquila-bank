@@ -13,6 +13,7 @@ source_image_ocid_override     = null
 
 ssh_public_key   = "ssh-ed25519 example-public-key"
 ssh_ingress_cidr = "203.0.113.10/32"
+http_ingress_cidr = "0.0.0.0/0"
 
 name_prefix    = "aquila-free-a1"
 hostname_label = "aquilafreea1"

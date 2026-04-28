@@ -9,7 +9,7 @@ OCI Always Free 한도 안에서 `VM.Standard.A1.Flex` 인스턴스 1대를 만�
 - Memory: `24GB`
 - Boot Volume: `150GB`
 - Network: 새 VCN, public subnet, Internet Gateway, Route Table
-- Ingress: SSH `22/tcp`만 허용
+- Ingress: SSH `22/tcp`, staging HTTP `80/tcp`
 - 제외: NAT Gateway, Load Balancer, Database, 추가 Block Volume
 
 ## 무료 한도 조건
@@ -32,6 +32,7 @@ OCI Always Free 한도 안에서 `VM.Standard.A1.Flex` 인스턴스 1대를 만�
 - `availability_domain`
 - `ssh_public_key`
 - `ssh_ingress_cidr`
+- `http_ingress_cidr`
 
 선택 값:
 
@@ -40,6 +41,7 @@ OCI Always Free 한도 안에서 `VM.Standard.A1.Flex` 인스턴스 1대를 만�
 - `source_image_ocid_override`: 기본값 `null`
 
 `ssh_ingress_cidr`는 운영자 현재 공인 IP의 `/32`를 우선 사용한다. `0.0.0.0/0`은 임시 테스트가 아니면 사용하지 않는다.
+`http_ingress_cidr`는 GitHub Actions smoke와 브라우저 접근을 받는 staging HTTP 포트다. public staging이면 `0.0.0.0/0`, 사설 접근만 허용할 수 있으면 제한 CIDR을 사용한다.
 
 ## 실행
 

@@ -14,7 +14,8 @@
 - staging GitHub Environment secrets:
   - `STAGING_BASE_URL`
   - `STAGING_REPLAY_TOKEN`
-  - `STAGING_RDS_DATABASE_URL` 또는 같은 값으로 연결되는 OCI A1 PostgreSQL URL
+  - `STAGING_OCI_A1_DATABASE_URL`
+  - `STAGING_RDS_DATABASE_URL`는 legacy fallback으로만 사용
 - OCI A1 100m primary evidence:
   - `tools/test/prepare-transaction-read-model-100m-fixture.sh`
   - `tools/test/run-transaction-read-model-100m-k6-local.sh --k6-only`
@@ -35,7 +36,7 @@
 
 ## Staging Deploy Release Gate
 
-- `Staging Deploy` workflow는 staging hook과 OCI A1 PostgreSQL replay secret이 준비된 환경에서 post-deploy smoke 뒤에 같은 replay script를 실행합니다.
+- `Staging Deploy` workflow는 OCI A1 SSH deploy와 OCI A1 PostgreSQL replay secret이 준비된 환경에서 post-deploy smoke 뒤에 같은 replay script를 실행합니다.
 - release gate는 아래 `staging` Environment secret을 읽어 수동 입력 없이 same SHA를 검증합니다.
   - required:
     - `STAGING_REPLAY_HOT_ACCOUNT_ID`

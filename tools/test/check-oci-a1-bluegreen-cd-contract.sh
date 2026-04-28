@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+workflow=".github/workflows/staging-deploy.yml"
+deploy_script="ops/deploy/oci/bluegreen-deploy.sh"
+delivery_doc="docs/delivery-flow.md"
+production_doc="docs/production-promotion.md"
+terraform_dir="infra/terraform/oci/always-free-a1-flex"
+
+contains() {
+  local pattern="$1"
+  local file="$2"
+  if command -v rg >/dev/null 2>&1; then
+    rg -F --quiet -- "$pattern" "$file"
+    return
+  fi
+  grep -Fq -- "$pattern" "$file"
+}
+
+require_file() {
+  local file="$1"
+  if [[ ! -f "$file" ]]; then
+    echo "[oci-a1-bluegreen-cd] missing file: $file" >&2
+    exit 1
+  fi
+}
+
+require_pattern() {
+  local pattern="$1"
+  local file="$2"
+  if ! contains "$pattern" "$file"; then
+    echo "[oci-a1-bluegreen-cd] missing pattern in $file: $pattern" >&2
+    exit 1
+  fi
+}
+
+reject_pattern() {
+  local pattern="$1"
+  local file="$2"
+  if contains "$pattern" "$file"; then
+    echo "[oci-a1-bluegreen-cd] forbidden scattered env pattern in $file: $pattern" >&2
+    exit 1
+  fi
+}
+
+echo "[oci-a1-bluegreen-cd] required files"
+require_file "$workflow"
+require_file "$deploy_script"
+require_file "$delivery_doc"
+require_file "$production_doc"
+require_file "back/Dockerfile"
+require_file "front/Dockerfile"
+
+echo "[oci-a1-bluegreen-cd] shell syntax"
+bash -n "$deploy_script"
+bash -n "$0"
+
+if command -v ruby >/dev/null 2>&1; then
+  ruby -e 'require "yaml"; YAML.load_file(ARGV.fetch(0))' "$workflow"
+fi
+
+echo "[oci-a1-bluegreen-cd] workflow contract"
+workflow_patterns=(
+  "workflow_run:"
+  "- Main CI"
+  "DEPLOY_TARGET_RUNTIME: oci-a1"
+  "OCI_A1_STAGING_ENV"
+  "Load OCI A1 staging env"
+  'source "${staging_env_path}"'
+  "docker buildx build"
+  "registry: ghcr.io"
+  "OCI_A1_SSH_PRIVATE_KEY_B64"
+  "OCI_A1_BACKEND_ENV_B64"
+  "ops/deploy/oci/bluegreen-deploy.sh"
+  'ssh "${ssh_args[@]}"'
+  "Mark staging deployment success"
+  "Run staging post-deploy smoke"
+  "Run transaction replay regression gate"
+)
+for pattern in "${workflow_patterns[@]}"; do
+  require_pattern "$pattern" "$workflow"
+done
+
+scattered_patterns=(
+  "vars.OCI_A1_"
+  "vars.STAGING_"
+  "secrets.OCI_A1_SSH_"
+  "secrets.OCI_A1_BACKEND_ENV"
+  "secrets.OCI_A1_FRONTEND_ENV"
+  "secrets.STAGING_"
+  "secrets.ALERTMANAGER_"
+)
+for pattern in "${scattered_patterns[@]}"; do
+  reject_pattern "$pattern" "$workflow"
+done
+
+echo "[oci-a1-bluegreen-cd] deploy script contract"
+script_patterns=(
+  "apt-get update"
+  "docker.io"
+  "aquila-bank-backend-a"
+  "aquila-bank-backend-b"
+  "aquila-bank-front-a"
+  "aquila-bank-front-b"
+  "host.docker.internal:host-gateway"
+  "/actuator/health"
+  'proxy_set_header Host ${backend_proxy_host};'
+  'proxy_set_header X-Forwarded-Host \$host;'
+  "location = /api/v1/notifications/stream"
+  "proxy_buffering off;"
+  "nginx -s reload"
+  'docker rm -f "$(slot_name backend "${green}")"'
+)
+for pattern in "${script_patterns[@]}"; do
+  require_pattern "$pattern" "$deploy_script"
+done
+
+echo "[oci-a1-bluegreen-cd] terraform contract"
+require_pattern "http_ingress_cidr" "${terraform_dir}/variables.tf"
+require_pattern "HTTP ingress for OCI A1 staging" "${terraform_dir}/network.tf"
+require_pattern "min = 80" "${terraform_dir}/network.tf"
+
+echo "[oci-a1-bluegreen-cd] docs contract"
+doc_patterns=(
+  "OCI_A1_STAGING_ENV"
+  "OCI_A1_SSH_HOST"
+  "OCI_A1_SSH_PRIVATE_KEY_B64"
+  "OCI_A1_BACKEND_ENV_B64"
+  "STAGING_OCI_A1_DATABASE_URL"
+  "STAGING_BASE_URL"
+)
+for pattern in "${doc_patterns[@]}"; do
+  require_pattern "$pattern" "$delivery_doc"
+done
+require_pattern "same SHA" "$production_doc"
+
+echo "[oci-a1-bluegreen-cd] contract check passed"

@@ -10,6 +10,7 @@ on:
 permissions:
   contents: read
   deployments: write
+  packages: write
 
 concurrency:
   group: staging-deploy
@@ -23,12 +24,16 @@ jobs:
       github.event.workflow_run.head_branch == 'main' &&
       github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 35
     environment:
       name: staging
     env:
       DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
       DEPLOY_LOG_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      DEPLOY_TARGET_RUNTIME: oci-a1
+      DEPLOY_DATABASE_BASELINE: oci-a1-postgres-100m
+      BACKEND_IMAGE_NAME: aquila-bank-backend
+      FRONTEND_IMAGE_NAME: aquila-bank-frontend
     steps:
       - name: Checkout deploy SHA
         uses: actions/checkout@v4
@@ -60,46 +65,191 @@ jobs:
 
           echo "should_deploy=true" >> "${GITHUB_OUTPUT}"
 
-      - name: Resolve staging deploy hook configuration
-        id: hook_config
+      - name: Load OCI A1 staging env
         if: steps.validate.outputs.should_deploy == 'true'
         env:
-          STAGING_DEPLOY_WEBHOOK_URL: ${{ secrets.STAGING_DEPLOY_WEBHOOK_URL }}
-          STAGING_DEPLOY_TOKEN: ${{ secrets.STAGING_DEPLOY_TOKEN }}
+          OCI_A1_STAGING_ENV: ${{ secrets.OCI_A1_STAGING_ENV }}
         shell: bash
         run: |
           set -euo pipefail
-          missing_secret=false
-
-          if [ -z "${STAGING_DEPLOY_WEBHOOK_URL}" ]; then
-            echo "::notice::STAGING_DEPLOY_WEBHOOK_URL environment secret is not configured."
-            missing_secret=true
+          if [[ -z "${OCI_A1_STAGING_ENV}" ]]; then
+            echo "::error::Missing OCI_A1_STAGING_ENV environment secret."
+            exit 1
           fi
 
-          if [ -z "${STAGING_DEPLOY_TOKEN}" ]; then
-            echo "::notice::STAGING_DEPLOY_TOKEN environment secret is not configured."
-            missing_secret=true
+          staging_env_path="${RUNNER_TEMP}/oci-a1-staging.env"
+          printf '%s\n' "${OCI_A1_STAGING_ENV}" >"${staging_env_path}"
+          chmod 600 "${staging_env_path}"
+
+          set -a
+          # staging 설정은 GitHub Environment secret 하나에 shell env 파일 형식으로 보관한다.
+          source "${staging_env_path}"
+          set +a
+
+          OCI_A1_SSH_USER="${OCI_A1_SSH_USER:-ubuntu}"
+          OCI_A1_SSH_PORT="${OCI_A1_SSH_PORT:-22}"
+          STAGING_PUBLIC_API_BASE_URL="${STAGING_PUBLIC_API_BASE_URL:-${STAGING_BASE_URL:-}}"
+          STAGING_SMOKE_HEALTH_PATH="${STAGING_SMOKE_HEALTH_PATH:-/actuator/health}"
+          STAGING_SMOKE_WRITE_METHOD="${STAGING_SMOKE_WRITE_METHOD:-POST}"
+          STAGING_SMOKE_WRITE_BODY="${STAGING_SMOKE_WRITE_BODY:-{}}"
+          ALERTMANAGER_RECEIVER_SECRET_SMOKE_ENVIRONMENT=staging
+
+          HOT_ACCOUNT_ID="${STAGING_REPLAY_HOT_ACCOUNT_ID:-${HOT_ACCOUNT_ID:-}}"
+          HOT_FROM="${STAGING_REPLAY_HOT_FROM:-${HOT_FROM:-}}"
+          HOT_TO="${STAGING_REPLAY_HOT_TO:-${HOT_TO:-}}"
+          COLD_ACCOUNT_ID="${STAGING_REPLAY_COLD_ACCOUNT_ID:-${COLD_ACCOUNT_ID:-}}"
+          COLD_FROM="${STAGING_REPLAY_COLD_FROM:-${COLD_FROM:-}}"
+          COLD_TO="${STAGING_REPLAY_COLD_TO:-${COLD_TO:-}}"
+          ITERATIONS="${STAGING_REPLAY_ITERATIONS:-${ITERATIONS:-}}"
+          PAGE_LIMIT="${STAGING_REPLAY_PAGE_LIMIT:-${PAGE_LIMIT:-}}"
+          REQUEST_TIMEOUT_SECONDS="${STAGING_REPLAY_REQUEST_TIMEOUT_SECONDS:-${REQUEST_TIMEOUT_SECONDS:-}}"
+          EXPECTED_TOTAL_ROWS="${STAGING_REPLAY_EXPECTED_TOTAL_ROWS:-${EXPECTED_TOTAL_ROWS:-}}"
+          HOT_P95_THRESHOLD_MS="${STAGING_REPLAY_HOT_P95_THRESHOLD_MS:-${HOT_P95_THRESHOLD_MS:-}}"
+          COLD_P95_THRESHOLD_MS="${STAGING_REPLAY_COLD_P95_THRESHOLD_MS:-${COLD_P95_THRESHOLD_MS:-}}"
+          PLANNER_STATS_MAX_AGE_HOURS="${STAGING_REPLAY_STATS_MAX_AGE_HOURS:-${PLANNER_STATS_MAX_AGE_HOURS:-}}"
+          PLANNER_STATS_MAX_MODIFIED_RATIO="${STAGING_REPLAY_STATS_MAX_MODIFIED_RATIO:-${PLANNER_STATS_MAX_MODIFIED_RATIO:-}}"
+
+          missing=()
+          [[ -z "${OCI_A1_SSH_HOST:-}" ]] && missing+=("OCI_A1_SSH_HOST")
+          [[ -z "${OCI_A1_SSH_PRIVATE_KEY_B64:-}" ]] && missing+=("OCI_A1_SSH_PRIVATE_KEY_B64")
+          [[ -z "${OCI_A1_BACKEND_ENV_B64:-}" ]] && missing+=("OCI_A1_BACKEND_ENV_B64")
+          [[ -z "${STAGING_BASE_URL:-}" ]] && missing+=("STAGING_BASE_URL")
+          [[ -z "${STAGING_SMOKE_READ_PATH:-}" ]] && missing+=("STAGING_SMOKE_READ_PATH")
+          [[ -z "${STAGING_SMOKE_WRITE_PATH:-}" ]] && missing+=("STAGING_SMOKE_WRITE_PATH")
+          [[ -z "${STAGING_REPLAY_TOKEN:-}" ]] && missing+=("STAGING_REPLAY_TOKEN")
+          [[ -z "${STAGING_OCI_A1_DATABASE_URL:-}" ]] && missing+=("STAGING_OCI_A1_DATABASE_URL")
+          [[ -z "${HOT_ACCOUNT_ID}" ]] && missing+=("STAGING_REPLAY_HOT_ACCOUNT_ID")
+          [[ -z "${HOT_FROM}" ]] && missing+=("STAGING_REPLAY_HOT_FROM")
+          [[ -z "${HOT_TO}" ]] && missing+=("STAGING_REPLAY_HOT_TO")
+          [[ -z "${COLD_ACCOUNT_ID}" ]] && missing+=("STAGING_REPLAY_COLD_ACCOUNT_ID")
+          [[ -z "${COLD_FROM}" ]] && missing+=("STAGING_REPLAY_COLD_FROM")
+          [[ -z "${COLD_TO}" ]] && missing+=("STAGING_REPLAY_COLD_TO")
+
+          if (( ${#missing[@]} > 0 )); then
+            printf '::error::Missing OCI A1 staging env keys: %s\n' "${missing[*]}"
+            exit 1
           fi
 
-          # hook 미구성 환경에서는 실제 deploy가 없으므로 staging success status도 만들지 않는다.
-          if [ "${missing_secret}" = "true" ]; then
-            echo "::notice::Skipping staging deploy hook. Configure both staging Environment secrets to enable deployment."
-            echo "hook_configured=false" >> "${GITHUB_OUTPUT}"
-            exit 0
+          if ! [[ "${OCI_A1_SSH_PORT}" =~ ^[0-9]+$ ]]; then
+            echo "::error::OCI_A1_SSH_PORT must be numeric."
+            exit 1
           fi
 
-          echo "hook_configured=true" >> "${GITHUB_OUTPUT}"
+          env_names=(
+            OCI_A1_SSH_HOST
+            OCI_A1_SSH_USER
+            OCI_A1_SSH_PORT
+            OCI_A1_SSH_PRIVATE_KEY_B64
+            OCI_A1_SSH_KNOWN_HOSTS_B64
+            OCI_A1_BACKEND_ENV_B64
+            OCI_A1_FRONTEND_ENV_B64
+            STAGING_PUBLIC_API_BASE_URL
+            STAGING_BASE_URL
+            STAGING_SMOKE_HEALTH_PATH
+            STAGING_SMOKE_READ_PATH
+            STAGING_SMOKE_WRITE_PATH
+            STAGING_SMOKE_WRITE_METHOD
+            STAGING_SMOKE_WRITE_BODY
+            STAGING_SMOKE_AUTH_HEADER_NAME
+            STAGING_SMOKE_AUTH_HEADER_VALUE
+            STAGING_REPLAY_TOKEN
+            STAGING_OCI_A1_DATABASE_URL
+            STAGING_RDS_DATABASE_URL
+            HOT_ACCOUNT_ID
+            HOT_FROM
+            HOT_TO
+            COLD_ACCOUNT_ID
+            COLD_FROM
+            COLD_TO
+            ITERATIONS
+            PAGE_LIMIT
+            REQUEST_TIMEOUT_SECONDS
+            EXPECTED_TOTAL_ROWS
+            HOT_P95_THRESHOLD_MS
+            COLD_P95_THRESHOLD_MS
+            PLANNER_STATS_MAX_AGE_HOURS
+            PLANNER_STATS_MAX_MODIFIED_RATIO
+            ALERTMANAGER_RECEIVER_SECRET_SMOKE_ENVIRONMENT
+            ALERTMANAGER_RECEIVER_SLACK_ENABLED
+            ALERTMANAGER_RECEIVER_SLACK_WEBHOOK_URL
+            ALERTMANAGER_RECEIVER_PAGERDUTY_ENABLED
+            ALERTMANAGER_RECEIVER_PAGERDUTY_ROUTING_KEY
+            ALERTMANAGER_RECEIVER_WEBHOOK_ENABLED
+            ALERTMANAGER_RECEIVER_WEBHOOK_URL
+            STAGING_ROLLBACK_WEBHOOK_URL
+            STAGING_ROLLBACK_TOKEN
+          )
+
+          for name in "${env_names[@]}"; do
+            value="${!name:-}"
+            if [[ -n "${value}" ]]; then
+              echo "::add-mask::${value}"
+            fi
+            if [[ "${value}" == *$'\n'* ]]; then
+              delimiter="AQUILA_${name}_EOF_$(date +%s%N)"
+              {
+                printf '%s<<%s\n' "${name}" "${delimiter}"
+                printf '%s\n' "${value}"
+                printf '%s\n' "${delimiter}"
+              } >>"${GITHUB_ENV}"
+            else
+              printf '%s=%s\n' "${name}" "${value}" >>"${GITHUB_ENV}"
+            fi
+          done
+
+      - name: Set up Docker Buildx
+        if: steps.validate.outputs.should_deploy == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        if: steps.validate.outputs.should_deploy == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve image names
+        if: steps.validate.outputs.should_deploy == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          owner_lc="${GITHUB_REPOSITORY_OWNER,,}"
+          image_tag="${DEPLOY_SHA:0:12}"
+          backend_image="ghcr.io/${owner_lc}/${BACKEND_IMAGE_NAME}"
+          frontend_image="ghcr.io/${owner_lc}/${FRONTEND_IMAGE_NAME}"
+
+          echo "IMAGE_TAG=${image_tag}" >> "${GITHUB_ENV}"
+          echo "BACKEND_IMAGE=${backend_image}" >> "${GITHUB_ENV}"
+          echo "FRONTEND_IMAGE=${frontend_image}" >> "${GITHUB_ENV}"
+
+      - name: Build and push backend image
+        if: steps.validate.outputs.should_deploy == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker buildx build ./back \
+            --push \
+            --tag "${BACKEND_IMAGE}:${IMAGE_TAG}" \
+            --tag "${BACKEND_IMAGE}:main-latest" \
+            --cache-from type=gha,scope=aquila-bank-backend \
+            --cache-to type=gha,mode=max,scope=aquila-bank-backend
+
+      - name: Build and push frontend image
+        if: steps.validate.outputs.should_deploy == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker buildx build ./front \
+            --push \
+            --build-arg "NEXT_PUBLIC_API_BASE_URL=${STAGING_PUBLIC_API_BASE_URL}" \
+            --tag "${FRONTEND_IMAGE}:${IMAGE_TAG}" \
+            --tag "${FRONTEND_IMAGE}:main-latest" \
+            --cache-from type=gha,scope=aquila-bank-frontend \
+            --cache-to type=gha,mode=max,scope=aquila-bank-frontend
 
       - name: Run Alertmanager receiver secret smoke
-        if: steps.validate.outputs.should_deploy == 'true' && steps.hook_config.outputs.hook_configured == 'true'
-        env:
-          ALERTMANAGER_RECEIVER_SECRET_SMOKE_ENVIRONMENT: staging
-          ALERTMANAGER_RECEIVER_SLACK_ENABLED: ${{ secrets.ALERTMANAGER_RECEIVER_SLACK_ENABLED }}
-          ALERTMANAGER_RECEIVER_SLACK_WEBHOOK_URL: ${{ secrets.ALERTMANAGER_RECEIVER_SLACK_WEBHOOK_URL }}
-          ALERTMANAGER_RECEIVER_PAGERDUTY_ENABLED: ${{ secrets.ALERTMANAGER_RECEIVER_PAGERDUTY_ENABLED }}
-          ALERTMANAGER_RECEIVER_PAGERDUTY_ROUTING_KEY: ${{ secrets.ALERTMANAGER_RECEIVER_PAGERDUTY_ROUTING_KEY }}
-          ALERTMANAGER_RECEIVER_WEBHOOK_ENABLED: ${{ secrets.ALERTMANAGER_RECEIVER_WEBHOOK_ENABLED }}
-          ALERTMANAGER_RECEIVER_WEBHOOK_URL: ${{ secrets.ALERTMANAGER_RECEIVER_WEBHOOK_URL }}
+        if: steps.validate.outputs.should_deploy == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -107,7 +257,7 @@ jobs:
 
       - name: Create staging deployment
         id: deployment
-        if: steps.validate.outputs.should_deploy == 'true' && steps.hook_config.outputs.hook_configured == 'true'
+        if: steps.validate.outputs.should_deploy == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -137,7 +287,7 @@ jobs:
           echo "deployment_id=${deployment_id}" >> "${GITHUB_OUTPUT}"
 
       - name: Mark staging deployment in progress
-        if: steps.validate.outputs.should_deploy == 'true' && steps.hook_config.outputs.hook_configured == 'true'
+        if: steps.validate.outputs.should_deploy == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
@@ -156,91 +306,77 @@ jobs:
           )"
           gh api --method POST "repos/${GITHUB_REPOSITORY}/deployments/${DEPLOYMENT_ID}/statuses" --input - <<< "${payload}"
 
-      - name: Dispatch staging deploy hook
-        if: steps.validate.outputs.should_deploy == 'true' && steps.hook_config.outputs.hook_configured == 'true'
+      - name: Deploy OCI A1 blue-green over SSH
+        if: steps.validate.outputs.should_deploy == 'true'
         env:
-          STAGING_DEPLOY_WEBHOOK_URL: ${{ secrets.STAGING_DEPLOY_WEBHOOK_URL }}
-          STAGING_DEPLOY_TOKEN: ${{ secrets.STAGING_DEPLOY_TOKEN }}
+          GITHUB_ACTOR_VALUE: ${{ github.actor }}
+          GITHUB_TOKEN_VALUE: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/ssh"
 
-          if [ -z "${STAGING_DEPLOY_WEBHOOK_URL}" ]; then
-            echo "::error::Missing STAGING_DEPLOY_WEBHOOK_URL environment secret."
-            exit 1
+          key_path="${RUNNER_TEMP}/ssh/oci-a1-deploy-key"
+          known_hosts_path="${RUNNER_TEMP}/ssh/oci-a1-known-hosts"
+          printf '%s' "${OCI_A1_SSH_PRIVATE_KEY_B64}" | base64 -d >"${key_path}"
+          chmod 600 "${key_path}"
+
+          if [[ -n "${OCI_A1_SSH_KNOWN_HOSTS_B64:-}" ]]; then
+            printf '%s' "${OCI_A1_SSH_KNOWN_HOSTS_B64}" | base64 -d >"${known_hosts_path}"
+          else
+            echo "::notice::OCI_A1_SSH_KNOWN_HOSTS is not configured. Falling back to ssh-keyscan for this run."
+            ssh-keyscan -p "${OCI_A1_SSH_PORT}" -H "${OCI_A1_SSH_HOST}" >"${known_hosts_path}"
           fi
+          chmod 600 "${known_hosts_path}"
 
-          if [ -z "${STAGING_DEPLOY_TOKEN}" ]; then
-            echo "::error::Missing STAGING_DEPLOY_TOKEN environment secret."
-            exit 1
-          fi
+          script_b64="$(base64 -w0 ops/deploy/oci/bluegreen-deploy.sh)"
+          github_token_b64="$(printf '%s' "${GITHUB_TOKEN_VALUE}" | base64 -w0)"
+          backend_env_b64="${OCI_A1_BACKEND_ENV_B64}"
+          frontend_env_b64="${OCI_A1_FRONTEND_ENV_B64:-}"
 
-          payload="$(
-            jq -n \
-              --arg sha "${DEPLOY_SHA}" \
-              --arg repository "${GITHUB_REPOSITORY}" \
-              --arg run_url "${DEPLOY_LOG_URL}" \
-              '{
-                sha: $sha,
-                repository: $repository,
-                environment: "staging",
-                runUrl: $run_url
-              }'
-          )"
+          printf -v remote_command '%s\n' \
+            "set -euo pipefail" \
+            "export BACKEND_IMAGE=$(printf '%q' "${BACKEND_IMAGE}")" \
+            "export FRONTEND_IMAGE=$(printf '%q' "${FRONTEND_IMAGE}")" \
+            "export IMAGE_TAG=$(printf '%q' "${IMAGE_TAG}")" \
+            "export GITHUB_ACTOR=$(printf '%q' "${GITHUB_ACTOR_VALUE}")" \
+            "export GITHUB_TOKEN_B64=$(printf '%q' "${github_token_b64}")" \
+            "export BACKEND_ENV_B64=$(printf '%q' "${backend_env_b64}")" \
+            "export FRONTEND_ENV_B64=$(printf '%q' "${frontend_env_b64}")" \
+            "mkdir -p /tmp/aquila-bank-deploy" \
+            "printf %s $(printf '%q' "${script_b64}") | base64 -d > /tmp/aquila-bank-deploy/bluegreen-deploy.sh" \
+            "chmod 755 /tmp/aquila-bank-deploy/bluegreen-deploy.sh" \
+            "/tmp/aquila-bank-deploy/bluegreen-deploy.sh"
 
-          curl --fail-with-body --show-error --silent \
-            --request POST \
-            --header "Authorization: Bearer ${STAGING_DEPLOY_TOKEN}" \
-            --header "Content-Type: application/json" \
-            --data "${payload}" \
-            "${STAGING_DEPLOY_WEBHOOK_URL}"
+          ssh_args=(
+            -i "${key_path}"
+            -p "${OCI_A1_SSH_PORT}"
+            -o BatchMode=yes
+            -o ConnectTimeout=15
+            -o ServerAliveInterval=30
+            -o ServerAliveCountMax=10
+            -o StrictHostKeyChecking=yes
+            -o UserKnownHostsFile="${known_hosts_path}"
+          )
+          ssh "${ssh_args[@]}" "${OCI_A1_SSH_USER}@${OCI_A1_SSH_HOST}" "bash -se" <<<"${remote_command}"
 
       - name: Run staging post-deploy smoke
-        if: steps.validate.outputs.should_deploy == 'true' && steps.hook_config.outputs.hook_configured == 'true'
-        env:
-          STAGING_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
-          STAGING_SMOKE_HEALTH_PATH: ${{ secrets.STAGING_SMOKE_HEALTH_PATH }}
-          STAGING_SMOKE_READ_PATH: ${{ secrets.STAGING_SMOKE_READ_PATH }}
-          STAGING_SMOKE_WRITE_PATH: ${{ secrets.STAGING_SMOKE_WRITE_PATH }}
-          STAGING_SMOKE_WRITE_METHOD: ${{ secrets.STAGING_SMOKE_WRITE_METHOD }}
-          STAGING_SMOKE_WRITE_BODY: ${{ secrets.STAGING_SMOKE_WRITE_BODY }}
-          STAGING_SMOKE_AUTH_HEADER_NAME: ${{ secrets.STAGING_SMOKE_AUTH_HEADER_NAME }}
-          STAGING_SMOKE_AUTH_HEADER_VALUE: ${{ secrets.STAGING_SMOKE_AUTH_HEADER_VALUE }}
+        if: steps.validate.outputs.should_deploy == 'true'
         shell: bash
         run: |
           set -euo pipefail
           tools/ops/staging-postdeploy-smoke.sh
 
       - name: Run transaction replay regression gate
-        if: steps.validate.outputs.should_deploy == 'true' && steps.hook_config.outputs.hook_configured == 'true'
-        env:
-          STAGING_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
-          STAGING_REPLAY_TOKEN: ${{ secrets.STAGING_REPLAY_TOKEN }}
-          STAGING_RDS_DATABASE_URL: ${{ secrets.STAGING_RDS_DATABASE_URL }}
-          HOT_ACCOUNT_ID: ${{ secrets.STAGING_REPLAY_HOT_ACCOUNT_ID }}
-          HOT_FROM: ${{ secrets.STAGING_REPLAY_HOT_FROM }}
-          HOT_TO: ${{ secrets.STAGING_REPLAY_HOT_TO }}
-          COLD_ACCOUNT_ID: ${{ secrets.STAGING_REPLAY_COLD_ACCOUNT_ID }}
-          COLD_FROM: ${{ secrets.STAGING_REPLAY_COLD_FROM }}
-          COLD_TO: ${{ secrets.STAGING_REPLAY_COLD_TO }}
-          ITERATIONS: ${{ secrets.STAGING_REPLAY_ITERATIONS }}
-          PAGE_LIMIT: ${{ secrets.STAGING_REPLAY_PAGE_LIMIT }}
-          REQUEST_TIMEOUT_SECONDS: ${{ secrets.STAGING_REPLAY_REQUEST_TIMEOUT_SECONDS }}
-          EXPECTED_TOTAL_ROWS: ${{ secrets.STAGING_REPLAY_EXPECTED_TOTAL_ROWS }}
-          HOT_P95_THRESHOLD_MS: ${{ secrets.STAGING_REPLAY_HOT_P95_THRESHOLD_MS }}
-          COLD_P95_THRESHOLD_MS: ${{ secrets.STAGING_REPLAY_COLD_P95_THRESHOLD_MS }}
-          PLANNER_STATS_MAX_AGE_HOURS: ${{ secrets.STAGING_REPLAY_STATS_MAX_AGE_HOURS }}
-          PLANNER_STATS_MAX_MODIFIED_RATIO: ${{ secrets.STAGING_REPLAY_STATS_MAX_MODIFIED_RATIO }}
+        if: steps.validate.outputs.should_deploy == 'true'
         shell: bash
         run: |
           set -euo pipefail
           tools/ops/transaction-read-model-staging-replay.sh
 
       - name: Dispatch staging rollback guard
-        if: failure() && steps.validate.outputs.should_deploy == 'true' && steps.hook_config.outputs.hook_configured == 'true' && steps.deployment.outputs.deployment_id != ''
+        if: failure() && steps.validate.outputs.should_deploy == 'true' && steps.deployment.outputs.deployment_id != ''
         env:
-          STAGING_ROLLBACK_WEBHOOK_URL: ${{ secrets.STAGING_ROLLBACK_WEBHOOK_URL }}
-          STAGING_ROLLBACK_TOKEN: ${{ secrets.STAGING_ROLLBACK_TOKEN }}
           DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
         shell: bash
         run: |
@@ -248,7 +384,7 @@ jobs:
           tools/ops/staging-rollback-guard.sh
 
       - name: Mark staging deployment success
-        if: success() && steps.validate.outputs.should_deploy == 'true' && steps.hook_config.outputs.hook_configured == 'true'
+        if: success() && steps.validate.outputs.should_deploy == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
@@ -268,7 +404,7 @@ jobs:
           gh api --method POST "repos/${GITHUB_REPOSITORY}/deployments/${DEPLOYMENT_ID}/statuses" --input - <<< "${payload}"
 
       - name: Mark staging deployment failure
-        if: failure() && steps.validate.outputs.should_deploy == 'true' && steps.hook_config.outputs.hook_configured == 'true' && steps.deployment.outputs.deployment_id != ''
+        if: failure() && steps.validate.outputs.should_deploy == 'true' && steps.deployment.outputs.deployment_id != ''
         env:
           GH_TOKEN: ${{ github.token }}
           DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
