@@ -4,10 +4,10 @@ AWS에서 1억 건 규모 테스트와 운영 근접 검증을 위한 최소 bas
 
 ## 구성
 
-- EC2: `t3.micro`
-- EC2 root EBS: gp3, 기본 30GiB
-- RDS: PostgreSQL, `db.t4g.small`
-- RDS storage: gp3, 기본 100GiB
+- EC2: `t3.small`
+- EC2 root EBS: gp3, 기본 40GiB
+- RDS: PostgreSQL `18.3`, `db.t4g.medium`
+- RDS storage: gp3, 기본 150GiB
 - Network: 새 VPC, public subnet 1개, private DB subnet 2개, Internet Gateway
 - Security:
   - SSH `22/tcp`: `ssh_ingress_cidr`에서만 허용
@@ -16,8 +16,8 @@ AWS에서 1억 건 규모 테스트와 운영 근접 검증을 위한 최소 bas
 
 ## 비용 주의
 
-- EC2 `t3.micro` free tier/credit 적용 여부는 계정 상태와 AWS Free Tier 조건에 따라 다르다.
-- RDS `db.t4g.small`과 gp3 storage는 무료가 아닐 수 있다.
+- EC2 `t3.small`과 public IPv4 비용은 계정 상태와 AWS Free Tier credit 잔액에 따라 달라진다.
+- RDS `db.t4g.medium`과 gp3 150GiB storage는 무료 범위를 넘을 수 있다.
 - 1억 건 데이터 적재는 RDS storage, I/O, snapshot 비용을 만들 수 있다.
 - 기본값은 테스트 비용 방어를 위해 `multi_az = false`, `backup_retention_period = 1`, `skip_final_snapshot = true`, `deletion_protection = false`다.
 - NAT Gateway와 Load Balancer는 고정 비용이 생기므로 기본 구성에서 제외한다.
@@ -28,9 +28,9 @@ AWS에서 1억 건 규모 테스트와 운영 근접 검증을 위한 최소 bas
 - 기존 EC2 key pair name
 - 운영자 공인 IP `/32`
 - RDS master password
-- 필요 시 고정할 RDS PostgreSQL engine version
+- 리전에서 PostgreSQL `18.3` 지원 여부
 
-기본값은 AWS가 리전에서 지원하는 PostgreSQL 기본 버전을 선택하도록 `db_engine_version = null`로 둔다. 특정 버전이 필요하면 적용 전 리전 지원 버전을 확인하고 고정한다.
+기본값은 PostgreSQL `18.3`으로 고정한다. 적용 전 리전 지원 버전을 확인한다.
 
 ```bash
 aws rds describe-db-engine-versions \

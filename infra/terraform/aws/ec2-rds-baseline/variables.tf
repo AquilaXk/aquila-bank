@@ -93,21 +93,21 @@ variable "ec2_ami_id" {
 }
 
 variable "ec2_instance_type" {
-  description = "EC2 instance type. Baseline target is t3.micro."
+  description = "EC2 instance type. Baseline target is t3.small."
   type        = string
-  default     = "t3.micro"
+  default     = "t3.small"
   nullable    = false
 
   validation {
-    condition     = var.ec2_instance_type == "t3.micro"
-    error_message = "This baseline intentionally allows only t3.micro."
+    condition     = var.ec2_instance_type == "t3.small"
+    error_message = "This baseline intentionally allows only t3.small."
   }
 }
 
 variable "ec2_root_volume_size" {
   description = "EC2 root EBS volume size in GiB."
   type        = number
-  default     = 30
+  default     = 40
   nullable    = false
 
   validation {
@@ -165,33 +165,33 @@ variable "db_password" {
 }
 
 variable "db_engine_version" {
-  description = "Optional PostgreSQL engine major or minor version. Null lets AWS select the regional default supported version."
+  description = "PostgreSQL engine major or minor version. Baseline target is PostgreSQL 18.3."
   type        = string
-  default     = null
-  nullable    = true
+  default     = "18.3"
+  nullable    = false
 
   validation {
-    condition     = var.db_engine_version == null || can(regex("^[0-9]+(\\.[0-9]+)?$", var.db_engine_version))
-    error_message = "db_engine_version must be null or a major/minor PostgreSQL version such as 17 or 17.5."
+    condition     = can(regex("^[0-9]+(\\.[0-9]+)?$", var.db_engine_version))
+    error_message = "db_engine_version must be a major/minor PostgreSQL version such as 18 or 18.3."
   }
 }
 
 variable "db_instance_class" {
-  description = "RDS instance class. Baseline target is db.t4g.small."
+  description = "RDS instance class. Baseline target is db.t4g.medium."
   type        = string
-  default     = "db.t4g.small"
+  default     = "db.t4g.medium"
   nullable    = false
 
   validation {
-    condition     = var.db_instance_class == "db.t4g.small"
-    error_message = "This baseline intentionally allows only db.t4g.small."
+    condition     = var.db_instance_class == "db.t4g.medium"
+    error_message = "This baseline intentionally allows only db.t4g.medium."
   }
 }
 
 variable "db_allocated_storage" {
   description = "Initial RDS storage in GiB."
   type        = number
-  default     = 100
+  default     = 150
   nullable    = false
 
   validation {

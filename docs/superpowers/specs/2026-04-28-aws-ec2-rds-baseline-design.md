@@ -2,7 +2,7 @@
 
 ## Goal
 - 1억 건 규모 테스트와 운영 근접 검증을 위해 AWS 기준 Terraform baseline을 추가한다.
-- 기본 스펙은 EC2 `t3.micro`, RDS PostgreSQL `db.t4g.small`, gp3 storage이다.
+- 기본 스펙은 EC2 `t3.small` + gp3 40GiB, RDS PostgreSQL `18.3` `db.t4g.medium` + gp3 150GiB이다.
 
 ## Selected Approach
 - 새 VPC를 만들고 public subnet에는 EC2 1대를, private DB subnet 2개에는 RDS subnet group을 둔다.
@@ -42,14 +42,14 @@
 - `db_engine_version`, `db_allocated_storage`, `db_max_allocated_storage`
 
 ## Cost Boundary
-- EC2 `t3.micro`는 free tier/credit 대상 여부가 계정 생성 시점과 AWS Free Tier 조건에 따라 다르다.
-- RDS `db.t4g.small`과 gp3 storage는 무료가 아닐 수 있으며 1억 건 데이터 적재 시 storage, I/O, snapshot 비용이 발생한다.
+- EC2 `t3.small`과 public IPv4 비용은 계정 상태와 AWS Free Tier credit 잔액에 따라 달라진다.
+- RDS `db.t4g.medium`과 gp3 150GiB storage는 무료 범위를 넘을 수 있으며 1억 건 데이터 적재 시 storage, I/O, snapshot 비용이 발생한다.
 - 기본값은 비용 방어를 위해 `multi_az = false`, `backup_retention_period = 1`, `skip_final_snapshot = true`, `deletion_protection = false`로 둔다.
 
 ## Error And Risk Handling
 - RDS PostgreSQL engine version은 리전별 지원 여부가 달라질 수 있으므로 실제 apply 전 AWS CLI 또는 console로 확인한다.
-- EC2 `t3.micro`는 CPU credit 고갈 시 성능이 급락할 수 있다.
-- RDS `db.t4g.small`은 1억 건 조회의 모든 병목을 해결하는 크기가 아니라 작은 운영 목표에서의 방어 기준이다.
+- EC2 `t3.small`은 CPU credit 고갈 시 성능이 급락할 수 있다.
+- RDS `db.t4g.medium`은 1억 건 조회와 30분 soak를 닫기 위한 권장 baseline이며, 더 큰 burst 탐색은 별도 단기 generator/DB 조정으로 분리한다.
 - RDS password와 SSH private key는 Terraform variable/local file로만 다루고 저장소에 기록하지 않는다.
 
 ## Validation
