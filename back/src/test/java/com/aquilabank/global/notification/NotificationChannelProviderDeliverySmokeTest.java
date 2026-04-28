@@ -1,6 +1,9 @@
 package com.aquilabank.global.notification;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withAccepted;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
 
 import com.aquilabank.domain.notification.model.NotificationChannelDeliverySkipReason;
 import com.aquilabank.domain.notification.model.NotificationChannelDeliveryStatus;
@@ -12,10 +15,6 @@ import com.aquilabank.domain.notification.port.NotificationChannelRecipientLooku
 import com.aquilabank.domain.notification.usecase.NotificationChannelProviderWorkerService;
 import com.aquilabank.global.config.NotificationChannelProviderDeliveryProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.sun.net.httpserver.HttpExchange;
-import com.sun.net.httpserver.HttpServer;
-import java.io.IOException;
-import java.net.InetSocketAddress;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -24,48 +23,26 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicInteger;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
 class NotificationChannelProviderDeliverySmokeTest {
 
   private static final Instant NOW = Instant.parse("2026-04-23T10:00:00Z");
 
-  private HttpServer server;
-
-  @AfterEach
-  void tearDown() {
-    if (server != null) {
-      server.stop(0);
-    }
-  }
-
   @Test
   void dispatchesImmediateEmailAndMarksProviderRejectedSmsForRetryBackoff() throws Exception {
-    AtomicInteger emailRequests = new AtomicInteger();
-    AtomicInteger smsRequests = new AtomicInteger();
-    server = HttpServer.create(new InetSocketAddress(0), 0);
-    server.setExecutor(Executors.newCachedThreadPool());
-    server.createContext(
-        "/email",
-        exchange -> {
-          emailRequests.incrementAndGet();
-          writeAccepted(exchange);
-        });
-    server.createContext(
-        "/sms",
-        exchange -> {
-          smsRequests.incrementAndGet();
-          // CI runner 부하에 민감한 read timeout 대신 provider reject를 고정해 retry 경로만 검증합니다.
-          writeProviderRejected(exchange);
-        });
-    server.start();
+    RestClient.Builder builder = RestClient.builder();
+    MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+    server
+        .expect(requestTo("https://email-provider.example/notifications"))
+        .andRespond(withAccepted());
+    // 실제 socket 대신 mock provider 5xx로 retry 경로를 고정해 CI runner 부하 영향을 제거합니다.
+    server
+        .expect(requestTo("https://sms-provider.example/notifications"))
+        .andRespond(withServerError());
 
-    int port = server.getAddress().getPort();
     NotificationChannelProviderDeliveryProperties properties =
         new NotificationChannelProviderDeliveryProperties(
             true,
@@ -74,9 +51,9 @@ class NotificationChannelProviderDeliverySmokeTest {
             500,
             50,
             new NotificationChannelProviderDeliveryProperties.ChannelProperties(
-                "http://127.0.0.1:" + port + "/email"),
+                "https://email-provider.example/notifications"),
             new NotificationChannelProviderDeliveryProperties.ChannelProperties(
-                "http://127.0.0.1:" + port + "/sms"));
+                "https://sms-provider.example/notifications"));
     NotificationChannelRecipientLookupPort recipientLookupPort =
         (userId, channel) ->
             switch ((int) userId) {
@@ -86,7 +63,7 @@ class NotificationChannelProviderDeliverySmokeTest {
             };
     WebhookNotificationChannelProvider provider =
         new WebhookNotificationChannelProvider(
-            restClient(properties),
+            builder.build(),
             recipientLookupPort,
             properties,
             new ObjectMapper().findAndRegisterModules());
@@ -105,29 +82,11 @@ class NotificationChannelProviderDeliverySmokeTest {
     int claimed = service.dispatchDueDeliveries();
 
     assertThat(claimed).isEqualTo(2);
-    assertThat(emailRequests.get()).isEqualTo(1);
-    assertThat(smsRequests.get()).isEqualTo(1);
+    server.verify();
     assertThat(dispatchPort.sentIds()).containsExactly(1L);
     assertThat(dispatchPort.failedItems()).containsOnlyKeys(2L);
     assertThat(dispatchPort.failedItems().get(2L).nextAttemptAt()).isEqualTo(NOW.plusSeconds(5));
     assertThat(dispatchPort.failedItems().get(2L).errorMessage()).isNotBlank();
-  }
-
-  private RestClient restClient(NotificationChannelProviderDeliveryProperties properties) {
-    SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
-    requestFactory.setConnectTimeout(Duration.ofMillis(properties.connectTimeoutMs()));
-    requestFactory.setReadTimeout(Duration.ofMillis(properties.readTimeoutMs()));
-    return RestClient.builder().requestFactory(requestFactory).build();
-  }
-
-  private void writeAccepted(HttpExchange exchange) throws IOException {
-    exchange.sendResponseHeaders(202, -1);
-    exchange.close();
-  }
-
-  private void writeProviderRejected(HttpExchange exchange) throws IOException {
-    exchange.sendResponseHeaders(503, -1);
-    exchange.close();
   }
 
   private NotificationChannelOutboxItem emailItem() {
