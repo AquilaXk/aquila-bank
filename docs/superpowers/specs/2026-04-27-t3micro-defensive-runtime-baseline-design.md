@@ -4,13 +4,13 @@
 
 현재 프로젝트 목표를 "AWS free-tier급 환경에서 1억 건 적재까지 닫기"에서 "로컬 Docker PostgreSQL 18 + 로컬 디스크/volume에 1억 건을 적재하고 bounded 조회를 검증"으로 재정의한다.
 
-핵심은 처리량 확장이 아니라 로컬에서 반복 가능한 1억 건 evidence를 만들고, 작은 운영 budget이 과부하를 받을 때 빠르게 제한하며 DB/worker/SSE/API 동시성 비용을 예측 가능하게 유지하는 것이다. AWS EC2/RDS는 비용 조건이 맞을 때만 remote smoke 또는 local-vs-remote 비교로 사용한다.
+핵심은 처리량 확장이 아니라 로컬에서 반복 가능한 1억 건 evidence를 만들고, 작은 운영 budget이 과부하를 받을 때 빠르게 제한하며 DB/worker/SSE/API 동시성 비용을 예측 가능하게 유지하는 것이다. AWS는 App EC2 smoke로만 사용하고, 1억 건 DB evidence는 로컬 Mac Docker PostgreSQL fixture를 사용한다.
 
 ## 범위
 
 - README와 agent context의 목표/비목표 문구 갱신
 - 로컬 Docker PostgreSQL + 로컬 디스크/volume 1억 건 fixture를 primary evidence로 명시
-- AWS EC2/RDS 기준은 optional smoke/comparison으로 명시
+- AWS App EC2 기준은 optional smoke로만 명시
 - Kafka를 로컬 compose 기본 실행에서 제외하고 opt-in profile로 유지
 - Prometheus/Grafana/Alertmanager는 상시 운영 필수 구성에서 제외하고 부하테스트/선택 운영 자산으로 명시
 - production high-traffic config gate를 Kafka/read replica 필수값 중심에서 방어형 runtime budget 중심으로 변경
