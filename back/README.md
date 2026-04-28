@@ -113,7 +113,7 @@ tools/test/with-resource-lock.sh back-bootstrap-bulk-import \
   - MVC async `request-timeout=5000ms`
 - 운영 해석 기준:
   - p95 목표는 baseline fixture 기준 회귀 감지선입니다.
-  - 1억 건 전체를 로컬에 적재하는 대신, planner가 계좌/기간/status/cursor 조건으로 bounded index range scan을 유지하는지 먼저 확인합니다.
+  - 1억 건 전체는 OCI A1 PostgreSQL fixture에 적재하고, planner가 계좌/기간/status/cursor 조건으로 bounded index range scan을 유지하는지 확인합니다.
   - `Seq Scan`, 불필요한 `Sort`, timeout 근접 실행 시간이 보이면 index 또는 query shape를 다시 검토합니다.
 
 재현 명령:
@@ -538,9 +538,9 @@ tools/test/run-k6-transaction-100m-loadtest.sh
 - k6는 hot/cold first page와 cursor page를 호출하고, 기본 threshold는 hot p95 `350ms`, cold p95 `750ms`, HTTP failed rate `< 1%` 입니다.
 - Prometheus는 `http://localhost:9090`, Grafana는 `http://localhost:3001`로 노출됩니다.
 - k6 summary 원본은 `build/reports/k6`, 리뷰용 Markdown은 `docs/performance-results`에 남깁니다.
-- 이 runner는 1억 row를 적재하지 않습니다. `K6_*_ACCOUNT_ID`와 기간은 이미 데이터가 준비된 local/staging dataset에 맞춰 넣어야 합니다.
+- 이 runner는 1억 row를 적재하지 않습니다. `K6_*_ACCOUNT_ID`와 기간은 이미 데이터가 준비된 OCI A1/staging cloud dataset에 맞춰 넣어야 합니다.
 
-로컬 PostgreSQL에 read model 전용 1억 건 synthetic dataset을 직접 만들고 k6까지 이어서 실행하려면 아래 wrapper를 사용합니다.
+OCI A1 PostgreSQL에 read model 전용 1억 건 synthetic dataset을 직접 만들고 k6까지 이어서 실행하려면 아래 wrapper를 사용합니다. script 이름의 `local`은 기존 호환성 때문에 유지합니다.
 
 ```bash
 SEED_TOTAL_ROWS=100000000 \
@@ -555,7 +555,7 @@ tools/test/run-transaction-read-model-100m-k6-local.sh
 - 기본 `SEED_INDEX_STRATEGY=required`는 k6에 필요한 account cursor index만 빈 테이블 상태에서 먼저 유지합니다. 작은 memory budget에서는 5천만 row btree를 seed 후 한 번에 build하면 OOM이 발생할 수 있으므로 기본값으로 사용하지 않습니다.
 - 전체 filter index 재생성 검증이 필요하면 `SEED_INDEX_STRATEGY=rebuild-all`을 명시합니다. 이 모드는 OCI A1 24GB 이상 memory budget 또는 partition/chunk 전환 검증에서만 사용합니다.
 - k6 runner는 실행 전 PostgreSQL `OOMKilled` 상태와 필수 account cursor index 존재 여부를 preflight로 확인합니다.
-- local disk와 Docker volume을 크게 사용합니다. 실행 전 `df -h .`로 여유 공간을 확인합니다.
+- OCI A1 data volume을 크게 사용합니다. 실행 전 DB host에서 `df -h /var/lib/aquila-postgres`로 여유 공간을 확인합니다.
 - 실패 후 재시도할 때는 `SEED_TRUNCATE=true`를 유지해 중간 적재 데이터를 정리하고 다시 시작합니다.
 - k6 결과 Markdown은 `docs/performance-results`, 원본 JSON/Markdown은 `build/reports/k6`에 남습니다.
 

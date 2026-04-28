@@ -131,7 +131,7 @@ tools/ops/transaction-read-model-planner-stats-freshness-guard.sh
 
 ## SLO Verification
 
-로컬 small-budget loadtest:
+OCI A1 cloud baseline loadtest:
 
 ```bash
 SEED_TOTAL_ROWS=100000000 \
@@ -140,7 +140,7 @@ SEED_TRUNCATE=true \
 tools/test/run-transaction-read-model-100m-k6-local.sh
 ```
 
-legacy 이름의 local small-budget wrapper는 backend를 force-recreate해 최신 Flyway runtime을 보장하고, `flyway_schema_history` 최신 version을 로컬 migration 최신 version과 비교한 뒤 seed를 시작합니다. 기본 conflict mode는 `fail`이라 truncate 신규 seed에서 `ON CONFLICT` 비용을 내지 않습니다.
+legacy 이름의 wrapper는 backend를 force-recreate해 최신 Flyway runtime을 보장하고, `flyway_schema_history` 최신 version을 migration 최신 version과 비교한 뒤 OCI A1 PostgreSQL seed를 시작합니다. 기본 conflict mode는 `fail`이라 truncate 신규 seed에서 `ON CONFLICT` 비용을 내지 않습니다.
 
 이미 dataset이 준비되어 있으면 k6만 실행합니다.
 
@@ -161,9 +161,11 @@ tools/test/run-transaction-read-model-100m-k6-local.sh --k6-only
 - k6 summary: `build/reports/k6/*-summary.md`
 - archived summary: `docs/performance-results/*`
 
+localhost URL은 관측 stack을 같은 host 또는 SSH tunnel로 볼 때의 접속 예시입니다.
+
 운영/staging replay:
 
-권장 remote baseline은 OCI A1 Flex 4 OCPU / 24GB + data 300GB self-managed PostgreSQL 18입니다. AWS EC2 staging smoke는 app 배포 확인 범위로만 사용합니다.
+권장 baseline은 OCI A1 Flex 4 OCPU / 24GB + data 300GB self-managed PostgreSQL 18입니다. 1억 건 dataset은 OCI A1 data volume에 적재하고, AWS EC2 staging smoke는 app 배포 확인 범위로만 사용합니다.
 
 ```bash
 STAGING_BASE_URL="$STAGING_BASE_URL" \

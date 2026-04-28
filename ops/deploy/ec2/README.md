@@ -12,9 +12,9 @@
 
 ## Database Boundary
 
-1억 건 PostgreSQL fixture는 EC2로 옮기지 않는다. Backend container는 `EC2_BACKEND_ENV` secret으로 주입되는 DB 접속 설정을 사용한다. 로컬 Mac Docker PostgreSQL 또는 OCI A1 PostgreSQL을 EC2에서 사용하려면 reverse SSH tunnel 또는 VPN을 별도 보안 작업으로 구성한다.
+1억 건 PostgreSQL fixture는 EC2로 옮기지 않는다. 1억 건 dataset은 OCI A1 PostgreSQL data volume에 두고, Backend container는 `EC2_BACKEND_ENV` secret으로 주입되는 DB 접속 설정을 사용한다. EC2 app smoke에서 OCI A1 PostgreSQL을 붙여야 하면 reverse SSH tunnel 또는 VPN을 별도 보안 작업으로 구성한다.
 
-Backend/frontend container에는 `host.docker.internal`이 EC2 Docker host gateway로 잡힌다. 로컬 Mac DB를 tunnel로 붙일 때는 EC2 host가 접근할 수 있는 포트로 먼저 고정한 뒤, `EC2_BACKEND_ENV`의 JDBC URL에서 해당 host/port를 사용한다.
+Backend/frontend container에는 `host.docker.internal`이 EC2 Docker host gateway로 잡힌다. OCI A1 DB를 tunnel로 붙일 때는 EC2 host가 접근할 수 있는 포트로 먼저 고정한 뒤, `EC2_BACKEND_ENV`의 JDBC URL에서 해당 host/port를 사용한다.
 
 ## Backend Proxy Contract
 
@@ -28,9 +28,9 @@ Nginx는 public Host를 backend에 그대로 넘기지 않는다. backend locati
 
 기본 API smoke는 인증 토큰 없이 401을 기대해 backend/nginx 경로가 400/5xx로 막히는지만 조기에 잡는다. 실제 200 smoke가 필요하면 `EC2_PUBLIC_API_SMOKE_AUTH_HEADER_NAME=Authorization`, `EC2_PUBLIC_API_SMOKE_AUTH_HEADER_VALUE=Bearer <fixture-jwt>`와 `EC2_PUBLIC_API_SMOKE_EXPECTED_STATUS=200`을 staging secret으로 넣는다.
 
-## Local DB Capacity Smoke
+## External Cloud DB Capacity Smoke
 
-EC2 App + 외부 DB 1억 건 부하 테스트는 legacy 진단 경로다. 저장소에 secret을 남기지 않고 local-only env 파일로 실행한다. 현재 권장 remote DB/capacity 경로는 OCI A1 4 OCPU / 24GB + data 300GB이다.
+EC2 App + OCI A1 DB 1억 건 부하 테스트는 legacy 진단 경로다. 저장소에 secret을 남기지 않고 local-only env 파일로 실행한다. 현재 권장 DB/capacity 경로는 OCI A1 4 OCPU / 24GB + data 300GB이다. `EC2_LOCAL_DB_*` 변수명은 기존 runner 호환성 때문에 유지하지만 값은 EC2에서 접근 가능한 OCI A1 PostgreSQL tunnel endpoint를 넣는다.
 
 ```bash
 tools/test/run-ec2-local-db-capacity-env-doctor.sh --print-env-template > .env/ec2-local-db-capacity.env
@@ -41,8 +41,8 @@ tools/test/run-ec2-local-db-capacity-env-doctor.sh --print-env-template > .env/e
 - `EC2_DIRECT_BACKEND_BASE_URL`: EC2 backend direct URL. EC2 host에서 실행하면 보통 `http://127.0.0.1:18080`
 - `EC2_NGINX_BASE_URL`: Nginx public 또는 host-local URL
 - `EC2_LOADTEST_AUTH_TOKEN`: prod profile에서 사용할 fixture JWT 또는 제한된 loadtest profile token
-- `EC2_LOCAL_DB_HOST=host.docker.internal`
-- `EC2_LOCAL_DB_PORT=25432`
+- `EC2_LOCAL_DB_HOST=host.docker.internal` 또는 EC2에서 접근 가능한 OCI A1 DB tunnel host
+- `EC2_LOCAL_DB_PORT=25432` 또는 OCI A1 DB tunnel port
 - `EC2_LOCAL_DB_NAME`, `EC2_LOCAL_DB_USER`, `EC2_LOCAL_DB_PASSWORD`
 
 실행 전 doctor로 container network에서 host-gateway DB tunnel까지 확인한다.

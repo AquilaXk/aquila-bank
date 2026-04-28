@@ -14,14 +14,14 @@ AWS에 App EC2 1대만 만드는 legacy/optional smoke stack이다. 현재 비�
   - EC2 instance profile에 `AmazonSSMManagedInstanceCore`를 연결해 GitHub Actions가 SSM으로 배포 스크립트를 실행할 수 있게 한다.
 - 제외: RDS, private DB subnet, NAT Gateway, ALB/NLB, Elastic IP
 
-이 module은 로컬 Mac Docker PostgreSQL 또는 OCI A1 PostgreSQL에 있는 1억 건 fixture를 생성하거나 이동하지 않는다. EC2에서 외부 DB에 접속해야 하는 별도 실험은 SSH tunnel, VPN, allowlist 같은 별도 보안 설계가 필요하며 이번 Terraform 범위에서 제외한다.
+이 module은 OCI A1 PostgreSQL에 있는 1억 건 fixture를 생성하거나 이동하지 않는다. EC2에서 OCI A1 DB에 접속해야 하는 별도 실험은 SSH tunnel, VPN, allowlist 같은 별도 보안 설계가 필요하며 이번 Terraform 범위에서 제외한다.
 
 ## 비용 주의
 
 - EC2 `t3.small`과 gp3 40GiB EBS는 free tier가 아닐 수 있다.
 - 이 stack은 legacy app smoke 전용이다. remote 1억 건 DB/capacity 비교는 OCI A1 4 OCPU / 24GB + data 300GB stack을 사용한다.
 - RDS를 만들지 않으므로 DB instance, RDS storage, snapshot 비용은 발생하지 않는다.
-- 1억 건 검증 비용은 로컬 Mac Docker PostgreSQL + 로컬 디스크 사용량으로 제한한다.
+- 1억 건 검증 비용은 OCI A1 PostgreSQL data volume과 compute 사용량으로 산정한다.
 - NAT Gateway와 Load Balancer는 고정 비용이 생기므로 기본 구성에서 제외한다.
 
 ## 준비 값
@@ -56,7 +56,7 @@ EC2 접속:
 ssh -i ~/.ssh/<private-key> ec2-user@<ec2_public_ip>
 ```
 
-1억 건 DB primary evidence는 Mac Docker PostgreSQL에 남아 있고, 비용형 remote 비교는 OCI A1 PostgreSQL stack을 사용한다. 기본 local loadtest fixture 기준 접속 정보는 로컬에서 `localhost:15432`와 `aquila_bank`를 사용한다.
+1억 건 DB primary evidence는 OCI A1 PostgreSQL stack의 data volume에 둔다. EC2 app smoke에서 1억 건 dataset을 조회해야 하면 EC2에서 접근 가능한 OCI A1 DB tunnel endpoint를 `EC2_BACKEND_ENV`의 JDBC URL로 주입한다.
 
 ## 삭제
 
