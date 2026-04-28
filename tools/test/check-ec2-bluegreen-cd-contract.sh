@@ -87,6 +87,7 @@ done
 
 echo "[ec2-bluegreen-cd] runtime image contract"
 require_pattern "ENTRYPOINT [\"java\", \"-jar\", \"/app/app.jar\"]" "back/Dockerfile"
+require_pattern "mkdir -p public" "front/Dockerfile"
 require_pattern "COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./" "front/Dockerfile"
 require_pattern "output: 'standalone'" "front/next.config.js"
 

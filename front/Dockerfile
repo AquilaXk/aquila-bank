@@ -14,7 +14,7 @@ ARG NEXT_PUBLIC_API_BASE_URL
 ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
 ENV NEXT_TELEMETRY_DISABLED=1
 
-RUN yarn build
+RUN mkdir -p public && yarn build
 
 FROM node:20-alpine AS runner
 WORKDIR /app
