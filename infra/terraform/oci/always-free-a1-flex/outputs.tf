@@ -22,3 +22,18 @@ output "subnet_id" {
   description = "Created public subnet OCID."
   value       = oci_core_subnet.public.id
 }
+
+output "selected_image_id" {
+  description = "Image OCID used to launch the instance."
+  value       = local.selected_image_id
+}
+
+output "selected_image_display_name" {
+  description = "Display name of the automatically selected image, or source_image_ocid_override when pinned."
+  value       = local.selected_image_display_name
+}
+
+output "selected_image_time_created" {
+  description = "Creation time of the automatically selected image. Null when source_image_ocid_override is used."
+  value       = local.selected_image_time_created
+}
