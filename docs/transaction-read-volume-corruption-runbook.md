@@ -1,6 +1,6 @@
 # Transaction Read Volume Corruption Runbook
 
-100m transaction read fixture volume이 crash recovery loop에 빠졌을 때의 복구 기준입니다. 운영 RDS 절차가 아니라 local Docker 100m performance fixture 전용입니다.
+OCI A1 100m transaction read fixture data volume이 crash recovery loop에 빠졌을 때의 복구 기준입니다. 운영 RDS 절차가 아니라 OCI A1 self-managed PostgreSQL 100m performance fixture 전용입니다.
 
 ## 복구 기준
 
@@ -20,7 +20,7 @@ tools/test/run-transaction-100m-fixture-restore.sh
 - `OOMKilled=true`가 남아 있다.
 - container status가 `restarting`, `dead`, `exited` 중 하나이고 짧은 재시작 후에도 닫히지 않는다.
 - `pg_is_in_recovery()` 확인이 connection failure 또는 startup/recovery loop 메시지로 반복 실패한다.
-- 대량 cleanup 직후 PostgreSQL signal 9 또는 Docker Desktop memory pressure가 확인됐다.
+- 대량 cleanup 직후 PostgreSQL signal 9 또는 OCI A1 host memory pressure가 확인됐다.
 
 이 조건에서는 mutable volume을 신뢰하지 않고 dump artifact 기준 fresh restore로 전환한다.
 

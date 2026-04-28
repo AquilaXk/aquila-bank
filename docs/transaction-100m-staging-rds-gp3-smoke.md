@@ -1,15 +1,15 @@
 # Transaction 100m Optional Staging RDS gp3 Smoke
 
-로컬 Docker PostgreSQL + 로컬 디스크 100m primary evidence가 준비된 뒤, 비용 조건이 맞을 때만 RDS gp3 staging 환경에서 transaction read path를 read-only로 비교 확인하는 절차입니다. 이 문서는 remote 배포 smoke이며, 로컬 Docker 100m 기준을 대체하지 않습니다.
+OCI A1 Flex 4 OCPU / 24GB + data 300GB self-managed PostgreSQL 100m primary evidence가 준비된 뒤, 비용 조건이 맞을 때만 AWS RDS db.t4g.small + gp3 staging 환경에서 transaction read path를 read-only로 비교 확인하는 절차입니다. 이 문서는 optional cloud comparison이며, OCI A1 100m 기준을 대체하지 않습니다.
 
-Docker local smoke는 RDS recovery, gp3 IO, CPU credit, network latency를 재현하지 못합니다. 반대로 RDS smoke는 계정 비용과 secret 준비가 필요하므로 기본 실행 경로에서 제외합니다.
+OCI A1 smoke는 AWS RDS recovery, gp3 IO, CPU credit, network latency를 재현하지 못합니다. 반대로 RDS smoke는 계정 비용과 secret 준비가 필요하므로 기본 실행 경로에서 제외합니다.
 
 ## Guard
 
 - staging backend URL은 `https://`를 기본으로 요구합니다.
 - `localhost`, `127.0.0.1`, `0.0.0.0`, `::1` URL은 기본 차단합니다.
 - 실행 전 `STAGING_RDS_CONFIRM=read-only-staging-rds`를 요구합니다.
-- 로컬 Docker 100m primary evidence가 없으면 이 smoke만으로 1억 건 목표 달성을 판정하지 않습니다.
+- OCI A1 100m primary evidence가 없으면 이 smoke만으로 1억 건 목표 달성을 판정하지 않습니다.
 - RDS 접속 secret, 운영 URL, bearer token은 저장소와 결과 문서에 기록하지 않습니다.
 - runner는 k6 read scenario만 실행하며 restore, cleanup, write traffic을 수행하지 않습니다.
 
@@ -57,4 +57,4 @@ tools/test/run-transaction-100m-staging-rds-gp3-smoke.sh
 
 ## Rollback
 
-이 smoke는 read-only traffic만 발생시키므로 application rollback은 필요하지 않습니다. staging latency나 RDS credit 소진이 보이면 실행을 중단하고 같은 SHA의 staging 배포 상태를 유지한 채 VU/duration을 낮춰 재측정합니다. 비용 조건이 맞지 않으면 로컬 Docker 100m 결과만 primary evidence로 유지합니다.
+이 smoke는 read-only traffic만 발생시키므로 application rollback은 필요하지 않습니다. staging latency나 RDS credit 소진이 보이면 실행을 중단하고 같은 SHA의 staging 배포 상태를 유지한 채 VU/duration을 낮춰 재측정합니다. 비용 조건이 맞지 않으면 AWS RDS 비교만 생략하고, primary evidence는 OCI A1 100m 결과로 판단합니다.
