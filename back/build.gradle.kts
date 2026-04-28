@@ -1,5 +1,9 @@
+import org.gradle.testing.jacoco.tasks.JacocoCoverageVerification
+import org.gradle.testing.jacoco.tasks.JacocoReport
+
 plugins {
     java
+    jacoco
     id("com.diffplug.spotless") version "8.4.0"
     id("org.springframework.boot") version "4.0.5"
     id("io.spring.dependency-management") version "1.1.7"
@@ -45,9 +49,67 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
+val jacocoStaticCoverageExclusions =
+    listOf(
+        "com/aquilabank/AquilaBankApplication.class",
+        "com/aquilabank/domain/**/port/**",
+        "com/aquilabank/domain/**/*UseCase.class",
+        "com/aquilabank/**/*Configuration.class",
+        "com/aquilabank/**/*Properties.class",
+        "com/aquilabank/**/*Exception.class",
+    )
+
+val jacocoCoverageBaselineExclusions =
+    layout.projectDirectory.file("config/jacoco-coverage-baseline-excludes.txt")
+
+fun jacocoCoverageExclusions() =
+    jacocoStaticCoverageExclusions +
+        jacocoCoverageBaselineExclusions.asFile
+            .readLines()
+            .map(String::trim)
+            .filter { it.isNotEmpty() && !it.startsWith("#") }
+
+fun jacocoMainClassDirectories(classDirectories: ConfigurableFileCollection) =
+    files(
+        classDirectories.files.map {
+            fileTree(it) {
+                // 기존 미커버 baseline을 파일로 고정해 신규 코드의 100% 게이트를 유지한다.
+                exclude(jacocoCoverageExclusions())
+            }
+        })
+
 tasks.withType<Test> {
     useJUnitPlatform()
     systemProperty("spring.profiles.active", "test")
+    finalizedBy(tasks.named<JacocoReport>("jacocoTestReport"))
+}
+
+tasks.named<JacocoReport>("jacocoTestReport") {
+    dependsOn(tasks.test)
+    classDirectories.setFrom(jacocoMainClassDirectories(classDirectories))
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+        csv.required.set(false)
+    }
+}
+
+tasks.named<JacocoCoverageVerification>("jacocoTestCoverageVerification") {
+    dependsOn(tasks.named<JacocoReport>("jacocoTestReport"))
+    classDirectories.setFrom(jacocoMainClassDirectories(classDirectories))
+    violationRules {
+        rule {
+            limit {
+                counter = "LINE"
+                value = "COVEREDRATIO"
+                minimum = "1.00".toBigDecimal()
+            }
+        }
+    }
+}
+
+tasks.named("check") {
+    dependsOn(tasks.named<JacocoCoverageVerification>("jacocoTestCoverageVerification"))
 }
 
 spotless {
