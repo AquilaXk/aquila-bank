@@ -1,0 +1,24 @@
+tenancy_ocid     = "ocid1.tenancy.oc1..example"
+user_ocid        = "ocid1.user.oc1..example"
+fingerprint      = "00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00"
+private_key_path = "~/.oci/oci_api_key.pem"
+region           = "ap-seoul-1"
+
+compartment_ocid    = "ocid1.compartment.oc1..example"
+availability_domain = "example:AP-SEOUL-1-AD-1"
+source_image_ocid   = "ocid1.image.oc1.ap-seoul-1.example"
+
+ssh_public_key   = "ssh-ed25519 example-public-key"
+ssh_ingress_cidr = "203.0.113.10/32"
+
+name_prefix    = "aquila-free-a1"
+hostname_label = "aquilafreea1"
+vcn_dns_label  = "aquilavcn"
+subnet_dns_label = "public"
+
+vcn_cidr    = "10.40.0.0/16"
+subnet_cidr = "10.40.1.0/24"
+
+instance_ocpus         = 4
+instance_memory_in_gbs = 24
+boot_volume_size_in_gbs = 150
