@@ -11,6 +11,7 @@ Environment:
   T3MICRO_CAPACITY_RESULT_MD   optional Docker capacity archive markdown
   T3MICRO_CAPACITY_SUMMARY_TSV optional off-host transaction 100m capacity summary TSV
   T3MICRO_CAPACITY_RUN_CONTEXT_ENV optional run context next to capacity summary TSV
+  T3MICRO_CAPACITY_PREREQUISITE_ENV optional capacity prerequisite failure env
   T3MICRO_SSE_RESULT_MD        optional SSE reconnect archive markdown
   T3MICRO_ADMISSION_SUMMARY_TSV optional admission summary TSV
   T3MICRO_OUTBOX_SUMMARY_TSV   optional outbox summary TSV
@@ -22,6 +23,7 @@ Environment:
   T3MICRO_AGGREGATE_SEARCH_ROOTS default "docs/performance-results build/reports"
   T3MICRO_AGGREGATE_RUN_ID optional run id used to scope auto inputs
   T3MICRO_AGGREGATE_AUTO_INPUT_PREFIX default <aggregate name>, used when run id is empty
+  T3MICRO_K6_PROFILE_SELECTOR representative|latest, default representative
 
 Examples:
   tools/test/run-t3micro-defensive-gates-aggregate-report.sh --print-plan
@@ -57,6 +59,7 @@ output_path="${output_dir}/${name}.md"
 capacity_result="${T3MICRO_CAPACITY_RESULT_MD:-}"
 capacity_summary="${T3MICRO_CAPACITY_SUMMARY_TSV:-}"
 capacity_run_context="${T3MICRO_CAPACITY_RUN_CONTEXT_ENV:-}"
+capacity_prerequisite="${T3MICRO_CAPACITY_PREREQUISITE_ENV:-}"
 sse_result="${T3MICRO_SSE_RESULT_MD:-}"
 admission_summary="${T3MICRO_ADMISSION_SUMMARY_TSV:-}"
 outbox_summary="${T3MICRO_OUTBOX_SUMMARY_TSV:-}"
@@ -68,6 +71,7 @@ auto_inputs="${T3MICRO_AGGREGATE_AUTO_INPUTS:-true}"
 search_roots="${T3MICRO_AGGREGATE_SEARCH_ROOTS:-docs/performance-results build/reports}"
 aggregate_run_id="${T3MICRO_AGGREGATE_RUN_ID:-}"
 auto_input_prefix="${T3MICRO_AGGREGATE_AUTO_INPUT_PREFIX:-${name}}"
+k6_profile_selector="${T3MICRO_K6_PROFILE_SELECTOR:-representative}"
 
 require_bool() {
   local name="$1"
@@ -85,6 +89,42 @@ require_non_negative_number() {
     echo "${name} must be zero or a positive number: ${value}" >&2
     exit 1
   fi
+}
+
+require_k6_profile_selector() {
+  case "${k6_profile_selector}" in
+    representative|latest)
+      ;;
+    *)
+      echo "T3MICRO_K6_PROFILE_SELECTOR must be representative or latest: ${k6_profile_selector}" >&2
+      exit 1
+      ;;
+  esac
+}
+
+auto_scope_token_variants() {
+  local token="$1"
+  local variant
+  [[ -z "${token}" ]] && return 0
+  echo "${token}"
+  for variant in \
+    "${token#t3micro-defensive-}" \
+    "${token#t3micro-}" \
+    "${token#defensive-}" \
+    "${token#transaction-100m-}"; do
+    if [[ -n "${variant}" && "${variant}" != "${token}" ]]; then
+      echo "${variant}"
+    fi
+  done
+}
+
+file_matches_scope_token() {
+  local path="$1"
+  local token="$2"
+  [[ -z "${token}" ]] && return 1
+  [[ "${path}" == *"${token}"* ]] && return 0
+  grep -F "${token}" "${path}" >/dev/null 2>&1 && return 0
+  return 1
 }
 
 latest_file() {
@@ -108,17 +148,147 @@ latest_file() {
 
 file_matches_auto_scope() {
   local path="$1"
+  local token
   if [[ -n "${aggregate_run_id}" ]]; then
-    [[ "${path}" == *"${aggregate_run_id}"* ]] && return 0
-    grep -F "${aggregate_run_id}" "${path}" >/dev/null 2>&1 && return 0
+    while IFS= read -r token; do
+      file_matches_scope_token "${path}" "${token}" && return 0
+    done < <(auto_scope_token_variants "${aggregate_run_id}")
     return 1
   fi
   if [[ -n "${auto_input_prefix}" ]]; then
-    [[ "${path}" == *"${auto_input_prefix}"* ]] && return 0
-    grep -F "${auto_input_prefix}" "${path}" >/dev/null 2>&1 && return 0
+    while IFS= read -r token; do
+      file_matches_scope_token "${path}" "${token}" && return 0
+    done < <(auto_scope_token_variants "${auto_input_prefix}")
     return 1
   fi
   return 0
+}
+
+md_field_value() {
+  local file="$1"
+  local key="$2"
+  if [[ -z "${file}" || ! -f "${file}" ]]; then
+    printf "missing"
+    return 0
+  fi
+  awk -F ': ' -v key="- ${key}" '$1 == key {print $2}' "${file}" | tail -1
+}
+
+number_is_gt_zero() {
+  local value="$1"
+  [[ "${value}" =~ ^[0-9]+([.][0-9]+)?$ ]] || return 1
+  awk -v value="${value}" 'BEGIN { exit !(value > 0) }'
+}
+
+k6_json_metric_count() {
+  local json_path="$1"
+  local metric="$2"
+  [[ -f "${json_path}" ]] || {
+    echo "0"
+    return 0
+  }
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "0"
+    return 0
+  fi
+  jq -r --arg metric "${metric}" '
+    (.metrics[$metric].values // {}) as $values
+    | if $values.count != null then
+        $values.count
+      elif ($values.passes != null or $values.fails != null) then
+        (($values.passes // 0) + ($values.fails // 0))
+      else
+        0
+      end
+  ' "${json_path}" 2>/dev/null || echo "0"
+}
+
+k6_summary_score() {
+  local file="$1"
+  local purpose status scenario overload source_json checks_rate rate_503 count_503 burst_rate pre_allocated
+  local score=0
+  local failed=false
+
+  purpose="$(md_field_value "${file}" "resultPurpose")"
+  status="$(md_field_value "${file}" "resultStatus")"
+  scenario="$(md_field_value "${file}" "scenario mode")"
+  overload="$(md_field_value "${file}" "overload mode")"
+  source_json="$(md_field_value "${file}" "sourceJson")"
+  checks_rate="$(md_field_value "${file}" "checks rate")"
+  rate_503="$(md_field_value "${file}" "transaction 503 rate")"
+  count_503="$(md_field_value "${file}" "transaction 503 count")"
+  burst_rate="$(md_field_value "${file}" "burst rate")"
+  pre_allocated="$(md_field_value "${file}" "pre allocated VUs")"
+
+  if [[ "${status}" =~ ^[0-9]+$ && "${status}" -ne 0 ]]; then
+    failed=true
+  fi
+  if [[ "${checks_rate}" == "0" ]]; then
+    failed=true
+  fi
+  if number_is_gt_zero "${rate_503}" || number_is_gt_zero "${count_503}"; then
+    failed=true
+  fi
+  if [[ "${scenario}" == "burst" ]]; then
+    burst_rate="${burst_rate%%/*}"
+    if [[ "${burst_rate}" =~ ^[0-9]+$ && "${pre_allocated}" =~ ^[0-9]+$ && "${pre_allocated}" -lt "${burst_rate}" ]]; then
+      failed=true
+    fi
+  fi
+  if [[ -n "${source_json}" && "${source_json}" != "missing" && -f "${source_json}" ]]; then
+    if number_is_gt_zero "$(k6_json_metric_count "${source_json}" "dropped_iterations")" \
+      || number_is_gt_zero "$(k6_json_metric_count "${source_json}" "interrupted_iterations")"; then
+      failed=true
+    fi
+  fi
+
+  if [[ "${failed}" == "false" ]]; then
+    score=$((score + 10000))
+  fi
+  case "${purpose}" in
+    smoke) score=$((score + 3000)) ;;
+    capacity) score=$((score + 2500)) ;;
+    profile) score=$((score + 2000)) ;;
+    benchmark) score=$((score + 1500)) ;;
+    *) score=$((score + 1000)) ;;
+  esac
+  case "${scenario}" in
+    constant-vus) score=$((score + 300)) ;;
+    constant-arrival-rate) score=$((score + 250)) ;;
+    burst) score=$((score + 100)) ;;
+    *) score=$((score + 50)) ;;
+  esac
+  if [[ "${overload}" == "true" ]]; then
+    score=$((score - 50))
+  fi
+  echo "${score}"
+}
+
+latest_k6_summary() {
+  if [[ "${k6_profile_selector}" == "latest" ]]; then
+    latest_file '*transaction-100m*-summary.md'
+    return 0
+  fi
+
+  local matches=()
+  local root path
+  for root in ${search_roots}; do
+    if [[ -d "${root}" ]]; then
+      while IFS= read -r path; do
+        if file_matches_auto_scope "${path}"; then
+          matches+=("${path}")
+        fi
+      done < <(find "${root}" -type f -name '*transaction-100m*-summary.md' 2>/dev/null)
+    fi
+  done
+  if [[ "${#matches[@]}" -eq 0 ]]; then
+    return 0
+  fi
+  {
+    for path in "${matches[@]}"; do
+      printf "%08d\t%s\n" "$(k6_summary_score "${path}")" "${path}"
+    done
+  } | sort -r | head -1 | cut -f2-
 }
 
 capacity_summary_matches_auto_scope() {
@@ -175,22 +345,24 @@ resolve_auto_inputs() {
   if [[ -z "${capacity_run_context}" && -n "${capacity_summary}" ]]; then
     capacity_run_context="$(capacity_context_for_summary "${capacity_summary}")"
   fi
+  capacity_prerequisite="${capacity_prerequisite:-$(latest_file 'capacity-prerequisite-failure.env')}"
   capacity_result="${capacity_result:-$(latest_file 'docker-t3micro-capacity*.md')}"
   sse_result="${sse_result:-$(latest_file '*sse*.md')}"
   admission_summary="${admission_summary:-$(latest_file 'http-admission-summary.tsv')}"
   outbox_summary="${outbox_summary:-$(latest_file 'outbox-provider-backlog-summary.tsv')}"
-  k6_summary="${k6_summary:-$(latest_file '*transaction-100m*-summary.md')}"
+  k6_summary="${k6_summary:-$(latest_k6_summary)}"
   memory_summary="${memory_summary:-$(latest_file '*memory-summary.tsv')}"
 }
 
 require_bool "T3MICRO_AGGREGATE_AUTO_INPUTS" "${auto_inputs}"
 require_non_negative_number "T3MICRO_TOTAL_MEMORY_BUDGET_MIB" "${total_memory_budget_mib}"
+require_k6_profile_selector
 resolve_auto_inputs
 
 gate_path() {
   local gate="$1"
   case "${gate}" in
-    capacity) echo "${capacity_summary}" ;;
+    capacity) echo "${capacity_summary:-${capacity_prerequisite}}" ;;
     sse) echo "${sse_result}" ;;
     admission) echo "${admission_summary}" ;;
     outbox) echo "${outbox_summary}" ;;
@@ -228,11 +400,13 @@ print_plan() {
   echo "[t3micro-defensive-aggregate] capacity=${capacity_result:-missing}"
   echo "[t3micro-defensive-aggregate] capacity_summary=${capacity_summary:-missing}"
   echo "[t3micro-defensive-aggregate] capacity_run_context=${capacity_run_context:-missing}"
+  echo "[t3micro-defensive-aggregate] capacity_prerequisite=${capacity_prerequisite:-missing}"
   echo "[t3micro-defensive-aggregate] sse=${sse_result:-missing}"
   echo "[t3micro-defensive-aggregate] admission=${admission_summary:-missing}"
   echo "[t3micro-defensive-aggregate] outbox=${outbox_summary:-missing}"
   echo "[t3micro-defensive-aggregate] k6=${k6_summary:-missing}"
   echo "[t3micro-defensive-aggregate] memory=${memory_summary:-missing}"
+  echo "[t3micro-defensive-aggregate] k6_profile_selector=${k6_profile_selector}"
   echo "[t3micro-defensive-aggregate] required_gates=${required_gates:-none}"
   echo "[t3micro-defensive-aggregate] total_memory_budget_mib=${total_memory_budget_mib}"
 }
@@ -247,6 +421,26 @@ md_value() {
   local value
   value="$(awk -F ': ' -v key="- ${key}" '$1 == key {print $2}' "${file}" | tail -1)"
   printf "%s" "${value:-missing}"
+}
+
+env_value() {
+  local file="$1"
+  local key="$2"
+  if [[ -z "${file}" || ! -f "${file}" ]]; then
+    printf "missing"
+    return 0
+  fi
+  awk -F '=' -v key="${key}" '$1 == key {sub(/^[^=]*=/, ""); print; exit}' "${file}"
+}
+
+capacity_prerequisite_status_value() {
+  env_value "${capacity_prerequisite}" "CAPACITY_PREREQUISITE_STATUS"
+}
+
+capacity_prerequisite_signal_value() {
+  printf "reason=%s missing=%s" \
+    "$(env_value "${capacity_prerequisite}" "CAPACITY_PREREQUISITE_FAILURE_REASON")" \
+    "$(env_value "${capacity_prerequisite}" "CAPACITY_PREREQUISITE_MISSING_VARS")"
 }
 
 capacity_summary_status() {
@@ -671,6 +865,7 @@ write_report() {
     echo "- capacityResult: ${capacity_result:-missing}"
     echo "- capacitySummary: ${capacity_summary:-missing}"
     echo "- capacityRunContext: ${capacity_run_context:-missing}"
+    echo "- capacityPrerequisite: ${capacity_prerequisite:-missing}"
     echo "- sseResult: ${sse_result:-missing}"
     echo "- admissionSummary: ${admission_summary:-missing}"
     echo "- outboxSummary: ${outbox_summary:-missing}"
@@ -682,6 +877,7 @@ write_report() {
     echo "| Gate | Status | Peak CPU % | Peak Memory MiB | Backlog / Reject Signal | Source |"
     echo "| --- | --- | ---: | ---: | --- | --- |"
     echo "| capacity smoke | $(md_value "${capacity_result}" "capacity smoke status") | $(md_value "${capacity_result}" "peakCpuPercent") | $(md_value "${capacity_result}" "peakMemoryMiB") | repeat=$(md_value "${capacity_result}" "repeat") | ${capacity_result:-missing} |"
+    echo "| capacity prerequisite | $(capacity_prerequisite_status_value) | n/a | n/a | $(capacity_prerequisite_signal_value) | ${capacity_prerequisite:-missing} |"
     echo "| capacity | $(capacity_status_value) | $(capacity_cpu_value) | $(capacity_memory_value) | $(capacity_signal_value) | $(capacity_source_value) |"
     echo "| capacity soak | $(capacity_soak_status_value) | $(capacity_soak_cpu_value) | n/a | $(capacity_soak_signal_value) | ${capacity_summary:-missing} |"
     echo "| sse reconnect | $(md_value "${sse_result}" "status") | $(md_value "${sse_result}" "peakCpuPercent") | $(md_value "${sse_result}" "peakMemoryMiB") | clients=$(md_value "${sse_result}" "reconnectClients") rounds=$(md_value "${sse_result}" "reconnectRounds") | ${sse_result:-missing} |"
