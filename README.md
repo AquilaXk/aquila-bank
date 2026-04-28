@@ -66,6 +66,7 @@
 - feature 작업은 `main`에서 짧게 분기한 `feat/*`, `fix/*`, `perf/*`, `chore/*`, `build/*`, `docs/*` 브랜치에서 진행합니다.
 - PR 리뷰와 backend/frontend CI 통과 후 `main`에 병합합니다.
 - `main`에 병합되면 `Main CI` workflow가 backend/frontend check를 다시 실행하고, 같은 SHA를 `Staging Deploy` workflow로 전달합니다.
+- EC2 app smoke는 `EC2 Blue/Green Deploy` workflow가 GHCR image를 만들고 SSM으로 단일 EC2 Docker/Nginx blue-green slot을 전환합니다.
 - staging 배포는 현재 `origin/main` SHA와 일치하는 `Main CI` 성공 SHA만 진행하며, deploy hook secret이 없으면 no-op으로 종료합니다.
 - production 승격은 staging deployment status가 `success`인 같은 SHA만 대상으로 하고, GitHub Environment 수동 승인 또는 `prod-*` tag로만 진행합니다.
 - 미완성 기능은 장기 `develop` 브랜치 대신 feature flag로 기본 비노출 처리합니다.
