@@ -9,6 +9,7 @@ Environment:
   PERFORMANCE_RESULT_NAME   output basename without .md, default summary-md basename
   PERFORMANCE_RESULT_OUTPUT_DIR default docs/performance-results
   PERFORMANCE_RESULT_PURPOSE default ${K6_RUN_PURPOSE:-smoke}
+  PERFORMANCE_RESULT_STATUS  default unknown
 
 Examples:
   tools/test/archive-k6-transaction-100m-result.sh build/reports/k6/transaction-100m-summary.md
@@ -40,6 +41,7 @@ fi
 base_name="${PERFORMANCE_RESULT_NAME:-$(basename "${summary_md}" .md)}"
 output_dir="${PERFORMANCE_RESULT_OUTPUT_DIR:-docs/performance-results}"
 purpose="${PERFORMANCE_RESULT_PURPOSE:-${K6_RUN_PURPOSE:-smoke}}"
+status="${PERFORMANCE_RESULT_STATUS:-unknown}"
 output_path="${output_dir}/${base_name}.md"
 mkdir -p "${output_dir}"
 
@@ -50,6 +52,7 @@ mkdir -p "${output_dir}"
   echo
   echo "- archivedAt: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo "- resultPurpose: ${purpose}"
+  echo "- resultStatus: ${status}"
   echo "- reportClass: transaction-100m-${purpose}"
   echo "- sourceMarkdown: ${summary_md}"
   if [[ -n "${summary_json}" ]]; then

@@ -35,6 +35,7 @@ grep -F "warmup duration=10s" <<<"${plan}" >/dev/null
 grep -F "run purpose=smoke" <<<"${plan}" >/dev/null
 grep -F "archive output dir=docs/performance-results/k6-smoke" <<<"${plan}" >/dev/null
 grep -F "summary gate=true" <<<"${plan}" >/dev/null
+grep -F "archive failed summary=true" <<<"${plan}" >/dev/null
 grep -F "backend readiness gate=true path=/actuator/health/readiness timeout=120" <<<"${plan}" >/dev/null
 grep -F "postgres health gate=true required_status=healthy" <<<"${plan}" >/dev/null
 grep -F "postgres recovery gate=true stable_seconds=10" <<<"${plan}" >/dev/null
@@ -120,18 +121,29 @@ burst_default_plan="$(
 )"
 grep -F "scenario mode=burst" <<<"${burst_default_plan}" >/dev/null
 grep -F "burst rate=16 duration=20s preAllocatedVUs=16 maxVUs=32" <<<"${burst_default_plan}" >/dev/null
+grep -F "burst headroom preflight=true minVUs=16" <<<"${burst_default_plan}" >/dev/null
 
-burst_plan="$(
-  K6_REPORT_NAME=transaction-100m-burst-check \
+burst_valid_plan="$(
+  K6_REPORT_NAME=transaction-100m-burst-valid-check \
   K6_SCENARIO_MODE=burst \
   K6_BURST_RATE=16 \
   K6_BURST_DURATION=20s \
-  K6_PRE_ALLOCATED_VUS=8 \
+  K6_PRE_ALLOCATED_VUS=16 \
   K6_MAX_VUS=32 \
     tools/test/run-k6-transaction-100m-loadtest.sh --print-plan
 )"
-grep -F "scenario mode=burst" <<<"${burst_plan}" >/dev/null
-grep -F "burst rate=16 duration=20s preAllocatedVUs=8 maxVUs=32" <<<"${burst_plan}" >/dev/null
+grep -F "scenario mode=burst" <<<"${burst_valid_plan}" >/dev/null
+grep -F "burst rate=16 duration=20s preAllocatedVUs=16 maxVUs=32" <<<"${burst_valid_plan}" >/dev/null
+
+if K6_REPORT_NAME=transaction-100m-burst-underheadroom-check \
+  K6_SCENARIO_MODE=burst \
+  K6_BURST_RATE=256 \
+  K6_PRE_ALLOCATED_VUS=128 \
+  K6_MAX_VUS=128 \
+    tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
+  echo "burst headroom preflight unexpectedly accepted VU128 for 256/s" >&2
+  exit 1
+fi
 
 burst_offhost_plan="$(
   K6_REPORT_NAME=transaction-100m-burst-offhost-check \
@@ -146,7 +158,8 @@ burst_offhost_plan="$(
 )"
 grep -F "k6 report name: transaction-100m-burst-offhost-check" <<<"${burst_offhost_plan}" >/dev/null
 grep -F "generator mode=docker-context" <<<"${burst_offhost_plan}" >/dev/null
-grep -F "burst rate=256 duration=20s preAllocatedVUs=512 maxVUs=1024" <<<"${burst_offhost_plan}" >/dev/null
+grep -F "burst rate=256 duration=20s preAllocatedVUs=256 maxVUs=256" <<<"${burst_offhost_plan}" >/dev/null
+grep -F "burst headroom preflight=true minVUs=256" <<<"${burst_offhost_plan}" >/dev/null
 
 echo "[k6-transaction-100m] k6 script contract"
 grep -F "experimental-prometheus-rw" compose.loadtest.yml >/dev/null
@@ -244,7 +257,10 @@ grep -F "K6_OBSERVABILITY_MODE" tools/test/run-k6-transaction-100m-loadtest.sh >
 grep -F "K6_BACKEND_READINESS_GATE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_RUN_ID" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_POSTGRES_RECOVERY_NOISE_WINDOW_SECONDS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "K6_BURST_HEADROOM_PREFLIGHT" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "K6_ARCHIVE_FAILED_SUMMARY" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "write_run_context" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "assert_burst_headroom_preflight" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "RECOVERY_NOISE_WINDOW_SECONDS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "wait_for_backend_readiness" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "LOADTEST_PROMETHEUS_CPUS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
@@ -260,6 +276,7 @@ grep -F "K6_REMOTE_PROMETHEUS_RW_SERVER_URL" tools/test/run-k6-transaction-100m-
 grep -F "K6_REMOTE_PREFLIGHT" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_REMOTE_READINESS_PATH" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "PERFORMANCE_RESULT_STATUS" tools/test/archive-k6-transaction-100m-result.sh >/dev/null
 grep -F "assert_remote_k6_preflight" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "docker --context \"\${K6_DOCKER_CONTEXT}\" info" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "remote prometheus remote-write preflight" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null

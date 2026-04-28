@@ -25,6 +25,8 @@ Optional environment:
   K6_MAX_VUS           default K6_PRE_ALLOCATED_VUS
   K6_BURST_RATE        iterations per second for burst mode, default 16
   K6_BURST_DURATION    default 20s
+  K6_BURST_HEADROOM_PREFLIGHT fail before k6 when burst VU headroom is too small, default true
+  K6_BURST_MIN_HEADROOM_VUS default K6_BURST_RATE
   K6_WARMUP_DURATION   warmup phase before measured phase, default 10s
   K6_LIMIT             default 50
   K6_HOT_P99_THRESHOLD_MS default 750
@@ -35,6 +37,7 @@ Optional environment:
   K6_COLD_MAX_THRESHOLD_MS default 5000
   K6_AUTH_TOKEN        bearer token, optional when bootstrap header auth is enabled
   K6_ARCHIVE_RESULTS   copy markdown summary to docs/performance-results, default true
+  K6_ARCHIVE_FAILED_SUMMARY archive summary even when hard gate fails, default true
   K6_ARCHIVE_OUTPUT_ROOT default docs/performance-results
   K6_PREFLIGHT         check PostgreSQL OOM/index readiness before k6, default true
   K6_POSTGRES_HEALTH_GATE require PostgreSQL Docker health=healthy before k6, default true
@@ -225,15 +228,13 @@ K6_RATE="${K6_RATE:-8}"
 K6_TIME_UNIT="${K6_TIME_UNIT:-1s}"
 K6_BURST_RATE="${K6_BURST_RATE:-16}"
 K6_BURST_DURATION="${K6_BURST_DURATION:-20s}"
+K6_BURST_HEADROOM_PREFLIGHT="${K6_BURST_HEADROOM_PREFLIGHT:-true}"
+K6_BURST_MIN_HEADROOM_VUS="${K6_BURST_MIN_HEADROOM_VUS:-${K6_BURST_RATE}}"
 K6_GENERATOR_MODE="${K6_GENERATOR_MODE:-local}"
 K6_PRE_ALLOCATED_VUS="${K6_PRE_ALLOCATED_VUS:-}"
 if [[ -z "${K6_PRE_ALLOCATED_VUS}" ]]; then
   if [[ "${K6_SCENARIO_MODE}" == "burst" ]]; then
-    if [[ "${K6_GENERATOR_MODE}" == "docker-context" && "${K6_BURST_RATE}" =~ ^[1-9][0-9]*$ ]]; then
-      K6_PRE_ALLOCATED_VUS="$((K6_BURST_RATE * 2))"
-    else
-      K6_PRE_ALLOCATED_VUS="${K6_BURST_RATE}"
-    fi
+    K6_PRE_ALLOCATED_VUS="${K6_BURST_MIN_HEADROOM_VUS}"
   else
     K6_PRE_ALLOCATED_VUS="${K6_VUS}"
   fi
@@ -243,9 +244,13 @@ if [[ -z "${K6_MAX_VUS}" ]]; then
   if [[ "${K6_SCENARIO_MODE}" == "burst" ]]; then
     if [[ "${K6_BURST_RATE}" =~ ^[1-9][0-9]*$ ]]; then
       if [[ "${K6_GENERATOR_MODE}" == "docker-context" ]]; then
-        K6_MAX_VUS="$((K6_BURST_RATE * 4))"
+        K6_MAX_VUS="${K6_PRE_ALLOCATED_VUS}"
       else
-        K6_MAX_VUS="$((K6_BURST_RATE * 2))"
+        burst_local_max="$((K6_BURST_RATE * 2))"
+        if [[ "${K6_PRE_ALLOCATED_VUS}" =~ ^[1-9][0-9]*$ && "${K6_PRE_ALLOCATED_VUS}" -gt "${burst_local_max}" ]]; then
+          burst_local_max="${K6_PRE_ALLOCATED_VUS}"
+        fi
+        K6_MAX_VUS="${burst_local_max}"
       fi
     else
       K6_MAX_VUS="${K6_BURST_RATE}"
@@ -266,6 +271,7 @@ K6_HOT_MAX_THRESHOLD_MS="${K6_HOT_MAX_THRESHOLD_MS:-3000}"
 K6_COLD_MAX_THRESHOLD_MS="${K6_COLD_MAX_THRESHOLD_MS:-5000}"
 K6_HTTP_FAILED_RATE="${K6_HTTP_FAILED_RATE:-0.01}"
 K6_ARCHIVE_RESULTS="${K6_ARCHIVE_RESULTS:-true}"
+K6_ARCHIVE_FAILED_SUMMARY="${K6_ARCHIVE_FAILED_SUMMARY:-true}"
 K6_ARCHIVE_OUTPUT_ROOT="${K6_ARCHIVE_OUTPUT_ROOT:-docs/performance-results}"
 K6_PREFLIGHT="${K6_PREFLIGHT:-true}"
 K6_POSTGRES_HEALTH_GATE="${K6_POSTGRES_HEALTH_GATE:-true}"
@@ -314,13 +320,14 @@ loadtest_postgres_exporter_cpus="${LOADTEST_POSTGRES_EXPORTER_CPUS:-0.10}"
 loadtest_postgres_exporter_memory="${LOADTEST_POSTGRES_EXPORTER_MEMORY:-128m}"
 loadtest_postgres_container="${LOADTEST_POSTGRES_CONTAINER_NAME:-aquila-bank-postgres-loadtest}"
 loadtest_backend_container="${LOADTEST_BACKEND_CONTAINER_NAME:-aquila-bank-backend-loadtest}"
-export K6_VUS K6_SCENARIO_MODE K6_RATE K6_TIME_UNIT K6_PRE_ALLOCATED_VUS K6_MAX_VUS K6_BURST_RATE K6_BURST_DURATION K6_WARMUP_DURATION K6_LIMIT K6_HOT_P95_THRESHOLD_MS K6_COLD_P95_THRESHOLD_MS K6_HOT_P99_THRESHOLD_MS K6_COLD_P99_THRESHOLD_MS K6_HOT_P999_THRESHOLD_MS K6_COLD_P999_THRESHOLD_MS K6_HOT_MAX_THRESHOLD_MS K6_COLD_MAX_THRESHOLD_MS K6_HTTP_FAILED_RATE K6_ARCHIVE_RESULTS K6_PREFLIGHT K6_POSTGRES_HEALTH_GATE K6_POSTGRES_RECOVERY_GATE K6_POSTGRES_RECOVERY_STABLE_SECONDS K6_POSTGRES_RECOVERY_NOISE_WINDOW_SECONDS K6_POSTGRES_EXPORTER_STABLE_GATE K6_POSTGRES_EXPORTER_STABLE_TIMEOUT_SECONDS K6_OUTBOX_PREFLIGHT K6_OUTBOX_PREFLIGHT_BASE_URL K6_EXPLAIN_SNAPSHOT K6_OBSERVABILITY_MODE K6_OVERLOAD_MODE K6_OVERLOAD_429_RATE_THRESHOLD K6_BURST_429_RATE_THRESHOLD K6_OVERLOAD_503_RATE_THRESHOLD K6_MAX_RETRY_AFTER_SLEEP_SECONDS K6_RUN_PURPOSE K6_SUMMARY_GATE K6_BACKEND_READINESS_GATE K6_BACKEND_READINESS_PATH K6_BACKEND_READINESS_TIMEOUT_SECONDS K6_GENERATOR_MODE K6_DOCKER_CONTEXT K6_REMOTE_BASE_URL K6_REMOTE_PROMETHEUS_RW_SERVER_URL K6_REMOTE_WORKDIR K6_REMOTE_PREFLIGHT K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS K6_REMOTE_PREFLIGHT_IMAGE K6_REMOTE_READINESS_PATH K6_REPORT_NAME K6_RUN_ID
+export K6_VUS K6_SCENARIO_MODE K6_RATE K6_TIME_UNIT K6_PRE_ALLOCATED_VUS K6_MAX_VUS K6_BURST_RATE K6_BURST_DURATION K6_BURST_HEADROOM_PREFLIGHT K6_BURST_MIN_HEADROOM_VUS K6_WARMUP_DURATION K6_LIMIT K6_HOT_P95_THRESHOLD_MS K6_COLD_P95_THRESHOLD_MS K6_HOT_P99_THRESHOLD_MS K6_COLD_P99_THRESHOLD_MS K6_HOT_P999_THRESHOLD_MS K6_COLD_P999_THRESHOLD_MS K6_HOT_MAX_THRESHOLD_MS K6_COLD_MAX_THRESHOLD_MS K6_HTTP_FAILED_RATE K6_ARCHIVE_RESULTS K6_ARCHIVE_FAILED_SUMMARY K6_PREFLIGHT K6_POSTGRES_HEALTH_GATE K6_POSTGRES_RECOVERY_GATE K6_POSTGRES_RECOVERY_STABLE_SECONDS K6_POSTGRES_RECOVERY_NOISE_WINDOW_SECONDS K6_POSTGRES_EXPORTER_STABLE_GATE K6_POSTGRES_EXPORTER_STABLE_TIMEOUT_SECONDS K6_OUTBOX_PREFLIGHT K6_OUTBOX_PREFLIGHT_BASE_URL K6_EXPLAIN_SNAPSHOT K6_OBSERVABILITY_MODE K6_OVERLOAD_MODE K6_OVERLOAD_429_RATE_THRESHOLD K6_BURST_429_RATE_THRESHOLD K6_OVERLOAD_503_RATE_THRESHOLD K6_MAX_RETRY_AFTER_SLEEP_SECONDS K6_RUN_PURPOSE K6_SUMMARY_GATE K6_BACKEND_READINESS_GATE K6_BACKEND_READINESS_PATH K6_BACKEND_READINESS_TIMEOUT_SECONDS K6_GENERATOR_MODE K6_DOCKER_CONTEXT K6_REMOTE_BASE_URL K6_REMOTE_PROMETHEUS_RW_SERVER_URL K6_REMOTE_WORKDIR K6_REMOTE_PREFLIGHT K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS K6_REMOTE_PREFLIGHT_IMAGE K6_REMOTE_READINESS_PATH K6_REPORT_NAME K6_RUN_ID
 
 require_positive_integer K6_VUS
 require_positive_integer K6_RATE
 require_positive_integer K6_PRE_ALLOCATED_VUS
 require_positive_integer K6_MAX_VUS
 require_positive_integer K6_BURST_RATE
+require_positive_integer K6_BURST_MIN_HEADROOM_VUS
 if ! [[ "${K6_WARMUP_DURATION}" =~ ^[0-9]+(s|m|h)$ ]]; then
   echo "K6_WARMUP_DURATION must use a duration such as 0s, 10s, or 1m" >&2
   exit 1
@@ -345,7 +352,10 @@ require_bool_value() {
 }
 require_bool_value K6_OUTBOX_PREFLIGHT
 require_bool_value K6_EXPLAIN_SNAPSHOT
+require_bool_value K6_ARCHIVE_RESULTS
+require_bool_value K6_ARCHIVE_FAILED_SUMMARY
 require_bool_value K6_SUMMARY_GATE
+require_bool_value K6_BURST_HEADROOM_PREFLIGHT
 require_bool_value K6_BACKEND_READINESS_GATE
 require_bool_value K6_POSTGRES_HEALTH_GATE
 require_bool_value K6_POSTGRES_RECOVERY_GATE
@@ -364,6 +374,22 @@ require_generator_mode
 require_observability_mode
 require_scenario_mode
 require_run_purpose
+
+assert_burst_headroom_preflight() {
+  if [[ "${K6_SCENARIO_MODE}" != "burst" || "${K6_BURST_HEADROOM_PREFLIGHT}" != "true" ]]; then
+    return 0
+  fi
+  if ((K6_PRE_ALLOCATED_VUS < K6_BURST_MIN_HEADROOM_VUS)); then
+    echo "burst headroom preflight failed: K6_PRE_ALLOCATED_VUS=${K6_PRE_ALLOCATED_VUS} min=${K6_BURST_MIN_HEADROOM_VUS}" >&2
+    exit 1
+  fi
+  if ((K6_MAX_VUS < K6_BURST_MIN_HEADROOM_VUS)); then
+    echo "burst headroom preflight failed: K6_MAX_VUS=${K6_MAX_VUS} min=${K6_BURST_MIN_HEADROOM_VUS}" >&2
+    exit 1
+  fi
+}
+
+assert_burst_headroom_preflight
 
 if [[ "${K6_GENERATOR_MODE}" == "local" && "${K6_RUN_PURPOSE}" != "smoke" ]]; then
   echo "K6_GENERATOR_MODE=local is limited to K6_RUN_PURPOSE=smoke" >&2
@@ -480,6 +506,7 @@ print_plan() {
   echo "[k6-transaction-100m] scenario mode=${K6_SCENARIO_MODE}"
   echo "[k6-transaction-100m] arrival rate=${K6_RATE} timeUnit=${K6_TIME_UNIT} preAllocatedVUs=${K6_PRE_ALLOCATED_VUS} maxVUs=${K6_MAX_VUS}"
   echo "[k6-transaction-100m] burst rate=${K6_BURST_RATE} duration=${K6_BURST_DURATION} preAllocatedVUs=${K6_PRE_ALLOCATED_VUS} maxVUs=${K6_MAX_VUS}"
+  echo "[k6-transaction-100m] burst headroom preflight=${K6_BURST_HEADROOM_PREFLIGHT} minVUs=${K6_BURST_MIN_HEADROOM_VUS}"
   echo "[k6-transaction-100m] warmup duration=${K6_WARMUP_DURATION}"
   echo "[k6-transaction-100m] hot p95 threshold ms=${K6_HOT_P95_THRESHOLD_MS}"
   echo "[k6-transaction-100m] cold p95 threshold ms=${K6_COLD_P95_THRESHOLD_MS}"
@@ -496,6 +523,7 @@ print_plan() {
   echo "[k6-transaction-100m] overload 503 rate threshold=${K6_OVERLOAD_503_RATE_THRESHOLD}"
   echo "[k6-transaction-100m] run purpose=${K6_RUN_PURPOSE}"
   echo "[k6-transaction-100m] summary gate=${K6_SUMMARY_GATE}"
+  echo "[k6-transaction-100m] archive failed summary=${K6_ARCHIVE_FAILED_SUMMARY}"
   echo "[k6-transaction-100m] backend readiness gate=${K6_BACKEND_READINESS_GATE} path=${K6_BACKEND_READINESS_PATH} timeout=${K6_BACKEND_READINESS_TIMEOUT_SECONDS}"
   echo "[k6-transaction-100m] postgres health gate=${K6_POSTGRES_HEALTH_GATE} required_status=healthy"
   echo "[k6-transaction-100m] postgres recovery gate=${K6_POSTGRES_RECOVERY_GATE} stable_seconds=${K6_POSTGRES_RECOVERY_STABLE_SECONDS}"
@@ -567,6 +595,8 @@ write_run_context() {
     echo "RECOVERY_GATE=${K6_POSTGRES_RECOVERY_GATE}"
     echo "RECOVERY_STABLE_SECONDS=${K6_POSTGRES_RECOVERY_STABLE_SECONDS}"
     echo "RECOVERY_NOISE_WINDOW_SECONDS=${K6_POSTGRES_RECOVERY_NOISE_WINDOW_SECONDS}"
+    echo "BURST_HEADROOM_PREFLIGHT=${K6_BURST_HEADROOM_PREFLIGHT}"
+    echo "BURST_MIN_HEADROOM_VUS=${K6_BURST_MIN_HEADROOM_VUS}"
     echo "POSTGRES_CONTAINER=${loadtest_postgres_container}"
     echo "SUMMARY_JSON=${summary_json}"
     echo "RUNNER_LOG=${k6_runner_log}"
@@ -910,16 +940,32 @@ else
 fi 2>&1 | tee "${k6_runner_log}"
 status=${PIPESTATUS[0]}
 set -e
+set +e
 assert_k6_summary_gate "${summary_json}" "${k6_runner_log}" "${status}"
 status=$?
+set -e
 
-run_explain_snapshot post
+if ! run_explain_snapshot post; then
+  echo "[k6-transaction-100m] post explain snapshot failed; preserving k6 status=${status}" >&2
+  if [[ "${status}" -eq 0 ]]; then
+    status=1
+  fi
+fi
 
-if [[ "${K6_ARCHIVE_RESULTS}" == "true" && -f "${summary_md}" ]]; then
+archive_requested=false
+if [[ "${K6_ARCHIVE_RESULTS}" == "true" ]]; then
+  archive_requested=true
+fi
+if [[ "${K6_ARCHIVE_FAILED_SUMMARY}" == "true" && "${status}" -ne 0 ]]; then
+  archive_requested=true
+fi
+
+if [[ "${archive_requested}" == "true" && -f "${summary_md}" ]]; then
+  PERFORMANCE_RESULT_STATUS="${status}" \
   PERFORMANCE_RESULT_PURPOSE="${K6_RUN_PURPOSE}" \
   PERFORMANCE_RESULT_OUTPUT_DIR="${archive_output_dir}" \
     tools/test/archive-k6-transaction-100m-result.sh "${summary_md}" "${summary_json}"
-elif [[ "${K6_ARCHIVE_RESULTS}" == "true" ]]; then
+elif [[ "${archive_requested}" == "true" ]]; then
   echo "k6 summary markdown was not produced: ${summary_md}" >&2
   if [[ "${K6_GENERATOR_MODE}" == "docker-context" ]]; then
     echo "remote generator writes summaries under ${K6_REMOTE_WORKDIR}/build/reports/k6 on docker context ${K6_DOCKER_CONTEXT}" >&2

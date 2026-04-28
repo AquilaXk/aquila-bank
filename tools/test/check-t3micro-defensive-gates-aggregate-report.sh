@@ -17,6 +17,7 @@ admission="${temp_dir}/admission.tsv"
 outbox="${temp_dir}/outbox.tsv"
 k6="${temp_dir}/k6-summary.md"
 memory="${temp_dir}/memory.tsv"
+capacity_prereq="${temp_dir}/capacity-prerequisite-failure.env"
 
 cat >"${capacity}" <<'MD'
 # capacity
@@ -55,6 +56,12 @@ cat >"${k6}" <<'MD'
 - cold first p95 ms: 640
 - cold cursor p95 ms: 680
 MD
+cat >"${capacity_prereq}" <<'ENV'
+CAPACITY_PREREQUISITE_STATUS=failed
+CAPACITY_PREREQUISITE_FAILURE_REASON=missing-required-env
+CAPACITY_PREREQUISITE_MISSING_VARS=CAPACITY_K6_DOCKER_CONTEXT,CAPACITY_K6_REMOTE_BASE_URL,CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL
+CAPACITY_PREREQUISITE_GRADE=capacity
+ENV
 
 echo "[t3micro-defensive-aggregate] plan"
 plan="$(
@@ -63,6 +70,7 @@ plan="$(
   T3MICRO_CAPACITY_RESULT_MD="${capacity}" \
   T3MICRO_CAPACITY_SUMMARY_TSV="${capacity_summary}" \
   T3MICRO_CAPACITY_RUN_CONTEXT_ENV="${capacity_context}" \
+  T3MICRO_CAPACITY_PREREQUISITE_ENV="${capacity_prereq}" \
   T3MICRO_SSE_RESULT_MD="${sse}" \
   T3MICRO_ADMISSION_SUMMARY_TSV="${admission}" \
   T3MICRO_OUTBOX_SUMMARY_TSV="${outbox}" \
@@ -75,8 +83,10 @@ grep -F "output=${temp_dir}/aggregate-check.md" <<<"${plan}" >/dev/null
 grep -F "capacity=${capacity}" <<<"${plan}" >/dev/null
 grep -F "capacity_summary=${capacity_summary}" <<<"${plan}" >/dev/null
 grep -F "capacity_run_context=${capacity_context}" <<<"${plan}" >/dev/null
+grep -F "capacity_prerequisite=${capacity_prereq}" <<<"${plan}" >/dev/null
 grep -F "admission=${admission}" <<<"${plan}" >/dev/null
 grep -F "k6=${k6}" <<<"${plan}" >/dev/null
+grep -F "k6_profile_selector=representative" <<<"${plan}" >/dev/null
 grep -F "memory=${memory}" <<<"${plan}" >/dev/null
 grep -F "auto_inputs=true" <<<"${plan}" >/dev/null
 grep -F "auto_input_run_id=missing" <<<"${plan}" >/dev/null
@@ -93,7 +103,8 @@ auto_capacity_context="${auto_capacity_dir}/capacity-run-context.env"
 auto_sse="${auto_root}/docs/performance-results/aggregate-auto-check-sse-reconnect.md"
 auto_admission="${auto_root}/build/reports/admission/aggregate-auto-check-admission/http-admission-summary.tsv"
 auto_outbox="${auto_root}/build/reports/outbox/aggregate-auto-check-outbox/outbox-provider-backlog-summary.tsv"
-auto_k6="${auto_root}/build/reports/k6/transaction-100m-aggregate-auto-check-summary.md"
+auto_k6="${auto_root}/build/reports/k6/transaction-100m-aggregate-auto-check-vu3-summary.md"
+auto_k6_burst_failed="${auto_root}/build/reports/k6/transaction-100m-aggregate-auto-check-burst-vu128-summary.md"
 auto_memory="${auto_root}/build/reports/t3micro/aggregate-auto-check-memory-summary.tsv"
 cp "${capacity}" "${auto_capacity}"
 mkdir -p "${auto_capacity_dir}" "$(dirname "${auto_admission}")" "$(dirname "${auto_outbox}")"
@@ -102,8 +113,39 @@ cp "${capacity_context}" "${auto_capacity_context}"
 cp "${sse}" "${auto_sse}"
 cp "${admission}" "${auto_admission}"
 cp "${outbox}" "${auto_outbox}"
-cp "${k6}" "${auto_k6}"
+cat >"${auto_k6}" <<'MD'
+# k6 pass
+- resultPurpose: smoke
+- resultStatus: 0
+- run id: transaction-100m-aggregate-auto-check-vu3
+- scenario mode: constant-vus
+- checks rate: 1
+- transaction 429 rate: 0
+- transaction 503 rate: 0
+- hot first p95 ms: 220
+- hot cursor p95 ms: 240
+- cold first p95 ms: 640
+- cold cursor p95 ms: 680
+MD
+cat >"${auto_k6_burst_failed}" <<'MD'
+# k6 failed burst
+- resultPurpose: smoke
+- resultStatus: 1
+- run id: transaction-100m-aggregate-auto-check-burst-vu128
+- scenario mode: burst
+- burst rate: 256/1s
+- pre allocated VUs: 128
+- max VUs: 128
+- checks rate: 1
+- transaction 429 rate: 0.017
+- transaction 503 rate: 0
+- hot first p95 ms: 260
+- hot cursor p95 ms: 270
+- cold first p95 ms: 690
+- cold cursor p95 ms: 710
+MD
 cp "${memory}" "${auto_memory}"
+touch "${auto_k6}" "${auto_k6_burst_failed}"
 stale_capacity="${auto_root}/docs/performance-results/stale-20260427-docker-t3micro-capacity.md"
 stale_capacity_dir="${auto_root}/build/reports/k6/stale-20260427-capacity"
 stale_capacity_summary="${stale_capacity_dir}/capacity-summary.tsv"
@@ -132,10 +174,29 @@ grep -F "admission=${auto_admission}" <<<"${auto_plan}" >/dev/null
 grep -F "outbox=${auto_outbox}" <<<"${auto_plan}" >/dev/null
 grep -F "k6=${auto_k6}" <<<"${auto_plan}" >/dev/null
 grep -F "memory=${auto_memory}" <<<"${auto_plan}" >/dev/null
+if grep -F "burst-vu128" <<<"${auto_plan}" >/dev/null; then
+  echo "auto input unexpectedly selected failed burst k6 summary as representative" >&2
+  exit 1
+fi
 if grep -F "stale-20260427" <<<"${auto_plan}" >/dev/null; then
   echo "auto input unexpectedly selected stale artifact outside aggregate prefix" >&2
   exit 1
 fi
+
+alias_auto_root="${temp_dir}/alias-auto"
+mkdir -p "${alias_auto_root}/build/reports/t3micro" "${alias_auto_root}/build/reports/k6"
+alias_memory="${alias_auto_root}/build/reports/t3micro/post-observability-20260428-memory-summary.tsv"
+alias_k6="${alias_auto_root}/build/reports/k6/transaction-100m-post-observability-20260428-vu3-summary.md"
+cp "${memory}" "${alias_memory}"
+cp "${auto_k6}" "${alias_k6}"
+alias_plan="$(
+  T3MICRO_AGGREGATE_NAME=t3micro-defensive-post-observability-20260428 \
+  T3MICRO_AGGREGATE_OUTPUT_DIR="${temp_dir}" \
+  T3MICRO_AGGREGATE_SEARCH_ROOTS="${alias_auto_root}/build/reports" \
+    "${script}" --print-plan
+)"
+grep -F "k6=${alias_k6}" <<<"${alias_plan}" >/dev/null
+grep -F "memory=${alias_memory}" <<<"${alias_plan}" >/dev/null
 
 echo "[t3micro-defensive-aggregate] required inputs"
 if T3MICRO_AGGREGATE_NAME=aggregate-required-check \
@@ -184,6 +245,7 @@ output="$(
   T3MICRO_CAPACITY_RESULT_MD="${capacity}" \
   T3MICRO_CAPACITY_SUMMARY_TSV="${capacity_summary}" \
   T3MICRO_CAPACITY_RUN_CONTEXT_ENV="${capacity_context}" \
+  T3MICRO_CAPACITY_PREREQUISITE_ENV="${capacity_prereq}" \
   T3MICRO_SSE_RESULT_MD="${sse}" \
   T3MICRO_ADMISSION_SUMMARY_TSV="${admission}" \
   T3MICRO_OUTBOX_SUMMARY_TSV="${outbox}" \
@@ -195,6 +257,7 @@ output="$(
 output="$(tail -1 <<<"${output}")"
 test "${output}" = "${temp_dir}/aggregate-check.md"
 grep -F "| capacity smoke | 0 | 82.50 | 712.00 | repeat=3 | ${capacity} |" "${output}" >/dev/null
+grep -F "| capacity prerequisite | failed | n/a | n/a | reason=missing-required-env missing=CAPACITY_K6_DOCKER_CONTEXT,CAPACITY_K6_REMOTE_BASE_URL,CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL | ${capacity_prereq} |" "${output}" >/dev/null
 grep -F "| capacity | pass | 82.50 | n/a | 429Rate=0.010000 hikariPending=0 profiles=1 | ${capacity_summary} |" "${output}" >/dev/null
 grep -F "| capacity soak | pass | 88.25 | n/a | 429Rate=0.000000 hikariPending=0 profiles=1 | ${capacity_summary} |" "${output}" >/dev/null
 grep -F "| sse reconnect | 0 | 61.00 | 512.00 | clients=8 rounds=3 | ${sse} |" "${output}" >/dev/null
