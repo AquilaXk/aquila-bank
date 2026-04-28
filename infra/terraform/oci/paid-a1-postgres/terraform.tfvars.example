@@ -1,0 +1,37 @@
+tenancy_ocid     = "ocid1.tenancy.oc1..example"
+user_ocid        = "ocid1.user.oc1..example"
+fingerprint      = "00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00"
+private_key_path = "~/.oci/oci_api_key.pem"
+region           = "ap-seoul-1"
+
+compartment_ocid    = "ocid1.compartment.oc1..example"
+availability_domain = "example:AP-SEOUL-1-AD-1"
+
+image_operating_system         = "Canonical Ubuntu"
+image_operating_system_version = null
+source_image_ocid_override     = null
+
+ssh_public_key    = "ssh-ed25519 example-public-key"
+ssh_ingress_cidr  = "203.0.113.10/32"
+http_ingress_cidr = null
+https_ingress_cidr = null
+
+name_prefix      = "aquila-paid-a1-pg"
+hostname_label   = "aquilapaidpg"
+vcn_dns_label    = "aquilapgvcn"
+subnet_dns_label = "public"
+
+vcn_cidr    = "10.60.0.0/16"
+subnet_cidr = "10.60.1.0/24"
+
+instance_ocpus          = 4
+instance_memory_in_gbs  = 24
+boot_volume_size_in_gbs = 50
+
+postgres_data_volume_size_in_gbs = 300
+postgres_data_volume_vpus_per_gb = 10
+postgres_data_device             = "/dev/oracleoci/oraclevdb"
+postgres_data_mount_path         = "/var/lib/aquila-postgres"
+postgres_image                   = "postgres:18"
+postgres_database                = "aquila_bank"
+postgres_user                    = "aquila"
