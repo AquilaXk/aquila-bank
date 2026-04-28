@@ -24,7 +24,7 @@
 - `Main CI`가 push 이벤트에서 성공하면 `Staging Deploy` workflow가 같은 SHA를 staging에 배포합니다.
 - `Staging Deploy`는 `github.event.workflow_run.head_sha`를 deploy SHA로 고정하고, 현재 `origin/main`과 같은지 검증합니다.
 - 오래된 `Main CI` 완료가 뒤늦게 도착하면 deploy step을 skip해 staging 역배포와 불필요한 failure를 같이 막습니다.
-- Legacy manual deploy workflow는 `Main CI` 성공 이벤트에 연결하지 않고, OCI A1 staging deploy만 자동 실행합니다.
+- CD workflow는 OCI A1 staging deploy만 유지합니다.
 
 ## Staging Deploy
 

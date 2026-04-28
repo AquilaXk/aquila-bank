@@ -2,7 +2,6 @@
 set -euo pipefail
 
 workflow=".github/workflows/staging-deploy.yml"
-legacy_ec2_workflow=".github/workflows/ec2-bluegreen-deploy.yml"
 deploy_script="ops/deploy/oci/bluegreen-deploy.sh"
 fixture_principal_script="tools/ops/staging-fixture-principal-bootstrap.sh"
 delivery_doc="docs/delivery-flow.md"
@@ -45,9 +44,23 @@ reject_pattern() {
   fi
 }
 
+reject_workflow_pattern() {
+  local pattern="$1"
+  local matches
+  if command -v rg >/dev/null 2>&1; then
+    matches="$(rg -n --glob '*.yml' --glob '*.yaml' -e "$pattern" .github/workflows || true)"
+  else
+    matches="$(grep -RInE --include='*.yml' --include='*.yaml' -- "$pattern" .github/workflows || true)"
+  fi
+  if [[ -n "$matches" ]]; then
+    echo "[oci-a1-bluegreen-cd] forbidden non-OCI CD pattern in workflows: $pattern" >&2
+    printf '%s\n' "$matches" >&2
+    exit 1
+  fi
+}
+
 echo "[oci-a1-bluegreen-cd] required files"
 require_file "$workflow"
-require_file "$legacy_ec2_workflow"
 require_file "$deploy_script"
 require_file "$fixture_principal_script"
 require_file "$delivery_doc"
@@ -62,7 +75,6 @@ bash -n "$0"
 
 if command -v ruby >/dev/null 2>&1; then
   ruby -e 'require "yaml"; YAML.load_file(ARGV.fetch(0))' "$workflow"
-  ruby -e 'require "yaml"; YAML.load_file(ARGV.fetch(0))' "$legacy_ec2_workflow"
 fi
 
 echo "[oci-a1-bluegreen-cd] workflow contract"
@@ -102,12 +114,12 @@ for pattern in "${scattered_patterns[@]}"; do
   reject_pattern "$pattern" "$workflow"
 done
 
-echo "[oci-a1-bluegreen-cd] legacy EC2 workflow guard"
-require_pattern "name: Legacy Manual Blue/Green Deploy" "$legacy_ec2_workflow"
-require_pattern "workflow_dispatch:" "$legacy_ec2_workflow"
-reject_pattern "workflow_run:" "$legacy_ec2_workflow"
-reject_pattern "- Main CI" "$legacy_ec2_workflow"
-require_pattern "Legacy manual deploy workflow" "$delivery_doc"
+echo "[oci-a1-bluegreen-cd] OCI-only workflow guard"
+reject_workflow_pattern "aws-actions/configure-aws-credentials"
+reject_workflow_pattern "AWS_ACCESS_KEY_ID"
+reject_workflow_pattern "AWS_SECRET_ACCESS_KEY"
+reject_workflow_pattern "aws ssm"
+reject_workflow_pattern "AWS-RunShellScript"
 
 echo "[oci-a1-bluegreen-cd] deploy script contract"
 script_patterns=(
