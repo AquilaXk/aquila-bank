@@ -5,6 +5,7 @@ vpc_cidr                = "10.50.0.0/16"
 public_subnet_cidr      = "10.50.1.0/24"
 
 ssh_ingress_cidr = "203.0.113.10/32"
+http_ingress_cidr = "0.0.0.0/0"
 ec2_key_name     = "replace-with-existing-key-pair"
 ec2_ami_id       = null
 

@@ -9,6 +9,9 @@ AWS에 App EC2 1대만 만든다. 1억 건 PostgreSQL 데이터는 AWS에 올리
 - Network: 새 VPC, public subnet 1개, Internet Gateway
 - Security:
   - SSH `22/tcp`: `ssh_ingress_cidr`에서만 허용
+  - HTTP `80/tcp`: `http_ingress_cidr`에서 허용
+- IAM:
+  - EC2 instance profile에 `AmazonSSMManagedInstanceCore`를 연결해 GitHub Actions가 SSM으로 배포 스크립트를 실행할 수 있게 한다.
 - 제외: RDS, private DB subnet, NAT Gateway, ALB/NLB, Elastic IP
 
 이 module은 로컬 Mac Docker PostgreSQL에 있는 1억 건 fixture를 생성하거나 이동하지 않는다. EC2에서 로컬 Mac DB에 접속해야 하는 별도 실험은 SSH tunnel, VPN, allowlist 같은 별도 보안 설계가 필요하며 이번 Terraform 범위에서 제외한다.
@@ -25,6 +28,7 @@ AWS에 App EC2 1대만 만든다. 1억 건 PostgreSQL 데이터는 AWS에 올리
 - AWS credentials: environment, shared config, SSO 중 하나
 - 기존 EC2 key pair name
 - 운영자 공인 IP `/32`
+- HTTP 공개 CIDR. 개인 검증이면 좁게, 임시 공개 smoke면 `0.0.0.0/0`
 
 ## 실행
 

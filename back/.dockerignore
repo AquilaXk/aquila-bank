@@ -1,0 +1,10 @@
+.gradle/
+.gradle-user/
+build/
+out/
+bin/
+.env
+.env.*
+!/.env.example
+logs/
+*.log
