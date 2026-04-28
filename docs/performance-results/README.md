@@ -196,34 +196,6 @@ tools/test/archive-admission-guard-telemetry-snapshot.sh \
 
 RDS gp3 staging read-only smoke는 [Transaction 100m Staging RDS gp3 Smoke](../transaction-100m-staging-rds-gp3-smoke.md)를 기준으로 실행합니다. 이 경로는 remote 배포/비교 smoke이며, free-tier/cost 조건이 맞지 않으면 실행하지 않습니다.
 
-## EC2 App + local DB smoke
-
-AWS에는 App EC2만 두고 1억 건 PostgreSQL fixture는 로컬 Mac Docker volume에 둡니다. EC2 backend가 SSH tunnel 또는 VPN으로 로컬 DB에 붙는 경로는 [EC2 Blue/Green Deploy](../../ops/deploy/ec2/README.md)의 local DB capacity smoke 절차를 따릅니다.
-
-권장 실행 순서:
-
-```bash
-EC2_LOCAL_DB_CAPACITY_ENV_FILE=.env/ec2-local-db-capacity.env \
-  tools/test/run-ec2-local-db-capacity-env-doctor.sh
-
-EC2_LOCAL_DB_CAPACITY_ENV_FILE=.env/ec2-local-db-capacity.env \
-  tools/test/run-ec2-direct-backend-100m-k6-smoke.sh
-
-EC2_LOCAL_DB_CAPACITY_ENV_FILE=.env/ec2-local-db-capacity.env \
-  tools/test/run-ec2-nginx-100m-k6-smoke.sh
-
-EC2_LOCAL_DB_CAPACITY_ENV_FILE=.env/ec2-local-db-capacity.env \
-  tools/test/run-ec2-local-db-307-burst-gate.sh
-```
-
-direct backend와 nginx 결과는 같은 run id의 k6 Markdown summary끼리 비교합니다.
-
-```bash
-EC2_DIRECT_K6_SUMMARY_MD=build/reports/k6/<run>-direct-backend-summary.md \
-EC2_NGINX_K6_SUMMARY_MD=build/reports/k6/<run>-nginx-summary.md \
-  tools/test/compare-ec2-direct-vs-nginx-latency.sh
-```
-
 ## 월별 chunk lifecycle
 
 월별 partition 선생성, archive detach/drop guard, partition별 `ANALYZE`/`VACUUM` 절차는 [Transaction Read Model Chunk Lifecycle Runbook](../transaction-read-model-chunk-lifecycle.md)을 기준으로 실행합니다.
