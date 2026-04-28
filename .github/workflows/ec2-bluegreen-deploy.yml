@@ -1,11 +1,6 @@
 name: EC2 Blue/Green Deploy
 
 on:
-  workflow_run:
-    workflows:
-      - Main CI
-    types:
-      - completed
   workflow_dispatch:
     inputs:
       ref:
@@ -30,13 +25,6 @@ env:
 jobs:
   prepare:
     name: Resolve Deploy Ref
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (
-        github.event.workflow_run.conclusion == 'success' &&
-        github.event.workflow_run.head_branch == 'main' &&
-        github.event.workflow_run.event == 'push'
-      )
     runs-on: ubuntu-latest
     outputs:
       deploy_sha: ${{ steps.ref.outputs.deploy_sha }}
@@ -45,7 +33,7 @@ jobs:
       - name: Checkout deploy ref
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha || inputs.ref }}
+          ref: ${{ inputs.ref }}
           fetch-depth: 0
 
       - name: Validate deploy ref
@@ -55,15 +43,6 @@ jobs:
           set -euo pipefail
           deploy_sha="$(git rev-parse HEAD)"
           image_tag="${deploy_sha:0:12}"
-
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_run" ]]; then
-            git fetch --no-tags --depth=1 origin main
-            current_main_sha="$(git rev-parse origin/main)"
-            if [[ "${current_main_sha}" != "${deploy_sha}" ]]; then
-              echo "::notice::Skipping stale deploy SHA ${deploy_sha}; current origin/main is ${current_main_sha}."
-              exit 0
-            fi
-          fi
 
           echo "deploy_sha=${deploy_sha}" >> "${GITHUB_OUTPUT}"
           echo "image_tag=${image_tag}" >> "${GITHUB_OUTPUT}"

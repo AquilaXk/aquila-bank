@@ -2,6 +2,7 @@
 set -euo pipefail
 
 workflow=".github/workflows/staging-deploy.yml"
+legacy_ec2_workflow=".github/workflows/ec2-bluegreen-deploy.yml"
 deploy_script="ops/deploy/oci/bluegreen-deploy.sh"
 fixture_principal_script="tools/ops/staging-fixture-principal-bootstrap.sh"
 delivery_doc="docs/delivery-flow.md"
@@ -46,6 +47,7 @@ reject_pattern() {
 
 echo "[oci-a1-bluegreen-cd] required files"
 require_file "$workflow"
+require_file "$legacy_ec2_workflow"
 require_file "$deploy_script"
 require_file "$fixture_principal_script"
 require_file "$delivery_doc"
@@ -60,6 +62,7 @@ bash -n "$0"
 
 if command -v ruby >/dev/null 2>&1; then
   ruby -e 'require "yaml"; YAML.load_file(ARGV.fetch(0))' "$workflow"
+  ruby -e 'require "yaml"; YAML.load_file(ARGV.fetch(0))' "$legacy_ec2_workflow"
 fi
 
 echo "[oci-a1-bluegreen-cd] workflow contract"
@@ -98,6 +101,12 @@ scattered_patterns=(
 for pattern in "${scattered_patterns[@]}"; do
   reject_pattern "$pattern" "$workflow"
 done
+
+echo "[oci-a1-bluegreen-cd] legacy EC2 workflow guard"
+require_pattern "workflow_dispatch:" "$legacy_ec2_workflow"
+reject_pattern "workflow_run:" "$legacy_ec2_workflow"
+reject_pattern "- Main CI" "$legacy_ec2_workflow"
+require_pattern "EC2 legacy deploy is manual-only" "$delivery_doc"
 
 echo "[oci-a1-bluegreen-cd] deploy script contract"
 script_patterns=(
