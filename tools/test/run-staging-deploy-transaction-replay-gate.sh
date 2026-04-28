@@ -16,15 +16,21 @@ step_names = steps.map { |step| step['name'] }
 
 replay_name = 'Run transaction replay regression gate'
 smoke_name = 'Run staging post-deploy smoke'
+fixture_principal_name = 'Ensure staging fixture principal'
+deploy_name = 'Deploy OCI A1 blue-green over SSH'
 success_name = 'Mark staging deployment success'
 load_env_name = 'Load OCI A1 staging env'
 
 replay_index = step_names.index(replay_name) or abort("missing step: #{replay_name}")
 smoke_index = step_names.index(smoke_name) or abort("missing step: #{smoke_name}")
+fixture_principal_index = step_names.index(fixture_principal_name) or abort("missing step: #{fixture_principal_name}")
+deploy_index = step_names.index(deploy_name) or abort("missing step: #{deploy_name}")
 success_index = step_names.index(success_name) or abort("missing step: #{success_name}")
 load_env_index = step_names.index(load_env_name) or abort("missing step: #{load_env_name}")
 
 abort('staging env must load before smoke') unless load_env_index < smoke_index
+abort('fixture principal must run after OCI deploy') unless deploy_index < fixture_principal_index
+abort('fixture principal must run before smoke') unless fixture_principal_index < smoke_index
 abort('replay gate must run after staging smoke') unless smoke_index < replay_index
 abort('replay gate must run before success status') unless replay_index < success_index
 
@@ -45,6 +51,10 @@ required_keys = %w[
   COLD_ACCOUNT_ID
   COLD_FROM
   COLD_TO
+  STAGING_REPLAY_USER_ID
+  STAGING_REPLAY_LOGIN_ID
+  STAGING_REPLAY_USER_PASSWORD_HASH
+  STAGING_REPLAY_USER_DISPLAY_NAME
 ]
 required_keys.each do |key|
   abort("load step must persist env: #{key}") unless load_run.include?(key)
@@ -54,6 +64,7 @@ abort('load step must read only the unified staging env secret') unless load_env
 abort('load step must source the staging env file') unless load_run.include?('source "${staging_env_path}"')
 abort('replay step should not scatter staging env mappings') if replay_step.key?('env')
 abort('replay step must call transaction replay script') unless run.include?('tools/ops/transaction-read-model-staging-replay.sh')
+abort('fixture principal step must call fixture principal script') unless steps.fetch(fixture_principal_index).fetch('run').include?('tools/ops/staging-fixture-principal-bootstrap.sh')
 abort('OCI A1 database URL must come from unified staging env') unless load_run.include?('STAGING_OCI_A1_DATABASE_URL')
 abort('hot account must map from staging replay key') unless load_run.include?('HOT_ACCOUNT_ID="${STAGING_REPLAY_HOT_ACCOUNT_ID')
 abort('cold account must map from staging replay key') unless load_run.include?('COLD_ACCOUNT_ID="${STAGING_REPLAY_COLD_ACCOUNT_ID')
