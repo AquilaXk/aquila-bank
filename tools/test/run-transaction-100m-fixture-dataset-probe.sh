@@ -147,6 +147,14 @@ manifest_value() {
   awk -F '=' -v key="${key}" '$1 == key {print $2}' "${manifest_path}" | tail -1
 }
 
+dataset_env_value() {
+  local key="$1"
+  if [[ ! -s "${dataset_env_path}" ]]; then
+    return 0
+  fi
+  awk -F '=' -v key="${key}" '$1 == key {print $2}' "${dataset_env_path}" | tail -1
+}
+
 require_value() {
   local key="$1"
   local value="$2"
@@ -165,7 +173,12 @@ resolve_manifest_or_env() {
     echo "${value}"
     return 0
   fi
-  echo "${!env_key:-}"
+  value="${!env_key:-}"
+  if [[ -n "${value}" ]]; then
+    echo "${value}"
+    return 0
+  fi
+  dataset_env_value "${env_key}"
 }
 
 probe_from_db() {
@@ -526,7 +539,7 @@ print_plan() {
   echo "[transaction-100m-dataset-probe] window_probe_mode=index-only-bounded"
   echo "[transaction-100m-dataset-probe] window_probe_limit=${min_window_rows}"
   echo "[transaction-100m-dataset-probe] db_gate_checks=partition-estimate-tolerance,index-only-bounded-window-probe,monthly-partition"
-  echo "[transaction-100m-dataset-probe] source_order=manifest,env,db-fallback"
+  echo "[transaction-100m-dataset-probe] source_order=manifest,env,dataset-env,db-fallback"
 }
 
 run_probe() {
