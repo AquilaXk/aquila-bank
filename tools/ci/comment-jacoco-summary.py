@@ -8,6 +8,11 @@ import xml.etree.ElementTree as ET
 MARKER = "<!-- aquila-bank:jacoco-coverage-summary -->"
 
 
+def coverage_bar(ratio):
+    filled = min(10, int(ratio // 10))
+    return "█" * filled + "░" * (10 - filled)
+
+
 def read_counter(root, name):
     counter = next((item for item in root.findall("counter") if item.get("type") == name), None)
     if counter is None:
@@ -30,18 +35,19 @@ def count_baseline_exclusions(path):
 
 
 def format_counter(name, missed, covered, ratio):
-    return f"| {name} | {covered} | {missed} | {ratio:.2f}% |"
+    return f"| {name} | {covered} | {missed + covered} | {missed} | {ratio:.2f}% | `{coverage_bar(ratio)}` |"
 
 
 def build_summary(report_path, baseline_path):
     root = ET.parse(report_path).getroot()
     line_missed, line_covered, line_ratio = read_counter(root, "LINE")
-    status = "통과" if line_missed == 0 and line_ratio >= 100.0 else "실패"
+    status = "통과" if line_missed == 0 and line_ratio >= 100.0 else "미달"
     baseline_count = count_baseline_exclusions(baseline_path)
     sha = os.environ.get("GITHUB_SHA", "")
     sha_line = f"- Commit: `{sha}`" if sha else ""
 
     counters = [
+        ("Instruction", *read_counter(root, "INSTRUCTION")),
         ("Line", *read_counter(root, "LINE")),
         ("Branch", *read_counter(root, "BRANCH")),
         ("Method", *read_counter(root, "METHOD")),
@@ -53,12 +59,19 @@ def build_summary(report_path, baseline_path):
         "## Jacoco 테스트 커버리지 요약",
         "",
         f"- 상태: **{status}**",
-        "- 기준: line coverage 100%",
+        f"- 전체 Line coverage: **{line_ratio:.2f}%**",
+        "- 기준: full report line coverage 100%",
         f"- Baseline 제외 클래스: `{baseline_count}`개",
     ]
     if sha_line:
         lines.append(sha_line)
-    lines.extend(["", "| Counter | Covered | Missed | Coverage |", "| --- | ---: | ---: | ---: |"])
+    lines.extend(
+        [
+            "",
+            "| 유형 | 커버 | 전체 | 미커버 | 비율 | 그래프 |",
+            "| --- | ---: | ---: | ---: | ---: | --- |",
+        ]
+    )
     lines.extend(format_counter(*item) for item in counters)
     lines.extend(
         [
