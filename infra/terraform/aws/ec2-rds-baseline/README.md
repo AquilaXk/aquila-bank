@@ -1,13 +1,13 @@
 # AWS EC2/RDS Optional Baseline Terraform
 
-AWS에서 선택적 배포 smoke와 local-vs-remote 비교를 위한 최소 baseline을 만든다. 1억 건 primary evidence는 로컬 Docker PostgreSQL 18 + 로컬 디스크/volume에서 만들며, 이 Terraform module은 free-tier/cost 조건이 맞을 때만 사용한다.
+AWS Free plan 계정에서 실행 가능한 선택적 배포 smoke와 local-vs-remote 비교용 최소 EC2/RDS baseline을 만든다. 1억 건 primary evidence는 로컬 Docker PostgreSQL 18 + 로컬 디스크/volume에서 만들며, 이 Terraform module은 free-tier/cost 조건이 맞을 때만 사용한다.
 
 ## 구성
 
 - EC2: `t3.micro`
 - EC2 root EBS: gp3, 기본 30GiB
-- RDS: PostgreSQL, `db.t4g.small`
-- RDS storage: gp3, 기본 100GiB
+- RDS: PostgreSQL, `db.t4g.micro`
+- RDS storage: gp2, 기본 20GiB
 - Network: 새 VPC, public subnet 1개, private DB subnet 2개, Internet Gateway
 - Security:
   - SSH `22/tcp`: `ssh_ingress_cidr`에서만 허용
@@ -19,9 +19,9 @@ AWS에서 선택적 배포 smoke와 local-vs-remote 비교를 위한 최소 base
 ## 비용 주의
 
 - EC2 `t3.micro` free tier/credit 적용 여부는 계정 상태와 AWS Free Tier 조건에 따라 다르다.
-- RDS `db.t4g.small`과 gp3 storage는 무료가 아닐 수 있다.
-- 1억 건 데이터 적재는 RDS storage, I/O, snapshot 비용을 만들 수 있다.
-- free-tier 조건이 맞지 않으면 apply하지 않고 로컬 Docker PostgreSQL + 로컬 디스크 기준으로 1억 건 검증을 진행한다.
+- RDS `db.t4g.micro`와 20GiB gp2 storage는 AWS RDS free tier/free plan 허용 범위에 맞춘 값이다.
+- 1억 건 전체 데이터 적재에는 20GiB가 부족할 수 있으며, 이 경우 paid plan 전환과 storage/class 상향이 필요하다.
+- free-tier 조건이 맞지 않거나 1억 건 적재 비용을 감수하지 않을 때는 apply하지 않고 로컬 Docker PostgreSQL + 로컬 디스크 기준으로 1억 건 검증을 진행한다.
 - 기본값은 테스트 비용 방어를 위해 `multi_az = false`, `backup_retention_period = 1`, `skip_final_snapshot = true`, `deletion_protection = false`다.
 - NAT Gateway와 Load Balancer는 고정 비용이 생기므로 기본 구성에서 제외한다.
 
