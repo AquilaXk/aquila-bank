@@ -1,6 +1,6 @@
 # Transaction 100m Staging RDS gp3 Smoke
 
-RDS db.t4g.small + gp3 staging 환경에서 100m transaction read path를 read-only로 확인하는 절차입니다. Docker local smoke는 RDS recovery, gp3 IO, CPU credit, network latency를 재현하지 못하므로 staging smoke는 별도 runner로 분리합니다.
+RDS PostgreSQL 18.3 `db.t4g.medium` + gp3 150GiB staging 환경에서 100m transaction read path를 read-only로 확인하는 절차입니다. Docker local smoke는 RDS recovery, gp3 IO, CPU credit, network latency를 재현하지 못하므로 staging smoke는 별도 runner로 분리합니다.
 
 ## Guard
 

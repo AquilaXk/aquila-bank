@@ -1,8 +1,8 @@
-# t3.micro Defensive Runtime Baseline Design
+# Small-Instance Defensive Runtime Baseline Design
 
 ## 목적
 
-현재 프로젝트 목표를 "t3.micro에서 초대량 트래픽과 1억 건 조회 처리"에서 "EC2 t3.micro + RDS db.t4g.small + gp3에서 대용량 트래픽 방어와 bounded 1억 건 조회"로 재정의한다.
+현재 프로젝트 목표를 "단일 t3.micro에서 초대량 트래픽과 1억 건 조회 처리"에서 "EC2 t3.small + RDS PostgreSQL 18.3 db.t4g.medium + gp3 150GiB에서 대용량 트래픽 방어와 bounded 1억 건 조회"로 재정의한다.
 
 핵심은 처리량 확장이 아니라 작은 인프라가 과부하를 받을 때 빠르게 제한하고, DB/worker/SSE/API 동시성 비용을 예측 가능하게 유지하는 것이다.
 
@@ -30,11 +30,11 @@
 
 Kafka는 outbox/notification 확장 adapter로 남기되 기본 runtime에서 비활성화한다. `OUTBOX_KAFKA_ENABLED=false`, `NOTIFICATION_INBOX_CONSUMER_ENABLED=false` 기본값은 유지한다. 로컬 compose의 Kafka service는 `kafka` profile로 옮겨 명시적으로 opt-in 할 때만 실행한다.
 
-이 방식은 기존 notification/outbox 확장 경계를 보존하면서, t3.micro 방어형 baseline에서 broker CPU/메모리 비용을 기본값으로 부담하지 않게 한다.
+이 방식은 기존 notification/outbox 확장 경계를 보존하면서, small-instance 방어형 baseline에서 broker CPU/메모리 비용을 기본값으로 부담하지 않게 한다.
 
 ### Monitoring
 
-Prometheus/Grafana/Alertmanager asset은 삭제하지 않는다. 다만 README와 ops README에서 "상시 운영 필수"가 아니라 import/apply 가능한 baseline 및 loadtest overlay임을 명확히 한다. 상시 운영은 EC2 t3.micro budget 밖의 별도 관측 환경 또는 필요 시 단기 실행으로 다룬다.
+Prometheus/Grafana/Alertmanager asset은 삭제하지 않는다. 다만 README와 ops README에서 "상시 운영 필수"가 아니라 import/apply 가능한 baseline 및 loadtest overlay임을 명확히 한다. 상시 운영은 EC2 t3.small app budget 밖의 별도 관측 환경 또는 필요 시 단기 실행으로 다룬다.
 
 ### Production Gate
 
@@ -43,7 +43,7 @@ production high-traffic config gate는 다음을 필수로 검증한다.
 - login throttling은 Redis opt-in 또는 memory fallback 중 하나가 명확할 것
 - API admission control 활성화
 - transaction read concurrency 상한 유지
-- t3.micro saturation guard 활성화
+- small-instance saturation guard 활성화
 - DB pool, server thread, SSE session cap, worker batch가 작은 상한 안에 있을 것
 - Kafka/read replica는 enabled일 때만 세부 값 검증
 

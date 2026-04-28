@@ -194,7 +194,7 @@ tools/test/archive-admission-guard-telemetry-snapshot.sh \
 
 ## Staging RDS gp3 smoke
 
-RDS db.t4g.small + gp3 staging read-only smoke는 [Transaction 100m Staging RDS gp3 Smoke](../transaction-100m-staging-rds-gp3-smoke.md)를 기준으로 실행합니다.
+RDS PostgreSQL 18.3 `db.t4g.medium` + gp3 150GiB staging read-only smoke는 [Transaction 100m Staging RDS gp3 Smoke](../transaction-100m-staging-rds-gp3-smoke.md)를 기준으로 실행합니다.
 
 ## 월별 chunk lifecycle
 
