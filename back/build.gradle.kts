@@ -94,6 +94,20 @@ tasks.named<JacocoReport>("jacocoTestReport") {
     }
 }
 
+tasks.register<JacocoReport>("jacocoFullTestReport") {
+    dependsOn(tasks.test)
+    classDirectories.setFrom(sourceSets.main.get().output.classesDirs)
+    sourceDirectories.setFrom(sourceSets.main.get().allSource.srcDirs)
+    executionData.setFrom(layout.buildDirectory.file("jacoco/test.exec"))
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+        csv.required.set(false)
+        xml.outputLocation.set(layout.buildDirectory.file("reports/jacoco/full/jacocoFullTestReport.xml"))
+        html.outputLocation.set(layout.buildDirectory.dir("reports/jacoco/full/html"))
+    }
+}
+
 tasks.named<JacocoCoverageVerification>("jacocoTestCoverageVerification") {
     dependsOn(tasks.named<JacocoReport>("jacocoTestReport"))
     classDirectories.setFrom(jacocoMainClassDirectories(classDirectories))
