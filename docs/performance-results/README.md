@@ -4,7 +4,7 @@
 
 ## 원칙
 
-- k6, Docker t3.micro smoke, staging replay, transaction regression gate 결과는 사람이 다시 읽을 수 있는 Markdown 요약을 남깁니다.
+- k6, local Docker 100m, Docker t3.micro smoke, staging replay, transaction regression gate 결과는 사람이 다시 읽을 수 있는 Markdown 요약을 남깁니다.
 - 원본 JSON/latency sample은 `build/reports/**`에 두고, 리뷰/공유용 요약은 이 디렉터리에 둡니다.
 - token, JWT, 운영 URL, 개인 식별자는 결과 문서에 기록하지 않습니다.
 - 실패한 실행도 원인과 마지막 확인 지점을 문서화합니다.
@@ -32,11 +32,11 @@ YYYY-MM-DD-<environment>-<workload>.md
 - [transaction-100m-local-t3micro-20260425-bottleneck.md](transaction-100m-local-t3micro-20260425-bottleneck.md)
 - [transaction-100m-required-index-smoke-summary.md](transaction-100m-required-index-smoke-summary.md)
 
-로컬 1억 건 synthetic read model 검증은 생성 phase와 조회 phase를 분리합니다. t3.micro PostgreSQL 384MiB에서 dataset 생성까지 함께 제한하면 seed OOM이 먼저 발생해 read bottleneck을 측정하지 못합니다.
+로컬 1억 건 synthetic read model 검증은 생성 phase와 조회 phase를 분리합니다. primary evidence는 로컬 Docker PostgreSQL 18 + 로컬 디스크/volume에 1억 row fixture를 적재한 뒤 로컬 k6로 bounded query를 측정하는 결과입니다. t3.micro PostgreSQL 384MiB에서 dataset 생성까지 함께 제한하면 seed OOM이 먼저 발생해 read bottleneck을 측정하지 못합니다.
 
 ### Phase 1. fixture 생성
 
-1억 row dataset 생성은 fixture 전용 PostgreSQL budget에서 실행합니다. 이 phase는 기본적으로 Prometheus/Grafana/Postgres exporter/k6를 띄우지 않고 `postgres`와 `aquila-bank-backend`만 사용합니다.
+1억 row dataset 생성은 fixture 전용 PostgreSQL budget과 로컬 Docker volume에서 실행합니다. 이 phase는 기본적으로 Prometheus/Grafana/Postgres exporter/k6를 띄우지 않고 `postgres`와 `aquila-bank-backend`만 사용합니다.
 
 ```bash
 SEED_TOTAL_ROWS=100000000 \
@@ -62,9 +62,9 @@ fixture prepare runner는 backend bootJar를 만든 뒤 `aquila-bank-backend`를
 
 `SEED_INDEX_STRATEGY=rebuild-all`은 전체 secondary filter index를 drop 후 재생성합니다. 이 모드는 partition/chunk 구조 검증 또는 더 큰 memory budget에서만 사용하고, t3.micro 측정 경로에서는 기본값으로 사용하지 않습니다.
 
-### Phase 2. t3.micro k6 조회
+### Phase 2. local k6 조회
 
-fixture 생성이 끝난 volume을 유지한 상태에서 조회 phase만 t3.micro budget으로 실행합니다.
+fixture 생성이 끝난 volume을 유지한 상태에서 조회 phase를 로컬 k6로 실행합니다. 작은 운영 budget 검증이 필요하면 backend/PostgreSQL만 Docker cgroup 제한으로 낮추고, 1억 건 적재 자체는 기존 local disk/volume을 재사용합니다.
 
 ```bash
 K6_HOT_ACCOUNT_ID=910000001 \
@@ -83,7 +83,7 @@ tools/test/run-transaction-read-model-100m-k6-local.sh --k6-only
 - local disk 여유 공간
 - Docker Desktop memory/disk limit
 - fixture phase의 `FIXTURE_POSTGRES_MEMORY`, `FIXTURE_POSTGRES_CPUS`, `FIXTURE_POSTGRES_PIDS_LIMIT`
-- query phase의 `compose.loadtest.yml` backend `2 vCPU / 1GiB` budget과 PostgreSQL t3.micro budget
+- query phase의 `compose.loadtest.yml` backend `2 vCPU / 1GiB` budget과 PostgreSQL Docker budget
 - PostgreSQL container가 이전 실행에서 `OOMKilled=true`로 남아 있지 않은지 여부
 - `tools/test/prepare-transaction-read-model-100m-fixture.sh --print-plan`의 fixture budget/batch/conflict/Flyway preflight 값
 - `tools/test/run-transaction-read-model-100m-k6-local.sh --k6-only` 실행 전 hot/cold account와 기간 값
@@ -174,7 +174,7 @@ T3MICRO_OUTBOX_SUMMARY_TSV=build/reports/outbox/<name>/outbox-provider-backlog-s
 tools/test/run-t3micro-defensive-gates-aggregate-report.sh
 ```
 
-local Docker 100m 결과와 staging RDS gp3 결과는 같은 k6 archive Markdown 형식끼리 비교합니다.
+local Docker 100m 결과와 staging RDS gp3 결과는 같은 k6 archive Markdown 형식끼리 비교합니다. staging RDS 결과는 선택 비교값이며, local Docker 100m primary evidence를 대체하지 않습니다.
 
 ```bash
 LOCAL_K6_SUMMARY_MD=docs/performance-results/<local-100m>.md \
@@ -192,9 +192,9 @@ tools/test/archive-admission-guard-telemetry-snapshot.sh \
   build/reports/admission/<name>/http-admission-raw.tsv
 ```
 
-## Staging RDS gp3 smoke
+## Optional Staging RDS gp3 smoke
 
-RDS db.t4g.small + gp3 staging read-only smoke는 [Transaction 100m Staging RDS gp3 Smoke](../transaction-100m-staging-rds-gp3-smoke.md)를 기준으로 실행합니다.
+RDS gp3 staging read-only smoke는 [Transaction 100m Staging RDS gp3 Smoke](../transaction-100m-staging-rds-gp3-smoke.md)를 기준으로 실행합니다. 이 경로는 remote 배포/비교 smoke이며, free-tier/cost 조건이 맞지 않으면 실행하지 않습니다.
 
 ## 월별 chunk lifecycle
 
