@@ -177,26 +177,26 @@ variable "db_engine_version" {
 }
 
 variable "db_instance_class" {
-  description = "RDS instance class. Baseline target is db.t4g.small."
+  description = "RDS instance class. Free-plan baseline target is db.t4g.micro."
   type        = string
-  default     = "db.t4g.small"
+  default     = "db.t4g.micro"
   nullable    = false
 
   validation {
-    condition     = var.db_instance_class == "db.t4g.small"
-    error_message = "This baseline intentionally allows only db.t4g.small."
+    condition     = contains(["db.t3.micro", "db.t4g.micro"], var.db_instance_class)
+    error_message = "This free-plan baseline intentionally allows only db.t3.micro or db.t4g.micro."
   }
 }
 
 variable "db_allocated_storage" {
   description = "Initial RDS storage in GiB."
   type        = number
-  default     = 100
+  default     = 20
   nullable    = false
 
   validation {
-    condition     = var.db_allocated_storage >= 20 && var.db_allocated_storage <= 1024
-    error_message = "db_allocated_storage must be between 20 and 1024 GiB."
+    condition     = var.db_allocated_storage == 20
+    error_message = "db_allocated_storage must be 20 GiB for this free-plan baseline."
   }
 }
 
