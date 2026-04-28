@@ -4,6 +4,14 @@ resource "aws_security_group" "ec2" {
   vpc_id      = aws_vpc.this.id
 
   ingress {
+    cidr_blocks = [var.http_ingress_cidr]
+    description = "HTTP access for blue-green Nginx entrypoint"
+    from_port   = 80
+    protocol    = "tcp"
+    to_port     = 80
+  }
+
+  ingress {
     cidr_blocks = [var.ssh_ingress_cidr]
     description = "SSH from operator CIDR"
     from_port   = 22

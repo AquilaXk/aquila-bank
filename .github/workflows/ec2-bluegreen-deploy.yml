@@ -1,0 +1,321 @@
+name: EC2 Blue/Green Deploy
+
+on:
+  workflow_run:
+    workflows:
+      - Main CI
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to deploy"
+        required: false
+        default: "main"
+
+permissions:
+  contents: read
+  packages: write
+  deployments: write
+
+concurrency:
+  group: ec2-bluegreen-deploy
+  cancel-in-progress: false
+
+env:
+  BACKEND_IMAGE_NAME: aquila-bank-backend
+  FRONTEND_IMAGE_NAME: aquila-bank-frontend
+  DEFAULT_EC2_INSTANCE_TAG_NAME: aquila-bank-baseline-ec2
+
+jobs:
+  prepare:
+    name: Resolve Deploy Ref
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_branch == 'main' &&
+        github.event.workflow_run.event == 'push'
+      )
+    runs-on: ubuntu-latest
+    outputs:
+      deploy_sha: ${{ steps.ref.outputs.deploy_sha }}
+      image_tag: ${{ steps.ref.outputs.image_tag }}
+    steps:
+      - name: Checkout deploy ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || inputs.ref }}
+          fetch-depth: 0
+
+      - name: Validate deploy ref
+        id: ref
+        shell: bash
+        run: |
+          set -euo pipefail
+          deploy_sha="$(git rev-parse HEAD)"
+          image_tag="${deploy_sha:0:12}"
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_run" ]]; then
+            git fetch --no-tags --depth=1 origin main
+            current_main_sha="$(git rev-parse origin/main)"
+            if [[ "${current_main_sha}" != "${deploy_sha}" ]]; then
+              echo "::notice::Skipping stale deploy SHA ${deploy_sha}; current origin/main is ${current_main_sha}."
+              exit 0
+            fi
+          fi
+
+          echo "deploy_sha=${deploy_sha}" >> "${GITHUB_OUTPUT}"
+          echo "image_tag=${image_tag}" >> "${GITHUB_OUTPUT}"
+
+  build-and-push:
+    name: Build And Push Images
+    needs: prepare
+    if: needs.prepare.outputs.deploy_sha != ''
+    runs-on: ubuntu-latest
+    outputs:
+      backend_image: ${{ steps.images.outputs.backend_image }}
+      frontend_image: ${{ steps.images.outputs.frontend_image }}
+    steps:
+      - name: Checkout deploy SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.deploy_sha }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve image names
+        id: images
+        shell: bash
+        run: |
+          set -euo pipefail
+          owner_lc="${GITHUB_REPOSITORY_OWNER,,}"
+          backend_image="ghcr.io/${owner_lc}/${BACKEND_IMAGE_NAME}"
+          frontend_image="ghcr.io/${owner_lc}/${FRONTEND_IMAGE_NAME}"
+          echo "backend_image=${backend_image}" >> "${GITHUB_OUTPUT}"
+          echo "frontend_image=${frontend_image}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build and push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./back
+          push: true
+          tags: |
+            ${{ steps.images.outputs.backend_image }}:${{ needs.prepare.outputs.image_tag }}
+            ${{ steps.images.outputs.backend_image }}:main-latest
+          cache-from: type=gha,scope=aquila-bank-backend
+          cache-to: type=gha,mode=max,scope=aquila-bank-backend
+
+      - name: Build and push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./front
+          push: true
+          build-args: |
+            NEXT_PUBLIC_API_BASE_URL=${{ secrets.EC2_PUBLIC_API_BASE_URL }}
+          tags: |
+            ${{ steps.images.outputs.frontend_image }}:${{ needs.prepare.outputs.image_tag }}
+            ${{ steps.images.outputs.frontend_image }}:main-latest
+          cache-from: type=gha,scope=aquila-bank-frontend
+          cache-to: type=gha,mode=max,scope=aquila-bank-frontend
+
+  deploy:
+    name: Deploy To EC2
+    needs: [prepare, build-and-push]
+    if: needs.prepare.outputs.deploy_sha != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: staging
+    permissions:
+      contents: read
+      packages: read
+      deployments: write
+    env:
+      AWS_REGION: ${{ secrets.AWS_REGION || 'ap-northeast-2' }}
+      EC2_INSTANCE_TAG_NAME: ${{ secrets.EC2_INSTANCE_TAG_NAME || 'aquila-bank-baseline-ec2' }}
+      EC2_PUBLIC_BASE_URL: ${{ secrets.EC2_PUBLIC_BASE_URL }}
+      DEPLOY_LOG_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Checkout deploy SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.deploy_sha }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Resolve running EC2 instance
+        id: ec2
+        shell: bash
+        run: |
+          set -euo pipefail
+          instance_id="$(
+            aws ec2 describe-instances \
+              --filters "Name=tag:Name,Values=${EC2_INSTANCE_TAG_NAME}" "Name=instance-state-name,Values=running" \
+              --query "Reservations[].Instances[].InstanceId" \
+              --output text
+          )"
+          if [[ -z "${instance_id}" || "${instance_id}" == "None" ]]; then
+            echo "::error::No running EC2 instance found for Name=${EC2_INSTANCE_TAG_NAME}."
+            exit 1
+          fi
+          echo "instance_id=${instance_id}" >> "${GITHUB_OUTPUT}"
+
+      - name: Validate deploy secrets
+        shell: bash
+        env:
+          EC2_BACKEND_ENV: ${{ secrets.EC2_BACKEND_ENV }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${EC2_BACKEND_ENV}" ]]; then
+            echo "::error::EC2_BACKEND_ENV secret is required."
+            exit 1
+          fi
+
+      - name: Create GitHub deployment
+        id: deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload="$(
+            jq -n \
+              --arg ref "${{ needs.prepare.outputs.deploy_sha }}" \
+              --arg description "Blue/green deploy ${EC2_INSTANCE_TAG_NAME}" \
+              '{
+                ref: $ref,
+                environment: "staging",
+                description: $description,
+                auto_merge: false,
+                required_contexts: [],
+                production_environment: false,
+                transient_environment: false
+              }'
+          )"
+          deployment_id="$(gh api --method POST "repos/${GITHUB_REPOSITORY}/deployments" --input - --jq ".id" <<< "${payload}")"
+          echo "deployment_id=${deployment_id}" >> "${GITHUB_OUTPUT}"
+
+      - name: Mark deployment in progress
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg log_url "${DEPLOY_LOG_URL}" \
+            '{state:"in_progress", environment:"staging", log_url:$log_url, auto_inactive:false}' \
+            | gh api --method POST "repos/${GITHUB_REPOSITORY}/deployments/${DEPLOYMENT_ID}/statuses" --input -
+
+      - name: Run SSM blue-green deploy
+        env:
+          INSTANCE_ID: ${{ steps.ec2.outputs.instance_id }}
+          BACKEND_IMAGE: ${{ needs.build-and-push.outputs.backend_image }}
+          FRONTEND_IMAGE: ${{ needs.build-and-push.outputs.frontend_image }}
+          IMAGE_TAG: ${{ needs.prepare.outputs.image_tag }}
+          GITHUB_ACTOR_VALUE: ${{ github.actor }}
+          GITHUB_TOKEN_VALUE: ${{ github.token }}
+          EC2_BACKEND_ENV: ${{ secrets.EC2_BACKEND_ENV }}
+          EC2_FRONTEND_ENV: ${{ secrets.EC2_FRONTEND_ENV }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          script_b64="$(base64 -w0 ops/deploy/ec2/bluegreen-deploy.sh)"
+          github_token_b64="$(printf '%s' "${GITHUB_TOKEN_VALUE}" | base64 -w0)"
+          backend_env_b64="$(printf '%s' "${EC2_BACKEND_ENV}" | base64 -w0)"
+          frontend_env_b64="$(printf '%s' "${EC2_FRONTEND_ENV}" | base64 -w0)"
+
+          printf -v command_prefix '%s\n' \
+            "export BACKEND_IMAGE=$(printf '%q' "${BACKEND_IMAGE}")" \
+            "export FRONTEND_IMAGE=$(printf '%q' "${FRONTEND_IMAGE}")" \
+            "export IMAGE_TAG=$(printf '%q' "${IMAGE_TAG}")" \
+            "export GITHUB_ACTOR=$(printf '%q' "${GITHUB_ACTOR_VALUE}")" \
+            "export GITHUB_TOKEN_B64=$(printf '%q' "${github_token_b64}")" \
+            "export BACKEND_ENV_B64=$(printf '%q' "${backend_env_b64}")" \
+            "export FRONTEND_ENV_B64=$(printf '%q' "${frontend_env_b64}")" \
+            "mkdir -p /tmp/aquila-bank-deploy" \
+            "printf %s $(printf '%q' "${script_b64}") | base64 -d > /tmp/aquila-bank-deploy/bluegreen-deploy.sh" \
+            "chmod 755 /tmp/aquila-bank-deploy/bluegreen-deploy.sh" \
+            "/tmp/aquila-bank-deploy/bluegreen-deploy.sh"
+          params="$(jq -nc --arg command "${command_prefix}" '{commands:[$command]}' )"
+          command_id="$(
+            aws ssm send-command \
+              --region "${AWS_REGION}" \
+              --instance-ids "${INSTANCE_ID}" \
+              --document-name "AWS-RunShellScript" \
+              --parameters "${params}" \
+              --query "Command.CommandId" \
+              --output text
+          )"
+          echo "SSM Command ID: ${command_id}"
+
+          wait_max=900
+          wait_interval=10
+          waited=0
+          while (( waited < wait_max )); do
+            status="$(aws ssm get-command-invocation \
+              --command-id "${command_id}" \
+              --instance-id "${INSTANCE_ID}" \
+              --query "Status" \
+              --output text 2>/dev/null || echo "Pending")"
+            [[ "${status}" == "Pending" || "${status}" == "InProgress" || "${status}" == "Delayed" ]] || break
+            sleep "${wait_interval}"
+            waited=$((waited + wait_interval))
+          done
+
+          invocation="$(aws ssm get-command-invocation --command-id "${command_id}" --instance-id "${INSTANCE_ID}")"
+          status="$(jq -r ".Status" <<< "${invocation}")"
+          echo "===== stdout ====="
+          jq -r ".StandardOutputContent" <<< "${invocation}"
+          echo "===== stderr ====="
+          jq -r ".StandardErrorContent" <<< "${invocation}"
+          echo "=================="
+          echo "Status: ${status}"
+          [[ "${status}" == "Success" ]]
+
+      - name: Run external smoke
+        if: success() && env.EC2_PUBLIC_BASE_URL != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail-with-body --show-error --silent --max-time 10 "${EC2_PUBLIC_BASE_URL%/}/actuator/health" >/dev/null
+
+      - name: Mark deployment success
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg log_url "${DEPLOY_LOG_URL}" \
+            '{state:"success", environment:"staging", log_url:$log_url, auto_inactive:false}' \
+            | gh api --method POST "repos/${GITHUB_REPOSITORY}/deployments/${DEPLOYMENT_ID}/statuses" --input -
+
+      - name: Mark deployment failure
+        if: failure() && steps.deployment.outputs.deployment_id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg log_url "${DEPLOY_LOG_URL}" \
+            '{state:"failure", environment:"staging", log_url:$log_url, auto_inactive:false}' \
+            | gh api --method POST "repos/${GITHUB_REPOSITORY}/deployments/${DEPLOYMENT_ID}/statuses" --input -

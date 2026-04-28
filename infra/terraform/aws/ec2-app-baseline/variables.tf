@@ -57,6 +57,18 @@ variable "ssh_ingress_cidr" {
   }
 }
 
+variable "http_ingress_cidr" {
+  description = "CIDR allowed to connect to the EC2 HTTP port 80."
+  type        = string
+  default     = "0.0.0.0/0"
+  nullable    = false
+
+  validation {
+    condition     = can(cidrnetmask(var.http_ingress_cidr))
+    error_message = "http_ingress_cidr must be a valid IPv4 CIDR."
+  }
+}
+
 variable "ec2_key_name" {
   description = "Existing AWS EC2 key pair name for SSH."
   type        = string
