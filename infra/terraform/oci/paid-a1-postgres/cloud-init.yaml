@@ -1,0 +1,126 @@
+#cloud-config
+# Default runtime injects postgres:18 and /var/lib/aquila-postgres from Terraform variables.
+package_update: true
+package_upgrade: false
+packages:
+  - docker.io
+
+write_files:
+  - path: /usr/local/sbin/aquila-postgres-volume-setup.sh
+    owner: root:root
+    permissions: "0755"
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      device="${postgres_data_device}"
+      mount_path="${postgres_data_mount_path}"
+      waited=0
+      timeout=600
+
+      while [[ ! -b "$${device}" ]]; do
+        if (( waited >= timeout )); then
+          echo "PostgreSQL data volume device not found: $${device}" >&2
+          exit 1
+        fi
+        sleep 2
+        waited=$((waited + 2))
+      done
+
+      if ! blkid "$${device}" >/dev/null 2>&1; then
+        mkfs.ext4 -F "$${device}"
+      fi
+
+      uuid="$(blkid -s UUID -o value "$${device}")"
+      mkdir -p "$${mount_path}"
+
+      if ! grep -F "UUID=$${uuid} " /etc/fstab >/dev/null; then
+        echo "UUID=$${uuid} $${mount_path} ext4 defaults,nofail 0 2" >>/etc/fstab
+      fi
+
+      mount "$${mount_path}"
+      mkdir -p "$${mount_path}/data"
+      chown -R 999:999 "$${mount_path}/data"
+
+  - path: /usr/local/sbin/aquila-postgres-env-guard.sh
+    owner: root:root
+    permissions: "0755"
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      env_file="/etc/aquila-postgres.env"
+      password="$(sed -n 's/^AQUILA_POSTGRES_PASSWORD=//p' "$${env_file}" | tail -1)"
+
+      if [[ -z "$${password}" || "$${password}" == "change-me-before-running" ]]; then
+        echo "Set AQUILA_POSTGRES_PASSWORD in $${env_file} before starting PostgreSQL." >&2
+        exit 1
+      fi
+
+  - path: /usr/local/sbin/aquila-postgres-run.sh
+    owner: root:root
+    permissions: "0755"
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      source /etc/aquila-postgres.env
+      exec docker run --rm \
+        --name aquila-postgres \
+        --pull missing \
+        -p 127.0.0.1:5432:5432 \
+        -e POSTGRES_DB="$${AQUILA_POSTGRES_DB}" \
+        -e POSTGRES_USER="$${AQUILA_POSTGRES_USER}" \
+        -e POSTGRES_PASSWORD="$${AQUILA_POSTGRES_PASSWORD}" \
+        -v "${postgres_data_mount_path}/data:/var/lib/postgresql/data" \
+        "${postgres_image}"
+
+  - path: /etc/aquila-postgres.env
+    owner: root:root
+    permissions: "0600"
+    content: |
+      AQUILA_POSTGRES_DB=${postgres_database}
+      AQUILA_POSTGRES_USER=${postgres_user}
+      AQUILA_POSTGRES_PASSWORD=change-me-before-running
+
+  - path: /etc/systemd/system/aquila-postgres-volume.service
+    owner: root:root
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Aquila PostgreSQL data volume setup
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/sbin/aquila-postgres-volume-setup.sh
+      RemainAfterExit=yes
+
+      [Install]
+      WantedBy=multi-user.target
+
+  - path: /etc/systemd/system/aquila-postgres.service
+    owner: root:root
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Aquila PostgreSQL 18 container
+      Requires=docker.service aquila-postgres-volume.service
+      After=docker.service aquila-postgres-volume.service
+
+      [Service]
+      Restart=always
+      RestartSec=5
+      ExecStartPre=/usr/local/sbin/aquila-postgres-env-guard.sh
+      ExecStart=/usr/local/sbin/aquila-postgres-run.sh
+      ExecStop=/usr/bin/docker stop aquila-postgres
+
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  - systemctl daemon-reload
+  - systemctl enable --now docker.service
+  - systemctl enable --now aquila-postgres-volume.service
+  - echo "Aquila PostgreSQL bootstrap installed. Set AQUILA_POSTGRES_PASSWORD in /etc/aquila-postgres.env, then run: systemctl enable --now aquila-postgres.service"
