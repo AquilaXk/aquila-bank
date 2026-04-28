@@ -18,6 +18,7 @@ HEALTH_TIMEOUT_SECONDS="${HEALTH_TIMEOUT_SECONDS:-120}"
 HEALTH_INTERVAL_SECONDS="${HEALTH_INTERVAL_SECONDS:-3}"
 BLUE_DRAIN_SECONDS="${BLUE_DRAIN_SECONDS:-10}"
 SERVER_NAME="${NGINX_SERVER_NAME:-_}"
+BACKEND_PROXY_HOST="${NGINX_BACKEND_PROXY_HOST:-}"
 BACKEND_IMAGE="${BACKEND_IMAGE:?BACKEND_IMAGE is required}"
 FRONTEND_IMAGE="${FRONTEND_IMAGE:?FRONTEND_IMAGE is required}"
 IMAGE_TAG="${IMAGE_TAG:?IMAGE_TAG is required}"
@@ -187,9 +188,10 @@ run_green_slot() {
 
 render_nginx_config() {
   local slot="$1"
-  local backend_name frontend_name
+  local backend_name frontend_name backend_proxy_host
   backend_name="$(slot_name backend "${slot}")"
   frontend_name="$(slot_name frontend "${slot}")"
+  backend_proxy_host="${BACKEND_PROXY_HOST:-${backend_name}}"
 
   cat <<NGINX
 worker_processes auto;
@@ -218,11 +220,14 @@ http {
     proxy_set_header X-Real-IP \$remote_addr;
     proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto \$scheme;
+    proxy_set_header X-Forwarded-Host \$host;
+    proxy_set_header X-Forwarded-Port \$server_port;
     proxy_connect_timeout 3s;
 
     location = /api/v1/notifications/stream {
       # SSE 장기 연결은 proxy buffering을 끄고 blue 슬롯 drain 시간만 짧게 유지한다.
       proxy_pass http://aquila_bank_backend;
+      proxy_set_header Host ${backend_proxy_host};
       proxy_set_header Connection "";
       proxy_buffering off;
       proxy_request_buffering off;
@@ -236,6 +241,7 @@ http {
 
     location ^~ /actuator/health {
       proxy_pass http://aquila_bank_backend;
+      proxy_set_header Host ${backend_proxy_host};
       proxy_set_header Connection "";
       proxy_read_timeout 5s;
       proxy_send_timeout 5s;
@@ -244,6 +250,7 @@ http {
 
     location /api/ {
       proxy_pass http://aquila_bank_backend;
+      proxy_set_header Host ${backend_proxy_host};
       proxy_set_header Connection "";
       proxy_read_timeout 30s;
       proxy_send_timeout 30s;

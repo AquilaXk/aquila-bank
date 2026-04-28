@@ -42,6 +42,7 @@ for var_name in "${required_vars[@]}"; do
 done
 
 NGINX_BACKEND_SSE_SERVERS="${NGINX_BACKEND_SSE_SERVERS:-${NGINX_BACKEND_API_SERVERS}}"
+NGINX_BACKEND_PROXY_HOST="${NGINX_BACKEND_PROXY_HOST:-aquila-bank-backend}"
 
 render_server_lines() {
   local servers_csv="$1"
@@ -73,6 +74,7 @@ rendered="${rendered//'${NGINX_SSL_CERTIFICATE_KEY_PATH}'/${NGINX_SSL_CERTIFICAT
 rendered="${rendered//'${NGINX_FRONTEND_SERVER_LINES}'/${NGINX_FRONTEND_SERVER_LINES}}"
 rendered="${rendered//'${NGINX_BACKEND_API_SERVER_LINES}'/${NGINX_BACKEND_API_SERVER_LINES}}"
 rendered="${rendered//'${NGINX_BACKEND_SSE_SERVER_LINES}'/${NGINX_BACKEND_SSE_SERVER_LINES}}"
+rendered="${rendered//'${NGINX_BACKEND_PROXY_HOST}'/${NGINX_BACKEND_PROXY_HOST}}"
 
 mkdir -p "$(dirname "${output_path}")"
 printf '%s\n' "${rendered}" > "${output_path}"
