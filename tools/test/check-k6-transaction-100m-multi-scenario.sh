@@ -24,6 +24,8 @@ grep -F "run_id=multi-run-check" <<<"${plan}" >/dev/null
 grep -F "output_dir=${temp_dir}/multi" <<<"${plan}" >/dev/null
 grep -F "reuse_backend=true" <<<"${plan}" >/dev/null
 grep -F "post_first_recovery_noise_window_seconds=0" <<<"${plan}" >/dev/null
+grep -F "resource_sampling=true" <<<"${plan}" >/dev/null
+grep -F "resource_summary=${temp_dir}/multi/multi-check-peak-resource-summary.tsv" <<<"${plan}" >/dev/null
 grep -F "scenario_count=2" <<<"${plan}" >/dev/null
 grep -F "execution_plan=${temp_dir}/multi/multi-check-execution-plan.tsv" <<<"${plan}" >/dev/null
 
@@ -38,9 +40,12 @@ output="$(
 execution_plan="$(tail -1 <<<"${output}")"
 test "${execution_plan}" = "${temp_dir}/multi/multi-check-execution-plan.tsv"
 test -s "${execution_plan}"
+resource_summary="${temp_dir}/multi/multi-check-peak-resource-summary.tsv"
+test -s "${resource_summary}"
 grep -F $'order\tname\tmode\tvus\tduration\toverload\tburst_rate\tpre_allocated_vus\tmax_vus\treport_name\trunner_args\trecovery_noise_window_seconds' "${execution_plan}" >/dev/null
 grep -F $'1\tbaseline\tconstant-vus\t3\t30s\tfalse\t16\t3\t3\tmulti-check-baseline\tdefault\t30' "${execution_plan}" >/dev/null
 grep -F $'2\tburst-256\tburst\t16\t20s\ttrue\t256\t256\t256\tmulti-check-burst-256\t--no-up --no-deps\t0' "${execution_plan}" >/dev/null
+grep -F $'scenario\tcontainer\tpeak_cpu_percent\tpeak_memory_mib\tsamples' "${resource_summary}" >/dev/null
 
 echo "[k6-transaction-100m-multi] invalid input fails"
 if K6_MULTI_SCENARIOS=bad "${script}" --print-plan >/dev/null 2>&1; then
@@ -55,9 +60,15 @@ if K6_MULTI_POST_FIRST_RECOVERY_NOISE_WINDOW_SECONDS=bad "${script}" --print-pla
   echo "bad recovery noise window unexpectedly passed" >&2
   exit 1
 fi
+if K6_MULTI_RESOURCE_SAMPLING=maybe "${script}" --print-plan >/dev/null 2>&1; then
+  echo "bad resource sampling flag unexpectedly passed" >&2
+  exit 1
+fi
 
 echo "[k6-transaction-100m-multi] runner contract"
 grep -F "run-k6-transaction-100m-loadtest.sh --no-up --no-deps" "${script}" >/dev/null
+grep -F "start_peak_resource_sampler" "${script}" >/dev/null
+grep -F "write_peak_resource_summary" "${script}" >/dev/null
 grep -F "K6_POSTGRES_RECOVERY_NOISE_WINDOW_SECONDS=\"\${post_first_noise_window}\"" "${script}" >/dev/null
 grep -F "K6_PRE_ALLOCATED_VUS=\"\${pre_allocated}\"" "${script}" >/dev/null
 grep -F "K6_MAX_VUS=\"\${max_vus}\"" "${script}" >/dev/null
