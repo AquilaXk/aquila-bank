@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE' >&2
-usage: tools/test/run-transaction-100m-capacity-gates.sh [--print-plan]
+usage: tools/test/run-transaction-100m-capacity-gates.sh [--print-plan|--print-env-template]
 
 Required runtime environment for actual runs:
   K6_HOT_ACCOUNT_ID
@@ -15,6 +15,7 @@ Required runtime environment for actual runs:
 
 Optional environment:
   CAPACITY_NAME              default transaction-100m-capacity-<timestamp>
+  CAPACITY_ENV_FILE          optional local env file for off-host capacity runtime
   CAPACITY_BUILD_BACKEND     default true
   CAPACITY_RUN_SINGLE_HOST   default true
   CAPACITY_RUN_CPU_SPLIT     default true
@@ -61,6 +62,9 @@ while [[ "$#" -gt 0 ]]; do
     --print-plan)
       mode="print-plan"
       ;;
+    --print-env-template)
+      mode="print-env-template"
+      ;;
     -h|--help)
       usage
       exit 0
@@ -72,6 +76,18 @@ while [[ "$#" -gt 0 ]]; do
   esac
   shift
 done
+
+capacity_env_file="${CAPACITY_ENV_FILE:-}"
+if [[ -n "${capacity_env_file}" ]]; then
+  if [[ ! -f "${capacity_env_file}" ]]; then
+    echo "CAPACITY_ENV_FILE not found: ${capacity_env_file}" >&2
+    exit 1
+  fi
+  set -a
+  # 로컬 전용 원격 실행 값을 shell env로만 주입해 secret/URL 저장소 기록을 피합니다.
+  source "${capacity_env_file}"
+  set +a
+fi
 
 capacity_name="${CAPACITY_NAME:-transaction-100m-capacity-$(date +%Y-%m-%d-%H%M%S)}"
 build_backend="${CAPACITY_BUILD_BACKEND:-true}"
@@ -312,6 +328,7 @@ write_capacity_prerequisite_failure_report() {
     echo "CAPACITY_PREREQUISITE_FAILURE_REASON=${reason}"
     echo "CAPACITY_PREREQUISITE_MISSING_VARS=${missing_vars}"
     echo "CAPACITY_GENERATOR_MODE=${capacity_k6_generator_mode}"
+    echo "CAPACITY_ENV_FILE_PRESENT=$(present_flag "${capacity_env_file}")"
     echo "CAPACITY_K6_DOCKER_CONTEXT_PRESENT=$(present_flag "${capacity_k6_docker_context}")"
     echo "CAPACITY_K6_REMOTE_BASE_URL_PRESENT=$(present_flag "${capacity_k6_remote_base_url}")"
     echo "CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL_PRESENT=$(present_flag "${capacity_k6_remote_prometheus_rw_server_url}")"
@@ -330,6 +347,30 @@ fail_capacity_prerequisite() {
   echo "${message}" >&2
   echo "capacity prerequisite failure report: ${prerequisite_failure_path}" >&2
   exit 1
+}
+
+print_env_template() {
+  cat <<'TEMPLATE'
+# Local-only off-host capacity env. Keep this file outside git.
+export CAPACITY_K6_GENERATOR_MODE=docker-context
+export CAPACITY_K6_DOCKER_CONTEXT=<remote-docker-context>
+export CAPACITY_K6_REMOTE_BASE_URL=http://<backend-host>:18080
+export CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL=http://<prometheus-host>:9090/api/v1/write
+export CAPACITY_K6_REMOTE_WORKDIR=/srv/aquila-bank
+export CAPACITY_REMOTE_PREFLIGHT=true
+export CAPACITY_RUN_SINGLE_HOST=true
+export CAPACITY_RUN_CPU_SPLIT=true
+export CAPACITY_RUN_LONG_SOAK=true
+export CAPACITY_LONG_SOAK_DURATION=30m
+TEMPLATE
+}
+
+capacity_run_grades() {
+  if [[ "${run_long_soak}" == "true" ]]; then
+    echo "capacity,soak"
+  else
+    echo "capacity"
+  fi
 }
 
 stop_backend_before_bootjar() {
@@ -379,6 +420,11 @@ assert_adaptive_strict_guards "CAPACITY_SINGLE_HOST_PROFILES" "${single_host_pro
 assert_adaptive_strict_guards "CAPACITY_CPU_SPLIT_PROFILES" "${cpu_split_profiles}"
 assert_adaptive_strict_guard "CAPACITY_LONG_SOAK_PROFILE" "${long_soak_profile}"
 
+if [[ "${mode}" == "print-env-template" ]]; then
+  print_env_template
+  exit 0
+fi
+
 if [[ "${capacity_k6_generator_mode}" == "local" ]]; then
   fail_capacity_prerequisite \
     "local-generator-not-allowed" \
@@ -407,6 +453,7 @@ print_plan() {
   echo "[transaction-100m-capacity] run_cpu_split=${run_cpu_split}"
   echo "[transaction-100m-capacity] run_long_soak=${run_long_soak}"
   echo "[transaction-100m-capacity] continue_on_failure=${continue_on_failure}"
+  echo "[transaction-100m-capacity] capacity_env_file=${capacity_env_file:-missing}"
   echo "[transaction-100m-capacity] single_host_profiles=$(profile_names "${single_host_profiles}")"
   echo "[transaction-100m-capacity] cpu_split_profiles=$(profile_names "${cpu_split_profiles}")"
   echo "[transaction-100m-capacity] long_soak_profile=${long_soak_profile%%:*} duration=${long_soak_duration}"
@@ -434,6 +481,8 @@ print_plan() {
   echo "[transaction-100m-capacity] summary=${summary_tsv}"
   echo "[transaction-100m-capacity] run_context=${run_context_path}"
   echo "[transaction-100m-capacity] prerequisite_failure=${prerequisite_failure_path}"
+  echo "[transaction-100m-capacity] offhost_required_env=CAPACITY_K6_DOCKER_CONTEXT,CAPACITY_K6_REMOTE_BASE_URL,CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL"
+  echo "[transaction-100m-capacity] long_soak_baseline=$([[ "${run_long_soak}" == "true" ]] && echo enabled || echo disabled) grade=soak duration=${long_soak_duration}"
 }
 
 print_plan
@@ -454,6 +503,7 @@ write_capacity_run_context() {
   {
     echo "CAPACITY_RUN_PURPOSE=capacity"
     echo "CAPACITY_NAME=${capacity_name}"
+    echo "CAPACITY_RUN_GRADES=$(capacity_run_grades)"
     echo "CAPACITY_GENERATOR_MODE=${capacity_k6_generator_mode}"
     echo "CAPACITY_K6_DOCKER_CONTEXT=${capacity_k6_docker_context}"
     echo "CAPACITY_K6_REMOTE_BASE_URL=${capacity_k6_remote_base_url}"

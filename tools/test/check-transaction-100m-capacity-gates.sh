@@ -39,9 +39,41 @@ grep -F "capacity_remote_preflight=true timeout=30 readiness_path=/actuator/heal
 grep -F "summary=build/reports/k6/transaction-capacity-check/capacity-summary.tsv" <<<"${plan}" >/dev/null
 grep -F "run_context=build/reports/k6/transaction-capacity-check/capacity-run-context.env" <<<"${plan}" >/dev/null
 grep -F "prerequisite_failure=build/reports/k6/transaction-capacity-check/capacity-prerequisite-failure.env" <<<"${plan}" >/dev/null
+grep -F "capacity_env_file=missing" <<<"${plan}" >/dev/null
+grep -F "offhost_required_env=CAPACITY_K6_DOCKER_CONTEXT,CAPACITY_K6_REMOTE_BASE_URL,CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL" <<<"${plan}" >/dev/null
+grep -F "long_soak_baseline=enabled grade=soak duration=30m" <<<"${plan}" >/dev/null
+
+echo "[transaction-100m-capacity] env template"
+env_template="$("${script}" --print-env-template)"
+grep -F "export CAPACITY_K6_GENERATOR_MODE=docker-context" <<<"${env_template}" >/dev/null
+grep -F "export CAPACITY_K6_DOCKER_CONTEXT=<remote-docker-context>" <<<"${env_template}" >/dev/null
+grep -F "export CAPACITY_K6_REMOTE_BASE_URL=http://<backend-host>:18080" <<<"${env_template}" >/dev/null
+grep -F "export CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL=http://<prometheus-host>:9090/api/v1/write" <<<"${env_template}" >/dev/null
+grep -F "export CAPACITY_RUN_LONG_SOAK=true" <<<"${env_template}" >/dev/null
+grep -F "export CAPACITY_LONG_SOAK_DURATION=30m" <<<"${env_template}" >/dev/null
+
+temp_dir="$(mktemp -d)"
+trap 'rm -rf "${temp_dir}"' EXIT
+capacity_env_file="${temp_dir}/capacity.env"
+cat >"${capacity_env_file}" <<'ENV'
+CAPACITY_K6_DOCKER_CONTEXT=capacity-k6-file
+CAPACITY_K6_REMOTE_BASE_URL=http://192.0.2.40:18080
+CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL=http://192.0.2.40:9090/api/v1/write
+CAPACITY_K6_REMOTE_WORKDIR=/srv/aquila-bank-file
+ENV
+env_file_plan="$(
+  CAPACITY_NAME=transaction-capacity-env-file-check \
+  CAPACITY_ENV_FILE="${capacity_env_file}" \
+    "${script}" --print-plan
+)"
+grep -F "capacity_env_file=${capacity_env_file}" <<<"${env_file_plan}" >/dev/null
+grep -F "k6_docker_context=capacity-k6-file" <<<"${env_file_plan}" >/dev/null
+grep -F "k6_remote_base_url=http://192.0.2.40:18080" <<<"${env_file_plan}" >/dev/null
+grep -F "k6_remote_prometheus_rw_server_url=http://192.0.2.40:9090/api/v1/write" <<<"${env_file_plan}" >/dev/null
 
 echo "[transaction-100m-capacity] runner contract"
 grep -F "CAPACITY_K6_GENERATOR_MODE" "${script}" >/dev/null
+grep -F "CAPACITY_ENV_FILE" "${script}" >/dev/null
 grep -F "CAPACITY_ALLOW_LOCAL_K6_GENERATOR" "${script}" >/dev/null
 grep -F "CAPACITY_REMOTE_PREFLIGHT" "${script}" >/dev/null
 grep -F "CAPACITY_REMOTE_PREFLIGHT_TIMEOUT_SECONDS" "${script}" >/dev/null
@@ -50,6 +82,7 @@ grep -F "CAPACITY_REMOTE_PREFLIGHT_IMAGE" "${script}" >/dev/null
 grep -F "write_capacity_prerequisite_failure_report" "${script}" >/dev/null
 grep -F "fail_capacity_prerequisite" "${script}" >/dev/null
 grep -F "CAPACITY_PREREQUISITE_MISSING_VARS" "${script}" >/dev/null
+grep -F "print_env_template" "${script}" >/dev/null
 grep -F "K6_GENERATOR_MODE=\"\${capacity_k6_generator_mode}\"" "${script}" >/dev/null
 grep -F "K6_RUN_PURPOSE=capacity" "${script}" >/dev/null
 grep -F "K6_REMOTE_PREFLIGHT=\"\${capacity_remote_preflight}\"" "${script}" >/dev/null
