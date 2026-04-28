@@ -6,11 +6,14 @@ on:
       - main
     paths:
       - "back/**"
+      - "tools/ci/**"
       - "tools/test/**"
       - ".github/workflows/**"
 
 permissions:
   contents: read
+  issues: write
+  pull-requests: write
 
 concurrency:
   group: backend-ci-${{ github.ref }}
@@ -42,6 +45,33 @@ jobs:
 
       - name: Run backend check
         run: ./gradlew check --no-daemon --stacktrace
+
+      - name: Comment Jacoco coverage summary
+        if: always() && github.event.pull_request.head.repo.full_name == github.repository && hashFiles('back/build/reports/jacoco/test/jacocoTestReport.xml') != ''
+        working-directory: ${{ github.workspace }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          summary_file="${RUNNER_TEMP}/jacoco-summary.md"
+          comments_file="${RUNNER_TEMP}/pr-comments.json"
+
+          python3 tools/ci/comment-jacoco-summary.py \
+            back/build/reports/jacoco/test/jacocoTestReport.xml \
+            back/config/jacoco-coverage-baseline-excludes.txt \
+            > "${summary_file}"
+
+          gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --paginate > "${comments_file}"
+          comment_id="$(
+            python3 -c 'import json, sys; marker = "<!-- aquila-bank:jacoco-coverage-summary -->"; comments = json.load(open(sys.argv[1], encoding="utf-8")); print(next((item["id"] for item in comments if marker in item.get("body", "")), ""))' "${comments_file}"
+          )"
+
+          body="$(cat "${summary_file}")"
+          if [[ -n "${comment_id}" ]]; then
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${comment_id}" --field body="${body}"
+          else
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --field body="${body}"
+          fi
 
       - name: Run transaction query plan regression gate
         working-directory: ${{ github.workspace }}
