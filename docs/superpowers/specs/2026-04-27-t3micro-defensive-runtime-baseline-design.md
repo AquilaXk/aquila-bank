@@ -1,14 +1,16 @@
-# t3.micro Defensive Runtime Baseline Design
+# Local Docker 100m Defensive Runtime Baseline Design
 
 ## 목적
 
-현재 프로젝트 목표를 "t3.micro에서 초대량 트래픽과 1억 건 조회 처리"에서 "EC2 t3.micro + RDS db.t4g.small + gp3에서 대용량 트래픽 방어와 bounded 1억 건 조회"로 재정의한다.
+현재 프로젝트 목표를 "AWS free-tier급 환경에서 1억 건 적재까지 닫기"에서 "로컬 Docker PostgreSQL 18 + 로컬 디스크/volume에 1억 건을 적재하고 bounded 조회를 검증"으로 재정의한다.
 
-핵심은 처리량 확장이 아니라 작은 인프라가 과부하를 받을 때 빠르게 제한하고, DB/worker/SSE/API 동시성 비용을 예측 가능하게 유지하는 것이다.
+핵심은 처리량 확장이 아니라 로컬에서 반복 가능한 1억 건 evidence를 만들고, 작은 운영 budget이 과부하를 받을 때 빠르게 제한하며 DB/worker/SSE/API 동시성 비용을 예측 가능하게 유지하는 것이다. AWS EC2/RDS는 비용 조건이 맞을 때만 remote smoke 또는 local-vs-remote 비교로 사용한다.
 
 ## 범위
 
 - README와 agent context의 목표/비목표 문구 갱신
+- 로컬 Docker PostgreSQL + 로컬 디스크/volume 1억 건 fixture를 primary evidence로 명시
+- AWS EC2/RDS 기준은 optional smoke/comparison으로 명시
 - Kafka를 로컬 compose 기본 실행에서 제외하고 opt-in profile로 유지
 - Prometheus/Grafana/Alertmanager는 상시 운영 필수 구성에서 제외하고 부하테스트/선택 운영 자산으로 명시
 - production high-traffic config gate를 Kafka/read replica 필수값 중심에서 방어형 runtime budget 중심으로 변경
@@ -23,6 +25,7 @@
 - 전체 1억 건 검색/집계/정렬 기능 추가
 - DB schema/index 신규 migration
 - read replica 필수 운영 전제 유지
+- AWS RDS를 1억 건 primary evidence로 강제
 
 ## 아키텍처 결정
 
@@ -51,7 +54,7 @@ production high-traffic config gate는 다음을 필수로 검증한다.
 
 거래 목록/아카이브 조회는 기존 구현처럼 `accountId`, `from`, `to`, `limit`, `cursor`를 기본 계약으로 유지한다. `TransactionReadQueryStatement`와 archive query는 `(booked_at, id)` keyset 조건과 `ORDER BY booked_at DESC, id DESC`를 맞춰 composite index range scan을 유도한다.
 
-전체 1억 건 검색, 전체 집계, 전체 정렬은 목표에서 제외한다. 1억 건은 저장 규모와 분포를 뜻하고, 온라인 조회 단위는 계좌/기간으로 bounded된 page 조회만 허용한다.
+전체 1억 건 검색, 전체 집계, 전체 정렬은 목표에서 제외한다. 1억 건은 로컬 Docker PostgreSQL에 적재된 저장 규모와 분포를 뜻하고, 온라인 조회 단위는 계좌/기간으로 bounded된 page 조회만 허용한다.
 
 ## 운영 기본값
 
