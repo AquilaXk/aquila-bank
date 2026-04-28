@@ -27,18 +27,6 @@ resource "aws_subnet" "public" {
   }
 }
 
-resource "aws_subnet" "private_db" {
-  count = 2
-
-  availability_zone = data.aws_availability_zones.available.names[count.index]
-  cidr_block        = var.private_db_subnet_cidrs[count.index]
-  vpc_id            = aws_vpc.this.id
-
-  tags = {
-    Name = "${var.name_prefix}-private-db-${count.index + 1}"
-  }
-}
-
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.this.id
 
@@ -55,13 +43,4 @@ resource "aws_route_table" "public" {
 resource "aws_route_table_association" "public" {
   route_table_id = aws_route_table.public.id
   subnet_id      = aws_subnet.public.id
-}
-
-resource "aws_db_subnet_group" "this" {
-  name       = "${var.name_prefix}-db-subnet-group"
-  subnet_ids = aws_subnet.private_db[*].id
-
-  tags = {
-    Name = "${var.name_prefix}-db-subnet-group"
-  }
 }

@@ -13,21 +13,6 @@ output "ec2_public_ip" {
   value       = aws_instance.app.public_ip
 }
 
-output "rds_endpoint" {
-  description = "RDS PostgreSQL endpoint."
-  value       = aws_db_instance.postgres.endpoint
-}
-
-output "rds_address" {
-  description = "RDS PostgreSQL address."
-  value       = aws_db_instance.postgres.address
-}
-
-output "rds_port" {
-  description = "RDS PostgreSQL port."
-  value       = aws_db_instance.postgres.port
-}
-
 output "selected_ec2_ami_id" {
   description = "AMI ID used by the EC2 instance."
   value       = local.ec2_ami_id

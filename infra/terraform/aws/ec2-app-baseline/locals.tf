@@ -1,7 +1,7 @@
 locals {
   common_tags = merge(
     {
-      CostBoundary = "aws-ec2-rds-baseline"
+      CostBoundary = "aws-ec2-app-baseline"
       ManagedBy    = "terraform"
       Project      = "aquila-bank"
     },

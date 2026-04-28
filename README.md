@@ -1,6 +1,6 @@
 # Aquila Bank
 
-대용량 트래픽을 작은 인프라에서 무제한 처리하는 대신, 로컬 Docker PostgreSQL 18 + 로컬 디스크/volume 기준으로 1억 건 거래 데이터를 적재하고 bounded query로 조회하는 것을 목표로 하는 웹뱅킹 프로젝트입니다. AWS EC2/RDS는 비용 조건이 맞을 때 선택적으로 비교하는 배포 smoke 기준으로만 둡니다.
+대용량 트래픽을 작은 인프라에서 무제한 처리하는 대신, 로컬 Docker PostgreSQL 18 + 로컬 디스크/volume 기준으로 1억 건 거래 데이터를 적재하고 bounded query로 조회하는 것을 목표로 하는 웹뱅킹 프로젝트입니다. AWS는 App EC2 배포 smoke 기준으로만 두고, 1억 건 DB는 로컬 Mac Docker fixture를 primary evidence로 유지합니다.
 
 ## Overview
 
@@ -10,7 +10,7 @@
   - 로컬 Docker PostgreSQL 18 + 로컬 디스크/volume 기반 1억 건 fixture 적재와 계좌/기간/keyset page 조회 지원
   - 제한된 local Docker budget에서도 운영 가능한 구조 지향
   - 로컬/배포 환경 모두 `PostgreSQL 18` 표준화
-  - AWS EC2/RDS는 선택적 배포 smoke와 local-vs-remote 비교 evidence로만 사용
+  - AWS App EC2는 선택적 배포 smoke로만 사용하고 1억 건 DB는 로컬 Mac Docker fixture로 유지
 - 제외 목표:
   - 전체 1억 건 검색/집계/정렬
   - Kafka, Prometheus, Grafana의 같은 host 상시 필수 운영
@@ -46,7 +46,7 @@
 - database: `PostgreSQL 18`
 - primary 100m evidence: `Docker Compose + PostgreSQL 18 + local disk/volume`
 - query/admission budget: local Docker cgroup 기반 작은 CPU/메모리 budget
-- optional deployed smoke: `EC2 + RDS PostgreSQL 18 + gp3`
+- optional deployed smoke: `EC2 t3.small + gp3 40GiB`
 
 ## Environment Split
 
@@ -55,10 +55,10 @@
 - 로컬 t3.micro 근사 검증: `compose.t3micro.yml`과 `tools/test/run-docker-t3micro-capacity-smoke.sh`로 CPU/메모리 cgroup 제한을 적용합니다.
 - 로컬 HTTP 부하 테스트: `compose.loadtest.yml`로 backend, k6, Prometheus, Grafana, Alertmanager, Postgres exporter를 함께 띄웁니다. Prometheus/Grafana는 부하테스트/선택 운영 자산이며 같은 t3.micro host 상시 필수 구성에서 제외합니다.
 - 로컬 1억 건 synthetic 조회 테스트: dataset 생성은 `tools/test/prepare-transaction-read-model-100m-fixture.sh`, 로컬 k6 조회는 `tools/test/run-transaction-read-model-100m-k6-local.sh --k6-only`로 분리합니다. 생성 phase는 로컬 디스크/volume과 별도 PostgreSQL budget을 사용하고, 조회 phase만 작은 Docker budget으로 제한합니다.
-- 배포 환경: `EC2 + RDS PostgreSQL 18 + gp3`는 선택적 smoke/comparison 기준입니다.
+- 배포 환경: `EC2 t3.small + gp3 40GiB`는 선택적 app smoke 기준입니다.
 - EC2 reverse proxy baseline template은 [ops/nginx/nginx.conf](/Users/aquila/Custom/GitProjects/aquila-bank/ops/nginx/nginx.conf)에 두고, runtime 값은 `ops/nginx/runtime.env.example` 기반으로 렌더링합니다.
 - `compose.yml`은 로컬 개발 전용이며, 배포용 인프라 정의는 포함하지 않습니다.
-- 최종 1억 건 evidence는 로컬 Docker PostgreSQL + 로컬 디스크/volume fixture와 로컬 k6 summary로 닫습니다. AWS staging smoke는 free-tier/cost 조건이 맞을 때만 remote 비교 결과로 추가합니다.
+- 최종 1억 건 evidence는 로컬 Docker PostgreSQL + 로컬 디스크/volume fixture와 로컬 k6 summary로 닫습니다. AWS staging smoke는 EC2 app 배포 확인 범위로 제한합니다.
 - 성능 테스트 결과는 [docs/performance-results](/Users/aquila/Custom/GitProjects/aquila-bank/docs/performance-results/README.md)에 Markdown으로 남깁니다.
 
 ## Delivery Flow
