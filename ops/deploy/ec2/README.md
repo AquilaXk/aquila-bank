@@ -1,6 +1,6 @@
 # EC2 Blue/Green Deploy
 
-이 경로는 AWS App EC2 한 대에서 Docker + Nginx blue/green 배포를 수행한다.
+이 경로는 AWS App EC2 한 대에서 Docker + Nginx blue/green 배포 smoke를 수행한다. 현재 remote DB/capacity baseline은 OCI A1 Flex 4 OCPU / 24GB + data 300GB self-managed PostgreSQL이며, EC2 경로는 legacy/optional app smoke로만 유지한다.
 
 ## Runtime
 
@@ -12,7 +12,7 @@
 
 ## Database Boundary
 
-1억 건 PostgreSQL fixture는 EC2로 옮기지 않는다. Backend container는 `EC2_BACKEND_ENV` secret으로 주입되는 DB 접속 설정을 사용한다. 로컬 Mac Docker PostgreSQL을 EC2에서 사용하려면 reverse SSH tunnel 또는 VPN을 별도 보안 작업으로 구성한다.
+1억 건 PostgreSQL fixture는 EC2로 옮기지 않는다. Backend container는 `EC2_BACKEND_ENV` secret으로 주입되는 DB 접속 설정을 사용한다. 로컬 Mac Docker PostgreSQL 또는 OCI A1 PostgreSQL을 EC2에서 사용하려면 reverse SSH tunnel 또는 VPN을 별도 보안 작업으로 구성한다.
 
 Backend/frontend container에는 `host.docker.internal`이 EC2 Docker host gateway로 잡힌다. 로컬 Mac DB를 tunnel로 붙일 때는 EC2 host가 접근할 수 있는 포트로 먼저 고정한 뒤, `EC2_BACKEND_ENV`의 JDBC URL에서 해당 host/port를 사용한다.
 
@@ -30,7 +30,7 @@ Nginx는 public Host를 backend에 그대로 넘기지 않는다. backend locati
 
 ## Local DB Capacity Smoke
 
-EC2 App + 로컬 Mac DB 1억 건 부하 테스트는 저장소에 secret을 남기지 않고 local-only env 파일로 실행한다.
+EC2 App + 외부 DB 1억 건 부하 테스트는 legacy 진단 경로다. 저장소에 secret을 남기지 않고 local-only env 파일로 실행한다. 현재 권장 remote DB/capacity 경로는 OCI A1 4 OCPU / 24GB + data 300GB이다.
 
 ```bash
 tools/test/run-ec2-local-db-capacity-env-doctor.sh --print-env-template > .env/ec2-local-db-capacity.env
@@ -76,7 +76,7 @@ EC2_NGINX_K6_SUMMARY_MD=build/reports/k6/<run>-nginx-summary.md \
   tools/test/compare-ec2-direct-vs-nginx-latency.sh
 ```
 
-`EC2_RESOURCE_CLOUDWATCH_ENABLED=true`를 켜면 `EC2_CAPACITY_AWS_REGION`, `EC2_CAPACITY_EC2_INSTANCE_ID`, `EC2_CAPACITY_EBS_VOLUME_ID`, `EC2_CAPACITY_CLOUDWATCH_START_TIME`, `EC2_CAPACITY_CLOUDWATCH_END_TIME`를 함께 지정한다. CloudWatch는 EC2 CPU credit, CPU utilization, EBS queue/ops만 수집하며 RDS 지표는 이 app-only 경로에서 사용하지 않는다.
+`EC2_RESOURCE_CLOUDWATCH_ENABLED=true`를 켜면 `EC2_CAPACITY_AWS_REGION`, `EC2_CAPACITY_EC2_INSTANCE_ID`, `EC2_CAPACITY_EBS_VOLUME_ID`, `EC2_CAPACITY_CLOUDWATCH_START_TIME`, `EC2_CAPACITY_CLOUDWATCH_END_TIME`를 함께 지정한다. CloudWatch는 EC2 CPU credit, CPU utilization, EBS queue/ops만 수집하며 RDS 지표는 이 app-only 경로에서 사용하지 않는다. OCI A1 baseline 리소스는 이 EC2 CloudWatch 수집 대상이 아니다.
 
 ## Required GitHub Secrets
 

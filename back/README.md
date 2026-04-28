@@ -4,7 +4,7 @@ Spring Boot 4 기반 백엔드 애플리케이션입니다.
 
 ## Goal
 
-- EC2 `t3.micro` + RDS `db.t4g.small` + gp3 기준에서 대용량 트래픽을 무제한 처리하지 않고, API admission/SSE cap/작은 worker batch로 과부하를 방어합니다.
+- OCI A1 Flex 4 OCPU / 24GB + data 300GB self-managed PostgreSQL 18 기준에서 대용량 트래픽을 무제한 처리하지 않고, API admission/SSE cap/작은 worker batch로 과부하를 방어합니다.
 - 거래 조회는 1억 건 저장 규모에서도 `accountId + 기간 + keyset pagination`으로 범위를 제한한 bounded query만 온라인 목표로 둡니다.
 - 전체 1억 건 검색/집계/정렬, Kafka 상시 필수 운영, Prometheus/Grafana 같은 host 상시 운영은 기본 목표에서 제외합니다.
 - 로컬/배포 환경 모두 `PostgreSQL 18`을 표준 DB 버전으로 사용합니다.
@@ -263,7 +263,7 @@ docker compose up -d postgres
 - topic partition을 늘릴 때는 `KAFKA_TOPIC_PROVISIONING_PARTITIONS`와 `NOTIFICATION_INBOX_CONSUMER_CONCURRENCY`를 같이 조정합니다.
 - Kafka notification E2E가 필요하면 `docker compose --profile kafka up -d kafka`로 별도 실행합니다. 이 경로는 로컬 개발 전용입니다.
 
-t3.micro에 가까운 작은 로컬 인프라 budget으로 띄울 때는 override 파일을 함께 지정합니다.
+작은 로컬 인프라 budget으로 띄울 때는 legacy 이름의 override 파일을 함께 지정합니다.
 
 ```bash
 docker compose -f compose.yml -f compose.t3micro.yml up -d postgres
@@ -276,7 +276,7 @@ docker compose -f compose.yml -f compose.t3micro.yml --profile kafka up -d postg
 ```
 
 - [compose.t3micro.yml](/Users/aquila/Custom/GitProjects/aquila-bank/compose.t3micro.yml)은 Postgres/Kafka/Redis에 CPU, memory, swap, pids 상한을 겁니다. Kafka와 Redis 상한은 해당 profile을 켰을 때만 적용됩니다.
-- 이 override는 로컬 병목 신호를 빨리 보기 위한 근사값이며, AWS `t3.micro`의 CPU credit, EBS 지연, 실제 네트워크를 재현하지 않습니다.
+- 이 override는 로컬 병목 신호를 빨리 보기 위한 근사값이며, OCI A1의 Ampere CPU, Block Volume 지연, 실제 네트워크를 재현하지 않습니다.
 - Redis까지 같은 budget으로 올릴 때는 `docker compose -f compose.yml -f compose.t3micro.yml --profile redis up -d redis`를 사용합니다.
 
 Redis login throttling runtime smoke가 필요할 때만 profile을 켭니다.
@@ -287,11 +287,11 @@ docker compose --profile redis up -d redis
 
 ## Deployment Baseline
 
-- 백엔드 런타임: `EC2`
-- 데이터베이스: `RDS PostgreSQL 18`
-- EC2 reverse proxy baseline: [ops/nginx/nginx.conf](/Users/aquila/Custom/GitProjects/aquila-bank/ops/nginx/nginx.conf)
-- prod profile은 `DB_URL`, `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD` 환경변수를 받아 EC2에서 외부 PostgreSQL에 연결합니다.
-- `compose.yml`은 배포 인프라를 대체하지 않으며, 운영 DB는 local Docker volume이 아니라 관리형 PostgreSQL 기준으로 봅니다.
+- 백엔드 런타임 기준: OCI A1 Flex 4 OCPU / 24GB app/DB baseline 또는 legacy EC2 app smoke
+- 데이터베이스 기준: OCI A1 data 300GB self-managed PostgreSQL 18
+- reverse proxy baseline: [ops/nginx/nginx.conf](/Users/aquila/Custom/GitProjects/aquila-bank/ops/nginx/nginx.conf)
+- prod profile은 `DB_URL`, `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD` 환경변수를 받아 외부 PostgreSQL에 연결합니다.
+- `compose.yml`은 배포 인프라를 대체하지 않으며, 운영 DB는 local Docker volume이 아니라 OCI A1 PostgreSQL baseline 기준으로 봅니다.
 
 백엔드는 [back/.env.example](/Users/aquila/Custom/GitProjects/aquila-bank/back/.env.example)를 복사한 뒤 실행합니다.
 
@@ -304,7 +304,7 @@ set +a
 ```
 
 - 애플리케이션 시작 시 `back/src/main/resources/db/migration`의 Flyway 마이그레이션이 자동 적용됩니다.
-- 기본값은 `t3.micro`를 전제로 작은 커넥션 풀과 짧은 DB 타임아웃을 사용합니다.
+- 기본값은 작은 단일 노드 운영을 전제로 작은 커넥션 풀과 짧은 DB 타임아웃을 사용합니다. remote baseline은 OCI A1 4 OCPU / 24GB + data 300GB입니다.
 - 운영 기본 인증 방식은 bearer JWT 입니다.
 - `dev`/`test` 프로필에서는 필요 시 `X-Account-Id` 헤더 fallback을 사용할 수 있습니다.
 - Kafka notification E2E가 필요할 때만 `docker compose --profile kafka up -d kafka`를 먼저 실행하고 `OUTBOX_KAFKA_ENABLED=true`, `NOTIFICATION_INBOX_CONSUMER_ENABLED=true`를 지정합니다.
@@ -332,7 +332,7 @@ set +a
 - export endpoint:
   - `GET /actuator/prometheus`
 - 운영 기준:
-  - metric export endpoint는 유지하지만, EC2 `t3.micro` 애플리케이션 host에서 Prometheus/Grafana를 상시 동거시키는 구성은 기본 목표에서 제외합니다.
+  - metric export endpoint는 유지하지만, OCI A1 app/DB host에서 Prometheus/Grafana를 상시 동거시키는 구성은 기본 목표에서 제외합니다.
   - 부하테스트 overlay, 별도 관측 host, 또는 장애 분석용 단기 실행으로 수집합니다.
 - 보안 기준:
   - application security는 `/actuator/prometheus`를 permitAll 로 열어 Prometheus scrape를 단순화합니다.
@@ -383,7 +383,7 @@ set +a
   - command idempotency conflict counter는 transfer/reversal conflict를 `reason_code` 축으로만 누적합니다.
   - command idempotency recovery/cleanup counter는 stale recovery row 수, retention cleanup delete row 수를 누적합니다.
   - provider delivery gauge는 notification/password recovery delivery table의 sent/skipped/failed/quarantined/retry backlog row 수와 skip reason을 5초 cache로 export 합니다.
-  - t3.micro query timeout counter는 backend query timeout exception이 발생하면 증가합니다.
+  - legacy `t3micro` 이름의 query timeout counter는 backend query timeout exception이 발생하면 증가합니다.
   - Hikari pool metric은 Spring Boot/Micrometer 기본 binder와 `aquila-bank-pool` pool tag 기준으로 export 됩니다.
   - Postgres exporter `pg_stat_statements_*`는 `pg_stat_statements` extension과 collector 활성화가 필요합니다.
   - `pg_stat_activity_lock_waiting_count`는 `wait_event_type = 'Lock'` custom query metric으로 둡니다.
@@ -423,7 +423,7 @@ set +a
   - command idempotency summary gauge는 `ledger.command-idempotency.ops.enabled=true`일 때 live count를 export 하고, 비활성 상태에서는 zero baseline만 남깁니다.
   - p95 alert는 `query_shape`별 5분 rate가 충분할 때만 평가해 low traffic 노이즈를 줄입니다.
   - `AquilaDbPoolPendingWaitDetected`는 Hikari pending connection이 남은 상태라 lock wait, slow query, DB CPU, transaction p95를 같은 시간대에서 같이 확인합니다.
-  - `AquilaDbPoolActivePressureHigh`는 active/max pool ratio 90% 이상을 queueing 전조로 봅니다. t3.micro 기본 `DB_POOL_MAX_SIZE=4`에서는 순간 spike보다 10분 지속 여부가 중요합니다.
+  - `AquilaDbPoolActivePressureHigh`는 active/max pool ratio 90% 이상을 queueing 전조로 봅니다. 작은 단일 노드 기본 `DB_POOL_MAX_SIZE=4`에서는 순간 spike보다 10분 지속 여부가 중요합니다.
   - `AquilaDbQueryTimeoutDetected`는 `statement_timeout` 또는 `lock_timeout` 전파 신호로 보고 blocking query와 pool pending을 먼저 좁힙니다.
   - `AquilaPostgresLockWaitDetected`는 Postgres exporter custom metric이 있을 때만 동작합니다. alert label에는 query text/pid/user/requestId를 올리지 않고 DB drill-down에서 확인합니다.
   - `AquilaPostgresSlowQueryDetected`는 `pg_stat_statements` database-level 평균이 750ms를 넘는지 보는 coarse guard입니다. query별 확인은 `queryid` 기준으로 별도 조회합니다.
@@ -443,7 +443,7 @@ set +a
 
 - outbox retention cleanup은 `publish_status = 'PUBLISHED'` 이고 `published_at` 이 retention cutoff 밖인 row만 정리합니다.
 - `PENDING`, `FAILED`, `SENDING` row는 dispatch 복구와 ops 확인 대상이라 cleanup에서 제외합니다.
-- cleanup batch는 `published_at ASC, id ASC` 순서의 작은 batch delete만 수행해 `t3.micro`에서 lock/vacuum 충격을 낮춥니다.
+- cleanup batch는 `published_at ASC, id ASC` 순서의 작은 batch delete만 수행해 단일 노드 PostgreSQL에서 lock/vacuum 충격을 낮춥니다.
 - 기본 설정은 `OUTBOX_CLEANUP_ENABLED=true`, `OUTBOX_CLEANUP_RETENTION_DAYS=30`, `OUTBOX_CLEANUP_BATCH_SIZE=500`, `OUTBOX_CLEANUP_FIXED_DELAY_MS=300000` 입니다.
 
 ### Local Notification E2E
@@ -469,7 +469,7 @@ tools/test/run-kafka-consumer-partition-concurrency.sh
 - fixture: 4 partitions, 48 records, listener당 고정 30ms work
 - 목표: 최종 consumer lag `0`, concurrency `4` throughput 이 concurrency `1`보다 `1.5x` 초과
 - 운영 적용: `KAFKA_TOPIC_PROVISIONING_PARTITIONS=<n>`으로 topic 최소 partition을 올리고 `NOTIFICATION_INBOX_CONSUMER_CONCURRENCY=<n>`은 partition 수 이하로 둡니다.
-- t3.micro 기준: DB write path가 같이 느려질 수 있으므로 consumer lag, Hikari pool pending, `AquilaDbPoolActivePressureHigh`를 함께 확인합니다.
+- OCI A1 단일 노드 기준: DB write path가 같이 느려질 수 있으므로 consumer lag, Hikari pool pending, `AquilaDbPoolActivePressureHigh`를 함께 확인합니다.
 - rollback: lag가 줄지 않거나 DB pool wait가 늘면 `NOTIFICATION_INBOX_CONSUMER_CONCURRENCY=1`로 되돌리고 partition 증설 효과를 재측정합니다.
 
 ### Kafka Production Replication Baseline
@@ -485,18 +485,18 @@ tools/test/run-kafka-production-replication-baseline.sh
 - startup validation 은 required broker 수, topic 최소 partition 수, topic replication factor, topic `min.insync.replicas`를 같이 확인합니다.
 - rollback: broker 수를 줄이거나 quorum 정책을 완화해야 하면 topic baseline env 와 실제 topic config 를 같이 낮춘 뒤 재시작합니다.
 
-### Production t3.micro Capacity Smoke
+### Production OCI A1 Capacity Smoke
 
-production budget 회귀는 아래 smoke entrypoint와 scheduled workflow로 주기 확인합니다.
+production budget 회귀는 legacy `t3micro` 이름을 유지한 smoke entrypoint와 scheduled workflow로 주기 확인합니다. 현재 remote baseline은 OCI A1 4 OCPU / 24GB + data 300GB입니다.
 
 ```bash
 tools/test/run-production-t3micro-capacity-smoke.sh
 ```
 
-- 위 script는 기존 `tools/test/run-t3micro-mixed-workload-soak.sh`를 production budget env와 함께 실행합니다.
+- 위 script는 기존 `tools/test/run-t3micro-mixed-workload-soak.sh`를 production budget env와 함께 실행합니다. 스크립트 이름은 호환성 때문에 유지합니다.
 - 기본 budget은 `DB_POOL_MAX_SIZE=4`, `SERVER_THREADS_MAX=16`, `NOTIFICATION_SSE_MAX_TOTAL_SESSIONS=64`, `OPS_API_ADMISSION_CONTROL_NOTIFICATION_STREAM_MAX=4` 입니다.
 - 기본 repeat는 `1`이고, 장시간 rehearsal이 필요하면 `SOAK_REPEAT=<n>`으로 늘립니다.
-- scheduled workflow `Production t3.micro Capacity Smoke`는 매주 월요일 03:15 KST(`15 18 * * 0` UTC)와 manual `workflow_dispatch`를 지원합니다.
+- scheduled production capacity smoke workflow는 OCI A1 production budget 회귀 확인 용도로 사용합니다. 매주 월요일 03:15 KST(`15 18 * * 0` UTC)와 manual `workflow_dispatch`를 지원합니다.
 - repository variable로 아래 값을 override 할 수 있습니다.
   - `PRODUCTION_T3MICRO_SOAK_REPEAT`
   - `PRODUCTION_T3MICRO_DB_POOL_MAX_SIZE`
@@ -517,7 +517,7 @@ tools/test/run-docker-t3micro-capacity-smoke.sh
 - 기본값은 실행 전 host에서 `testClasses`를 준비해 Gradle compile 비용을 Docker 1GiB 판정에서 분리합니다. 이 동작을 끄려면 `DOCKER_T3MICRO_PREPARE_TEST_CLASSES=false`를 사용합니다.
 - 기본 image는 `eclipse-temurin:21-jdk`이고, 로컬에 다른 Java 21 image가 있으면 `DOCKER_T3MICRO_IMAGE=<image>`로 바꿀 수 있습니다.
 - Docker smoke는 host 자원이 큰 개발 머신에서 놓칠 수 있는 JVM/thread/pool 압력 회귀를 빨리 잡는 용도입니다.
-- 최종 120% headroom 판정은 실제 EC2 `t3.micro` staging에서 transaction replay, read replica smoke, production capacity smoke를 실행한 결과로 닫습니다.
+- 최종 120% headroom 판정은 OCI A1 4 OCPU / 24GB + data 300GB staging에서 transaction replay, read replica smoke, production capacity smoke를 실행한 결과로 닫습니다.
 
 ### k6 Transaction 100m Load Test
 
@@ -552,8 +552,8 @@ tools/test/run-transaction-read-model-100m-k6-local.sh
 - 기본 hot account는 `910000001`, cold account는 `910000002`입니다.
 - 기본 조회 기간은 hot `2026-04-01T00:00:00Z..2026-04-30T00:00:00Z`, cold `2026-01-01T00:00:00Z..2026-01-31T00:00:00Z`입니다.
 - seed는 read path 성능 검증 전용입니다. 원장 1억 건을 생성하지 않고, seed 중에만 read model FK trigger를 비활성화합니다.
-- 기본 `SEED_INDEX_STRATEGY=required`는 k6에 필요한 account cursor index만 빈 테이블 상태에서 먼저 유지합니다. t3.micro에서는 5천만 row btree를 seed 후 한 번에 build하면 OOM이 발생할 수 있으므로 기본값으로 사용하지 않습니다.
-- 전체 filter index 재생성 검증이 필요하면 `SEED_INDEX_STRATEGY=rebuild-all`을 명시합니다. 이 모드는 t3.micro보다 큰 메모리 budget 또는 partition/chunk 전환 검증에서만 사용합니다.
+- 기본 `SEED_INDEX_STRATEGY=required`는 k6에 필요한 account cursor index만 빈 테이블 상태에서 먼저 유지합니다. 작은 memory budget에서는 5천만 row btree를 seed 후 한 번에 build하면 OOM이 발생할 수 있으므로 기본값으로 사용하지 않습니다.
+- 전체 filter index 재생성 검증이 필요하면 `SEED_INDEX_STRATEGY=rebuild-all`을 명시합니다. 이 모드는 OCI A1 24GB 이상 memory budget 또는 partition/chunk 전환 검증에서만 사용합니다.
 - k6 runner는 실행 전 PostgreSQL `OOMKilled` 상태와 필수 account cursor index 존재 여부를 preflight로 확인합니다.
 - local disk와 Docker volume을 크게 사용합니다. 실행 전 `df -h .`로 여유 공간을 확인합니다.
 - 실패 후 재시도할 때는 `SEED_TRUNCATE=true`를 유지해 중간 적재 데이터를 정리하고 다시 시작합니다.
