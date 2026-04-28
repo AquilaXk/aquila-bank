@@ -198,7 +198,7 @@ RDS gp3 staging read-only smoke는 [Transaction 100m Staging RDS gp3 Smoke](../t
 
 ## EC2 App + local DB smoke
 
-AWS에는 App EC2만 두고 1억 건 PostgreSQL fixture는 로컬 Mac Docker volume에 둡니다. EC2 backend가 SSH tunnel 또는 VPN으로 로컬 DB에 붙는 경로는 [EC2 Blue/Green Deploy](../../ops/deploy/ec2/README.md)의 local DB capacity smoke 절차를 따릅니다.
+AWS에는 App EC2만 두고 1억 건 PostgreSQL fixture는 OCI A1 PostgreSQL data volume에 둡니다. EC2 backend가 SSH tunnel 또는 VPN으로 OCI A1 DB에 붙는 legacy 진단 경로는 [Legacy Manual Blue/Green Deploy](../../ops/deploy/ec2/README.md)의 capacity smoke 절차를 따릅니다.
 
 권장 실행 순서:
 

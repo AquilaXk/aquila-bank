@@ -1,4 +1,4 @@
-name: EC2 Blue/Green Deploy
+name: Legacy Manual Blue/Green Deploy
 
 on:
   workflow_dispatch:
@@ -14,7 +14,7 @@ permissions:
   deployments: write
 
 concurrency:
-  group: ec2-bluegreen-deploy
+  group: legacy-bluegreen-deploy
   cancel-in-progress: false
 
 env:
@@ -107,7 +107,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=aquila-bank-frontend
 
   deploy:
-    name: Deploy To EC2
+    name: Deploy Legacy Runtime
     needs: [prepare, build-and-push]
     if: needs.prepare.outputs.deploy_sha != ''
     runs-on: ubuntu-latest
@@ -139,7 +139,7 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
-      - name: Resolve running EC2 instance
+      - name: Resolve legacy target instance
         id: ec2
         shell: bash
         run: |

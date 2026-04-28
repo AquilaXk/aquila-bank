@@ -103,10 +103,11 @@ for pattern in "${scattered_patterns[@]}"; do
 done
 
 echo "[oci-a1-bluegreen-cd] legacy EC2 workflow guard"
+require_pattern "name: Legacy Manual Blue/Green Deploy" "$legacy_ec2_workflow"
 require_pattern "workflow_dispatch:" "$legacy_ec2_workflow"
 reject_pattern "workflow_run:" "$legacy_ec2_workflow"
 reject_pattern "- Main CI" "$legacy_ec2_workflow"
-require_pattern "EC2 legacy deploy is manual-only" "$delivery_doc"
+require_pattern "Legacy manual deploy workflow" "$delivery_doc"
 
 echo "[oci-a1-bluegreen-cd] deploy script contract"
 script_patterns=(

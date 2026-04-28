@@ -33,6 +33,15 @@ require_pattern() {
   fi
 }
 
+reject_pattern() {
+  local pattern="$1"
+  local file="$2"
+  if contains "$pattern" "$file"; then
+    echo "[ec2-bluegreen-cd] forbidden automatic deploy pattern in $file: $pattern" >&2
+    exit 1
+  fi
+}
+
 echo "[ec2-bluegreen-cd] required files"
 require_file "$workflow"
 require_file "$deploy_script"
@@ -51,10 +60,9 @@ fi
 
 echo "[ec2-bluegreen-cd] workflow contract"
 workflow_patterns=(
-  "workflow_run:"
+  "name: Legacy Manual Blue/Green Deploy"
   "workflow_dispatch:"
-  "workflows:"
-  "- Main CI"
+  "Deploy Legacy Runtime"
   "docker/build-push-action@v6"
   "registry: ghcr.io"
   "AWS-RunShellScript"
@@ -71,6 +79,8 @@ workflow_patterns=(
 for pattern in "${workflow_patterns[@]}"; do
   require_pattern "$pattern" "$workflow"
 done
+reject_pattern "workflow_run:" "$workflow"
+reject_pattern "- Main CI" "$workflow"
 
 echo "[ec2-bluegreen-cd] deploy script contract"
 script_patterns=(
@@ -104,7 +114,8 @@ require_pattern "http_ingress_cidr" "${terraform_dir}/security.tf"
 require_pattern "from_port   = 80" "${terraform_dir}/security.tf"
 
 echo "[ec2-bluegreen-cd] docs contract"
-require_pattern "로컬 Mac Docker PostgreSQL" "$deploy_readme"
+require_pattern "Legacy Manual Blue/Green Deploy" "$deploy_readme"
+require_pattern "OCI A1 PostgreSQL data volume" "$deploy_readme"
 require_pattern "reverse SSH tunnel" "$deploy_readme"
 require_pattern "EC2_BACKEND_ENV" "$deploy_readme"
 

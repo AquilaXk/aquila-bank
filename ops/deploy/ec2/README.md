@@ -1,4 +1,4 @@
-# EC2 Blue/Green Deploy
+# Legacy Manual Blue/Green Deploy
 
 이 경로는 AWS App EC2 한 대에서 Docker + Nginx blue/green 배포 smoke를 수행한다. 현재 remote DB/capacity baseline은 OCI A1 Flex 4 OCPU / 24GB + data 300GB self-managed PostgreSQL이며, EC2 경로는 legacy/optional app smoke로만 유지한다.
 
