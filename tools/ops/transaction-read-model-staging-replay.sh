@@ -7,7 +7,9 @@ SUMMARY_MD="${REPORT_DIR}/summary.md"
 
 STAGING_BASE_URL="${STAGING_BASE_URL:-}"
 STAGING_REPLAY_TOKEN="${STAGING_REPLAY_TOKEN:-}"
+STAGING_OCI_A1_DATABASE_URL="${STAGING_OCI_A1_DATABASE_URL:-}"
 STAGING_RDS_DATABASE_URL="${STAGING_RDS_DATABASE_URL:-}"
+STAGING_DATABASE_URL="${STAGING_OCI_A1_DATABASE_URL:-${STAGING_RDS_DATABASE_URL}}"
 EXPECTED_TOTAL_ROWS="${EXPECTED_TOTAL_ROWS:-100000000}"
 ITERATIONS="${ITERATIONS:-40}"
 PAGE_LIMIT="${PAGE_LIMIT:-50}"
@@ -60,7 +62,7 @@ require_ratio_between_zero_and_one() {
 
 psql_scalar() {
   local sql="$1"
-  psql "$STAGING_RDS_DATABASE_URL" -v ON_ERROR_STOP=1 --no-align --tuples-only --command "$sql"
+  psql "$STAGING_DATABASE_URL" -v ON_ERROR_STOP=1 --no-align --tuples-only --command "$sql"
 }
 
 validate_inputs() {
@@ -72,7 +74,7 @@ validate_inputs() {
 
   require_env STAGING_BASE_URL
   require_env STAGING_REPLAY_TOKEN
-  require_env STAGING_RDS_DATABASE_URL
+  require_env STAGING_DATABASE_URL
   require_env HOT_ACCOUNT_ID
   require_env HOT_FROM
   require_env HOT_TO
@@ -102,7 +104,7 @@ validate_inputs() {
 
 run_planner_stats_guard() {
   # `reltuples` estimate는 stale stats에 취약해서 replay 전에 ANALYZE 필요 여부를 먼저 차단합니다.
-  if ! DATABASE_URL="$STAGING_RDS_DATABASE_URL" \
+  if ! DATABASE_URL="$STAGING_DATABASE_URL" \
     STATS_MAX_AGE_HOURS="$PLANNER_STATS_MAX_AGE_HOURS" \
     STATS_MAX_MODIFIED_RATIO="$PLANNER_STATS_MAX_MODIFIED_RATIO" \
     "$PLANNER_STATS_GUARD_SCRIPT"; then
@@ -111,7 +113,7 @@ run_planner_stats_guard() {
 }
 
 verify_staging_distribution() {
-  # 1억 건 검증에서 full count는 RDS에 부담이 커서 planner 통계 estimate로 gate를 둡니다.
+  # 1억 건 검증에서 full count는 OCI A1 PostgreSQL에 부담이 커서 planner 통계 estimate로 gate를 둡니다.
   local estimated_total
   estimated_total="$(
     psql_scalar \
@@ -123,9 +125,9 @@ verify_staging_distribution() {
        );"
   )"
 
-  [[ "$estimated_total" =~ ^[0-9]+$ ]] || fail "RDS row estimate is not numeric: ${estimated_total}"
+  [[ "$estimated_total" =~ ^[0-9]+$ ]] || fail "OCI A1 row estimate is not numeric: ${estimated_total}"
   if [ "$estimated_total" -lt "$EXPECTED_TOTAL_ROWS" ]; then
-    fail "RDS read model estimate ${estimated_total} is below expected ${EXPECTED_TOTAL_ROWS}"
+    fail "OCI A1 read model estimate ${estimated_total} is below expected ${EXPECTED_TOTAL_ROWS}"
   fi
 
   local hot_exists
@@ -152,7 +154,7 @@ verify_staging_distribution() {
   )"
   [ "$cold_exists" = "t" ] || fail "COLD_ACCOUNT_ID ${COLD_ACCOUNT_ID} has no archive rows"
 
-  notice "RDS read model estimate ${estimated_total} rows"
+  notice "OCI A1 read model estimate ${estimated_total} rows"
   echo "$estimated_total" >"${REPORT_DIR}/estimated-total-rows.txt"
 }
 

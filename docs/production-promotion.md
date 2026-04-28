@@ -12,6 +12,7 @@
 - target SHA는 `origin/main`에서 도달 가능해야 합니다.
 - target SHA와 같은 staging GitHub deployment가 있어야 합니다.
 - 해당 staging deployment의 최신 status가 `success`여야 합니다.
+- staging success는 OCI A1 blue/green deploy, post-deploy smoke, 1억 건 replay gate를 통과한 same SHA만 기록합니다.
 - guard가 실패하면 `production` Environment approval 전 단계에서 workflow가 중단됩니다.
 
 ## Approval
