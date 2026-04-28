@@ -20,6 +20,8 @@ Environment:
   T3MICRO_TOTAL_MEMORY_BUDGET_MIB default 900
   T3MICRO_AGGREGATE_AUTO_INPUTS default true
   T3MICRO_AGGREGATE_SEARCH_ROOTS default "docs/performance-results build/reports"
+  T3MICRO_AGGREGATE_RUN_ID optional run id used to scope auto inputs
+  T3MICRO_AGGREGATE_AUTO_INPUT_PREFIX default <aggregate name>, used when run id is empty
 
 Examples:
   tools/test/run-t3micro-defensive-gates-aggregate-report.sh --print-plan
@@ -64,6 +66,8 @@ required_gates="${T3MICRO_AGGREGATE_REQUIRED_GATES:-}"
 total_memory_budget_mib="${T3MICRO_TOTAL_MEMORY_BUDGET_MIB:-900}"
 auto_inputs="${T3MICRO_AGGREGATE_AUTO_INPUTS:-true}"
 search_roots="${T3MICRO_AGGREGATE_SEARCH_ROOTS:-docs/performance-results build/reports}"
+aggregate_run_id="${T3MICRO_AGGREGATE_RUN_ID:-}"
+auto_input_prefix="${T3MICRO_AGGREGATE_AUTO_INPUT_PREFIX:-${name}}"
 
 require_bool() {
   local name="$1"
@@ -90,7 +94,9 @@ latest_file() {
   for root in ${search_roots}; do
     if [[ -d "${root}" ]]; then
       while IFS= read -r path; do
-        matches+=("${path}")
+        if file_matches_auto_scope "${path}"; then
+          matches+=("${path}")
+        fi
       done < <(find "${root}" -type f -name "${pattern}" 2>/dev/null)
     fi
   done
@@ -98,6 +104,31 @@ latest_file() {
     return 0
   fi
   ls -t "${matches[@]}" 2>/dev/null | head -1
+}
+
+file_matches_auto_scope() {
+  local path="$1"
+  if [[ -n "${aggregate_run_id}" ]]; then
+    [[ "${path}" == *"${aggregate_run_id}"* ]] && return 0
+    grep -F "${aggregate_run_id}" "${path}" >/dev/null 2>&1 && return 0
+    return 1
+  fi
+  if [[ -n "${auto_input_prefix}" ]]; then
+    [[ "${path}" == *"${auto_input_prefix}"* ]] && return 0
+    grep -F "${auto_input_prefix}" "${path}" >/dev/null 2>&1 && return 0
+    return 1
+  fi
+  return 0
+}
+
+capacity_summary_matches_auto_scope() {
+  local summary="$1"
+  local context="$2"
+  if file_matches_auto_scope "${summary}"; then
+    return 0
+  fi
+  [[ -f "${context}" ]] || return 1
+  file_matches_auto_scope "${context}"
 }
 
 capacity_context_for_summary() {
@@ -124,7 +155,7 @@ latest_capacity_summary() {
     if [[ -d "${root}" ]]; then
       while IFS= read -r path; do
         context="$(capacity_context_for_summary "${path}")"
-        if capacity_context_is_offhost "${context}"; then
+        if capacity_context_is_offhost "${context}" && capacity_summary_matches_auto_scope "${path}" "${context}"; then
           matches+=("${path}")
         fi
       done < <(find "${root}" -type f -name "capacity-summary.tsv" 2>/dev/null)
@@ -192,6 +223,8 @@ print_plan() {
   echo "[t3micro-defensive-aggregate] output=${output_path}"
   echo "[t3micro-defensive-aggregate] auto_inputs=${auto_inputs}"
   echo "[t3micro-defensive-aggregate] search_roots=${search_roots}"
+  echo "[t3micro-defensive-aggregate] auto_input_run_id=${aggregate_run_id:-missing}"
+  echo "[t3micro-defensive-aggregate] auto_input_prefix=${auto_input_prefix:-missing}"
   echo "[t3micro-defensive-aggregate] capacity=${capacity_result:-missing}"
   echo "[t3micro-defensive-aggregate] capacity_summary=${capacity_summary:-missing}"
   echo "[t3micro-defensive-aggregate] capacity_run_context=${capacity_run_context:-missing}"
@@ -245,6 +278,42 @@ capacity_summary_status() {
   ' "${file}"
 }
 
+capacity_summary_status_for_grade() {
+  local file="$1"
+  local grade="$2"
+  if [[ -z "${file}" || ! -f "${file}" ]]; then
+    printf "missing"
+    return 0
+  fi
+  awk -F '\t' -v grade="${grade}" '
+    NR == 1 {
+      for (i = 1; i <= NF; i++) {
+        if ($i == "phase") phase_column = i
+        if ($i == "profile") profile_column = i
+        if ($i == "status") status_column = i
+      }
+      next
+    }
+    phase_column && profile_column && status_column {
+      is_soak = ($phase_column == "long-soak" || $profile_column ~ /soak/)
+      if ((grade == "soak" && !is_soak) || (grade == "capacity" && is_soak)) {
+        next
+      }
+      rows += 1
+      if ($status_column != "0") failed = 1
+    }
+    END {
+      if (!phase_column || !profile_column || !status_column || rows == 0) {
+        print "missing"
+      } else if (failed) {
+        print "fail"
+      } else {
+        print "pass"
+      }
+    }
+  ' "${file}"
+}
+
 capacity_profile_count() {
   local file="$1"
   if [[ -z "${file}" || ! -f "${file}" ]]; then
@@ -252,6 +321,31 @@ capacity_profile_count() {
     return 0
   fi
   awk 'NR > 1 {count += 1} END {print count + 0}' "${file}"
+}
+
+capacity_profile_count_for_grade() {
+  local file="$1"
+  local grade="$2"
+  if [[ -z "${file}" || ! -f "${file}" ]]; then
+    printf "missing"
+    return 0
+  fi
+  awk -F '\t' -v grade="${grade}" '
+    NR == 1 {
+      for (i = 1; i <= NF; i++) {
+        if ($i == "phase") phase_column = i
+        if ($i == "profile") profile_column = i
+      }
+      next
+    }
+    phase_column && profile_column {
+      is_soak = ($phase_column == "long-soak" || $profile_column ~ /soak/)
+      if ((grade == "soak" && is_soak) || (grade == "capacity" && !is_soak)) {
+        count += 1
+      }
+    }
+    END { print count + 0 }
+  ' "${file}"
 }
 
 capacity_tsv_column_max() {
@@ -275,6 +369,47 @@ capacity_tsv_column_max() {
         text = $column
       }
       found = 1
+    }
+    END {
+      if (found) {
+        print text
+      } else {
+        print "n/a"
+      }
+    }
+  ' "${file}"
+}
+
+capacity_tsv_column_max_for_grade() {
+  local file="$1"
+  local key="$2"
+  local grade="$3"
+  if [[ -z "${file}" || ! -f "${file}" ]]; then
+    printf "n/a"
+    return 0
+  fi
+  awk -F '\t' -v key="${key}" -v grade="${grade}" '
+    NR == 1 {
+      for (i = 1; i <= NF; i++) {
+        if ($i == key) column = i
+        if ($i == "phase") phase_column = i
+        if ($i == "profile") profile_column = i
+      }
+      next
+    }
+    column && phase_column && profile_column {
+      is_soak = ($phase_column == "long-soak" || $profile_column ~ /soak/)
+      if ((grade == "soak" && !is_soak) || (grade == "capacity" && is_soak)) {
+        next
+      }
+      if ($column ~ /^[0-9]+([.][0-9]+)?$/) {
+        value = $column + 0
+        if (!found || value > max) {
+          max = value
+          text = $column
+        }
+        found = 1
+      }
     }
     END {
       if (found) {
@@ -322,20 +457,71 @@ capacity_cpu_peak() {
   ' "${file}"
 }
 
+capacity_cpu_peak_for_grade() {
+  local file="$1"
+  local grade="$2"
+  if [[ -z "${file}" || ! -f "${file}" ]]; then
+    printf "n/a"
+    return 0
+  fi
+  awk -F '\t' -v grade="${grade}" '
+    NR == 1 {
+      for (i = 1; i <= NF; i++) {
+        if ($i == "phase") phase_column = i
+        if ($i == "profile") profile_column = i
+        if ($i == "backend_cpu_percent") backend_column = i
+        if ($i == "postgres_cpu_percent") postgres_column = i
+      }
+      next
+    }
+    phase_column && profile_column {
+      is_soak = ($phase_column == "long-soak" || $profile_column ~ /soak/)
+      if ((grade == "soak" && !is_soak) || (grade == "capacity" && is_soak)) {
+        next
+      }
+      for (i = 1; i <= NF; i++) {
+        if ((i == backend_column || i == postgres_column) && $i ~ /^[0-9]+([.][0-9]+)?$/) {
+          value = $i + 0
+          if (!found || value > max) {
+            max = value
+            text = $i
+          }
+          found = 1
+        }
+      }
+    }
+    END {
+      if (found) {
+        print text
+      } else {
+        print "n/a"
+      }
+    }
+  ' "${file}"
+}
+
 capacity_status_value() {
   if [[ -n "${capacity_summary}" ]]; then
-    capacity_summary_status "${capacity_summary}"
+    capacity_summary_status_for_grade "${capacity_summary}" capacity
   else
     md_value "${capacity_result}" "capacity smoke status"
   fi
 }
 
+capacity_soak_status_value() {
+  capacity_summary_status_for_grade "${capacity_summary}" soak
+}
+
 capacity_cpu_value() {
   if [[ -n "${capacity_summary}" ]]; then
-    capacity_cpu_peak "${capacity_summary}"
+    capacity_cpu_peak_for_grade "${capacity_summary}" capacity
   else
     md_value "${capacity_result}" "peakCpuPercent"
   fi
+}
+
+capacity_soak_cpu_value() {
+  capacity_cpu_peak_for_grade "${capacity_summary}" soak
 }
 
 capacity_memory_value() {
@@ -349,12 +535,19 @@ capacity_memory_value() {
 capacity_signal_value() {
   if [[ -n "${capacity_summary}" ]]; then
     printf "429Rate=%s hikariPending=%s profiles=%s" \
-      "$(capacity_tsv_column_max "${capacity_summary}" "transaction_429_rate")" \
-      "$(capacity_tsv_column_max "${capacity_summary}" "hikari_pending")" \
-      "$(capacity_profile_count "${capacity_summary}")"
+      "$(capacity_tsv_column_max_for_grade "${capacity_summary}" "transaction_429_rate" capacity)" \
+      "$(capacity_tsv_column_max_for_grade "${capacity_summary}" "hikari_pending" capacity)" \
+      "$(capacity_profile_count_for_grade "${capacity_summary}" capacity)"
   else
     printf "repeat=%s" "$(md_value "${capacity_result}" "repeat")"
   fi
+}
+
+capacity_soak_signal_value() {
+  printf "429Rate=%s hikariPending=%s profiles=%s" \
+    "$(capacity_tsv_column_max_for_grade "${capacity_summary}" "transaction_429_rate" soak)" \
+    "$(capacity_tsv_column_max_for_grade "${capacity_summary}" "hikari_pending" soak)" \
+    "$(capacity_profile_count_for_grade "${capacity_summary}" soak)"
 }
 
 capacity_source_value() {
@@ -488,7 +681,9 @@ write_report() {
     echo
     echo "| Gate | Status | Peak CPU % | Peak Memory MiB | Backlog / Reject Signal | Source |"
     echo "| --- | --- | ---: | ---: | --- | --- |"
+    echo "| capacity smoke | $(md_value "${capacity_result}" "capacity smoke status") | $(md_value "${capacity_result}" "peakCpuPercent") | $(md_value "${capacity_result}" "peakMemoryMiB") | repeat=$(md_value "${capacity_result}" "repeat") | ${capacity_result:-missing} |"
     echo "| capacity | $(capacity_status_value) | $(capacity_cpu_value) | $(capacity_memory_value) | $(capacity_signal_value) | $(capacity_source_value) |"
+    echo "| capacity soak | $(capacity_soak_status_value) | $(capacity_soak_cpu_value) | n/a | $(capacity_soak_signal_value) | ${capacity_summary:-missing} |"
     echo "| sse reconnect | $(md_value "${sse_result}" "status") | $(md_value "${sse_result}" "peakCpuPercent") | $(md_value "${sse_result}" "peakMemoryMiB") | clients=$(md_value "${sse_result}" "reconnectClients") rounds=$(md_value "${sse_result}" "reconnectRounds") | ${sse_result:-missing} |"
     echo "| http admission | n/a | n/a | n/a | rejected=$(tsv_value "${admission_summary}" "rejected_count") failed_rate=$(tsv_value "${admission_summary}" "failed_rate") | ${admission_summary:-missing} |"
     echo "| outbox backlog | n/a | n/a | n/a | lag=$(tsv_value "${outbox_summary}" "lag_seconds") failed=$(tsv_value "${outbox_summary}" "failed_count") dlq=$(tsv_value "${outbox_summary}" "dlq_count") | ${outbox_summary:-missing} |"

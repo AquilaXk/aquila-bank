@@ -58,6 +58,7 @@ grep -F "recovery_wait_seconds=90" <<<"${plan}" >/dev/null
 grep -F "window_probe_mode=index-only-bounded" <<<"${plan}" >/dev/null
 grep -F "window_probe_limit=51" <<<"${plan}" >/dev/null
 grep -F "db_gate_checks=partition-estimate-tolerance,index-only-bounded-window-probe,monthly-partition" <<<"${plan}" >/dev/null
+grep -F "source_order=manifest,env,dataset-env,db-fallback" <<<"${plan}" >/dev/null
 
 echo "[transaction-100m-dataset-probe] estimate tolerance contract"
 FIXTURE_DATASET_ASSERT_LABEL=total_estimate \
@@ -87,16 +88,14 @@ grep -F "K6_COLD_ACCOUNT_ID=910000002" "${env_path}" >/dev/null
 grep -F "K6_COLD_FROM=2026-01-01T00:00:00Z" "${env_path}" >/dev/null
 grep -F "K6_COLD_TO=2026-01-31T00:00:00Z" "${env_path}" >/dev/null
 
-echo "[transaction-100m-dataset-probe] missing metadata fails without db fallback"
+echo "[transaction-100m-dataset-probe] existing dataset env fills missing manifest metadata"
 sed -i.bak '/hot_account_id=/d' "${manifest_path}"
-if FIXTURE_PATH="${dump_path}" \
-  FIXTURE_MANIFEST_PATH="${manifest_path}" \
-  FIXTURE_DATASET_ENV_PATH="${env_path}" \
-  FIXTURE_DATASET_DB_GATE=false \
-    "${script}" >/dev/null 2>&1; then
-  echo "missing manifest metadata unexpectedly passed without explicit DB fallback" >&2
-  exit 1
-fi
+FIXTURE_PATH="${dump_path}" \
+FIXTURE_MANIFEST_PATH="${manifest_path}" \
+FIXTURE_DATASET_ENV_PATH="${env_path}" \
+FIXTURE_DATASET_DB_GATE=false \
+  "${script}" >/dev/null
+grep -F "K6_HOT_ACCOUNT_ID=910000001" "${env_path}" >/dev/null
 
 echo "[transaction-100m-dataset-probe] wrapper contract"
 grep -F "assert_dataset_db_gate" "${script}" >/dev/null
@@ -118,6 +117,7 @@ grep -F "SET LOCAL lock_timeout" "${script}" >/dev/null
 grep -F "SET LOCAL work_mem" "${script}" >/dev/null
 grep -F "SET LOCAL temp_file_limit" "${script}" >/dev/null
 grep -F "FIXTURE_DATASET_MIN_WINDOW_ROWS" "${script}" >/dev/null
+grep -F "dataset_env_value" "${script}" >/dev/null
 if grep -F "bounded-window-count" "${script}" >/dev/null; then
   echo "dataset probe still reports bounded-window-count instead of index-only bounded probe" >&2
   exit 1
