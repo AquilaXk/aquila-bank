@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`Transaction Read Model Staging Replay`는 수동 workflow와 staging deploy release gate가 같은 script를 공유하며, 로컬 fixture가 아니라 staging/RDS의 1억 건 분포에서 hot/cold 거래 조회 p95를 검증합니다.
+`Transaction Read Model Staging Replay`는 수동 workflow와 staging deploy release gate가 같은 script를 공유하며, staging/RDS의 1억 건 분포에서 hot/cold 거래 조회 p95를 검증합니다. 현재 1억 건 primary evidence는 로컬 Docker PostgreSQL + 로컬 디스크 fixture이므로, 이 replay는 staging RDS가 준비된 환경에서만 실행하는 optional remote regression gate입니다.
 
 - hot: `GET /api/v1/transactions`
 - cold: `GET /api/v1/transactions/archive`
@@ -15,6 +15,9 @@
   - `STAGING_BASE_URL`
   - `STAGING_REPLAY_TOKEN`
   - `STAGING_RDS_DATABASE_URL`
+- local Docker 100m primary evidence:
+  - `tools/test/prepare-transaction-read-model-100m-fixture.sh`
+  - `tools/test/run-transaction-read-model-100m-k6-local.sh --k6-only`
 - staging deploy release gate용 추가 secrets:
   - `STAGING_REPLAY_HOT_ACCOUNT_ID`
   - `STAGING_REPLAY_HOT_FROM`
@@ -32,7 +35,7 @@
 
 ## Staging Deploy Release Gate
 
-- `Staging Deploy` workflow는 post-deploy smoke 뒤에 같은 replay script를 실행합니다.
+- `Staging Deploy` workflow는 staging hook과 RDS replay secret이 준비된 환경에서 post-deploy smoke 뒤에 같은 replay script를 실행합니다.
 - release gate는 아래 `staging` Environment secret을 읽어 수동 입력 없이 same SHA를 검증합니다.
   - required:
     - `STAGING_REPLAY_HOT_ACCOUNT_ID`
@@ -50,7 +53,8 @@
     - `STAGING_REPLAY_COLD_P95_THRESHOLD_MS`
     - `STAGING_REPLAY_STATS_MAX_AGE_HOURS`
     - `STAGING_REPLAY_STATS_MAX_MODIFIED_RATIO`
-- replay gate가 실패하면 staging deployment status가 `success`로 기록되지 않아 production promotion이 같은 SHA를 통과시키지 않습니다.
+- replay gate가 실행되고 실패하면 staging deployment status가 `success`로 기록되지 않아 production promotion이 같은 SHA를 통과시키지 않습니다.
+- RDS 비용/secret 조건이 맞지 않는 환경에서는 이 gate를 primary evidence로 요구하지 않고, 로컬 Docker 100m archive를 기준으로 판단합니다.
 
 ## Workflow Inputs
 
@@ -93,4 +97,4 @@ ruby -e "require 'yaml'; YAML.load_file('.github/workflows/transaction-read-mode
 
 ## Rollback
 
-workflow/script/doc만 추가하므로 rollback은 PR revert로 수행합니다. staging/RDS 데이터나 production promotion 상태는 변경하지 않습니다.
+workflow/script/doc만 추가하므로 rollback은 PR revert로 수행합니다. staging/RDS 데이터나 production promotion 상태는 변경하지 않습니다. RDS replay를 운영하지 않는 기간에는 local Docker 100m 결과를 release 판단 근거로 사용합니다.
