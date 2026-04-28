@@ -6,7 +6,10 @@ region           = "ap-seoul-1"
 
 compartment_ocid    = "ocid1.compartment.oc1..example"
 availability_domain = "example:AP-SEOUL-1-AD-1"
-source_image_ocid   = "ocid1.image.oc1.ap-seoul-1.example"
+
+image_operating_system         = "Canonical Ubuntu"
+image_operating_system_version = null
+source_image_ocid_override     = null
 
 ssh_public_key   = "ssh-ed25519 example-public-key"
 ssh_ingress_cidr = "203.0.113.10/32"

@@ -22,8 +22,9 @@
 - 주요 파일:
   - `versions.tf`: Terraform/provider 버전 제약
   - `providers.tf`: OCI provider 인증 변수 연결
-  - `variables.tf`: OCID, region, SSH key, CIDR, 무료 한도 guardrail 변수
+  - `variables.tf`: OCID, region, SSH key, CIDR, 이미지 조회, 무료 한도 guardrail 변수
   - `locals.tf`: shape, size, 공통 tag
+  - `images.tf`: A1 Flex 호환 Ubuntu image data source
   - `network.tf`: VCN, Internet Gateway, Route Table, Security List, Subnet
   - `compute.tf`: A1 Flex instance
   - `outputs.tf`: instance, VCN, public IP 출력
@@ -32,14 +33,16 @@
 
 ## Inputs
 - `tenancy_ocid`, `user_ocid`, `fingerprint`, `private_key_path`, `region`
-- `compartment_ocid`, `availability_domain`, `source_image_ocid`
+- `compartment_ocid`, `availability_domain`
+- `image_operating_system`, `image_operating_system_version`, `source_image_ocid_override`
 - `ssh_public_key`
 - `ssh_ingress_cidr`
 - `vcn_cidr`, `subnet_cidr`
 
 ## Error And Risk Handling
 - A1 host capacity 부족은 Terraform 코드로 해결할 수 없으므로 apply 실패 시 availability domain 변경 또는 재시도 안내로 처리한다.
-- 이미지 OCID는 리전별로 다르므로 자동 추정하지 않고 사용자가 Always Free eligible Arm image OCID를 명시한다.
+- 기본 경로는 `oci_core_images` data source로 A1 Flex 호환 최신 Ubuntu 이미지를 조회한다.
+- Oracle 공식 문서 기준 image data source 결과는 시간에 따라 바뀔 수 있으므로, 재현성이 필요한 운영은 `source_image_ocid_override`로 특정 image OCID를 고정한다.
 - `ssh_ingress_cidr` 기본 예시는 넓게 열 수 있지만 README에서 운영자 IP `/32` 사용을 우선 안내한다.
 - Terraform state와 tfvars에는 민감 정보가 포함될 수 있으므로 `.gitignore`에 state/tfvars/plan 파일을 제외한다.
 

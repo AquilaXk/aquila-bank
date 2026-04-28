@@ -77,14 +77,39 @@ variable "availability_domain" {
   }
 }
 
-variable "source_image_ocid" {
-  description = "Always Free eligible Arm image OCID for the selected region."
+variable "source_image_ocid_override" {
+  description = "Optional image OCID override. Use this when reproducible applies are more important than tracking the latest Ubuntu image."
   type        = string
+  default     = null
+  nullable    = true
+
+  validation {
+    condition     = var.source_image_ocid_override == null || can(regex("^ocid1\\.image\\.", var.source_image_ocid_override))
+    error_message = "source_image_ocid_override must be null or start with ocid1.image."
+  }
+}
+
+variable "image_operating_system" {
+  description = "Operating system filter used for automatic platform image lookup."
+  type        = string
+  default     = "Canonical Ubuntu"
   nullable    = false
 
   validation {
-    condition     = can(regex("^ocid1\\.image\\.", var.source_image_ocid))
-    error_message = "source_image_ocid must start with ocid1.image."
+    condition     = length(trimspace(var.image_operating_system)) > 0
+    error_message = "image_operating_system must not be empty."
+  }
+}
+
+variable "image_operating_system_version" {
+  description = "Optional operating system version filter for automatic platform image lookup. Leave null to track the latest Ubuntu version for the shape."
+  type        = string
+  default     = null
+  nullable    = true
+
+  validation {
+    condition     = var.image_operating_system_version == null || length(trimspace(var.image_operating_system_version)) > 0
+    error_message = "image_operating_system_version must be null or a non-empty string."
   }
 }
 

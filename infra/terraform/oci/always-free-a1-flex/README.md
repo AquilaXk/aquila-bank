@@ -18,7 +18,8 @@ OCI Always Free 한도 안에서 `VM.Standard.A1.Flex` 인스턴스 1대를 만�
 - Block Volume Always Free 한도는 홈 리전의 boot volume과 block volume 합산 200GB다.
 - 이 스택은 Boot Volume 150GB를 생성한다. 기존 OCI boot/block volume 합산 사용량이 50GB를 넘으면 무료 한도 초과 가능성이 있다.
 - `region`은 tenancy 홈 리전으로 설정한다. 홈 리전 밖 volume은 무료 한도 적용에서 벗어날 수 있다.
-- `source_image_ocid`는 선택한 리전의 Always Free eligible Arm image OCID를 사용한다.
+- 기본 경로는 Terraform `oci_core_images` data source로 `VM.Standard.A1.Flex` 호환 최신 Ubuntu 이미지를 조회한다.
+- 최신 이미지 자동 조회는 다음 `terraform apply` 시점에 더 새 이미지가 잡힐 수 있다. 재현성이 필요하면 `source_image_ocid_override`에 특정 image OCID를 고정한다.
 
 ## 준비 값
 
@@ -29,9 +30,14 @@ OCI Always Free 한도 안에서 `VM.Standard.A1.Flex` 인스턴스 1대를 만�
 - `region`
 - `compartment_ocid`
 - `availability_domain`
-- `source_image_ocid`
 - `ssh_public_key`
 - `ssh_ingress_cidr`
+
+선택 값:
+
+- `image_operating_system`: 기본값 `Canonical Ubuntu`
+- `image_operating_system_version`: 기본값 `null`
+- `source_image_ocid_override`: 기본값 `null`
 
 `ssh_ingress_cidr`는 운영자 현재 공인 IP의 `/32`를 우선 사용한다. `0.0.0.0/0`은 임시 테스트가 아니면 사용하지 않는다.
 
@@ -51,6 +57,8 @@ terraform validate
 terraform plan
 terraform apply
 ```
+
+`terraform apply` 후 output의 `selected_image_display_name`과 `selected_image_id`를 확인한다. 같은 이미지로 계속 재현해야 하면 해당 `selected_image_id`를 `source_image_ocid_override`에 넣고 다시 plan을 확인한다.
 
 ## 삭제
 
