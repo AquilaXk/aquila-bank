@@ -10,6 +10,10 @@ echo "[offhost-capacity-prerequisite] workflow contract"
 grep -F "name: off-host 100m capacity prerequisite" "${workflow}" >/dev/null
 grep -F "workflow_dispatch:" "${workflow}" >/dev/null
 grep -F "pull_request:" "${workflow}" >/dev/null
+grep -F "off-host capacity prerequisite contract" "${workflow}" >/dev/null
+grep -F "if: github.event_name == 'pull_request'" "${workflow}" >/dev/null
+grep -F "tools/test/check-offhost-capacity-prerequisite-required-gate.sh" "${workflow}" >/dev/null
+grep -F "if: github.event_name == 'workflow_dispatch'" "${workflow}" >/dev/null
 grep -F "CAPACITY_K6_GENERATOR_MODE: docker-context" "${workflow}" >/dev/null
 grep -F "CAPACITY_REMOTE_PREFLIGHT: \"false\"" "${workflow}" >/dev/null
 grep -F "tools/test/run-transaction-100m-capacity-gates.sh --print-plan" "${workflow}" >/dev/null

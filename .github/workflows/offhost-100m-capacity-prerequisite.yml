@@ -32,8 +32,20 @@ permissions:
   contents: read
 
 jobs:
+  contract:
+    name: off-host capacity prerequisite contract
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate workflow contract
+        run: tools/test/check-offhost-capacity-prerequisite-required-gate.sh
+
   prerequisite:
     name: required off-host capacity env
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     env:
       CAPACITY_NAME: ci-offhost-100m-capacity-prerequisite
