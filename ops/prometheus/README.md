@@ -2,7 +2,7 @@
 
 `ops/prometheus`는 Aquila Bank backend가 이미 export 중인 metric을 기준으로 Grafana dashboard와 Prometheus alert rule baseline을 보관하는 디렉터리입니다. 실제 Prometheus server, Grafana provisioning, Alertmanager routing은 환경별로 다르므로 이번 baseline은 import/apply 가능한 자산만 저장소에 고정합니다.
 
-EC2 `t3.micro` + RDS `db.t4g.small` + gp3 방어형 runtime에서는 Prometheus/Grafana/Alertmanager를 같은 t3.micro host에 상시 필수 운영하지 않습니다. 이 디렉터리의 자산은 부하테스트 overlay, 별도 관측 host, 또는 장애 분석을 위한 단기 실행 기준으로 사용합니다.
+OCI A1 Flex 4 OCPU / 24GB + data 300GB self-managed PostgreSQL 18 runtime에서는 Prometheus/Grafana/Alertmanager를 같은 app/DB host에 상시 필수 운영하지 않습니다. 이 디렉터리의 자산은 부하테스트 overlay, 별도 관측 host, 또는 장애 분석을 위한 단기 실행 기준으로 사용합니다.
 
 ## 포함 파일
 
@@ -29,7 +29,7 @@ EC2 `t3.micro` + RDS `db.t4g.small` + gp3 방어형 runtime에서는 Prometheus/
   - SSE total session, account/user/total trend, reject/drop trend
   - auth throttling reject rate by `entry_point`, `scope`, `store`
   - admission control decision rate / inflight by `group`
-  - t3 saturation guard request, saturated, query timeout trend
+  - legacy `t3micro` metric name의 saturation guard request, saturated, query timeout trend
   - DB pool pending/active pressure, query timeout, Postgres lock/slow query signal
   - transaction query rate by `query_shape`
   - transaction p95 latency by `query_shape`
@@ -40,7 +40,7 @@ EC2 `t3.micro` + RDS `db.t4g.small` + gp3 방어형 runtime에서는 Prometheus/
   - transaction stat latency는 `sum(rate(..._sum)) / sum(rate(..._count))` 평균값을 유지합니다.
   - transaction shape별 latency는 `aquila_transaction_query_latency_seconds_bucket`의 `histogram_quantile(0.95, ...)`를 사용합니다.
   - admission control panel은 `aquila_api_admission_requests_total`, `aquila_api_admission_inflight`를 `group` 기준으로 나눠 봅니다.
-  - t3 saturation guard panel은 reject rate, saturated gauge, query timeout rate를 같은 시간축에 두고 fail-fast와 DB 전조를 같이 봅니다.
+  - saturation guard panel은 reject rate, saturated gauge, query timeout rate를 같은 시간축에 두고 fail-fast와 DB 전조를 같이 봅니다.
   - DB saturation panel은 Hikari pool metric과 Postgres exporter metric을 한 panel에 모아 p95 악화 전 전조를 먼저 봅니다.
   - notification lag panel은 topic label이 있을 때 topic별로 분리해 보여줍니다.
   - SSE reject/drop metric은 앱 재시작 전까지 누적되는 gauge 성격이므로 절대값 trend로만 봅니다.
@@ -81,11 +81,11 @@ EC2 `t3.micro` + RDS `db.t4g.small` + gp3 방어형 runtime에서는 Prometheus/
   - auth throttling reject increase `>= 5` for `10m`
 - runtime guard baseline:
   - endpoint `group`별 admission reject increase `>= 5` for `10m`
-  - t3 saturation guard reject + saturated signal 동시 발생 for `5m`
+  - saturation guard reject + saturated signal 동시 발생 for `5m`
 - Postgres/DB saturation baseline:
   - Hikari pending connection `> 0` for `5m`
   - Hikari active/max pool ratio `> 90%` for `10m`
-  - t3.micro query timeout rate `> 0` for `5m`
+  - query timeout rate `> 0` for `5m`
   - `pg_stat_activity` lock wait custom metric `> 0` for `5m`
   - `pg_stat_statements` average query seconds `> 750ms` for `10m`
 - transaction baseline:
@@ -125,7 +125,7 @@ cp ops/prometheus/rules/aquila-bank-alerts.yml /etc/prometheus/rules/
 
 ## Provisioning Apply
 
-저장소 baseline은 runtime을 강제하지 않고, compose/Kubernetes/systemd 어디서든 같은 mount path로 적용할 수 있게 둡니다. t3.micro 애플리케이션 host에 상시 동거시키는 방식은 기본 운영 목표에서 제외합니다.
+저장소 baseline은 runtime을 강제하지 않고, compose/Kubernetes/systemd 어디서든 같은 mount path로 적용할 수 있게 둡니다. OCI A1 app/DB host에 상시 동거시키는 방식은 기본 운영 목표에서 제외합니다.
 
 - Prometheus:
   - `ops/prometheus/prometheus.yml` -> `/etc/prometheus/prometheus.yml`
@@ -199,7 +199,7 @@ tools/test/run-alertmanager-receiver-secret-workflow-gate.sh
 ## Threshold Tuning
 
 - outbox/notification threshold는 현재 README와 actuator health 기본값을 기준으로 둔 값입니다.
-- Hikari pool alert는 `DB_POOL_MAX_SIZE=4`, `DB_CONNECTION_TIMEOUT_MS=3000`, `DB_LOCK_TIMEOUT_MS=1000`의 t3.micro 기본값을 기준으로 둡니다.
+- Hikari pool alert는 `DB_POOL_MAX_SIZE=4`, `DB_CONNECTION_TIMEOUT_MS=3000`, `DB_LOCK_TIMEOUT_MS=1000`의 작은 단일 노드 기본값을 기준으로 둡니다. remote baseline은 OCI A1 4 OCPU / 24GB + data 300GB입니다.
 - `AquilaDbPoolPendingWaitDetected`는 root cause가 아니라 queueing 전조입니다. 같은 시간대 lock wait, slow query, DB CPU, transaction p95를 같이 확인합니다.
 - `AquilaPostgresSlowQueryDetected`는 `pg_stat_statements`의 database-level 평균을 사용합니다. query별 drill-down은 별도 dashboard 또는 psql에서 `queryid` 기준으로 수행합니다.
 - `AquilaPostgresLockWaitDetected`는 custom exporter metric이 없으면 평가 series가 없으므로, 환경별 exporter 설정 적용 후 Prometheus rule을 활성화합니다.

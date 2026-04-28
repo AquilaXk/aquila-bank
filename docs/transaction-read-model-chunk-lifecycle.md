@@ -10,7 +10,7 @@
 - archive partition detach/drop은 월 경계가 지난 cold data에만 적용합니다.
 - 모든 destructive 작업은 먼저 `--print-sql`로 review합니다.
 - `drop-detached` 실행은 `CONFIRM_DROP=drop-detached-transaction-read-model`이 없으면 실패합니다.
-- `lock_timeout` 기본값은 `1000ms`, `statement_timeout` 기본값은 `30000ms`로 두어 t3.micro에서 장기 lock을 만들지 않습니다.
+- `lock_timeout` 기본값은 `1000ms`, `statement_timeout` 기본값은 `30000ms`로 두어 OCI A1 단일 노드 PostgreSQL에서 장기 lock을 만들지 않습니다.
 
 ## Monthly Precreate
 
@@ -131,7 +131,7 @@ tools/ops/transaction-read-model-planner-stats-freshness-guard.sh
 
 ## SLO Verification
 
-로컬 t3.micro loadtest:
+로컬 small-budget loadtest:
 
 ```bash
 SEED_TOTAL_ROWS=100000000 \
@@ -140,7 +140,7 @@ SEED_TRUNCATE=true \
 tools/test/run-transaction-read-model-100m-k6-local.sh
 ```
 
-local t3.micro wrapper는 backend를 force-recreate해 최신 Flyway runtime을 보장하고, `flyway_schema_history` 최신 version을 로컬 migration 최신 version과 비교한 뒤 seed를 시작합니다. 기본 conflict mode는 `fail`이라 truncate 신규 seed에서 `ON CONFLICT` 비용을 내지 않습니다.
+legacy 이름의 local small-budget wrapper는 backend를 force-recreate해 최신 Flyway runtime을 보장하고, `flyway_schema_history` 최신 version을 로컬 migration 최신 version과 비교한 뒤 seed를 시작합니다. 기본 conflict mode는 `fail`이라 truncate 신규 seed에서 `ON CONFLICT` 비용을 내지 않습니다.
 
 이미 dataset이 준비되어 있으면 k6만 실행합니다.
 
@@ -162,6 +162,8 @@ tools/test/run-transaction-read-model-100m-k6-local.sh --k6-only
 - archived summary: `docs/performance-results/*`
 
 운영/staging replay:
+
+권장 remote baseline은 OCI A1 Flex 4 OCPU / 24GB + data 300GB self-managed PostgreSQL 18입니다. AWS EC2 staging smoke는 app 배포 확인 범위로만 사용합니다.
 
 ```bash
 STAGING_BASE_URL="$STAGING_BASE_URL" \
