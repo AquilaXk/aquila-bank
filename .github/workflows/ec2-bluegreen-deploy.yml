@@ -143,6 +143,9 @@ jobs:
       AWS_REGION: ${{ secrets.AWS_REGION || 'ap-northeast-2' }}
       EC2_INSTANCE_TAG_NAME: ${{ secrets.EC2_INSTANCE_TAG_NAME || 'aquila-bank-baseline-ec2' }}
       EC2_PUBLIC_BASE_URL: ${{ secrets.EC2_PUBLIC_BASE_URL }}
+      EC2_PUBLIC_BACKEND_HEALTH_PATH: ${{ secrets.EC2_PUBLIC_BACKEND_HEALTH_PATH || '/actuator/health' }}
+      EC2_PUBLIC_API_SMOKE_PATH: ${{ secrets.EC2_PUBLIC_API_SMOKE_PATH || '/api/v1/transactions?accountId=910000001&from=2026-04-01T00%3A00%3A00Z&to=2026-04-30T00%3A00%3A00Z&limit=1' }}
+      EC2_PUBLIC_API_SMOKE_EXPECTED_STATUS: ${{ secrets.EC2_PUBLIC_API_SMOKE_EXPECTED_STATUS || '401' }}
       DEPLOY_LOG_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - name: Checkout deploy SHA
@@ -289,10 +292,25 @@ jobs:
 
       - name: Run external smoke
         if: success() && env.EC2_PUBLIC_BASE_URL != ''
+        env:
+          EC2_PUBLIC_API_SMOKE_AUTH_HEADER_NAME: ${{ secrets.EC2_PUBLIC_API_SMOKE_AUTH_HEADER_NAME }}
+          EC2_PUBLIC_API_SMOKE_AUTH_HEADER_VALUE: ${{ secrets.EC2_PUBLIC_API_SMOKE_AUTH_HEADER_VALUE }}
         shell: bash
         run: |
           set -euo pipefail
-          curl --fail-with-body --show-error --silent --max-time 10 "${EC2_PUBLIC_BASE_URL%/}/actuator/health" >/dev/null
+          base_url="${EC2_PUBLIC_BASE_URL%/}"
+          curl --fail-with-body --show-error --silent --max-time 10 "${base_url}${EC2_PUBLIC_BACKEND_HEALTH_PATH}" >/dev/null
+
+          api_url="${base_url}${EC2_PUBLIC_API_SMOKE_PATH}"
+          curl_args=(--show-error --silent --output /dev/null --write-out "%{http_code}" --max-time 10)
+          if [[ -n "${EC2_PUBLIC_API_SMOKE_AUTH_HEADER_NAME}" && -n "${EC2_PUBLIC_API_SMOKE_AUTH_HEADER_VALUE}" ]]; then
+            curl_args+=(--header "${EC2_PUBLIC_API_SMOKE_AUTH_HEADER_NAME}: ${EC2_PUBLIC_API_SMOKE_AUTH_HEADER_VALUE}")
+          fi
+          status="$(curl "${curl_args[@]}" "${api_url}" || true)"
+          if [[ ",${EC2_PUBLIC_API_SMOKE_EXPECTED_STATUS}," != *",${status},"* ]]; then
+            echo "::error::EC2 backend API smoke failed: url=${api_url} status=${status} expected=${EC2_PUBLIC_API_SMOKE_EXPECTED_STATUS}"
+            exit 1
+          fi
 
       - name: Mark deployment success
         if: success()

@@ -36,6 +36,7 @@ required_patterns=(
   "ssl_certificate_key \${NGINX_SSL_CERTIFICATE_KEY_PATH};"
   "location = /api/v1/notifications/stream"
   "proxy_pass http://aquila_bank_backend_sse;"
+  "proxy_set_header Host \${NGINX_BACKEND_PROXY_HOST};"
   "proxy_buffering off;"
   "proxy_request_buffering off;"
   "proxy_cache off;"

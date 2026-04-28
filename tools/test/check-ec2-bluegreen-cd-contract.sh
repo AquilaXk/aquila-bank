@@ -63,6 +63,10 @@ workflow_patterns=(
   "Mark deployment success"
   "Mark deployment failure"
   "env.EC2_PUBLIC_BASE_URL"
+  "EC2_PUBLIC_BACKEND_HEALTH_PATH"
+  "EC2_PUBLIC_API_SMOKE_PATH"
+  "EC2_PUBLIC_API_SMOKE_EXPECTED_STATUS"
+  "EC2_PUBLIC_API_SMOKE_AUTH_HEADER_NAME"
 )
 for pattern in "${workflow_patterns[@]}"; do
   require_pattern "$pattern" "$workflow"
@@ -76,6 +80,8 @@ script_patterns=(
   "aquila-bank-front-b"
   "host.docker.internal:host-gateway"
   "/actuator/health"
+  'proxy_set_header Host ${backend_proxy_host};'
+  'proxy_set_header X-Forwarded-Host \$host;'
   "location = /api/v1/notifications/stream"
   "proxy_buffering off;"
   "nginx -s reload"
