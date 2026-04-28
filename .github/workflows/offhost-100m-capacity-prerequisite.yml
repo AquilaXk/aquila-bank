@@ -1,0 +1,71 @@
+name: off-host 100m capacity prerequisite
+
+on:
+  workflow_dispatch:
+    inputs:
+      docker_context:
+        description: "Remote Docker context name for off-host k6"
+        required: false
+        type: string
+      remote_base_url:
+        description: "Backend URL reachable from off-host k6"
+        required: false
+        type: string
+      remote_prometheus_rw_url:
+        description: "Prometheus remote-write URL reachable from off-host k6"
+        required: false
+        type: string
+      remote_workdir:
+        description: "Repository path on remote Docker context host"
+        required: false
+        default: "/srv/aquila-bank"
+        type: string
+  pull_request:
+    paths:
+      - ".github/workflows/offhost-100m-capacity-prerequisite.yml"
+      - "tools/test/run-transaction-100m-capacity-gates.sh"
+      - "tools/test/run-offhost-capacity-env-doctor.sh"
+      - "tools/test/run-transaction-100m-offhost-capacity-baseline-report.sh"
+      - "tools/test/run-t3micro-defensive-gates-aggregate-report.sh"
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: off-host capacity prerequisite contract
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate workflow contract
+        run: tools/test/check-offhost-capacity-prerequisite-required-gate.sh
+
+  prerequisite:
+    name: required off-host capacity env
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    env:
+      CAPACITY_NAME: ci-offhost-100m-capacity-prerequisite
+      CAPACITY_K6_GENERATOR_MODE: docker-context
+      CAPACITY_REMOTE_PREFLIGHT: "false"
+      CAPACITY_K6_DOCKER_CONTEXT: ${{ inputs.docker_context || vars.CAPACITY_K6_DOCKER_CONTEXT }}
+      CAPACITY_K6_REMOTE_BASE_URL: ${{ inputs.remote_base_url || vars.CAPACITY_K6_REMOTE_BASE_URL }}
+      CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL: ${{ inputs.remote_prometheus_rw_url || vars.CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL }}
+      CAPACITY_K6_REMOTE_WORKDIR: ${{ inputs.remote_workdir || vars.CAPACITY_K6_REMOTE_WORKDIR || '/srv/aquila-bank' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Required prerequisite check
+        run: tools/test/run-transaction-100m-capacity-gates.sh --print-plan
+
+      - name: Upload prerequisite failure artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: offhost-capacity-prerequisite-failure
+          path: build/reports/k6/ci-offhost-100m-capacity-prerequisite/capacity-prerequisite-failure.env
+          if-no-files-found: ignore

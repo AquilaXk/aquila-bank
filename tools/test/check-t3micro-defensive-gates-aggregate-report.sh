@@ -227,6 +227,17 @@ if T3MICRO_AGGREGATE_NAME=aggregate-required-local-context-check \
   echo "required capacity input unexpectedly accepted local generator context" >&2
   exit 1
 fi
+required_prereq_output="${temp_dir}/aggregate-required-prereq-failed-check.md"
+if T3MICRO_AGGREGATE_NAME=aggregate-required-prereq-failed-check \
+  T3MICRO_AGGREGATE_OUTPUT_DIR="${temp_dir}" \
+  T3MICRO_CAPACITY_PREREQUISITE_ENV="${capacity_prereq}" \
+  T3MICRO_AGGREGATE_REQUIRED_GATES=capacity \
+    "${script}" >/dev/null 2>&1; then
+  echo "required capacity prerequisite failure unexpectedly exited zero" >&2
+  exit 1
+fi
+test -f "${required_prereq_output}"
+grep -F "| capacity prerequisite | failed | n/a | n/a | reason=missing-required-env missing=CAPACITY_K6_DOCKER_CONTEXT,CAPACITY_K6_REMOTE_BASE_URL,CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL | ${capacity_prereq} |" "${required_prereq_output}" >/dev/null
 
 echo "[t3micro-defensive-aggregate] memory budget"
 if T3MICRO_AGGREGATE_NAME=aggregate-memory-fail-check \

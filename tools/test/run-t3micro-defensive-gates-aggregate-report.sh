@@ -390,6 +390,21 @@ assert_required_gates() {
   done
 }
 
+gate_is_required() {
+  local expected="$1"
+  local gate
+  if [[ -z "${required_gates}" ]]; then
+    return 1
+  fi
+  IFS=',' read -r -a gates <<<"${required_gates}"
+  for gate in "${gates[@]}"; do
+    if [[ "${gate}" == "${expected}" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 print_plan() {
   echo "[t3micro-defensive-aggregate] mode=${mode}"
   echo "[t3micro-defensive-aggregate] output=${output_path}"
@@ -441,6 +456,20 @@ capacity_prerequisite_signal_value() {
   printf "reason=%s missing=%s" \
     "$(env_value "${capacity_prerequisite}" "CAPACITY_PREREQUISITE_FAILURE_REASON")" \
     "$(env_value "${capacity_prerequisite}" "CAPACITY_PREREQUISITE_MISSING_VARS")"
+}
+
+capacity_prerequisite_failed() {
+  [[ -n "${capacity_prerequisite}" && -f "${capacity_prerequisite}" ]] || return 1
+  [[ "$(env_value "${capacity_prerequisite}" "CAPACITY_PREREQUISITE_STATUS")" == "failed" ]]
+}
+
+assert_required_capacity_prerequisite_status() {
+  if gate_is_required capacity && [[ -z "${capacity_summary}" || ! -f "${capacity_summary}" ]] && capacity_prerequisite_failed; then
+    echo "required aggregate capacity prerequisite failed: $(capacity_prerequisite_signal_value)" >&2
+    echo "capacity prerequisite failure report: ${capacity_prerequisite}" >&2
+    return 1
+  fi
+  return 0
 }
 
 capacity_summary_status() {
@@ -905,6 +934,8 @@ if [[ "${mode}" == "print-plan" ]]; then
 fi
 if [[ "${mode}" == "dry-run" ]]; then
   echo "write ${output_path}"
+  assert_required_capacity_prerequisite_status
   exit 0
 fi
 write_report
+assert_required_capacity_prerequisite_status
