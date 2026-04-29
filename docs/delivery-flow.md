@@ -44,7 +44,7 @@
   - `OCI_A1_STAGING_ENV`를 shell env 파일로 로드한다.
   - `Main CI`가 성공한 main SHA를 checkout한다.
   - backend/frontend image를 `${DEPLOY_SHA:0:12}`와 `main-latest` tag로 GHCR에 push한다.
-  - OCI A1은 ARM64이므로 staging image는 `linux/amd64,linux/arm64` multi-platform manifest로 push한다.
+  - OCI A1은 ARM64 전용 staging이므로 image는 `linux/arm64` manifest만 push한다.
   - OCI self-hosted runner가 VM 안에서 `ops/deploy/oci/bluegreen-deploy.sh`를 직접 실행한다.
   - deploy script는 green backend/frontend container health가 모두 200일 때만 Nginx config를 교체하고 reload한다.
   - Nginx config 검증 또는 reload가 실패하면 이전 config와 blue slot을 유지한다.
@@ -110,7 +110,7 @@ ALERTMANAGER_RECEIVER_PAGERDUTY_ENABLED=false
 ```env
 SPRING_PROFILES_ACTIVE=prod
 SERVER_PORT=8080
-SPRING_DATASOURCE_URL=jdbc:postgresql://host.docker.internal:5432/aquila
+SPRING_DATASOURCE_URL=jdbc:postgresql://aquila-postgres:5432/aquila
 SPRING_DATASOURCE_USERNAME=aquila
 SPRING_DATASOURCE_PASSWORD=<secret>
 SECURITY_JWT_SECRET=<secret>

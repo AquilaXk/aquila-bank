@@ -10,7 +10,7 @@ OCI 유료 계정에서 `VM.Standard.A1.Flex` 단일 VM과 self-managed PostgreS
 - PostgreSQL data volume: `300GB`, Balanced `10` VPUs
 - Network: 새 VCN, public subnet, Internet Gateway, Route Table
 - Ingress: SSH `22/tcp`, 선택 HTTP `80/tcp`, 선택 HTTPS `443/tcp`
-- PostgreSQL: Docker `PostgreSQL 18`, host `127.0.0.1:5432` 바인딩
+- PostgreSQL: Docker `PostgreSQL 18`, host `127.0.0.1:5432` 바인딩, app network `aquila-bank-prod`
 - 100m fixture: `/var/lib/aquila-postgres/data`가 1억 건 transaction read model primary evidence 저장소
 - 제외: Managed Database, NAT Gateway, Load Balancer, PostgreSQL public ingress
 
@@ -61,6 +61,7 @@ sudo systemctl status aquila-postgres.service
 - mount: `/var/lib/aquila-postgres`
 - PostgreSQL data: `/var/lib/aquila-postgres/data`
 - container port: `127.0.0.1:5432:5432`
+- app container DNS: `aquila-postgres:5432`
 
 1억 건 fixture도 같은 data volume에 적재합니다. fixture 생성/restore/k6 실행 전에는 `df -h /var/lib/aquila-postgres`로 여유 공간을 확인하고, DB 접속은 public ingress 대신 SSH tunnel 또는 private 경로만 사용합니다.
 
