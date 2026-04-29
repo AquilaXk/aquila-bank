@@ -78,3 +78,51 @@ if [ -f "${psql_marker}" ]; then
   echo "psql must not run before planner stats guard passes" >&2
   exit 1
 fi
+
+echo "[transaction-staging-replay-guard] empty fixture failure writes report"
+guard_success_script="${temp_dir}/planner-guard-success.sh"
+cat >"${guard_success_script}" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+exit 0
+EOF
+chmod +x "${guard_success_script}"
+
+cat >"${bin_dir}/psql" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '0\n'
+EOF
+chmod +x "${bin_dir}/psql"
+
+empty_report_dir="${temp_dir}/empty-report"
+set +e
+empty_output="$(
+  PATH="${bin_dir}:${PATH}" \
+  REPORT_DIR="${empty_report_dir}" \
+  PLANNER_STATS_GUARD_SCRIPT="${guard_success_script}" \
+  STAGING_BASE_URL="https://staging.example.com" \
+  STAGING_REPLAY_TOKEN="token" \
+  STAGING_RDS_DATABASE_URL="postgres://user:pass@localhost:5432/db" \
+  EXPECTED_TOTAL_ROWS="100" \
+  HOT_ACCOUNT_ID="101" \
+  HOT_FROM="2026-04-01T00:00:00Z" \
+  HOT_TO="2026-04-15T00:00:00Z" \
+  COLD_ACCOUNT_ID="202" \
+  COLD_FROM="2026-03-01T00:00:00Z" \
+  COLD_TO="2026-03-31T00:00:00Z" \
+  "${script}" 2>&1
+)"
+empty_status=$?
+set -e
+
+if [ "${empty_status}" -eq 0 ]; then
+  echo "empty fixture replay unexpectedly succeeded" >&2
+  exit 1
+fi
+
+grep -F "fixture_missing" <<<"${empty_output}" >/dev/null
+grep -F "OCI A1 read model estimate 0 is below expected 100" <<<"${empty_output}" >/dev/null
+grep -F "fixture_missing" "${empty_report_dir}/summary.md" >/dev/null
+grep -F "tools/test/run-transaction-100m-fresh-volume-restore-k6.sh --dry-run" "${empty_report_dir}/summary.md" >/dev/null
+grep -Fx "0" "${empty_report_dir}/estimated-total-rows.txt" >/dev/null
