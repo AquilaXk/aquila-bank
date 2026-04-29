@@ -90,7 +90,10 @@ workflow_patterns=(
   "runs-on: [self-hosted, oci-a1-staging]"
   "Load OCI A1 staging env"
   'source "${staging_env_path}"'
+  "docker/setup-qemu-action@v3"
+  "platforms: arm64"
   "docker buildx build"
+  "--platform linux/amd64,linux/arm64"
   "registry: ghcr.io"
   "OCI_A1_BACKEND_ENV_B64"
   "Check OCI self-hosted runner prerequisites"
