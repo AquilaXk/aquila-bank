@@ -58,35 +58,55 @@ WITH target_table(table_name) AS (
         ('transaction_read_model'),
         ('transaction_read_model_archive')
 ),
-relation_data AS (
+parent_data AS (
     SELECT
         t.table_name,
-        c.oid AS relid,
-        GREATEST(c.reltuples, 0)::bigint AS row_estimate,
-        s.n_live_tup,
-        s.n_mod_since_analyze,
-        s.last_analyze,
-        s.last_autoanalyze,
-        s.analyze_count,
-        s.autoanalyze_count
+        parent.oid AS relid
     FROM target_table t
     LEFT JOIN (
-        SELECT c.oid,
-               c.relname,
-               c.reltuples AS reltuples
-        FROM pg_class c
-        JOIN pg_namespace n
-          ON n.oid = c.relnamespace
-        WHERE n.nspname = 'public'
-    ) c
-      ON c.relname = t.table_name
-    LEFT JOIN pg_stat_user_tables s
-      ON s.relid = c.oid
+        SELECT item.oid,
+               item.relname
+        FROM pg_class item
+        JOIN pg_namespace item_ns
+          ON item_ns.oid = item.relnamespace
+        WHERE item_ns.nspname = 'public'
+    ) parent
+      ON parent.relname = t.table_name
+),
+relation_data AS (
+    SELECT
+        parent.table_name,
+        parent.relid,
+        COUNT(tree.relid) FILTER (WHERE tree.relid IS NOT NULL) AS partition_count,
+        COALESCE(SUM(GREATEST(partition.reltuples, 0))::bigint, 0) AS row_estimate,
+        COALESCE(SUM(stats.n_live_tup), 0)::bigint AS n_live_tup,
+        COALESCE(SUM(stats.n_mod_since_analyze), 0)::bigint AS n_mod_since_analyze,
+        MAX(
+            CASE
+                WHEN stats.last_analyze IS NULL AND stats.last_autoanalyze IS NULL THEN NULL
+                ELSE GREATEST(
+                    COALESCE(stats.last_analyze, '-infinity'::timestamp with time zone),
+                    COALESCE(stats.last_autoanalyze, '-infinity'::timestamp with time zone)
+                )
+            END
+        ) AS last_analyze_at,
+        COALESCE(SUM(stats.analyze_count), 0)::bigint AS analyze_count,
+        COALESCE(SUM(stats.autoanalyze_count), 0)::bigint AS autoanalyze_count
+    FROM parent_data parent
+    LEFT JOIN LATERAL pg_partition_tree(parent.relid::regclass) tree
+      ON parent.relid IS NOT NULL
+     AND tree.isleaf
+    LEFT JOIN pg_class partition
+      ON partition.oid = tree.relid
+    LEFT JOIN pg_stat_user_tables stats
+      ON stats.relid = partition.oid
+    GROUP BY parent.table_name, parent.relid
 ),
 calculated AS (
     SELECT
         table_name,
         relid,
+        partition_count,
         COALESCE(row_estimate, 0) AS row_estimate,
         COALESCE(n_live_tup, 0) AS live_tuple_count,
         COALESCE(n_mod_since_analyze, 0) AS modified_tuple_count,
@@ -101,23 +121,27 @@ calculated AS (
                 4
             )
         END AS modified_ratio,
-        CASE
-            WHEN last_analyze IS NULL AND last_autoanalyze IS NULL THEN NULL
-            ELSE GREATEST(
-                COALESCE(last_analyze, '-infinity'::timestamp with time zone),
-                COALESCE(last_autoanalyze, '-infinity'::timestamp with time zone)
-            )
-        END AS last_analyze_at,
+        last_analyze_at,
         COALESCE(analyze_count, 0) AS analyze_count,
         COALESCE(autoanalyze_count, 0) AS autoanalyze_count,
-        format('ANALYZE VERBOSE public.%I;', table_name) AS analyze_command
+        format(
+            'tools/ops/transaction-read-model-chunk-lifecycle.sh --action analyze --target %s',
+            CASE
+                WHEN table_name = 'transaction_read_model' THEN 'hot'
+                WHEN table_name = 'transaction_read_model_archive' THEN 'archive'
+                ELSE 'both'
+            END
+        ) AS analyze_command
     FROM relation_data
 )
 SELECT
     table_name,
     CASE
         WHEN relid IS NULL THEN 'missing_table'
-        WHEN last_analyze_at IS NULL THEN 'missing_analyze'
+        WHEN partition_count = 0 THEN 'missing_partition'
+        WHEN last_analyze_at IS NULL
+             AND (row_estimate > 0 OR live_tuple_count > 0 OR modified_tuple_count > 0)
+            THEN 'missing_analyze'
         WHEN ROUND(EXTRACT(EPOCH FROM (now() - last_analyze_at)) / 3600, 1) >= :'stats_max_age_hours'::numeric
             THEN 'stale_analyze_age'
         WHEN modified_ratio >= :'stats_max_modified_ratio'::numeric
