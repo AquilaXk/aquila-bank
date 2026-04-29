@@ -19,6 +19,15 @@ fi
 
 required_patterns=(
   "limit_req_status 429;"
+  "log_format aquila_bank_upstream escape=json"
+  '"status":$status'
+  '"upstream_status":"$upstream_status"'
+  '"request_time":$request_time'
+  '"upstream_response_time":"$upstream_response_time"'
+  '"upstream_connect_time":"$upstream_connect_time"'
+  '"upstream_header_time":"$upstream_header_time"'
+  '"limit_req_status":"$limit_req_status"'
+  "access_log /var/log/nginx/access.log aquila_bank_upstream;"
   "limit_req_zone \$binary_remote_addr zone=aquila_bank_api_per_ip:10m rate=30r/s;"
   "limit_req_zone \$binary_remote_addr zone=aquila_bank_auth_per_ip:10m rate=5r/s;"
   "upstream aquila_bank_frontend"
@@ -50,6 +59,7 @@ required_patterns=(
   "limit_req zone=aquila_bank_auth_per_ip burst=10 nodelay;"
   "location /api/"
   "proxy_pass http://aquila_bank_backend_api;"
+  "proxy_next_upstream off;"
   "limit_req zone=aquila_bank_api_per_ip burst=60 nodelay;"
   "location ^~ /actuator/health"
   "location / {"
