@@ -137,9 +137,18 @@ end
 
 prerequisite_index = frontend_step_names.index("Check OCI self-hosted runner prerequisites") ||
   abort("frontend image job must check OCI self-hosted runner prerequisites")
+docker_config_index = frontend_step_names.index("Prepare frontend Docker config") ||
+  abort("frontend image job must prepare isolated Docker config")
+buildx_index = frontend_step_names.index("Set up Docker Buildx") ||
+  abort("frontend image job must set up Docker Buildx")
 build_index = frontend_step_names.index("Build and push frontend image") ||
   abort("frontend image job must build and push frontend image")
 abort("frontend runner prerequisites must run before frontend image build") unless prerequisite_index < build_index
+abort("frontend Docker config must be prepared before buildx setup") unless docker_config_index < buildx_index
+
+docker_config_run = frontend_steps.fetch(docker_config_index).fetch("run")
+abort("frontend Docker config must use RUNNER_TEMP") unless docker_config_run.include?("RUNNER_TEMP") && docker_config_run.include?("DOCKER_CONFIG")
+abort("frontend Docker config must be persisted through GITHUB_ENV") unless docker_config_run.include?("GITHUB_ENV")
 
 build_run = frontend_steps.fetch(build_index).fetch("run")
 abort("frontend image must remain linux/arm64") unless build_run.include?("--platform linux/arm64")
