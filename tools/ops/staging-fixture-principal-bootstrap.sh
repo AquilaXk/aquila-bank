@@ -72,8 +72,8 @@ ensure_fixture_principal() {
     -v hot_account_id="${HOT_ACCOUNT_ID}" \
     -v cold_account_id="${COLD_ACCOUNT_ID}" \
     -v hot_account_number="${STAGING_REPLAY_HOT_ACCOUNT_NUMBER}" \
-    -v cold_account_number="${STAGING_REPLAY_COLD_ACCOUNT_NUMBER}" \
-    --command "
+    -v cold_account_number="${STAGING_REPLAY_COLD_ACCOUNT_NUMBER}" <<'SQL'
+      -- psql 변수(:name)는 -c 경로에서 치환되지 않아 stdin으로 전달한다.
       BEGIN;
 
       INSERT INTO bank_account (
@@ -160,7 +160,7 @@ ensure_fixture_principal() {
       );
 
       COMMIT;
-    "
+SQL
 }
 
 validate_inputs

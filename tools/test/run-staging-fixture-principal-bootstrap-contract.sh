@@ -6,10 +6,18 @@ tmp_dir="$(mktemp -d)"
 trap 'rm -rf "${tmp_dir}"' EXIT
 
 psql_log="${tmp_dir}/psql.log"
+psql_stdin_log="${tmp_dir}/psql.stdin.sql"
 cat >"${tmp_dir}/psql" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >>"${PSQL_STUB_LOG}"
+for arg in "$@"; do
+  if [[ "$arg" == "--command" || "$arg" == "-c" ]]; then
+    echo "fixture SQL must be passed through stdin so psql variables are substituted" >&2
+    exit 64
+  fi
+done
+cat >"${PSQL_STDIN_LOG}"
 SH
 chmod +x "${tmp_dir}/psql"
 
@@ -17,6 +25,7 @@ run_bootstrap() {
   env \
     PATH="${tmp_dir}:${PATH}" \
     PSQL_STUB_LOG="${psql_log}" \
+    PSQL_STDIN_LOG="${psql_stdin_log}" \
     STAGING_OCI_A1_DATABASE_URL="postgresql://fixture-db/aquila" \
     STAGING_REPLAY_USER_ID="55" \
     STAGING_REPLAY_LOGIN_ID="staging-fixture-user" \
@@ -41,6 +50,7 @@ assert_too_long_password_hash_fails_before_psql() {
   if env \
     PATH="${tmp_dir}:${PATH}" \
     PSQL_STUB_LOG="${psql_log}" \
+    PSQL_STDIN_LOG="${psql_stdin_log}" \
     STAGING_OCI_A1_DATABASE_URL="postgresql://fixture-db/aquila" \
     STAGING_REPLAY_USER_ID="55" \
     STAGING_REPLAY_LOGIN_ID="staging-fixture-user" \

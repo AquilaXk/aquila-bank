@@ -201,6 +201,7 @@ done
 echo "[oci-a1-bluegreen-cd] fixture principal contract"
 fixture_principal_patterns=(
   "STAGING_REPLAY_USER_ID"
+  "<<'SQL'"
   "OVERRIDING SYSTEM VALUE"
   "INSERT INTO bank_account"
   "INSERT INTO bank_user"
@@ -211,6 +212,7 @@ fixture_principal_patterns=(
 for pattern in "${fixture_principal_patterns[@]}"; do
   require_pattern "$pattern" "$fixture_principal_script"
 done
+reject_pattern "--command" "$fixture_principal_script"
 
 echo "[oci-a1-bluegreen-cd] terraform contract"
 require_pattern "http_ingress_cidr" "${terraform_dir}/variables.tf"
