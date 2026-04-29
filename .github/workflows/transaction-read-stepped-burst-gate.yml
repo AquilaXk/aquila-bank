@@ -1,0 +1,32 @@
+name: Transaction Read Stepped Burst Gate
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/transaction-read-stepped-burst-gate.yml"
+      - "tools/test/run-transaction-read-stepped-burst-gate.sh"
+      - "tools/test/check-transaction-read-stepped-burst-gate.sh"
+      - "tools/test/run-transaction-read-burst-429-budget-gate.sh"
+      - "tools/test/check-transaction-read-burst-429-budget-gate.sh"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: transaction-read-stepped-burst-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    name: Stepped Burst Gate Contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check stepped burst gate
+        run: bash tools/test/check-transaction-read-stepped-burst-gate.sh
