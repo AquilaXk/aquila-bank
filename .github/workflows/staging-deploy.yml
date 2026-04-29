@@ -16,33 +16,36 @@ concurrency:
   group: staging-deploy
   cancel-in-progress: false
 
+env:
+  DEPLOY_TARGET_RUNTIME: oci-a1
+  DEPLOY_DATABASE_BASELINE: oci-a1-postgres-100m
+  BACKEND_IMAGE_NAME: aquila-bank-backend
+  FRONTEND_IMAGE_NAME: aquila-bank-frontend
+
 jobs:
-  deploy:
-    name: Deploy Main SHA To Staging
+  prepare:
+    name: Resolve Main Deploy SHA
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_branch == 'main' &&
       github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
-    timeout-minutes: 35
-    environment:
-      name: staging
-    env:
-      DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
-      DEPLOY_LOG_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-      DEPLOY_TARGET_RUNTIME: oci-a1
-      DEPLOY_DATABASE_BASELINE: oci-a1-postgres-100m
-      BACKEND_IMAGE_NAME: aquila-bank-backend
-      FRONTEND_IMAGE_NAME: aquila-bank-frontend
+    timeout-minutes: 10
+    outputs:
+      should_deploy: ${{ steps.validate.outputs.should_deploy }}
+      deploy_sha: ${{ steps.validate.outputs.deploy_sha }}
+      image_tag: ${{ steps.validate.outputs.image_tag }}
     steps:
       - name: Checkout deploy SHA
         uses: actions/checkout@v4
         with:
-          ref: ${{ env.DEPLOY_SHA }}
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
 
       - name: Validate main SHA
         id: validate
+        env:
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
         shell: bash
         run: |
           set -euo pipefail
@@ -57,16 +60,195 @@ jobs:
             exit 1
           fi
 
-          # staging은 main 최신 SHA만 자동 배포하되, 오래된 CI 완료는 정상 race로 보고 skip한다.
+          # staging은 main 최신 SHA만 자동 배포하고, 오래된 CI 완료는 정상 race로 skip한다.
           if [ "${current_main_sha}" != "${DEPLOY_SHA}" ]; then
             echo "::notice::Skipping stale deploy SHA ${DEPLOY_SHA}; current origin/main is ${current_main_sha}."
             exit 0
           fi
 
           echo "should_deploy=true" >> "${GITHUB_OUTPUT}"
+          echo "deploy_sha=${DEPLOY_SHA}" >> "${GITHUB_OUTPUT}"
+          echo "image_tag=${DEPLOY_SHA:0:12}" >> "${GITHUB_OUTPUT}"
+
+  create-deployment:
+    name: Create Staging Deployment
+    needs:
+      - prepare
+    if: needs.prepare.outputs.should_deploy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      deployment_id: ${{ steps.deployment.outputs.deployment_id }}
+    steps:
+      - name: Create staging deployment
+        id: deployment
+        env:
+          DEPLOY_SHA: ${{ needs.prepare.outputs.deploy_sha }}
+          DEPLOY_LOG_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload="$(
+            jq -n \
+              --arg ref "${DEPLOY_SHA}" \
+              --arg description "Deploy main SHA ${DEPLOY_SHA} to staging" \
+              '{
+                ref: $ref,
+                environment: "staging",
+                description: $description,
+                auto_merge: false,
+                required_contexts: [],
+                production_environment: false,
+                transient_environment: false
+              }'
+          )"
+          deployment_id="$(gh api --method POST "repos/${GITHUB_REPOSITORY}/deployments" --input - --jq ".id" <<< "${payload}")"
+
+          if [ -z "${deployment_id}" ]; then
+            echo "::error::Failed to create staging deployment."
+            exit 1
+          fi
+
+          echo "deployment_id=${deployment_id}" >> "${GITHUB_OUTPUT}"
+
+          status_payload="$(
+            jq -n \
+              --arg log_url "${DEPLOY_LOG_URL}" \
+              '{
+                state: "in_progress",
+                environment: "staging",
+                log_url: $log_url,
+                auto_inactive: false
+              }'
+          )"
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/deployments/${deployment_id}/statuses" --input - <<< "${status_payload}"
+
+  build-and-push:
+    name: Build And Push Images
+    needs:
+      - prepare
+    if: needs.prepare.outputs.should_deploy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment:
+      name: staging
+    outputs:
+      backend_image: ${{ steps.images.outputs.backend_image }}
+      frontend_image: ${{ steps.images.outputs.frontend_image }}
+    steps:
+      - name: Checkout deploy SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.deploy_sha }}
+          fetch-depth: 0
+
+      - name: Resolve frontend staging public API URL
+        env:
+          OCI_A1_STAGING_ENV: ${{ secrets.OCI_A1_STAGING_ENV }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${OCI_A1_STAGING_ENV}" ]]; then
+            echo "::error::Missing OCI_A1_STAGING_ENV environment secret."
+            exit 1
+          fi
+
+          staging_env_path="${RUNNER_TEMP}/oci-a1-staging-build.env"
+          printf '%s\n' "${OCI_A1_STAGING_ENV}" >"${staging_env_path}"
+          chmod 600 "${staging_env_path}"
+
+          set -a
+          source "${staging_env_path}"
+          set +a
+
+          STAGING_PUBLIC_API_BASE_URL="${STAGING_PUBLIC_API_BASE_URL:-${STAGING_BASE_URL:-}}"
+          if [[ -z "${STAGING_PUBLIC_API_BASE_URL}" ]]; then
+            echo "::error::STAGING_PUBLIC_API_BASE_URL or STAGING_BASE_URL is required."
+            exit 1
+          fi
+
+          echo "::add-mask::${STAGING_PUBLIC_API_BASE_URL}"
+          printf 'STAGING_PUBLIC_API_BASE_URL=%s\n' "${STAGING_PUBLIC_API_BASE_URL}" >>"${GITHUB_ENV}"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Resolve image names
+        id: images
+        env:
+          DEPLOY_SHA: ${{ needs.prepare.outputs.deploy_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          owner_lc="${GITHUB_REPOSITORY_OWNER,,}"
+          backend_image="ghcr.io/${owner_lc}/${BACKEND_IMAGE_NAME}"
+          frontend_image="ghcr.io/${owner_lc}/${FRONTEND_IMAGE_NAME}"
+
+          echo "BACKEND_IMAGE=${backend_image}" >> "${GITHUB_ENV}"
+          echo "FRONTEND_IMAGE=${frontend_image}" >> "${GITHUB_ENV}"
+          echo "backend_image=${backend_image}" >> "${GITHUB_OUTPUT}"
+          echo "frontend_image=${frontend_image}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build and push backend image
+        env:
+          IMAGE_TAG: ${{ needs.prepare.outputs.image_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker buildx build ./back \
+            --push \
+            --tag "${BACKEND_IMAGE}:${IMAGE_TAG}" \
+            --tag "${BACKEND_IMAGE}:main-latest" \
+            --cache-from type=gha,scope=aquila-bank-backend \
+            --cache-to type=gha,mode=max,scope=aquila-bank-backend
+
+      - name: Build and push frontend image
+        env:
+          IMAGE_TAG: ${{ needs.prepare.outputs.image_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker buildx build ./front \
+            --push \
+            --build-arg "NEXT_PUBLIC_API_BASE_URL=${STAGING_PUBLIC_API_BASE_URL}" \
+            --tag "${FRONTEND_IMAGE}:${IMAGE_TAG}" \
+            --tag "${FRONTEND_IMAGE}:main-latest" \
+            --cache-from type=gha,scope=aquila-bank-frontend \
+            --cache-to type=gha,mode=max,scope=aquila-bank-frontend
+
+  deploy-and-verify:
+    name: Deploy And Verify On OCI A1
+    needs:
+      - prepare
+      - create-deployment
+      - build-and-push
+    if: needs.prepare.outputs.should_deploy == 'true'
+    runs-on: [self-hosted, oci-a1-staging]
+    timeout-minutes: 35
+    environment:
+      name: staging
+    env:
+      DEPLOY_SHA: ${{ needs.prepare.outputs.deploy_sha }}
+      IMAGE_TAG: ${{ needs.prepare.outputs.image_tag }}
+      DEPLOY_LOG_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      BACKEND_IMAGE: ${{ needs.build-and-push.outputs.backend_image }}
+      FRONTEND_IMAGE: ${{ needs.build-and-push.outputs.frontend_image }}
+    steps:
+      - name: Checkout deploy SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+          fetch-depth: 0
 
       - name: Load OCI A1 staging env
-        if: steps.validate.outputs.should_deploy == 'true'
         env:
           OCI_A1_STAGING_ENV: ${{ secrets.OCI_A1_STAGING_ENV }}
         shell: bash
@@ -86,8 +268,6 @@ jobs:
           source "${staging_env_path}"
           set +a
 
-          OCI_A1_SSH_USER="${OCI_A1_SSH_USER:-ubuntu}"
-          OCI_A1_SSH_PORT="${OCI_A1_SSH_PORT:-22}"
           STAGING_PUBLIC_API_BASE_URL="${STAGING_PUBLIC_API_BASE_URL:-${STAGING_BASE_URL:-}}"
           STAGING_SMOKE_HEALTH_PATH="${STAGING_SMOKE_HEALTH_PATH:-/actuator/health}"
           STAGING_SMOKE_WRITE_METHOD="${STAGING_SMOKE_WRITE_METHOD:-POST}"
@@ -110,8 +290,6 @@ jobs:
           PLANNER_STATS_MAX_MODIFIED_RATIO="${STAGING_REPLAY_STATS_MAX_MODIFIED_RATIO:-${PLANNER_STATS_MAX_MODIFIED_RATIO:-}}"
 
           missing=()
-          [[ -z "${OCI_A1_SSH_HOST:-}" ]] && missing+=("OCI_A1_SSH_HOST")
-          [[ -z "${OCI_A1_SSH_PRIVATE_KEY_B64:-}" ]] && missing+=("OCI_A1_SSH_PRIVATE_KEY_B64")
           [[ -z "${OCI_A1_BACKEND_ENV_B64:-}" ]] && missing+=("OCI_A1_BACKEND_ENV_B64")
           [[ -z "${STAGING_BASE_URL:-}" ]] && missing+=("STAGING_BASE_URL")
           [[ -z "${STAGING_SMOKE_READ_PATH:-}" ]] && missing+=("STAGING_SMOKE_READ_PATH")
@@ -130,17 +308,7 @@ jobs:
             exit 1
           fi
 
-          if ! [[ "${OCI_A1_SSH_PORT}" =~ ^[0-9]+$ ]]; then
-            echo "::error::OCI_A1_SSH_PORT must be numeric."
-            exit 1
-          fi
-
           env_names=(
-            OCI_A1_SSH_HOST
-            OCI_A1_SSH_USER
-            OCI_A1_SSH_PORT
-            OCI_A1_SSH_PRIVATE_KEY_B64
-            OCI_A1_SSH_KNOWN_HOSTS_B64
             OCI_A1_BACKEND_ENV_B64
             OCI_A1_FRONTEND_ENV_B64
             STAGING_PUBLIC_API_BASE_URL
@@ -203,204 +371,133 @@ jobs:
             fi
           done
 
-      - name: Set up Docker Buildx
-        if: steps.validate.outputs.should_deploy == 'true'
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to GHCR
-        if: steps.validate.outputs.should_deploy == 'true'
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Resolve image names
-        if: steps.validate.outputs.should_deploy == 'true'
+      - name: Check OCI self-hosted runner prerequisites
         shell: bash
         run: |
           set -euo pipefail
-          owner_lc="${GITHUB_REPOSITORY_OWNER,,}"
-          image_tag="${DEPLOY_SHA:0:12}"
-          backend_image="ghcr.io/${owner_lc}/${BACKEND_IMAGE_NAME}"
-          frontend_image="ghcr.io/${owner_lc}/${FRONTEND_IMAGE_NAME}"
+          missing=()
+          for command_name in base64 curl jq psql; do
+            if ! command -v "${command_name}" >/dev/null 2>&1; then
+              missing+=("${command_name}")
+            fi
+          done
 
-          echo "IMAGE_TAG=${image_tag}" >> "${GITHUB_ENV}"
-          echo "BACKEND_IMAGE=${backend_image}" >> "${GITHUB_ENV}"
-          echo "FRONTEND_IMAGE=${frontend_image}" >> "${GITHUB_ENV}"
+          if (( ${#missing[@]} > 0 )); then
+            printf '::error::OCI A1 self-hosted runner is missing commands: %s\n' "${missing[*]}"
+            exit 1
+          fi
 
-      - name: Build and push backend image
-        if: steps.validate.outputs.should_deploy == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          docker buildx build ./back \
-            --push \
-            --tag "${BACKEND_IMAGE}:${IMAGE_TAG}" \
-            --tag "${BACKEND_IMAGE}:main-latest" \
-            --cache-from type=gha,scope=aquila-bank-backend \
-            --cache-to type=gha,mode=max,scope=aquila-bank-backend
-
-      - name: Build and push frontend image
-        if: steps.validate.outputs.should_deploy == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          docker buildx build ./front \
-            --push \
-            --build-arg "NEXT_PUBLIC_API_BASE_URL=${STAGING_PUBLIC_API_BASE_URL}" \
-            --tag "${FRONTEND_IMAGE}:${IMAGE_TAG}" \
-            --tag "${FRONTEND_IMAGE}:main-latest" \
-            --cache-from type=gha,scope=aquila-bank-frontend \
-            --cache-to type=gha,mode=max,scope=aquila-bank-frontend
+          if (( EUID != 0 )) && ! sudo -n true; then
+            echo "::error::OCI A1 self-hosted runner user must have passwordless sudo for bluegreen-deploy.sh."
+            exit 1
+          fi
 
       - name: Run Alertmanager receiver secret smoke
-        if: steps.validate.outputs.should_deploy == 'true'
         shell: bash
         run: |
           set -euo pipefail
           tools/ops/validate-alertmanager-receiver-secrets.sh
 
-      - name: Create staging deployment
-        id: deployment
-        if: steps.validate.outputs.should_deploy == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          payload="$(
-            jq -n \
-              --arg ref "${DEPLOY_SHA}" \
-              --arg description "Deploy main SHA ${DEPLOY_SHA} to staging" \
-              '{
-                ref: $ref,
-                environment: "staging",
-                description: $description,
-                auto_merge: false,
-                required_contexts: [],
-                production_environment: false,
-                transient_environment: false
-              }'
-          )"
-          deployment_id="$(gh api --method POST "repos/${GITHUB_REPOSITORY}/deployments" --input - --jq ".id" <<< "${payload}")"
-
-          if [ -z "${deployment_id}" ]; then
-            echo "::error::Failed to create staging deployment."
-            exit 1
-          fi
-
-          echo "deployment_id=${deployment_id}" >> "${GITHUB_OUTPUT}"
-
-      - name: Mark staging deployment in progress
-        if: steps.validate.outputs.should_deploy == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          payload="$(
-            jq -n \
-              --arg log_url "${DEPLOY_LOG_URL}" \
-              '{
-                state: "in_progress",
-                environment: "staging",
-                log_url: $log_url,
-                auto_inactive: false
-              }'
-          )"
-          gh api --method POST "repos/${GITHUB_REPOSITORY}/deployments/${DEPLOYMENT_ID}/statuses" --input - <<< "${payload}"
-
-      - name: Deploy OCI A1 blue-green over SSH
-        if: steps.validate.outputs.should_deploy == 'true'
+      - name: Run OCI A1 blue-green deploy locally
         env:
           GITHUB_ACTOR_VALUE: ${{ github.actor }}
           GITHUB_TOKEN_VALUE: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "${RUNNER_TEMP}/ssh"
-
-          key_path="${RUNNER_TEMP}/ssh/oci-a1-deploy-key"
-          known_hosts_path="${RUNNER_TEMP}/ssh/oci-a1-known-hosts"
-          printf '%s' "${OCI_A1_SSH_PRIVATE_KEY_B64}" | base64 -d >"${key_path}"
-          chmod 600 "${key_path}"
-
-          if [[ -n "${OCI_A1_SSH_KNOWN_HOSTS_B64:-}" ]]; then
-            printf '%s' "${OCI_A1_SSH_KNOWN_HOSTS_B64}" | base64 -d >"${known_hosts_path}"
-          else
-            echo "::notice::OCI_A1_SSH_KNOWN_HOSTS is not configured. Falling back to ssh-keyscan for this run."
-            ssh-keyscan -p "${OCI_A1_SSH_PORT}" -H "${OCI_A1_SSH_HOST}" >"${known_hosts_path}"
-          fi
-          chmod 600 "${known_hosts_path}"
-
-          script_b64="$(base64 -w0 ops/deploy/oci/bluegreen-deploy.sh)"
           github_token_b64="$(printf '%s' "${GITHUB_TOKEN_VALUE}" | base64 -w0)"
-          backend_env_b64="${OCI_A1_BACKEND_ENV_B64}"
-          frontend_env_b64="${OCI_A1_FRONTEND_ENV_B64:-}"
 
-          printf -v remote_command '%s\n' \
-            "set -euo pipefail" \
-            "export BACKEND_IMAGE=$(printf '%q' "${BACKEND_IMAGE}")" \
-            "export FRONTEND_IMAGE=$(printf '%q' "${FRONTEND_IMAGE}")" \
-            "export IMAGE_TAG=$(printf '%q' "${IMAGE_TAG}")" \
-            "export GITHUB_ACTOR=$(printf '%q' "${GITHUB_ACTOR_VALUE}")" \
-            "export GITHUB_TOKEN_B64=$(printf '%q' "${github_token_b64}")" \
-            "export BACKEND_ENV_B64=$(printf '%q' "${backend_env_b64}")" \
-            "export FRONTEND_ENV_B64=$(printf '%q' "${frontend_env_b64}")" \
-            "mkdir -p /tmp/aquila-bank-deploy" \
-            "printf %s $(printf '%q' "${script_b64}") | base64 -d > /tmp/aquila-bank-deploy/bluegreen-deploy.sh" \
-            "chmod 755 /tmp/aquila-bank-deploy/bluegreen-deploy.sh" \
-            "/tmp/aquila-bank-deploy/bluegreen-deploy.sh"
+          export GITHUB_ACTOR="${GITHUB_ACTOR_VALUE}"
+          export GITHUB_TOKEN_B64="${github_token_b64}"
+          export BACKEND_ENV_B64="${OCI_A1_BACKEND_ENV_B64}"
+          export FRONTEND_ENV_B64="${OCI_A1_FRONTEND_ENV_B64:-}"
 
-          ssh_args=(
-            -i "${key_path}"
-            -p "${OCI_A1_SSH_PORT}"
-            -o BatchMode=yes
-            -o ConnectTimeout=15
-            -o ServerAliveInterval=30
-            -o ServerAliveCountMax=10
-            -o StrictHostKeyChecking=yes
-            -o UserKnownHostsFile="${known_hosts_path}"
-          )
-          ssh "${ssh_args[@]}" "${OCI_A1_SSH_USER}@${OCI_A1_SSH_HOST}" "bash -se" <<<"${remote_command}"
+          ops/deploy/oci/bluegreen-deploy.sh
 
       - name: Ensure staging fixture principal
-        if: steps.validate.outputs.should_deploy == 'true'
         shell: bash
         run: |
           set -euo pipefail
           tools/ops/staging-fixture-principal-bootstrap.sh
 
       - name: Run staging post-deploy smoke
-        if: steps.validate.outputs.should_deploy == 'true'
         shell: bash
         run: |
           set -euo pipefail
           tools/ops/staging-postdeploy-smoke.sh
 
       - name: Run transaction replay regression gate
-        if: steps.validate.outputs.should_deploy == 'true'
         shell: bash
         run: |
           set -euo pipefail
           tools/ops/transaction-read-model-staging-replay.sh
 
-      - name: Dispatch staging rollback guard
-        if: failure() && steps.validate.outputs.should_deploy == 'true' && steps.deployment.outputs.deployment_id != ''
+  finalize-deployment:
+    name: Finalize Staging Deployment
+    needs:
+      - prepare
+      - create-deployment
+      - build-and-push
+      - deploy-and-verify
+    if: >-
+      always() &&
+      needs.prepare.outputs.should_deploy == 'true' &&
+      needs.create-deployment.outputs.deployment_id != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: staging
+    env:
+      DEPLOY_SHA: ${{ needs.prepare.outputs.deploy_sha }}
+      DEPLOY_LOG_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      DEPLOYMENT_ID: ${{ needs.create-deployment.outputs.deployment_id }}
+      DEPLOY_RESULT: ${{ needs.deploy-and-verify.result }}
+      BUILD_RESULT: ${{ needs.build-and-push.result }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout deploy SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+          fetch-depth: 0
+
+      - name: Load OCI A1 rollback env
+        if: needs.deploy-and-verify.result == 'failure'
         env:
-          DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
+          OCI_A1_STAGING_ENV: ${{ secrets.OCI_A1_STAGING_ENV }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${OCI_A1_STAGING_ENV}" ]]; then
+            echo "::warning::Missing OCI_A1_STAGING_ENV; rollback hook cannot be loaded."
+            exit 0
+          fi
+
+          staging_env_path="${RUNNER_TEMP}/oci-a1-staging-finalize.env"
+          printf '%s\n' "${OCI_A1_STAGING_ENV}" >"${staging_env_path}"
+          chmod 600 "${staging_env_path}"
+
+          set -a
+          source "${staging_env_path}"
+          set +a
+
+          for name in STAGING_ROLLBACK_WEBHOOK_URL STAGING_ROLLBACK_TOKEN; do
+            value="${!name:-}"
+            if [[ -n "${value}" ]]; then
+              echo "::add-mask::${value}"
+            fi
+            printf '%s=%s\n' "${name}" "${value}" >>"${GITHUB_ENV}"
+          done
+
+      - name: Dispatch staging rollback guard
+        if: always() && needs.deploy-and-verify.result == 'failure'
         shell: bash
         run: |
           set -euo pipefail
           tools/ops/staging-rollback-guard.sh
 
       - name: Mark staging deployment success
-        if: success() && steps.validate.outputs.should_deploy == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
+        if: always() && needs.deploy-and-verify.result == 'success'
         shell: bash
         run: |
           set -euo pipefail
@@ -417,13 +514,11 @@ jobs:
           gh api --method POST "repos/${GITHUB_REPOSITORY}/deployments/${DEPLOYMENT_ID}/statuses" --input - <<< "${payload}"
 
       - name: Mark staging deployment failure
-        if: failure() && steps.validate.outputs.should_deploy == 'true' && steps.deployment.outputs.deployment_id != ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-          DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
+        if: always() && needs.deploy-and-verify.result != 'success'
         shell: bash
         run: |
           set -euo pipefail
+          echo "::error::Staging deployment failed. build=${BUILD_RESULT} deploy=${DEPLOY_RESULT}"
           payload="$(
             jq -n \
               --arg log_url "${DEPLOY_LOG_URL}" \
@@ -435,3 +530,4 @@ jobs:
               }'
           )"
           gh api --method POST "repos/${GITHUB_REPOSITORY}/deployments/${DEPLOYMENT_ID}/statuses" --input - <<< "${payload}"
+          exit 1

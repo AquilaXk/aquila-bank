@@ -17,10 +17,18 @@
 
 `staging` Environment에는 `OCI_A1_STAGING_ENV` secret 하나만 둔다. 이 값은 shell env 파일 형식이며, multi-line 값은 base64로 넣는다.
 
+배포 job은 OCI VM에 설치된 GitHub Actions self-hosted runner에서 실행한다. runner label은 `self-hosted`, `oci-a1-staging`을 사용하고, runner 사용자는 `bluegreen-deploy.sh`의 Docker/Nginx 작업을 위해 passwordless sudo가 필요하다. 배포는 같은 VM 안에서 실행되므로 GitHub-hosted runner의 inbound 접속이나 별도 SSH secret은 쓰지 않는다.
+
+runner 선행 조건:
+
+- labels: `self-hosted`, `oci-a1-staging`
+- outbound: GitHub, GHCR 접근 가능
+- commands: `base64`, `curl`, `jq`, `psql`
+- privilege: passwordless sudo
+- database: `STAGING_OCI_A1_DATABASE_URL`로 PostgreSQL fixture DB 접근 가능
+
 필수 key:
 
-- `OCI_A1_SSH_HOST`
-- `OCI_A1_SSH_PRIVATE_KEY_B64`
 - `OCI_A1_BACKEND_ENV_B64`
 - `STAGING_BASE_URL`
 - `STAGING_SMOKE_READ_PATH`
@@ -36,9 +44,6 @@
 
 선택 key:
 
-- `OCI_A1_SSH_USER`: 기본 `ubuntu`
-- `OCI_A1_SSH_PORT`: 기본 `22`
-- `OCI_A1_SSH_KNOWN_HOSTS_B64`: 없으면 workflow가 `ssh-keyscan`으로 수집
 - `OCI_A1_FRONTEND_ENV_B64`
 - `STAGING_PUBLIC_API_BASE_URL`: 없으면 `STAGING_BASE_URL`
 - `STAGING_SMOKE_HEALTH_PATH`: 기본 `/actuator/health`

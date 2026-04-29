@@ -11,28 +11,40 @@ ruby <<'RUBY'
 require 'yaml'
 
 workflow = YAML.load_file('.github/workflows/staging-deploy.yml')
-steps = workflow.fetch('jobs').fetch('deploy').fetch('steps')
+jobs = workflow.fetch('jobs')
+deploy_job = jobs.fetch('deploy-and-verify')
+finalize_job = jobs.fetch('finalize-deployment')
+steps = deploy_job.fetch('steps')
 step_names = steps.map { |step| step['name'] }
 
 replay_name = 'Run transaction replay regression gate'
 smoke_name = 'Run staging post-deploy smoke'
 fixture_principal_name = 'Ensure staging fixture principal'
-deploy_name = 'Deploy OCI A1 blue-green over SSH'
-success_name = 'Mark staging deployment success'
+deploy_name = 'Run OCI A1 blue-green deploy locally'
 load_env_name = 'Load OCI A1 staging env'
+prerequisite_name = 'Check OCI self-hosted runner prerequisites'
 
 replay_index = step_names.index(replay_name) or abort("missing step: #{replay_name}")
 smoke_index = step_names.index(smoke_name) or abort("missing step: #{smoke_name}")
 fixture_principal_index = step_names.index(fixture_principal_name) or abort("missing step: #{fixture_principal_name}")
 deploy_index = step_names.index(deploy_name) or abort("missing step: #{deploy_name}")
-success_index = step_names.index(success_name) or abort("missing step: #{success_name}")
 load_env_index = step_names.index(load_env_name) or abort("missing step: #{load_env_name}")
+prerequisite_index = step_names.index(prerequisite_name) or abort("missing step: #{prerequisite_name}")
 
+runner_labels = Array(deploy_job.fetch('runs-on'))
+abort('deploy job must run on OCI self-hosted runner') unless runner_labels.include?('self-hosted') && runner_labels.include?('oci-a1-staging')
 abort('staging env must load before smoke') unless load_env_index < smoke_index
+abort('runner prerequisites must run after env load') unless load_env_index < prerequisite_index
+abort('runner prerequisites must run before OCI deploy') unless prerequisite_index < deploy_index
 abort('fixture principal must run after OCI deploy') unless deploy_index < fixture_principal_index
 abort('fixture principal must run before smoke') unless fixture_principal_index < smoke_index
 abort('replay gate must run after staging smoke') unless smoke_index < replay_index
-abort('replay gate must run before success status') unless replay_index < success_index
+
+finalize_needs = Array(finalize_job.fetch('needs'))
+abort('finalize job must depend on deploy-and-verify') unless finalize_needs.include?('deploy-and-verify')
+finalize_steps = finalize_job.fetch('steps')
+success_step = finalize_steps.find { |step| step['name'] == 'Mark staging deployment success' } or abort('missing finalize success step')
+abort('success status must require deploy-and-verify success') unless success_step.fetch('if').include?("needs.deploy-and-verify.result == 'success'")
 
 load_env_step = steps.fetch(load_env_index)
 load_env = load_env_step.fetch('env')
@@ -65,6 +77,7 @@ abort('load step must source the staging env file') unless load_run.include?('so
 abort('replay step should not scatter staging env mappings') if replay_step.key?('env')
 abort('replay step must call transaction replay script') unless run.include?('tools/ops/transaction-read-model-staging-replay.sh')
 abort('fixture principal step must call fixture principal script') unless steps.fetch(fixture_principal_index).fetch('run').include?('tools/ops/staging-fixture-principal-bootstrap.sh')
+abort('OCI deploy step must call local bluegreen script') unless steps.fetch(deploy_index).fetch('run').include?('ops/deploy/oci/bluegreen-deploy.sh')
 abort('OCI A1 database URL must come from unified staging env') unless load_run.include?('STAGING_OCI_A1_DATABASE_URL')
 abort('hot account must map from staging replay key') unless load_run.include?('HOT_ACCOUNT_ID="${STAGING_REPLAY_HOT_ACCOUNT_ID')
 abort('cold account must map from staging replay key') unless load_run.include?('COLD_ACCOUNT_ID="${STAGING_REPLAY_COLD_ACCOUNT_ID')
