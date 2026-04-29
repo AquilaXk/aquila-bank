@@ -14,7 +14,7 @@ permissions:
 
 concurrency:
   group: staging-deploy
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   DEPLOY_TARGET_RUNTIME: oci-a1
@@ -124,17 +124,74 @@ jobs:
           )"
           gh api --method POST "repos/${GITHUB_REPOSITORY}/deployments/${deployment_id}/statuses" --input - <<< "${status_payload}"
 
-  build-and-push:
-    name: Build And Push Images
+  backend-image:
+    name: Build And Push Backend Image
     needs:
       - prepare
     if: needs.prepare.outputs.should_deploy == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 20
     environment:
       name: staging
     outputs:
       backend_image: ${{ steps.images.outputs.backend_image }}
+    steps:
+      - name: Checkout deploy SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.deploy_sha }}
+          fetch-depth: 0
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Resolve image names
+        id: images
+        shell: bash
+        run: |
+          set -euo pipefail
+          owner_lc="${GITHUB_REPOSITORY_OWNER,,}"
+          backend_image="ghcr.io/${owner_lc}/${BACKEND_IMAGE_NAME}"
+
+          echo "BACKEND_IMAGE=${backend_image}" >> "${GITHUB_ENV}"
+          echo "backend_image=${backend_image}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build and push backend image
+        env:
+          IMAGE_TAG: ${{ needs.prepare.outputs.image_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker buildx build ./back \
+            --platform linux/arm64 \
+            --push \
+            --tag "${BACKEND_IMAGE}:${IMAGE_TAG}" \
+            --tag "${BACKEND_IMAGE}:main-latest" \
+            --cache-from type=gha,scope=aquila-bank-backend \
+            --cache-to type=gha,mode=max,scope=aquila-bank-backend
+
+  frontend-image:
+    name: Build And Push Frontend Image
+    needs:
+      - prepare
+    if: needs.prepare.outputs.should_deploy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: staging
+    outputs:
       frontend_image: ${{ steps.images.outputs.frontend_image }}
     steps:
       - name: Checkout deploy SHA
@@ -188,33 +245,14 @@ jobs:
 
       - name: Resolve image names
         id: images
-        env:
-          DEPLOY_SHA: ${{ needs.prepare.outputs.deploy_sha }}
         shell: bash
         run: |
           set -euo pipefail
           owner_lc="${GITHUB_REPOSITORY_OWNER,,}"
-          backend_image="ghcr.io/${owner_lc}/${BACKEND_IMAGE_NAME}"
           frontend_image="ghcr.io/${owner_lc}/${FRONTEND_IMAGE_NAME}"
 
-          echo "BACKEND_IMAGE=${backend_image}" >> "${GITHUB_ENV}"
           echo "FRONTEND_IMAGE=${frontend_image}" >> "${GITHUB_ENV}"
-          echo "backend_image=${backend_image}" >> "${GITHUB_OUTPUT}"
           echo "frontend_image=${frontend_image}" >> "${GITHUB_OUTPUT}"
-
-      - name: Build and push backend image
-        env:
-          IMAGE_TAG: ${{ needs.prepare.outputs.image_tag }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          docker buildx build ./back \
-            --platform linux/arm64 \
-            --push \
-            --tag "${BACKEND_IMAGE}:${IMAGE_TAG}" \
-            --tag "${BACKEND_IMAGE}:main-latest" \
-            --cache-from type=gha,scope=aquila-bank-backend \
-            --cache-to type=gha,mode=max,scope=aquila-bank-backend
 
       - name: Build and push frontend image
         env:
@@ -231,13 +269,51 @@ jobs:
             --cache-from type=gha,scope=aquila-bank-frontend \
             --cache-to type=gha,mode=max,scope=aquila-bank-frontend
 
+  validate-latest-before-deploy:
+    name: Validate Latest Main Before Deploy
+    needs:
+      - prepare
+      - backend-image
+      - frontend-image
+    if: needs.prepare.outputs.should_deploy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      should_deploy: ${{ steps.validate.outputs.should_deploy }}
+    steps:
+      - name: Checkout deploy SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.deploy_sha }}
+          fetch-depth: 0
+
+      - name: Validate latest main before deploy
+        id: validate
+        env:
+          DEPLOY_SHA: ${{ needs.prepare.outputs.deploy_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "should_deploy=false" >> "${GITHUB_OUTPUT}"
+          git fetch --no-tags --depth=1 origin main
+
+          current_main_sha="$(git rev-parse origin/main)"
+          if [[ "${current_main_sha}" != "${DEPLOY_SHA}" ]]; then
+            echo "::notice::Skipping stale deploy SHA ${DEPLOY_SHA}; current origin/main is ${current_main_sha}."
+            exit 0
+          fi
+
+          echo "should_deploy=true" >> "${GITHUB_OUTPUT}"
+
   deploy-and-verify:
     name: Deploy And Verify On OCI A1
     needs:
       - prepare
       - create-deployment
-      - build-and-push
-    if: needs.prepare.outputs.should_deploy == 'true'
+      - backend-image
+      - frontend-image
+      - validate-latest-before-deploy
+    if: needs.validate-latest-before-deploy.outputs.should_deploy == 'true'
     runs-on: [self-hosted, oci-a1-staging]
     timeout-minutes: 35
     environment:
@@ -246,8 +322,8 @@ jobs:
       DEPLOY_SHA: ${{ needs.prepare.outputs.deploy_sha }}
       IMAGE_TAG: ${{ needs.prepare.outputs.image_tag }}
       DEPLOY_LOG_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-      BACKEND_IMAGE: ${{ needs.build-and-push.outputs.backend_image }}
-      FRONTEND_IMAGE: ${{ needs.build-and-push.outputs.frontend_image }}
+      BACKEND_IMAGE: ${{ needs.backend-image.outputs.backend_image }}
+      FRONTEND_IMAGE: ${{ needs.frontend-image.outputs.frontend_image }}
     steps:
       - name: Checkout deploy SHA
         uses: actions/checkout@v4
@@ -429,7 +505,9 @@ jobs:
     needs:
       - prepare
       - create-deployment
-      - build-and-push
+      - backend-image
+      - frontend-image
+      - validate-latest-before-deploy
       - deploy-and-verify
     if: >-
       always() &&
@@ -444,7 +522,10 @@ jobs:
       DEPLOY_LOG_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       DEPLOYMENT_ID: ${{ needs.create-deployment.outputs.deployment_id }}
       DEPLOY_RESULT: ${{ needs.deploy-and-verify.result }}
-      BUILD_RESULT: ${{ needs.build-and-push.result }}
+      BACKEND_IMAGE_RESULT: ${{ needs.backend-image.result }}
+      FRONTEND_IMAGE_RESULT: ${{ needs.frontend-image.result }}
+      LATEST_MAIN_RESULT: ${{ needs.validate-latest-before-deploy.result }}
+      LATEST_MAIN_SHOULD_DEPLOY: ${{ needs.validate-latest-before-deploy.outputs.should_deploy }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout deploy SHA
@@ -454,7 +535,7 @@ jobs:
           fetch-depth: 0
 
       - name: Load OCI A1 rollback env
-        if: needs.deploy-and-verify.result == 'failure'
+        if: needs.validate-latest-before-deploy.outputs.should_deploy == 'true' && needs.deploy-and-verify.result == 'failure'
         env:
           OCI_A1_STAGING_ENV: ${{ secrets.OCI_A1_STAGING_ENV }}
         shell: bash
@@ -482,14 +563,14 @@ jobs:
           done
 
       - name: Dispatch staging rollback guard
-        if: always() && needs.deploy-and-verify.result == 'failure'
+        if: always() && needs.validate-latest-before-deploy.outputs.should_deploy == 'true' && needs.deploy-and-verify.result == 'failure'
         shell: bash
         run: |
           set -euo pipefail
           tools/ops/staging-rollback-guard.sh
 
       - name: Mark staging deployment success
-        if: always() && needs.deploy-and-verify.result == 'success'
+        if: always() && needs.validate-latest-before-deploy.outputs.should_deploy == 'true' && needs.deploy-and-verify.result == 'success'
         shell: bash
         run: |
           set -euo pipefail
@@ -505,12 +586,42 @@ jobs:
           )"
           gh api --method POST "repos/${GITHUB_REPOSITORY}/deployments/${DEPLOYMENT_ID}/statuses" --input - <<< "${payload}"
 
-      - name: Mark staging deployment failure
-        if: always() && needs.deploy-and-verify.result != 'success'
+      - name: Mark stale staging deployment inactive
+        if: >-
+          always() &&
+          needs.backend-image.result == 'success' &&
+          needs.frontend-image.result == 'success' &&
+          needs.validate-latest-before-deploy.outputs.should_deploy == 'false'
         shell: bash
         run: |
           set -euo pipefail
-          echo "::error::Staging deployment failed. build=${BUILD_RESULT} deploy=${DEPLOY_RESULT}"
+          payload="$(
+            jq -n \
+              --arg log_url "${DEPLOY_LOG_URL}" \
+              '{
+                state: "inactive",
+                environment: "staging",
+                log_url: $log_url,
+                auto_inactive: false
+              }'
+          )"
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/deployments/${DEPLOYMENT_ID}/statuses" --input - <<< "${payload}"
+
+      - name: Mark staging deployment failure
+        if: >-
+          always() &&
+          (
+            needs.backend-image.result != 'success' ||
+            needs.frontend-image.result != 'success' ||
+            (
+              needs.validate-latest-before-deploy.outputs.should_deploy == 'true' &&
+              needs.deploy-and-verify.result != 'success'
+            )
+          )
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "::error::Staging deployment failed. backend_image=${BACKEND_IMAGE_RESULT} frontend_image=${FRONTEND_IMAGE_RESULT} latest_main=${LATEST_MAIN_RESULT}/${LATEST_MAIN_SHOULD_DEPLOY} deploy=${DEPLOY_RESULT}"
           payload="$(
             jq -n \
               --arg log_url "${DEPLOY_LOG_URL}" \

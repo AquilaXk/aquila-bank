@@ -7,8 +7,9 @@ on:
     paths:
       - "back/**"
       - "tools/ci/**"
-      - "tools/test/**"
-      - ".github/workflows/**"
+      - "tools/test/run-transaction-query-plan-regression-gate.sh"
+      - "tools/test/with-resource-lock.sh"
+      - ".github/workflows/backend-ci.yml"
 
 permissions:
   contents: read
@@ -45,11 +46,32 @@ jobs:
       - name: Grant Gradle wrapper execute permission
         run: chmod +x gradlew
 
-      - name: Run backend check
-        run: ./gradlew test jacocoFullTestReport check --no-daemon --stacktrace
+      - name: Detect backend CI scope
+        id: scope
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed_files="${RUNNER_TEMP}/backend-ci-changed-files.txt"
+          git diff --name-only "origin/${GITHUB_BASE_REF}...HEAD" > "${changed_files}"
+
+          query_plan_required=false
+          if grep -Eq '^(back/build\.gradle\.kts|back/src/main/resources/db/migration/|back/src/(main|test)/(java|resources)/com/aquilabank/(domain/transaction|global/persistence/transaction|global/web/transaction|global/config/Transaction|support/Postgres)|tools/test/(run-transaction-query-plan-regression-gate\.sh|with-resource-lock\.sh))' "${changed_files}"; then
+            query_plan_required=true
+          fi
+
+          echo "query_plan_required=${query_plan_required}" >> "${GITHUB_OUTPUT}"
+          printf 'Backend query plan gate required: %s\n' "${query_plan_required}" >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Run backend fast check
+        run: ./gradlew ciFastCheck --no-daemon --stacktrace
+
+      - name: Run transaction query plan regression gate
+        if: steps.scope.outputs.query_plan_required == 'true'
+        run: ./gradlew queryPlanTest --no-daemon --stacktrace
 
       - name: Comment Jacoco coverage summary
-        if: always() && github.event.pull_request.head.repo.full_name == github.repository && hashFiles('back/build/reports/jacoco/full/jacocoFullTestReport.xml') != ''
+        if: always() && github.event.pull_request.head.repo.full_name == github.repository && hashFiles('back/build/reports/jacoco/pr/jacocoPrReport.xml') != ''
         working-directory: ${{ github.workspace }}
         env:
           GH_TOKEN: ${{ github.token }}
@@ -62,7 +84,7 @@ jobs:
           git diff --name-only "origin/${GITHUB_BASE_REF}...HEAD" > "${changed_files}"
 
           python3 tools/ci/comment-jacoco-summary.py \
-            back/build/reports/jacoco/full/jacocoFullTestReport.xml \
+            back/build/reports/jacoco/pr/jacocoPrReport.xml \
             back/config/jacoco-coverage-baseline-excludes.txt \
             --changed-files "${changed_files}" \
             > "${summary_file}"
@@ -82,15 +104,11 @@ jobs:
           cat "${summary_file}" >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Upload Jacoco full report
-        if: always() && hashFiles('back/build/reports/jacoco/full/jacocoFullTestReport.xml') != ''
+        if: always() && hashFiles('back/build/reports/jacoco/pr/jacocoPrReport.xml') != ''
         uses: actions/upload-artifact@v4
         with:
-          name: jacoco-full-report
+          name: jacoco-pr-report
           path: |
-            back/build/reports/jacoco/full/jacocoFullTestReport.xml
-            back/build/reports/jacoco/full/html
+            back/build/reports/jacoco/pr/jacocoPrReport.xml
+            back/build/reports/jacoco/pr/html
           if-no-files-found: error
-
-      - name: Run transaction query plan regression gate
-        working-directory: ${{ github.workspace }}
-        run: tools/test/run-transaction-query-plan-regression-gate.sh
