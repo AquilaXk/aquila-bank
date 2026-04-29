@@ -234,6 +234,16 @@ jobs:
           set -euo pipefail
           ops/deploy/oci/check-self-hosted-runner.sh
 
+      - name: Prepare frontend Docker config
+        shell: bash
+        run: |
+          set -euo pipefail
+          # self-hosted runner home의 .docker 권한 드리프트와 분리된 job-local Docker config.
+          docker_config="${RUNNER_TEMP}/docker-config"
+          mkdir -p "${docker_config}"
+          chmod 700 "${docker_config}"
+          printf 'DOCKER_CONFIG=%s\n' "${docker_config}" >>"${GITHUB_ENV}"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
