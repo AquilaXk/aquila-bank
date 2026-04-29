@@ -23,6 +23,11 @@ HEALTH_INTERVAL_SECONDS="${HEALTH_INTERVAL_SECONDS:-3}"
 BLUE_DRAIN_SECONDS="${BLUE_DRAIN_SECONDS:-15}"
 SERVER_NAME="${NGINX_SERVER_NAME:-_}"
 BACKEND_PROXY_HOST="${NGINX_BACKEND_PROXY_HOST:-}"
+POSTGRES_CONTAINER_NAME="${POSTGRES_CONTAINER_NAME:-aquila-postgres}"
+POSTGRES_NETWORK_ALIAS="${POSTGRES_NETWORK_ALIAS:-aquila-postgres}"
+DB_PREFLIGHT_ENABLED="${DB_PREFLIGHT_ENABLED:-true}"
+DB_PREFLIGHT_IMAGE="${DB_PREFLIGHT_IMAGE:-postgres:18-alpine}"
+DB_PREFLIGHT_TIMEOUT_SECONDS="${DB_PREFLIGHT_TIMEOUT_SECONDS:-10}"
 BACKEND_IMAGE="${BACKEND_IMAGE:?BACKEND_IMAGE is required}"
 FRONTEND_IMAGE="${FRONTEND_IMAGE:?FRONTEND_IMAGE is required}"
 IMAGE_TAG="${IMAGE_TAG:?IMAGE_TAG is required}"
@@ -30,6 +35,14 @@ GITHUB_ACTOR="${GITHUB_ACTOR:?GITHUB_ACTOR is required}"
 GITHUB_TOKEN_B64="${GITHUB_TOKEN_B64:?GITHUB_TOKEN_B64 is required}"
 BACKEND_ENV_B64="${BACKEND_ENV_B64:?BACKEND_ENV_B64 is required}"
 FRONTEND_ENV_B64="${FRONTEND_ENV_B64:-}"
+DOCKER_CONFIG_DIR=""
+
+cleanup_temp() {
+  if [[ -n "${DOCKER_CONFIG_DIR}" && -d "${DOCKER_CONFIG_DIR}" ]]; then
+    rm -rf "${DOCKER_CONFIG_DIR}"
+  fi
+}
+trap cleanup_temp EXIT
 
 log() {
   printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
@@ -53,6 +66,12 @@ prepare_layout() {
   docker network create "${NETWORK}" >/dev/null 2>&1 || true
 }
 
+prepare_docker_config() {
+  DOCKER_CONFIG_DIR="$(mktemp -d)"
+  chmod 700 "${DOCKER_CONFIG_DIR}"
+  export DOCKER_CONFIG="${DOCKER_CONFIG_DIR}"
+}
+
 write_env_files() {
   printf '%s' "${BACKEND_ENV_B64}" | base64 -d >"${APP_DIR}/env/backend.env"
   chmod 600 "${APP_DIR}/env/backend.env"
@@ -66,9 +85,92 @@ write_env_files() {
 }
 
 docker_login() {
-  local token
+  local token login_log
   token="$(printf '%s' "${GITHUB_TOKEN_B64}" | base64 -d)"
-  printf '%s' "${token}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin >/dev/null
+  login_log="$(mktemp)"
+
+  # Docker credential helper 없는 OCI VM에서도 token은 임시 DOCKER_CONFIG에만 저장하고 종료 시 삭제한다.
+  if ! printf '%s' "${token}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin >/dev/null 2>"${login_log}"; then
+    cat "${login_log}" >&2
+    rm -f "${login_log}"
+    exit 1
+  fi
+
+  grep -Fv "WARNING! Your credentials are stored unencrypted" "${login_log}" \
+    | grep -Fv "Configure a credential helper" \
+    | grep -Fv "https://docs.docker.com/go/credential-store/" >&2 || true
+  rm -f "${login_log}"
+}
+
+env_value() {
+  local name="$1"
+  sed -n "s/^${name}=//p" "${APP_DIR}/env/backend.env" | tail -1
+}
+
+connect_postgres_container() {
+  if ! docker ps --format '{{.Names}}' | grep -qx "${POSTGRES_CONTAINER_NAME}"; then
+    return 0
+  fi
+
+  if docker inspect -f '{{json .NetworkSettings.Networks}}' "${POSTGRES_CONTAINER_NAME}" | grep -Fq "\"${NETWORK}\""; then
+    return 0
+  fi
+
+  log "connect postgres container ${POSTGRES_CONTAINER_NAME} to network ${NETWORK}"
+  docker network connect --alias "${POSTGRES_NETWORK_ALIAS}" "${NETWORK}" "${POSTGRES_CONTAINER_NAME}"
+}
+
+preflight_backend_database() {
+  if [[ "${DB_PREFLIGHT_ENABLED}" != "true" ]]; then
+    log "backend database preflight skipped"
+    return 0
+  fi
+
+  local jdbc_url db_host db_port db_name db_user db_password host_port
+  jdbc_url="$(env_value SPRING_DATASOURCE_URL)"
+  if [[ -z "${jdbc_url}" ]]; then
+    jdbc_url="$(env_value DB_URL)"
+  fi
+
+  db_host="$(env_value DB_HOST)"
+  db_port="$(env_value DB_PORT)"
+  db_name="$(env_value DB_NAME)"
+
+  if [[ -n "${jdbc_url}" && "${jdbc_url}" == jdbc:postgresql://* ]]; then
+    host_port="${jdbc_url#jdbc:postgresql://}"
+    host_port="${host_port%%/*}"
+    db_name="${jdbc_url#jdbc:postgresql://}"
+    db_name="${db_name#*/}"
+    db_name="${db_name%%\?*}"
+    db_host="${host_port%%:*}"
+    if [[ "${host_port}" == *:* ]]; then
+      db_port="${host_port##*:}"
+    fi
+  fi
+
+  db_port="${db_port:-5432}"
+  db_user="$(env_value SPRING_DATASOURCE_USERNAME)"
+  db_user="${db_user:-$(env_value DB_USERNAME)}"
+  db_password="$(env_value SPRING_DATASOURCE_PASSWORD)"
+  db_password="${db_password:-$(env_value DB_PASSWORD)}"
+
+  if [[ -z "${db_host}" || -z "${db_name}" || -z "${db_user}" ]]; then
+    log "backend database preflight skipped: DB host/name/user not found in backend env"
+    return 0
+  fi
+
+  if [[ "${db_host}" == "host.docker.internal" && "$(docker ps --format '{{.Names}}' | grep -x "${POSTGRES_CONTAINER_NAME}" || true)" == "${POSTGRES_CONTAINER_NAME}" ]]; then
+    log "backend DB host=host.docker.internal detected while ${POSTGRES_CONTAINER_NAME} is a Docker container; use jdbc:postgresql://${POSTGRES_NETWORK_ALIAS}:5432/${db_name}"
+  fi
+
+  log "backend database preflight: ${db_user}@${db_host}:${db_port}/${db_name}"
+  if ! docker run --rm --network "${NETWORK}" \
+    -e PGPASSWORD="${db_password}" \
+    "${DB_PREFLIGHT_IMAGE}" \
+    pg_isready -h "${db_host}" -p "${db_port}" -U "${db_user}" -d "${db_name}" -t "${DB_PREFLIGHT_TIMEOUT_SECONDS}" >/dev/null; then
+    log "backend database preflight failed: ${db_user}@${db_host}:${db_port}/${db_name}"
+    exit 1
+  fi
 }
 
 active_slot() {
@@ -342,7 +444,10 @@ main() {
   install_runtime
   prepare_layout
   write_env_files
+  prepare_docker_config
   docker_login
+  connect_postgres_container
+  preflight_backend_database
 
   blue="$(active_slot)"
   case "${blue}" in

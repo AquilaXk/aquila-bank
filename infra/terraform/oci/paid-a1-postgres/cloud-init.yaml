@@ -65,9 +65,11 @@ write_files:
       set -euo pipefail
 
       source /etc/aquila-postgres.env
+      docker network create aquila-bank-prod >/dev/null 2>&1 || true
       exec docker run --rm \
         --name aquila-postgres \
         --pull missing \
+        --network aquila-bank-prod \
         -p 127.0.0.1:5432:5432 \
         -e POSTGRES_DB="$${AQUILA_POSTGRES_DB}" \
         -e POSTGRES_USER="$${AQUILA_POSTGRES_USER}" \

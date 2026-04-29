@@ -26,6 +26,7 @@ runner 선행 조건:
 - commands: `base64`, `curl`, `jq`, `psql`
 - privilege: passwordless sudo
 - database: `STAGING_OCI_A1_DATABASE_URL`로 PostgreSQL fixture DB 접근 가능
+- app database host: backend container는 Docker network의 `aquila-postgres:5432`로 PostgreSQL에 접근
 
 ## Runner Bootstrap
 
