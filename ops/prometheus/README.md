@@ -37,8 +37,8 @@ OCI A1 Flex 4 OCPU / 24GB + data 300GB self-managed PostgreSQL 18 runtime에서�
   - Grafana datasource variable 이름은 `datasource`입니다.
   - import 직후 Prometheus datasource를 한 번 선택하면 모든 panel이 그 값을 재사용합니다.
 - query 기준:
-  - transaction stat latency는 `sum(rate(..._sum)) / sum(rate(..._count))` 평균값을 유지합니다.
-  - transaction shape별 latency는 `aquila_transaction_query_latency_seconds_bucket`의 `histogram_quantile(0.95, ...)`를 사용합니다.
+  - transaction stat latency 평균값은 참고 panel로만 유지하고 alert SLO에는 사용하지 않습니다.
+  - transaction shape별 latency SLO는 `aquila_transaction_query_latency_seconds_bucket`의 `histogram_quantile(0.95, ...)`, `histogram_quantile(0.99, ...)`를 사용합니다.
   - admission control panel은 `aquila_api_admission_requests_total`, `aquila_api_admission_inflight`를 `group` 기준으로 나눠 봅니다.
   - saturation guard panel은 reject rate, saturated gauge, query timeout rate를 같은 시간축에 두고 fail-fast와 DB 전조를 같이 봅니다.
   - DB saturation panel은 Hikari pool metric과 Postgres exporter metric을 한 panel에 모아 p95 악화 전 전조를 먼저 봅니다.
@@ -90,7 +90,9 @@ OCI A1 Flex 4 OCPU / 24GB + data 300GB self-managed PostgreSQL 18 runtime에서�
   - `pg_stat_statements` average query seconds `> 750ms` for `10m`
 - transaction baseline:
   - success query p95 SLO: reference_exact `80ms`, first_page `120ms`, cursor/status/direction `150ms`, amount/mixed `180ms`
-  - success query 평균 latency `> 750ms`
+  - success query p99 SLO: reference_exact `160ms`, first_page `240ms`, cursor/status/direction `300ms`, amount/mixed `360ms`
+  - transaction read 429 budget: `> 10%` for `2m`
+  - transaction read 503 hard fail: `> 0` for `1m`
 
 ## Postgres Exporter Metrics
 
@@ -204,8 +206,8 @@ tools/test/run-alertmanager-receiver-secret-workflow-gate.sh
 - `AquilaPostgresSlowQueryDetected`는 `pg_stat_statements`의 database-level 평균을 사용합니다. query별 drill-down은 별도 dashboard 또는 psql에서 `queryid` 기준으로 수행합니다.
 - `AquilaPostgresLockWaitDetected`는 custom exporter metric이 없으면 평가 series가 없으므로, 환경별 exporter 설정 적용 후 Prometheus rule을 활성화합니다.
 - `AquilaNotificationSseSessionPressureHigh`의 `56`은 기본 `NOTIFICATION_SSE_MAX_TOTAL_SESSIONS=64`의 `87.5%` baseline입니다.
-- transaction p95 SLO는 baseline fixture 기준 회귀 감지선입니다. 실제 production에서는 `query_shape`, account volume, DB latency 분포를 보고 threshold와 `for` 시간을 같이 조정합니다.
-- transaction 평균 latency `750ms` alert는 p95 SLO보다 느슨한 coarse guard로 남겨 둡니다.
+- transaction p95/p99 SLO는 baseline fixture 기준 회귀 감지선입니다. 실제 production에서는 `query_shape`, account volume, DB latency 분포를 보고 threshold와 `for` 시간을 같이 조정합니다.
+- transaction read 429 alert는 burst admission budget 초과 신호이고, 503 alert는 보호 실패 hard fail 신호입니다. 평균 latency alert는 tail latency를 가리므로 SLO 기준에서 제외합니다.
 - notification lag/DLQ alert는 `NOTIFICATION_INBOX_CONSUMER_OPS_ENABLED=true`가 아니면 metric 자체가 export되지 않을 수 있습니다.
 - multi-instance SSE 합계는 Grafana/Prometheus 쿼리에서 인스턴스 합산으로 해석하고, 단일 instance alert는 node별 pressure 확인 용도로만 씁니다.
 - `AquilaCurrentSessionActiveGateRejectDetected`는 `reason_code`만 집계합니다. `requestId`, `userId`, `sessionId`, `path`는 cardinality 때문에 alert label로 올리지 않고 app structured log에서 drill-down합니다.
