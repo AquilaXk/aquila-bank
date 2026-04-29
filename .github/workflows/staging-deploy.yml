@@ -187,8 +187,8 @@ jobs:
     needs:
       - prepare
     if: needs.prepare.outputs.should_deploy == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    runs-on: [self-hosted, oci-a1-staging]
+    timeout-minutes: 25
     environment:
       name: staging
     outputs:
@@ -228,10 +228,11 @@ jobs:
           echo "::add-mask::${STAGING_PUBLIC_API_BASE_URL}"
           printf 'STAGING_PUBLIC_API_BASE_URL=%s\n' "${STAGING_PUBLIC_API_BASE_URL}" >>"${GITHUB_ENV}"
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
+      - name: Check OCI self-hosted runner prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          ops/deploy/oci/check-self-hosted-runner.sh
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
