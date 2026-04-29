@@ -66,6 +66,7 @@ upload_replay_report_step = steps.fetch(upload_replay_report_index)
 
 required_keys = %w[
   STAGING_BASE_URL
+  STAGING_SMOKE_BASE_URL
   STAGING_REPLAY_TOKEN
   STAGING_OCI_A1_DATABASE_URL
   STAGING_RDS_DATABASE_URL
@@ -108,6 +109,7 @@ abort('DB URL resolver must mask resolved URL') unless resolver_run.include?('::
 abort('DB URL resolver must rewrite staging DB URL in GITHUB_ENV') unless resolver_run.include?('STAGING_OCI_A1_DATABASE_URL=%s')
 abort('OCI A1 database URL must come from unified staging env') unless load_run.include?('STAGING_OCI_A1_DATABASE_URL')
 abort('Postgres host bind must default to host-local port') unless load_run.include?('POSTGRES_HOST_BIND="${POSTGRES_HOST_BIND:-127.0.0.1:5432}"')
+abort('smoke base URL must default to loopback for self-hosted runner') unless load_run.include?('STAGING_SMOKE_BASE_URL="${STAGING_SMOKE_BASE_URL:-${STAGING_LOCAL_BASE_URL:-http://127.0.0.1}}"')
 abort('hot account must map from staging replay key') unless load_run.include?('HOT_ACCOUNT_ID="${STAGING_REPLAY_HOT_ACCOUNT_ID')
 abort('cold account must map from staging replay key') unless load_run.include?('COLD_ACCOUNT_ID="${STAGING_REPLAY_COLD_ACCOUNT_ID')
 RUBY

@@ -2,6 +2,7 @@
 set -euo pipefail
 
 STAGING_BASE_URL="${STAGING_BASE_URL:-}"
+STAGING_SMOKE_BASE_URL="${STAGING_SMOKE_BASE_URL:-${STAGING_BASE_URL}}"
 STAGING_SMOKE_HEALTH_PATH="${STAGING_SMOKE_HEALTH_PATH:-/actuator/health}"
 STAGING_SMOKE_READ_PATH="${STAGING_SMOKE_READ_PATH:-}"
 STAGING_SMOKE_WRITE_PATH="${STAGING_SMOKE_WRITE_PATH:-}"
@@ -77,16 +78,16 @@ request() {
   curl "${curl_args[@]}" "$url" >/dev/null
 }
 
-require_env STAGING_BASE_URL
+require_env STAGING_SMOKE_BASE_URL
 require_env STAGING_SMOKE_READ_PATH
 require_env STAGING_SMOKE_WRITE_PATH
 
-request "health" "GET" "$(join_url "$STAGING_BASE_URL" "$STAGING_SMOKE_HEALTH_PATH")"
-request "read" "GET" "$(join_url "$STAGING_BASE_URL" "$STAGING_SMOKE_READ_PATH")"
+request "health" "GET" "$(join_url "$STAGING_SMOKE_BASE_URL" "$STAGING_SMOKE_HEALTH_PATH")"
+request "read" "GET" "$(join_url "$STAGING_SMOKE_BASE_URL" "$STAGING_SMOKE_READ_PATH")"
 request \
   "write" \
   "$STAGING_SMOKE_WRITE_METHOD" \
-  "$(join_url "$STAGING_BASE_URL" "$STAGING_SMOKE_WRITE_PATH")" \
+  "$(join_url "$STAGING_SMOKE_BASE_URL" "$STAGING_SMOKE_WRITE_PATH")" \
   "$STAGING_SMOKE_WRITE_BODY"
 
 echo "[staging-smoke] passed"
