@@ -14,7 +14,7 @@ require_file() {
 require_pattern() {
   local pattern="$1"
   local path="$2"
-  if ! grep -F "${pattern}" "${path}" >/dev/null; then
+  if ! grep -F -- "${pattern}" "${path}" >/dev/null; then
     echo "required pattern missing in ${path}: ${pattern}" >&2
     exit 1
   fi
@@ -23,7 +23,7 @@ require_pattern() {
 reject_pattern() {
   local pattern="$1"
   local path="$2"
-  if grep -F "${pattern}" "${path}" >/dev/null; then
+  if grep -F -- "${pattern}" "${path}" >/dev/null; then
     echo "forbidden pattern found in ${path}: ${pattern}" >&2
     exit 1
   fi
@@ -71,6 +71,8 @@ echo "[oci-paid-a1-postgres] bootstrap contract"
 require_pattern 'postgres:18' "${module_dir}/cloud-init.yaml"
 require_pattern '/var/lib/aquila-postgres' "${module_dir}/cloud-init.yaml"
 require_pattern '127.0.0.1:5432:5432' "${module_dir}/cloud-init.yaml"
+require_pattern 'docker network create aquila-bank-prod' "${module_dir}/cloud-init.yaml"
+require_pattern '--network aquila-bank-prod' "${module_dir}/cloud-init.yaml"
 require_pattern 'AQUILA_POSTGRES_PASSWORD' "${module_dir}/cloud-init.yaml"
 require_pattern 'mkfs.ext4' "${module_dir}/cloud-init.yaml"
 require_pattern '/etc/fstab' "${module_dir}/cloud-init.yaml"
@@ -91,6 +93,8 @@ require_pattern 'VM.Standard.A1.Flex' "${module_dir}/README.md"
 require_pattern '4 OCPU / 24GB' "${module_dir}/README.md"
 require_pattern '300GB' "${module_dir}/README.md"
 require_pattern 'PostgreSQL 18' "${module_dir}/README.md"
+require_pattern 'aquila-bank-prod' "${module_dir}/README.md"
+require_pattern 'aquila-postgres:5432' "${module_dir}/README.md"
 require_pattern '5432' "${module_dir}/README.md"
 require_pattern 'public ingress' "${module_dir}/README.md"
 require_pattern 'terraform init' "${module_dir}/README.md"

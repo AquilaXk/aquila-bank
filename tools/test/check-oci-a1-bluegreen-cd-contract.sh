@@ -93,7 +93,7 @@ workflow_patterns=(
   "docker/setup-qemu-action@v3"
   "platforms: arm64"
   "docker buildx build"
-  "--platform linux/amd64,linux/arm64"
+  "--platform linux/arm64"
   "registry: ghcr.io"
   "OCI_A1_BACKEND_ENV_B64"
   "Check OCI self-hosted runner prerequisites"
@@ -139,6 +139,12 @@ echo "[oci-a1-bluegreen-cd] deploy script contract"
 script_patterns=(
   "apt-get update"
   "docker.io"
+  "DOCKER_CONFIG"
+  "mktemp -d"
+  "connect_postgres_container"
+  "preflight_backend_database"
+  "POSTGRES_CONTAINER_NAME"
+  "aquila-postgres"
   "aquila-bank-backend-a"
   "aquila-bank-backend-b"
   "aquila-bank-front-a"
@@ -155,6 +161,7 @@ script_patterns=(
 for pattern in "${script_patterns[@]}"; do
   require_pattern "$pattern" "$deploy_script"
 done
+reject_pattern "--platform linux/amd64,linux/arm64" "$workflow"
 
 echo "[oci-a1-bluegreen-cd] fixture principal contract"
 fixture_principal_patterns=(
@@ -180,6 +187,7 @@ doc_patterns=(
   "OCI_A1_STAGING_ENV"
   "OCI self-hosted runner"
   "oci-a1-staging"
+  "linux/arm64"
   "OCI_A1_BACKEND_ENV_B64"
   "STAGING_OCI_A1_DATABASE_URL"
   "STAGING_REPLAY_USER_ID"
