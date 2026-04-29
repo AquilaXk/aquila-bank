@@ -26,6 +26,11 @@ BACKEND_PROXY_HOST="${NGINX_BACKEND_PROXY_HOST:-}"
 POSTGRES_CONTAINER_NAME="${POSTGRES_CONTAINER_NAME:-aquila-postgres}"
 POSTGRES_NETWORK_ALIAS="${POSTGRES_NETWORK_ALIAS:-aquila-postgres}"
 POSTGRES_LOG_TAIL_LINES="${POSTGRES_LOG_TAIL_LINES:-120}"
+POSTGRES_BOOTSTRAP_ENABLED="${POSTGRES_BOOTSTRAP_ENABLED:-true}"
+POSTGRES_IMAGE="${POSTGRES_IMAGE:-postgres:18}"
+POSTGRES_DATA_VOLUME="${POSTGRES_DATA_VOLUME:-aquila-postgres-data}"
+POSTGRES_HOST_BIND="${POSTGRES_HOST_BIND:-127.0.0.1:5432}"
+POSTGRES_STARTUP_TIMEOUT_SECONDS="${POSTGRES_STARTUP_TIMEOUT_SECONDS:-120}"
 DB_PREFLIGHT_ENABLED="${DB_PREFLIGHT_ENABLED:-true}"
 DB_PREFLIGHT_IMAGE="${DB_PREFLIGHT_IMAGE:-postgres:18-alpine}"
 DB_PREFLIGHT_TIMEOUT_SECONDS="${DB_PREFLIGHT_TIMEOUT_SECONDS:-10}"
@@ -117,6 +122,10 @@ postgres_container_running() {
   docker ps --format '{{.Names}}' | grep -qx "${POSTGRES_CONTAINER_NAME}"
 }
 
+postgres_container_exists() {
+  docker ps -a --format '{{.Names}}' | grep -qx "${POSTGRES_CONTAINER_NAME}"
+}
+
 diagnose_postgres_preflight() {
   log "postgres preflight diagnostics: expected_container=${POSTGRES_CONTAINER_NAME} expected_network=${NETWORK}"
   docker ps -a \
@@ -128,6 +137,129 @@ diagnose_postgres_preflight() {
     docker inspect -f 'postgres networks={{range $name, $_ := .NetworkSettings.Networks}}{{$name}} {{end}}' "${POSTGRES_CONTAINER_NAME}" || true
     docker logs --tail="${POSTGRES_LOG_TAIL_LINES}" "${POSTGRES_CONTAINER_NAME}" || true
   fi
+}
+
+write_postgres_env_file() {
+  local db_name="$1"
+  local db_user="$2"
+  local db_password="$3"
+  local postgres_env="${APP_DIR}/env/postgres.env"
+
+  if [[ -z "${db_password}" ]]; then
+    log "postgres bootstrap requires DB password in backend env"
+    diagnose_postgres_preflight
+    exit 1
+  fi
+
+  umask 077
+  {
+    printf 'POSTGRES_DB=%s\n' "${db_name}"
+    printf 'POSTGRES_USER=%s\n' "${db_user}"
+    printf 'POSTGRES_PASSWORD=%s\n' "${db_password}"
+    printf 'TZ=Asia/Seoul\n'
+  } >"${postgres_env}"
+  chmod 600 "${postgres_env}"
+}
+
+write_postgres_systemd_env_file() {
+  local db_name="$1"
+  local db_user="$2"
+  local db_password="$3"
+
+  if [[ -z "${db_password}" ]]; then
+    log "postgres systemd bootstrap requires DB password in backend env"
+    diagnose_postgres_preflight
+    exit 1
+  fi
+
+  umask 077
+  {
+    printf 'AQUILA_POSTGRES_DB=%s\n' "${db_name}"
+    printf 'AQUILA_POSTGRES_USER=%s\n' "${db_user}"
+    printf 'AQUILA_POSTGRES_PASSWORD=%s\n' "${db_password}"
+  } >/etc/aquila-postgres.env
+  chmod 600 /etc/aquila-postgres.env
+}
+
+start_postgres_systemd_service() {
+  local db_name="$1"
+  local db_user="$2"
+  local db_password="$3"
+
+  if ! systemctl cat aquila-postgres.service >/dev/null 2>&1; then
+    return 1
+  fi
+
+  log "bootstrap postgres container via systemd service aquila-postgres.service"
+  write_postgres_systemd_env_file "${db_name}" "${db_user}" "${db_password}"
+  if ! systemctl enable --now aquila-postgres.service; then
+    log "postgres systemd service failed to start"
+    systemctl status aquila-postgres.service --no-pager || true
+    diagnose_postgres_preflight
+    exit 1
+  fi
+  return 0
+}
+
+start_postgres_docker_container() {
+  local db_name="$1"
+  local db_user="$2"
+  local db_password="$3"
+
+  log "bootstrap postgres container with docker volume=${POSTGRES_DATA_VOLUME}"
+  write_postgres_env_file "${db_name}" "${db_user}" "${db_password}"
+  docker volume create "${POSTGRES_DATA_VOLUME}" >/dev/null
+  if ! docker run -d \
+    --name "${POSTGRES_CONTAINER_NAME}" \
+    --restart unless-stopped \
+    --pull missing \
+    --network "${NETWORK}" \
+    --network-alias "${POSTGRES_NETWORK_ALIAS}" \
+    -p "${POSTGRES_HOST_BIND}:5432" \
+    --env-file "${APP_DIR}/env/postgres.env" \
+    -v "${POSTGRES_DATA_VOLUME}:/var/lib/postgresql" \
+    "${POSTGRES_IMAGE}" >/dev/null; then
+    log "postgres docker bootstrap failed"
+    diagnose_postgres_preflight
+    exit 1
+  fi
+}
+
+ensure_postgres_container_for_host() {
+  local db_host="$1"
+  local db_name="$2"
+  local db_user="$3"
+  local db_password="$4"
+
+  if ! postgres_host_requires_container "${db_host}"; then
+    return 0
+  fi
+
+  if postgres_container_running; then
+    connect_postgres_container
+    return 0
+  fi
+
+  if postgres_container_exists; then
+    log "start existing postgres container ${POSTGRES_CONTAINER_NAME}"
+    if ! docker start "${POSTGRES_CONTAINER_NAME}" >/dev/null; then
+      log "existing postgres container failed to start"
+      diagnose_postgres_preflight
+      exit 1
+    fi
+    connect_postgres_container
+    return 0
+  fi
+
+  if [[ "${POSTGRES_BOOTSTRAP_ENABLED}" != "true" ]]; then
+    require_postgres_container_for_host "${db_host}"
+    return 0
+  fi
+
+  if ! start_postgres_systemd_service "${db_name}" "${db_user}" "${db_password}"; then
+    start_postgres_docker_container "${db_name}" "${db_user}" "${db_password}"
+  fi
+  connect_postgres_container
 }
 
 require_postgres_container_for_host() {
@@ -158,6 +290,38 @@ connect_postgres_container() {
     diagnose_postgres_preflight
     exit 1
   fi
+}
+
+check_backend_database_ready() {
+  local db_host="$1"
+  local db_port="$2"
+  local db_name="$3"
+  local db_user="$4"
+  local db_password="$5"
+
+  docker run --rm --network "${NETWORK}" \
+    -e PGPASSWORD="${db_password}" \
+    "${DB_PREFLIGHT_IMAGE}" \
+    pg_isready -h "${db_host}" -p "${db_port}" -U "${db_user}" -d "${db_name}" -t "${DB_PREFLIGHT_TIMEOUT_SECONDS}" >/dev/null
+}
+
+wait_backend_database_ready() {
+  local db_host="$1"
+  local db_port="$2"
+  local db_name="$3"
+  local db_user="$4"
+  local db_password="$5"
+  local elapsed=0
+
+  while (( elapsed < POSTGRES_STARTUP_TIMEOUT_SECONDS )); do
+    if check_backend_database_ready "${db_host}" "${db_port}" "${db_name}" "${db_user}" "${db_password}"; then
+      return 0
+    fi
+    sleep 2
+    elapsed=$((elapsed + 2))
+  done
+
+  return 1
 }
 
 preflight_backend_database() {
@@ -199,18 +363,14 @@ preflight_backend_database() {
     return 0
   fi
 
-  require_postgres_container_for_host "${db_host}"
-  connect_postgres_container
+  ensure_postgres_container_for_host "${db_host}" "${db_name}" "${db_user}" "${db_password}"
 
   if [[ "${db_host}" == "host.docker.internal" && "$(docker ps --format '{{.Names}}' | grep -x "${POSTGRES_CONTAINER_NAME}" || true)" == "${POSTGRES_CONTAINER_NAME}" ]]; then
     log "backend DB host=host.docker.internal detected while ${POSTGRES_CONTAINER_NAME} is a Docker container; use jdbc:postgresql://${POSTGRES_NETWORK_ALIAS}:5432/${db_name}"
   fi
 
   log "backend database preflight: ${db_user}@${db_host}:${db_port}/${db_name}"
-  if ! docker run --rm --network "${NETWORK}" \
-    -e PGPASSWORD="${db_password}" \
-    "${DB_PREFLIGHT_IMAGE}" \
-    pg_isready -h "${db_host}" -p "${db_port}" -U "${db_user}" -d "${db_name}" -t "${DB_PREFLIGHT_TIMEOUT_SECONDS}" >/dev/null; then
+  if ! wait_backend_database_ready "${db_host}" "${db_port}" "${db_name}" "${db_user}" "${db_password}"; then
     log "backend database preflight failed: ${db_user}@${db_host}:${db_port}/${db_name}"
     diagnose_postgres_preflight
     exit 1
