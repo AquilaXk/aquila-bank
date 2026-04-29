@@ -33,17 +33,18 @@
 - deploy target runtime: `oci-a1`
 - database baseline: `oci-a1-postgres-100m`
 - image registry: GHCR `aquila-bank-backend`, `aquila-bank-frontend`
+- deploy runner: OCI VM에 등록한 GitHub Actions OCI self-hosted runner `self-hosted`, `oci-a1-staging`
 - required environment secret:
   - `OCI_A1_STAGING_ENV`
 - deploy flow:
   - `OCI_A1_STAGING_ENV`를 shell env 파일로 로드한다.
   - `Main CI`가 성공한 main SHA를 checkout한다.
   - backend/frontend image를 `${DEPLOY_SHA:0:12}`와 `main-latest` tag로 GHCR에 push한다.
-  - workflow가 OCI A1 VM에 SSH로 접속해 `ops/deploy/oci/bluegreen-deploy.sh`를 실행한다.
+  - OCI self-hosted runner가 VM 안에서 `ops/deploy/oci/bluegreen-deploy.sh`를 직접 실행한다.
   - deploy script는 green backend/frontend container health가 모두 200일 때만 Nginx config를 교체하고 reload한다.
   - Nginx config 검증 또는 reload가 실패하면 이전 config와 blue slot을 유지한다.
 - required OCI deploy secret이 없으면 workflow는 fail-fast하며 staging GitHub deployment status를 성공으로 만들지 않습니다.
-- workflow는 OCI A1 SSH deploy와 post-deploy smoke를 통과한 경우에만 staging GitHub deployment status를 `success`로 갱신합니다.
+- workflow는 OCI A1 local deploy와 post-deploy smoke를 통과한 경우에만 staging GitHub deployment status를 `success`로 갱신합니다.
 - transaction replay gate는 post-deploy smoke 뒤에 실행되며, `pg_class.reltuples` 검증 전에 planner stats freshness guard로 stale stats를 차단합니다.
 - fixture principal bootstrap은 smoke/replay 전에 `STAGING_REPLAY_USER_ID`와 hot/cold 계좌 membership을 idempotent하게 보장해 fixture JWT 403을 차단합니다.
 - replay gate가 실패하면 staging deployment status는 `success`로 올라가지 않으므로 production promotion guard가 같은 SHA를 자동으로 거부합니다.
@@ -57,11 +58,6 @@
 `OCI_A1_STAGING_ENV` 하나에 staging CD, smoke, replay, alertmanager 값을 모두 넣습니다. 저장소에 커밋하지 않습니다. 값에 공백, `#`, `&`가 있으면 shell env 문법에 맞게 quote합니다. multi-line 값은 base64로 넣습니다.
 
 ```env
-OCI_A1_SSH_HOST=146.56.149.120
-OCI_A1_SSH_USER=ubuntu
-OCI_A1_SSH_PORT=22
-OCI_A1_SSH_PRIVATE_KEY_B64=REPLACE_BASE64_PRIVATE_KEY
-OCI_A1_SSH_KNOWN_HOSTS_B64=REPLACE_BASE64_SSH_KEYSCAN_OUTPUT
 OCI_A1_BACKEND_ENV_B64=REPLACE_BASE64_BACKEND_ENV
 OCI_A1_FRONTEND_ENV_B64=
 
@@ -122,10 +118,10 @@ NOTIFICATION_SSE_MAX_TOTAL_SESSIONS=64
 예시 생성:
 
 ```bash
-base64 -w0 ~/.ssh/oci_a1_deploy
-ssh-keyscan -p 22 -H 146.56.149.120 | base64 -w0
 base64 -w0 .env.backend-staging
 ```
+
+GitHub Actions runner 등록값은 `OCI_A1_STAGING_ENV`에 넣지 않습니다. OCI VM에서 runner를 등록할 때 label에 `self-hosted`, `oci-a1-staging`을 붙이고, runner 사용자에는 `bluegreen-deploy.sh` 실행을 위한 passwordless sudo를 부여합니다.
 
 ## Feature Flag
 
