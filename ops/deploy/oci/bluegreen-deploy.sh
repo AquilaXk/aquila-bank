@@ -25,6 +25,7 @@ SERVER_NAME="${NGINX_SERVER_NAME:-_}"
 BACKEND_PROXY_HOST="${NGINX_BACKEND_PROXY_HOST:-}"
 POSTGRES_CONTAINER_NAME="${POSTGRES_CONTAINER_NAME:-aquila-postgres}"
 POSTGRES_NETWORK_ALIAS="${POSTGRES_NETWORK_ALIAS:-aquila-postgres}"
+POSTGRES_LOG_TAIL_LINES="${POSTGRES_LOG_TAIL_LINES:-120}"
 DB_PREFLIGHT_ENABLED="${DB_PREFLIGHT_ENABLED:-true}"
 DB_PREFLIGHT_IMAGE="${DB_PREFLIGHT_IMAGE:-postgres:18-alpine}"
 DB_PREFLIGHT_TIMEOUT_SECONDS="${DB_PREFLIGHT_TIMEOUT_SECONDS:-10}"
@@ -107,8 +108,43 @@ env_value() {
   sed -n "s/^${name}=//p" "${APP_DIR}/env/backend.env" | tail -1
 }
 
+postgres_host_requires_container() {
+  local db_host="$1"
+  [[ "${db_host}" == "${POSTGRES_CONTAINER_NAME}" || "${db_host}" == "${POSTGRES_NETWORK_ALIAS}" ]]
+}
+
+postgres_container_running() {
+  docker ps --format '{{.Names}}' | grep -qx "${POSTGRES_CONTAINER_NAME}"
+}
+
+diagnose_postgres_preflight() {
+  log "postgres preflight diagnostics: expected_container=${POSTGRES_CONTAINER_NAME} expected_network=${NETWORK}"
+  docker ps -a \
+    --filter "name=^/${POSTGRES_CONTAINER_NAME}$" \
+    --format 'table {{.Names}}\t{{.Status}}\t{{.Networks}}' || true
+  docker network inspect -f 'network containers={{range $id, $container := .Containers}}{{$container.Name}} {{end}}' "${NETWORK}" || true
+
+  if docker inspect "${POSTGRES_CONTAINER_NAME}" >/dev/null 2>&1; then
+    docker inspect -f 'postgres networks={{range $name, $_ := .NetworkSettings.Networks}}{{$name}} {{end}}' "${POSTGRES_CONTAINER_NAME}" || true
+    docker logs --tail="${POSTGRES_LOG_TAIL_LINES}" "${POSTGRES_CONTAINER_NAME}" || true
+  fi
+}
+
+require_postgres_container_for_host() {
+  local db_host="$1"
+  if ! postgres_host_requires_container "${db_host}"; then
+    return 0
+  fi
+
+  if ! postgres_container_running; then
+    log "backend DB host requires PostgreSQL container: host=${db_host} container=${POSTGRES_CONTAINER_NAME}"
+    diagnose_postgres_preflight
+    exit 1
+  fi
+}
+
 connect_postgres_container() {
-  if ! docker ps --format '{{.Names}}' | grep -qx "${POSTGRES_CONTAINER_NAME}"; then
+  if ! postgres_container_running; then
     return 0
   fi
 
@@ -117,7 +153,11 @@ connect_postgres_container() {
   fi
 
   log "connect postgres container ${POSTGRES_CONTAINER_NAME} to network ${NETWORK}"
-  docker network connect --alias "${POSTGRES_NETWORK_ALIAS}" "${NETWORK}" "${POSTGRES_CONTAINER_NAME}"
+  if ! docker network connect --alias "${POSTGRES_NETWORK_ALIAS}" "${NETWORK}" "${POSTGRES_CONTAINER_NAME}"; then
+    log "connect postgres container failed: container=${POSTGRES_CONTAINER_NAME} network=${NETWORK}"
+    diagnose_postgres_preflight
+    exit 1
+  fi
 }
 
 preflight_backend_database() {
@@ -159,6 +199,9 @@ preflight_backend_database() {
     return 0
   fi
 
+  require_postgres_container_for_host "${db_host}"
+  connect_postgres_container
+
   if [[ "${db_host}" == "host.docker.internal" && "$(docker ps --format '{{.Names}}' | grep -x "${POSTGRES_CONTAINER_NAME}" || true)" == "${POSTGRES_CONTAINER_NAME}" ]]; then
     log "backend DB host=host.docker.internal detected while ${POSTGRES_CONTAINER_NAME} is a Docker container; use jdbc:postgresql://${POSTGRES_NETWORK_ALIAS}:5432/${db_name}"
   fi
@@ -169,6 +212,7 @@ preflight_backend_database() {
     "${DB_PREFLIGHT_IMAGE}" \
     pg_isready -h "${db_host}" -p "${db_port}" -U "${db_user}" -d "${db_name}" -t "${DB_PREFLIGHT_TIMEOUT_SECONDS}" >/dev/null; then
     log "backend database preflight failed: ${db_user}@${db_host}:${db_port}/${db_name}"
+    diagnose_postgres_preflight
     exit 1
   fi
 }
