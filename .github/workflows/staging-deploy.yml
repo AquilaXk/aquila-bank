@@ -515,6 +515,24 @@ jobs:
           set -euo pipefail
           tools/ops/transaction-read-model-staging-replay.sh
 
+      - name: Append transaction replay summary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          summary_path="build/reports/transaction-staging-replay/summary.md"
+          if [[ -f "${summary_path}" ]]; then
+            cat "${summary_path}" >>"${GITHUB_STEP_SUMMARY}"
+          fi
+
+      - name: Upload transaction replay report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: transaction-read-model-staging-replay
+          path: build/reports/transaction-staging-replay/
+          if-no-files-found: ignore
+
   finalize-deployment:
     name: Finalize Staging Deployment
     needs:
