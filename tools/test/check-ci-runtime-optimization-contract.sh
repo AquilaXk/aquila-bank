@@ -6,6 +6,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 backend_ci="${ROOT_DIR}/.github/workflows/backend-ci.yml"
 frontend_ci="${ROOT_DIR}/.github/workflows/frontend-ci.yml"
 main_ci="${ROOT_DIR}/.github/workflows/main-ci.yml"
+staging_deploy="${ROOT_DIR}/.github/workflows/staging-deploy.yml"
 workflow_contract_ci="${ROOT_DIR}/.github/workflows/workflow-contract-ci.yml"
 query_plan_gate="${ROOT_DIR}/tools/test/run-transaction-query-plan-regression-gate.sh"
 
@@ -40,6 +41,7 @@ require_not_contains() {
 require_file "${backend_ci}"
 require_file "${frontend_ci}"
 require_file "${main_ci}"
+require_file "${staging_deploy}"
 require_file "${workflow_contract_ci}"
 require_file "${query_plan_gate}"
 
@@ -60,6 +62,15 @@ if (( failures == 0 )); then
   require_not_contains "${main_ci}" "tools/test/run-transaction-query-plan-regression-gate.sh"
 
   require_contains "${query_plan_gate}" "./back/gradlew -p back queryPlanTest"
+
+  require_contains "${staging_deploy}" "cancel-in-progress: true"
+  require_contains "${staging_deploy}" "backend-image:"
+  require_contains "${staging_deploy}" "frontend-image:"
+  require_contains "${staging_deploy}" "validate-latest-before-deploy:"
+  require_contains "${staging_deploy}" "Validate latest main before deploy"
+  require_contains "${staging_deploy}" 'BACKEND_IMAGE: ${{ needs.backend-image.outputs.backend_image }}'
+  require_contains "${staging_deploy}" 'FRONTEND_IMAGE: ${{ needs.frontend-image.outputs.frontend_image }}'
+  require_contains "${staging_deploy}" "Mark stale staging deployment inactive"
 fi
 
 if (( failures > 0 )); then
