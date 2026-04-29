@@ -83,17 +83,24 @@ workflow_patterns=(
   "- Main CI"
   "DEPLOY_TARGET_RUNTIME: oci-a1"
   "OCI_A1_STAGING_ENV"
+  "Create Staging Deployment"
+  "Build And Push Images"
+  "Deploy And Verify On OCI A1"
+  "Finalize Staging Deployment"
+  "runs-on: [self-hosted, oci-a1-staging]"
   "Load OCI A1 staging env"
   'source "${staging_env_path}"'
   "docker buildx build"
   "registry: ghcr.io"
-  "OCI_A1_SSH_PRIVATE_KEY_B64"
   "OCI_A1_BACKEND_ENV_B64"
+  "Check OCI self-hosted runner prerequisites"
+  "sudo -n true"
+  "Run OCI A1 blue-green deploy locally"
   "ops/deploy/oci/bluegreen-deploy.sh"
   "Ensure staging fixture principal"
   "tools/ops/staging-fixture-principal-bootstrap.sh"
-  'ssh "${ssh_args[@]}"'
   "Mark staging deployment success"
+  "Mark staging deployment failure"
   "Run staging post-deploy smoke"
   "Run transaction replay regression gate"
 )
@@ -113,6 +120,7 @@ scattered_patterns=(
 for pattern in "${scattered_patterns[@]}"; do
   reject_pattern "$pattern" "$workflow"
 done
+reject_pattern "OCI_A1_SSH_" "$workflow"
 
 echo "[oci-a1-bluegreen-cd] OCI-only workflow guard"
 reject_workflow_pattern "aws-actions/configure-aws-credentials"
@@ -120,6 +128,9 @@ reject_workflow_pattern "AWS_ACCESS_KEY_ID"
 reject_workflow_pattern "AWS_SECRET_ACCESS_KEY"
 reject_workflow_pattern "aws ssm"
 reject_workflow_pattern "AWS-RunShellScript"
+reject_workflow_pattern "ssh-keyscan"
+reject_workflow_pattern "appleboy/ssh-action"
+reject_workflow_pattern "appleboy/scp-action"
 
 echo "[oci-a1-bluegreen-cd] deploy script contract"
 script_patterns=(
@@ -164,8 +175,8 @@ require_pattern "min = 80" "${terraform_dir}/network.tf"
 echo "[oci-a1-bluegreen-cd] docs contract"
 doc_patterns=(
   "OCI_A1_STAGING_ENV"
-  "OCI_A1_SSH_HOST"
-  "OCI_A1_SSH_PRIVATE_KEY_B64"
+  "OCI self-hosted runner"
+  "oci-a1-staging"
   "OCI_A1_BACKEND_ENV_B64"
   "STAGING_OCI_A1_DATABASE_URL"
   "STAGING_REPLAY_USER_ID"
@@ -174,6 +185,11 @@ doc_patterns=(
 for pattern in "${doc_patterns[@]}"; do
   require_pattern "$pattern" "$delivery_doc"
 done
+require_pattern "self-hosted runner" "ops/deploy/oci/README.md"
+reject_pattern "OCI_A1_SSH_" "$delivery_doc"
+reject_pattern "ssh-keyscan" "$delivery_doc"
+reject_pattern "OCI_A1_SSH_" "ops/deploy/oci/README.md"
+reject_pattern "ssh-keyscan" "ops/deploy/oci/README.md"
 require_pattern "same SHA" "$production_doc"
 
 echo "[oci-a1-bluegreen-cd] contract check passed"
