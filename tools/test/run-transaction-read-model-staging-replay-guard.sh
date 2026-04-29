@@ -6,6 +6,11 @@ script="tools/ops/transaction-read-model-staging-replay.sh"
 echo "[transaction-staging-replay-guard] syntax: ${script}"
 bash -n "${script}"
 
+echo "[transaction-staging-replay-guard] distribution estimate uses leaf partitions"
+grep -F "pg_partition_tree(('public.' || target.table_name)::regclass)" "${script}" >/dev/null
+grep -F "tree.isleaf" "${script}" >/dev/null
+grep -F "SUM(GREATEST(c.reltuples, 0))" "${script}" >/dev/null
+
 temp_dir="$(mktemp -d)"
 trap 'rm -rf "${temp_dir}"' EXIT
 

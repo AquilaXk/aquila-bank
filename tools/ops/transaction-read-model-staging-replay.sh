@@ -117,12 +117,21 @@ verify_staging_distribution() {
   local estimated_total
   estimated_total="$(
     psql_scalar \
-      "SELECT COALESCE(SUM(c.reltuples), 0)::bigint
-       FROM pg_class c
-       WHERE c.oid IN (
-         'transaction_read_model'::regclass,
-         'transaction_read_model_archive'::regclass
-       );"
+      "WITH target_parent(table_name) AS (
+         VALUES
+           ('transaction_read_model'),
+           ('transaction_read_model_archive')
+       ),
+       leaf AS (
+         SELECT tree.relid
+         FROM target_parent target
+         CROSS JOIN LATERAL pg_partition_tree(('public.' || target.table_name)::regclass) tree
+         WHERE tree.isleaf
+       )
+       SELECT COALESCE(SUM(GREATEST(c.reltuples, 0))::bigint, 0)
+       FROM leaf
+       JOIN pg_class c
+         ON c.oid = leaf.relid;"
   )"
 
   [[ "$estimated_total" =~ ^[0-9]+$ ]] || fail "OCI A1 row estimate is not numeric: ${estimated_total}"

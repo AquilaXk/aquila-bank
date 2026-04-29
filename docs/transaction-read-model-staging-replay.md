@@ -6,7 +6,7 @@
 
 - hot: `GET /api/v1/transactions`
 - cold: `GET /api/v1/transactions/archive`
-- DB 분포 확인: `transaction_read_model` + `transaction_read_model_archive`의 `pg_class.reltuples` estimate
+- DB 분포 확인: `transaction_read_model` + `transaction_read_model_archive`의 leaf partition `pg_class.reltuples` estimate 합계
 - p95 산출: hot first, hot cursor, cold first, cold cursor
 
 ## Prerequisites
@@ -71,8 +71,8 @@
 
 ## Gate Behavior
 
-- planner stats freshness guard가 `transaction_read_model`, `transaction_read_model_archive`의 analyze 시각과 `n_mod_since_analyze / reltuples` 비율을 먼저 확인합니다.
-- freshness guard가 stale stats를 감지하면 table별 `ANALYZE VERBOSE public.<table>;` guidance와 함께 즉시 실패합니다.
+- planner stats freshness guard가 `transaction_read_model`, `transaction_read_model_archive`의 leaf partition analyze 시각과 `n_mod_since_analyze / reltuples` 비율을 먼저 확인합니다.
+- freshness guard가 stale stats를 감지하면 table별 `tools/ops/transaction-read-model-chunk-lifecycle.sh --action analyze --target <hot|archive>` guidance와 함께 즉시 실패합니다.
 - PostgreSQL estimate가 `expected_total_rows`보다 작으면 실패합니다.
 - hot/cold account에 row가 없으면 실패합니다.
 - 각 first page가 `nextCursor`를 반환하지 않으면 cursor replay가 불가능하므로 실패합니다.
