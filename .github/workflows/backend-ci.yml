@@ -7,6 +7,7 @@ on:
     paths:
       - "back/**"
       - "tools/ci/**"
+      - "tools/test/check-flyway-backward-compatible-migrations.sh"
       - "tools/test/run-transaction-query-plan-regression-gate.sh"
       - "tools/test/with-resource-lock.sh"
       - ".github/workflows/backend-ci.yml"
@@ -62,6 +63,11 @@ jobs:
 
           echo "query_plan_required=${query_plan_required}" >> "${GITHUB_OUTPUT}"
           printf 'Backend query plan gate required: %s\n' "${query_plan_required}" >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Run Flyway backward-compatible migration gate
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        run: tools/test/check-flyway-backward-compatible-migrations.sh
 
       - name: Run backend fast check
         run: ./gradlew ciFastCheck --no-daemon --stacktrace

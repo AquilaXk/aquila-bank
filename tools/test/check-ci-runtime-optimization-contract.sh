@@ -9,6 +9,7 @@ main_ci="${ROOT_DIR}/.github/workflows/main-ci.yml"
 staging_deploy="${ROOT_DIR}/.github/workflows/staging-deploy.yml"
 workflow_contract_ci="${ROOT_DIR}/.github/workflows/workflow-contract-ci.yml"
 query_plan_gate="${ROOT_DIR}/tools/test/run-transaction-query-plan-regression-gate.sh"
+flyway_migration_gate="${ROOT_DIR}/tools/test/check-flyway-backward-compatible-migrations.sh"
 
 failures=0
 
@@ -44,9 +45,12 @@ require_file "${main_ci}"
 require_file "${staging_deploy}"
 require_file "${workflow_contract_ci}"
 require_file "${query_plan_gate}"
+require_file "${flyway_migration_gate}"
 
 if (( failures == 0 )); then
   require_contains "${backend_ci}" "Detect backend CI scope"
+  require_contains "${backend_ci}" "Run Flyway backward-compatible migration gate"
+  require_contains "${backend_ci}" "tools/test/check-flyway-backward-compatible-migrations.sh"
   require_contains "${backend_ci}" "query_plan_required"
   require_contains "${backend_ci}" "./gradlew ciFastCheck"
   require_contains "${backend_ci}" "./gradlew queryPlanTest"
@@ -57,11 +61,16 @@ if (( failures == 0 )); then
 
   require_contains "${workflow_contract_ci}" "CI Workflow Contract"
   require_contains "${workflow_contract_ci}" "tools/test/check-ci-runtime-optimization-contract.sh"
+  require_contains "${workflow_contract_ci}" "tools/test/check-flyway-backward-compatible-migrations.sh"
 
   require_contains "${main_ci}" "./gradlew check jacocoFullTestReport"
   require_not_contains "${main_ci}" "tools/test/run-transaction-query-plan-regression-gate.sh"
 
   require_contains "${query_plan_gate}" "./back/gradlew -p back queryPlanTest"
+  require_contains "${flyway_migration_gate}" "flyway:allow-breaking-change"
+  require_contains "${flyway_migration_gate}" "DROP TABLE"
+  require_contains "${flyway_migration_gate}" "ALTER TABLE accounts DROP COLUMN legacy_code"
+  require_contains "${flyway_migration_gate}" "--self-test"
 
   require_contains "${staging_deploy}" "cancel-in-progress: true"
   require_contains "${staging_deploy}" "backend-image:"
