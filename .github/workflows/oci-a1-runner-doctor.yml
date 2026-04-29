@@ -1,0 +1,22 @@
+name: OCI A1 Runner Doctor
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  doctor:
+    name: Check OCI A1 Self-Hosted Runner
+    runs-on: [self-hosted, oci-a1-staging]
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check OCI self-hosted runner prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          ops/deploy/oci/check-self-hosted-runner.sh

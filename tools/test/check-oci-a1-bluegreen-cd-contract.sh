@@ -94,7 +94,7 @@ workflow_patterns=(
   "registry: ghcr.io"
   "OCI_A1_BACKEND_ENV_B64"
   "Check OCI self-hosted runner prerequisites"
-  "sudo -n true"
+  "ops/deploy/oci/check-self-hosted-runner.sh"
   "Run OCI A1 blue-green deploy locally"
   "ops/deploy/oci/bluegreen-deploy.sh"
   "Ensure staging fixture principal"

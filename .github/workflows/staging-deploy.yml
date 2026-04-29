@@ -375,22 +375,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          missing=()
-          for command_name in base64 curl jq psql; do
-            if ! command -v "${command_name}" >/dev/null 2>&1; then
-              missing+=("${command_name}")
-            fi
-          done
-
-          if (( ${#missing[@]} > 0 )); then
-            printf '::error::OCI A1 self-hosted runner is missing commands: %s\n' "${missing[*]}"
-            exit 1
-          fi
-
-          if (( EUID != 0 )) && ! sudo -n true; then
-            echo "::error::OCI A1 self-hosted runner user must have passwordless sudo for bluegreen-deploy.sh."
-            exit 1
-          fi
+          ops/deploy/oci/check-self-hosted-runner.sh
 
       - name: Run Alertmanager receiver secret smoke
         shell: bash
