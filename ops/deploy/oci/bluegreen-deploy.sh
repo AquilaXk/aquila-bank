@@ -585,8 +585,16 @@ http {
 NGINX
 }
 
-ensure_nginx_container() {
+nginx_container_running() {
   if docker ps --format '{{.Names}}' | grep -qx "${NGINX_CONTAINER}"; then
+    return 0
+  fi
+
+  return 1
+}
+
+ensure_nginx_container() {
+  if nginx_container_running; then
     return 0
   fi
 
@@ -599,6 +607,26 @@ ensure_nginx_container() {
     -p 80:80 \
     -v "${APP_DIR}/nginx/nginx.conf:/etc/nginx/nginx.conf:ro" \
     nginx:1.27-alpine >/dev/null
+}
+
+ensure_nginx_config_visible() {
+  local slot="$1"
+  local backend_name frontend_name
+  backend_name="$(slot_name backend "${slot}")"
+  frontend_name="$(slot_name frontend "${slot}")"
+
+  if ! nginx_container_running; then
+    return 0
+  fi
+
+  # 과거 mv 기반 교체로 남은 stale file bind mount는 컨테이너 내부 config 직접 확인으로만 식별된다.
+  if docker exec "${NGINX_CONTAINER}" grep -Fq "server ${backend_name}:${BACKEND_PORT};" /etc/nginx/nginx.conf \
+    && docker exec "${NGINX_CONTAINER}" grep -Fq "server ${frontend_name}:${FRONTEND_PORT};" /etc/nginx/nginx.conf; then
+    return 0
+  fi
+
+  log "stale nginx config bind mount detected; recreate nginx container for active config"
+  docker rm -f "${NGINX_CONTAINER}" >/dev/null
 }
 
 switch_nginx() {
@@ -623,6 +651,7 @@ switch_nginx() {
   else
     mv "${next_config}" "${active_config}"
   fi
+  ensure_nginx_config_visible "${green}"
   ensure_nginx_container
 
   if ! docker exec "${NGINX_CONTAINER}" nginx -s reload; then
