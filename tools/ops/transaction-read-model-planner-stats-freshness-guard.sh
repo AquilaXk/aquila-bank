@@ -168,7 +168,8 @@ psql_vars=(
 )
 
 if [[ -n "${DATABASE_URL:-}" ]]; then
-  psql "${psql_args[@]}" "${psql_vars[@]}" "${DATABASE_URL}" --command "${sql}" >"${result_file}"
+  # psql 변수(:name)는 -c/--command 경로에서 치환되지 않아 stdin으로 전달한다.
+  printf '%s\n' "${sql}" | psql "${psql_args[@]}" "${psql_vars[@]}" "${DATABASE_URL}" >"${result_file}"
 else
   export PGHOST="${PGHOST:-${DB_HOST:-localhost}}"
   export PGPORT="${PGPORT:-${DB_PORT:-5432}}"
@@ -177,7 +178,8 @@ else
   if [[ -z "${PGPASSWORD:-}" && -n "${DB_PASSWORD:-}" ]]; then
     export PGPASSWORD="${DB_PASSWORD}"
   fi
-  psql "${psql_args[@]}" "${psql_vars[@]}" --command "${sql}" >"${result_file}"
+  # psql 변수(:name)는 -c/--command 경로에서 치환되지 않아 stdin으로 전달한다.
+  printf '%s\n' "${sql}" | psql "${psql_args[@]}" "${psql_vars[@]}" >"${result_file}"
 fi
 
 cat "${result_file}"

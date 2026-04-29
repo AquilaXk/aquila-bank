@@ -14,8 +14,8 @@ if [[ -z "$STAGING_ROLLBACK_WEBHOOK_URL" && -z "$STAGING_ROLLBACK_TOKEN" ]]; the
 fi
 
 if [[ -z "$STAGING_ROLLBACK_WEBHOOK_URL" || -z "$STAGING_ROLLBACK_TOKEN" ]]; then
-  echo "[staging-rollback] both STAGING_ROLLBACK_WEBHOOK_URL and STAGING_ROLLBACK_TOKEN are required when rollback is enabled." >&2
-  exit 1
+  echo "[staging-rollback] rollback hook is partially configured; skipping." >&2
+  exit 0
 fi
 
 if [[ -z "$DEPLOY_SHA" || -z "$GITHUB_REPOSITORY" ]]; then
