@@ -28,6 +28,34 @@ runner 선행 조건:
 - database: `STAGING_OCI_A1_DATABASE_URL`로 PostgreSQL fixture DB 접근 가능
 - app database host: backend container는 Docker network의 `aquila-postgres:5432`로 PostgreSQL에 접근
 
+## Database Preflight
+
+`bluegreen-deploy.sh`는 green backend를 시작하기 전에 `OCI_A1_BACKEND_ENV_B64` 안의 `SPRING_DATASOURCE_URL` 또는 `DB_URL`을 읽고 같은 Docker network에서 `pg_isready`를 실행한다.
+
+- `aquila-postgres` container가 DB이면 container가 실행 중이어야 한다.
+- `aquila-postgres` container는 `aquila-bank-prod` network에 연결되어야 한다.
+- preflight 실패 시 script는 `aquila-postgres` container 상태, network 연결 목록, PostgreSQL log tail을 출력한다.
+- 로그가 `backend DB host requires PostgreSQL container`이면 DB host는 container alias를 가리키지만 container가 없거나 중지된 상태다.
+- 로그가 `backend database preflight failed`이면 container/network는 확인됐고 DB명, 사용자, 비밀번호, PostgreSQL readiness를 우선 확인한다.
+
+## Flyway Migration Gate
+
+Backend CI는 PR에서 변경된 Flyway SQL migration만 검사해 blue/green unsafe 패턴을 차단한다. default 없는 `ADD COLUMN ... NOT NULL`, `DROP TABLE`, `DROP COLUMN`, rename, `SET NOT NULL`, type 변경, `DROP INDEX`, `TRUNCATE`는 기본 실패한다.
+
+의도적으로 compatibility window를 닫는 예외는 migration 파일에 사유를 포함한 marker를 남긴다.
+
+```sql
+-- flyway:allow-breaking-change legacy column removed after two-phase deploy
+ALTER TABLE account DROP COLUMN legacy_code;
+```
+
+로컬 확인:
+
+```bash
+tools/test/check-flyway-backward-compatible-migrations.sh --self-test
+tools/test/check-flyway-backward-compatible-migrations.sh --print-plan
+```
+
 ## Runner Bootstrap
 
 OCI VM에서 GitHub self-hosted runner를 처음 등록할 때는 `bootstrap-self-hosted-runner.sh`를 1회 실행한다. `GITHUB_RUNNER_TOKEN`은 GitHub의 repository runner 등록 화면에서 발급한 단기 registration token이며 저장소나 shell history에 남기지 않는다.

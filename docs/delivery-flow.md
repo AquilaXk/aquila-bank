@@ -17,6 +17,9 @@
 
 - backend/frontend CI는 `main` 대상 PR에서 실행합니다.
 - workflow 수정만 있는 PR도 gate가 돌도록 `.github/workflows/**` 변경을 CI path에 포함합니다.
+- Backend CI는 변경된 Flyway SQL migration을 `tools/test/check-flyway-backward-compatible-migrations.sh`로 검사합니다.
+- blue/green 배포 중 old/new app이 동시에 실행되므로 `DROP TABLE`, `DROP COLUMN`, column rename, `SET NOT NULL`, default 없는 `ADD COLUMN ... NOT NULL` 같은 destructive migration은 기본 실패 처리합니다.
+- 의도적으로 compatibility window를 닫는 migration은 SQL 주석에 `-- flyway:allow-breaking-change <reason>`을 남겨 리뷰에서 예외 사유를 명시합니다.
 
 ## Main CI
 
@@ -46,6 +49,9 @@
   - backend/frontend image를 `${DEPLOY_SHA:0:12}`와 `main-latest` tag로 GHCR에 push한다.
   - OCI A1은 ARM64 전용 staging이므로 image는 `linux/arm64` manifest만 push한다.
   - OCI self-hosted runner가 VM 안에서 `ops/deploy/oci/bluegreen-deploy.sh`를 직접 실행한다.
+  - deploy script는 green container 기동 전에 backend env의 PostgreSQL target을 `pg_isready`로 확인한다.
+  - backend DB host가 `aquila-postgres` 계열이면 `aquila-postgres` container가 실행 중이고 `aquila-bank-prod` Docker network에 연결되어 있어야 한다.
+  - DB preflight 실패 시 PostgreSQL container 상태, Docker network 연결, PostgreSQL log tail을 함께 출력한다.
   - deploy script는 green backend/frontend container health가 모두 200일 때만 Nginx config를 교체하고 reload한다.
   - Nginx config 검증 또는 reload가 실패하면 이전 config와 blue slot을 유지한다.
 - required OCI deploy secret이 없으면 workflow는 fail-fast하며 staging GitHub deployment status를 성공으로 만들지 않습니다.
