@@ -36,7 +36,7 @@ grep -F "run purpose=smoke" <<<"${plan}" >/dev/null
 grep -F "archive output dir=docs/performance-results/k6-smoke" <<<"${plan}" >/dev/null
 grep -F "summary gate=true" <<<"${plan}" >/dev/null
 grep -F "archive failed summary=true" <<<"${plan}" >/dev/null
-grep -F "backend readiness gate=true path=/actuator/health/readiness timeout=120" <<<"${plan}" >/dev/null
+grep -F "backend readiness gate=true base=http://localhost:18080 path=/actuator/health/readiness timeout=120" <<<"${plan}" >/dev/null
 grep -F "postgres health gate=true required_status=healthy" <<<"${plan}" >/dev/null
 grep -F "postgres recovery gate=true stable_seconds=10" <<<"${plan}" >/dev/null
 grep -F "postgres recovery noise window seconds=30" <<<"${plan}" >/dev/null
@@ -277,6 +277,7 @@ grep -F "K6_REMOTE_PREFLIGHT" tools/test/run-k6-transaction-100m-loadtest.sh >/d
 grep -F "K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_REMOTE_READINESS_PATH" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "PERFORMANCE_RESULT_STATUS" tools/test/archive-k6-transaction-100m-result.sh >/dev/null
+grep -F "PERFORMANCE_RESULT_ARTIFACT_DIR" tools/test/archive-k6-transaction-100m-result.sh >/dev/null
 grep -F "assert_remote_k6_preflight" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "docker --context \"\${K6_DOCKER_CONTEXT}\" info" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "remote prometheus remote-write preflight" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
@@ -419,6 +420,7 @@ echo "# sample" >"${temp_dir}/transaction-100m-summary.md"
 echo "{}" >"${temp_dir}/transaction-100m-summary.json"
 output="$(
   PERFORMANCE_RESULT_OUTPUT_DIR="${temp_dir}/k6-smoke" \
+  PERFORMANCE_RESULT_ARTIFACT_DIR="${temp_dir}/promoted" \
   PERFORMANCE_RESULT_PURPOSE=smoke \
   PERFORMANCE_RESULT_NAME=transaction-100m-check-result \
     tools/test/archive-k6-transaction-100m-result.sh \
@@ -429,10 +431,16 @@ test "${output}" = "${temp_dir}/k6-smoke/transaction-100m-check-result.md"
 grep -F "resultPurpose: smoke" "${output}" >/dev/null
 grep -F "reportClass: transaction-100m-smoke" "${output}" >/dev/null
 grep -F "sourceMarkdown: ${temp_dir}/transaction-100m-summary.md" "${output}" >/dev/null
+test -f "${temp_dir}/promoted/transaction-100m-check-result/summary.md"
+test -f "${temp_dir}/promoted/transaction-100m-check-result/summary.json"
+test -f "${temp_dir}/promoted/transaction-100m-check-result/manifest.env"
+grep -F "RESULT_PURPOSE=smoke" "${temp_dir}/promoted/transaction-100m-check-result/manifest.env" >/dev/null
+grep -F "RESULT_STATUS=unknown" "${temp_dir}/promoted/transaction-100m-check-result/manifest.env" >/dev/null
 rm -f "${output}"
 
 capacity_output="$(
   PERFORMANCE_RESULT_OUTPUT_DIR="${temp_dir}/k6-capacity" \
+  PERFORMANCE_RESULT_ARTIFACT_DIR="${temp_dir}/promoted" \
   PERFORMANCE_RESULT_PURPOSE=capacity \
   PERFORMANCE_RESULT_NAME=transaction-100m-capacity-check-result \
     tools/test/archive-k6-transaction-100m-result.sh \
@@ -442,6 +450,9 @@ capacity_output="$(
 test "${capacity_output}" = "${temp_dir}/k6-capacity/transaction-100m-capacity-check-result.md"
 grep -F "resultPurpose: capacity" "${capacity_output}" >/dev/null
 grep -F "reportClass: transaction-100m-capacity" "${capacity_output}" >/dev/null
+test -f "${temp_dir}/promoted/transaction-100m-capacity-check-result/summary.md"
+test -f "${temp_dir}/promoted/transaction-100m-capacity-check-result/summary.json"
+grep -F "RESULT_PURPOSE=capacity" "${temp_dir}/promoted/transaction-100m-capacity-check-result/manifest.env" >/dev/null
 rm -f "${capacity_output}"
 
 echo "[k6-transaction-100m] optional k6 inspect"
