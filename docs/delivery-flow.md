@@ -36,6 +36,10 @@
 - deploy runner: OCI VM에 등록한 GitHub Actions OCI self-hosted runner `self-hosted`, `oci-a1-staging`
 - required environment secret:
   - `OCI_A1_STAGING_ENV`
+- runner bootstrap:
+  - OCI VM에서 `ops/deploy/oci/bootstrap-self-hosted-runner.sh`를 1회 실행한다.
+  - `GITHUB_RUNNER_TOKEN`은 GitHub runner registration token이며 저장소에 기록하지 않는다.
+  - 설치 후 `ops/deploy/oci/check-self-hosted-runner.sh` 또는 `OCI A1 Runner Doctor` workflow로 runner 상태를 확인한다.
 - deploy flow:
   - `OCI_A1_STAGING_ENV`를 shell env 파일로 로드한다.
   - `Main CI`가 성공한 main SHA를 checkout한다.
@@ -122,6 +126,15 @@ base64 -w0 .env.backend-staging
 ```
 
 GitHub Actions runner 등록값은 `OCI_A1_STAGING_ENV`에 넣지 않습니다. OCI VM에서 runner를 등록할 때 label에 `self-hosted`, `oci-a1-staging`을 붙이고, runner 사용자에는 `bluegreen-deploy.sh` 실행을 위한 passwordless sudo를 부여합니다.
+
+```bash
+GITHUB_RUNNER_TOKEN=<registration-token> \
+GITHUB_REPOSITORY_SLUG=AquilaXk/aquila-bank \
+RUNNER_LABELS=self-hosted,oci-a1-staging \
+  ops/deploy/oci/bootstrap-self-hosted-runner.sh
+
+ops/deploy/oci/check-self-hosted-runner.sh
+```
 
 ## Feature Flag
 

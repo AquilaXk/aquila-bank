@@ -27,6 +27,23 @@ runner 선행 조건:
 - privilege: passwordless sudo
 - database: `STAGING_OCI_A1_DATABASE_URL`로 PostgreSQL fixture DB 접근 가능
 
+## Runner Bootstrap
+
+OCI VM에서 GitHub self-hosted runner를 처음 등록할 때는 `bootstrap-self-hosted-runner.sh`를 1회 실행한다. `GITHUB_RUNNER_TOKEN`은 GitHub의 repository runner 등록 화면에서 발급한 단기 registration token이며 저장소나 shell history에 남기지 않는다.
+
+```bash
+GITHUB_RUNNER_TOKEN=<registration-token> \
+GITHUB_REPOSITORY_SLUG=AquilaXk/aquila-bank \
+RUNNER_LABELS=self-hosted,oci-a1-staging \
+  ops/deploy/oci/bootstrap-self-hosted-runner.sh
+```
+
+설치 후에는 로컬 doctor나 GitHub Actions의 `OCI A1 Runner Doctor` workflow로 확인한다.
+
+```bash
+ops/deploy/oci/check-self-hosted-runner.sh
+```
+
 필수 key:
 
 - `OCI_A1_BACKEND_ENV_B64`
