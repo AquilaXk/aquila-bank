@@ -613,11 +613,16 @@ switch_nginx() {
     -v "${next_config}:/etc/nginx/nginx.conf:ro" \
     nginx:1.27-alpine nginx -t
 
-  if [[ -s "${active_config}" ]]; then
-    cp "${active_config}" "${backup_config}"
+  if [[ -e "${active_config}" ]]; then
+    if [[ -s "${active_config}" ]]; then
+      cp "${active_config}" "${backup_config}"
+    fi
+    # Docker file bind mount는 inode를 따라가므로 기존 active 파일은 제자리에서 갱신한다.
+    cat "${next_config}" >"${active_config}"
+    rm -f "${next_config}"
+  else
+    mv "${next_config}" "${active_config}"
   fi
-
-  mv "${next_config}" "${active_config}"
   ensure_nginx_container
 
   if ! docker exec "${NGINX_CONTAINER}" nginx -s reload; then
