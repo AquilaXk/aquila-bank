@@ -50,7 +50,11 @@
   - OCI A1은 ARM64 전용 staging이므로 image는 `linux/arm64` manifest만 push한다.
   - OCI self-hosted runner가 VM 안에서 `ops/deploy/oci/bluegreen-deploy.sh`를 직접 실행한다.
   - deploy script는 green container 기동 전에 backend env의 PostgreSQL target을 `pg_isready`로 확인한다.
-  - backend DB host가 `aquila-postgres` 계열이면 `aquila-postgres` container가 실행 중이고 `aquila-bank-prod` Docker network에 연결되어 있어야 한다.
+  - backend DB host가 `aquila-postgres` 계열이면 deploy script가 green backend 기동 전에 PostgreSQL 18 container를 준비한다.
+  - `aquila-postgres.service`가 설치된 VM은 `/etc/aquila-postgres.env`를 backend env 기준으로 채우고 systemd service를 우선 시작한다.
+  - systemd service가 없는 always-free VM은 Docker named volume `aquila-postgres-data`로 `aquila-postgres` container를 생성한다.
+  - 기존 PostgreSQL container나 volume이 있으면 삭제/초기화하지 않고 start와 Docker network 연결만 보정한다.
+  - `POSTGRES_BOOTSTRAP_ENABLED=false`를 주면 container 자동 생성 없이 preflight fail-fast만 수행한다.
   - DB preflight 실패 시 PostgreSQL container 상태, Docker network 연결, PostgreSQL log tail을 함께 출력한다.
   - deploy script는 green backend/frontend container health가 모두 200일 때만 Nginx config를 교체하고 reload한다.
   - Nginx config 검증 또는 reload가 실패하면 이전 config와 blue slot을 유지한다.
@@ -133,6 +137,8 @@ base64 -w0 .env.backend-staging
 ```
 
 GitHub Actions runner 등록값은 `OCI_A1_STAGING_ENV`에 넣지 않습니다. OCI VM에서 runner를 등록할 때 label에 `self-hosted`, `oci-a1-staging`을 붙이고, runner 사용자에는 `bluegreen-deploy.sh` 실행을 위한 passwordless sudo를 부여합니다.
+
+첫 staging 배포에서 PostgreSQL container가 없으면 CD가 backend env의 DB 이름, 사용자, 비밀번호로 빈 PostgreSQL 18 database를 초기화합니다. 이 단계는 schema/Flyway 실행 기반만 만들며, 1억 건 fixture restore는 별도 운영 절차로 수행합니다.
 
 ```bash
 GITHUB_RUNNER_TOKEN=<registration-token> \

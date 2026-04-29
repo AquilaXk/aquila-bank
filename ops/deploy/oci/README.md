@@ -32,11 +32,17 @@ runner 선행 조건:
 
 `bluegreen-deploy.sh`는 green backend를 시작하기 전에 `OCI_A1_BACKEND_ENV_B64` 안의 `SPRING_DATASOURCE_URL` 또는 `DB_URL`을 읽고 같은 Docker network에서 `pg_isready`를 실행한다.
 
-- `aquila-postgres` container가 DB이면 container가 실행 중이어야 한다.
-- `aquila-postgres` container는 `aquila-bank-prod` network에 연결되어야 한다.
+- DB host가 `aquila-postgres`이면 script가 green backend 시작 전에 PostgreSQL container를 준비한다.
+- `aquila-postgres.service`가 설치된 paid/data-volume VM은 `/etc/aquila-postgres.env`를 backend env 기준으로 채우고 systemd service를 시작한다.
+- systemd service가 없는 always-free VM은 Docker named volume `aquila-postgres-data`로 `aquila-postgres` container를 생성한다.
+- 기존 `aquila-postgres` container가 있으면 새로 만들지 않고 start와 `aquila-bank-prod` network 연결만 보정한다.
+- 기존 Docker volume은 삭제하거나 초기화하지 않는다.
+- 자동 bootstrap을 막고 싶으면 `POSTGRES_BOOTSTRAP_ENABLED=false`를 staging env에 넣는다.
 - preflight 실패 시 script는 `aquila-postgres` container 상태, network 연결 목록, PostgreSQL log tail을 출력한다.
-- 로그가 `backend DB host requires PostgreSQL container`이면 DB host는 container alias를 가리키지만 container가 없거나 중지된 상태다.
+- 로그가 `backend DB host requires PostgreSQL container`이면 DB host는 container alias를 가리키지만 자동 bootstrap이 꺼졌거나 container 시작에 실패한 상태다.
 - 로그가 `backend database preflight failed`이면 container/network는 확인됐고 DB명, 사용자, 비밀번호, PostgreSQL readiness를 우선 확인한다.
+
+최초 bootstrap은 빈 PostgreSQL 18 database만 만든다. Backend Flyway가 schema를 적용하고, 1억 건 fixture restore/검증은 배포 이후 별도 runner로 수행한다.
 
 ## Flyway Migration Gate
 
