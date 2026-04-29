@@ -50,8 +50,8 @@ server:
   tomcat:
     threads:
       max: ${SERVER_THREADS_MAX:16}
-      min-spare: 2
-    accept-count: 20
+      min-spare: ${SERVER_THREADS_MIN_SPARE:2}
+    accept-count: ${SERVER_ACCEPT_COUNT:20}
     connection-timeout: 3s
 
 management:
