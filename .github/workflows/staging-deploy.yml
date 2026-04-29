@@ -567,6 +567,12 @@ jobs:
           set -euo pipefail
           tools/ops/staging-postdeploy-smoke.sh
 
+      - name: Validate OCI A1 storage baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          tools/ops/validate-oci-a1-storage-baseline.sh
+
       - name: Run transaction replay regression gate
         id: transaction_replay
         if: env.STAGING_REPLAY_ENABLED == 'true'
