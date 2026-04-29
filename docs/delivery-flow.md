@@ -59,13 +59,14 @@
   - deploy script는 green backend/frontend container health가 모두 200일 때만 Nginx config를 교체하고 reload한다.
   - Nginx config 검증 또는 reload가 실패하면 이전 config와 blue slot을 유지한다.
 - required OCI deploy secret이 없으면 workflow는 fail-fast하며 staging GitHub deployment status를 성공으로 만들지 않습니다.
-- workflow는 OCI A1 local deploy와 post-deploy smoke를 통과한 경우에만 staging GitHub deployment status를 `success`로 갱신합니다.
+- workflow는 OCI A1 local deploy와 post-deploy smoke를 통과한 경우 staging GitHub deployment status를 `success`로 갱신합니다.
 - transaction replay gate는 post-deploy smoke 뒤에 실행되며, `pg_class.reltuples` 검증 전에 planner stats freshness guard로 stale stats를 차단합니다.
+- replay gate 결과는 별도 GitHub deployment environment `staging-100m-replay`에 기록합니다. fixture가 비어 있어 replay가 실패해도 앱 staging CD는 실패시키지 않고 report/artifact를 남깁니다.
 - fixture principal bootstrap은 smoke/replay 전에 `STAGING_REPLAY_USER_ID`와 hot/cold 계좌 membership을 idempotent하게 보장해 fixture JWT 403을 차단합니다.
-- replay gate가 실패하면 staging deployment status는 `success`로 올라가지 않으므로 production promotion guard가 같은 SHA를 자동으로 거부합니다.
+- replay evidence가 `success`가 아니면 production promotion guard가 같은 SHA를 자동으로 거부합니다.
 - post-deploy smoke는 health/read/write endpoint를 호출하며, read/write path는 환경별 smoke 전용 endpoint를 secret으로 주입합니다.
 - smoke 또는 OCI deploy 실패 시 deployment status는 `failure`가 되고, rollback hook이 설정된 경우 `sha`, `repository`, `runUrl`, `deploymentId`와 함께 호출합니다.
-- production 승격은 staging deployment status가 `success`인 같은 SHA만 대상으로 삼습니다.
+- production 승격은 staging deployment status와 `staging-100m-replay` evidence가 모두 `success`인 같은 SHA만 대상으로 삼습니다.
 - rollback은 `main` 기준 revert PR을 merge해 새 staging SHA를 배포하거나, 운영자가 직전 staging 성공 SHA를 확인해 별도 재배포 절차로 진행합니다.
 
 ### OCI A1 Staging Env 예시
@@ -105,6 +106,7 @@ STAGING_REPLAY_ITERATIONS=40
 STAGING_REPLAY_PAGE_LIMIT=50
 STAGING_REPLAY_REQUEST_TIMEOUT_SECONDS=5
 STAGING_REPLAY_EXPECTED_TOTAL_ROWS=100000000
+STAGING_REPLAY_REQUIRED=false
 STAGING_REPLAY_HOT_P95_THRESHOLD_MS=350
 STAGING_REPLAY_COLD_P95_THRESHOLD_MS=750
 STAGING_REPLAY_STATS_MAX_AGE_HOURS=24

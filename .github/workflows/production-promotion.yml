@@ -109,6 +109,47 @@ jobs:
             exit 1
           fi
 
+      - name: Verify staging 100m replay evidence success
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ steps.resolve.outputs.target_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          deployment_ids="$(
+            gh api --method GET "repos/${GITHUB_REPOSITORY}/deployments" \
+              -f environment=staging-100m-replay \
+              -f sha="${TARGET_SHA}" \
+              --paginate \
+              --jq ".[].id"
+          )"
+
+          if [ -z "${deployment_ids}" ]; then
+            echo "::error::No staging 100m replay evidence found for ${TARGET_SHA}."
+            exit 1
+          fi
+
+          found_success=false
+          while IFS= read -r deployment_id; do
+            if [ -z "${deployment_id}" ]; then
+              continue
+            fi
+
+            state="$(
+              gh api --method GET "repos/${GITHUB_REPOSITORY}/deployments/${deployment_id}/statuses" \
+                --jq ".[0].state // \"\""
+            )"
+            if [ "${state}" = "success" ]; then
+              found_success=true
+              break
+            fi
+          done <<< "${deployment_ids}"
+
+          if [ "${found_success}" != "true" ]; then
+            echo "::error::No successful staging 100m replay evidence found for ${TARGET_SHA}."
+            exit 1
+          fi
+
   promote:
     name: Promote SHA To Production
     needs:

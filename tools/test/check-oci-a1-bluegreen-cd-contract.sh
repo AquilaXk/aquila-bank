@@ -112,6 +112,9 @@ workflow_patterns=(
   "Mark staging deployment failure"
   "Run staging post-deploy smoke"
   "Run transaction replay regression gate"
+  "STAGING_REPLAY_ENABLED"
+  "Record staging 100m replay evidence"
+  "staging-100m-replay"
 )
 for pattern in "${workflow_patterns[@]}"; do
   require_pattern "$pattern" "$workflow"
@@ -278,6 +281,8 @@ for pattern in "${doc_patterns[@]}"; do
   require_pattern "$pattern" "$delivery_doc"
 done
 require_pattern "self-hosted runner" "ops/deploy/oci/README.md"
+require_pattern "Verify staging 100m replay evidence success" ".github/workflows/production-promotion.yml"
+require_pattern "staging-100m-replay" ".github/workflows/production-promotion.yml"
 reject_pattern "OCI_A1_SSH_" "$delivery_doc"
 reject_pattern "ssh-keyscan" "$delivery_doc"
 reject_pattern "OCI_A1_SSH_" "ops/deploy/oci/README.md"

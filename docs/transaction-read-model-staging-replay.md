@@ -46,6 +46,7 @@
     - `STAGING_REPLAY_COLD_FROM`
     - `STAGING_REPLAY_COLD_TO`
   - optional:
+    - `STAGING_REPLAY_REQUIRED`
     - `STAGING_REPLAY_ITERATIONS`
     - `STAGING_REPLAY_PAGE_LIMIT`
     - `STAGING_REPLAY_REQUEST_TIMEOUT_SECONDS`
@@ -54,7 +55,8 @@
     - `STAGING_REPLAY_COLD_P95_THRESHOLD_MS`
     - `STAGING_REPLAY_STATS_MAX_AGE_HOURS`
     - `STAGING_REPLAY_STATS_MAX_MODIFIED_RATIO`
-- replay gate가 실행되고 실패하면 staging deployment status가 `success`로 기록되지 않아 production promotion이 같은 SHA를 통과시키지 않습니다.
+- replay gate가 실행되고 실패하면 `staging-100m-replay` evidence status가 `failure`로 기록되어 production promotion이 같은 SHA를 통과시키지 않습니다.
+- 앱 staging CD는 OCI A1 blue/green deploy와 post-deploy smoke가 성공하면 성공으로 기록합니다. 100m fixture가 비어 있는 경우 replay report/artifact를 남기고 production promotion만 차단합니다.
 - OCI A1 secret 조건이 맞지 않는 환경에서는 이 gate를 성공으로 간주하지 않고, 1억 건 primary evidence가 blocked 상태로 남습니다.
 
 ## Workflow Inputs
@@ -74,6 +76,7 @@
 - planner stats freshness guard가 `transaction_read_model`, `transaction_read_model_archive`의 leaf partition analyze 시각과 `n_mod_since_analyze / reltuples` 비율을 먼저 확인합니다.
 - freshness guard가 stale stats를 감지하면 table별 `tools/ops/transaction-read-model-chunk-lifecycle.sh --action analyze --target <hot|archive>` guidance와 함께 즉시 실패합니다.
 - PostgreSQL estimate가 `expected_total_rows`보다 작으면 실패합니다.
+- estimate가 0이면 `fixture_missing`으로 분류하고 fixture restore/analyze guidance와 함께 report를 남깁니다.
 - hot/cold account에 row가 없으면 실패합니다.
 - 각 first page가 `nextCursor`를 반환하지 않으면 cursor replay가 불가능하므로 실패합니다.
 - HTTP non-2xx, timeout, empty `items` 응답은 실패합니다.

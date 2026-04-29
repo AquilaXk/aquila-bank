@@ -335,6 +335,8 @@ jobs:
       DEPLOY_LOG_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       BACKEND_IMAGE: ${{ needs.backend-image.outputs.backend_image }}
       FRONTEND_IMAGE: ${{ needs.frontend-image.outputs.frontend_image }}
+    outputs:
+      transaction_replay_result: ${{ steps.resolve-transaction-replay-result.outputs.result }}
     steps:
       - name: Checkout deploy SHA
         uses: actions/checkout@v4
@@ -367,6 +369,7 @@ jobs:
           STAGING_SMOKE_HEALTH_PATH="${STAGING_SMOKE_HEALTH_PATH:-/actuator/health}"
           STAGING_SMOKE_WRITE_METHOD="${STAGING_SMOKE_WRITE_METHOD:-POST}"
           STAGING_SMOKE_WRITE_BODY="${STAGING_SMOKE_WRITE_BODY:-{}}"
+          STAGING_REPLAY_REQUIRED="${STAGING_REPLAY_REQUIRED:-false}"
           ALERTMANAGER_RECEIVER_SECRET_SMOKE_ENVIRONMENT=staging
           POSTGRES_CONTAINER_NAME="${POSTGRES_CONTAINER_NAME:-aquila-postgres}"
           POSTGRES_NETWORK_ALIAS="${POSTGRES_NETWORK_ALIAS:-aquila-postgres}"
@@ -387,19 +390,46 @@ jobs:
           PLANNER_STATS_MAX_AGE_HOURS="${STAGING_REPLAY_STATS_MAX_AGE_HOURS:-${PLANNER_STATS_MAX_AGE_HOURS:-}}"
           PLANNER_STATS_MAX_MODIFIED_RATIO="${STAGING_REPLAY_STATS_MAX_MODIFIED_RATIO:-${PLANNER_STATS_MAX_MODIFIED_RATIO:-}}"
 
+          case "${STAGING_REPLAY_REQUIRED}" in
+            true|false) ;;
+            *) echo "::error::STAGING_REPLAY_REQUIRED must be true or false."; exit 1 ;;
+          esac
+
+          replay_missing=()
+          [[ -z "${STAGING_REPLAY_TOKEN:-}" ]] && replay_missing+=("STAGING_REPLAY_TOKEN")
+          [[ -z "${STAGING_OCI_A1_DATABASE_URL:-}" && -z "${OCI_A1_BACKEND_ENV_B64:-}" ]] && replay_missing+=("STAGING_OCI_A1_DATABASE_URL")
+          [[ -z "${HOT_ACCOUNT_ID}" ]] && replay_missing+=("STAGING_REPLAY_HOT_ACCOUNT_ID")
+          [[ -z "${HOT_FROM}" ]] && replay_missing+=("STAGING_REPLAY_HOT_FROM")
+          [[ -z "${HOT_TO}" ]] && replay_missing+=("STAGING_REPLAY_HOT_TO")
+          [[ -z "${COLD_ACCOUNT_ID}" ]] && replay_missing+=("STAGING_REPLAY_COLD_ACCOUNT_ID")
+          [[ -z "${COLD_FROM}" ]] && replay_missing+=("STAGING_REPLAY_COLD_FROM")
+          [[ -z "${COLD_TO}" ]] && replay_missing+=("STAGING_REPLAY_COLD_TO")
+
+          STAGING_REPLAY_ENABLED="${STAGING_REPLAY_ENABLED:-}"
+          if [[ -z "${STAGING_REPLAY_ENABLED}" ]]; then
+            if (( ${#replay_missing[@]} == 0 )); then
+              STAGING_REPLAY_ENABLED=true
+            else
+              STAGING_REPLAY_ENABLED=false
+            fi
+          fi
+          case "${STAGING_REPLAY_ENABLED}" in
+            true|false) ;;
+            *) echo "::error::STAGING_REPLAY_ENABLED must be true or false."; exit 1 ;;
+          esac
+          if [[ "${STAGING_REPLAY_REQUIRED}" == "true" && "${STAGING_REPLAY_ENABLED}" != "true" ]]; then
+            printf '::error::Missing required staging replay keys: %s\n' "${replay_missing[*]}"
+            exit 1
+          fi
+          if [[ "${STAGING_REPLAY_ENABLED}" != "true" && ${#replay_missing[@]} -gt 0 ]]; then
+            printf '::notice::Staging replay disabled; missing keys: %s\n' "${replay_missing[*]}"
+          fi
+
           missing=()
           [[ -z "${OCI_A1_BACKEND_ENV_B64:-}" ]] && missing+=("OCI_A1_BACKEND_ENV_B64")
           [[ -z "${STAGING_BASE_URL:-}" ]] && missing+=("STAGING_BASE_URL")
           [[ -z "${STAGING_SMOKE_READ_PATH:-}" ]] && missing+=("STAGING_SMOKE_READ_PATH")
           [[ -z "${STAGING_SMOKE_WRITE_PATH:-}" ]] && missing+=("STAGING_SMOKE_WRITE_PATH")
-          [[ -z "${STAGING_REPLAY_TOKEN:-}" ]] && missing+=("STAGING_REPLAY_TOKEN")
-          [[ -z "${STAGING_OCI_A1_DATABASE_URL:-}" ]] && missing+=("STAGING_OCI_A1_DATABASE_URL")
-          [[ -z "${HOT_ACCOUNT_ID}" ]] && missing+=("STAGING_REPLAY_HOT_ACCOUNT_ID")
-          [[ -z "${HOT_FROM}" ]] && missing+=("STAGING_REPLAY_HOT_FROM")
-          [[ -z "${HOT_TO}" ]] && missing+=("STAGING_REPLAY_HOT_TO")
-          [[ -z "${COLD_ACCOUNT_ID}" ]] && missing+=("STAGING_REPLAY_COLD_ACCOUNT_ID")
-          [[ -z "${COLD_FROM}" ]] && missing+=("STAGING_REPLAY_COLD_FROM")
-          [[ -z "${COLD_TO}" ]] && missing+=("STAGING_REPLAY_COLD_TO")
 
           if (( ${#missing[@]} > 0 )); then
             printf '::error::Missing OCI A1 staging env keys: %s\n' "${missing[*]}"
@@ -419,6 +449,8 @@ jobs:
             STAGING_SMOKE_WRITE_BODY
             STAGING_SMOKE_AUTH_HEADER_NAME
             STAGING_SMOKE_AUTH_HEADER_VALUE
+            STAGING_REPLAY_ENABLED
+            STAGING_REPLAY_REQUIRED
             STAGING_REPLAY_TOKEN
             STAGING_OCI_A1_DATABASE_URL
             STAGING_RDS_DATABASE_URL
@@ -484,7 +516,19 @@ jobs:
         run: |
           set -euo pipefail
           # backend env가 Docker alias DB를 쓰면 host psql용 URL은 배포 시점에 재산출한다.
-          resolved_database_url="$(tools/ops/resolve-oci-a1-staging-database-url.sh)"
+          if [[ "${STAGING_REPLAY_ENABLED}" != "true" ]]; then
+            echo "::notice::Staging replay disabled; skip staging database URL resolution."
+            exit 0
+          fi
+          if ! resolved_database_url="$(tools/ops/resolve-oci-a1-staging-database-url.sh)"; then
+            if [[ "${STAGING_REPLAY_REQUIRED}" == "true" ]]; then
+              echo "::error::Failed to resolve required staging replay database URL."
+              exit 1
+            fi
+            echo "::notice::Failed to resolve staging replay database URL; optional replay will be skipped."
+            printf 'STAGING_REPLAY_ENABLED=false\n' >>"${GITHUB_ENV}"
+            exit 0
+          fi
           echo "::add-mask::${resolved_database_url}"
           printf 'STAGING_OCI_A1_DATABASE_URL=%s\n' "${resolved_database_url}" >>"${GITHUB_ENV}"
 
@@ -511,6 +555,7 @@ jobs:
           ops/deploy/oci/bluegreen-deploy.sh
 
       - name: Ensure staging fixture principal
+        if: env.STAGING_REPLAY_ENABLED == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -523,10 +568,29 @@ jobs:
           tools/ops/staging-postdeploy-smoke.sh
 
       - name: Run transaction replay regression gate
+        id: transaction_replay
+        if: env.STAGING_REPLAY_ENABLED == 'true'
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
           tools/ops/transaction-read-model-staging-replay.sh
+
+      - name: Resolve transaction replay result
+        id: resolve-transaction-replay-result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${STAGING_REPLAY_ENABLED}" != "true" ]]; then
+            result=skipped
+          elif [[ "${{ steps.transaction_replay.outcome }}" == "success" ]]; then
+            result=success
+          else
+            result=failure
+          fi
+          echo "::notice::Transaction replay result=${result}"
+          printf 'result=%s\n' "${result}" >>"${GITHUB_OUTPUT}"
 
       - name: Append transaction replay summary
         if: always()
@@ -568,6 +632,7 @@ jobs:
       DEPLOY_LOG_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       DEPLOYMENT_ID: ${{ needs.create-deployment.outputs.deployment_id }}
       DEPLOY_RESULT: ${{ needs.deploy-and-verify.result }}
+      TRANSACTION_REPLAY_RESULT: ${{ needs.deploy-and-verify.outputs.transaction_replay_result }}
       BACKEND_IMAGE_RESULT: ${{ needs.backend-image.result }}
       FRONTEND_IMAGE_RESULT: ${{ needs.frontend-image.result }}
       LATEST_MAIN_RESULT: ${{ needs.validate-latest-before-deploy.result }}
@@ -614,6 +679,53 @@ jobs:
         run: |
           set -euo pipefail
           tools/ops/staging-rollback-guard.sh
+
+      - name: Record staging 100m replay evidence
+        if: always() && needs.validate-latest-before-deploy.outputs.should_deploy == 'true' && needs.deploy-and-verify.result == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          replay_result="${TRANSACTION_REPLAY_RESULT:-skipped}"
+          replay_state=failure
+          if [[ "${replay_result}" == "success" ]]; then
+            replay_state=success
+          fi
+
+          payload="$(
+            jq -n \
+              --arg ref "${DEPLOY_SHA}" \
+              --arg description "Record staging 100m replay evidence for ${DEPLOY_SHA}" \
+              '{
+                ref: $ref,
+                environment: "staging-100m-replay",
+                description: $description,
+                auto_merge: false,
+                required_contexts: [],
+                production_environment: false,
+                transient_environment: false
+              }'
+          )"
+          if ! replay_deployment_id="$(gh api --method POST "repos/${GITHUB_REPOSITORY}/deployments" --input - --jq ".id" <<< "${payload}")"; then
+            echo "::warning::Failed to create staging 100m replay evidence deployment."
+            exit 0
+          fi
+
+          status_payload="$(
+            jq -n \
+              --arg state "${replay_state}" \
+              --arg log_url "${DEPLOY_LOG_URL}" \
+              --arg description "transaction replay ${replay_result}" \
+              '{
+                state: $state,
+                environment: "staging-100m-replay",
+                log_url: $log_url,
+                description: $description,
+                auto_inactive: false
+              }'
+          )"
+          if ! gh api --method POST "repos/${GITHUB_REPOSITORY}/deployments/${replay_deployment_id}/statuses" --input - <<< "${status_payload}"; then
+            echo "::warning::Failed to record staging 100m replay evidence status."
+          fi
 
       - name: Mark staging deployment success
         if: always() && needs.validate-latest-before-deploy.outputs.should_deploy == 'true' && needs.deploy-and-verify.result == 'success'
