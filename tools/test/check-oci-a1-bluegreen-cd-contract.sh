@@ -3,6 +3,7 @@ set -euo pipefail
 
 workflow=".github/workflows/staging-deploy.yml"
 deploy_script="ops/deploy/oci/bluegreen-deploy.sh"
+database_url_resolver_script="tools/ops/resolve-oci-a1-staging-database-url.sh"
 fixture_principal_script="tools/ops/staging-fixture-principal-bootstrap.sh"
 delivery_doc="docs/delivery-flow.md"
 production_doc="docs/production-promotion.md"
@@ -62,6 +63,7 @@ reject_workflow_pattern() {
 echo "[oci-a1-bluegreen-cd] required files"
 require_file "$workflow"
 require_file "$deploy_script"
+require_file "$database_url_resolver_script"
 require_file "$fixture_principal_script"
 require_file "$delivery_doc"
 require_file "$production_doc"
@@ -70,6 +72,7 @@ require_file "front/Dockerfile"
 
 echo "[oci-a1-bluegreen-cd] shell syntax"
 bash -n "$deploy_script"
+bash -n "$database_url_resolver_script"
 bash -n "$fixture_principal_script"
 bash -n "$0"
 
@@ -99,6 +102,8 @@ workflow_patterns=(
   "OCI_A1_BACKEND_ENV_B64"
   "Check OCI self-hosted runner prerequisites"
   "ops/deploy/oci/check-self-hosted-runner.sh"
+  "Resolve OCI A1 staging database URL"
+  "tools/ops/resolve-oci-a1-staging-database-url.sh"
   "Run OCI A1 blue-green deploy locally"
   "ops/deploy/oci/bluegreen-deploy.sh"
   "Ensure staging fixture principal"
@@ -179,6 +184,19 @@ for pattern in "${script_patterns[@]}"; do
   require_pattern "$pattern" "$deploy_script"
 done
 reject_pattern "--platform linux/amd64,linux/arm64" "$workflow"
+
+echo "[oci-a1-bluegreen-cd] database URL resolver contract"
+database_url_resolver_patterns=(
+  "OCI_A1_BACKEND_ENV_B64"
+  "SPRING_DATASOURCE_URL"
+  "SPRING_DATASOURCE_USERNAME"
+  "SPRING_DATASOURCE_PASSWORD"
+  "POSTGRES_HOST_BIND"
+  "postgresql://%s:%s@%s:%s/%s"
+)
+for pattern in "${database_url_resolver_patterns[@]}"; do
+  require_pattern "$pattern" "$database_url_resolver_script"
+done
 
 echo "[oci-a1-bluegreen-cd] fixture principal contract"
 fixture_principal_patterns=(

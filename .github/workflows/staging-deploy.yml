@@ -356,6 +356,9 @@ jobs:
           STAGING_SMOKE_WRITE_METHOD="${STAGING_SMOKE_WRITE_METHOD:-POST}"
           STAGING_SMOKE_WRITE_BODY="${STAGING_SMOKE_WRITE_BODY:-{}}"
           ALERTMANAGER_RECEIVER_SECRET_SMOKE_ENVIRONMENT=staging
+          POSTGRES_CONTAINER_NAME="${POSTGRES_CONTAINER_NAME:-aquila-postgres}"
+          POSTGRES_NETWORK_ALIAS="${POSTGRES_NETWORK_ALIAS:-aquila-postgres}"
+          POSTGRES_HOST_BIND="${POSTGRES_HOST_BIND:-127.0.0.1:5432}"
 
           HOT_ACCOUNT_ID="${STAGING_REPLAY_HOT_ACCOUNT_ID:-${HOT_ACCOUNT_ID:-}}"
           HOT_FROM="${STAGING_REPLAY_HOT_FROM:-${HOT_FROM:-}}"
@@ -418,6 +421,9 @@ jobs:
             STAGING_REPLAY_USER_DISPLAY_NAME
             STAGING_REPLAY_HOT_ACCOUNT_NUMBER
             STAGING_REPLAY_COLD_ACCOUNT_NUMBER
+            POSTGRES_CONTAINER_NAME
+            POSTGRES_NETWORK_ALIAS
+            POSTGRES_HOST_BIND
             ITERATIONS
             PAGE_LIMIT
             REQUEST_TIMEOUT_SECONDS
@@ -459,6 +465,15 @@ jobs:
         run: |
           set -euo pipefail
           ops/deploy/oci/check-self-hosted-runner.sh
+
+      - name: Resolve OCI A1 staging database URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          # backend env가 Docker alias DB를 쓰면 host psql용 URL은 배포 시점에 재산출한다.
+          resolved_database_url="$(tools/ops/resolve-oci-a1-staging-database-url.sh)"
+          echo "::add-mask::${resolved_database_url}"
+          printf 'STAGING_OCI_A1_DATABASE_URL=%s\n' "${resolved_database_url}" >>"${GITHUB_ENV}"
 
       - name: Run Alertmanager receiver secret smoke
         shell: bash
