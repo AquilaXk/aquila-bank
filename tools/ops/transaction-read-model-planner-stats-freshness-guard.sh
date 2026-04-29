@@ -72,7 +72,8 @@ relation_data AS (
     FROM target_table t
     LEFT JOIN (
         SELECT c.oid,
-               c.relname
+               c.relname,
+               c.reltuples AS reltuples
         FROM pg_class c
         JOIN pg_namespace n
           ON n.oid = c.relnamespace

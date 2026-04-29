@@ -13,6 +13,10 @@ grep -F "last_autoanalyze" <<<"${sql}" >/dev/null
 grep -F "stale_analyze_age" <<<"${sql}" >/dev/null
 grep -F "stale_modified_ratio" <<<"${sql}" >/dev/null
 grep -F "format('ANALYZE VERBOSE public.%I;', table_name)" <<<"${sql}" >/dev/null
+grep -F "c.reltuples AS reltuples" <<<"${sql}" >/dev/null || {
+  echo "pg_class reltuples must be projected from the derived relation query" >&2
+  exit 1
+}
 
 echo "[transaction-planner-stats-guard] guard: invalid threshold fails before querying"
 if STATS_MAX_AGE_HOURS=0 "${script}" --print-sql >/dev/null 2>&1; then
