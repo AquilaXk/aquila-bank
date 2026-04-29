@@ -216,6 +216,8 @@ script_patterns=(
   "location = /api/v1/notifications/stream"
   "proxy_buffering off;"
   "nginx -s reload"
+  'if [[ -e "${active_config}" ]]; then'
+  'cat "${next_config}" >"${active_config}"'
   'docker rm -f "$(slot_name backend "${green}")"'
 )
 for pattern in "${script_patterns[@]}"; do
