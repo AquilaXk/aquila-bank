@@ -19,6 +19,7 @@ set -euo pipefail
 method=""
 has_body=false
 body=""
+url=""
 
 while (($# > 0)); do
   case "$1" in
@@ -32,12 +33,15 @@ while (($# > 0)); do
       shift 2
       ;;
     *)
+      if [[ "$1" == http://* || "$1" == https://* ]]; then
+        url="$1"
+      fi
       shift
       ;;
   esac
 done
 
-printf '%s\t%s\t%s\n' "${method}" "${has_body}" "${body}" >>"${CURL_CALLS}"
+printf '%s\t%s\t%s\t%s\n' "${method}" "${has_body}" "${body}" "${url}" >>"${CURL_CALLS}"
 
 if [[ "${method}" == "GET" && "${has_body}" == "true" ]]; then
   echo "GET smoke request must not include a JSON body" >&2
@@ -75,3 +79,20 @@ STAGING_SMOKE_WRITE_BODY='{"ok":true}' \
 "${script}"
 
 grep -F $'POST\ttrue\t{"ok":true}' "${calls}" >/dev/null
+
+echo "[staging-postdeploy-smoke-contract] smoke base URL overrides public base URL"
+: >"${calls}"
+PATH="${bin_dir}:${PATH}" \
+CURL_CALLS="${calls}" \
+STAGING_BASE_URL="https://public.example.com" \
+STAGING_SMOKE_BASE_URL="http://127.0.0.1" \
+STAGING_SMOKE_READ_PATH="/actuator/health" \
+STAGING_SMOKE_WRITE_PATH="/actuator/health" \
+STAGING_SMOKE_WRITE_METHOD="GET" \
+"${script}"
+
+grep -F "http://127.0.0.1/actuator/health" "${calls}" >/dev/null
+if grep -F "https://public.example.com" "${calls}" >/dev/null; then
+  echo "smoke unexpectedly used public STAGING_BASE_URL" >&2
+  exit 1
+fi
