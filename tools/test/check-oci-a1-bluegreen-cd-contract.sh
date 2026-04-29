@@ -117,6 +117,35 @@ for pattern in "${workflow_patterns[@]}"; do
   require_pattern "$pattern" "$workflow"
 done
 
+if command -v ruby >/dev/null 2>&1; then
+  ruby <<'RUBY'
+require "yaml"
+
+workflow = YAML.load_file(".github/workflows/staging-deploy.yml")
+jobs = workflow.fetch("jobs")
+frontend_job = jobs.fetch("frontend-image")
+frontend_runner_labels = Array(frontend_job.fetch("runs-on"))
+unless frontend_runner_labels.include?("self-hosted") && frontend_runner_labels.include?("oci-a1-staging")
+  abort("frontend image job must run on OCI A1 self-hosted ARM64 runner")
+end
+
+frontend_steps = frontend_job.fetch("steps")
+frontend_step_names = frontend_steps.map { |step| step["name"] }
+if frontend_steps.any? { |step| step["uses"] == "docker/setup-qemu-action@v3" }
+  abort("frontend image job must not use QEMU for ARM64 image build")
+end
+
+prerequisite_index = frontend_step_names.index("Check OCI self-hosted runner prerequisites") ||
+  abort("frontend image job must check OCI self-hosted runner prerequisites")
+build_index = frontend_step_names.index("Build and push frontend image") ||
+  abort("frontend image job must build and push frontend image")
+abort("frontend runner prerequisites must run before frontend image build") unless prerequisite_index < build_index
+
+build_run = frontend_steps.fetch(build_index).fetch("run")
+abort("frontend image must remain linux/arm64") unless build_run.include?("--platform linux/arm64")
+RUBY
+fi
+
 scattered_patterns=(
   "vars.OCI_A1_"
   "vars.STAGING_"
