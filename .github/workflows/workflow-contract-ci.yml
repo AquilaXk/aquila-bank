@@ -7,6 +7,7 @@ on:
     paths:
       - ".github/workflows/**"
       - "tools/test/check-ci-runtime-optimization-contract.sh"
+      - "tools/test/check-flyway-backward-compatible-migrations.sh"
       - "tools/test/run-transaction-query-plan-regression-gate.sh"
 
 permissions:
