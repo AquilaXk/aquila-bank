@@ -18,27 +18,35 @@ public record ApiAdmissionControlProperties(
     return List.of(
         new EndpointLimit(
             "transaction-read",
-            3,
+            4,
+            2,
             List.of("/api/v1/transactions"),
-            new AdaptiveLimit(true, 3, 8, 200, 1)),
-        new EndpointLimit("account-read", 4, List.of("/api/v1/accounts"), null),
-        new EndpointLimit("transfer-write", 2, List.of("/api/v1/transfers"), null),
-        new EndpointLimit("notification-stream", 4, List.of("/api/v1/notifications/stream"), null),
+            new AdaptiveLimit(true, 4, 12, 128, 2)),
+        new EndpointLimit("account-read", 4, 0, List.of("/api/v1/accounts"), null),
+        new EndpointLimit("transfer-write", 2, 0, List.of("/api/v1/transfers"), null),
+        new EndpointLimit(
+            "notification-stream", 4, 0, List.of("/api/v1/notifications/stream"), null),
         new EndpointLimit(
             "notification-read",
             4,
+            0,
             List.of("/api/v1/notifications", "/api/v1/notification-preferences"),
             null),
         new EndpointLimit(
             "internal-ops",
             2,
+            0,
             List.of(
                 "/internal/api/v1/accounts", "/internal/api/v1/ledger", "/internal/api/v1/outbox"),
             null));
   }
 
   public record EndpointLimit(
-      String group, int maxConcurrency, List<String> pathPrefixes, AdaptiveLimit adaptive) {
+      String group,
+      int maxConcurrency,
+      int retryAfterSeconds,
+      List<String> pathPrefixes,
+      AdaptiveLimit adaptive) {
 
     public EndpointLimit {
       if (group == null || group.isBlank()) {
@@ -51,6 +59,10 @@ public record ApiAdmissionControlProperties(
       if (pathPrefixes == null || pathPrefixes.isEmpty()) {
         throw new IllegalArgumentException(
             "ops.api-admission-control path-prefixes must not be empty");
+      }
+      if (retryAfterSeconds < 0) {
+        throw new IllegalArgumentException(
+            "ops.api-admission-control retry-after-seconds must not be negative");
       }
       pathPrefixes = List.copyOf(pathPrefixes);
       adaptive = adaptive == null ? AdaptiveLimit.disabled(maxConcurrency) : adaptive;
