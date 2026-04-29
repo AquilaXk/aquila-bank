@@ -18,7 +18,9 @@ public class ApiAdmissionControl {
     this.meterRegistry = meterRegistry;
     this.endpoints =
         properties.endpoints().stream()
-            .map(endpoint -> new EndpointState(endpoint, meterRegistry))
+            .map(
+                endpoint ->
+                    new EndpointState(endpoint, properties.retryAfterSeconds(), meterRegistry))
             .toList();
   }
 
@@ -33,7 +35,7 @@ public class ApiAdmissionControl {
     if (!endpoint.tryAcquire()) {
       endpoint.recordRejection();
       increment(endpoint.group(), "rejected");
-      return ApiAdmissionPermit.rejected(endpoint.group(), properties.retryAfterSeconds());
+      return ApiAdmissionPermit.rejected(endpoint.group(), endpoint.retryAfterSeconds());
     }
     increment(endpoint.group(), "accepted");
     return ApiAdmissionPermit.acquired(endpoint.group(), endpoint::release);
@@ -64,6 +66,7 @@ public class ApiAdmissionControl {
 
   private record EndpointState(
       String group,
+      int retryAfterSeconds,
       List<String> pathPrefixes,
       ApiAdmissionControlProperties.AdaptiveLimit adaptive,
       AtomicInteger currentLimit,
@@ -71,9 +74,14 @@ public class ApiAdmissionControl {
       AtomicInteger healthyCompletions) {
 
     private EndpointState(
-        ApiAdmissionControlProperties.EndpointLimit endpoint, MeterRegistry meterRegistry) {
+        ApiAdmissionControlProperties.EndpointLimit endpoint,
+        int defaultRetryAfterSeconds,
+        MeterRegistry meterRegistry) {
       this(
           endpoint.group(),
+          endpoint.retryAfterSeconds() > 0
+              ? endpoint.retryAfterSeconds()
+              : defaultRetryAfterSeconds,
           endpoint.pathPrefixes(),
           endpoint.adaptive(),
           new AtomicInteger(endpoint.maxConcurrency()),

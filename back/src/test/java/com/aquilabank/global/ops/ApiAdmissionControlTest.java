@@ -150,6 +150,43 @@ class ApiAdmissionControlTest {
   }
 
   @Test
+  void usesEndpointRetryAfterAndOciA1TransactionReadAdaptiveBounds() {
+    SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+    ApiAdmissionControl admissionControl =
+        new ApiAdmissionControl(
+            new ApiAdmissionControlProperties(
+                true,
+                1,
+                List.of(
+                    new ApiAdmissionControlProperties.EndpointLimit(
+                        "transaction-read",
+                        4,
+                        2,
+                        List.of("/api/v1/transactions"),
+                        new ApiAdmissionControlProperties.AdaptiveLimit(true, 4, 12, 128, 2)))),
+            meterRegistry);
+
+    ApiAdmissionPermit first = admissionControl.tryAcquire("/api/v1/transactions");
+    ApiAdmissionPermit second = admissionControl.tryAcquire("/api/v1/transactions");
+    ApiAdmissionPermit third = admissionControl.tryAcquire("/api/v1/transactions");
+    ApiAdmissionPermit fourth = admissionControl.tryAcquire("/api/v1/transactions");
+    ApiAdmissionPermit rejected = admissionControl.tryAcquire("/api/v1/transactions");
+
+    assertThat(first.allowed()).isTrue();
+    assertThat(second.allowed()).isTrue();
+    assertThat(third.allowed()).isTrue();
+    assertThat(fourth.allowed()).isTrue();
+    assertThat(rejected.allowed()).isFalse();
+    assertThat(rejected.retryAfterSeconds()).isEqualTo(2);
+    assertCurrentLimit(meterRegistry, 4.0);
+
+    first.release();
+    second.release();
+    third.release();
+    fourth.release();
+  }
+
+  @Test
   void disabledAdaptiveBlockDoesNotRequireBounds() {
     SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
     ApiAdmissionControl admissionControl =
@@ -161,6 +198,7 @@ class ApiAdmissionControlTest {
                     new ApiAdmissionControlProperties.EndpointLimit(
                         "transaction-read",
                         1,
+                        0,
                         List.of("/api/v1/transactions"),
                         new ApiAdmissionControlProperties.AdaptiveLimit(false, 0, 0, 0, 0)))),
             meterRegistry);
@@ -181,7 +219,7 @@ class ApiAdmissionControlTest {
         1,
         List.of(
             new ApiAdmissionControlProperties.EndpointLimit(
-                "transaction-read", 1, List.of("/api/v1/transactions"), null)));
+                "transaction-read", 1, 0, List.of("/api/v1/transactions"), null)));
   }
 
   private ApiAdmissionControlProperties adaptiveProperties(
@@ -197,6 +235,7 @@ class ApiAdmissionControlTest {
             new ApiAdmissionControlProperties.EndpointLimit(
                 "transaction-read",
                 maxConcurrency,
+                0,
                 List.of("/api/v1/transactions"),
                 new ApiAdmissionControlProperties.AdaptiveLimit(
                     true,

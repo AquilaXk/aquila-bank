@@ -69,6 +69,13 @@ expr = p95_rule["expr"].to_s
 abort("transaction p95 SLO alert must use histogram_quantile(0.95)") unless expr.match?(/histogram_quantile\s*\(\s*0\.95/)
 abort("transaction p95 SLO alert must read histogram buckets") unless expr.include?("aquila_transaction_query_latency_seconds_bucket")
 abort("transaction p95 SLO alert must keep query_shape labels") unless expr.include?("query_shape")
+p99_rule = transaction_rules.find { |rule| rule["alert"] == "AquilaTransactionQueryLatencyP99SloHigh" }
+abort("transaction p99 SLO alert missing") unless p99_rule
+expr = p99_rule["expr"].to_s
+abort("transaction p99 SLO alert must use histogram_quantile(0.99)") unless expr.match?(/histogram_quantile\s*\(\s*0\.99/)
+abort("transaction p99 SLO alert must read histogram buckets") unless expr.include?("aquila_transaction_query_latency_seconds_bucket")
+abort("transaction p99 SLO alert must keep query_shape labels") unless expr.include?("query_shape")
+abort("transaction average latency alert must not remain as SLO") if transaction_rules.any? { |rule| rule["alert"] == "AquilaTransactionQueryLatencyHigh" }
 
 def require_alert(data, alert_name, required_fragments)
   rule = data["groups"].flat_map { |group| group["rules"] }.find { |item| item["alert"] == alert_name }
@@ -80,6 +87,8 @@ def require_alert(data, alert_name, required_fragments)
 end
 
 {
+  "AquilaTransactionRead429BudgetHigh" => ["aquila_transaction_429_rate", "0.10"],
+  "AquilaTransactionRead503HardFailDetected" => ["aquila_transaction_503_count", "aquila_transaction_503_rate"],
   "AquilaAuthThrottlingRejectBurstDetected" => ["aquila_auth_throttling_reject_count_total"],
   "AquilaApiAdmissionRejectBurstDetected" => ["aquila_api_admission_requests_total"],
   "AquilaT3MicroSaturationRejectDetected" => [

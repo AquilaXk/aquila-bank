@@ -17,6 +17,7 @@ plan="$(
   MATRIX_NAME=transaction-read-matrix-check \
   MATRIX_ADMISSION_VALUES=3,4 \
   MATRIX_DB_POOL_VALUES=4,6 \
+  MATRIX_SERVER_THREAD_VALUES=16,32 \
   MATRIX_VU_VALUES=3,8 \
   K6_DURATION=5s \
     "${script}" --print-plan
@@ -24,14 +25,17 @@ plan="$(
 grep -F "matrix=transaction-read-matrix-check" <<<"${plan}" >/dev/null
 grep -F "admission_values=3,4" <<<"${plan}" >/dev/null
 grep -F "db_pool_values=4,6" <<<"${plan}" >/dev/null
+grep -F "server_thread_values=16,32" <<<"${plan}" >/dev/null
 grep -F "vu_values=3,8" <<<"${plan}" >/dev/null
-grep -F "combinations=8" <<<"${plan}" >/dev/null
+grep -F "combinations=16" <<<"${plan}" >/dev/null
 grep -F "execution=serial" <<<"${plan}" >/dev/null
 grep -F "summary=build/reports/k6/transaction-read-matrix-check/matrix-summary.tsv" <<<"${plan}" >/dev/null
 
 echo "[transaction-read-matrix] runner contract"
 grep -F "OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_MAX" "${script}" >/dev/null
 grep -F "DB_POOL_MAX_SIZE" "${script}" >/dev/null
+grep -F "SERVER_THREADS_MAX" "${script}" >/dev/null
+grep -F "MATRIX_SERVER_THREAD_VALUES" "${script}" >/dev/null
 grep -F "K6_VUS" "${script}" >/dev/null
 grep -F "docker stats --no-stream" "${script}" >/dev/null
 grep -F "hikaricp_connections_active" "${script}" >/dev/null
@@ -54,6 +58,10 @@ if MATRIX_ADMISSION_VALUES=0 "${script}" --print-plan >/dev/null 2>&1; then
 fi
 if MATRIX_DB_POOL_VALUES=bad "${script}" --print-plan >/dev/null 2>&1; then
   echo "MATRIX_DB_POOL_VALUES=bad unexpectedly succeeded" >&2
+  exit 1
+fi
+if MATRIX_SERVER_THREAD_VALUES=bad "${script}" --print-plan >/dev/null 2>&1; then
+  echo "MATRIX_SERVER_THREAD_VALUES=bad unexpectedly succeeded" >&2
   exit 1
 fi
 if MATRIX_VU_VALUES= "${script}" --print-plan >/dev/null 2>&1; then

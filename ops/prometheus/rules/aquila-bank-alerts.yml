@@ -322,22 +322,101 @@ groups:
           description: "transaction query p95 latency가 query_shape별 baseline SLO를 5분 이상 초과했습니다. histogram bucket과 query volume을 같이 확인합니다."
           runbook_path: "back/README.md#prometheus-metrics"
 
-      - alert: AquilaTransactionQueryLatencyHigh
+      - alert: AquilaTransactionQueryLatencyP99SloHigh
         expr: |
           (
-            sum(rate(aquila_transaction_query_latency_seconds_sum{outcome="success"}[5m]))
-            /
-            clamp_min(sum(rate(aquila_transaction_query_latency_seconds_count{outcome="success"}[5m])), 0.001)
-          ) > 0.75
-          and
-          sum(rate(aquila_transaction_query_latency_seconds_count{outcome="success"}[5m])) > 0.1
-        for: 15m
+            (
+              histogram_quantile(
+                0.99,
+                sum by (le, query_shape) (
+                  rate(aquila_transaction_query_latency_seconds_bucket{outcome="success",query_shape="reference_exact"}[5m])
+                )
+              ) > 0.16
+            )
+            or
+            (
+              histogram_quantile(
+                0.99,
+                sum by (le, query_shape) (
+                  rate(aquila_transaction_query_latency_seconds_bucket{outcome="success",query_shape="first_page"}[5m])
+                )
+              ) > 0.24
+            )
+            or
+            (
+              histogram_quantile(
+                0.99,
+                sum by (le, query_shape) (
+                  rate(aquila_transaction_query_latency_seconds_bucket{outcome="success",query_shape=~"cursor|status_first|status_cursor|direction_first|direction_cursor"}[5m])
+                )
+              ) > 0.30
+            )
+            or
+            (
+              histogram_quantile(
+                0.99,
+                sum by (le, query_shape) (
+                  rate(aquila_transaction_query_latency_seconds_bucket{outcome="success",query_shape=~"amount_first|amount_cursor|mixed_first|mixed_cursor"}[5m])
+                )
+              ) > 0.36
+            )
+          )
+          and on (query_shape)
+          sum by (query_shape) (
+            rate(aquila_transaction_query_latency_seconds_count{outcome="success"}[5m])
+          ) > 0.1
+        for: 5m
         labels:
           severity: warning
           service: aquila-bank
           domain: transaction
           baseline: "true"
+          slo: "p99"
         annotations:
-          summary: "Aquila Bank transaction query latency is high"
-          description: "transaction query 평균 latency가 15분 이상 750ms를 초과했습니다. baseline 값이므로 실제 traffic 분포에 맞게 재조정합니다."
+          summary: "Aquila Bank transaction query p99 SLO is high"
+          description: "transaction query p99 latency가 query_shape별 baseline SLO를 5분 이상 초과했습니다. tail latency와 query volume을 같이 확인합니다."
+          runbook_path: "back/README.md#prometheus-metrics"
+
+      - alert: AquilaTransactionRead429BudgetHigh
+        expr: |
+          max by (run_id) (
+            max_over_time(aquila_transaction_429_rate{workload="transaction-read-100m"}[5m])
+          ) > 0.10
+        for: 2m
+        labels:
+          severity: warning
+          service: aquila-bank
+          domain: transaction
+          signal: admission_budget
+          baseline: "true"
+          slo: "429"
+        annotations:
+          summary: "Aquila Bank transaction read 429 budget is high"
+          description: "transaction read burst의 429 rate가 5분 window에서 10% budget을 초과했습니다. nginx upstream queue와 backend admission reject를 분리해 확인합니다."
+          runbook_path: "back/README.md#prometheus-metrics"
+
+      - alert: AquilaTransactionRead503HardFailDetected
+        expr: |
+          (
+            max by (run_id) (
+              increase(aquila_transaction_503_count{workload="transaction-read-100m"}[5m])
+            ) > 0
+          )
+          or
+          (
+            max by (run_id) (
+              max_over_time(aquila_transaction_503_rate{workload="transaction-read-100m"}[5m])
+            ) > 0
+          )
+        for: 1m
+        labels:
+          severity: critical
+          service: aquila-bank
+          domain: transaction
+          signal: hard_fail
+          baseline: "true"
+          slo: "503"
+        annotations:
+          summary: "Aquila Bank transaction read 503 hard fail detected"
+          description: "transaction read burst에서 503이 감지됐습니다. admission 보호 실패 또는 upstream/backend saturation으로 보고 즉시 원인을 분리합니다."
           runbook_path: "back/README.md#prometheus-metrics"

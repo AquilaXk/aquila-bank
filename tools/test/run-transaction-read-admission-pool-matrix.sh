@@ -15,9 +15,10 @@ Required runtime environment for actual runs:
 
 Optional environment:
   MATRIX_NAME              default transaction-read-admission-pool-<timestamp>
-  MATRIX_ADMISSION_VALUES  default 3,4,6,8
-  MATRIX_DB_POOL_VALUES    default 4,6,8
-  MATRIX_VU_VALUES         default 3,4,6,8
+  MATRIX_ADMISSION_VALUES  default 4,8,12
+  MATRIX_DB_POOL_VALUES    default 4,8,12
+  MATRIX_SERVER_THREAD_VALUES default 16,24,32
+  MATRIX_VU_VALUES         default 8,16
   MATRIX_CONTINUE_ON_FAILURE default true
   MATRIX_BUILD_BACKEND     default true
   MATRIX_READINESS_TIMEOUT_SECONDS default 90
@@ -30,7 +31,7 @@ Optional environment:
 
 Examples:
   tools/test/run-transaction-read-admission-pool-matrix.sh --print-plan
-  MATRIX_ADMISSION_VALUES=3,8 MATRIX_DB_POOL_VALUES=4,8 MATRIX_VU_VALUES=3,8 \
+  MATRIX_ADMISSION_VALUES=4,12 MATRIX_DB_POOL_VALUES=4,12 MATRIX_SERVER_THREAD_VALUES=16,32 MATRIX_VU_VALUES=8,16 \
     tools/test/run-transaction-read-admission-pool-matrix.sh
 USAGE
 }
@@ -54,9 +55,10 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 matrix_name="${MATRIX_NAME:-transaction-read-admission-pool-$(date +%Y-%m-%d-%H%M%S)}"
-admission_values="${MATRIX_ADMISSION_VALUES-3,4,6,8}"
-db_pool_values="${MATRIX_DB_POOL_VALUES-4,6,8}"
-vu_values="${MATRIX_VU_VALUES-3,4,6,8}"
+admission_values="${MATRIX_ADMISSION_VALUES-4,8,12}"
+db_pool_values="${MATRIX_DB_POOL_VALUES-4,8,12}"
+server_thread_values="${MATRIX_SERVER_THREAD_VALUES-16,24,32}"
+vu_values="${MATRIX_VU_VALUES-8,16}"
 continue_on_failure="${MATRIX_CONTINUE_ON_FAILURE:-true}"
 build_backend="${MATRIX_BUILD_BACKEND:-true}"
 prometheus_url="${PROMETHEUS_URL:-http://localhost:9090}"
@@ -95,6 +97,7 @@ csv_count() {
 
 require_csv_positive_integers "MATRIX_ADMISSION_VALUES" "${admission_values}"
 require_csv_positive_integers "MATRIX_DB_POOL_VALUES" "${db_pool_values}"
+require_csv_positive_integers "MATRIX_SERVER_THREAD_VALUES" "${server_thread_values}"
 require_csv_positive_integers "MATRIX_VU_VALUES" "${vu_values}"
 if ! [[ "${readiness_timeout_seconds}" =~ ^[1-9][0-9]*$ ]]; then
   echo "MATRIX_READINESS_TIMEOUT_SECONDS must be a positive integer" >&2
@@ -111,13 +114,15 @@ fi
 
 admission_count="$(csv_count "${admission_values}")"
 db_pool_count="$(csv_count "${db_pool_values}")"
+server_thread_count="$(csv_count "${server_thread_values}")"
 vu_count="$(csv_count "${vu_values}")"
-combination_count=$((admission_count * db_pool_count * vu_count))
+combination_count=$((admission_count * db_pool_count * server_thread_count * vu_count))
 
 print_plan() {
   echo "[transaction-read-matrix] matrix=${matrix_name}"
   echo "[transaction-read-matrix] admission_values=${admission_values}"
   echo "[transaction-read-matrix] db_pool_values=${db_pool_values}"
+  echo "[transaction-read-matrix] server_thread_values=${server_thread_values}"
   echo "[transaction-read-matrix] vu_values=${vu_values}"
   echo "[transaction-read-matrix] combinations=${combination_count}"
   echo "[transaction-read-matrix] execution=serial"
@@ -317,7 +322,7 @@ wait_for_prometheus_readiness() {
 }
 
 write_header() {
-  printf "status\tadmission\tdb_pool\tvus\treport\thttp_failed_rate\thttp_reqs\tadmission_429_rate\tadmission_accepted\tadmission_rejected\thot_first_p95_ms\thot_cursor_p95_ms\tcold_first_p95_ms\tcold_cursor_p95_ms\tbackend_cpu_percent\tpostgres_cpu_percent\thikari_active\thikari_pending\thikari_max\tlog_path\tsummary_json\n" >"${summary_tsv}"
+  printf "status\tadmission\tdb_pool\tserver_threads\tvus\treport\thttp_failed_rate\thttp_reqs\tadmission_429_rate\tadmission_accepted\tadmission_rejected\thot_first_p95_ms\thot_cursor_p95_ms\tcold_first_p95_ms\tcold_cursor_p95_ms\tbackend_cpu_percent\tpostgres_cpu_percent\thikari_active\thikari_pending\thikari_max\tlog_path\tsummary_json\n" >"${summary_tsv}"
 }
 
 append_summary() {
@@ -327,8 +332,9 @@ append_summary() {
 run_combination() {
   local admission="$1"
   local db_pool="$2"
-  local vus="$3"
-  local report_name="${matrix_name}-admission${admission}-pool${db_pool}-vu${vus}"
+  local server_threads="$3"
+  local vus="$4"
+  local report_name="${matrix_name}-admission${admission}-pool${db_pool}-threads${server_threads}-vu${vus}"
   local log_path="${report_dir}/${report_name}.log"
   local summary_json="build/reports/k6/${report_name}-summary.json"
   local stats_path="${report_dir}/${report_name}-docker-stats.tsv"
@@ -338,10 +344,11 @@ run_combination() {
   local status http_failed_rate http_reqs hot_first hot_cursor cold_first cold_cursor
   local backend_cpu postgres_cpu hikari_active hikari_pending hikari_max
 
-  echo "[transaction-read-matrix] running admission=${admission} db_pool=${db_pool} vus=${vus}"
+  echo "[transaction-read-matrix] running admission=${admission} db_pool=${db_pool} server_threads=${server_threads} vus=${vus}"
 
   OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_MAX="${admission}" \
   DB_POOL_MAX_SIZE="${db_pool}" \
+  SERVER_THREADS_MAX="${server_threads}" \
     docker compose "${compose_files[@]}" --profile loadtest up -d --force-recreate aquila-bank-backend prometheus grafana
 
   wait_for_backend_readiness
@@ -398,7 +405,7 @@ run_combination() {
   hikari_max="$(prometheus_value 'max(hikaricp_connections_max{pool="aquila-bank-pool"})')"
 
   append_summary \
-    "${status}" "${admission}" "${db_pool}" "${vus}" "${report_name}" \
+    "${status}" "${admission}" "${db_pool}" "${server_threads}" "${vus}" "${report_name}" \
     "${http_failed_rate}" "${http_reqs}" "${admission_429_rate}" "${accepted_delta}" "${rejected_delta}" \
     "${hot_first}" "${hot_cursor}" "${cold_first}" "${cold_cursor}" \
     "${backend_cpu}" "${postgres_cpu}" "${hikari_active}" "${hikari_pending}" "${hikari_max}" \
@@ -414,12 +421,15 @@ write_header
 
 IFS=',' read -r -a admissions <<<"${admission_values}"
 IFS=',' read -r -a pools <<<"${db_pool_values}"
+IFS=',' read -r -a server_threads_items <<<"${server_thread_values}"
 IFS=',' read -r -a vus_items <<<"${vu_values}"
 
 for admission in "${admissions[@]}"; do
   for db_pool in "${pools[@]}"; do
-    for vus in "${vus_items[@]}"; do
-      run_combination "${admission}" "${db_pool}" "${vus}"
+    for server_threads in "${server_threads_items[@]}"; do
+      for vus in "${vus_items[@]}"; do
+        run_combination "${admission}" "${db_pool}" "${server_threads}" "${vus}"
+      done
     done
   done
 done
