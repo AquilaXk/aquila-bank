@@ -35,6 +35,51 @@ notice() {
   echo "::notice::$*" >&2
 }
 
+fixture_restore_guidance() {
+  printf '%s' "Restore OCI A1 100m fixture before replay: tools/test/run-transaction-100m-fresh-volume-restore-k6.sh --dry-run, then tools/ops/transaction-read-model-chunk-lifecycle.sh --action analyze --target both."
+}
+
+write_distribution_failure_report() {
+  local status="$1"
+  local estimated_total="$2"
+  local detail="$3"
+  local guidance="$4"
+
+  echo "$estimated_total" >"${REPORT_DIR}/estimated-total-rows.txt"
+  jq -n \
+    --arg generatedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --arg baseUrl "$STAGING_BASE_URL" \
+    --arg phase "distribution" \
+    --arg status "$status" \
+    --arg detail "$detail" \
+    --arg guidance "$guidance" \
+    --argjson expectedTotalRows "$EXPECTED_TOTAL_ROWS" \
+    --argjson estimatedTotalRows "$estimated_total" \
+    '{
+      generatedAt: $generatedAt,
+      baseUrl: $baseUrl,
+      phase: $phase,
+      status: $status,
+      detail: $detail,
+      guidance: $guidance,
+      expectedTotalRows: $expectedTotalRows,
+      estimatedTotalRows: $estimatedTotalRows,
+      failed: true
+    }' >"$SUMMARY_JSON"
+
+  {
+    echo "# Transaction Read Model Staging Replay"
+    echo
+    echo "- status: failed"
+    echo "- phase: distribution"
+    echo "- failure: ${status}"
+    echo "- estimated total rows: ${estimated_total}"
+    echo "- expected total rows: ${EXPECTED_TOTAL_ROWS}"
+    echo "- detail: ${detail}"
+    echo "- guidance: ${guidance}"
+  } >"$SUMMARY_MD"
+}
+
 require_command() {
   command -v "$1" >/dev/null 2>&1 || fail "Missing required command: $1"
 }
@@ -136,7 +181,15 @@ verify_staging_distribution() {
 
   [[ "$estimated_total" =~ ^[0-9]+$ ]] || fail "OCI A1 row estimate is not numeric: ${estimated_total}"
   if [ "$estimated_total" -lt "$EXPECTED_TOTAL_ROWS" ]; then
-    fail "OCI A1 read model estimate ${estimated_total} is below expected ${EXPECTED_TOTAL_ROWS}"
+    local status detail guidance
+    status="estimate_below_expected"
+    if [ "$estimated_total" -eq 0 ]; then
+      status="fixture_missing"
+    fi
+    detail="OCI A1 read model estimate ${estimated_total} is below expected ${EXPECTED_TOTAL_ROWS}"
+    guidance="$(fixture_restore_guidance)"
+    write_distribution_failure_report "$status" "$estimated_total" "$detail" "$guidance"
+    fail "${status}: ${detail}. ${guidance}"
   fi
 
   local hot_exists
@@ -149,7 +202,13 @@ verify_staging_distribution() {
          LIMIT 1
        );"
   )"
-  [ "$hot_exists" = "t" ] || fail "HOT_ACCOUNT_ID ${HOT_ACCOUNT_ID} has no hot rows"
+  if [ "$hot_exists" != "t" ]; then
+    local detail guidance
+    detail="HOT_ACCOUNT_ID ${HOT_ACCOUNT_ID} has no hot rows"
+    guidance="$(fixture_restore_guidance)"
+    write_distribution_failure_report "hot_account_missing" "$estimated_total" "$detail" "$guidance"
+    fail "hot_account_missing: ${detail}. ${guidance}"
+  fi
 
   local cold_exists
   cold_exists="$(
@@ -161,7 +220,13 @@ verify_staging_distribution() {
          LIMIT 1
        );"
   )"
-  [ "$cold_exists" = "t" ] || fail "COLD_ACCOUNT_ID ${COLD_ACCOUNT_ID} has no archive rows"
+  if [ "$cold_exists" != "t" ]; then
+    local detail guidance
+    detail="COLD_ACCOUNT_ID ${COLD_ACCOUNT_ID} has no archive rows"
+    guidance="$(fixture_restore_guidance)"
+    write_distribution_failure_report "cold_account_missing" "$estimated_total" "$detail" "$guidance"
+    fail "cold_account_missing: ${detail}. ${guidance}"
+  fi
 
   notice "OCI A1 read model estimate ${estimated_total} rows"
   echo "$estimated_total" >"${REPORT_DIR}/estimated-total-rows.txt"
