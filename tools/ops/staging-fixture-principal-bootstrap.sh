@@ -54,11 +54,11 @@ validate_inputs() {
   require_positive_integer STAGING_REPLAY_USER_ID
   require_positive_integer HOT_ACCOUNT_ID
   require_positive_integer COLD_ACCOUNT_ID
-  require_max_length STAGING_REPLAY_LOGIN_ID "${STAGING_REPLAY_LOGIN_ID}" 80
-  require_max_length STAGING_REPLAY_USER_PASSWORD_HASH "${STAGING_REPLAY_USER_PASSWORD_HASH}" 120
-  require_max_length STAGING_REPLAY_USER_DISPLAY_NAME "${STAGING_REPLAY_USER_DISPLAY_NAME}" 80
-  require_max_length STAGING_REPLAY_HOT_ACCOUNT_NUMBER "${STAGING_REPLAY_HOT_ACCOUNT_NUMBER}" 20
-  require_max_length STAGING_REPLAY_COLD_ACCOUNT_NUMBER "${STAGING_REPLAY_COLD_ACCOUNT_NUMBER}" 20
+  require_max_length STAGING_REPLAY_LOGIN_ID 80
+  require_max_length STAGING_REPLAY_USER_PASSWORD_HASH 120
+  require_max_length STAGING_REPLAY_USER_DISPLAY_NAME 80
+  require_max_length STAGING_REPLAY_HOT_ACCOUNT_NUMBER 20
+  require_max_length STAGING_REPLAY_COLD_ACCOUNT_NUMBER 20
 }
 
 ensure_fixture_principal() {
