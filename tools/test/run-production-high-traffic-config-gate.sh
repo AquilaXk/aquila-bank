@@ -13,6 +13,15 @@ ruby <<'RUBY'
 require 'yaml'
 
 workflow = YAML.load_file('.github/workflows/production-promotion.yml')
+guard_steps = workflow.fetch('jobs').fetch('guard').fetch('steps')
+guard_step_names = guard_steps.map { |step| step['name'] }
+staging_success_index = guard_step_names.index('Verify staging deployment success') or abort('staging deployment success guard missing')
+replay_evidence_index = guard_step_names.index('Verify staging 100m replay evidence success') or abort('staging 100m replay evidence guard missing')
+abort('staging replay evidence guard must run after staging deployment guard') unless staging_success_index < replay_evidence_index
+replay_evidence_run = guard_steps.fetch(replay_evidence_index).fetch('run')
+abort('staging replay evidence guard must query separate environment') unless replay_evidence_run.include?('staging-100m-replay')
+abort('staging replay evidence guard must require success') unless replay_evidence_run.include?('No successful staging 100m replay evidence')
+
 steps = workflow.fetch('jobs').fetch('promote').fetch('steps')
 step_names = steps.map { |step| step['name'] }
 target_name = 'Run production high-traffic config gate'

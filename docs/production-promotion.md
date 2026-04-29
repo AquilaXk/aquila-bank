@@ -3,7 +3,7 @@
 ## Trigger
 
 - Manual: GitHub Actions `Production Promotion` workflow dispatch
-  - input `sha`: staging deployment status가 `success`인 40자 main commit SHA
+- input `sha`: staging deployment status와 `staging-100m-replay` evidence가 모두 `success`인 40자 main commit SHA
 - Tag: `prod-*` tag push
   - tag가 가리키는 commit을 promotion target SHA로 사용
 
@@ -12,7 +12,10 @@
 - target SHA는 `origin/main`에서 도달 가능해야 합니다.
 - target SHA와 같은 staging GitHub deployment가 있어야 합니다.
 - 해당 staging deployment의 최신 status가 `success`여야 합니다.
-- staging success는 OCI A1 blue/green deploy, post-deploy smoke, 1억 건 replay gate를 통과한 same SHA만 기록합니다.
+- target SHA와 같은 `staging-100m-replay` GitHub deployment가 있어야 합니다.
+- 해당 `staging-100m-replay` deployment의 최신 status가 `success`여야 합니다.
+- staging success는 OCI A1 blue/green deploy와 post-deploy smoke 통과를 뜻하고, 1억 건 replay gate 통과 여부는 별도 evidence status로 기록합니다.
+- production promotion은 두 status가 same SHA에 대해 모두 성공일 때만 진행합니다.
 - guard가 실패하면 `production` Environment approval 전 단계에서 workflow가 중단됩니다.
 
 ## Approval
@@ -73,7 +76,7 @@ rollback secret 3개는 모두 없으면 rollback hook을 호출하지 않고 wo
 ## Rollback
 
 - 기본 rollback은 `main` 기준 revert PR을 merge한 뒤 새 staging 성공 SHA를 production으로 승격합니다.
-- 긴급 재승격이 필요하면 직전 production 성공 SHA가 staging success guard를 통과하는지 먼저 확인합니다.
+- 긴급 재승격이 필요하면 직전 production 성공 SHA가 staging success와 `staging-100m-replay` evidence guard를 모두 통과하는지 먼저 확인합니다.
 - main 밖 commit, staging 성공 기록이 없는 commit, 짧은 SHA 입력은 production promotion 대상이 아닙니다.
 - rollback guard는 `PRODUCTION_ROLLBACK_TARGET_SHA`가 staging deployment `success` 상태일 때만 hook을 호출합니다.
 - rollback target은 실패한 `TARGET_SHA`와 같을 수 없습니다.
