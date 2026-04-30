@@ -18,6 +18,7 @@ import com.aquilabank.domain.transaction.usecase.TransactionQueryUseCase;
 import com.aquilabank.global.security.BootstrapHeaderAuthenticationFilter;
 import com.aquilabank.global.web.security.CurrentAuthenticatedPrincipalArgumentResolver;
 import com.aquilabank.global.web.security.RequestAccountAuthorizationService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,16 +30,20 @@ class TransactionQueryControllerTest {
 
   private TransactionQueryUseCase transactionQueryUseCase;
   private RequestAccountAuthorizationService requestAccountAuthorizationService;
+  private SimpleMeterRegistry meterRegistry;
   private MockMvc mockMvc;
 
   @BeforeEach
   void setUp() {
     transactionQueryUseCase = mock(TransactionQueryUseCase.class);
     requestAccountAuthorizationService = mock(RequestAccountAuthorizationService.class);
+    meterRegistry = new SimpleMeterRegistry();
     mockMvc =
         MockMvcBuilders.standaloneSetup(
                 new TransactionQueryController(
-                    transactionQueryUseCase, requestAccountAuthorizationService))
+                    transactionQueryUseCase,
+                    requestAccountAuthorizationService,
+                    new TransactionReadHotPathMetrics(meterRegistry)))
             .addFilters(new BootstrapHeaderAuthenticationFilter("X-Account-Id", "X-Subject"))
             .setCustomArgumentResolvers(new CurrentAuthenticatedPrincipalArgumentResolver())
             .build();
@@ -84,6 +89,11 @@ class TransactionQueryControllerTest {
         .andExpect(jsonPath("$.items[0].status").value("BOOKED"))
         .andExpect(jsonPath("$.hasNext").value(true))
         .andExpect(jsonPath("$.nextCursor").isString());
+
+    assertTimerCount("active", "authorization", "success", 1);
+    assertTimerCount("active", "usecase", "success", 1);
+    assertTimerCount("active", "response_mapping", "success", 1);
+    assertTimerCount("active", "total", "success", 1);
   }
 
   @Test
@@ -190,5 +200,18 @@ class TransactionQueryControllerTest {
         && Long.valueOf(1000L).equals(query.minAmountMinor())
         && Long.valueOf(2000L).equals(query.maxAmountMinor())
         && "TX-777".equals(query.transactionReference());
+  }
+
+  private void assertTimerCount(String endpoint, String stage, String outcome, long expected) {
+    org.assertj.core.api.Assertions.assertThat(
+            meterRegistry
+                .find("aquila.transaction.read.http.stage")
+                .tag("endpoint", endpoint)
+                .tag("stage", stage)
+                .tag("outcome", outcome)
+                .timer())
+        .isNotNull()
+        .extracting(timer -> timer.count())
+        .isEqualTo(expected);
   }
 }

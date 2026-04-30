@@ -3,6 +3,7 @@ package com.aquilabank.global.web.transaction;
 import com.aquilabank.domain.transaction.model.TransactionCursor;
 import com.aquilabank.domain.transaction.model.TransactionDirection;
 import com.aquilabank.domain.transaction.model.TransactionQuery;
+import com.aquilabank.domain.transaction.model.TransactionSlice;
 import com.aquilabank.domain.transaction.model.TransactionStatus;
 import com.aquilabank.domain.transaction.usecase.TransactionArchiveQueryUseCase;
 import com.aquilabank.global.security.AuthenticatedRequestPrincipal;
@@ -27,12 +28,15 @@ public class TransactionArchiveQueryController {
 
   private final TransactionArchiveQueryUseCase transactionArchiveQueryUseCase;
   private final RequestAccountAuthorizationService requestAccountAuthorizationService;
+  private final TransactionReadHotPathMetrics hotPathMetrics;
 
   public TransactionArchiveQueryController(
       TransactionArchiveQueryUseCase transactionArchiveQueryUseCase,
-      RequestAccountAuthorizationService requestAccountAuthorizationService) {
+      RequestAccountAuthorizationService requestAccountAuthorizationService,
+      TransactionReadHotPathMetrics hotPathMetrics) {
     this.transactionArchiveQueryUseCase = transactionArchiveQueryUseCase;
     this.requestAccountAuthorizationService = requestAccountAuthorizationService;
+    this.hotPathMetrics = hotPathMetrics;
   }
 
   @GetMapping
@@ -48,11 +52,46 @@ public class TransactionArchiveQueryController {
       @RequestParam(required = false) Long minAmountMinor,
       @RequestParam(required = false) Long maxAmountMinor,
       @RequestParam(required = false) String transactionReference) {
+    return hotPathMetrics.record(
+        TransactionReadHotPathMetrics.ENDPOINT_ARCHIVE,
+        TransactionReadHotPathMetrics.STAGE_TOTAL,
+        () ->
+            getArchivedTransactionsMeasured(
+                principal,
+                accountId,
+                from,
+                to,
+                limit,
+                cursor,
+                status,
+                direction,
+                minAmountMinor,
+                maxAmountMinor,
+                transactionReference));
+  }
+
+  private TransactionQueryResponse getArchivedTransactionsMeasured(
+      AuthenticatedRequestPrincipal principal,
+      long accountId,
+      OffsetDateTime from,
+      OffsetDateTime to,
+      int limit,
+      String cursor,
+      TransactionStatus status,
+      TransactionDirection direction,
+      Long minAmountMinor,
+      Long maxAmountMinor,
+      String transactionReference) {
     try {
       TransactionCursor decodedCursor =
           cursor == null || cursor.isBlank() ? null : TransactionCursorCodec.decode(cursor);
       long resolvedAccountId =
-          requestAccountAuthorizationService.resolveReadableAccountId(principal, accountId);
+          hotPathMetrics.record(
+              TransactionReadHotPathMetrics.ENDPOINT_ARCHIVE,
+              TransactionReadHotPathMetrics.STAGE_AUTHORIZATION,
+              () ->
+                  requestAccountAuthorizationService.resolveReadableAccountId(
+                      principal, accountId));
       TransactionQuery query =
           new TransactionQuery(
               resolvedAccountId,
@@ -65,8 +104,15 @@ public class TransactionArchiveQueryController {
               minAmountMinor,
               maxAmountMinor,
               transactionReference);
-      return TransactionQueryResponse.from(
-          transactionArchiveQueryUseCase.getArchivedTransactions(query));
+      TransactionSlice slice =
+          hotPathMetrics.record(
+              TransactionReadHotPathMetrics.ENDPOINT_ARCHIVE,
+              TransactionReadHotPathMetrics.STAGE_USECASE,
+              () -> transactionArchiveQueryUseCase.getArchivedTransactions(query));
+      return hotPathMetrics.record(
+          TransactionReadHotPathMetrics.ENDPOINT_ARCHIVE,
+          TransactionReadHotPathMetrics.STAGE_RESPONSE_MAPPING,
+          () -> TransactionQueryResponse.from(slice));
     } catch (IllegalArgumentException ex) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage(), ex);
     }

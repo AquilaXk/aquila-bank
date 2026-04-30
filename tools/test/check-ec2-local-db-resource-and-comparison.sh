@@ -94,8 +94,10 @@ fi
 echo "[ec2-resource-comparison] comparison report"
 direct_md="${temp_dir}/direct.md"
 nginx_md="${temp_dir}/nginx.md"
+local_loopback_md="${temp_dir}/local-loopback.md"
 cat >"${direct_md}" <<'MD'
 # direct
+- run id: overhead-run-001
 - transaction 429 rate: 0
 - transaction 503 rate: 0
 - transaction 503 count: 0
@@ -110,6 +112,7 @@ cat >"${direct_md}" <<'MD'
 MD
 cat >"${nginx_md}" <<'MD'
 # nginx
+- run id: overhead-run-001
 - transaction 429 rate: 0.01
 - transaction 503 rate: 0
 - transaction 503 count: 0
@@ -122,13 +125,30 @@ cat >"${nginx_md}" <<'MD'
 - cold cursor p95 ms: 190
 - cold cursor p99 ms: 225
 MD
+cat >"${local_loopback_md}" <<'MD'
+# local loopback
+- run id: overhead-run-001
+- transaction 429 rate: 0
+- transaction 503 rate: 0
+- transaction 503 count: 0
+- hot first p95 ms: 104
+- hot first p99 ms: 126
+- hot cursor p95 ms: 82
+- hot cursor p99 ms: 93
+- cold first p95 ms: 205
+- cold first p99 ms: 246
+- cold cursor p95 ms: 184
+- cold cursor p99 ms: 215
+MD
 output_md="${temp_dir}/comparison.md"
 EC2_DIRECT_K6_SUMMARY_MD="${direct_md}" \
 EC2_NGINX_K6_SUMMARY_MD="${nginx_md}" \
+EC2_LOCAL_LOOPBACK_K6_SUMMARY_MD="${local_loopback_md}" \
 EC2_COMPARISON_OUTPUT_MD="${output_md}" \
   "${compare_script}" >/dev/null
-grep -F "| hot first p95 ms | 100 | 110 | 10.000 |" "${output_md}" >/dev/null
-grep -F "| transaction 429 rate | 0 | 0.01 | 0.010 |" "${output_md}" >/dev/null
+grep -F "run id: overhead-run-001" "${output_md}" >/dev/null
+grep -F "| hot first p95 ms | 100 | 110 | 104 | 10.000 | 4.000 |" "${output_md}" >/dev/null
+grep -F "| transaction 429 rate | 0 | 0.01 | 0 | 0.010 | 0.000 |" "${output_md}" >/dev/null
 
 echo "[ec2-resource-comparison] invalid comparison fails"
 if EC2_DIRECT_K6_SUMMARY_MD="${temp_dir}/missing.md" EC2_NGINX_K6_SUMMARY_MD="${nginx_md}" "${compare_script}" >/dev/null 2>&1; then
