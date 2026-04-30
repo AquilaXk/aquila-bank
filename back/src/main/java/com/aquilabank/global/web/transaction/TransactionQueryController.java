@@ -3,6 +3,7 @@ package com.aquilabank.global.web.transaction;
 import com.aquilabank.domain.transaction.model.TransactionCursor;
 import com.aquilabank.domain.transaction.model.TransactionDirection;
 import com.aquilabank.domain.transaction.model.TransactionQuery;
+import com.aquilabank.domain.transaction.model.TransactionSlice;
 import com.aquilabank.domain.transaction.model.TransactionStatus;
 import com.aquilabank.domain.transaction.usecase.TransactionQueryUseCase;
 import com.aquilabank.global.security.AuthenticatedRequestPrincipal;
@@ -27,12 +28,15 @@ public class TransactionQueryController {
 
   private final TransactionQueryUseCase transactionQueryUseCase;
   private final RequestAccountAuthorizationService requestAccountAuthorizationService;
+  private final TransactionReadHotPathMetrics hotPathMetrics;
 
   public TransactionQueryController(
       TransactionQueryUseCase transactionQueryUseCase,
-      RequestAccountAuthorizationService requestAccountAuthorizationService) {
+      RequestAccountAuthorizationService requestAccountAuthorizationService,
+      TransactionReadHotPathMetrics hotPathMetrics) {
     this.transactionQueryUseCase = transactionQueryUseCase;
     this.requestAccountAuthorizationService = requestAccountAuthorizationService;
+    this.hotPathMetrics = hotPathMetrics;
   }
 
   @GetMapping
@@ -48,12 +52,47 @@ public class TransactionQueryController {
       @RequestParam(required = false) Long minAmountMinor,
       @RequestParam(required = false) Long maxAmountMinor,
       @RequestParam(required = false) String transactionReference) {
+    return hotPathMetrics.record(
+        TransactionReadHotPathMetrics.ENDPOINT_ACTIVE,
+        TransactionReadHotPathMetrics.STAGE_TOTAL,
+        () ->
+            getTransactionsMeasured(
+                principal,
+                accountId,
+                from,
+                to,
+                limit,
+                cursor,
+                status,
+                direction,
+                minAmountMinor,
+                maxAmountMinor,
+                transactionReference));
+  }
+
+  private TransactionQueryResponse getTransactionsMeasured(
+      AuthenticatedRequestPrincipal principal,
+      long accountId,
+      OffsetDateTime from,
+      OffsetDateTime to,
+      int limit,
+      String cursor,
+      TransactionStatus status,
+      TransactionDirection direction,
+      Long minAmountMinor,
+      Long maxAmountMinor,
+      String transactionReference) {
     try {
       // 첫 page와 후속 page를 같은 endpoint로 통일
       TransactionCursor decodedCursor =
           cursor == null || cursor.isBlank() ? null : TransactionCursorCodec.decode(cursor);
       long resolvedAccountId =
-          requestAccountAuthorizationService.resolveReadableAccountId(principal, accountId);
+          hotPathMetrics.record(
+              TransactionReadHotPathMetrics.ENDPOINT_ACTIVE,
+              TransactionReadHotPathMetrics.STAGE_AUTHORIZATION,
+              () ->
+                  requestAccountAuthorizationService.resolveReadableAccountId(
+                      principal, accountId));
       TransactionQuery query =
           new TransactionQuery(
               resolvedAccountId,
@@ -66,7 +105,15 @@ public class TransactionQueryController {
               minAmountMinor,
               maxAmountMinor,
               transactionReference);
-      return TransactionQueryResponse.from(transactionQueryUseCase.getTransactions(query));
+      TransactionSlice slice =
+          hotPathMetrics.record(
+              TransactionReadHotPathMetrics.ENDPOINT_ACTIVE,
+              TransactionReadHotPathMetrics.STAGE_USECASE,
+              () -> transactionQueryUseCase.getTransactions(query));
+      return hotPathMetrics.record(
+          TransactionReadHotPathMetrics.ENDPOINT_ACTIVE,
+          TransactionReadHotPathMetrics.STAGE_RESPONSE_MAPPING,
+          () -> TransactionQueryResponse.from(slice));
     } catch (IllegalArgumentException ex) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage(), ex);
     }
