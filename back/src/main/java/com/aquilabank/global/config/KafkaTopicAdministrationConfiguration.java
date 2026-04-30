@@ -17,6 +17,7 @@ import org.apache.kafka.common.errors.UnknownTopicOrPartitionException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.InitializingBean;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Condition;
@@ -81,8 +82,12 @@ public class KafkaTopicAdministrationConfiguration {
   @Bean
   @Conditional(KafkaTopicStartupValidationCondition.class)
   InitializingBean kafkaTopicStartupValidationInitializer(
-      KafkaAdmin kafkaTopicAdmin, KafkaTopicTopology kafkaTopicTopology) {
+      KafkaAdmin kafkaTopicAdmin,
+      KafkaTopicTopology kafkaTopicTopology,
+      ObjectProvider<KafkaAdmin.NewTopics> kafkaProvisioningTopics) {
     return () -> {
+      // KafkaAdmin.initialize() 는 이미 생성된 NewTopics bean만 조회하므로 검증 전 먼저 materialize합니다.
+      kafkaProvisioningTopics.ifAvailable(ignored -> {});
       kafkaTopicAdmin.initialize();
       validateTopics(kafkaTopicTopology);
     };
