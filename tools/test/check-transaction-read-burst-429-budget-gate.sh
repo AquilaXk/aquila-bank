@@ -57,6 +57,10 @@ grep -F "burst_rate=256" <<<"${plan}" >/dev/null
 grep -F "expected_rate=0" <<<"${plan}" >/dev/null
 grep -F "warn_rate=0.001" <<<"${plan}" >/dev/null
 grep -F "fail_rate=0.005" <<<"${plan}" >/dev/null
+grep -F "pre_allocated_vus=256" <<<"${plan}" >/dev/null
+grep -F "max_vus=512" <<<"${plan}" >/dev/null
+grep -F "max_retry_after_sleep_seconds=1" <<<"${plan}" >/dev/null
+grep -F "K6_PRE_ALLOCATED_VUS=256 K6_MAX_VUS=512" <<<"${plan}" >/dev/null
 grep -F "result_tsv=${output_dir}/burst-429-check-burst-429-budget.tsv" <<<"${plan}" >/dev/null
 grep -F "report_md=${output_dir}/burst-429-check-burst-429-budget.md" <<<"${plan}" >/dev/null
 
@@ -76,8 +80,14 @@ test "${report_md}" = "${output_dir}/burst-429-check-burst-429-budget.md"
 grep -F $'metric\tvalue\twarn_threshold\tfail_threshold\tstatus' "${result_tsv}" >/dev/null
 grep -F $'transaction_429_rate\t0.00275\t0.001\t0.005\twarn' "${result_tsv}" >/dev/null
 grep -F $'dropped_iterations\t0\t0\t0\tpass' "${result_tsv}" >/dev/null
+grep -F $'interrupted_iterations\t0\t0\t0\tpass' "${result_tsv}" >/dev/null
+grep -F $'generator_headroom_status\tpass\tn/a\tn/a\tpass' "${result_tsv}" >/dev/null
 grep -F "gate_status=warn" "${report_md}" >/dev/null
 grep -F "burst rate: 256/s" "${report_md}" >/dev/null
+grep -F "preAllocated VUs: 256" "${report_md}" >/dev/null
+grep -F "max VUs: 512" "${report_md}" >/dev/null
+grep -F "max Retry-After sleep seconds: 1" "${report_md}" >/dev/null
+grep -F "generator headroom status: pass" "${report_md}" >/dev/null
 grep -F "transaction 429 rate: 0.00275" "${report_md}" >/dev/null
 
 echo "[transaction-read-burst-429] fail threshold"
@@ -99,6 +109,10 @@ grep -F "BURST_429_WARN_RATE" "${runner}" >/dev/null
 grep -F "BURST_429_FAIL_RATE" "${runner}" >/dev/null
 grep -F "K6_SCENARIO_MODE=burst" "${runner}" >/dev/null
 grep -F "K6_BURST_RATE" "${runner}" >/dev/null
+grep -F "K6_PRE_ALLOCATED_VUS" "${runner}" >/dev/null
+grep -F "K6_MAX_VUS" "${runner}" >/dev/null
+grep -F "K6_MAX_RETRY_AFTER_SLEEP_SECONDS" "${runner}" >/dev/null
+grep -F "generator_headroom_status" "${runner}" >/dev/null
 
 echo "[transaction-read-burst-429] invalid input fails"
 if BURST_429_GATE_NAME=bad-threshold \
@@ -111,5 +125,9 @@ if BURST_429_GATE_NAME=bad-threshold \
 fi
 if BURST_429_GATE_NAME=missing-json "${runner}" >/dev/null 2>&1; then
   echo "missing burst summary unexpectedly succeeded" >&2
+  exit 1
+fi
+if BURST_429_PRE_ALLOCATED_VUS=0 "${runner}" --print-plan >/dev/null 2>&1; then
+  echo "invalid preAllocated VUs unexpectedly succeeded" >&2
   exit 1
 fi
