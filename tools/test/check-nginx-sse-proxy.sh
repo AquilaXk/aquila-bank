@@ -17,6 +17,12 @@ if [[ ! -f "$config_path" ]]; then
   exit 1
 fi
 
+runtime_gate_path="tools/test/run-nginx-runtime-template-gate.sh"
+if [[ ! -f "$runtime_gate_path" ]]; then
+  echo "[nginx-sse-check] missing runtime gate: $runtime_gate_path" >&2
+  exit 1
+fi
+
 required_patterns=(
   "limit_req_status 429;"
   "log_format aquila_bank_upstream escape=json"
@@ -71,5 +77,11 @@ for pattern in "${required_patterns[@]}"; do
     exit 1
   fi
 done
+
+if ! grep -Fq 'var\/log\/nginx\/access\.log aquila_bank_upstream' "$runtime_gate_path" ||
+  ! grep -Fq 'access_log " access_log_path " aquila_bank_upstream;' "$runtime_gate_path"; then
+  echo "[nginx-sse-check] runtime gate must rewrite formatted access_log path for nginx -t" >&2
+  exit 1
+fi
 
 echo "[nginx-sse-check] template directive smoke check passed"

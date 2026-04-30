@@ -45,6 +45,11 @@ prepare_nginx_test_config() {
         http_log_injected = 1
         next
       }
+      /^[[:space:]]*access_log \/var\/log\/nginx\/access\.log aquila_bank_upstream;$/ && !formatted_access_log_rewritten {
+        print "  access_log " access_log_path " aquila_bank_upstream;"
+        formatted_access_log_rewritten = 1
+        next
+      }
       /^[[:space:]]*listen 80 default_server;$/ && !http_listen_rewritten {
         print "    listen " http_listen_port " default_server;"
         http_listen_rewritten = 1
@@ -57,12 +62,12 @@ prepare_nginx_test_config() {
       }
       { print }
       END {
-        if (!main_log_injected || !http_log_injected || !http_listen_rewritten || !https_listen_rewritten) {
+        if (!main_log_injected || !http_log_injected || !formatted_access_log_rewritten || !http_listen_rewritten || !https_listen_rewritten) {
           exit 1
         }
       }
     ' "${rendered_config}" > "${patched_config}"; then
-    echo "[nginx-runtime-gate] failed to inject tmp log path or high listen port into rendered config" >&2
+    echo "[nginx-runtime-gate] failed to inject tmp log path, rewrite formatted access log, or high listen port into rendered config" >&2
     exit 1
   fi
 
