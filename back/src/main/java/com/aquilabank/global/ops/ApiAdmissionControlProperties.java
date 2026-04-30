@@ -18,10 +18,10 @@ public record ApiAdmissionControlProperties(
     return List.of(
         new EndpointLimit(
             "transaction-read",
-            4,
-            2,
+            6,
+            1,
             List.of("/api/v1/transactions"),
-            new AdaptiveLimit(true, 4, 12, 128, 2)),
+            new AdaptiveLimit(true, 6, 12, 64, 1)),
         new EndpointLimit("account-read", 4, 0, List.of("/api/v1/accounts"), null),
         new EndpointLimit("transfer-write", 2, 0, List.of("/api/v1/transfers"), null),
         new EndpointLimit(
