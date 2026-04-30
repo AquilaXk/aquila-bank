@@ -100,7 +100,7 @@ require_pattern 'OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_ADAPTIVE_MAX=${OCI_A
 require_pattern 'maximum-pool-size: ${OCI_A1_DB_POOL_MAX_SIZE:6}' "${oci_profile}"
 require_pattern 'max: ${OCI_A1_TRANSACTION_READ_ADMISSION_MAX:6}' "${oci_profile}"
 require_pattern 'adaptive-max: ${OCI_A1_TRANSACTION_READ_ADMISSION_ADAPTIVE_MAX:8}' "${oci_profile}"
-require_pattern 'OCI_PUBLIC_ARRIVAL_RATES:-4,5,6,7,8' "${arrival_gate}"
+require_pattern 'OCI_PUBLIC_ARRIVAL_RATES:-4,5,6,7,8,10' "${arrival_gate}"
 require_pattern 'OCI_PUBLIC_ARRIVAL_FAIL_RATE:-0.10' "${arrival_gate}"
 require_pattern 'OCI_PUBLIC_ARRIVAL_ACCEPTED_P95_MS:-350' "${arrival_gate}"
 
@@ -113,7 +113,7 @@ cat >"${report_md}" <<REPORT
 - gate_status=pass
 - runtime: OCI A1 Flex 4 OCPU / 24GB + data 200GB self-managed PostgreSQL 18
 - expected 429 source: ${expected_429_source}
-- live target: arrival-8rps 429 < 10%, 502/503 = 0, accepted request p95 < 350ms
+- live target: arrival-10rps 429 < 10%, delayed ratio < 25%, 502/503 = 0, accepted request p95 < 350ms
 
 ## Matrix
 

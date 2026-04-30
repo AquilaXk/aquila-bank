@@ -100,6 +100,10 @@ const transaction503Rate = new Rate("aquila_transaction_503_rate");
 const transaction503Count = new Counter("aquila_transaction_503_count");
 const accepted200Rate = new Rate("aquila_transaction_accepted_200_rate");
 const accepted200Count = new Counter("aquila_transaction_accepted_200_count");
+const edgeDelayedRate = new Rate("aquila_transaction_edge_delayed_rate");
+const edgeDelayedCount = new Counter("aquila_transaction_edge_delayed_count");
+const edgePassedRate = new Rate("aquila_transaction_edge_passed_rate");
+const edgePassedCount = new Counter("aquila_transaction_edge_passed_count");
 const retryAfterSleep = new Trend("aquila_transaction_retry_after_sleep_ms", true);
 const retryAfterCount = new Counter("aquila_transaction_retry_after_count");
 
@@ -372,6 +376,9 @@ function requestPage(shape, path, accountId, from, to, cursor) {
   const is502 = response.status === 502;
   const is503 = response.status === 503;
   const isAccepted200 = response.status === 200;
+  const edgeLimitStatus = header(response, "X-Aquila-Edge-Limit-Status").toUpperCase();
+  const isEdgeDelayed = edgeLimitStatus === "DELAYED";
+  const isEdgePassed = edgeLimitStatus === "PASSED";
   const measured = !exec.scenario.name.endsWith("_warmup");
   if (measured) {
     transaction429Rate.add(is429);
@@ -381,6 +388,8 @@ function requestPage(shape, path, accountId, from, to, cursor) {
     transaction502Rate.add(is502);
     transaction503Rate.add(is503);
     accepted200Rate.add(isAccepted200);
+    edgeDelayedRate.add(isEdgeDelayed);
+    edgePassedRate.add(isEdgePassed);
   }
   if (isEdge429 && measured) {
     edge429Count.add(1);
@@ -399,6 +408,12 @@ function requestPage(shape, path, accountId, from, to, cursor) {
   }
   if (isAccepted200 && measured) {
     accepted200Count.add(1);
+  }
+  if (isEdgeDelayed && measured) {
+    edgeDelayedCount.add(1);
+  }
+  if (isEdgePassed && measured) {
+    edgePassedCount.add(1);
   }
   if (is429 && overloadMode) {
     // 429는 admission guard의 정상 보호 신호라 overload mode에서만 예외 없이 집계합니다.
@@ -597,6 +612,10 @@ function markdownSummary(data) {
 - transaction 503 count: ${metric(data, "aquila_transaction_503_count", "count")}
 - transaction accepted 200 rate: ${metric(data, "aquila_transaction_accepted_200_rate", "rate")}
 - transaction accepted 200 count: ${metric(data, "aquila_transaction_accepted_200_count", "count")}
+- transaction edge delayed rate: ${metric(data, "aquila_transaction_edge_delayed_rate", "rate")}
+- transaction edge delayed count: ${metric(data, "aquila_transaction_edge_delayed_count", "count")}
+- transaction edge passed rate: ${metric(data, "aquila_transaction_edge_passed_rate", "rate")}
+- transaction edge passed count: ${metric(data, "aquila_transaction_edge_passed_count", "count")}
 - retry-after sleep count: ${metric(data, "aquila_transaction_retry_after_count", "count")}
 - retry-after sleep avg ms: ${metric(data, "aquila_transaction_retry_after_sleep_ms", "avg")}
 - retry-after sleep p95 ms: ${metric(data, "aquila_transaction_retry_after_sleep_ms", "p(95)")}

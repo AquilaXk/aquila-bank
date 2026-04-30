@@ -7,9 +7,10 @@ usage: tools/test/run-oci-public-api-arrival-capacity-gate.sh [--print-plan]
 
 Environment:
   OCI_PUBLIC_ARRIVAL_GATE_NAME      default oci-public-arrival-capacity-<timestamp>
-  OCI_PUBLIC_ARRIVAL_RATES          default 4,5,6,7,8
+  OCI_PUBLIC_ARRIVAL_RATES          default 4,5,6,7,8,10
   OCI_PUBLIC_ARRIVAL_DURATION       default 1m
   OCI_PUBLIC_ARRIVAL_FAIL_RATE      default 0.10
+  OCI_PUBLIC_ARRIVAL_DELAYED_FAIL_RATE default 0.25
   OCI_PUBLIC_ARRIVAL_ACCEPTED_P95_MS default 350
   OCI_PUBLIC_ARRIVAL_RUN_K6         true|false, default false
   OCI_PUBLIC_ARRIVAL_SUMMARY_DIR    required when RUN_K6=false
@@ -37,9 +38,10 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 gate_name="${OCI_PUBLIC_ARRIVAL_GATE_NAME:-oci-public-arrival-capacity-$(date +%Y-%m-%d-%H%M%S)}"
-rates="${OCI_PUBLIC_ARRIVAL_RATES:-4,5,6,7,8}"
+rates="${OCI_PUBLIC_ARRIVAL_RATES:-4,5,6,7,8,10}"
 duration="${OCI_PUBLIC_ARRIVAL_DURATION:-1m}"
 fail_rate="${OCI_PUBLIC_ARRIVAL_FAIL_RATE:-0.10}"
+delayed_fail_rate="${OCI_PUBLIC_ARRIVAL_DELAYED_FAIL_RATE:-0.25}"
 accepted_p95_ms="${OCI_PUBLIC_ARRIVAL_ACCEPTED_P95_MS:-350}"
 run_k6="${OCI_PUBLIC_ARRIVAL_RUN_K6:-false}"
 summary_dir="${OCI_PUBLIC_ARRIVAL_SUMMARY_DIR:-}"
@@ -170,6 +172,7 @@ status_for_p95() {
 require_csv_positive_integers "OCI_PUBLIC_ARRIVAL_RATES" "${rates}"
 require_duration_value "OCI_PUBLIC_ARRIVAL_DURATION" "${duration}"
 require_rate_value "OCI_PUBLIC_ARRIVAL_FAIL_RATE" "${fail_rate}"
+require_rate_value "OCI_PUBLIC_ARRIVAL_DELAYED_FAIL_RATE" "${delayed_fail_rate}"
 require_positive_integer_value "OCI_PUBLIC_ARRIVAL_ACCEPTED_P95_MS" "${accepted_p95_ms}"
 require_bool_value "OCI_PUBLIC_ARRIVAL_RUN_K6" "${run_k6}"
 require_non_negative_number_value "OCI_PUBLIC_ARRIVAL_MAX_RETRY_AFTER_SLEEP_SECONDS" "${max_retry_after_sleep_seconds}"
@@ -179,6 +182,7 @@ print_plan() {
   echo "[oci-public-arrival-capacity] rates=${rates}"
   echo "[oci-public-arrival-capacity] duration=${duration}"
   echo "[oci-public-arrival-capacity] fail_rate=${fail_rate}"
+  echo "[oci-public-arrival-capacity] delayed_fail_rate=${delayed_fail_rate}"
   echo "[oci-public-arrival-capacity] accepted_p95_ms=${accepted_p95_ms}"
   echo "[oci-public-arrival-capacity] run_k6=${run_k6}"
   echo "[oci-public-arrival-capacity] summary_dir=${summary_dir:-missing}"
@@ -210,10 +214,10 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 mkdir -p "${output_dir}"
-printf "arrival_rate\tstatus\ttotal_429_rate\tedge_429_rate\tbackend_429_rate\tunknown_429_count\ttransaction_502_count\taccepted_p95_ms\taccepted_200_rate\tsource_report_md\tsummary_json\n" >"${summary_tsv}"
+printf "arrival_rate\tstatus\ttotal_429_rate\tedge_429_rate\tbackend_429_rate\tunknown_429_count\ttransaction_502_count\ttransaction_503_count\tedge_delayed_rate\tedge_delayed_count\taccepted_p95_ms\taccepted_200_rate\tsource_report_md\tsummary_json\n" >"${summary_tsv}"
 
 gate_status="pass"
-summary_table=$'| Rate | Status | Total 429 | Edge 429 | Backend 429 | 502 | Accepted p95 ms |\n| ---: | --- | ---: | ---: | ---: | ---: | ---: |'
+summary_table=$'| Rate | Status | Total 429 | Edge 429 | Backend 429 | 502 | 503 | Edge delayed | Accepted p95 ms |\n| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |'
 IFS=',' read -r -a rate_items <<<"${rates}"
 for rate in "${rate_items[@]}"; do
   single_name="${gate_name}-arrival-${rate}"
@@ -254,6 +258,9 @@ for rate in "${rate_items[@]}"; do
   backend_429_rate="$(metric_value "${summary_json}" aquila_transaction_backend_429_rate rate)"
   unknown_429_count="$(metric_value "${summary_json}" aquila_transaction_unknown_429_count count)"
   transaction_502_count="$(metric_value "${summary_json}" aquila_transaction_502_count count)"
+  transaction_503_count="$(metric_value "${summary_json}" aquila_transaction_503_count count)"
+  edge_delayed_rate="$(metric_value "${summary_json}" aquila_transaction_edge_delayed_rate rate)"
+  edge_delayed_count="$(metric_value "${summary_json}" aquila_transaction_edge_delayed_count count)"
   accepted_200_rate="$(metric_value "${summary_json}" aquila_transaction_accepted_200_rate rate)"
   hot_first_p95="$(metric_value "${summary_json}" aquila_transaction_hot_first_ms "p(95)")"
   hot_cursor_p95="$(metric_value "${summary_json}" aquila_transaction_hot_cursor_ms "p(95)")"
@@ -267,6 +274,7 @@ for rate in "${rate_items[@]}"; do
   if [[ "${source_status}" -ne 0 ]] \
       || [[ "$(status_for_zero "${unknown_429_count}")" == "fail" ]] \
       || [[ "$(status_for_zero "${transaction_502_count}")" == "fail" ]] \
+      || [[ "$(status_for_zero "${transaction_503_count}")" == "fail" ]] \
       || [[ "$(status_for_p95 "${accepted_p95}")" == "fail" ]]; then
     rate_status="fail"
   fi
@@ -275,11 +283,17 @@ for rate in "${rate_items[@]}"; do
   fi
 
   source_report="${single_output_dir}/${single_name}-429-source.md"
-  printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+  if number_greater_than "${edge_delayed_rate}" "${delayed_fail_rate}"; then
+    rate_status="fail"
+    gate_status="fail"
+  fi
+
+  printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
     "${rate}" "${rate_status}" "${total_429_rate}" "${edge_429_rate}" "${backend_429_rate}" \
-    "${unknown_429_count}" "${transaction_502_count}" "${accepted_p95}" "${accepted_200_rate}" \
+    "${unknown_429_count}" "${transaction_502_count}" "${transaction_503_count}" \
+    "${edge_delayed_rate}" "${edge_delayed_count}" "${accepted_p95}" "${accepted_200_rate}" \
     "${source_report}" "${summary_json}" >>"${summary_tsv}"
-  summary_table="${summary_table}"$'\n'"| ${rate} | ${rate_status} | ${total_429_rate} | ${edge_429_rate} | ${backend_429_rate} | ${transaction_502_count} | ${accepted_p95} |"
+  summary_table="${summary_table}"$'\n'"| ${rate} | ${rate_status} | ${total_429_rate} | ${edge_429_rate} | ${backend_429_rate} | ${transaction_502_count} | ${transaction_503_count} | ${edge_delayed_rate} | ${accepted_p95} |"
 done
 
 cat >"${report_md}" <<REPORT
@@ -291,9 +305,7 @@ cat >"${report_md}" <<REPORT
 - gate_status=${gate_status}
 - rates: ${rates}
 - duration: ${duration}
-- arrival-8rps 429 target: < ${fail_rate}
-- accepted request p95 target ms: < ${accepted_p95_ms}
-- 502 target: 0
+- arrival-10rps target: 429 < ${fail_rate}, edge delayed ratio < ${delayed_fail_rate}, 5xx = 0, accepted p95 < ${accepted_p95_ms}ms
 
 ## Result Table
 

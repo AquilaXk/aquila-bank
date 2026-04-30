@@ -724,6 +724,7 @@ http {
       proxy_next_upstream off;
       # arrival-10rps는 active 3 pages/iteration 기준 30r/s 안쪽이라 delay queue를 작게 유지합니다.
       limit_req zone=aquila_bank_transaction_hot_per_ip burst=12 delay=4;
+      add_header X-Aquila-Edge-Limit-Status \$limit_req_status always;
       proxy_read_timeout 30s;
       proxy_send_timeout 30s;
     }
@@ -742,6 +743,7 @@ http {
       proxy_next_upstream off;
       # archive query는 cold/history 비용을 active queue와 분리해 서로의 p95를 밀지 않습니다.
       limit_req zone=aquila_bank_transaction_archive_per_ip burst=12 delay=4;
+      add_header X-Aquila-Edge-Limit-Status \$limit_req_status always;
       proxy_read_timeout 30s;
       proxy_send_timeout 30s;
     }

@@ -81,6 +81,7 @@ required_patterns=(
   "add_header Retry-After \${NGINX_EDGE_RETRY_AFTER_SECONDS} always;"
   "add_header X-RateLimit-Retry-After-Millis \${NGINX_EDGE_RETRY_AFTER_MILLIS} always;"
   "add_header X-RateLimit-Retry-Jitter-Millis \${NGINX_EDGE_RETRY_JITTER_MILLIS} always;"
+  "add_header X-Aquila-Edge-Limit-Status \$limit_req_status always;"
   '"source":"nginx-edge"'
   "location = /api/v1/transactions"
   "location = /api/v1/transactions/archive"

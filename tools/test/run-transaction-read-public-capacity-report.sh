@@ -69,18 +69,18 @@ status_from_report() {
 arrival_table_markdown() {
   local file="$1"
   if [[ ! -s "${file}" ]]; then
-    echo "| rate | status | total 429 | edge 429 | backend 429 | unknown 429 | 502 | accepted p95 ms | accepted 200 |"
-    echo "| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
-    echo "| n/a | missing | n/a | n/a | n/a | n/a | n/a | n/a | n/a |"
+    echo "| rate | status | total 429 | edge 429 | backend 429 | unknown 429 | 502 | 503 | edge delayed | accepted p95 ms | accepted 200 |"
+    echo "| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
+    echo "| n/a | missing | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |"
     return
   fi
   awk -F '\t' '
     BEGIN {
-      print "| rate | status | total 429 | edge 429 | backend 429 | unknown 429 | 502 | accepted p95 ms | accepted 200 |"
-      print "| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
+      print "| rate | status | total 429 | edge 429 | backend 429 | unknown 429 | 502 | 503 | edge delayed | accepted p95 ms | accepted 200 |"
+      print "| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
     }
     NR > 1 {
-      printf "| %s | %s | %s | %s | %s | %s | %s | %s | %s |\n", $1, $2, $3, $4, $5, $6, $7, $8, $9
+      printf "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n", $1, $2, $3, $4, $5, $6, $7, $8, $9, $11, $12
     }
   ' "${file}"
 }
@@ -119,22 +119,26 @@ next_bottleneck_notes() {
         if ($i == "edge_429_rate") edge_col = i
         if ($i == "backend_429_rate") backend_col = i
         if ($i == "transaction_502_count") bad_gateway_col = i
+        if ($i == "transaction_503_count") unavailable_col = i
+        if ($i == "edge_delayed_rate") delayed_col = i
         if ($i == "accepted_p95_ms") p95_col = i
       }
       next
     }
-    $rate_col == "8" {
+    $rate_col == "10" {
       found = 1
       if (($bad_gateway_col + 0) > 0) print "- 502가 있으면 upstream keepalive/backend connection close 상관관계를 먼저 봅니다."
+      if (($unavailable_col + 0) > 0) print "- 503이 있으면 backend admission과 app health를 먼저 봅니다."
+      if (($delayed_col + 0) > 0.25) print "- edge delayed ratio가 25%를 넘으면 Nginx rate/burst/delay queue를 먼저 줄입니다."
       if (($edge_col + 0) >= 0.08) print "- edge 429가 8% 이상이면 Nginx transaction-read rate/burst/delay 조정이 1순위입니다."
       if (($backend_col + 0) >= 0.08) print "- backend 429가 8% 이상이면 admission adaptive max와 Hikari pending을 함께 봅니다."
       if (($p95_col + 0) > 350) print "- accepted p95가 350ms를 넘으면 Nginx upstream timing과 backend timer를 비교합니다."
-      if ($status_col == "pass" && ($bad_gateway_col + 0) == 0 && ($p95_col + 0) <= 350 && ($total_col + 0) < 0.10) {
-        print "- arrival-8rps sample is inside 429/p95/502 budget; next live check is sustained VU16 soak source split."
+      if ($status_col == "pass" && ($bad_gateway_col + 0) == 0 && ($unavailable_col + 0) == 0 && ($delayed_col + 0) < 0.25 && ($p95_col + 0) <= 350 && ($total_col + 0) < 0.10) {
+        print "- arrival-10rps sample is inside 429/delay/p95/5xx budget; next live check is sustained VU16 soak source split."
       }
     }
     END {
-      if (!found) print "- arrival-8rps row가 없어 8rps summary 수집부터 다시 실행합니다."
+      if (!found) print "- arrival-10rps row가 없어 10rps summary 수집부터 다시 실행합니다."
     }
   ' "${file}"
 }
@@ -188,7 +192,7 @@ fi
   echo
   echo "- gate_status=${gate_status}"
   echo "- runtime: OCI A1 Flex 4 OCPU / 24GB + data 200GB self-managed PostgreSQL 18"
-  echo "- target: arrival-8rps 429 < 10%, 502/503 = 0, accepted p95 < 350ms"
+  echo "- target: arrival-10rps 429 < 10%, edge delayed ratio < 25%, 502/503 = 0, accepted p95 < 350ms"
   echo
   echo "## Gates"
   echo

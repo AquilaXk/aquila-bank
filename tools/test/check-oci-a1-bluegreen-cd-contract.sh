@@ -249,6 +249,7 @@ script_patterns=(
   'add_header Retry-After ${edge_retry_after_seconds} always;'
   'add_header X-RateLimit-Retry-After-Millis ${edge_retry_after_millis} always;'
   'add_header X-RateLimit-Retry-Jitter-Millis ${edge_retry_jitter_millis} always;'
+  'add_header X-Aquila-Edge-Limit-Status \$limit_req_status always;'
   '"source":"nginx-edge"'
   "location = /api/v1/notifications/stream"
   "proxy_buffering off;"
