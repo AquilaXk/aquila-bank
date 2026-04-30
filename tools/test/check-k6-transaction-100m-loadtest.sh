@@ -112,6 +112,7 @@ overload_plan="$(
 )"
 grep -F "k6 report name: transaction-100m-overload-check" <<<"${overload_plan}" >/dev/null
 grep -F "overload mode=true max retry-after sleep seconds=2" <<<"${overload_plan}" >/dev/null
+grep -F "max retry-after sleep ms=2000" <<<"${overload_plan}" >/dev/null
 grep -F "overload 429 rate threshold=0.015" <<<"${overload_plan}" >/dev/null
 grep -F "burst 429 rate threshold=0.1" <<<"${overload_plan}" >/dev/null
 grep -F "overload 503 rate threshold=0" <<<"${overload_plan}" >/dev/null
@@ -237,6 +238,11 @@ grep -F "K6_OVERLOAD_429_RATE_THRESHOLD" ops/k6/transaction-read-100m.js >/dev/n
 grep -F "K6_BURST_429_RATE_THRESHOLD" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_OVERLOAD_503_RATE_THRESHOLD" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_MAX_RETRY_AFTER_SLEEP_SECONDS" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "K6_MAX_RETRY_AFTER_SLEEP_MS" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "X-RateLimit-Retry-After-Millis" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "X-RateLimit-Retry-Jitter-Millis" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "aquila_transaction_retry_after_sleep_ms" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "aquila_transaction_retry_after_count" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "aquila_transaction_429_rate" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "aquila_transaction_503_rate" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "aquila_transaction_503_count" ops/k6/transaction-read-100m.js >/dev/null
@@ -266,6 +272,7 @@ grep -F "K6_COLD_DEEP_P95_THRESHOLD_MS" tools/test/run-k6-transaction-100m-loadt
 grep -F "K6_OVERLOAD_429_RATE_THRESHOLD" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_BURST_429_RATE_THRESHOLD" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_OVERLOAD_503_RATE_THRESHOLD" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "K6_MAX_RETRY_AFTER_SLEEP_MS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_GENERATOR_MODE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_OBSERVABILITY_MODE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_BACKEND_READINESS_GATE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
@@ -364,6 +371,10 @@ if K6_BURST_429_RATE_THRESHOLD=1.5 tools/test/run-k6-transaction-100m-loadtest.s
 fi
 if K6_OVERLOAD_503_RATE_THRESHOLD=1.5 tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
   echo "K6_OVERLOAD_503_RATE_THRESHOLD=1.5 unexpectedly succeeded" >&2
+  exit 1
+fi
+if K6_MAX_RETRY_AFTER_SLEEP_MS=bad tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
+  echo "K6_MAX_RETRY_AFTER_SLEEP_MS=bad unexpectedly succeeded" >&2
   exit 1
 fi
 if K6_HOT_P99_THRESHOLD_MS=0 tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
