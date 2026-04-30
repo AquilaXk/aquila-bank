@@ -37,9 +37,10 @@ deploy_script="ops/deploy/oci/bluegreen-deploy.sh"
 oci_profile="back/src/main/resources/application-oci-a1.yml"
 arrival_gate="tools/test/run-oci-public-api-arrival-capacity-gate.sh"
 
-edge_transaction_read_rate_rps=48
-edge_transaction_read_burst=24
-edge_transaction_read_delay=8
+edge_transaction_hot_rate_rps=48
+edge_transaction_archive_rate_rps=48
+edge_transaction_read_burst=12
+edge_transaction_read_delay=4
 backend_admission_max=6
 backend_admission_adaptive_max=8
 hikari_max=6
@@ -67,7 +68,8 @@ require_pattern() {
 print_plan() {
   echo "[oci-a1-budget-matrix] name=${name}"
   echo "[oci-a1-budget-matrix] output=${report_md}"
-  echo "[oci-a1-budget-matrix] edge_transaction_read_rate_rps=${edge_transaction_read_rate_rps}"
+  echo "[oci-a1-budget-matrix] edge_transaction_hot_rate_rps=${edge_transaction_hot_rate_rps}"
+  echo "[oci-a1-budget-matrix] edge_transaction_archive_rate_rps=${edge_transaction_archive_rate_rps}"
   echo "[oci-a1-budget-matrix] edge_transaction_read_burst=${edge_transaction_read_burst}"
   echo "[oci-a1-budget-matrix] edge_transaction_read_delay=${edge_transaction_read_delay}"
   echo "[oci-a1-budget-matrix] backend_admission_max=${backend_admission_max}"
@@ -81,14 +83,18 @@ if [[ "${mode}" == "print-plan" ]]; then
   exit 0
 fi
 
-require_pattern 'limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_read_per_ip:10m rate=48r/s;' "${nginx_config}"
-require_pattern 'limit_req zone=aquila_bank_transaction_read_per_ip burst=24 delay=8;' "${nginx_config}"
+require_pattern 'limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_hot_per_ip:10m rate=48r/s;' "${nginx_config}"
+require_pattern 'limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_archive_per_ip:10m rate=48r/s;' "${nginx_config}"
+require_pattern 'limit_req zone=aquila_bank_transaction_hot_per_ip burst=12 delay=4;' "${nginx_config}"
+require_pattern 'limit_req zone=aquila_bank_transaction_archive_per_ip burst=12 delay=4;' "${nginx_config}"
 require_pattern 'add_header X-Aquila-Reject-Source nginx-edge always;' "${nginx_config}"
 require_pattern 'add_header X-Aquila-Reject-Reason edge-rate-limit always;' "${nginx_config}"
 require_pattern 'keepalive_requests 1000;' "${nginx_config}"
 require_pattern 'keepalive_timeout 60s;' "${nginx_config}"
-require_pattern 'limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_read_per_ip:10m rate=48r/s;' "${deploy_script}"
-require_pattern 'limit_req zone=aquila_bank_transaction_read_per_ip burst=24 delay=8;' "${deploy_script}"
+require_pattern 'limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_hot_per_ip:10m rate=48r/s;' "${deploy_script}"
+require_pattern 'limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_archive_per_ip:10m rate=48r/s;' "${deploy_script}"
+require_pattern 'limit_req zone=aquila_bank_transaction_hot_per_ip burst=12 delay=4;' "${deploy_script}"
+require_pattern 'limit_req zone=aquila_bank_transaction_archive_per_ip burst=12 delay=4;' "${deploy_script}"
 require_pattern 'OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_MAX=${OCI_A1_TRANSACTION_READ_ADMISSION_MAX:-6}' "${deploy_script}"
 require_pattern 'OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_ADAPTIVE_MAX=${OCI_A1_TRANSACTION_READ_ADMISSION_ADAPTIVE_MAX:-8}' "${deploy_script}"
 require_pattern 'maximum-pool-size: ${OCI_A1_DB_POOL_MAX_SIZE:6}' "${oci_profile}"
@@ -113,7 +119,8 @@ cat >"${report_md}" <<REPORT
 
 | Budget | Value |
 | --- | --- |
-| edge transaction-read rate | ${edge_transaction_read_rate_rps}r/s |
+| edge transaction-hot rate | ${edge_transaction_hot_rate_rps}r/s |
+| edge transaction-archive rate | ${edge_transaction_archive_rate_rps}r/s |
 | edge transaction-read burst | ${edge_transaction_read_burst} |
 | edge transaction-read delay | ${edge_transaction_read_delay} |
 | backend admission max | ${backend_admission_max} |
