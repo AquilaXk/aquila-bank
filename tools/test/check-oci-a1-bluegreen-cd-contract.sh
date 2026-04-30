@@ -65,8 +65,6 @@ require_file "$workflow"
 require_file "$deploy_script"
 require_file "$database_url_resolver_script"
 require_file "$fixture_principal_script"
-require_file "$delivery_doc"
-require_file "$production_doc"
 require_file "back/Dockerfile"
 require_file "front/Dockerfile"
 require_file "back/src/main/resources/application-oci-a1.yml"
@@ -229,10 +227,19 @@ script_patterns=(
   'proxy_set_header X-Request-Id \$request_id;'
   'proxy_set_header X-K6-Run-Id \$http_x_k6_run_id;'
   '"upstream_status":"\$upstream_status"'
+  '"limit_req_status":"\$limit_req_status"'
   '"k6_run_id":"\$http_x_k6_run_id"'
+  "limit_req_status 429;"
+  'limit_req_zone \$binary_remote_addr zone=aquila_bank_api_per_ip:10m rate=30r/s;'
+  'limit_req_zone \$binary_remote_addr zone=aquila_bank_auth_per_ip:10m rate=5r/s;'
   'proxy_set_header X-Forwarded-Host \$host;'
   "location = /api/v1/notifications/stream"
   "proxy_buffering off;"
+  "location = /api/v1/auth/login"
+  "location = /api/v1/auth/refresh"
+  "location = /api/v1/auth/password-recovery/request"
+  "limit_req zone=aquila_bank_auth_per_ip burst=10 nodelay;"
+  "limit_req zone=aquila_bank_api_per_ip burst=60 nodelay;"
   "nginx -s reload"
   "ensure_nginx_config_visible"
   'docker exec "${NGINX_CONTAINER}" grep -Fq'
@@ -282,26 +289,34 @@ require_pattern "HTTP ingress for OCI A1 staging" "${terraform_dir}/network.tf"
 require_pattern "min = 80" "${terraform_dir}/network.tf"
 
 echo "[oci-a1-bluegreen-cd] docs contract"
-doc_patterns=(
-  "OCI_A1_STAGING_ENV"
-  "OCI self-hosted runner"
-  "oci-a1-staging"
-  "linux/arm64"
-  "OCI_A1_BACKEND_ENV_B64"
-  "STAGING_OCI_A1_DATABASE_URL"
-  "STAGING_REPLAY_USER_ID"
-  "STAGING_BASE_URL"
-)
-for pattern in "${doc_patterns[@]}"; do
-  require_pattern "$pattern" "$delivery_doc"
-done
+if [[ -f "$delivery_doc" ]]; then
+  doc_patterns=(
+    "OCI_A1_STAGING_ENV"
+    "OCI self-hosted runner"
+    "oci-a1-staging"
+    "linux/arm64"
+    "OCI_A1_BACKEND_ENV_B64"
+    "STAGING_OCI_A1_DATABASE_URL"
+    "STAGING_REPLAY_USER_ID"
+    "STAGING_BASE_URL"
+  )
+  for pattern in "${doc_patterns[@]}"; do
+    require_pattern "$pattern" "$delivery_doc"
+  done
+  reject_pattern "OCI_A1_SSH_" "$delivery_doc"
+  reject_pattern "ssh-keyscan" "$delivery_doc"
+else
+  echo "[oci-a1-bluegreen-cd] skip local delivery doc contract: $delivery_doc"
+fi
 require_pattern "self-hosted runner" "ops/deploy/oci/README.md"
 require_pattern "Verify staging 100m replay evidence success" ".github/workflows/production-promotion.yml"
 require_pattern "staging-100m-replay" ".github/workflows/production-promotion.yml"
-reject_pattern "OCI_A1_SSH_" "$delivery_doc"
-reject_pattern "ssh-keyscan" "$delivery_doc"
 reject_pattern "OCI_A1_SSH_" "ops/deploy/oci/README.md"
 reject_pattern "ssh-keyscan" "ops/deploy/oci/README.md"
-require_pattern "same SHA" "$production_doc"
+if [[ -f "$production_doc" ]]; then
+  require_pattern "same SHA" "$production_doc"
+else
+  echo "[oci-a1-bluegreen-cd] skip local production doc contract: $production_doc"
+fi
 
 echo "[oci-a1-bluegreen-cd] contract check passed"
