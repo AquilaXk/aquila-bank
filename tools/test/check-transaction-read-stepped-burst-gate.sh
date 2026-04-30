@@ -33,6 +33,8 @@ write_summary() {
 JSON
 }
 
+write_summary 64 0
+write_summary 80 0.042
 write_summary 96 0.0836
 write_summary 112 0.095
 write_summary 128 0.099
@@ -40,7 +42,6 @@ write_summary 128 0.099
 echo "[transaction-read-stepped-burst] print plan"
 plan="$(
   STEPPED_BURST_GATE_NAME=stepped-check \
-  STEPPED_BURST_RATES=96,112,128 \
   STEPPED_BURST_SUMMARY_DIR="${summary_dir}" \
   STEPPED_BURST_OUTPUT_DIR="${output_dir}" \
   STEPPED_BURST_FAIL_RATE=0.10 \
@@ -48,7 +49,7 @@ plan="$(
     "${runner}" --print-plan
 )"
 grep -F "gate=stepped-check" <<<"${plan}" >/dev/null
-grep -F "rates=96,112,128" <<<"${plan}" >/dev/null
+grep -F "rates=64,80,96,112,128" <<<"${plan}" >/dev/null
 grep -F "summary_dir=${summary_dir}" <<<"${plan}" >/dev/null
 grep -F "output_dir=${output_dir}" <<<"${plan}" >/dev/null
 grep -F "run_k6=false" <<<"${plan}" >/dev/null
@@ -58,7 +59,6 @@ grep -F "warn_rate=0.08" <<<"${plan}" >/dev/null
 echo "[transaction-read-stepped-burst] aggregate pass"
 output="$(
   STEPPED_BURST_GATE_NAME=stepped-check \
-  STEPPED_BURST_RATES=96,112,128 \
   STEPPED_BURST_SUMMARY_DIR="${summary_dir}" \
   STEPPED_BURST_OUTPUT_DIR="${output_dir}" \
   STEPPED_BURST_FAIL_RATE=0.10 \
@@ -69,28 +69,44 @@ report_md="$(tail -1 <<<"${output}")"
 summary_tsv="${output_dir}/stepped-check-stepped-burst.tsv"
 test "${report_md}" = "${output_dir}/stepped-check-stepped-burst.md"
 grep -F $'rate\tstatus\ttransaction_429_rate\ttransaction_503_rate\ttransaction_503_count\treport_md\tsummary_json' "${summary_tsv}" >/dev/null
+grep -F $'64\tpass\t0\t0\t0' "${summary_tsv}" >/dev/null
+grep -F $'80\tpass\t0.042\t0\t0' "${summary_tsv}" >/dev/null
 grep -F $'96\twarn\t0.0836\t0\t0' "${summary_tsv}" >/dev/null
 grep -F $'112\twarn\t0.095\t0\t0' "${summary_tsv}" >/dev/null
 grep -F $'128\twarn\t0.099\t0\t0' "${summary_tsv}" >/dev/null
 grep -F "gate_status=warn" "${report_md}" >/dev/null
-grep -F "96/112/128" "${report_md}" >/dev/null
+grep -F "first_fail_rate=none" "${report_md}" >/dev/null
+grep -F "max_non_fail_rate=128" "${report_md}" >/dev/null
+grep -F "| 64 | pass | 0 | 0 | 0 |" "${report_md}" >/dev/null
+grep -F "64/80/96/112/128" "${report_md}" >/dev/null
 
 echo "[transaction-read-stepped-burst] aggregate fail"
 write_summary 128 0.125
-if STEPPED_BURST_GATE_NAME=stepped-fail-check \
-  STEPPED_BURST_RATES=96,112,128 \
+set +e
+fail_output="$(
+  STEPPED_BURST_GATE_NAME=stepped-fail-check \
   STEPPED_BURST_SUMMARY_DIR="${summary_dir}" \
   STEPPED_BURST_OUTPUT_DIR="${output_dir}" \
   STEPPED_BURST_FAIL_RATE=0.10 \
   STEPPED_BURST_WARN_RATE=0.08 \
-    "${runner}" >/dev/null 2>&1; then
+    "${runner}" 2>/dev/null
+)"
+fail_status=$?
+set -e
+if [[ "${fail_status}" -eq 0 ]]; then
   echo "stepped burst fail threshold unexpectedly passed" >&2
   exit 1
 fi
+fail_report_md="$(tail -1 <<<"${fail_output}")"
+test "${fail_report_md}" = "${output_dir}/stepped-fail-check-stepped-burst.md"
+grep -F "first_fail_rate=128" "${fail_report_md}" >/dev/null
+grep -F "max_non_fail_rate=112" "${fail_report_md}" >/dev/null
+grep -F "| 128 | fail | 0.125 | 0 | 0 |" "${fail_report_md}" >/dev/null
 
 echo "[transaction-read-stepped-burst] runner contract"
 grep -F "run-transaction-read-burst-429-budget-gate.sh" "${runner}" >/dev/null
 grep -F "STEPPED_BURST_RATES" "${runner}" >/dev/null
+grep -F "64,80,96,112,128" "${runner}" >/dev/null
 grep -F "rate-96-summary.json" "${runner}" >/dev/null
 grep -F "K6_SCENARIO_MODE=burst" "${runner}" >/dev/null
 

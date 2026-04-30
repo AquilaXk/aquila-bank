@@ -1,0 +1,26 @@
+spring:
+  config:
+    activate:
+      on-profile: oci-a1
+  datasource:
+    hikari:
+      # OCI A1 4 OCPU / 24GB 기준: DB connection은 admission floor보다 조금 크게 둔다.
+      maximum-pool-size: ${OCI_A1_DB_POOL_MAX_SIZE:6}
+      minimum-idle: ${OCI_A1_DB_POOL_MIN_IDLE:1}
+  task:
+    execution:
+      pool:
+        core-size: ${OCI_A1_TASK_EXECUTION_CORE_SIZE:4}
+        max-size: ${OCI_A1_TASK_EXECUTION_MAX_SIZE:8}
+        queue-capacity: ${OCI_A1_TASK_EXECUTION_QUEUE_CAPACITY:200}
+
+server:
+  tomcat:
+    threads:
+      max: ${OCI_A1_SERVER_THREADS_MAX:32}
+      min-spare: ${OCI_A1_SERVER_THREADS_MIN_SPARE:4}
+    accept-count: ${OCI_A1_SERVER_ACCEPT_COUNT:64}
+
+transaction:
+  read-replica:
+    maximum-pool-size: ${OCI_A1_TRANSACTION_READ_REPLICA_POOL_MAX_SIZE:4}

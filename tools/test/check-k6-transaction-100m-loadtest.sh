@@ -205,6 +205,7 @@ grep -F "max<" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_OVERLOAD_MODE" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_RUN_ID" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "run_id: runId" ops/k6/transaction-read-100m.js >/dev/null
+grep -F '"X-K6-Run-Id": runId' ops/k6/transaction-read-100m.js >/dev/null
 grep -F "AQUILA_K6_SCENARIO_MODE" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "AQUILA_K6_VUS" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "AQUILA_K6_DURATION" ops/k6/transaction-read-100m.js >/dev/null

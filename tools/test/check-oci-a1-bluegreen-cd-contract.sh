@@ -69,6 +69,7 @@ require_file "$delivery_doc"
 require_file "$production_doc"
 require_file "back/Dockerfile"
 require_file "front/Dockerfile"
+require_file "back/src/main/resources/application-oci-a1.yml"
 
 echo "[oci-a1-bluegreen-cd] shell syntax"
 bash -n "$deploy_script"
@@ -86,6 +87,7 @@ workflow_patterns=(
   "- Main CI"
   "DEPLOY_TARGET_RUNTIME: oci-a1"
   "OCI_A1_STAGING_ENV"
+  "OCI_A1_CAPACITY_PROFILE_ENABLED"
   "Create Staging Deployment"
   "Build And Push Backend Image"
   "Build And Push Frontend Image"
@@ -190,6 +192,10 @@ script_patterns=(
   "mktemp -d"
   "connect_postgres_container"
   "preflight_backend_database"
+  "OCI_A1_CAPACITY_PROFILE_ENABLED"
+  "backend_spring_profiles_active"
+  ",oci-a1"
+  'SPRING_PROFILES_ACTIVE="${backend_profiles}"'
   "POSTGRES_CONTAINER_NAME"
   "POSTGRES_LOG_TAIL_LINES"
   "POSTGRES_BOOTSTRAP_ENABLED"
@@ -198,6 +204,11 @@ script_patterns=(
   "ensure_postgres_container_for_host"
   "start_postgres_systemd_service"
   "start_postgres_docker_container"
+  'com.aquilabank.service=postgres'
+  'com.aquilabank.service=backend'
+  'com.aquilabank.service=nginx'
+  'com.aquilabank.slot=${green}'
+  'com.aquilabank.runtime=oci-a1'
   "write_postgres_env_file"
   "systemctl enable --now aquila-postgres.service"
   "docker volume create"
@@ -215,6 +226,10 @@ script_patterns=(
   "host.docker.internal:host-gateway"
   "/actuator/health"
   'proxy_set_header Host ${backend_proxy_host};'
+  'proxy_set_header X-Request-Id \$request_id;'
+  'proxy_set_header X-K6-Run-Id \$http_x_k6_run_id;'
+  '"upstream_status":"\$upstream_status"'
+  '"k6_run_id":"\$http_x_k6_run_id"'
   'proxy_set_header X-Forwarded-Host \$host;'
   "location = /api/v1/notifications/stream"
   "proxy_buffering off;"

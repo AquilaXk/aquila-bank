@@ -33,6 +33,8 @@ required_patterns=(
   '"upstream_connect_time":"$upstream_connect_time"'
   '"upstream_header_time":"$upstream_header_time"'
   '"limit_req_status":"$limit_req_status"'
+  '"request_id":"$request_id"'
+  '"k6_run_id":"$http_x_k6_run_id"'
   "access_log /var/log/nginx/access.log aquila_bank_upstream;"
   "limit_req_zone \$binary_remote_addr zone=aquila_bank_api_per_ip:10m rate=30r/s;"
   "limit_req_zone \$binary_remote_addr zone=aquila_bank_auth_per_ip:10m rate=5r/s;"
@@ -52,6 +54,8 @@ required_patterns=(
   "location = /api/v1/notifications/stream"
   "proxy_pass http://aquila_bank_backend_sse;"
   "proxy_set_header Host \${NGINX_BACKEND_PROXY_HOST};"
+  "proxy_set_header X-Request-Id \$request_id;"
+  "proxy_set_header X-K6-Run-Id \$http_x_k6_run_id;"
   "proxy_buffering off;"
   "proxy_request_buffering off;"
   "proxy_cache off;"

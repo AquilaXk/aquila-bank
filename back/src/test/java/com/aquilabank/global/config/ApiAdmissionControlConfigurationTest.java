@@ -36,9 +36,12 @@ class ApiAdmissionControlConfigurationTest {
         context -> {
           ApiAdmissionControlProperties.EndpointLimit endpoint = transactionReadEndpoint(context);
 
-          assertThat(endpoint.maxConcurrency()).isEqualTo(4);
-          assertThat(endpoint.adaptive().minConcurrency()).isEqualTo(4);
+          assertThat(endpoint.maxConcurrency()).isEqualTo(6);
+          assertThat(endpoint.retryAfterSeconds()).isEqualTo(1);
+          assertThat(endpoint.adaptive().minConcurrency()).isEqualTo(6);
           assertThat(endpoint.adaptive().maxConcurrency()).isEqualTo(12);
+          assertThat(endpoint.adaptive().increaseEverySuccesses()).isEqualTo(64);
+          assertThat(endpoint.adaptive().decreaseOnRejections()).isEqualTo(1);
         });
   }
 

@@ -7,7 +7,7 @@ usage: tools/test/run-transaction-read-stepped-burst-gate.sh [--print-plan]
 
 Environment:
   STEPPED_BURST_GATE_NAME     default transaction-read-stepped-burst-<timestamp>
-  STEPPED_BURST_RATES         default 96,112,128
+  STEPPED_BURST_RATES         default 64,80,96,112,128
   STEPPED_BURST_DURATION      default 20s
   STEPPED_BURST_WARN_RATE     default 0.08
   STEPPED_BURST_FAIL_RATE     default 0.10
@@ -16,6 +16,8 @@ Environment:
   STEPPED_BURST_OUTPUT_DIR    default build/reports/k6/<gate>
 
 Summary input when STEPPED_BURST_RUN_K6=false:
+  ${STEPPED_BURST_SUMMARY_DIR}/rate-64-summary.json
+  ${STEPPED_BURST_SUMMARY_DIR}/rate-80-summary.json
   ${STEPPED_BURST_SUMMARY_DIR}/rate-96-summary.json
   ${STEPPED_BURST_SUMMARY_DIR}/rate-112-summary.json
   ${STEPPED_BURST_SUMMARY_DIR}/rate-128-summary.json
@@ -41,7 +43,7 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 gate_name="${STEPPED_BURST_GATE_NAME:-transaction-read-stepped-burst-$(date +%Y-%m-%d-%H%M%S)}"
-rates="${STEPPED_BURST_RATES:-96,112,128}"
+rates="${STEPPED_BURST_RATES:-64,80,96,112,128}"
 burst_duration="${STEPPED_BURST_DURATION:-20s}"
 warn_rate="${STEPPED_BURST_WARN_RATE:-0.08}"
 fail_rate="${STEPPED_BURST_FAIL_RATE:-0.10}"
@@ -154,6 +156,9 @@ mkdir -p "${output_dir}"
 printf "rate\tstatus\ttransaction_429_rate\ttransaction_503_rate\ttransaction_503_count\treport_md\tsummary_json\n" >"${summary_tsv}"
 
 gate_status="pass"
+first_fail_rate="none"
+max_non_fail_rate="none"
+summary_table=$'| rate | status | transaction 429 rate | transaction 503 rate | transaction 503 count | report |\n| --- | --- | --- | --- | --- | --- |'
 IFS=',' read -r -a rate_items <<<"${rates}"
 for rate in "${rate_items[@]}"; do
   single_name="${gate_name}-rate-${rate}"
@@ -189,16 +194,23 @@ for rate in "${rate_items[@]}"; do
       || number_greater_than "${transaction_503_count}" "0"; then
     rate_status="fail"
     gate_status="fail"
+    if [[ "${first_fail_rate}" == "none" ]]; then
+      first_fail_rate="${rate}"
+    fi
   elif number_greater_than "${transaction_429_rate}" "${warn_rate}"; then
     rate_status="warn"
     if [[ "${gate_status}" == "pass" ]]; then
       gate_status="warn"
     fi
+    max_non_fail_rate="${rate}"
+  else
+    max_non_fail_rate="${rate}"
   fi
 
   printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
     "${rate}" "${rate_status}" "${transaction_429_rate}" "${transaction_503_rate}" \
     "${transaction_503_count}" "${single_report}" "${summary_json}" >>"${summary_tsv}"
+  summary_table="${summary_table}"$'\n'"| ${rate} | ${rate_status} | ${transaction_429_rate} | ${transaction_503_rate} | ${transaction_503_count} | ${single_report} |"
 done
 
 cat >"${report_md}" <<REPORT
@@ -209,10 +221,16 @@ cat >"${report_md}" <<REPORT
 - gate: ${gate_name}
 - gate_status=${gate_status}
 - rates: ${rates}
-- focus: 96/112/128 it/s boundary
+- focus: 64/80/96/112/128 it/s boundary
 - burst duration: ${burst_duration}
 - warning threshold: ${warn_rate}
 - fail threshold: ${fail_rate}
+- first_fail_rate=${first_fail_rate}
+- max_non_fail_rate=${max_non_fail_rate}
+
+## Result Table
+
+${summary_table}
 
 ## Artifacts
 
@@ -221,7 +239,7 @@ cat >"${report_md}" <<REPORT
 
 ## Notes
 
-- 96/112/128 단계는 2026-04-29 OCI A1 burst 경계인 96~128 it/s를 고정합니다.
+- 64/80/96/112/128 단계는 2026-04-29 OCI A1 burst 경계인 96~128 it/s의 전후 구간까지 고정합니다.
 - 429는 admission 보호 신호로 따로 budget 관리하고, 503은 hard fail로 처리합니다.
 REPORT
 

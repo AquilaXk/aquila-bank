@@ -41,6 +41,7 @@ GITHUB_ACTOR="${GITHUB_ACTOR:?GITHUB_ACTOR is required}"
 GITHUB_TOKEN_B64="${GITHUB_TOKEN_B64:?GITHUB_TOKEN_B64 is required}"
 BACKEND_ENV_B64="${BACKEND_ENV_B64:?BACKEND_ENV_B64 is required}"
 FRONTEND_ENV_B64="${FRONTEND_ENV_B64:-}"
+OCI_A1_CAPACITY_PROFILE_ENABLED="${OCI_A1_CAPACITY_PROFILE_ENABLED:-true}"
 DOCKER_CONFIG_DIR=""
 
 cleanup_temp() {
@@ -111,6 +112,26 @@ docker_login() {
 env_value() {
   local name="$1"
   sed -n "s/^${name}=//p" "${APP_DIR}/env/backend.env" | tail -1
+}
+
+backend_spring_profiles_active() {
+  local profiles
+  profiles="$(env_value SPRING_PROFILES_ACTIVE)"
+  profiles="${profiles:-prod}"
+
+  case "${OCI_A1_CAPACITY_PROFILE_ENABLED}" in
+    true) ;;
+    false)
+      printf '%s\n' "${profiles}"
+      return
+      ;;
+    *) log "OCI_A1_CAPACITY_PROFILE_ENABLED must be true or false"; exit 1 ;;
+  esac
+
+  case ",${profiles}," in
+    *,oci-a1,*) printf '%s\n' "${profiles}" ;;
+    *) printf '%s,oci-a1\n' "${profiles}" ;;
+  esac
 }
 
 postgres_host_requires_container() {
@@ -215,6 +236,8 @@ start_postgres_docker_container() {
     --pull missing \
     --network "${NETWORK}" \
     --network-alias "${POSTGRES_NETWORK_ALIAS}" \
+    --label com.aquilabank.runtime=oci-a1 \
+    --label com.aquilabank.service=postgres \
     -p "${POSTGRES_HOST_BIND}:5432" \
     --env-file "${APP_DIR}/env/postgres.env" \
     -v "${POSTGRES_DATA_VOLUME}:/var/lib/postgresql" \
@@ -443,24 +466,29 @@ wait_http_ok() {
 
 run_green_slot() {
   local green="$1"
-  local backend_name frontend_name backend_host_port frontend_host_port
+  local backend_name frontend_name backend_host_port frontend_host_port backend_profiles
   backend_name="$(slot_name backend "${green}")"
   frontend_name="$(slot_name frontend "${green}")"
   backend_host_port="$(slot_host_port backend "${green}")"
   frontend_host_port="$(slot_host_port frontend "${green}")"
+  backend_profiles="$(backend_spring_profiles_active)"
 
   docker pull "${BACKEND_IMAGE}:${IMAGE_TAG}"
   docker pull "${FRONTEND_IMAGE}:${IMAGE_TAG}"
 
   docker rm -f "${backend_name}" "${frontend_name}" >/dev/null 2>&1 || true
 
-  log "start green backend: ${backend_name}"
+  log "start green backend: ${backend_name} profiles=${backend_profiles}"
   docker run -d \
     --name "${backend_name}" \
     --restart unless-stopped \
     --network "${NETWORK}" \
+    --label com.aquilabank.runtime=oci-a1 \
+    --label com.aquilabank.service=backend \
+    --label "com.aquilabank.slot=${green}" \
     --add-host host.docker.internal:host-gateway \
     --env-file "${APP_DIR}/env/backend.env" \
+    -e SPRING_PROFILES_ACTIVE="${backend_profiles}" \
     -e TZ=Asia/Seoul \
     -p "127.0.0.1:${backend_host_port}:${BACKEND_PORT}" \
     "${BACKEND_IMAGE}:${IMAGE_TAG}" >/dev/null
@@ -470,6 +498,9 @@ run_green_slot() {
     --name "${frontend_name}" \
     --restart unless-stopped \
     --network "${NETWORK}" \
+    --label com.aquilabank.runtime=oci-a1 \
+    --label com.aquilabank.service=frontend \
+    --label "com.aquilabank.slot=${green}" \
     --add-host host.docker.internal:host-gateway \
     --env-file "${APP_DIR}/env/frontend.env" \
     -e TZ=Asia/Seoul \
@@ -504,6 +535,21 @@ events {
 }
 
 http {
+  log_format aquila_bank_upstream escape=json
+    '{'
+      '"time":"\$time_iso8601",'
+      '"request":"\$request",'
+      '"status":\$status,'
+      '"request_time":\$request_time,'
+      '"upstream_status":"\$upstream_status",'
+      '"upstream_response_time":"\$upstream_response_time",'
+      '"upstream_connect_time":"\$upstream_connect_time",'
+      '"upstream_header_time":"\$upstream_header_time",'
+      '"request_id":"\$request_id",'
+      '"k6_run_id":"\$http_x_k6_run_id"'
+    '}';
+  access_log /var/log/nginx/access.log aquila_bank_upstream;
+
   upstream aquila_bank_backend {
     server ${backend_name}:${BACKEND_PORT};
     keepalive 16;
@@ -525,6 +571,8 @@ http {
       # SSE 장기 연결은 proxy buffering을 끄고 기존 blue 슬롯을 짧게 drain한다.
       proxy_pass http://aquila_bank_backend;
       proxy_set_header Host ${backend_proxy_host};
+      proxy_set_header X-Request-Id \$request_id;
+      proxy_set_header X-K6-Run-Id \$http_x_k6_run_id;
       proxy_set_header X-Real-IP \$remote_addr;
       proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
       proxy_set_header X-Forwarded-Proto \$scheme;
@@ -544,6 +592,8 @@ http {
     location ^~ /actuator/health {
       proxy_pass http://aquila_bank_backend;
       proxy_set_header Host ${backend_proxy_host};
+      proxy_set_header X-Request-Id \$request_id;
+      proxy_set_header X-K6-Run-Id \$http_x_k6_run_id;
       proxy_set_header X-Real-IP \$remote_addr;
       proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
       proxy_set_header X-Forwarded-Proto \$scheme;
@@ -558,6 +608,8 @@ http {
     location /api/ {
       proxy_pass http://aquila_bank_backend;
       proxy_set_header Host ${backend_proxy_host};
+      proxy_set_header X-Request-Id \$request_id;
+      proxy_set_header X-K6-Run-Id \$http_x_k6_run_id;
       proxy_set_header X-Real-IP \$remote_addr;
       proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
       proxy_set_header X-Forwarded-Proto \$scheme;
@@ -571,6 +623,8 @@ http {
     location / {
       proxy_pass http://aquila_bank_frontend;
       proxy_set_header Host \$host;
+      proxy_set_header X-Request-Id \$request_id;
+      proxy_set_header X-K6-Run-Id \$http_x_k6_run_id;
       proxy_set_header X-Real-IP \$remote_addr;
       proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
       proxy_set_header X-Forwarded-Proto \$scheme;
@@ -604,6 +658,8 @@ ensure_nginx_container() {
     --name "${NGINX_CONTAINER}" \
     --restart unless-stopped \
     --network "${NETWORK}" \
+    --label com.aquilabank.runtime=oci-a1 \
+    --label com.aquilabank.service=nginx \
     -p 80:80 \
     -v "${APP_DIR}/nginx/nginx.conf:/etc/nginx/nginx.conf:ro" \
     nginx:1.27-alpine >/dev/null

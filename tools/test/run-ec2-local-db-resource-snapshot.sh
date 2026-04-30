@@ -10,6 +10,9 @@ Environment:
   EC2_RESOURCE_SNAPSHOT_NAME default <run-id>-resource
   EC2_RESOURCE_OUTPUT_DIR default build/reports/ec2-local-db/<name>
   EC2_RESOURCE_DOCKER_STATS default true
+  EC2_RESOURCE_DOCKER_DISCOVERY default true
+  EC2_RESOURCE_DOCKER_LABELS default com.aquilabank.service=nginx,com.aquilabank.service=backend,com.aquilabank.service=postgres
+  EC2_RESOURCE_DOCKER_NAME_REGEX default ^(aquila-bank-nginx|aquila-bank-backend-[ab]|aquila-postgres)$
   EC2_RESOURCE_CLOUDWATCH_ENABLED default false
   EC2_CAPACITY_AWS_REGION required when CloudWatch enabled
   EC2_CAPACITY_EC2_INSTANCE_ID optional CloudWatch EC2 target
@@ -41,7 +44,10 @@ name="${EC2_RESOURCE_SNAPSHOT_NAME:-${run_id}-resource}"
 output_dir="${EC2_RESOURCE_OUTPUT_DIR:-build/reports/ec2-local-db/${name}}"
 docker_stats="${EC2_RESOURCE_DOCKER_STATS:-true}"
 cloudwatch_enabled="${EC2_RESOURCE_CLOUDWATCH_ENABLED:-false}"
-docker_containers_csv="${EC2_RESOURCE_DOCKER_CONTAINERS:-aquila-bank-nginx,aquila-bank-backend-a,aquila-bank-backend-b}"
+docker_discovery="${EC2_RESOURCE_DOCKER_DISCOVERY:-true}"
+docker_labels_csv="${EC2_RESOURCE_DOCKER_LABELS:-com.aquilabank.service=nginx,com.aquilabank.service=backend,com.aquilabank.service=postgres}"
+docker_name_regex="${EC2_RESOURCE_DOCKER_NAME_REGEX:-^(aquila-bank-nginx|aquila-bank-backend-[ab]|aquila-postgres)$}"
+docker_containers_csv="${EC2_RESOURCE_DOCKER_CONTAINERS:-aquila-bank-nginx,aquila-bank-backend-a,aquila-bank-backend-b,aquila-postgres}"
 region="${EC2_CAPACITY_AWS_REGION:-${AWS_REGION:-}}"
 ec2_instance_id="${EC2_CAPACITY_EC2_INSTANCE_ID:-}"
 ebs_volume_id="${EC2_CAPACITY_EBS_VOLUME_ID:-}"
@@ -60,6 +66,7 @@ require_bool() {
 }
 
 require_bool "EC2_RESOURCE_DOCKER_STATS" "${docker_stats}"
+require_bool "EC2_RESOURCE_DOCKER_DISCOVERY" "${docker_discovery}"
 require_bool "EC2_RESOURCE_CLOUDWATCH_ENABLED" "${cloudwatch_enabled}"
 if [[ "${cloudwatch_enabled}" == "true" ]]; then
   if [[ -z "${region}" || -z "${start_time}" || -z "${end_time}" ]]; then
@@ -78,7 +85,10 @@ print_plan() {
   echo "[ec2-resource-snapshot] name=${name}"
   echo "[ec2-resource-snapshot] output_dir=${output_dir}"
   echo "[ec2-resource-snapshot] docker_stats=${docker_stats}"
-  echo "[ec2-resource-snapshot] docker_containers=${docker_containers_csv}"
+  echo "[ec2-resource-snapshot] docker_discovery=${docker_discovery}"
+  echo "[ec2-resource-snapshot] docker_labels=${docker_labels_csv}"
+  echo "[ec2-resource-snapshot] docker_name_regex=${docker_name_regex}"
+  echo "[ec2-resource-snapshot] docker_fallback_containers=${docker_containers_csv}"
   echo "[ec2-resource-snapshot] cloudwatch_enabled=${cloudwatch_enabled}"
   echo "[ec2-resource-snapshot] region=${region:-missing}"
   echo "[ec2-resource-snapshot] ec2_instance_id=${ec2_instance_id:-missing}"
@@ -94,10 +104,75 @@ write_manifest() {
     echo "EC2_CAPACITY_RUN_ID=${run_id}"
     echo "EC2_RESOURCE_SNAPSHOT_NAME=${name}"
     echo "EC2_DOCKER_STATS_TSV=${docker_stats_tsv}"
+    echo "EC2_DOCKER_DISCOVERY=${docker_discovery}"
+    echo "EC2_DOCKER_LABELS=${docker_labels_csv}"
+    echo "EC2_DOCKER_NAME_REGEX=${docker_name_regex}"
     echo "EC2_RESOURCE_CLOUDWATCH_ENABLED=${cloudwatch_enabled}"
     echo "EC2_CAPACITY_EC2_INSTANCE_ID=${ec2_instance_id}"
     echo "EC2_CAPACITY_EBS_VOLUME_ID=${ebs_volume_id}"
   } >"${manifest_env}"
+}
+
+trim_value() {
+  printf '%s' "$1" | xargs
+}
+
+append_unique_container() {
+  local container="$1"
+  local existing
+  container="$(trim_value "${container}")"
+  [[ -n "${container}" ]] || return 0
+  for existing in "${resolved_containers[@]-}"; do
+    [[ -n "${existing}" ]] || continue
+    if [[ "${existing}" == "${container}" ]]; then
+      return 0
+    fi
+  done
+  resolved_containers+=("${container}")
+  resolved_count=$((resolved_count + 1))
+}
+
+collect_containers_by_label() {
+  local label container
+  IFS=',' read -r -a labels <<<"${docker_labels_csv}"
+  for label in "${labels[@]}"; do
+    label="$(trim_value "${label}")"
+    [[ -n "${label}" ]] || continue
+    while IFS= read -r container; do
+      append_unique_container "${container}"
+    done < <(docker ps --filter "label=${label}" --format '{{.Names}}' 2>/dev/null || true)
+  done
+}
+
+collect_containers_by_name() {
+  local container
+  while IFS= read -r container; do
+    append_unique_container "${container}"
+  done < <(docker ps --format '{{.Names}}' 2>/dev/null | awk -v regex="${docker_name_regex}" '$0 ~ regex' || true)
+}
+
+append_fallback_containers() {
+  local container
+  IFS=',' read -r -a containers <<<"${docker_containers_csv}"
+  for container in "${containers[@]}"; do
+    append_unique_container "${container}"
+  done
+}
+
+resolve_docker_containers() {
+  local -a resolved_containers=()
+  local resolved_count=0
+  # blue-green 전환 중 inactive slot 이름은 제외하고, label 없는 기존 컨테이너는 running name으로 보완한다.
+  if [[ "${docker_discovery}" == "true" ]]; then
+    collect_containers_by_label
+    collect_containers_by_name
+  fi
+  if [[ "${resolved_count}" -eq 0 ]]; then
+    append_fallback_containers
+  fi
+  if [[ "${resolved_count}" -gt 0 ]]; then
+    printf '%s\n' "${resolved_containers[@]}"
+  fi
 }
 
 write_docker_stats() {
@@ -110,17 +185,15 @@ write_docker_stats() {
   fi
   mkdir -p "${output_dir}"
   printf "container\tcpu_percent\tmemory_usage\tmemory_percent\tpids\n" >"${docker_stats_tsv}"
-  IFS=',' read -r -a containers <<<"${docker_containers_csv}"
   local container stats
-  for container in "${containers[@]}"; do
-    container="$(printf '%s' "${container}" | xargs)"
+  while IFS= read -r container; do
     [[ -n "${container}" ]] || continue
     if stats="$(docker stats --no-stream --format '{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}\t{{.PIDs}}' "${container}" 2>/dev/null)"; then
       printf "%s\t%s\n" "${container}" "${stats}" >>"${docker_stats_tsv}"
     else
       printf "%s\tmissing\tmissing\tmissing\tmissing\n" "${container}" >>"${docker_stats_tsv}"
     fi
-  done
+  done < <(resolve_docker_containers)
 }
 
 write_cloudwatch_snapshot() {

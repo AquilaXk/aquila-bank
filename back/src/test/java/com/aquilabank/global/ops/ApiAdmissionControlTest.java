@@ -160,30 +160,36 @@ class ApiAdmissionControlTest {
                 List.of(
                     new ApiAdmissionControlProperties.EndpointLimit(
                         "transaction-read",
-                        4,
-                        2,
+                        6,
+                        1,
                         List.of("/api/v1/transactions"),
-                        new ApiAdmissionControlProperties.AdaptiveLimit(true, 4, 12, 128, 2)))),
+                        new ApiAdmissionControlProperties.AdaptiveLimit(true, 6, 12, 64, 1)))),
             meterRegistry);
 
     ApiAdmissionPermit first = admissionControl.tryAcquire("/api/v1/transactions");
     ApiAdmissionPermit second = admissionControl.tryAcquire("/api/v1/transactions");
     ApiAdmissionPermit third = admissionControl.tryAcquire("/api/v1/transactions");
     ApiAdmissionPermit fourth = admissionControl.tryAcquire("/api/v1/transactions");
+    ApiAdmissionPermit fifth = admissionControl.tryAcquire("/api/v1/transactions");
+    ApiAdmissionPermit sixth = admissionControl.tryAcquire("/api/v1/transactions");
     ApiAdmissionPermit rejected = admissionControl.tryAcquire("/api/v1/transactions");
 
     assertThat(first.allowed()).isTrue();
     assertThat(second.allowed()).isTrue();
     assertThat(third.allowed()).isTrue();
     assertThat(fourth.allowed()).isTrue();
+    assertThat(fifth.allowed()).isTrue();
+    assertThat(sixth.allowed()).isTrue();
     assertThat(rejected.allowed()).isFalse();
-    assertThat(rejected.retryAfterSeconds()).isEqualTo(2);
-    assertCurrentLimit(meterRegistry, 4.0);
+    assertThat(rejected.retryAfterSeconds()).isEqualTo(1);
+    assertCurrentLimit(meterRegistry, 6.0);
 
     first.release();
     second.release();
     third.release();
     fourth.release();
+    fifth.release();
+    sixth.release();
   }
 
   @Test
