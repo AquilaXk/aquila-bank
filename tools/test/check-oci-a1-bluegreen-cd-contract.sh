@@ -238,7 +238,8 @@ script_patterns=(
   "limit_req_status 429;"
   'limit_req_zone \$binary_remote_addr zone=aquila_bank_api_per_ip:10m rate=30r/s;'
   'limit_req_zone \$binary_remote_addr zone=aquila_bank_auth_per_ip:10m rate=5r/s;'
-  'limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_read_per_ip:10m rate=48r/s;'
+  'limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_hot_per_ip:10m rate=48r/s;'
+  'limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_archive_per_ip:10m rate=48r/s;'
   'limit_req_zone \$binary_remote_addr zone=aquila_bank_transfer_per_ip:10m rate=3r/s;'
   'proxy_set_header X-Forwarded-Host \$host;'
   "error_page 429 = @aquila_edge_rate_limited;"
@@ -248,6 +249,7 @@ script_patterns=(
   'add_header Retry-After ${edge_retry_after_seconds} always;'
   'add_header X-RateLimit-Retry-After-Millis ${edge_retry_after_millis} always;'
   'add_header X-RateLimit-Retry-Jitter-Millis ${edge_retry_jitter_millis} always;'
+  'add_header X-Aquila-Edge-Limit-Status \$limit_req_status always;'
   '"source":"nginx-edge"'
   "location = /api/v1/notifications/stream"
   "proxy_buffering off;"
@@ -257,7 +259,8 @@ script_patterns=(
   "limit_req zone=aquila_bank_auth_per_ip burst=10 nodelay;"
   "location = /api/v1/transactions"
   "location = /api/v1/transactions/archive"
-  "limit_req zone=aquila_bank_transaction_read_per_ip burst=24 delay=8;"
+  "limit_req zone=aquila_bank_transaction_hot_per_ip burst=12 delay=4;"
+  "limit_req zone=aquila_bank_transaction_archive_per_ip burst=12 delay=4;"
   "location = /api/v1/transfers"
   "location ~ ^/api/v1/transfers/[^/]+/reversal$"
   "limit_req zone=aquila_bank_transfer_per_ip burst=6 nodelay;"

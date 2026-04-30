@@ -20,6 +20,7 @@ write_summary() {
   local edge_429="$3"
   local backend_429="$4"
   local p95="$5"
+  local delayed_rate="${6:-0.05}"
   cat >"${summary_dir}/arrival-${rate}-summary.json" <<JSON
 {
   "metrics": {
@@ -33,6 +34,10 @@ write_summary() {
     "aquila_transaction_unknown_429_count": {"values": {"count": 0}},
     "aquila_transaction_502_rate": {"values": {"rate": 0}},
     "aquila_transaction_502_count": {"values": {"count": 0}},
+    "aquila_transaction_503_rate": {"values": {"rate": 0}},
+    "aquila_transaction_503_count": {"values": {"count": 0}},
+    "aquila_transaction_edge_delayed_rate": {"values": {"rate": ${delayed_rate}}},
+    "aquila_transaction_edge_delayed_count": {"values": {"count": 50}},
     "aquila_transaction_accepted_200_rate": {"values": {"rate": 0.92}},
     "aquila_transaction_accepted_200_count": {"values": {"count": 920}},
     "aquila_transaction_hot_first_ms": {"values": {"p(95)": ${p95}}},
@@ -51,6 +56,7 @@ write_summary 5 0.020 0.010 0.010 210
 write_summary 6 0.040 0.020 0.020 240
 write_summary 7 0.070 0.030 0.040 280
 write_summary 8 0.090 0.040 0.050 320
+write_summary 10 0.080 0.040 0.040 330 0.12
 
 cat >"${resource_snapshot}" <<'TSV'
 component	cpu_percent	memory_mib	note
@@ -86,10 +92,10 @@ grep -F "# public-report-check" "${report_md}" >/dev/null
 grep -F "gate_status=pass" "${report_md}" >/dev/null
 grep -F "| arrival capacity | pass |" "${report_md}" >/dev/null
 grep -F "| budget matrix | pass |" "${report_md}" >/dev/null
-grep -F "| 8 | pass | 0.090 | 0.040 | 0.050 | 0 | 0 | 320 | 0.92 |" "${report_md}" >/dev/null
+grep -F "| 10 | pass | 0.080 | 0.040 | 0.040 | 0 | 0 | 0 | 0.12 | 330 | 0.92 |" "${report_md}" >/dev/null
 grep -F "| backend | 64.2 | 640 | oci-a1 |" "${report_md}" >/dev/null
 grep -F "## Next Bottleneck Candidates" "${report_md}" >/dev/null
-grep -F "arrival-8rps sample is inside 429/p95/502 budget" "${report_md}" >/dev/null
+grep -F "arrival-10rps sample is inside 429/delay/p95/5xx budget" "${report_md}" >/dev/null
 
 echo "[transaction-read-public-report] runner contract"
 grep -F "run-oci-public-api-arrival-capacity-gate.sh" "${runner}" >/dev/null
