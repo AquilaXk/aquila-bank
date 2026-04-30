@@ -41,6 +41,7 @@ GITHUB_ACTOR="${GITHUB_ACTOR:?GITHUB_ACTOR is required}"
 GITHUB_TOKEN_B64="${GITHUB_TOKEN_B64:?GITHUB_TOKEN_B64 is required}"
 BACKEND_ENV_B64="${BACKEND_ENV_B64:?BACKEND_ENV_B64 is required}"
 FRONTEND_ENV_B64="${FRONTEND_ENV_B64:-}"
+OCI_A1_CAPACITY_PROFILE_ENABLED="${OCI_A1_CAPACITY_PROFILE_ENABLED:-true}"
 DOCKER_CONFIG_DIR=""
 
 cleanup_temp() {
@@ -111,6 +112,26 @@ docker_login() {
 env_value() {
   local name="$1"
   sed -n "s/^${name}=//p" "${APP_DIR}/env/backend.env" | tail -1
+}
+
+backend_spring_profiles_active() {
+  local profiles
+  profiles="$(env_value SPRING_PROFILES_ACTIVE)"
+  profiles="${profiles:-prod}"
+
+  case "${OCI_A1_CAPACITY_PROFILE_ENABLED}" in
+    true) ;;
+    false)
+      printf '%s\n' "${profiles}"
+      return
+      ;;
+    *) log "OCI_A1_CAPACITY_PROFILE_ENABLED must be true or false"; exit 1 ;;
+  esac
+
+  case ",${profiles}," in
+    *,oci-a1,*) printf '%s\n' "${profiles}" ;;
+    *) printf '%s,oci-a1\n' "${profiles}" ;;
+  esac
 }
 
 postgres_host_requires_container() {
@@ -443,24 +464,26 @@ wait_http_ok() {
 
 run_green_slot() {
   local green="$1"
-  local backend_name frontend_name backend_host_port frontend_host_port
+  local backend_name frontend_name backend_host_port frontend_host_port backend_profiles
   backend_name="$(slot_name backend "${green}")"
   frontend_name="$(slot_name frontend "${green}")"
   backend_host_port="$(slot_host_port backend "${green}")"
   frontend_host_port="$(slot_host_port frontend "${green}")"
+  backend_profiles="$(backend_spring_profiles_active)"
 
   docker pull "${BACKEND_IMAGE}:${IMAGE_TAG}"
   docker pull "${FRONTEND_IMAGE}:${IMAGE_TAG}"
 
   docker rm -f "${backend_name}" "${frontend_name}" >/dev/null 2>&1 || true
 
-  log "start green backend: ${backend_name}"
+  log "start green backend: ${backend_name} profiles=${backend_profiles}"
   docker run -d \
     --name "${backend_name}" \
     --restart unless-stopped \
     --network "${NETWORK}" \
     --add-host host.docker.internal:host-gateway \
     --env-file "${APP_DIR}/env/backend.env" \
+    -e SPRING_PROFILES_ACTIVE="${backend_profiles}" \
     -e TZ=Asia/Seoul \
     -p "127.0.0.1:${backend_host_port}:${BACKEND_PORT}" \
     "${BACKEND_IMAGE}:${IMAGE_TAG}" >/dev/null
