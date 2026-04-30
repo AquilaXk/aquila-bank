@@ -6,7 +6,7 @@ usage() {
 usage: tools/ops/validate-oci-a1-storage-baseline.sh [--print-plan]
 
 Environment:
-  OCI_A1_STORAGE_MOUNT_PATH      default /var/lib/aquila-postgres
+  OCI_A1_STORAGE_MOUNT_PATH      default /
   OCI_A1_STORAGE_MIN_USABLE_GIB  default 300
   OCI_A1_STORAGE_DF_OUTPUT       optional fixture file with `df -BG -P` output
 USAGE
@@ -30,7 +30,7 @@ while [[ "$#" -gt 0 ]]; do
   shift
 done
 
-mount_path="${OCI_A1_STORAGE_MOUNT_PATH:-/var/lib/aquila-postgres}"
+mount_path="${OCI_A1_STORAGE_MOUNT_PATH:-/}"
 min_usable_gib="${OCI_A1_STORAGE_MIN_USABLE_GIB:-300}"
 df_output="${OCI_A1_STORAGE_DF_OUTPUT:-}"
 
@@ -54,6 +54,10 @@ if [[ -n "${df_output}" ]]; then
   fi
   df_data="$(cat "${df_output}")"
 else
+  if [[ ! -e "${mount_path}" ]]; then
+    echo "[oci-a1-storage] status=fail reason=mount_path_missing mount_path=${mount_path}" >&2
+    exit 1
+  fi
   df_data="$(df -BG -P "${mount_path}")"
 fi
 
