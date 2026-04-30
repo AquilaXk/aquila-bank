@@ -62,9 +62,7 @@ CLAUDE.md
 GEMINI.md
 CURSOR.md
 COPILOT.md
-docs/AGENT-CONTEXT.md
-docs/agent/
-docs/superpowers/plans/
+docs/
 .codex/
 .claude/
 .cursor/
