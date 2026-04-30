@@ -36,6 +36,7 @@ Optional environment:
   K6_DURATION               default 1m
   K6_LIMIT                  default 50
   K6_REPORT_NAME            default <profile-name>-k6
+  K6_RUN_ID                 default K6_REPORT_NAME; Prometheus/k6 summary correlation id
 
 Examples:
   tools/test/run-transaction-read-hotpath-profile.sh --print-plan
@@ -99,6 +100,7 @@ k6_overload_mode="${K6_OVERLOAD_MODE:-${default_k6_overload_mode}}"
 k6_burst_429_rate_threshold="${K6_BURST_429_RATE_THRESHOLD:-0.10}"
 k6_limit="${K6_LIMIT:-50}"
 k6_report_name="${K6_REPORT_NAME:-${profile_name}-k6}"
+k6_run_id="${K6_RUN_ID:-${k6_report_name}}"
 report_dir="build/reports/profiling/${profile_name}"
 jfr_container_path="/tmp/${profile_name}.jfr"
 jfr_artifact="${report_dir}/${profile_name}.jfr"
@@ -278,6 +280,7 @@ print_plan() {
   echo "[transaction-read-hotpath-profile] spike_profile=${profile_spike_profile}"
   echo "[transaction-read-hotpath-profile] admission=${profile_admission} db_pool=${profile_db_pool_max_size}"
   echo "[transaction-read-hotpath-profile] k6 vus=${k6_vus} duration=${k6_duration} limit=${k6_limit} report=${k6_report_name}"
+  echo "[transaction-read-hotpath-profile] k6_run_id=${k6_run_id}"
   echo "[transaction-read-hotpath-profile] k6 scenario=${profile_k6_scenario_mode}"
   echo "[transaction-read-hotpath-profile] k6 burst rate=${k6_burst_rate} duration=${k6_burst_duration}"
   echo "[transaction-read-hotpath-profile] k6_overload_mode=${k6_overload_mode}"
@@ -290,6 +293,9 @@ print_plan() {
   echo "[transaction-read-hotpath-profile] jfr_dump_timeout_seconds=${profile_jfr_dump_timeout_seconds}"
   echo "[transaction-read-hotpath-profile] backend_health_url=${backend_health_url}"
   echo "[transaction-read-hotpath-profile] readiness_timeout_seconds=${profile_readiness_timeout_seconds}"
+  echo "[transaction-read-hotpath-profile] backend_timer=aquila_transaction_read_http_stage_seconds"
+  echo "[transaction-read-hotpath-profile] backend_timer_labels=endpoint,stage,outcome"
+  echo "[transaction-read-hotpath-profile] method_timer_stage=authorization,usecase,response_mapping,total"
   echo "[transaction-read-hotpath-profile] artifact=${jfr_artifact}"
   echo "[transaction-read-hotpath-profile] jfr_summary=${jfr_summary_txt}"
   echo "[transaction-read-hotpath-profile] hot_first_spike_metric=aquila_transaction_hot_first_ms"
@@ -343,6 +349,7 @@ K6_REMOTE_BASE_URL="${profile_k6_remote_base_url}" \
 K6_REMOTE_PROMETHEUS_RW_SERVER_URL="${profile_k6_remote_prometheus_rw_server_url}" \
 K6_REMOTE_WORKDIR="${profile_k6_remote_workdir}" \
 K6_REPORT_NAME="${k6_report_name}" \
+K6_RUN_ID="${k6_run_id}" \
 K6_OVERLOAD_MODE="${k6_overload_mode}" \
 K6_BURST_429_RATE_THRESHOLD="${k6_burst_429_rate_threshold}" \
 K6_HOT_ACCOUNT_ID="${K6_HOT_ACCOUNT_ID}" \
@@ -431,6 +438,7 @@ cat >"${summary_md}" <<SUMMARY
 - spike profile: ${profile_spike_profile}
 - admission: ${profile_admission}
 - db pool max size: ${profile_db_pool_max_size}
+- k6 run id: ${k6_run_id}
 - k6 scenario: ${profile_k6_scenario_mode}
 - k6 vus: ${k6_vus}
 - k6 duration: ${k6_duration}
@@ -452,6 +460,14 @@ cat >"${summary_md}" <<SUMMARY
 - k6 summary json: ${k6_summary_json}
 - k6 summary markdown: ${k6_summary_md}
 - run log: ${run_log}
+
+## Backend Method Timers
+
+- backend method timer: \`aquila.transaction.read.http.stage\`
+- prometheus metric: \`aquila_transaction_read_http_stage_seconds\`
+- labels: \`endpoint\`, \`stage\`, \`outcome\`
+- stages: \`authorization\`, \`usecase\`, \`response_mapping\`, \`total\`
+- correlation: compare this timer with k6 \`run_id=${k6_run_id}\` and Nginx \`X-K6-Run-Id\` logs for the same window.
 
 ## Result
 

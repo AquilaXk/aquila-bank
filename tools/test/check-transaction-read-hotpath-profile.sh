@@ -24,6 +24,10 @@ grep -F "k6 vus=8 duration=15s" <<<"${plan}" >/dev/null
 grep -F "jfr duration=20s" <<<"${plan}" >/dev/null
 grep -F "k6_generator_mode=docker-context" <<<"${plan}" >/dev/null
 grep -F "k6_docker_context=profile-k6-remote" <<<"${plan}" >/dev/null
+grep -F "k6_run_id=transaction-read-hotpath-check-k6" <<<"${plan}" >/dev/null
+grep -F "backend_timer=aquila_transaction_read_http_stage_seconds" <<<"${plan}" >/dev/null
+grep -F "backend_timer_labels=endpoint,stage,outcome" <<<"${plan}" >/dev/null
+grep -F "method_timer_stage=authorization,usecase,response_mapping,total" <<<"${plan}" >/dev/null
 grep -F "jfr_dump_timeout_seconds=60" <<<"${plan}" >/dev/null
 grep -F "backend_health_url=http://localhost:8080/actuator/health" <<<"${plan}" >/dev/null
 grep -F "artifact=build/reports/profiling/transaction-read-hotpath-check/transaction-read-hotpath-check.jfr" <<<"${plan}" >/dev/null
@@ -75,6 +79,8 @@ grep -F "view --width 160 hot-methods" "${script}" >/dev/null
 grep -F "view --width 160 allocation-by-class" "${script}" >/dev/null
 grep -F "hot_first_spike_metrics" "${script}" >/dev/null
 grep -F "aquila_transaction_hot_first_ms" "${script}" >/dev/null
+grep -F "aquila.transaction.read.http.stage" "${script}" >/dev/null
+grep -F "backend method timer" "${script}" >/dev/null
 grep -F '\`build/reports/profiling\`' "${script}" >/dev/null
 grep -F "artifact missing or empty" "${script}" >/dev/null
 
