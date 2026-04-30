@@ -60,6 +60,12 @@ public class ApiExceptionHandler {
   private static final String REJECT_REASON_HEADER = "X-Aquila-Reject-Reason";
   private static final String RATE_LIMIT_SCOPE_HEADER = "X-RateLimit-Scope";
   private static final String RATE_LIMIT_RETRY_AFTER_HEADER = "X-RateLimit-Retry-After-Seconds";
+  private static final String RATE_LIMIT_RETRY_AFTER_MILLIS_HEADER =
+      "X-RateLimit-Retry-After-Millis";
+  private static final String RATE_LIMIT_RETRY_JITTER_MILLIS_HEADER =
+      "X-RateLimit-Retry-Jitter-Millis";
+  private static final int SHORT_RETRY_AFTER_MILLIS = 100;
+  private static final int SHORT_RETRY_JITTER_MILLIS = 250;
   private static final Pattern USER_STATUS_PATH_PATTERN =
       Pattern.compile("^/internal/api/v1/auth/users/(\\d+)/status$");
   private static final Pattern MEMBERSHIP_STATUS_PATH_PATTERN =
@@ -137,6 +143,12 @@ public class ApiExceptionHandler {
         .header(REJECT_REASON_HEADER, "backend-admission")
         .header(RATE_LIMIT_SCOPE_HEADER, ex.group())
         .header(RATE_LIMIT_RETRY_AFTER_HEADER, Integer.toString(ex.retryAfterSeconds()))
+        .header(
+            RATE_LIMIT_RETRY_AFTER_MILLIS_HEADER,
+            Integer.toString(retryAfterMillis(ex.retryAfterSeconds())))
+        .header(
+            RATE_LIMIT_RETRY_JITTER_MILLIS_HEADER,
+            Integer.toString(retryJitterMillis(ex.retryAfterSeconds())))
         .body(
             new ApiErrorResponse(
                 Instant.now(),
@@ -144,6 +156,17 @@ public class ApiExceptionHandler {
                 HttpStatus.TOO_MANY_REQUESTS.getReasonPhrase(),
                 ex.getMessage(),
                 request.getRequestURI()));
+  }
+
+  private static int retryAfterMillis(int retryAfterSeconds) {
+    if (retryAfterSeconds <= 0) {
+      return SHORT_RETRY_AFTER_MILLIS;
+    }
+    return retryAfterSeconds * 1000;
+  }
+
+  private static int retryJitterMillis(int retryAfterSeconds) {
+    return retryAfterSeconds <= 0 ? SHORT_RETRY_JITTER_MILLIS : 0;
   }
 
   @ExceptionHandler({

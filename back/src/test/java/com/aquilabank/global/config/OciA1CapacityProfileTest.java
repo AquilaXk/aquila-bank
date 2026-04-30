@@ -3,6 +3,8 @@ package com.aquilabank.global.config;
 import static java.util.Map.entry;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.aquilabank.global.ops.ApiAdmissionControlProperties;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.io.IOException;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -189,6 +191,35 @@ class OciA1CapacityProfileTest {
                           "ops.api-admission-control.endpoints[0].adaptive.decrease-cooldown-seconds",
                           Integer.class))
                   .isEqualTo(3);
+            });
+  }
+
+  @Test
+  void bindsLegacyTransactionReadMaxOverrideWithoutAdaptiveProfileConflict() {
+    contextRunner
+        .withInitializer(
+            context ->
+                context
+                    .getEnvironment()
+                    .getPropertySources()
+                    .addFirst(
+                        new MapPropertySource(
+                            "legacyAdmissionEnv",
+                            Map.of("OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_MAX", "4"))))
+        .withUserConfiguration(ApiAdmissionControlConfiguration.class)
+        .withBean(io.micrometer.core.instrument.MeterRegistry.class, SimpleMeterRegistry::new)
+        .run(
+            context -> {
+              assertThat(context).hasNotFailed();
+              ApiAdmissionControlProperties.EndpointLimit endpoint =
+                  context.getBean(ApiAdmissionControlProperties.class).endpoints().stream()
+                      .filter(item -> item.group().equals("transaction-read"))
+                      .findFirst()
+                      .orElseThrow();
+
+              assertThat(endpoint.maxConcurrency()).isEqualTo(4);
+              assertThat(endpoint.adaptive().minConcurrency()).isEqualTo(4);
+              assertThat(endpoint.adaptive().maxConcurrency()).isEqualTo(8);
             });
   }
 

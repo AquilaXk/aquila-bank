@@ -64,6 +64,10 @@ const overload429RateThreshold = nonNegativeNumberEnv(__ENV.K6_OVERLOAD_429_RATE
 const burst429RateThreshold = nonNegativeNumberEnv(__ENV.K6_BURST_429_RATE_THRESHOLD, 0.10);
 const overload503RateThreshold = nonNegativeNumberEnv(__ENV.K6_OVERLOAD_503_RATE_THRESHOLD, 0);
 const maxRetryAfterSleepSeconds = nonNegativeNumberEnv(__ENV.K6_MAX_RETRY_AFTER_SLEEP_SECONDS, 1);
+const maxRetryAfterSleepMs = nonNegativeNumberEnv(
+  __ENV.K6_MAX_RETRY_AFTER_SLEEP_MS,
+  maxRetryAfterSleepSeconds * 1000,
+);
 const effectiveOverload429RateThreshold =
   scenarioMode === "burst" ? burst429RateThreshold : overload429RateThreshold;
 const httpFailedRateThreshold = overloadMode ? "disabled in overload mode" : failedRate;
@@ -86,6 +90,8 @@ const coldDeepCursor = new Trend("aquila_transaction_cold_deep_cursor_ms", true)
 const transaction429Rate = new Rate("aquila_transaction_429_rate");
 const transaction503Rate = new Rate("aquila_transaction_503_rate");
 const transaction503Count = new Counter("aquila_transaction_503_count");
+const retryAfterSleep = new Trend("aquila_transaction_retry_after_sleep_ms", true);
+const retryAfterCount = new Counter("aquila_transaction_retry_after_count");
 
 function thresholds() {
   const result = {
@@ -282,12 +288,32 @@ function header(response, name) {
   return "";
 }
 
+function numericHeader(response, name) {
+  const value = Number(header(response, name));
+  return Number.isFinite(value) && value >= 0 ? value : null;
+}
+
 function sleepAfter429(response) {
-  const retryAfter = Number(header(response, "Retry-After"));
-  if (!Number.isFinite(retryAfter) || retryAfter <= 0 || maxRetryAfterSleepSeconds <= 0) {
+  if (maxRetryAfterSleepMs <= 0) {
     return;
   }
-  sleep(Math.min(retryAfter, maxRetryAfterSleepSeconds));
+  const retryAfterMillis = numericHeader(response, "X-RateLimit-Retry-After-Millis");
+  const retryAfterSeconds = numericHeader(response, "Retry-After");
+  const retryJitterMillis = numericHeader(response, "X-RateLimit-Retry-Jitter-Millis") || 0;
+  const baseSleepMs =
+    retryAfterMillis !== null
+      ? retryAfterMillis
+      : retryAfterSeconds !== null
+        ? retryAfterSeconds * 1000
+        : 0;
+  const jitterMs = retryJitterMillis > 0 ? Math.random() * retryJitterMillis : 0;
+  const sleepMs = Math.min(baseSleepMs + jitterMs, maxRetryAfterSleepMs);
+  if (sleepMs <= 0) {
+    return;
+  }
+  retryAfterCount.add(1);
+  retryAfterSleep.add(sleepMs);
+  sleep(sleepMs / 1000);
 }
 
 function encodeCursor(bookedAt, id) {
@@ -474,6 +500,7 @@ function markdownSummary(data) {
 - observability mode: ${observabilityMode}
 - overload mode: ${overloadMode}
 - max retry-after sleep seconds: ${maxRetryAfterSleepSeconds}
+- max retry-after sleep ms: ${maxRetryAfterSleepMs}
 - hot account id: ${hotAccountId}
 - cold account id: ${coldAccountId}
 - hot deep cursor: ${hotDeepCursorBookedAt}|${hotDeepCursorId}
@@ -507,6 +534,10 @@ function markdownSummary(data) {
 - transaction 429 rate: ${metric(data, "aquila_transaction_429_rate", "rate")}
 - transaction 503 rate: ${metric(data, "aquila_transaction_503_rate", "rate")}
 - transaction 503 count: ${metric(data, "aquila_transaction_503_count", "count")}
+- retry-after sleep count: ${metric(data, "aquila_transaction_retry_after_count", "count")}
+- retry-after sleep avg ms: ${metric(data, "aquila_transaction_retry_after_sleep_ms", "avg")}
+- retry-after sleep p95 ms: ${metric(data, "aquila_transaction_retry_after_sleep_ms", "p(95)")}
+- retry-after sleep max ms: ${metric(data, "aquila_transaction_retry_after_sleep_ms", "max")}
 - hot first p95 ms: ${metric(data, "aquila_transaction_hot_first_ms", "p(95)")}
 - hot first p99 ms: ${metric(data, "aquila_transaction_hot_first_ms", "p(99)")}
 - hot first p99.9 ms: ${metric(data, "aquila_transaction_hot_first_ms", "p(99.9)")}

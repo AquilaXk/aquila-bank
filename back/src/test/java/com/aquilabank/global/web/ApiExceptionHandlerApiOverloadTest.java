@@ -25,6 +25,8 @@ class ApiExceptionHandlerApiOverloadTest {
         .isEqualTo("backend-admission");
     assertThat(response.getHeaders().getFirst("X-RateLimit-Scope")).isEqualTo("transaction-read");
     assertThat(response.getHeaders().getFirst("X-RateLimit-Retry-After-Seconds")).isEqualTo("0");
+    assertThat(response.getHeaders().getFirst("X-RateLimit-Retry-After-Millis")).isEqualTo("100");
+    assertThat(response.getHeaders().getFirst("X-RateLimit-Retry-Jitter-Millis")).isEqualTo("250");
     assertThat(response.getBody().message()).isEqualTo("api overloaded; retry later");
     assertThat(response.getBody().path()).isEqualTo("/api/v1/transactions");
   }
