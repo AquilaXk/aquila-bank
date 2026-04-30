@@ -27,6 +27,10 @@ grep -F "hot p99.9 threshold ms=1200" <<<"${plan}" >/dev/null
 grep -F "cold p99.9 threshold ms=2500" <<<"${plan}" >/dev/null
 grep -F "hot max threshold ms=3000" <<<"${plan}" >/dev/null
 grep -F "cold max threshold ms=5000" <<<"${plan}" >/dev/null
+grep -F "hot deep cursor=2026-04-15T00:00:00Z|9223372036854775807" <<<"${plan}" >/dev/null
+grep -F "cold deep cursor=2026-01-15T00:00:00Z|9223372036854775807" <<<"${plan}" >/dev/null
+grep -F "hot deep p95 threshold ms=350" <<<"${plan}" >/dev/null
+grep -F "cold deep p95 threshold ms=750" <<<"${plan}" >/dev/null
 grep -F "overload mode=false max retry-after sleep seconds=1" <<<"${plan}" >/dev/null
 grep -F "overload 429 rate threshold=0.015" <<<"${plan}" >/dev/null
 grep -F "burst 429 rate threshold=0.1" <<<"${plan}" >/dev/null
@@ -184,6 +188,11 @@ grep -F "docker compose \"\${compose_files[@]}\" --profile loadtest stop aquila-
 grep -F -- "--force-recreate aquila-bank-backend" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "aquila_transaction_hot_first_ms" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "aquila_transaction_cold_cursor_ms" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "aquila_transaction_hot_deep_cursor_ms" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "aquila_transaction_cold_deep_cursor_ms" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "K6_HOT_DEEP_CURSOR_BOOKED_AT" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "K6_COLD_DEEP_CURSOR_BOOKED_AT" ops/k6/transaction-read-100m.js >/dev/null
+grep -F 'encoding.b64encode(payload, "rawurl")' ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_HOT_P99_THRESHOLD_MS" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_COLD_P99_THRESHOLD_MS" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_HOT_P999_THRESHOLD_MS" ops/k6/transaction-read-100m.js >/dev/null
@@ -249,6 +258,10 @@ grep -F "K6_HOT_P999_THRESHOLD_MS" tools/test/run-k6-transaction-100m-loadtest.s
 grep -F "K6_COLD_P999_THRESHOLD_MS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_HOT_MAX_THRESHOLD_MS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_COLD_MAX_THRESHOLD_MS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "K6_HOT_DEEP_CURSOR_BOOKED_AT" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "K6_COLD_DEEP_CURSOR_BOOKED_AT" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "K6_HOT_DEEP_P95_THRESHOLD_MS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "K6_COLD_DEEP_P95_THRESHOLD_MS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_OVERLOAD_429_RATE_THRESHOLD" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_BURST_429_RATE_THRESHOLD" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_OVERLOAD_503_RATE_THRESHOLD" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
@@ -295,6 +308,8 @@ grep -F "handleSummary" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "observabilityNote" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "Prometheus remote write와 summary 파일을 함께 남깁니다" ops/k6/transaction-read-100m.js >/dev/null
 grep -F '/reports/${reportName}-summary.md' ops/k6/transaction-read-100m.js >/dev/null
+grep -F "hot deep cursor p95 ms" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "cold deep cursor p95 ms" ops/k6/transaction-read-100m.js >/dev/null
 
 echo "[k6-transaction-100m] summary hard gate"
 temp_dir="$(mktemp -d)"
@@ -356,6 +371,14 @@ if K6_HOT_P99_THRESHOLD_MS=0 tools/test/run-k6-transaction-100m-loadtest.sh --pr
 fi
 if K6_HOT_P999_THRESHOLD_MS=0 tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
   echo "K6_HOT_P999_THRESHOLD_MS=0 unexpectedly succeeded" >&2
+  exit 1
+fi
+if K6_HOT_DEEP_P95_THRESHOLD_MS=0 tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
+  echo "K6_HOT_DEEP_P95_THRESHOLD_MS=0 unexpectedly succeeded" >&2
+  exit 1
+fi
+if K6_HOT_DEEP_CURSOR_ID=bad tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
+  echo "K6_HOT_DEEP_CURSOR_ID=bad unexpectedly succeeded" >&2
   exit 1
 fi
 if K6_GENERATOR_MODE=unknown tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then

@@ -1,4 +1,5 @@
 import http from "k6/http";
+import encoding from "k6/encoding";
 import {check, fail, sleep} from "k6";
 import {Counter, Rate, Trend} from "k6/metrics";
 import exec from "k6/execution";
@@ -22,6 +23,10 @@ const hotTo = __ENV.K6_HOT_TO || "";
 const coldAccountId = __ENV.K6_COLD_ACCOUNT_ID || "";
 const coldFrom = __ENV.K6_COLD_FROM || "";
 const coldTo = __ENV.K6_COLD_TO || "";
+const hotDeepCursorBookedAt = __ENV.K6_HOT_DEEP_CURSOR_BOOKED_AT || "2026-04-15T00:00:00Z";
+const hotDeepCursorId = __ENV.K6_HOT_DEEP_CURSOR_ID || "9223372036854775807";
+const coldDeepCursorBookedAt = __ENV.K6_COLD_DEEP_CURSOR_BOOKED_AT || "2026-01-15T00:00:00Z";
+const coldDeepCursorId = __ENV.K6_COLD_DEEP_CURSOR_ID || "9223372036854775807";
 const authToken = __ENV.K6_AUTH_TOKEN || "";
 const limit = Number(__ENV.K6_LIMIT || "50");
 const vus = Number(__ENV.AQUILA_K6_VUS || "8");
@@ -42,6 +47,14 @@ const hotP999ThresholdMs = Number(__ENV.K6_HOT_P999_THRESHOLD_MS || "1200");
 const coldP999ThresholdMs = Number(__ENV.K6_COLD_P999_THRESHOLD_MS || "2500");
 const hotMaxThresholdMs = Number(__ENV.K6_HOT_MAX_THRESHOLD_MS || "3000");
 const coldMaxThresholdMs = Number(__ENV.K6_COLD_MAX_THRESHOLD_MS || "5000");
+const hotDeepP95ThresholdMs = Number(__ENV.K6_HOT_DEEP_P95_THRESHOLD_MS || String(hotP95ThresholdMs));
+const coldDeepP95ThresholdMs = Number(__ENV.K6_COLD_DEEP_P95_THRESHOLD_MS || String(coldP95ThresholdMs));
+const hotDeepP99ThresholdMs = Number(__ENV.K6_HOT_DEEP_P99_THRESHOLD_MS || String(hotP99ThresholdMs));
+const coldDeepP99ThresholdMs = Number(__ENV.K6_COLD_DEEP_P99_THRESHOLD_MS || String(coldP99ThresholdMs));
+const hotDeepP999ThresholdMs = Number(__ENV.K6_HOT_DEEP_P999_THRESHOLD_MS || String(hotP999ThresholdMs));
+const coldDeepP999ThresholdMs = Number(__ENV.K6_COLD_DEEP_P999_THRESHOLD_MS || String(coldP999ThresholdMs));
+const hotDeepMaxThresholdMs = Number(__ENV.K6_HOT_DEEP_MAX_THRESHOLD_MS || String(hotMaxThresholdMs));
+const coldDeepMaxThresholdMs = Number(__ENV.K6_COLD_DEEP_MAX_THRESHOLD_MS || String(coldMaxThresholdMs));
 const failedRate = Number(__ENV.K6_HTTP_FAILED_RATE || "0.01");
 const reportName = __ENV.K6_REPORT_NAME || "transaction-100m";
 const runId = __ENV.K6_RUN_ID || reportName;
@@ -66,8 +79,10 @@ const overload503RateThresholdText = overloadMode
 
 const hotFirst = new Trend("aquila_transaction_hot_first_ms", true);
 const hotCursor = new Trend("aquila_transaction_hot_cursor_ms", true);
+const hotDeepCursor = new Trend("aquila_transaction_hot_deep_cursor_ms", true);
 const coldFirst = new Trend("aquila_transaction_cold_first_ms", true);
 const coldCursor = new Trend("aquila_transaction_cold_cursor_ms", true);
+const coldDeepCursor = new Trend("aquila_transaction_cold_deep_cursor_ms", true);
 const transaction429Rate = new Rate("aquila_transaction_429_rate");
 const transaction503Rate = new Rate("aquila_transaction_503_rate");
 const transaction503Count = new Counter("aquila_transaction_503_count");
@@ -87,6 +102,12 @@ function thresholds() {
       `p(99.9)<${hotP999ThresholdMs}`,
       `max<${hotMaxThresholdMs}`,
     ],
+    aquila_transaction_hot_deep_cursor_ms: [
+      `p(95)<${hotDeepP95ThresholdMs}`,
+      `p(99)<${hotDeepP99ThresholdMs}`,
+      `p(99.9)<${hotDeepP999ThresholdMs}`,
+      `max<${hotDeepMaxThresholdMs}`,
+    ],
     aquila_transaction_cold_first_ms: [
       `p(95)<${coldP95ThresholdMs}`,
       `p(99)<${coldP99ThresholdMs}`,
@@ -98,6 +119,12 @@ function thresholds() {
       `p(99)<${coldP99ThresholdMs}`,
       `p(99.9)<${coldP999ThresholdMs}`,
       `max<${coldMaxThresholdMs}`,
+    ],
+    aquila_transaction_cold_deep_cursor_ms: [
+      `p(95)<${coldDeepP95ThresholdMs}`,
+      `p(99)<${coldDeepP99ThresholdMs}`,
+      `p(99.9)<${coldDeepP999ThresholdMs}`,
+      `max<${coldDeepMaxThresholdMs}`,
     ],
   };
   if (!overloadMode) {
@@ -233,10 +260,14 @@ function record(shape, durationMs) {
     hotFirst.add(durationMs);
   } else if (shape === "hot_cursor") {
     hotCursor.add(durationMs);
+  } else if (shape === "hot_deep_cursor") {
+    hotDeepCursor.add(durationMs);
   } else if (shape === "cold_first") {
     coldFirst.add(durationMs);
   } else if (shape === "cold_cursor") {
     coldCursor.add(durationMs);
+  } else if (shape === "cold_deep_cursor") {
+    coldDeepCursor.add(durationMs);
   }
 }
 
@@ -256,6 +287,11 @@ function sleepAfter429(response) {
     return;
   }
   sleep(Math.min(retryAfter, maxRetryAfterSleepSeconds));
+}
+
+function encodeCursor(bookedAt, id) {
+  const payload = `${bookedAt}|${id}`;
+  return encoding.b64encode(payload, "rawurl");
 }
 
 function requestPage(shape, path, accountId, from, to, cursor) {
@@ -345,6 +381,17 @@ export default function () {
   if (!hotCursorBody) {
     return;
   }
+  const hotDeepCursorBody = requestPage(
+    "hot_deep_cursor",
+    "/api/v1/transactions",
+    hotAccountId,
+    hotFrom,
+    hotTo,
+    encodeCursor(hotDeepCursorBookedAt, hotDeepCursorId),
+  );
+  if (!hotDeepCursorBody) {
+    return;
+  }
 
   const coldFirstBody = requestPage(
     "cold_first",
@@ -369,6 +416,17 @@ export default function () {
     coldFirstBody.nextCursor,
   );
   if (!coldCursorBody) {
+    return;
+  }
+  const coldDeepCursorBody = requestPage(
+    "cold_deep_cursor",
+    "/api/v1/transactions/archive",
+    coldAccountId,
+    coldFrom,
+    coldTo,
+    encodeCursor(coldDeepCursorBookedAt, coldDeepCursorId),
+  );
+  if (!coldDeepCursorBody) {
     return;
   }
 }
@@ -417,6 +475,8 @@ function markdownSummary(data) {
 - max retry-after sleep seconds: ${maxRetryAfterSleepSeconds}
 - hot account id: ${hotAccountId}
 - cold account id: ${coldAccountId}
+- hot deep cursor: ${hotDeepCursorBookedAt}|${hotDeepCursorId}
+- cold deep cursor: ${coldDeepCursorBookedAt}|${coldDeepCursorId}
 - hot p95 threshold ms: ${hotP95ThresholdMs}
 - cold p95 threshold ms: ${coldP95ThresholdMs}
 - hot p99 threshold ms: ${hotP99ThresholdMs}
@@ -425,6 +485,14 @@ function markdownSummary(data) {
 - cold p99.9 threshold ms: ${coldP999ThresholdMs}
 - hot max threshold ms: ${hotMaxThresholdMs}
 - cold max threshold ms: ${coldMaxThresholdMs}
+- hot deep p95 threshold ms: ${hotDeepP95ThresholdMs}
+- cold deep p95 threshold ms: ${coldDeepP95ThresholdMs}
+- hot deep p99 threshold ms: ${hotDeepP99ThresholdMs}
+- cold deep p99 threshold ms: ${coldDeepP99ThresholdMs}
+- hot deep p99.9 threshold ms: ${hotDeepP999ThresholdMs}
+- cold deep p99.9 threshold ms: ${coldDeepP999ThresholdMs}
+- hot deep max threshold ms: ${hotDeepMaxThresholdMs}
+- cold deep max threshold ms: ${coldDeepMaxThresholdMs}
 - http failed rate threshold: ${httpFailedRateThreshold}
 - overload 429 rate threshold: ${overload429RateThresholdText}
 - burst 429 rate threshold: ${burst429RateThresholdText}
@@ -446,6 +514,10 @@ function markdownSummary(data) {
 - hot cursor p99 ms: ${metric(data, "aquila_transaction_hot_cursor_ms", "p(99)")}
 - hot cursor p99.9 ms: ${metric(data, "aquila_transaction_hot_cursor_ms", "p(99.9)")}
 - hot cursor max ms: ${metric(data, "aquila_transaction_hot_cursor_ms", "max")}
+- hot deep cursor p95 ms: ${metric(data, "aquila_transaction_hot_deep_cursor_ms", "p(95)")}
+- hot deep cursor p99 ms: ${metric(data, "aquila_transaction_hot_deep_cursor_ms", "p(99)")}
+- hot deep cursor p99.9 ms: ${metric(data, "aquila_transaction_hot_deep_cursor_ms", "p(99.9)")}
+- hot deep cursor max ms: ${metric(data, "aquila_transaction_hot_deep_cursor_ms", "max")}
 - cold first p95 ms: ${metric(data, "aquila_transaction_cold_first_ms", "p(95)")}
 - cold first p99 ms: ${metric(data, "aquila_transaction_cold_first_ms", "p(99)")}
 - cold first p99.9 ms: ${metric(data, "aquila_transaction_cold_first_ms", "p(99.9)")}
@@ -454,6 +526,10 @@ function markdownSummary(data) {
 - cold cursor p99 ms: ${metric(data, "aquila_transaction_cold_cursor_ms", "p(99)")}
 - cold cursor p99.9 ms: ${metric(data, "aquila_transaction_cold_cursor_ms", "p(99.9)")}
 - cold cursor max ms: ${metric(data, "aquila_transaction_cold_cursor_ms", "max")}
+- cold deep cursor p95 ms: ${metric(data, "aquila_transaction_cold_deep_cursor_ms", "p(95)")}
+- cold deep cursor p99 ms: ${metric(data, "aquila_transaction_cold_deep_cursor_ms", "p(99)")}
+- cold deep cursor p99.9 ms: ${metric(data, "aquila_transaction_cold_deep_cursor_ms", "p(99.9)")}
+- cold deep cursor max ms: ${metric(data, "aquila_transaction_cold_deep_cursor_ms", "max")}
 
 ## Notes
 
