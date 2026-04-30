@@ -21,7 +21,7 @@ public record ApiAdmissionControlProperties(
             6,
             1,
             List.of("/api/v1/transactions"),
-            new AdaptiveLimit(true, 6, 12, 64, 1)),
+            new AdaptiveLimit(true, 6, 12, 64, 1, 20, 0.5, 1, 1)),
         new EndpointLimit("account-read", 4, 0, List.of("/api/v1/accounts"), null),
         new EndpointLimit("transfer-write", 2, 0, List.of("/api/v1/transfers"), null),
         new EndpointLimit(
@@ -80,7 +80,11 @@ public record ApiAdmissionControlProperties(
       int minConcurrency,
       int maxConcurrency,
       int increaseEverySuccesses,
-      int decreaseOnRejections) {
+      int decreaseOnRejections,
+      int rejectionWindowSize,
+      double decreaseRejectionRatio,
+      int decreaseCooldownSeconds,
+      int recoveryStep) {
 
     public AdaptiveLimit {
       enabled = enabled == null ? Boolean.FALSE : enabled;
@@ -89,20 +93,34 @@ public record ApiAdmissionControlProperties(
         maxConcurrency = maxConcurrency >= minConcurrency ? maxConcurrency : minConcurrency;
         increaseEverySuccesses = increaseEverySuccesses > 0 ? increaseEverySuccesses : 100;
         decreaseOnRejections = decreaseOnRejections > 0 ? decreaseOnRejections : 1;
+        rejectionWindowSize = rejectionWindowSize > 0 ? rejectionWindowSize : 1;
+        decreaseRejectionRatio =
+            decreaseRejectionRatio > 0.0 && decreaseRejectionRatio <= 1.0
+                ? decreaseRejectionRatio
+                : 1.0;
+        decreaseCooldownSeconds = Math.max(decreaseCooldownSeconds, 0);
+        recoveryStep = recoveryStep > 0 ? recoveryStep : 1;
       } else if (minConcurrency <= 0) {
         throw new IllegalArgumentException(
             "ops.api-admission-control adaptive min-concurrency must be positive");
       } else if (maxConcurrency < minConcurrency) {
         throw new IllegalArgumentException(
             "ops.api-admission-control adaptive max-concurrency must be greater than or equal to min-concurrency");
+      } else if (decreaseRejectionRatio > 1.0) {
+        throw new IllegalArgumentException(
+            "ops.api-admission-control adaptive decrease-rejection-ratio must be within (0, 1]");
       } else {
         increaseEverySuccesses = increaseEverySuccesses > 0 ? increaseEverySuccesses : 100;
         decreaseOnRejections = decreaseOnRejections > 0 ? decreaseOnRejections : 1;
+        rejectionWindowSize = rejectionWindowSize > 0 ? rejectionWindowSize : 20;
+        decreaseRejectionRatio = decreaseRejectionRatio > 0.0 ? decreaseRejectionRatio : 0.5;
+        decreaseCooldownSeconds = Math.max(decreaseCooldownSeconds, 0);
+        recoveryStep = recoveryStep > 0 ? recoveryStep : 1;
       }
     }
 
     static AdaptiveLimit disabled(int maxConcurrency) {
-      return new AdaptiveLimit(false, maxConcurrency, maxConcurrency, 100, 1);
+      return new AdaptiveLimit(false, maxConcurrency, maxConcurrency, 100, 1, 1, 1.0, 0, 1);
     }
   }
 }

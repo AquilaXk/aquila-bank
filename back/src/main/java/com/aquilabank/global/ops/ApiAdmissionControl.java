@@ -5,8 +5,11 @@ import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.LongSupplier;
 
 public class ApiAdmissionControl {
+
+  private static final long NANOS_PER_SECOND = 1_000_000_000L;
 
   private final ApiAdmissionControlProperties properties;
   private final MeterRegistry meterRegistry;
@@ -14,13 +17,19 @@ public class ApiAdmissionControl {
 
   public ApiAdmissionControl(
       ApiAdmissionControlProperties properties, MeterRegistry meterRegistry) {
+    this(properties, meterRegistry, System::nanoTime);
+  }
+
+  ApiAdmissionControl(
+      ApiAdmissionControlProperties properties, MeterRegistry meterRegistry, LongSupplier ticker) {
     this.properties = properties;
     this.meterRegistry = meterRegistry;
     this.endpoints =
         properties.endpoints().stream()
             .map(
                 endpoint ->
-                    new EndpointState(endpoint, properties.retryAfterSeconds(), meterRegistry))
+                    new EndpointState(
+                        endpoint, properties.retryAfterSeconds(), meterRegistry, ticker))
             .toList();
   }
 
@@ -37,6 +46,7 @@ public class ApiAdmissionControl {
       increment(endpoint.group(), "rejected");
       return ApiAdmissionPermit.rejected(endpoint.group(), endpoint.retryAfterSeconds());
     }
+    endpoint.recordAccepted();
     increment(endpoint.group(), "accepted");
     return ApiAdmissionPermit.acquired(endpoint.group(), endpoint::release);
   }
@@ -64,29 +74,38 @@ public class ApiAdmissionControl {
     return queryIndex < 0 ? rawPath : rawPath.substring(0, queryIndex);
   }
 
-  private record EndpointState(
-      String group,
-      int retryAfterSeconds,
-      List<String> pathPrefixes,
-      ApiAdmissionControlProperties.AdaptiveLimit adaptive,
-      AtomicInteger currentLimit,
-      AtomicInteger inFlight,
-      AtomicInteger healthyCompletions) {
+  private static final class EndpointState {
+
+    private final String group;
+    private final int retryAfterSeconds;
+    private final List<String> pathPrefixes;
+    private final ApiAdmissionControlProperties.AdaptiveLimit adaptive;
+    private final AtomicInteger currentLimit;
+    private final AtomicInteger inFlight = new AtomicInteger();
+    private final AtomicInteger healthyCompletions = new AtomicInteger();
+    private final LongSupplier ticker;
+    private final boolean[] rejectionWindow;
+
+    private int rejectionWindowIndex;
+    private int rejectionWindowSamples;
+    private int rejectionWindowRejected;
+    private long decreaseCooldownUntilNanos;
 
     private EndpointState(
         ApiAdmissionControlProperties.EndpointLimit endpoint,
         int defaultRetryAfterSeconds,
-        MeterRegistry meterRegistry) {
-      this(
-          endpoint.group(),
+        MeterRegistry meterRegistry,
+        LongSupplier ticker) {
+      this.group = endpoint.group();
+      this.retryAfterSeconds =
           endpoint.retryAfterSeconds() > 0
               ? endpoint.retryAfterSeconds()
-              : defaultRetryAfterSeconds,
-          endpoint.pathPrefixes(),
-          endpoint.adaptive(),
-          new AtomicInteger(endpoint.maxConcurrency()),
-          new AtomicInteger(),
-          new AtomicInteger());
+              : defaultRetryAfterSeconds;
+      this.pathPrefixes = endpoint.pathPrefixes();
+      this.adaptive = endpoint.adaptive();
+      this.currentLimit = new AtomicInteger(endpoint.maxConcurrency());
+      this.ticker = ticker;
+      this.rejectionWindow = new boolean[endpoint.adaptive().rejectionWindowSize()];
       Gauge.builder("aquila.api.admission.inflight", inFlight, AtomicInteger::get)
           .tag("group", group)
           .description("endpoint admission control in-flight requests")
@@ -95,6 +114,14 @@ public class ApiAdmissionControl {
           .tag("group", group)
           .description("endpoint admission control current concurrency limit")
           .register(meterRegistry);
+    }
+
+    private String group() {
+      return group;
+    }
+
+    private int retryAfterSeconds() {
+      return retryAfterSeconds;
     }
 
     private boolean matches(String path) {
@@ -113,14 +140,56 @@ public class ApiAdmissionControl {
       }
     }
 
+    private void recordAccepted() {
+      if (adaptive.enabled()) {
+        recordAdmissionDecision(false);
+      }
+    }
+
     private void recordRejection() {
       if (!adaptive.enabled()) {
         return;
       }
       healthyCompletions.set(0);
-      // 429는 이미 포화 신호이므로 다음 요청부터 즉시 낮은 한도로 되돌립니다.
+      recordAdmissionDecision(true);
+      if (!canDecrease()) {
+        return;
+      }
+      decreaseCooldownUntilNanos =
+          ticker.getAsLong() + adaptive.decreaseCooldownSeconds() * NANOS_PER_SECOND;
+      // 429가 짧게 튄 경우는 window ratio로 거르고, 실제 포화가 이어질 때만 단계적으로 낮춥니다.
       currentLimit.updateAndGet(
           value -> Math.max(adaptive.minConcurrency(), value - adaptive.decreaseOnRejections()));
+    }
+
+    private synchronized void recordAdmissionDecision(boolean rejected) {
+      if (rejectionWindowSamples < rejectionWindow.length) {
+        rejectionWindow[rejectionWindowSamples] = rejected;
+        rejectionWindowSamples++;
+      } else {
+        if (rejectionWindow[rejectionWindowIndex]) {
+          rejectionWindowRejected--;
+        }
+        rejectionWindow[rejectionWindowIndex] = rejected;
+        rejectionWindowIndex = (rejectionWindowIndex + 1) % rejectionWindow.length;
+      }
+      if (rejected) {
+        rejectionWindowRejected++;
+      }
+    }
+
+    private synchronized boolean canDecrease() {
+      if (currentLimit.get() <= adaptive.minConcurrency()) {
+        return false;
+      }
+      if (rejectionWindowSamples < rejectionWindow.length) {
+        return false;
+      }
+      if (ticker.getAsLong() < decreaseCooldownUntilNanos) {
+        return false;
+      }
+      double ratio = (double) rejectionWindowRejected / rejectionWindowSamples;
+      return ratio >= adaptive.decreaseRejectionRatio();
     }
 
     private void release() {
@@ -137,7 +206,8 @@ public class ApiAdmissionControl {
         return;
       }
       if (healthyCompletions.compareAndSet(completions, 0)) {
-        currentLimit.updateAndGet(value -> Math.min(adaptive.maxConcurrency(), value + 1));
+        currentLimit.updateAndGet(
+            value -> Math.min(adaptive.maxConcurrency(), value + adaptive.recoveryStep()));
       }
     }
   }
