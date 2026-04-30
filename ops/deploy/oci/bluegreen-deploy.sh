@@ -504,6 +504,21 @@ events {
 }
 
 http {
+  log_format aquila_bank_upstream escape=json
+    '{'
+      '"time":"\$time_iso8601",'
+      '"request":"\$request",'
+      '"status":\$status,'
+      '"request_time":\$request_time,'
+      '"upstream_status":"\$upstream_status",'
+      '"upstream_response_time":"\$upstream_response_time",'
+      '"upstream_connect_time":"\$upstream_connect_time",'
+      '"upstream_header_time":"\$upstream_header_time",'
+      '"request_id":"\$request_id",'
+      '"k6_run_id":"\$http_x_k6_run_id"'
+    '}';
+  access_log /var/log/nginx/access.log aquila_bank_upstream;
+
   upstream aquila_bank_backend {
     server ${backend_name}:${BACKEND_PORT};
     keepalive 16;
@@ -525,6 +540,8 @@ http {
       # SSE 장기 연결은 proxy buffering을 끄고 기존 blue 슬롯을 짧게 drain한다.
       proxy_pass http://aquila_bank_backend;
       proxy_set_header Host ${backend_proxy_host};
+      proxy_set_header X-Request-Id \$request_id;
+      proxy_set_header X-K6-Run-Id \$http_x_k6_run_id;
       proxy_set_header X-Real-IP \$remote_addr;
       proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
       proxy_set_header X-Forwarded-Proto \$scheme;
@@ -544,6 +561,8 @@ http {
     location ^~ /actuator/health {
       proxy_pass http://aquila_bank_backend;
       proxy_set_header Host ${backend_proxy_host};
+      proxy_set_header X-Request-Id \$request_id;
+      proxy_set_header X-K6-Run-Id \$http_x_k6_run_id;
       proxy_set_header X-Real-IP \$remote_addr;
       proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
       proxy_set_header X-Forwarded-Proto \$scheme;
@@ -558,6 +577,8 @@ http {
     location /api/ {
       proxy_pass http://aquila_bank_backend;
       proxy_set_header Host ${backend_proxy_host};
+      proxy_set_header X-Request-Id \$request_id;
+      proxy_set_header X-K6-Run-Id \$http_x_k6_run_id;
       proxy_set_header X-Real-IP \$remote_addr;
       proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
       proxy_set_header X-Forwarded-Proto \$scheme;
@@ -571,6 +592,8 @@ http {
     location / {
       proxy_pass http://aquila_bank_frontend;
       proxy_set_header Host \$host;
+      proxy_set_header X-Request-Id \$request_id;
+      proxy_set_header X-K6-Run-Id \$http_x_k6_run_id;
       proxy_set_header X-Real-IP \$remote_addr;
       proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
       proxy_set_header X-Forwarded-Proto \$scheme;

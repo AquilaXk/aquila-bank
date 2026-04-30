@@ -203,6 +203,7 @@ function headers(accountId) {
   const result = {
     "X-Account-Id": String(accountId),
     "X-Subject": "k6-transaction-100m",
+    "X-K6-Run-Id": runId,
   };
   if (authToken) {
     result.Authorization = `Bearer ${authToken}`;

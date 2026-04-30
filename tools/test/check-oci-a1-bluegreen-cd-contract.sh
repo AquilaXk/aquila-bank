@@ -215,6 +215,10 @@ script_patterns=(
   "host.docker.internal:host-gateway"
   "/actuator/health"
   'proxy_set_header Host ${backend_proxy_host};'
+  'proxy_set_header X-Request-Id \$request_id;'
+  'proxy_set_header X-K6-Run-Id \$http_x_k6_run_id;'
+  '"upstream_status":"\$upstream_status"'
+  '"k6_run_id":"\$http_x_k6_run_id"'
   'proxy_set_header X-Forwarded-Host \$host;'
   "location = /api/v1/notifications/stream"
   "proxy_buffering off;"
