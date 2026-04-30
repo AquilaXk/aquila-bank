@@ -535,6 +535,8 @@ events {
 }
 
 http {
+  limit_req_status 429;
+  # upstream latency와 edge limit 결과를 같은 JSON line에 남겨 429 원인을 분리합니다.
   log_format aquila_bank_upstream escape=json
     '{'
       '"time":"\$time_iso8601",'
@@ -545,10 +547,16 @@ http {
       '"upstream_response_time":"\$upstream_response_time",'
       '"upstream_connect_time":"\$upstream_connect_time",'
       '"upstream_header_time":"\$upstream_header_time",'
+      '"limit_req_status":"\$limit_req_status",'
       '"request_id":"\$request_id",'
       '"k6_run_id":"\$http_x_k6_run_id"'
     '}';
   access_log /var/log/nginx/access.log aquila_bank_upstream;
+
+  # 짧은 API 요청만 1차 보호하고, SSE는 exact location과 전용 timeout으로 분리합니다.
+  limit_req_zone \$binary_remote_addr zone=aquila_bank_api_per_ip:10m rate=30r/s;
+  # 공개 auth 진입점은 token/bcrypt 비용 전에 더 보수적으로 edge 차단합니다.
+  limit_req_zone \$binary_remote_addr zone=aquila_bank_auth_per_ip:10m rate=5r/s;
 
   upstream aquila_bank_backend {
     server ${backend_name}:${BACKEND_PORT};
@@ -605,6 +613,55 @@ http {
       access_log off;
     }
 
+    # 공개 auth는 generic /api/ limit에 섞지 않고 별도 zone으로 먼저 자릅니다.
+    location = /api/v1/auth/login {
+      proxy_pass http://aquila_bank_backend;
+      proxy_set_header Host ${backend_proxy_host};
+      proxy_set_header X-Request-Id \$request_id;
+      proxy_set_header X-K6-Run-Id \$http_x_k6_run_id;
+      proxy_set_header X-Real-IP \$remote_addr;
+      proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto \$scheme;
+      proxy_set_header X-Forwarded-Host \$host;
+      proxy_set_header X-Forwarded-Port \$server_port;
+      proxy_set_header Connection "";
+      limit_req zone=aquila_bank_auth_per_ip burst=10 nodelay;
+      proxy_read_timeout 30s;
+      proxy_send_timeout 30s;
+    }
+
+    location = /api/v1/auth/refresh {
+      proxy_pass http://aquila_bank_backend;
+      proxy_set_header Host ${backend_proxy_host};
+      proxy_set_header X-Request-Id \$request_id;
+      proxy_set_header X-K6-Run-Id \$http_x_k6_run_id;
+      proxy_set_header X-Real-IP \$remote_addr;
+      proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto \$scheme;
+      proxy_set_header X-Forwarded-Host \$host;
+      proxy_set_header X-Forwarded-Port \$server_port;
+      proxy_set_header Connection "";
+      limit_req zone=aquila_bank_auth_per_ip burst=10 nodelay;
+      proxy_read_timeout 30s;
+      proxy_send_timeout 30s;
+    }
+
+    location = /api/v1/auth/password-recovery/request {
+      proxy_pass http://aquila_bank_backend;
+      proxy_set_header Host ${backend_proxy_host};
+      proxy_set_header X-Request-Id \$request_id;
+      proxy_set_header X-K6-Run-Id \$http_x_k6_run_id;
+      proxy_set_header X-Real-IP \$remote_addr;
+      proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto \$scheme;
+      proxy_set_header X-Forwarded-Host \$host;
+      proxy_set_header X-Forwarded-Port \$server_port;
+      proxy_set_header Connection "";
+      limit_req zone=aquila_bank_auth_per_ip burst=10 nodelay;
+      proxy_read_timeout 30s;
+      proxy_send_timeout 30s;
+    }
+
     location /api/ {
       proxy_pass http://aquila_bank_backend;
       proxy_set_header Host ${backend_proxy_host};
@@ -616,6 +673,8 @@ http {
       proxy_set_header X-Forwarded-Host \$host;
       proxy_set_header X-Forwarded-Port \$server_port;
       proxy_set_header Connection "";
+      proxy_next_upstream off;
+      limit_req zone=aquila_bank_api_per_ip burst=60 nodelay;
       proxy_read_timeout 30s;
       proxy_send_timeout 30s;
     }
