@@ -204,6 +204,11 @@ script_patterns=(
   "ensure_postgres_container_for_host"
   "start_postgres_systemd_service"
   "start_postgres_docker_container"
+  'com.aquilabank.service=postgres'
+  'com.aquilabank.service=backend'
+  'com.aquilabank.service=nginx'
+  'com.aquilabank.slot=${green}'
+  'com.aquilabank.runtime=oci-a1'
   "write_postgres_env_file"
   "systemctl enable --now aquila-postgres.service"
   "docker volume create"

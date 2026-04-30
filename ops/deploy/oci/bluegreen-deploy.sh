@@ -236,6 +236,8 @@ start_postgres_docker_container() {
     --pull missing \
     --network "${NETWORK}" \
     --network-alias "${POSTGRES_NETWORK_ALIAS}" \
+    --label com.aquilabank.runtime=oci-a1 \
+    --label com.aquilabank.service=postgres \
     -p "${POSTGRES_HOST_BIND}:5432" \
     --env-file "${APP_DIR}/env/postgres.env" \
     -v "${POSTGRES_DATA_VOLUME}:/var/lib/postgresql" \
@@ -481,6 +483,9 @@ run_green_slot() {
     --name "${backend_name}" \
     --restart unless-stopped \
     --network "${NETWORK}" \
+    --label com.aquilabank.runtime=oci-a1 \
+    --label com.aquilabank.service=backend \
+    --label "com.aquilabank.slot=${green}" \
     --add-host host.docker.internal:host-gateway \
     --env-file "${APP_DIR}/env/backend.env" \
     -e SPRING_PROFILES_ACTIVE="${backend_profiles}" \
@@ -493,6 +498,9 @@ run_green_slot() {
     --name "${frontend_name}" \
     --restart unless-stopped \
     --network "${NETWORK}" \
+    --label com.aquilabank.runtime=oci-a1 \
+    --label com.aquilabank.service=frontend \
+    --label "com.aquilabank.slot=${green}" \
     --add-host host.docker.internal:host-gateway \
     --env-file "${APP_DIR}/env/frontend.env" \
     -e TZ=Asia/Seoul \
@@ -650,6 +658,8 @@ ensure_nginx_container() {
     --name "${NGINX_CONTAINER}" \
     --restart unless-stopped \
     --network "${NETWORK}" \
+    --label com.aquilabank.runtime=oci-a1 \
+    --label com.aquilabank.service=nginx \
     -p 80:80 \
     -v "${APP_DIR}/nginx/nginx.conf:/etc/nginx/nginx.conf:ro" \
     nginx:1.27-alpine >/dev/null

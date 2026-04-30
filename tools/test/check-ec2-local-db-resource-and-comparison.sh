@@ -25,6 +25,9 @@ resource_plan="$(
 )"
 grep -F "run_id=ec2-resource-check" <<<"${resource_plan}" >/dev/null
 grep -F "docker_stats=true" <<<"${resource_plan}" >/dev/null
+grep -F "docker_discovery=true" <<<"${resource_plan}" >/dev/null
+grep -F "docker_labels=com.aquilabank.service=nginx,com.aquilabank.service=backend,com.aquilabank.service=postgres" <<<"${resource_plan}" >/dev/null
+grep -F "docker_name_regex=^(aquila-bank-nginx|aquila-bank-backend-[ab]|aquila-postgres)$" <<<"${resource_plan}" >/dev/null
 grep -F "cloudwatch_enabled=true" <<<"${resource_plan}" >/dev/null
 grep -F "ec2_instance_id=i-0123456789abcdef0" <<<"${resource_plan}" >/dev/null
 grep -F "ebs_volume_id=vol-0123456789abcdef0" <<<"${resource_plan}" >/dev/null
@@ -35,6 +38,58 @@ EC2_RESOURCE_OUTPUT_DIR="${temp_dir}/resource" \
 EC2_RESOURCE_DOCKER_STATS=true \
 EC2_RESOURCE_CLOUDWATCH_ENABLED=false \
   "${resource_script}" --dry-run >/dev/null
+
+echo "[ec2-resource-comparison] docker discovery snapshot"
+fake_bin="${temp_dir}/bin"
+mkdir -p "${fake_bin}"
+cat >"${fake_bin}/docker" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "$1" == "ps" ]]; then
+  case "$*" in
+    *"label=com.aquilabank.service=nginx"*) echo "aquila-bank-nginx"; exit 0 ;;
+    *"label=com.aquilabank.service=backend"*) echo "aquila-bank-backend-b"; exit 0 ;;
+    *"label=com.aquilabank.service=postgres"*) echo "aquila-postgres"; exit 0 ;;
+  esac
+  printf 'aquila-bank-nginx\naquila-bank-backend-b\naquila-postgres\n'
+  exit 0
+fi
+
+if [[ "$1" == "stats" ]]; then
+  container="${@: -1}"
+  case "${container}" in
+    aquila-bank-nginx) printf '1.00%%\t5MiB / 1GiB\t0.49%%\t4\n' ;;
+    aquila-bank-backend-b) printf '36.00%%\t375MiB / 1GiB\t36.62%%\t42\n' ;;
+    aquila-postgres) printf '18.00%%\t2048MiB / 16GiB\t12.50%%\t75\n' ;;
+    *) exit 1 ;;
+  esac
+  exit 0
+fi
+
+echo "unexpected docker command: $*" >&2
+exit 1
+SH
+chmod +x "${fake_bin}/docker"
+
+resource_output="$(
+  PATH="${fake_bin}:${PATH}" \
+  EC2_CAPACITY_RUN_ID=ec2-resource-discovery-check \
+  EC2_RESOURCE_OUTPUT_DIR="${temp_dir}/resource-discovery" \
+  EC2_RESOURCE_DOCKER_STATS=true \
+  EC2_RESOURCE_CLOUDWATCH_ENABLED=false \
+    "${resource_script}"
+)"
+manifest_env="$(tail -1 <<<"${resource_output}")"
+docker_stats_tsv="${temp_dir}/resource-discovery/ec2-resource-discovery-check-resource-docker-stats.tsv"
+test "${manifest_env}" = "${temp_dir}/resource-discovery/ec2-resource-discovery-check-resource-manifest.env"
+grep -F $'aquila-bank-nginx\t1.00%' "${docker_stats_tsv}" >/dev/null
+grep -F $'aquila-bank-backend-b\t36.00%' "${docker_stats_tsv}" >/dev/null
+grep -F $'aquila-postgres\t18.00%' "${docker_stats_tsv}" >/dev/null
+if grep -F "aquila-bank-backend-a" "${docker_stats_tsv}" >/dev/null; then
+  echo "inactive backend-a should not be sampled when discovery finds backend-b" >&2
+  exit 1
+fi
 
 echo "[ec2-resource-comparison] comparison report"
 direct_md="${temp_dir}/direct.md"
