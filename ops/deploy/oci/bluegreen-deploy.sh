@@ -134,6 +134,25 @@ backend_spring_profiles_active() {
   esac
 }
 
+backend_capacity_profile_env_args() {
+  if [[ "${OCI_A1_CAPACITY_PROFILE_ENABLED}" != "true" ]]; then
+    return 0
+  fi
+
+  # env-file에 남은 legacy OPS_* 값을 OCI A1 profile 값으로 덮어 adaptive bounds 충돌을 막습니다.
+  printf '%s\n' \
+    "-e" "OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_MAX=${OCI_A1_TRANSACTION_READ_ADMISSION_MAX:-6}" \
+    "-e" "OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_RETRY_AFTER_SECONDS=${OCI_A1_TRANSACTION_READ_ADMISSION_RETRY_AFTER_SECONDS:-0}" \
+    "-e" "OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_ADAPTIVE_MIN=${OCI_A1_TRANSACTION_READ_ADMISSION_MIN:-5}" \
+    "-e" "OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_ADAPTIVE_MAX=${OCI_A1_TRANSACTION_READ_ADMISSION_ADAPTIVE_MAX:-8}" \
+    "-e" "OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_ADAPTIVE_INCREASE_EVERY_SUCCESSES=${OCI_A1_TRANSACTION_READ_ADMISSION_INCREASE_EVERY_SUCCESSES:-48}" \
+    "-e" "OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_ADAPTIVE_DECREASE_ON_REJECTIONS=${OCI_A1_TRANSACTION_READ_ADMISSION_DECREASE_ON_REJECTIONS:-1}" \
+    "-e" "OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_ADAPTIVE_REJECTION_WINDOW_SIZE=${OCI_A1_TRANSACTION_READ_ADMISSION_REJECTION_WINDOW_SIZE:-24}" \
+    "-e" "OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_ADAPTIVE_DECREASE_REJECTION_RATIO=${OCI_A1_TRANSACTION_READ_ADMISSION_DECREASE_REJECTION_RATIO:-0.35}" \
+    "-e" "OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_ADAPTIVE_DECREASE_COOLDOWN_SECONDS=${OCI_A1_TRANSACTION_READ_ADMISSION_DECREASE_COOLDOWN_SECONDS:-2}" \
+    "-e" "OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_ADAPTIVE_RECOVERY_STEP=${OCI_A1_TRANSACTION_READ_ADMISSION_RECOVERY_STEP:-1}"
+}
+
 postgres_host_requires_container() {
   local db_host="$1"
   [[ "${db_host}" == "${POSTGRES_CONTAINER_NAME}" || "${db_host}" == "${POSTGRES_NETWORK_ALIAS}" ]]
@@ -467,11 +486,13 @@ wait_http_ok() {
 run_green_slot() {
   local green="$1"
   local backend_name frontend_name backend_host_port frontend_host_port backend_profiles
+  local -a backend_capacity_env_args
   backend_name="$(slot_name backend "${green}")"
   frontend_name="$(slot_name frontend "${green}")"
   backend_host_port="$(slot_host_port backend "${green}")"
   frontend_host_port="$(slot_host_port frontend "${green}")"
   backend_profiles="$(backend_spring_profiles_active)"
+  mapfile -t backend_capacity_env_args < <(backend_capacity_profile_env_args)
 
   docker pull "${BACKEND_IMAGE}:${IMAGE_TAG}"
   docker pull "${FRONTEND_IMAGE}:${IMAGE_TAG}"
@@ -489,6 +510,7 @@ run_green_slot() {
     --add-host host.docker.internal:host-gateway \
     --env-file "${APP_DIR}/env/backend.env" \
     -e SPRING_PROFILES_ACTIVE="${backend_profiles}" \
+    "${backend_capacity_env_args[@]}" \
     -e TZ=Asia/Seoul \
     -p "127.0.0.1:${backend_host_port}:${BACKEND_PORT}" \
     "${BACKEND_IMAGE}:${IMAGE_TAG}" >/dev/null
