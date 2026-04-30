@@ -28,7 +28,7 @@ instance_ocpus          = 4
 instance_memory_in_gbs  = 24
 boot_volume_size_in_gbs = 50
 
-postgres_data_volume_size_in_gbs = 300
+postgres_data_volume_size_in_gbs = 200
 postgres_data_volume_vpus_per_gb = 10
 postgres_data_device             = "/dev/oracleoci/oraclevdb"
 postgres_data_mount_path         = "/var/lib/aquila-postgres"

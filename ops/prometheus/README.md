@@ -2,7 +2,7 @@
 
 `ops/prometheus`는 Aquila Bank backend가 이미 export 중인 metric을 기준으로 Grafana dashboard와 Prometheus alert rule baseline을 보관하는 디렉터리입니다. 실제 Prometheus server, Grafana provisioning, Alertmanager routing은 환경별로 다르므로 이번 baseline은 import/apply 가능한 자산만 저장소에 고정합니다.
 
-OCI A1 Flex 4 OCPU / 24GB + data 300GB self-managed PostgreSQL 18 runtime에서는 Prometheus/Grafana/Alertmanager를 같은 app/DB host에 상시 필수 운영하지 않습니다. 이 디렉터리의 자산은 부하테스트 overlay, 별도 관측 host, 또는 장애 분석을 위한 단기 실행 기준으로 사용합니다.
+OCI A1 Flex 4 OCPU / 24GB + data 200GB self-managed PostgreSQL 18 runtime에서는 Prometheus/Grafana/Alertmanager를 같은 app/DB host에 상시 필수 운영하지 않습니다. 이 디렉터리의 자산은 부하테스트 overlay, 별도 관측 host, 또는 장애 분석을 위한 단기 실행 기준으로 사용합니다.
 
 ## 포함 파일
 
@@ -201,7 +201,7 @@ tools/test/run-alertmanager-receiver-secret-workflow-gate.sh
 ## Threshold Tuning
 
 - outbox/notification threshold는 현재 README와 actuator health 기본값을 기준으로 둔 값입니다.
-- Hikari pool alert는 `DB_POOL_MAX_SIZE=4`, `DB_CONNECTION_TIMEOUT_MS=3000`, `DB_LOCK_TIMEOUT_MS=1000`의 작은 단일 노드 기본값을 기준으로 둡니다. remote baseline은 OCI A1 4 OCPU / 24GB + data 300GB입니다.
+- Hikari pool alert는 `DB_POOL_MAX_SIZE=4`, `DB_CONNECTION_TIMEOUT_MS=3000`, `DB_LOCK_TIMEOUT_MS=1000`의 작은 단일 노드 기본값을 기준으로 둡니다. remote baseline은 OCI A1 4 OCPU / 24GB + data 200GB입니다.
 - `AquilaDbPoolPendingWaitDetected`는 root cause가 아니라 queueing 전조입니다. 같은 시간대 lock wait, slow query, DB CPU, transaction p95를 같이 확인합니다.
 - `AquilaPostgresSlowQueryDetected`는 `pg_stat_statements`의 database-level 평균을 사용합니다. query별 drill-down은 별도 dashboard 또는 psql에서 `queryid` 기준으로 수행합니다.
 - `AquilaPostgresLockWaitDetected`는 custom exporter metric이 없으면 평가 series가 없으므로, 환경별 exporter 설정 적용 후 Prometheus rule을 활성화합니다.

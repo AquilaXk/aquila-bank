@@ -1,6 +1,6 @@
 # Transaction 100m Optional Staging RDS gp3 Smoke
 
-OCI A1 Flex 4 OCPU / 24GB + data 300GB self-managed PostgreSQL 100m primary evidence가 준비된 뒤, 비용 조건이 맞을 때만 AWS RDS db.t4g.small + gp3 staging 환경에서 transaction read path를 read-only로 비교 확인하는 절차입니다. 이 문서는 optional cloud comparison이며, OCI A1 100m 기준을 대체하지 않습니다.
+OCI A1 Flex 4 OCPU / 24GB + data 200GB self-managed PostgreSQL 100m primary evidence가 준비된 뒤, 비용 조건이 맞을 때만 AWS RDS db.t4g.small + gp3 staging 환경에서 transaction read path를 read-only로 비교 확인하는 절차입니다. 이 문서는 optional cloud comparison이며, OCI A1 100m 기준을 대체하지 않습니다.
 
 OCI A1 smoke는 AWS RDS recovery, gp3 IO, CPU credit, network latency를 재현하지 못합니다. 반대로 RDS smoke는 계정 비용과 secret 준비가 필요하므로 기본 실행 경로에서 제외합니다.
 
