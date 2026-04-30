@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`Transaction Read Model Staging Replay`는 수동 workflow와 staging deploy release gate가 같은 script를 공유하며, OCI A1/staging PostgreSQL의 1억 건 분포에서 hot/cold 거래 조회 p95를 검증합니다. 현재 1억 건 primary evidence는 OCI A1 Flex 4 OCPU / 24GB + data 300GB self-managed PostgreSQL fixture입니다. 기존 workflow secret 이름의 `RDS`는 호환성 때문에 유지하지만 값은 OCI A1 PostgreSQL 접속 URL을 넣습니다.
+`Transaction Read Model Staging Replay`는 수동 workflow와 staging deploy release gate가 같은 script를 공유하며, OCI A1/staging PostgreSQL의 1억 건 분포에서 hot/cold 거래 조회 p95를 검증합니다. 현재 1억 건 primary evidence는 OCI A1 Flex 4 OCPU / 24GB + data 200GB self-managed PostgreSQL fixture입니다. 기존 workflow secret 이름의 `RDS`는 호환성 때문에 유지하지만 값은 OCI A1 PostgreSQL 접속 URL을 넣습니다.
 
 - hot: `GET /api/v1/transactions`
 - cold: `GET /api/v1/transactions/archive`

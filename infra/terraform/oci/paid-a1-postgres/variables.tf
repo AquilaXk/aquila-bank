@@ -271,12 +271,12 @@ variable "boot_volume_size_in_gbs" {
 variable "postgres_data_volume_size_in_gbs" {
   description = "PostgreSQL data Block Volume size in GiB."
   type        = number
-  default     = 300
+  default     = 200
   nullable    = false
 
   validation {
-    condition     = var.postgres_data_volume_size_in_gbs >= 300 && var.postgres_data_volume_size_in_gbs <= 1024
-    error_message = "postgres_data_volume_size_in_gbs must be between 300 and 1024."
+    condition     = var.postgres_data_volume_size_in_gbs >= 200 && var.postgres_data_volume_size_in_gbs <= 1024
+    error_message = "postgres_data_volume_size_in_gbs must be between 200 and 1024."
   }
 }
 

@@ -1,6 +1,6 @@
 # AWS EC2 Legacy App Smoke Terraform
 
-AWS에 App EC2 1대만 만드는 legacy/optional smoke stack이다. 현재 비용형 remote DB/capacity 기준은 OCI A1 Flex 4 OCPU / 24GB + data 300GB self-managed PostgreSQL이며, 이 AWS stack은 1억 건 DB baseline으로 사용하지 않는다.
+AWS에 App EC2 1대만 만드는 legacy/optional smoke stack이다. 현재 비용형 remote DB/capacity 기준은 OCI A1 Flex 4 OCPU / 24GB + data 200GB self-managed PostgreSQL이며, 이 AWS stack은 1억 건 DB baseline으로 사용하지 않는다.
 
 ## 구성
 
@@ -19,7 +19,7 @@ AWS에 App EC2 1대만 만드는 legacy/optional smoke stack이다. 현재 비�
 ## 비용 주의
 
 - EC2 `t3.small`과 gp3 40GiB EBS는 free tier가 아닐 수 있다.
-- 이 stack은 legacy app smoke 전용이다. remote 1억 건 DB/capacity 비교는 OCI A1 4 OCPU / 24GB + data 300GB stack을 사용한다.
+- 이 stack은 legacy app smoke 전용이다. remote 1억 건 DB/capacity 비교는 OCI A1 4 OCPU / 24GB + data 200GB stack을 사용한다.
 - RDS를 만들지 않으므로 DB instance, RDS storage, snapshot 비용은 발생하지 않는다.
 - 1억 건 검증 비용은 OCI A1 PostgreSQL data volume과 compute 사용량으로 산정한다.
 - NAT Gateway와 Load Balancer는 고정 비용이 생기므로 기본 구성에서 제외한다.

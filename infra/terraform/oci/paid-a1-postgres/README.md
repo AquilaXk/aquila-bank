@@ -7,7 +7,7 @@ OCI 유료 계정에서 `VM.Standard.A1.Flex` 단일 VM과 self-managed PostgreS
 - Compute: `VM.Standard.A1.Flex`
 - Size: `4 OCPU / 24GB`
 - Boot Volume: `50GB`
-- PostgreSQL data volume: `300GB`, Balanced `10` VPUs
+- PostgreSQL data volume: `200GB`, Balanced `10` VPUs
 - Network: 새 VCN, public subnet, Internet Gateway, Route Table
 - Ingress: SSH `22/tcp`, 선택 HTTP `80/tcp`, 선택 HTTPS `443/tcp`
 - PostgreSQL: Docker `PostgreSQL 18`, host `127.0.0.1:5432` 바인딩, app network `aquila-bank-prod`
@@ -67,11 +67,11 @@ sudo systemctl status aquila-postgres.service
 
 ## 비용 경계
 
-이 스택은 유료 baseline이다. A1 4 OCPU / 24GB는 Always Free 범위와 겹칠 수 있지만, 300GB data volume은 200GB Always Free Block Volume 총량을 넘으므로 과금될 수 있다. 비용은 주로 Block Volume storage와 Balanced VPU에서 발생한다.
+이 스택은 OCI A1 4 OCPU / 24GB와 200GB data volume baseline이다. 비용은 주로 Block Volume storage와 Balanced VPU 설정에서 발생한다.
 
 저비용 기본값:
 
-- `postgres_data_volume_size_in_gbs = 300`
+- `postgres_data_volume_size_in_gbs = 200`
 - `postgres_data_volume_vpus_per_gb = 10`
 
 IO 병목 검증이 필요할 때만 `20` 이상으로 올린다.

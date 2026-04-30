@@ -165,7 +165,7 @@ localhost URL은 관측 stack을 같은 host 또는 SSH tunnel로 볼 때의 접
 
 운영/staging replay:
 
-권장 baseline은 OCI A1 Flex 4 OCPU / 24GB + data 300GB self-managed PostgreSQL 18입니다. 1억 건 dataset은 OCI A1 data volume에 적재하고, AWS EC2 staging smoke는 app 배포 확인 범위로만 사용합니다.
+권장 baseline은 OCI A1 Flex 4 OCPU / 24GB + data 200GB self-managed PostgreSQL 18입니다. 1억 건 dataset은 OCI A1 data volume에 적재하고, AWS EC2 staging smoke는 app 배포 확인 범위로만 사용합니다.
 
 ```bash
 STAGING_BASE_URL="$STAGING_BASE_URL" \
