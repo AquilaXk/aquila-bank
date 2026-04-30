@@ -17,10 +17,14 @@ class ApiExceptionHandlerApiOverloadTest {
 
     ResponseEntity<ApiExceptionHandler.ApiErrorResponse> response =
         handler.handleApiOverloadRejected(
-            new ApiOverloadRejectedException("transaction-read", 1), request);
+            new ApiOverloadRejectedException("transaction-read", 0), request);
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
-    assertThat(response.getHeaders().getFirst("Retry-After")).isEqualTo("1");
+    assertThat(response.getHeaders().getFirst("Retry-After")).isEqualTo("0");
+    assertThat(response.getHeaders().getFirst("X-Aquila-Reject-Reason"))
+        .isEqualTo("backend-admission");
+    assertThat(response.getHeaders().getFirst("X-RateLimit-Scope")).isEqualTo("transaction-read");
+    assertThat(response.getHeaders().getFirst("X-RateLimit-Retry-After-Seconds")).isEqualTo("0");
     assertThat(response.getBody().message()).isEqualTo("api overloaded; retry later");
     assertThat(response.getBody().path()).isEqualTo("/api/v1/transactions");
   }

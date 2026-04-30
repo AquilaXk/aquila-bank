@@ -24,6 +24,10 @@ class ApiExceptionHandlerT3MicroSaturationTest {
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
     assertThat(response.getHeaders().getFirst("Retry-After")).isEqualTo("2");
+    assertThat(response.getHeaders().getFirst("X-Aquila-Reject-Reason"))
+        .isEqualTo("saturation-guard");
+    assertThat(response.getHeaders().getFirst("X-RateLimit-Scope")).isEqualTo("saturation-guard");
+    assertThat(response.getHeaders().getFirst("X-RateLimit-Retry-After-Seconds")).isEqualTo("2");
     assertThat(response.getBody().message()).isEqualTo("server is saturated; retry later");
     assertThat(response.getBody().path()).isEqualTo("/api/v1/transactions");
   }

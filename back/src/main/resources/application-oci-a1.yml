@@ -30,6 +30,7 @@ oci-a1:
     admission:
       # 64 it/s 경계에서 limit 3까지 하락한 증거를 반영해 floor를 DB pool보다 조금 낮게 고정한다.
       max: ${OCI_A1_TRANSACTION_READ_ADMISSION_MAX:6}
+      retry-after-seconds: ${OCI_A1_TRANSACTION_READ_ADMISSION_RETRY_AFTER_SECONDS:0}
       min: ${OCI_A1_TRANSACTION_READ_ADMISSION_MIN:5}
       adaptive-max: ${OCI_A1_TRANSACTION_READ_ADMISSION_ADAPTIVE_MAX:8}
       increase-every-successes: ${OCI_A1_TRANSACTION_READ_ADMISSION_INCREASE_EVERY_SUCCESSES:48}

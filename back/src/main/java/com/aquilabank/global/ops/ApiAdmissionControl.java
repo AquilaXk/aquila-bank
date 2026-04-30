@@ -98,7 +98,7 @@ public class ApiAdmissionControl {
         LongSupplier ticker) {
       this.group = endpoint.group();
       this.retryAfterSeconds =
-          endpoint.retryAfterSeconds() > 0
+          endpoint.retryAfterSeconds() >= 0
               ? endpoint.retryAfterSeconds()
               : defaultRetryAfterSeconds;
       this.pathPrefixes = endpoint.pathPrefixes();

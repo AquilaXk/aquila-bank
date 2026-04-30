@@ -5,11 +5,15 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = "ops.api-admission-control")
 public record ApiAdmissionControlProperties(
-    Boolean enabled, int retryAfterSeconds, List<EndpointLimit> endpoints) {
+    Boolean enabled, Integer retryAfterSeconds, List<EndpointLimit> endpoints) {
 
   public ApiAdmissionControlProperties {
     enabled = enabled == null ? Boolean.TRUE : enabled;
-    retryAfterSeconds = retryAfterSeconds > 0 ? retryAfterSeconds : 1;
+    retryAfterSeconds = retryAfterSeconds == null ? 1 : retryAfterSeconds;
+    if (retryAfterSeconds < 0) {
+      throw new IllegalArgumentException(
+          "ops.api-admission-control retry-after-seconds must not be negative");
+    }
     endpoints =
         endpoints == null || endpoints.isEmpty() ? defaultEndpoints() : List.copyOf(endpoints);
   }
@@ -44,7 +48,7 @@ public record ApiAdmissionControlProperties(
   public record EndpointLimit(
       String group,
       int maxConcurrency,
-      int retryAfterSeconds,
+      Integer retryAfterSeconds,
       List<String> pathPrefixes,
       AdaptiveLimit adaptive) {
 
@@ -60,9 +64,10 @@ public record ApiAdmissionControlProperties(
         throw new IllegalArgumentException(
             "ops.api-admission-control path-prefixes must not be empty");
       }
-      if (retryAfterSeconds < 0) {
+      retryAfterSeconds = retryAfterSeconds == null ? -1 : retryAfterSeconds;
+      if (retryAfterSeconds < -1) {
         throw new IllegalArgumentException(
-            "ops.api-admission-control retry-after-seconds must not be negative");
+            "ops.api-admission-control endpoint retry-after-seconds must be -1 or greater");
       }
       pathPrefixes = List.copyOf(pathPrefixes);
       adaptive = adaptive == null ? AdaptiveLimit.disabled(maxConcurrency) : adaptive;

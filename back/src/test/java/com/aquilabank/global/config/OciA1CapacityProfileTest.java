@@ -58,6 +58,10 @@ class OciA1CapacityProfileTest {
               .isEqualTo(6);
           assertThat(
                   environment.getProperty(
+                      "ops.api-admission-control.endpoints[0].retry-after-seconds", Integer.class))
+              .isZero();
+          assertThat(
+                  environment.getProperty(
                       "ops.api-admission-control.endpoints[0].adaptive.min-concurrency",
                       Integer.class))
               .isEqualTo(5);
@@ -106,6 +110,7 @@ class OciA1CapacityProfileTest {
                                 entry("OCI_A1_TASK_EXECUTION_MAX_SIZE", "7"),
                                 entry("OCI_A1_TASK_EXECUTION_QUEUE_CAPACITY", "160"),
                                 entry("OCI_A1_TRANSACTION_READ_ADMISSION_MAX", "7"),
+                                entry("OCI_A1_TRANSACTION_READ_ADMISSION_RETRY_AFTER_SECONDS", "1"),
                                 entry("OCI_A1_TRANSACTION_READ_ADMISSION_MIN", "6"),
                                 entry("OCI_A1_TRANSACTION_READ_ADMISSION_ADAPTIVE_MAX", "9"),
                                 entry(
@@ -154,6 +159,11 @@ class OciA1CapacityProfileTest {
                       environment.getProperty(
                           "ops.api-admission-control.endpoints[0].max-concurrency", Integer.class))
                   .isEqualTo(7);
+              assertThat(
+                      environment.getProperty(
+                          "ops.api-admission-control.endpoints[0].retry-after-seconds",
+                          Integer.class))
+                  .isEqualTo(1);
               assertThat(
                       environment.getProperty(
                           "ops.api-admission-control.endpoints[0].adaptive.min-concurrency",

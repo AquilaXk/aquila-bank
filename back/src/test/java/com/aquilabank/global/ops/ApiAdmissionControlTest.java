@@ -222,6 +222,29 @@ class ApiAdmissionControlTest {
   }
 
   @Test
+  void usesExplicitZeroRetryAfterWithoutDefaultFallback() {
+    SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+    ApiAdmissionControl admissionControl =
+        new ApiAdmissionControl(
+            new ApiAdmissionControlProperties(
+                true,
+                1,
+                List.of(
+                    new ApiAdmissionControlProperties.EndpointLimit(
+                        "transaction-read", 1, 0, List.of("/api/v1/transactions"), null))),
+            meterRegistry);
+
+    ApiAdmissionPermit first = admissionControl.tryAcquire("/api/v1/transactions");
+    ApiAdmissionPermit rejected = admissionControl.tryAcquire("/api/v1/transactions");
+
+    assertThat(first.allowed()).isTrue();
+    assertThat(rejected.allowed()).isFalse();
+    assertThat(rejected.retryAfterSeconds()).isZero();
+
+    first.release();
+  }
+
+  @Test
   void usesEndpointRetryAfterAndOciA1TransactionReadAdaptiveBounds() {
     SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
     ApiAdmissionControl admissionControl =
@@ -299,7 +322,7 @@ class ApiAdmissionControlTest {
         1,
         List.of(
             new ApiAdmissionControlProperties.EndpointLimit(
-                "transaction-read", 1, 0, List.of("/api/v1/transactions"), null)));
+                "transaction-read", 1, -1, List.of("/api/v1/transactions"), null)));
   }
 
   private ApiAdmissionControlProperties adaptiveProperties(
@@ -315,7 +338,7 @@ class ApiAdmissionControlTest {
             new ApiAdmissionControlProperties.EndpointLimit(
                 "transaction-read",
                 maxConcurrency,
-                0,
+                -1,
                 List.of("/api/v1/transactions"),
                 new ApiAdmissionControlProperties.AdaptiveLimit(
                     true,
@@ -346,7 +369,7 @@ class ApiAdmissionControlTest {
             new ApiAdmissionControlProperties.EndpointLimit(
                 "transaction-read",
                 maxConcurrency,
-                0,
+                -1,
                 List.of("/api/v1/transactions"),
                 new ApiAdmissionControlProperties.AdaptiveLimit(
                     true,
