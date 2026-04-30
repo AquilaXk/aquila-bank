@@ -28,6 +28,7 @@ Optional environment:
   COLD_WARM_WARM_HOT_P95_THRESHOLD_MS    default 350
   COLD_WARM_WARM_COLD_P95_THRESHOLD_MS   default 750
   COLD_WARM_429_RATE_THRESHOLD           default 0
+  COLD_WARM_503_RATE_THRESHOLD           default 0
 
 Examples:
   tools/test/run-transaction-100m-cold-start-cache-warm-gate.sh --print-plan
@@ -67,12 +68,14 @@ cold_start_p95_threshold_ms="${COLD_WARM_COLD_START_P95_THRESHOLD_MS:-1000}"
 warm_hot_p95_threshold_ms="${COLD_WARM_WARM_HOT_P95_THRESHOLD_MS:-350}"
 warm_cold_p95_threshold_ms="${COLD_WARM_WARM_COLD_P95_THRESHOLD_MS:-750}"
 transaction_429_rate_threshold="${COLD_WARM_429_RATE_THRESHOLD:-0}"
+transaction_503_rate_threshold="${COLD_WARM_503_RATE_THRESHOLD:-0}"
 backend_health_url="${COLD_WARM_BACKEND_HEALTH_URL:-http://localhost:${BACKEND_PORT:-8080}/actuator/health}"
 prometheus_url="${PROMETHEUS_URL:-http://localhost:9090}"
 prometheus_base_url="${prometheus_url%/}"
 compose_files=(-f compose.yml -f compose.t3micro.yml -f compose.loadtest.yml)
 report_dir="build/reports/k6/${name}"
 summary_tsv="${report_dir}/cold-warm-summary.tsv"
+report_md="${report_dir}/cold-warm-cache-state-slo.md"
 threshold_failed=false
 
 require_bool_value() {
@@ -152,6 +155,7 @@ require_positive_number_value "COLD_WARM_COLD_START_P95_THRESHOLD_MS" "${cold_st
 require_positive_number_value "COLD_WARM_WARM_HOT_P95_THRESHOLD_MS" "${warm_hot_p95_threshold_ms}"
 require_positive_number_value "COLD_WARM_WARM_COLD_P95_THRESHOLD_MS" "${warm_cold_p95_threshold_ms}"
 require_rate_value "COLD_WARM_429_RATE_THRESHOLD" "${transaction_429_rate_threshold}"
+require_rate_value "COLD_WARM_503_RATE_THRESHOLD" "${transaction_503_rate_threshold}"
 
 print_plan() {
   echo "[transaction-100m-cold-warm] name=${name}"
@@ -170,8 +174,10 @@ print_plan() {
   echo "[transaction-100m-cold-warm] warm_hot_p95_threshold_ms=${warm_hot_p95_threshold_ms}"
   echo "[transaction-100m-cold-warm] warm_cold_p95_threshold_ms=${warm_cold_p95_threshold_ms}"
   echo "[transaction-100m-cold-warm] transaction_429_rate_threshold=${transaction_429_rate_threshold}"
+  echo "[transaction-100m-cold-warm] transaction_503_rate_threshold=${transaction_503_rate_threshold}"
   echo "[transaction-100m-cold-warm] runner=tools/test/run-k6-transaction-100m-loadtest.sh --no-up --no-deps"
   echo "[transaction-100m-cold-warm] summary=${summary_tsv}"
+  echo "[transaction-100m-cold-warm] report=${report_md}"
 }
 
 print_plan
@@ -231,7 +237,7 @@ wait_for_prometheus_readiness() {
 }
 
 write_header() {
-  printf "phase\tstatus\tvus\tduration\tlimit\thttp_failed_rate\thttp_reqs\ttransaction_429_rate\thot_first_p95_ms\thot_cursor_p95_ms\tcold_first_p95_ms\tcold_cursor_p95_ms\tlog_path\tsummary_json\n" >"${summary_tsv}"
+  printf "phase\tcache_state\tstatus\tvus\tduration\tlimit\thttp_failed_rate\thttp_reqs\ttransaction_429_rate\ttransaction_503_rate\ttransaction_503_count\tfirst_p95_ms\tdeep_p95_ms\thot_first_p95_ms\thot_cursor_p95_ms\tcold_first_p95_ms\tcold_cursor_p95_ms\tlog_path\tsummary_json\n" >"${summary_tsv}"
 }
 
 append_summary() {
@@ -246,6 +252,17 @@ number_greater_than() {
   local value="$1"
   local threshold="$2"
   awk -v value="${value}" -v threshold="${threshold}" 'BEGIN { exit !(value > threshold) }'
+}
+
+max_numeric_value() {
+  local result="n/a"
+  local value
+  for value in "$@"; do
+    if is_numeric_value "${value}" && { [[ "${result}" == "n/a" ]] || number_greater_than "${value}" "${result}"; }; then
+      result="${value}"
+    fi
+  done
+  echo "${result}"
 }
 
 record_threshold_violation() {
@@ -276,10 +293,12 @@ check_phase_thresholds() {
   local phase="$1"
   local status="$2"
   local transaction_429_rate="$3"
-  local hot_first_p95="$4"
-  local hot_cursor_p95="$5"
-  local cold_first_p95="$6"
-  local cold_cursor_p95="$7"
+  local transaction_503_rate="$4"
+  local transaction_503_count="$5"
+  local hot_first_p95="$6"
+  local hot_cursor_p95="$7"
+  local cold_first_p95="$8"
+  local cold_cursor_p95="$9"
 
   if [[ "${hard_threshold_enabled}" != "true" ]]; then
     return 0
@@ -290,6 +309,8 @@ check_phase_thresholds() {
   fi
 
   check_metric_lte "${phase}" "transaction_429_rate" "${transaction_429_rate}" "${transaction_429_rate_threshold}"
+  check_metric_lte "${phase}" "transaction_503_rate" "${transaction_503_rate}" "${transaction_503_rate_threshold}"
+  check_metric_lte "${phase}" "transaction_503_count" "${transaction_503_count}" "0"
   if [[ "${phase}" == "cold-start" ]]; then
     check_metric_lte "${phase}" "hot_first_p95_ms" "${hot_first_p95}" "${cold_start_p95_threshold_ms}"
     check_metric_lte "${phase}" "hot_cursor_p95_ms" "${hot_cursor_p95}" "${cold_start_p95_threshold_ms}"
@@ -316,11 +337,12 @@ start_loadtest_services() {
 run_k6_phase() {
   local phase="$1"
   local duration="$2"
+  local cache_state="$3"
   local report_name="${name}-${phase}"
   local log_path="${report_dir}/${report_name}.log"
   local summary_json="build/reports/k6/${report_name}-summary.json"
-  local status http_failed_rate http_reqs transaction_429_rate
-  local hot_first_p95 hot_cursor_p95 cold_first_p95 cold_cursor_p95
+  local status http_failed_rate http_reqs transaction_429_rate transaction_503_rate transaction_503_count
+  local hot_first_p95 hot_cursor_p95 cold_first_p95 cold_cursor_p95 first_p95 deep_p95
 
   echo "[transaction-100m-cold-warm] running phase=${phase} duration=${duration}"
   set +e
@@ -337,20 +359,70 @@ run_k6_phase() {
   http_failed_rate="$(metric_from_json "${summary_json}" "http_req_failed" "rate")"
   http_reqs="$(metric_from_json "${summary_json}" "http_reqs" "count")"
   transaction_429_rate="$(metric_from_json "${summary_json}" "aquila_transaction_429_rate" "rate")"
+  transaction_503_rate="$(metric_from_json "${summary_json}" "aquila_transaction_503_rate" "rate")"
+  transaction_503_count="$(metric_from_json "${summary_json}" "aquila_transaction_503_count" "count")"
   hot_first_p95="$(metric_from_json "${summary_json}" "aquila_transaction_hot_first_ms" "p(95)")"
   hot_cursor_p95="$(metric_from_json "${summary_json}" "aquila_transaction_hot_cursor_ms" "p(95)")"
   cold_first_p95="$(metric_from_json "${summary_json}" "aquila_transaction_cold_first_ms" "p(95)")"
   cold_cursor_p95="$(metric_from_json "${summary_json}" "aquila_transaction_cold_cursor_ms" "p(95)")"
+  first_p95="$(max_numeric_value "${hot_first_p95}" "${cold_first_p95}")"
+  deep_p95="$(max_numeric_value "${hot_cursor_p95}" "${cold_cursor_p95}")"
 
   append_summary \
-    "${phase}" "${status}" "${vus}" "${duration}" "${limit}" \
+    "${phase}" "${cache_state}" "${status}" "${vus}" "${duration}" "${limit}" \
     "${http_failed_rate}" "${http_reqs}" "${transaction_429_rate}" \
+    "${transaction_503_rate}" "${transaction_503_count}" "${first_p95}" "${deep_p95}" \
     "${hot_first_p95}" "${hot_cursor_p95}" "${cold_first_p95}" "${cold_cursor_p95}" \
     "${log_path}" "${summary_json}"
 
   check_phase_thresholds \
-    "${phase}" "${status}" "${transaction_429_rate}" \
+    "${phase}" "${status}" "${transaction_429_rate}" "${transaction_503_rate}" "${transaction_503_count}" \
     "${hot_first_p95}" "${hot_cursor_p95}" "${cold_first_p95}" "${cold_cursor_p95}"
+}
+
+write_report() {
+  local rows=""
+  local phase cache_state status phase_vus duration phase_limit http_failed_rate http_reqs
+  local transaction_429_rate transaction_503_rate transaction_503_count first_p95 deep_p95
+  local hot_first_p95 hot_cursor_p95 cold_first_p95 cold_cursor_p95 log_path summary_json
+
+  while IFS=$'\t' read -r phase cache_state status phase_vus duration phase_limit http_failed_rate http_reqs \
+    transaction_429_rate transaction_503_rate transaction_503_count first_p95 deep_p95 \
+    hot_first_p95 hot_cursor_p95 cold_first_p95 cold_cursor_p95 log_path summary_json; do
+    if [[ "${phase}" == "phase" ]]; then
+      continue
+    fi
+    rows="${rows}"$'\n'"| ${phase} | ${cache_state} | ${status} | ${first_p95} | ${deep_p95} | ${transaction_429_rate} | ${transaction_503_rate} | ${transaction_503_count} | ${summary_json} |"
+  done <"${summary_tsv}"
+
+  cat >"${report_md}" <<REPORT
+# Transaction 100m Cache-State SLO
+
+## Summary
+
+- gate: ${name}
+- cold-start duration: ${cold_start_duration}
+- warmup duration: ${warmup_duration}
+- warm-cache read duration: ${warm_read_duration}
+- first/deep p95 source: max(hot,cold) first page and deep cursor p95
+- 429 rate threshold: ${transaction_429_rate_threshold}
+- 503 rate threshold: ${transaction_503_rate_threshold}
+
+## Cache-State Result
+
+| phase | cache state | status | first p95 ms | deep p95 ms | 429 rate | 503 rate | 503 count | summary JSON |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |${rows}
+
+## Artifacts
+
+- summary TSV: ${summary_tsv}
+- report: ${report_md}
+
+## Notes
+
+- cold-start와 warm-cache를 분리해 cache 상태가 섞인 p95/429 해석을 피합니다.
+- 503은 admission 실패가 아니라 service failure로 보아 0 budget으로 판정합니다.
+REPORT
 }
 
 run_warmup() {
@@ -385,11 +457,13 @@ wait_for_backend_readiness
 wait_for_prometheus_readiness
 
 write_header
-run_k6_phase "cold-start" "${cold_start_duration}"
+run_k6_phase "cold-start" "${cold_start_duration}" "cold-start"
 run_warmup
-run_k6_phase "warm-read" "${warm_read_duration}"
+run_k6_phase "warm-read" "${warm_read_duration}" "warm-cache"
+write_report
 
 echo "[transaction-100m-cold-warm] summary=${summary_tsv}"
+echo "[transaction-100m-cold-warm] report=${report_md}"
 if [[ "${threshold_failed}" == "true" ]]; then
   exit 1
 fi

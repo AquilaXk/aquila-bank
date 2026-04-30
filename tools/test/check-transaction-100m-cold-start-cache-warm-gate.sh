@@ -26,8 +26,10 @@ grep -F "cold_start_p95_threshold_ms=1000" <<<"${plan}" >/dev/null
 grep -F "warm_hot_p95_threshold_ms=350" <<<"${plan}" >/dev/null
 grep -F "warm_cold_p95_threshold_ms=750" <<<"${plan}" >/dev/null
 grep -F "transaction_429_rate_threshold=0" <<<"${plan}" >/dev/null
+grep -F "transaction_503_rate_threshold=0" <<<"${plan}" >/dev/null
 grep -F "runner=tools/test/run-k6-transaction-100m-loadtest.sh --no-up --no-deps" <<<"${plan}" >/dev/null
 grep -F "summary=build/reports/k6/transaction-cold-warm-check/cold-warm-summary.tsv" <<<"${plan}" >/dev/null
+grep -F "report=build/reports/k6/transaction-cold-warm-check/cold-warm-cache-state-slo.md" <<<"${plan}" >/dev/null
 
 echo "[transaction-100m-cold-warm] runner contract"
 grep -F "COLD_WARM_FORCE_RECREATE" "${script}" >/dev/null
@@ -46,6 +48,13 @@ grep -F "run-k6-transaction-100m-loadtest.sh --no-up --no-deps" "${script}" >/de
 grep -F "cold-start" "${script}" >/dev/null
 grep -F "warm-read" "${script}" >/dev/null
 grep -F "cold-warm-summary.tsv" "${script}" >/dev/null
+grep -F "cold-warm-cache-state-slo.md" "${script}" >/dev/null
+grep -F "cache_state" "${script}" >/dev/null
+grep -F "first_p95_ms" "${script}" >/dev/null
+grep -F "deep_p95_ms" "${script}" >/dev/null
+grep -F "aquila_transaction_503_rate" "${script}" >/dev/null
+grep -F "aquila_transaction_503_count" "${script}" >/dev/null
+grep -F "write_report" "${script}" >/dev/null
 grep -F "check_phase_thresholds" "${script}" >/dev/null
 
 echo "[transaction-100m-cold-warm] invalid input fails"
