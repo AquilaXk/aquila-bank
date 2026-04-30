@@ -244,6 +244,11 @@ grep -F "X-RateLimit-Retry-Jitter-Millis" ops/k6/transaction-read-100m.js >/dev/
 grep -F "aquila_transaction_retry_after_sleep_ms" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "aquila_transaction_retry_after_count" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "aquila_transaction_429_rate" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "aquila_transaction_edge_429_rate" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "aquila_transaction_backend_429_rate" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "aquila_transaction_unknown_429_rate" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "aquila_transaction_502_count" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "aquila_transaction_accepted_200_count" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "aquila_transaction_503_rate" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "aquila_transaction_503_count" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "AQUILA_K6_WARMUP_DURATION" ops/k6/transaction-read-100m.js >/dev/null
