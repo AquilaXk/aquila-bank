@@ -1,6 +1,8 @@
 .gradle/
 .gradle-user/
-build/
+build/*
+!build/libs/
+!build/libs/*.jar
 out/
 bin/
 .env

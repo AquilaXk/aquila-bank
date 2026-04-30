@@ -7,6 +7,8 @@ backend_ci="${ROOT_DIR}/.github/workflows/backend-ci.yml"
 frontend_ci="${ROOT_DIR}/.github/workflows/frontend-ci.yml"
 main_ci="${ROOT_DIR}/.github/workflows/main-ci.yml"
 staging_deploy="${ROOT_DIR}/.github/workflows/staging-deploy.yml"
+backend_runtime_dockerfile="${ROOT_DIR}/back/Dockerfile.runtime"
+backend_dockerignore="${ROOT_DIR}/back/.dockerignore"
 workflow_contract_ci="${ROOT_DIR}/.github/workflows/workflow-contract-ci.yml"
 query_plan_gate="${ROOT_DIR}/tools/test/run-transaction-query-plan-regression-gate.sh"
 flyway_migration_gate="${ROOT_DIR}/tools/test/check-flyway-backward-compatible-migrations.sh"
@@ -43,6 +45,8 @@ require_file "${backend_ci}"
 require_file "${frontend_ci}"
 require_file "${main_ci}"
 require_file "${staging_deploy}"
+require_file "${backend_runtime_dockerfile}"
+require_file "${backend_dockerignore}"
 require_file "${workflow_contract_ci}"
 require_file "${query_plan_gate}"
 require_file "${flyway_migration_gate}"
@@ -77,9 +81,18 @@ if (( failures == 0 )); then
   require_contains "${staging_deploy}" "frontend-image:"
   require_contains "${staging_deploy}" "validate-latest-before-deploy:"
   require_contains "${staging_deploy}" "Validate latest main before deploy"
+  require_contains "${staging_deploy}" "Set up backend Java 21"
+  require_contains "${staging_deploy}" "Set up backend Gradle"
+  require_contains "${staging_deploy}" "./gradlew bootJar --no-daemon --stacktrace"
+  require_contains "${staging_deploy}" "--file ./back/Dockerfile.runtime"
   require_contains "${staging_deploy}" 'BACKEND_IMAGE: ${{ needs.backend-image.outputs.backend_image }}'
   require_contains "${staging_deploy}" 'FRONTEND_IMAGE: ${{ needs.frontend-image.outputs.frontend_image }}'
   require_contains "${staging_deploy}" "Mark stale staging deployment inactive"
+
+  require_contains "${backend_runtime_dockerfile}" "FROM eclipse-temurin:21-jre"
+  require_contains "${backend_runtime_dockerfile}" 'ARG JAR_FILE=build/libs/*.jar'
+  require_contains "${backend_runtime_dockerfile}" 'COPY ${JAR_FILE} /app/app.jar'
+  require_contains "${backend_dockerignore}" "!build/libs/*.jar"
 fi
 
 if (( failures > 0 )); then
