@@ -1,0 +1,16 @@
+FROM eclipse-temurin:21-jre
+WORKDIR /app
+
+ENV TZ=Asia/Seoul \
+    LANG=C.UTF-8 \
+    JAVA_TOOL_OPTIONS="-Dfile.encoding=UTF-8"
+
+RUN groupadd --system aquila && useradd --system --gid aquila aquila
+
+ARG JAR_FILE=build/libs/*.jar
+COPY ${JAR_FILE} /app/app.jar
+
+USER aquila
+EXPOSE 8080
+
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]

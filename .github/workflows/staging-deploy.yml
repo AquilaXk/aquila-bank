@@ -142,6 +142,23 @@ jobs:
           ref: ${{ needs.prepare.outputs.deploy_sha }}
           fetch-depth: 0
 
+      - name: Set up backend Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up backend Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build backend bootJar
+        working-directory: back
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew bootJar --no-daemon --stacktrace
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
         with:
@@ -175,6 +192,7 @@ jobs:
         run: |
           set -euo pipefail
           docker buildx build ./back \
+            --file ./back/Dockerfile.runtime \
             --platform linux/arm64 \
             --push \
             --tag "${BACKEND_IMAGE}:${IMAGE_TAG}" \
