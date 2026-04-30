@@ -110,7 +110,7 @@ require_pattern 'max-lifetime: ${OCI_A1_DB_MAX_LIFETIME_MS:900000}' "${oci_profi
 require_pattern 'keepalive-time: ${OCI_A1_DB_KEEPALIVE_TIME_MS:120000}' "${oci_profile}"
 require_pattern 'max: ${OCI_A1_TRANSACTION_READ_ADMISSION_MAX:6}' "${oci_profile}"
 require_pattern 'adaptive-max: ${OCI_A1_TRANSACTION_READ_ADMISSION_ADAPTIVE_MAX:8}' "${oci_profile}"
-require_pattern 'OCI_PUBLIC_ARRIVAL_RATES:-4,5,6,7,8,10' "${arrival_gate}"
+require_pattern 'OCI_PUBLIC_ARRIVAL_RATES:-4,5,6,7,8,10,16' "${arrival_gate}"
 require_pattern 'OCI_PUBLIC_ARRIVAL_FAIL_RATE:-0.10' "${arrival_gate}"
 require_pattern 'OCI_PUBLIC_ARRIVAL_ACCEPTED_P95_MS:-350' "${arrival_gate}"
 

@@ -7,7 +7,8 @@ usage: tools/test/run-oci-public-api-arrival-capacity-gate.sh [--print-plan]
 
 Environment:
   OCI_PUBLIC_ARRIVAL_GATE_NAME      default oci-public-arrival-capacity-<timestamp>
-  OCI_PUBLIC_ARRIVAL_RATES          default 4,5,6,7,8,10
+  OCI_PUBLIC_ARRIVAL_RATES          default 4,5,6,7,8,10,16
+  OCI_PUBLIC_ARRIVAL_STRICT_ZERO_RATES default 16
   OCI_PUBLIC_ARRIVAL_DURATION       default 1m
   OCI_PUBLIC_ARRIVAL_FAIL_RATE      default 0.10
   OCI_PUBLIC_ARRIVAL_DELAYED_FAIL_RATE default 0.25
@@ -38,7 +39,8 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 gate_name="${OCI_PUBLIC_ARRIVAL_GATE_NAME:-oci-public-arrival-capacity-$(date +%Y-%m-%d-%H%M%S)}"
-rates="${OCI_PUBLIC_ARRIVAL_RATES:-4,5,6,7,8,10}"
+rates="${OCI_PUBLIC_ARRIVAL_RATES:-4,5,6,7,8,10,16}"
+strict_zero_rates="${OCI_PUBLIC_ARRIVAL_STRICT_ZERO_RATES:-16}"
 duration="${OCI_PUBLIC_ARRIVAL_DURATION:-1m}"
 fail_rate="${OCI_PUBLIC_ARRIVAL_FAIL_RATE:-0.10}"
 delayed_fail_rate="${OCI_PUBLIC_ARRIVAL_DELAYED_FAIL_RATE:-0.25}"
@@ -151,6 +153,16 @@ status_for_rate() {
   fi
 }
 
+status_for_budget() {
+  local value="$1"
+  local budget="$2"
+  if number_greater_than "${value}" "${budget}"; then
+    echo "fail"
+  else
+    echo "pass"
+  fi
+}
+
 status_for_zero() {
   local value="$1"
   if number_greater_than "${value}" "0"; then
@@ -169,7 +181,21 @@ status_for_p95() {
   fi
 }
 
+csv_contains() {
+  local values="$1"
+  local needle="$2"
+  IFS=',' read -r -a items <<<"${values}"
+  local item
+  for item in "${items[@]}"; do
+    if [[ "${item}" == "${needle}" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 require_csv_positive_integers "OCI_PUBLIC_ARRIVAL_RATES" "${rates}"
+require_csv_positive_integers "OCI_PUBLIC_ARRIVAL_STRICT_ZERO_RATES" "${strict_zero_rates}"
 require_duration_value "OCI_PUBLIC_ARRIVAL_DURATION" "${duration}"
 require_rate_value "OCI_PUBLIC_ARRIVAL_FAIL_RATE" "${fail_rate}"
 require_rate_value "OCI_PUBLIC_ARRIVAL_DELAYED_FAIL_RATE" "${delayed_fail_rate}"
@@ -180,6 +206,7 @@ require_non_negative_number_value "OCI_PUBLIC_ARRIVAL_MAX_RETRY_AFTER_SLEEP_SECO
 print_plan() {
   echo "[oci-public-arrival-capacity] gate=${gate_name}"
   echo "[oci-public-arrival-capacity] rates=${rates}"
+  echo "[oci-public-arrival-capacity] strict_zero_rates=${strict_zero_rates}"
   echo "[oci-public-arrival-capacity] duration=${duration}"
   echo "[oci-public-arrival-capacity] fail_rate=${fail_rate}"
   echo "[oci-public-arrival-capacity] delayed_fail_rate=${delayed_fail_rate}"
@@ -223,6 +250,10 @@ for rate in "${rate_items[@]}"; do
   single_name="${gate_name}-arrival-${rate}"
   single_output_dir="${output_dir}/arrival-${rate}"
   summary_json="${summary_dir%/}/arrival-${rate}-summary.json"
+  source_fail_rate="${fail_rate}"
+  if csv_contains "${strict_zero_rates}" "${rate}"; then
+    source_fail_rate="0.000"
+  fi
   if [[ "${run_k6}" == "true" ]]; then
     summary_json="build/reports/k6/${single_name}-k6-summary.json"
     K6_REPORT_NAME="${single_name}-k6" \
@@ -233,7 +264,7 @@ for rate in "${rate_items[@]}"; do
     K6_PRE_ALLOCATED_VUS="$((rate * 2))" \
     K6_MAX_VUS="$((rate * 4))" \
     K6_OVERLOAD_MODE=true \
-    K6_OVERLOAD_429_RATE_THRESHOLD="${fail_rate}" \
+    K6_OVERLOAD_429_RATE_THRESHOLD="${source_fail_rate}" \
     K6_MAX_RETRY_AFTER_SLEEP_SECONDS="${max_retry_after_sleep_seconds}" \
     K6_RUN_PURPOSE=capacity \
     K6_ARCHIVE_RESULTS=false \
@@ -248,7 +279,7 @@ for rate in "${rate_items[@]}"; do
   SOURCE_429_SUMMARY_JSON="${summary_json}" \
   SOURCE_429_OUTPUT_DIR="${single_output_dir}" \
   SOURCE_429_RUN_ID="${single_name}" \
-  SOURCE_429_FAIL_RATE="${fail_rate}" \
+  SOURCE_429_FAIL_RATE="${source_fail_rate}" \
     "${source_gate}" >/dev/null
   source_status=$?
   set -e
@@ -270,7 +301,7 @@ for rate in "${rate_items[@]}"; do
   cold_deep_p95="$(metric_value "${summary_json}" aquila_transaction_cold_deep_cursor_ms "p(95)")"
   accepted_p95="$(max_numeric_value "${hot_first_p95}" "${hot_cursor_p95}" "${hot_deep_p95}" "${cold_first_p95}" "${cold_cursor_p95}" "${cold_deep_p95}")"
 
-  rate_status="$(status_for_rate "${total_429_rate}")"
+  rate_status="$(status_for_budget "${total_429_rate}" "${source_fail_rate}")"
   if [[ "${source_status}" -ne 0 ]] \
       || [[ "$(status_for_zero "${unknown_429_count}")" == "fail" ]] \
       || [[ "$(status_for_zero "${transaction_502_count}")" == "fail" ]] \
@@ -305,7 +336,8 @@ cat >"${report_md}" <<REPORT
 - gate_status=${gate_status}
 - rates: ${rates}
 - duration: ${duration}
-- arrival-10rps target: 429 < ${fail_rate}, edge delayed ratio < ${delayed_fail_rate}, 5xx = 0, accepted p95 < ${accepted_p95_ms}ms
+- arrival-16rps target: 429 = 0, edge delayed ratio < ${delayed_fail_rate}, 5xx = 0, accepted p95 < ${accepted_p95_ms}ms
+- non-strict arrival target: 429 < ${fail_rate}
 
 ## Result Table
 

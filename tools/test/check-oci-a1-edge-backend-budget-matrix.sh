@@ -61,4 +61,4 @@ grep -F 'max-lifetime: ${OCI_A1_DB_MAX_LIFETIME_MS:900000}' back/src/main/resour
 grep -F 'keepalive-time: ${OCI_A1_DB_KEEPALIVE_TIME_MS:120000}' back/src/main/resources/application-oci-a1.yml >/dev/null
 grep -F 'max: ${OCI_A1_TRANSACTION_READ_ADMISSION_MAX:6}' back/src/main/resources/application-oci-a1.yml >/dev/null
 grep -F 'adaptive-max: ${OCI_A1_TRANSACTION_READ_ADMISSION_ADAPTIVE_MAX:8}' back/src/main/resources/application-oci-a1.yml >/dev/null
-grep -F "OCI_PUBLIC_ARRIVAL_RATES" tools/test/run-oci-public-api-arrival-capacity-gate.sh >/dev/null
+grep -F 'OCI_PUBLIC_ARRIVAL_RATES:-4,5,6,7,8,10,16' tools/test/run-oci-public-api-arrival-capacity-gate.sh >/dev/null
