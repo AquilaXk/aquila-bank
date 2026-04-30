@@ -292,7 +292,25 @@ groups:
               histogram_quantile(
                 0.95,
                 sum by (le, query_shape) (
-                  rate(aquila_transaction_query_latency_seconds_bucket{outcome="success",query_shape=~"cursor|status_first|status_cursor|direction_first|direction_cursor"}[5m])
+                  rate(aquila_transaction_query_latency_seconds_bucket{outcome="success",query_shape="immediate_cursor"}[5m])
+                )
+              ) > 0.15
+            )
+            or
+            (
+              histogram_quantile(
+                0.95,
+                sum by (le, query_shape) (
+                  rate(aquila_transaction_query_latency_seconds_bucket{outcome="success",query_shape="deep_cursor"}[5m])
+                )
+              ) > 0.15
+            )
+            or
+            (
+              histogram_quantile(
+                0.95,
+                sum by (le, query_shape) (
+                  rate(aquila_transaction_query_latency_seconds_bucket{outcome="success",query_shape=~"status_first|status_cursor|direction_first|direction_cursor"}[5m])
                 )
               ) > 0.15
             )
@@ -347,7 +365,25 @@ groups:
               histogram_quantile(
                 0.99,
                 sum by (le, query_shape) (
-                  rate(aquila_transaction_query_latency_seconds_bucket{outcome="success",query_shape=~"cursor|status_first|status_cursor|direction_first|direction_cursor"}[5m])
+                  rate(aquila_transaction_query_latency_seconds_bucket{outcome="success",query_shape="immediate_cursor"}[5m])
+                )
+              ) > 0.30
+            )
+            or
+            (
+              histogram_quantile(
+                0.99,
+                sum by (le, query_shape) (
+                  rate(aquila_transaction_query_latency_seconds_bucket{outcome="success",query_shape="deep_cursor"}[5m])
+                )
+              ) > 0.30
+            )
+            or
+            (
+              histogram_quantile(
+                0.99,
+                sum by (le, query_shape) (
+                  rate(aquila_transaction_query_latency_seconds_bucket{outcome="success",query_shape=~"status_first|status_cursor|direction_first|direction_cursor"}[5m])
                 )
               ) > 0.30
             )
