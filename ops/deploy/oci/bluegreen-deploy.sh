@@ -545,12 +545,17 @@ run_green_slot() {
 render_nginx_config() {
   local slot="$1"
   local backend_name frontend_name backend_proxy_host edge_retry_after_seconds edge_retry_after_millis edge_retry_jitter_millis
+  local transaction_read_hot_rate_rps transaction_read_archive_rate_rps transaction_read_hot_burst transaction_read_archive_burst
   backend_name="$(slot_name backend "${slot}")"
   frontend_name="$(slot_name frontend "${slot}")"
   backend_proxy_host="${BACKEND_PROXY_HOST:-${backend_name}}"
   edge_retry_after_seconds="${NGINX_EDGE_RETRY_AFTER_SECONDS:-1}"
   edge_retry_after_millis="${NGINX_EDGE_RETRY_AFTER_MILLIS:-150}"
   edge_retry_jitter_millis="${NGINX_EDGE_RETRY_JITTER_MILLIS:-100}"
+  transaction_read_hot_rate_rps="${OCI_A1_TRANSACTION_READ_HOT_RATE_RPS:-64}"
+  transaction_read_archive_rate_rps="${OCI_A1_TRANSACTION_READ_ARCHIVE_RATE_RPS:-64}"
+  transaction_read_hot_burst="${OCI_A1_TRANSACTION_READ_HOT_BURST:-8}"
+  transaction_read_archive_burst="${OCI_A1_TRANSACTION_READ_ARCHIVE_BURST:-8}"
 
   cat <<NGINX
 worker_processes auto;
@@ -584,9 +589,9 @@ http {
   limit_req_zone \$binary_remote_addr zone=aquila_bank_api_per_ip:10m rate=30r/s;
   # 공개 auth 진입점은 token/bcrypt 비용 전에 더 보수적으로 edge 차단합니다.
   limit_req_zone \$binary_remote_addr zone=aquila_bank_auth_per_ip:10m rate=5r/s;
-  # active/archive read는 서로 다른 cursor window라 한 queue를 공유하지 않습니다.
-  limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_hot_per_ip:10m rate=48r/s;
-  limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_archive_per_ip:10m rate=48r/s;
+  # active/archive read는 arrival-16 정상 구간을 delay queue 없이 통과시키도록 headroom을 둡니다.
+  limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_hot_per_ip:10m rate=${transaction_read_hot_rate_rps}r/s;
+  limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_archive_per_ip:10m rate=${transaction_read_archive_rate_rps}r/s;
   # transfer write는 정합성 비용이 커서 read-heavy traffic과 별도 fail-fast 예산을 둡니다.
   limit_req_zone \$binary_remote_addr zone=aquila_bank_transfer_per_ip:10m rate=3r/s;
 
@@ -722,8 +727,8 @@ http {
       proxy_set_header X-Forwarded-Port \$server_port;
       proxy_set_header Connection "";
       proxy_next_upstream off;
-      # arrival-10rps는 active 3 pages/iteration 기준 30r/s 안쪽이라 delay queue를 작게 유지합니다.
-      limit_req zone=aquila_bank_transaction_hot_per_ip burst=12 delay=4;
+      # overload는 accepted delay보다 빠른 429가 client backoff와 p95 해석에 유리합니다.
+      limit_req zone=aquila_bank_transaction_hot_per_ip burst=${transaction_read_hot_burst} nodelay;
       add_header X-Aquila-Edge-Limit-Status \$limit_req_status always;
       proxy_read_timeout 30s;
       proxy_send_timeout 30s;
@@ -741,8 +746,8 @@ http {
       proxy_set_header X-Forwarded-Port \$server_port;
       proxy_set_header Connection "";
       proxy_next_upstream off;
-      # archive query는 cold/history 비용을 active queue와 분리해 서로의 p95를 밀지 않습니다.
-      limit_req zone=aquila_bank_transaction_archive_per_ip burst=12 delay=4;
+      # archive query도 같은 fail-fast 정책으로 cold read 지연을 edge에서 길게 만들지 않습니다.
+      limit_req zone=aquila_bank_transaction_archive_per_ip burst=${transaction_read_archive_burst} nodelay;
       add_header X-Aquila-Edge-Limit-Status \$limit_req_status always;
       proxy_read_timeout 30s;
       proxy_send_timeout 30s;
