@@ -68,6 +68,11 @@ const maxRetryAfterSleepMs = nonNegativeNumberEnv(
   __ENV.K6_MAX_RETRY_AFTER_SLEEP_MS,
   maxRetryAfterSleepSeconds * 1000,
 );
+const workloadShape = __ENV.K6_WORKLOAD_SHAPE || "fixed-order";
+const workloadSeed = Number(__ENV.K6_WORKLOAD_SEED || "1");
+const workloadWeightsText =
+  __ENV.K6_WORKLOAD_WEIGHTS ||
+  "hot_first:20,hot_cursor:20,hot_deep_cursor:10,cold_first:20,cold_cursor:20,cold_deep_cursor:10";
 const effectiveOverload429RateThreshold =
   scenarioMode === "burst" ? burst429RateThreshold : overload429RateThreshold;
 const httpFailedRateThreshold = overloadMode ? "disabled in overload mode" : failedRate;
@@ -106,6 +111,30 @@ const edgePassedRate = new Rate("aquila_transaction_edge_passed_rate");
 const edgePassedCount = new Counter("aquila_transaction_edge_passed_count");
 const retryAfterSleep = new Trend("aquila_transaction_retry_after_sleep_ms", true);
 const retryAfterCount = new Counter("aquila_transaction_retry_after_count");
+const workloadShapeCount = new Counter("aquila_transaction_workload_shape_count");
+
+const supportedQueryShapes = [
+  "hot_first",
+  "hot_cursor",
+  "hot_deep_cursor",
+  "cold_first",
+  "cold_cursor",
+  "cold_deep_cursor",
+];
+
+function parseWorkloadWeights(value) {
+  const result = [];
+  for (const item of String(value || "").split(",")) {
+    const [shape, rawWeight] = item.split(":");
+    const weight = Number(rawWeight);
+    if (supportedQueryShapes.includes(shape) && Number.isFinite(weight) && weight > 0) {
+      result.push({shape, weight});
+    }
+  }
+  return result.length > 0 ? result : supportedQueryShapes.map((shape) => ({shape, weight: 1}));
+}
+
+const workloadWeights = parseWorkloadWeights(workloadWeightsText);
 
 function thresholds() {
   const result = {
@@ -443,7 +472,88 @@ function requestPage(shape, path, accountId, from, to, cursor) {
   return body;
 }
 
-export default function () {
+function seededRandom() {
+  const value = Math.sin(workloadSeed + exec.scenario.iterationInTest * 1009 + exec.vu.idInTest * 9176) * 10000;
+  return value - Math.floor(value);
+}
+
+function pickWeightedStep() {
+  const total = workloadWeights.reduce((sum, item) => sum + item.weight, 0);
+  let cursor = seededRandom() * total;
+  for (const item of workloadWeights) {
+    cursor -= item.weight;
+    if (cursor <= 0) {
+      return item.shape;
+    }
+  }
+  return workloadWeights[workloadWeights.length - 1].shape;
+}
+
+function recordWorkloadShape(queryShape) {
+  if (exec.scenario.name.endsWith("_warmup")) {
+    return;
+  }
+  workloadShapeCount.add(1, {
+    workload_shape: workloadShape,
+    query_shape: queryShape,
+  });
+}
+
+function requestWeightedStep(shape) {
+  recordWorkloadShape(shape);
+  if (shape === "hot_first") {
+    requestPage("hot_first", "/api/v1/transactions", hotAccountId, hotFrom, hotTo, "");
+    return;
+  }
+  if (shape === "hot_cursor") {
+    requestPage(
+      "hot_cursor",
+      "/api/v1/transactions",
+      hotAccountId,
+      hotFrom,
+      hotTo,
+      encodeCursor(hotDeepCursorBookedAt, hotDeepCursorId),
+    );
+    return;
+  }
+  if (shape === "hot_deep_cursor") {
+    requestPage(
+      "hot_deep_cursor",
+      "/api/v1/transactions",
+      hotAccountId,
+      hotFrom,
+      hotTo,
+      encodeCursor(hotDeepCursorBookedAt, hotDeepCursorId),
+    );
+    return;
+  }
+  if (shape === "cold_first") {
+    requestPage("cold_first", "/api/v1/transactions/archive", coldAccountId, coldFrom, coldTo, "");
+    return;
+  }
+  if (shape === "cold_cursor") {
+    requestPage(
+      "cold_cursor",
+      "/api/v1/transactions/archive",
+      coldAccountId,
+      coldFrom,
+      coldTo,
+      encodeCursor(coldDeepCursorBookedAt, coldDeepCursorId),
+    );
+    return;
+  }
+  requestPage(
+    "cold_deep_cursor",
+    "/api/v1/transactions/archive",
+    coldAccountId,
+    coldFrom,
+    coldTo,
+    encodeCursor(coldDeepCursorBookedAt, coldDeepCursorId),
+  );
+}
+
+function runFixedOrder() {
+  recordWorkloadShape("fixed_order_iteration");
   requireEnv("K6_HOT_ACCOUNT_ID", hotAccountId);
   requireEnv("K6_HOT_FROM", hotFrom);
   requireEnv("K6_HOT_TO", hotTo);
@@ -526,6 +636,21 @@ export default function () {
   }
 }
 
+export default function () {
+  requireEnv("K6_HOT_ACCOUNT_ID", hotAccountId);
+  requireEnv("K6_HOT_FROM", hotFrom);
+  requireEnv("K6_HOT_TO", hotTo);
+  requireEnv("K6_COLD_ACCOUNT_ID", coldAccountId);
+  requireEnv("K6_COLD_FROM", coldFrom);
+  requireEnv("K6_COLD_TO", coldTo);
+
+  if (workloadShape === "weighted-random") {
+    requestWeightedStep(pickWeightedStep());
+    return;
+  }
+  runFixedOrder();
+}
+
 function normalizedMetricKey(value) {
   return String(value).replace(/p\((\d+)\.0+\)/, "p($1)");
 }
@@ -569,6 +694,9 @@ function markdownSummary(data) {
 - overload mode: ${overloadMode}
 - max retry-after sleep seconds: ${maxRetryAfterSleepSeconds}
 - max retry-after sleep ms: ${maxRetryAfterSleepMs}
+- workload shape: ${workloadShape}
+- workload seed: ${workloadSeed}
+- workload weights: ${workloadWeightsText}
 - hot account id: ${hotAccountId}
 - cold account id: ${coldAccountId}
 - hot deep cursor: ${hotDeepCursorBookedAt}|${hotDeepCursorId}
@@ -620,6 +748,7 @@ function markdownSummary(data) {
 - retry-after sleep avg ms: ${metric(data, "aquila_transaction_retry_after_sleep_ms", "avg")}
 - retry-after sleep p95 ms: ${metric(data, "aquila_transaction_retry_after_sleep_ms", "p(95)")}
 - retry-after sleep max ms: ${metric(data, "aquila_transaction_retry_after_sleep_ms", "max")}
+- workload shape count: ${metric(data, "aquila_transaction_workload_shape_count", "count")}
 - hot first p95 ms: ${metric(data, "aquila_transaction_hot_first_ms", "p(95)")}
 - hot first p99 ms: ${metric(data, "aquila_transaction_hot_first_ms", "p(99)")}
 - hot first p99.9 ms: ${metric(data, "aquila_transaction_hot_first_ms", "p(99.9)")}

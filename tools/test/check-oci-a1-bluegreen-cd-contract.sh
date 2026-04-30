@@ -238,8 +238,8 @@ script_patterns=(
   "limit_req_status 429;"
   'limit_req_zone \$binary_remote_addr zone=aquila_bank_api_per_ip:10m rate=30r/s;'
   'limit_req_zone \$binary_remote_addr zone=aquila_bank_auth_per_ip:10m rate=5r/s;'
-  'limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_hot_per_ip:10m rate=48r/s;'
-  'limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_archive_per_ip:10m rate=48r/s;'
+  'limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_hot_per_ip:10m rate=${transaction_read_hot_rate_rps}r/s;'
+  'limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_archive_per_ip:10m rate=${transaction_read_archive_rate_rps}r/s;'
   'limit_req_zone \$binary_remote_addr zone=aquila_bank_transfer_per_ip:10m rate=3r/s;'
   'proxy_set_header X-Forwarded-Host \$host;'
   "error_page 429 = @aquila_edge_rate_limited;"
@@ -259,8 +259,8 @@ script_patterns=(
   "limit_req zone=aquila_bank_auth_per_ip burst=10 nodelay;"
   "location = /api/v1/transactions"
   "location = /api/v1/transactions/archive"
-  "limit_req zone=aquila_bank_transaction_hot_per_ip burst=12 delay=4;"
-  "limit_req zone=aquila_bank_transaction_archive_per_ip burst=12 delay=4;"
+  'limit_req zone=aquila_bank_transaction_hot_per_ip burst=${transaction_read_hot_burst} nodelay;'
+  'limit_req zone=aquila_bank_transaction_archive_per_ip burst=${transaction_read_archive_burst} nodelay;'
   "location = /api/v1/transfers"
   "location ~ ^/api/v1/transfers/[^/]+/reversal$"
   "limit_req zone=aquila_bank_transfer_per_ip burst=6 nodelay;"

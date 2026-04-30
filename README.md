@@ -106,6 +106,7 @@ com.aquilabank
 - global은 domain을 사용해 어댑터와 설정을 구성합니다.
 - util에는 비즈니스 로직을 두지 않고, 공통 기술 보조 코드만 둡니다.
 - 읽기 경로는 대용량 트래픽 방어, 1억 건 저장 규모, OCI A1 4 OCPU / 24GB + data 200GB 운영 budget 한계를 함께 고려해 경량화와 분리를 우선합니다.
+- transaction-read public edge capacity는 arrival-16 429=0, delayed<25%, p95<350ms와 VU16/burst reject curve gate를 함께 확인합니다.
 - 거래 목록 조회는 `accountId + 기간 + keyset pagination` 경로만 온라인 목표로 둡니다.
 - 전체 1억 건 검색/집계/정렬은 온라인 목표에서 제외합니다.
 

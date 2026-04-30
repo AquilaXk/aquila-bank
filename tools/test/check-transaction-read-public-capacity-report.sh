@@ -57,6 +57,12 @@ write_summary 6 0.040 0.020 0.020 240
 write_summary 7 0.070 0.030 0.040 280
 write_summary 8 0.090 0.040 0.050 320
 write_summary 10 0.080 0.040 0.040 330 0.12
+write_summary 16 0.000 0.000 0.000 325 0.18
+cp "${summary_dir}/arrival-16-summary.json" "${summary_dir}/vu16-soak-2m-summary.json"
+cp "${summary_dir}/arrival-16-summary.json" "${summary_dir}/burst-48-summary.json"
+cp "${summary_dir}/arrival-16-summary.json" "${summary_dir}/burst-64-summary.json"
+cp "${summary_dir}/arrival-16-summary.json" "${summary_dir}/burst-80-summary.json"
+cp "${summary_dir}/arrival-16-summary.json" "${summary_dir}/burst-96-summary.json"
 
 cat >"${resource_snapshot}" <<'TSV'
 component	cpu_percent	memory_mib	note
@@ -76,6 +82,7 @@ plan="$(
 grep -F "name=public-report-check" <<<"${plan}" >/dev/null
 grep -F "output=${output_dir}/public-report-check.md" <<<"${plan}" >/dev/null
 grep -F "arrival_summary_dir=${summary_dir}" <<<"${plan}" >/dev/null
+grep -F "arrival16_edge_budget_gate=tools/test/run-transaction-read-arrival-16-edge-budget-gate.sh" <<<"${plan}" >/dev/null
 grep -F "resource_snapshot=${resource_snapshot}" <<<"${plan}" >/dev/null
 
 echo "[transaction-read-public-report] report"
@@ -91,14 +98,17 @@ test "${report_md}" = "${output_dir}/public-report-check.md"
 grep -F "# public-report-check" "${report_md}" >/dev/null
 grep -F "gate_status=pass" "${report_md}" >/dev/null
 grep -F "| arrival capacity | pass |" "${report_md}" >/dev/null
+grep -F "| arrival-16 edge budget | pass |" "${report_md}" >/dev/null
 grep -F "| budget matrix | pass |" "${report_md}" >/dev/null
 grep -F "| 10 | pass | 0.080 | 0.040 | 0.040 | 0 | 0 | 0 | 0.12 | 330 | 0.92 |" "${report_md}" >/dev/null
+grep -F "| 16 | pass | 0.000 | 0.000 | 0.000 | 0 | 0 | 0 | 0.18 | 325 | 0.92 |" "${report_md}" >/dev/null
 grep -F "| backend | 64.2 | 640 | oci-a1 |" "${report_md}" >/dev/null
 grep -F "## Next Bottleneck Candidates" "${report_md}" >/dev/null
-grep -F "arrival-10rps sample is inside 429/delay/p95/5xx budget" "${report_md}" >/dev/null
+grep -F "arrival-16rps sample is inside 429/delay/p95/5xx budget" "${report_md}" >/dev/null
 
 echo "[transaction-read-public-report] runner contract"
 grep -F "run-oci-public-api-arrival-capacity-gate.sh" "${runner}" >/dev/null
+grep -F "run-transaction-read-arrival-16-edge-budget-gate.sh" "${runner}" >/dev/null
 grep -F "run-oci-a1-edge-backend-budget-matrix.sh" "${runner}" >/dev/null
 grep -F "docs/performance-results" "${runner}" >/dev/null
 grep -F "resource snapshot" "${runner}" >/dev/null

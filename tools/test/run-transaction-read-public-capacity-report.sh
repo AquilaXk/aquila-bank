@@ -39,11 +39,15 @@ arrival_summary_dir="${PUBLIC_CAPACITY_REPORT_ARRIVAL_SUMMARY_DIR:-}"
 arrival_run_k6="${PUBLIC_CAPACITY_REPORT_ARRIVAL_RUN_K6:-false}"
 resource_snapshot="${PUBLIC_CAPACITY_REPORT_RESOURCE_SNAPSHOT_TSV:-}"
 arrival_gate="tools/test/run-oci-public-api-arrival-capacity-gate.sh"
+arrival16_edge_budget_gate="tools/test/run-transaction-read-arrival-16-edge-budget-gate.sh"
 matrix_gate="tools/test/run-oci-a1-edge-backend-budget-matrix.sh"
 arrival_gate_name="${name}-arrival"
 arrival_output_dir="build/reports/k6/${arrival_gate_name}"
 arrival_report="${arrival_output_dir}/${arrival_gate_name}-arrival-capacity.md"
 arrival_summary_tsv="${arrival_output_dir}/${arrival_gate_name}-arrival-capacity.tsv"
+arrival16_edge_budget_name="${name}-arrival16-edge-budget"
+arrival16_edge_budget_output_dir="build/reports/k6/${arrival16_edge_budget_name}"
+arrival16_edge_budget_report="${arrival16_edge_budget_output_dir}/${arrival16_edge_budget_name}-edge-budget.md"
 matrix_name="${name}-matrix"
 matrix_output_dir="build/reports/oci-a1-budget"
 matrix_report="${matrix_output_dir}/${matrix_name}-budget-matrix.md"
@@ -125,7 +129,7 @@ next_bottleneck_notes() {
       }
       next
     }
-    $rate_col == "10" {
+    $rate_col == "16" {
       found = 1
       if (($bad_gateway_col + 0) > 0) print "- 502가 있으면 upstream keepalive/backend connection close 상관관계를 먼저 봅니다."
       if (($unavailable_col + 0) > 0) print "- 503이 있으면 backend admission과 app health를 먼저 봅니다."
@@ -133,12 +137,12 @@ next_bottleneck_notes() {
       if (($edge_col + 0) >= 0.08) print "- edge 429가 8% 이상이면 Nginx transaction-read rate/burst/delay 조정이 1순위입니다."
       if (($backend_col + 0) >= 0.08) print "- backend 429가 8% 이상이면 admission adaptive max와 Hikari pending을 함께 봅니다."
       if (($p95_col + 0) > 350) print "- accepted p95가 350ms를 넘으면 Nginx upstream timing과 backend timer를 비교합니다."
-      if ($status_col == "pass" && ($bad_gateway_col + 0) == 0 && ($unavailable_col + 0) == 0 && ($delayed_col + 0) < 0.25 && ($p95_col + 0) <= 350 && ($total_col + 0) < 0.10) {
-        print "- arrival-10rps sample is inside 429/delay/p95/5xx budget; next live check is sustained VU16 soak source split."
+      if ($status_col == "pass" && ($bad_gateway_col + 0) == 0 && ($unavailable_col + 0) == 0 && ($delayed_col + 0) < 0.25 && ($p95_col + 0) <= 350 && ($total_col + 0) == 0) {
+        print "- arrival-16rps sample is inside 429/delay/p95/5xx budget; next live check is VU16 soak and burst reject curve."
       }
     }
     END {
-      if (!found) print "- arrival-10rps row가 없어 10rps summary 수집부터 다시 실행합니다."
+      if (!found) print "- arrival-16rps row가 없어 16rps summary 수집부터 다시 실행합니다."
     }
   ' "${file}"
 }
@@ -152,6 +156,8 @@ print_plan() {
   echo "[transaction-read-public-report] arrival_summary_dir=${arrival_summary_dir:-missing}"
   echo "[transaction-read-public-report] arrival_run_k6=${arrival_run_k6}"
   echo "[transaction-read-public-report] arrival_report=${arrival_report}"
+  echo "[transaction-read-public-report] arrival16_edge_budget_gate=${arrival16_edge_budget_gate}"
+  echo "[transaction-read-public-report] arrival16_edge_budget_report=${arrival16_edge_budget_report}"
   echo "[transaction-read-public-report] matrix_gate=${matrix_gate}"
   echo "[transaction-read-public-report] matrix_report=${matrix_report}"
   echo "[transaction-read-public-report] resource_snapshot=${resource_snapshot:-missing}"
@@ -172,6 +178,12 @@ OCI_PUBLIC_ARRIVAL_RUN_K6="${arrival_run_k6}" \
   "${arrival_gate}" >/dev/null
 arrival_status_code=$?
 
+ARRIVAL16_EDGE_BUDGET_NAME="${arrival16_edge_budget_name}" \
+ARRIVAL16_EDGE_BUDGET_SUMMARY_DIR="${arrival_summary_dir}" \
+ARRIVAL16_EDGE_BUDGET_OUTPUT_DIR="${arrival16_edge_budget_output_dir}" \
+  "${arrival16_edge_budget_gate}" >/dev/null
+arrival16_edge_budget_status_code=$?
+
 OCI_A1_BUDGET_MATRIX_NAME="${matrix_name}" \
 OCI_A1_BUDGET_MATRIX_OUTPUT_DIR="${matrix_output_dir}" \
   "${matrix_gate}" >/dev/null
@@ -179,9 +191,11 @@ matrix_status_code=$?
 set -e
 
 arrival_status="$(status_from_report "${arrival_report}")"
+arrival16_edge_budget_status="$(status_from_report "${arrival16_edge_budget_report}")"
 matrix_status="$(status_from_report "${matrix_report}")"
 gate_status="pass"
-if [[ "${arrival_status_code}" -ne 0 || "${matrix_status_code}" -ne 0 || "${arrival_status}" != "pass" || "${matrix_status}" != "pass" ]]; then
+if [[ "${arrival_status_code}" -ne 0 || "${arrival16_edge_budget_status_code}" -ne 0 || "${matrix_status_code}" -ne 0 \
+    || "${arrival_status}" != "pass" || "${arrival16_edge_budget_status}" != "pass" || "${matrix_status}" != "pass" ]]; then
   gate_status="fail"
 fi
 
@@ -192,13 +206,14 @@ fi
   echo
   echo "- gate_status=${gate_status}"
   echo "- runtime: OCI A1 Flex 4 OCPU / 24GB + data 200GB self-managed PostgreSQL 18"
-  echo "- target: arrival-10rps 429 < 10%, edge delayed ratio < 25%, 502/503 = 0, accepted p95 < 350ms"
+  echo "- target: arrival-16rps 429 = 0, edge delayed ratio < 25%, 502/503 = 0, accepted p95 < 350ms"
   echo
   echo "## Gates"
   echo
   echo "| Gate | Status | Report |"
   echo "| --- | --- | --- |"
   echo "| arrival capacity | ${arrival_status} | ${arrival_report} |"
+  echo "| arrival-16 edge budget | ${arrival16_edge_budget_status} | ${arrival16_edge_budget_report} |"
   echo "| budget matrix | ${matrix_status} | ${matrix_report} |"
   echo
   echo "## K6 Arrival Table"

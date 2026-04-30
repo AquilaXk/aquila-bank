@@ -37,10 +37,11 @@ deploy_script="ops/deploy/oci/bluegreen-deploy.sh"
 oci_profile="back/src/main/resources/application-oci-a1.yml"
 arrival_gate="tools/test/run-oci-public-api-arrival-capacity-gate.sh"
 
-edge_transaction_hot_rate_rps=48
-edge_transaction_archive_rate_rps=48
-edge_transaction_read_burst=12
-edge_transaction_read_delay=4
+edge_transaction_hot_rate_rps=64
+edge_transaction_archive_rate_rps=64
+edge_transaction_hot_burst=8
+edge_transaction_archive_burst=8
+edge_transaction_read_policy="fail-fast-nodelay"
 backend_admission_max=6
 backend_admission_adaptive_max=8
 hikari_max=6
@@ -72,8 +73,9 @@ print_plan() {
   echo "[oci-a1-budget-matrix] output=${report_md}"
   echo "[oci-a1-budget-matrix] edge_transaction_hot_rate_rps=${edge_transaction_hot_rate_rps}"
   echo "[oci-a1-budget-matrix] edge_transaction_archive_rate_rps=${edge_transaction_archive_rate_rps}"
-  echo "[oci-a1-budget-matrix] edge_transaction_read_burst=${edge_transaction_read_burst}"
-  echo "[oci-a1-budget-matrix] edge_transaction_read_delay=${edge_transaction_read_delay}"
+  echo "[oci-a1-budget-matrix] edge_transaction_hot_burst=${edge_transaction_hot_burst}"
+  echo "[oci-a1-budget-matrix] edge_transaction_archive_burst=${edge_transaction_archive_burst}"
+  echo "[oci-a1-budget-matrix] edge_transaction_read_policy=${edge_transaction_read_policy}"
   echo "[oci-a1-budget-matrix] backend_admission_max=${backend_admission_max}"
   echo "[oci-a1-budget-matrix] backend_admission_adaptive_max=${backend_admission_adaptive_max}"
   echo "[oci-a1-budget-matrix] hikari_max=${hikari_max}"
@@ -87,18 +89,20 @@ if [[ "${mode}" == "print-plan" ]]; then
   exit 0
 fi
 
-require_pattern 'limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_hot_per_ip:10m rate=48r/s;' "${nginx_config}"
-require_pattern 'limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_archive_per_ip:10m rate=48r/s;' "${nginx_config}"
-require_pattern 'limit_req zone=aquila_bank_transaction_hot_per_ip burst=12 delay=4;' "${nginx_config}"
-require_pattern 'limit_req zone=aquila_bank_transaction_archive_per_ip burst=12 delay=4;' "${nginx_config}"
+require_pattern 'limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_hot_per_ip:10m rate=${NGINX_TRANSACTION_READ_HOT_RATE_RPS}r/s;' "${nginx_config}"
+require_pattern 'limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_archive_per_ip:10m rate=${NGINX_TRANSACTION_READ_ARCHIVE_RATE_RPS}r/s;' "${nginx_config}"
+require_pattern 'limit_req zone=aquila_bank_transaction_hot_per_ip burst=${NGINX_TRANSACTION_READ_HOT_BURST} nodelay;' "${nginx_config}"
+require_pattern 'limit_req zone=aquila_bank_transaction_archive_per_ip burst=${NGINX_TRANSACTION_READ_ARCHIVE_BURST} nodelay;' "${nginx_config}"
 require_pattern 'add_header X-Aquila-Reject-Source nginx-edge always;' "${nginx_config}"
 require_pattern 'add_header X-Aquila-Reject-Reason edge-rate-limit always;' "${nginx_config}"
 require_pattern 'keepalive_requests 1000;' "${nginx_config}"
 require_pattern 'keepalive_timeout 60s;' "${nginx_config}"
-require_pattern 'limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_hot_per_ip:10m rate=48r/s;' "${deploy_script}"
-require_pattern 'limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_archive_per_ip:10m rate=48r/s;' "${deploy_script}"
-require_pattern 'limit_req zone=aquila_bank_transaction_hot_per_ip burst=12 delay=4;' "${deploy_script}"
-require_pattern 'limit_req zone=aquila_bank_transaction_archive_per_ip burst=12 delay=4;' "${deploy_script}"
+require_pattern 'transaction_read_hot_rate_rps="${OCI_A1_TRANSACTION_READ_HOT_RATE_RPS:-64}"' "${deploy_script}"
+require_pattern 'transaction_read_archive_rate_rps="${OCI_A1_TRANSACTION_READ_ARCHIVE_RATE_RPS:-64}"' "${deploy_script}"
+require_pattern 'limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_hot_per_ip:10m rate=${transaction_read_hot_rate_rps}r/s;' "${deploy_script}"
+require_pattern 'limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_archive_per_ip:10m rate=${transaction_read_archive_rate_rps}r/s;' "${deploy_script}"
+require_pattern 'limit_req zone=aquila_bank_transaction_hot_per_ip burst=${transaction_read_hot_burst} nodelay;' "${deploy_script}"
+require_pattern 'limit_req zone=aquila_bank_transaction_archive_per_ip burst=${transaction_read_archive_burst} nodelay;' "${deploy_script}"
 require_pattern 'OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_MAX=${OCI_A1_TRANSACTION_READ_ADMISSION_MAX:-6}' "${deploy_script}"
 require_pattern 'OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_ADAPTIVE_MAX=${OCI_A1_TRANSACTION_READ_ADMISSION_ADAPTIVE_MAX:-8}' "${deploy_script}"
 require_pattern 'maximum-pool-size: ${OCI_A1_DB_POOL_MAX_SIZE:6}' "${oci_profile}"
@@ -106,7 +110,7 @@ require_pattern 'max-lifetime: ${OCI_A1_DB_MAX_LIFETIME_MS:900000}' "${oci_profi
 require_pattern 'keepalive-time: ${OCI_A1_DB_KEEPALIVE_TIME_MS:120000}' "${oci_profile}"
 require_pattern 'max: ${OCI_A1_TRANSACTION_READ_ADMISSION_MAX:6}' "${oci_profile}"
 require_pattern 'adaptive-max: ${OCI_A1_TRANSACTION_READ_ADMISSION_ADAPTIVE_MAX:8}' "${oci_profile}"
-require_pattern 'OCI_PUBLIC_ARRIVAL_RATES:-4,5,6,7,8,10' "${arrival_gate}"
+require_pattern 'OCI_PUBLIC_ARRIVAL_RATES:-4,5,6,7,8,10,16' "${arrival_gate}"
 require_pattern 'OCI_PUBLIC_ARRIVAL_FAIL_RATE:-0.10' "${arrival_gate}"
 require_pattern 'OCI_PUBLIC_ARRIVAL_ACCEPTED_P95_MS:-350' "${arrival_gate}"
 
@@ -119,7 +123,7 @@ cat >"${report_md}" <<REPORT
 - gate_status=pass
 - runtime: OCI A1 Flex 4 OCPU / 24GB + data 200GB self-managed PostgreSQL 18
 - expected 429 source: ${expected_429_source}
-- live target: arrival-10rps 429 < 10%, delayed ratio < 25%, 502/503 = 0, accepted request p95 < 350ms
+- live target: arrival-16rps 429 = 0, delayed ratio < 25%, 502/503 = 0, accepted request p95 < 350ms
 
 ## Matrix
 
@@ -127,8 +131,9 @@ cat >"${report_md}" <<REPORT
 | --- | --- |
 | edge transaction-hot rate | ${edge_transaction_hot_rate_rps}r/s |
 | edge transaction-archive rate | ${edge_transaction_archive_rate_rps}r/s |
-| edge transaction-read burst | ${edge_transaction_read_burst} |
-| edge transaction-read delay | ${edge_transaction_read_delay} |
+| edge transaction-hot burst | ${edge_transaction_hot_burst} |
+| edge transaction-archive burst | ${edge_transaction_archive_burst} |
+| edge transaction-read policy | ${edge_transaction_read_policy} |
 | backend admission max | ${backend_admission_max} |
 | backend admission adaptive max | ${backend_admission_adaptive_max} |
 | Hikari max pool | ${hikari_max} |
