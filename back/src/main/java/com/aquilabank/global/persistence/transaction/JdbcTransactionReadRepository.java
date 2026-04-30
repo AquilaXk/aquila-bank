@@ -7,6 +7,7 @@ import com.aquilabank.domain.transaction.model.TransactionSummary;
 import com.aquilabank.domain.transaction.port.TransactionReadPort;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -21,6 +22,8 @@ public class JdbcTransactionReadRepository implements TransactionReadPort {
 
   private static final RowMapper<TransactionSummary> ROW_MAPPER =
       TransactionSummaryRowMapper.INSTANCE;
+  private static final Duration DEEP_CURSOR_MIN_DISTANCE = Duration.ofHours(1);
+  private static final long DEEP_CURSOR_WINDOW_DIVISOR = 4L;
 
   private final NamedParameterJdbcTemplate jdbcTemplate;
   private final MeterRegistry meterRegistry;
@@ -66,7 +69,7 @@ public class JdbcTransactionReadRepository implements TransactionReadPort {
     return new TransactionCursor(item.bookedAt(), item.id());
   }
 
-  private static String queryShape(TransactionQuery query) {
+  static String queryShape(TransactionQuery query) {
     boolean hasCursor = query.cursor() != null;
     boolean hasStatus = query.status() != null;
     boolean hasDirection = query.direction() != null;
@@ -87,6 +90,28 @@ public class JdbcTransactionReadRepository implements TransactionReadPort {
     if (hasStatus || hasDirection || hasAmountRange) {
       return hasCursor ? "mixed_cursor" : "mixed_first";
     }
-    return hasCursor ? "cursor" : "first_page";
+    if (!hasCursor) {
+      return "first_page";
+    }
+    return isDeepTimelineCursor(query) ? "deep_cursor" : "immediate_cursor";
+  }
+
+  private static boolean isDeepTimelineCursor(TransactionQuery query) {
+    if (!query.cursor().bookedAt().isBefore(query.to())) {
+      return false;
+    }
+    Duration window = Duration.between(query.from(), query.to());
+    if (window.isZero() || window.isNegative()) {
+      return false;
+    }
+    Duration distanceFromUpperBound = Duration.between(query.cursor().bookedAt(), query.to());
+    // 첫 page 직후 cursor와 중간 기간 cursor를 분리해 deep seek 회귀를 별도 SLO로 잡습니다.
+    Duration deepBoundary =
+        maxDuration(window.dividedBy(DEEP_CURSOR_WINDOW_DIVISOR), DEEP_CURSOR_MIN_DISTANCE);
+    return !distanceFromUpperBound.minus(deepBoundary).isNegative();
+  }
+
+  private static Duration maxDuration(Duration left, Duration right) {
+    return left.compareTo(right) >= 0 ? left : right;
   }
 }

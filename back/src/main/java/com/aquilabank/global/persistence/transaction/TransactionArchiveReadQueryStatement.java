@@ -20,7 +20,7 @@ final class TransactionArchiveReadQueryStatement {
         new MapSqlParameterSource()
             .addValue("accountId", query.accountId())
             .addValue("from", Timestamp.from(query.from()))
-            .addValue("to", Timestamp.from(query.to()))
+            .addValue("effectiveTo", Timestamp.from(effectiveTo(query)))
             // 다음 page 존재 여부 판단용 sentinel row 한 건 추가 조회
             .addValue("fetchLimit", query.limit() + 1);
 
@@ -41,8 +41,14 @@ final class TransactionArchiveReadQueryStatement {
             FROM transaction_read_model_archive
             WHERE account_id = :accountId
               AND booked_at >= :from
-              AND booked_at < :to
             """);
+
+    if (query.cursor() == null) {
+      sql.append("\n  AND booked_at < :effectiveTo");
+    } else {
+      // archive deep cursor도 cursor 시각을 실제 상한으로 써 월별 partition range를 작게 유지합니다.
+      sql.append("\n  AND booked_at <= :effectiveTo");
+    }
 
     if (query.status() != null) {
       sql.append("\n  AND transaction_status = :status");
@@ -93,5 +99,12 @@ final class TransactionArchiveReadQueryStatement {
 
   MapSqlParameterSource params() {
     return params;
+  }
+
+  private static java.time.Instant effectiveTo(TransactionQuery query) {
+    if (query.cursor() == null || query.cursor().bookedAt().isAfter(query.to())) {
+      return query.to();
+    }
+    return query.cursor().bookedAt();
   }
 }

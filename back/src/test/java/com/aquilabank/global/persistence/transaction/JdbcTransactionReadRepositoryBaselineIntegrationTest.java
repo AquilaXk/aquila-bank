@@ -2,6 +2,7 @@ package com.aquilabank.global.persistence.transaction;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.aquilabank.domain.transaction.model.TransactionCursor;
 import com.aquilabank.domain.transaction.model.TransactionDirection;
 import com.aquilabank.domain.transaction.model.TransactionQuery;
 import com.aquilabank.domain.transaction.model.TransactionSlice;
@@ -11,6 +12,7 @@ import com.aquilabank.support.TransactionExplainPlan;
 import com.aquilabank.support.TransactionReadModelBaselineFixture;
 import com.aquilabank.support.TransactionReadModelBaselineFixture.BaselineWindow;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Duration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -121,6 +123,35 @@ class JdbcTransactionReadRepositoryBaselineIntegrationTest extends PostgresConta
     assertThat(nextSlice.items()).hasSize(50);
     assertThat(nextSlice.items().getFirst().bookedAt())
         .isBeforeOrEqualTo(firstSlice.items().getLast().bookedAt());
+    assertThat(plan.usesIndex("idx_transaction_read_model_account_cursor")).isTrue();
+    assertThat(plan.hasNodeType("Seq Scan")).isFalse();
+    assertThat(plan.hasNodeType("Sort")).isFalse();
+  }
+
+  @Test
+  void deepCursorPageKeepsAccountCursorIndexWithoutSeqScanOrSort() {
+    TransactionCursor deepCursor =
+        new TransactionCursor(baselineWindow.from().plus(Duration.ofDays(14)), Long.MAX_VALUE);
+    TransactionQuery query =
+        new TransactionQuery(
+            baselineWindow.hotAccountId(),
+            baselineWindow.from(),
+            baselineWindow.to(),
+            50,
+            deepCursor,
+            null,
+            null,
+            null,
+            null,
+            null);
+
+    TransactionSlice slice = repository.fetch(query);
+    TransactionExplainPlan plan = explain(query);
+
+    assertThat(slice.items()).hasSize(50);
+    assertThat(slice.items().getFirst().bookedAt()).isBeforeOrEqualTo(deepCursor.bookedAt());
+    assertThat(plan.rootNodeType()).isEqualTo("Limit");
+    assertThat(plan.actualRows()).isEqualTo(51.0d);
     assertThat(plan.usesIndex("idx_transaction_read_model_account_cursor")).isTrue();
     assertThat(plan.hasNodeType("Seq Scan")).isFalse();
     assertThat(plan.hasNodeType("Sort")).isFalse();

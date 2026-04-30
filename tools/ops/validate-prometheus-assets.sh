@@ -69,12 +69,16 @@ expr = p95_rule["expr"].to_s
 abort("transaction p95 SLO alert must use histogram_quantile(0.95)") unless expr.match?(/histogram_quantile\s*\(\s*0\.95/)
 abort("transaction p95 SLO alert must read histogram buckets") unless expr.include?("aquila_transaction_query_latency_seconds_bucket")
 abort("transaction p95 SLO alert must keep query_shape labels") unless expr.include?("query_shape")
+abort("transaction p95 SLO alert must split immediate cursor") unless expr.include?(%q(query_shape="immediate_cursor"))
+abort("transaction p95 SLO alert must split deep cursor") unless expr.include?(%q(query_shape="deep_cursor"))
 p99_rule = transaction_rules.find { |rule| rule["alert"] == "AquilaTransactionQueryLatencyP99SloHigh" }
 abort("transaction p99 SLO alert missing") unless p99_rule
 expr = p99_rule["expr"].to_s
 abort("transaction p99 SLO alert must use histogram_quantile(0.99)") unless expr.match?(/histogram_quantile\s*\(\s*0\.99/)
 abort("transaction p99 SLO alert must read histogram buckets") unless expr.include?("aquila_transaction_query_latency_seconds_bucket")
 abort("transaction p99 SLO alert must keep query_shape labels") unless expr.include?("query_shape")
+abort("transaction p99 SLO alert must split immediate cursor") unless expr.include?(%q(query_shape="immediate_cursor"))
+abort("transaction p99 SLO alert must split deep cursor") unless expr.include?(%q(query_shape="deep_cursor"))
 abort("transaction average latency alert must not remain as SLO") if transaction_rules.any? { |rule| rule["alert"] == "AquilaTransactionQueryLatencyHigh" }
 
 def require_alert(data, alert_name, required_fragments)

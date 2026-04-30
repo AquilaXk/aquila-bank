@@ -2,6 +2,7 @@ package com.aquilabank.global.persistence.transaction;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.aquilabank.domain.transaction.model.TransactionCursor;
 import com.aquilabank.domain.transaction.model.TransactionQuery;
 import com.aquilabank.domain.transaction.model.TransactionSlice;
 import com.aquilabank.domain.transaction.model.TransactionStatus;
@@ -10,6 +11,7 @@ import com.aquilabank.support.TransactionArchiveReadModelBaselineFixture;
 import com.aquilabank.support.TransactionArchiveReadModelBaselineFixture.BaselineWindow;
 import com.aquilabank.support.TransactionExplainPlan;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Duration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -86,6 +88,24 @@ class JdbcTransactionArchiveReadRepositoryBaselineIntegrationTest
     assertThat(nextSlice.items()).hasSize(50);
     assertThat(nextSlice.items().getFirst().bookedAt())
         .isBeforeOrEqualTo(firstSlice.items().getLast().bookedAt());
+    assertThat(plan.usesIndex("idx_transaction_read_model_archive_account_cursor")).isTrue();
+    assertThat(plan.hasNodeType("Seq Scan")).isFalse();
+    assertThat(plan.hasNodeType("Sort")).isFalse();
+  }
+
+  @Test
+  void deepCursorPageKeepsArchiveAccountCursorIndexWithoutSeqScanOrSort() {
+    TransactionCursor deepCursor =
+        new TransactionCursor(baselineWindow.from().plus(Duration.ofDays(14)), Long.MAX_VALUE);
+    TransactionQuery query = query(deepCursor, null);
+
+    TransactionSlice slice = repository.fetchArchived(query);
+    TransactionExplainPlan plan = explain(query);
+
+    assertThat(slice.items()).hasSize(50);
+    assertThat(slice.items().getFirst().bookedAt()).isBeforeOrEqualTo(deepCursor.bookedAt());
+    assertThat(plan.rootNodeType()).isEqualTo("Limit");
+    assertThat(plan.actualRows()).isEqualTo(51.0d);
     assertThat(plan.usesIndex("idx_transaction_read_model_archive_account_cursor")).isTrue();
     assertThat(plan.hasNodeType("Seq Scan")).isFalse();
     assertThat(plan.hasNodeType("Sort")).isFalse();
