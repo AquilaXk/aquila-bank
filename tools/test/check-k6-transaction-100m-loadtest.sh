@@ -50,6 +50,22 @@ grep -F "generator runner=docker compose service k6-transaction-read-100m" <<<"$
 grep -F "observability mode=prometheus" <<<"${plan}" >/dev/null
 grep -F "preflight=true" <<<"${plan}" >/dev/null
 grep -F "scenario mode=constant-vus" <<<"${plan}" >/dev/null
+grep -F "workload shape=fixed-order seed=1 weights=hot_first:20,hot_cursor:20,hot_deep_cursor:10,cold_first:20,cold_cursor:20,cold_deep_cursor:10" <<<"${plan}" >/dev/null
+
+weighted_plan="$(
+  K6_REPORT_NAME=transaction-100m-weighted-check \
+  K6_WORKLOAD_SHAPE=weighted-random \
+  K6_WORKLOAD_SEED=42 \
+  K6_WORKLOAD_WEIGHTS=hot_first:30,hot_cursor:20,hot_deep_cursor:10,cold_first:20,cold_cursor:15,cold_deep_cursor:5 \
+    tools/test/run-k6-transaction-100m-loadtest.sh --print-plan
+)"
+grep -F "k6 report name: transaction-100m-weighted-check" <<<"${weighted_plan}" >/dev/null
+grep -F "workload shape=weighted-random seed=42 weights=hot_first:30,hot_cursor:20,hot_deep_cursor:10,cold_first:20,cold_cursor:15,cold_deep_cursor:5" <<<"${weighted_plan}" >/dev/null
+
+if K6_WORKLOAD_SHAPE=random-order tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
+  echo "invalid workload shape unexpectedly succeeded" >&2
+  exit 1
+fi
 
 summary_only_plan="$(
   K6_REPORT_NAME=transaction-100m-summary-only-check \
@@ -239,6 +255,12 @@ grep -F "K6_BURST_429_RATE_THRESHOLD" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_OVERLOAD_503_RATE_THRESHOLD" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_MAX_RETRY_AFTER_SLEEP_SECONDS" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_MAX_RETRY_AFTER_SLEEP_MS" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "K6_WORKLOAD_SHAPE" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "K6_WORKLOAD_SEED" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "K6_WORKLOAD_WEIGHTS" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "aquila_transaction_workload_shape_count" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "weighted-random" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "pickWeightedStep" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "X-RateLimit-Retry-After-Millis" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "X-RateLimit-Retry-Jitter-Millis" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "aquila_transaction_retry_after_sleep_ms" ops/k6/transaction-read-100m.js >/dev/null
@@ -278,6 +300,10 @@ grep -F "K6_OVERLOAD_429_RATE_THRESHOLD" tools/test/run-k6-transaction-100m-load
 grep -F "K6_BURST_429_RATE_THRESHOLD" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_OVERLOAD_503_RATE_THRESHOLD" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_MAX_RETRY_AFTER_SLEEP_MS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "K6_WORKLOAD_SHAPE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "K6_WORKLOAD_SEED" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "K6_WORKLOAD_WEIGHTS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "require_workload_shape" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_GENERATOR_MODE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_OBSERVABILITY_MODE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_BACKEND_READINESS_GATE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
