@@ -102,5 +102,9 @@ require_pattern 'terraform destroy' "${module_dir}/README.md"
 
 echo "[oci-paid-a1-postgres] root docs contract"
 require_pattern 'OCI A1 Flex + self-managed PostgreSQL' "README.md"
+require_pattern 'data 200GB self-managed PostgreSQL' "README.md"
+require_pattern '200GB Block Volume' "README.md"
+reject_pattern 'data 300GB' "README.md"
+reject_pattern '300GB Block Volume' "README.md"
 
 echo "[oci-paid-a1-postgres] contract check passed"

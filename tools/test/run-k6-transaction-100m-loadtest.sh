@@ -530,7 +530,7 @@ assert_k6_summary_gate() {
 
 print_plan() {
   echo "[k6-transaction-100m] compose files: ${compose_files[*]}"
-  echo "[k6-transaction-100m] backend: aquila-bank-backend:8080 with t3.micro budget"
+  echo "[k6-transaction-100m] backend: aquila-bank-backend:8080 with OCI A1 4 OCPU / 24GB budget"
   echo "[k6-transaction-100m] ports: db=${loadtest_db_port} backend=${loadtest_backend_port} prometheus=${loadtest_prometheus_port} grafana=${loadtest_grafana_port} alertmanager=${loadtest_alertmanager_port} postgres-exporter=${loadtest_postgres_exporter_port}"
   echo "[k6-transaction-100m] containers: postgres=${loadtest_postgres_container} backend=${loadtest_backend_container}"
   if [[ "${K6_OBSERVABILITY_MODE}" == "prometheus" ]]; then

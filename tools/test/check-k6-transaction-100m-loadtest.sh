@@ -15,7 +15,7 @@ plan="$(
   K6_LIMIT=50 \
     tools/test/run-k6-transaction-100m-loadtest.sh --print-plan
 )"
-grep -F "backend: aquila-bank-backend:8080 with t3.micro budget" <<<"${plan}" >/dev/null
+grep -F "backend: aquila-bank-backend:8080 with OCI A1 4 OCPU / 24GB budget" <<<"${plan}" >/dev/null
 grep -F "observability: prometheus:9090 grafana:3000 alertmanager:9093 postgres-exporter:9187" <<<"${plan}" >/dev/null
 grep -F "observability resources: prometheus=0.25/256m grafana=0.20/256m alertmanager=0.10/128m postgres-exporter=0.10/128m" <<<"${plan}" >/dev/null
 grep -F "k6 report name: transaction-100m-check" <<<"${plan}" >/dev/null
@@ -244,6 +244,11 @@ grep -F "X-RateLimit-Retry-Jitter-Millis" ops/k6/transaction-read-100m.js >/dev/
 grep -F "aquila_transaction_retry_after_sleep_ms" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "aquila_transaction_retry_after_count" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "aquila_transaction_429_rate" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "aquila_transaction_edge_429_rate" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "aquila_transaction_backend_429_rate" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "aquila_transaction_unknown_429_rate" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "aquila_transaction_502_count" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "aquila_transaction_accepted_200_count" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "aquila_transaction_503_rate" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "aquila_transaction_503_count" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "AQUILA_K6_WARMUP_DURATION" ops/k6/transaction-read-100m.js >/dev/null

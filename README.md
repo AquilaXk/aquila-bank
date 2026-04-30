@@ -1,16 +1,16 @@
 # Aquila Bank
 
-대용량 트래픽을 작은 인프라에서 무제한 처리하는 대신, OCI A1 Flex 4 OCPU / 24GB + data 300GB self-managed PostgreSQL 18 기준으로 1억 건 거래 데이터를 적재하고 bounded query로 조회하는 것을 목표로 하는 웹뱅킹 프로젝트입니다. AWS EC2는 legacy/optional app smoke 기준으로만 유지하고, 1억 건 DB primary evidence는 OCI A1 data volume에 둡니다.
+대용량 트래픽을 작은 인프라에서 무제한 처리하는 대신, OCI A1 Flex 4 OCPU / 24GB + data 200GB self-managed PostgreSQL 18 기준으로 1억 건 거래 데이터를 적재하고 bounded query로 조회하는 것을 목표로 하는 웹뱅킹 프로젝트입니다. AWS EC2는 legacy/optional app smoke 기준으로만 유지하고, 1억 건 DB primary evidence는 OCI A1 data volume에 둡니다.
 
 ## Overview
 
 - 목표:
   - 대용량 트래픽 방어와 과부하 시 fail-fast
   - 실시간 알림 지원
-  - OCI A1 Flex + self-managed PostgreSQL 18 + 300GB Block Volume 기반 1억 건 fixture 적재와 계좌/기간/keyset page 조회 지원
+  - OCI A1 Flex + self-managed PostgreSQL 18 + 200GB Block Volume 기반 1억 건 fixture 적재와 계좌/기간/keyset page 조회 지원
   - 제한된 cloud budget에서도 운영 가능한 구조 지향
   - 로컬/배포 환경 모두 `PostgreSQL 18` 표준화
-  - 비용형 DB/capacity baseline은 OCI A1 Flex 4 OCPU / 24GB + data 300GB self-managed PostgreSQL로 통일
+  - 비용형 DB/capacity baseline은 OCI A1 Flex 4 OCPU / 24GB + data 200GB self-managed PostgreSQL로 통일
   - AWS App EC2는 legacy/optional 배포 smoke로만 사용
 - 제외 목표:
   - 전체 1억 건 검색/집계/정렬
@@ -37,7 +37,7 @@
 
 - `front`: 고객/운영 웹 애플리케이션
 - `back`: API, 도메인, 배치, 어댑터
-- `infra`: 선택형 cloud baseline Terraform. 1억 건 DB/capacity 기준은 OCI A1 Flex 4 OCPU / 24GB + data 300GB self-managed PostgreSQL
+- `infra`: 선택형 cloud baseline Terraform. 1억 건 DB/capacity 기준은 OCI A1 Flex 4 OCPU / 24GB + data 200GB self-managed PostgreSQL
 - `ops`: reverse proxy 같은 운영 baseline 파일
 - `.github`: 이슈/PR 템플릿과 협업 메타 설정
 - `compose.yml`: 로컬 개발용 Docker Compose 인프라 실행 기준
@@ -47,9 +47,9 @@
 ## Runtime Baseline
 
 - database: `PostgreSQL 18`
-- primary 100m evidence: `OCI A1 Flex + self-managed PostgreSQL 18 + 300GB Block Volume`
+- primary 100m evidence: `OCI A1 Flex + self-managed PostgreSQL 18 + 200GB Block Volume`
 - query/admission budget: OCI A1 `4 OCPU / 24GB` 기반 작은 CPU/메모리 budget
-- paid DB/capacity baseline: `OCI A1 Flex 4 OCPU / 24GB + self-managed PostgreSQL 18 + 300GB Block Volume`
+- paid DB/capacity baseline: `OCI A1 Flex 4 OCPU / 24GB + self-managed PostgreSQL 18 + 200GB Block Volume`
 - optional legacy app smoke: `EC2 t3.small + gp3 40GiB`
 
 ## Environment Split
@@ -59,7 +59,7 @@
 - 로컬 small-budget 근사 검증: legacy 이름의 `compose.t3micro.yml`과 `tools/test/run-docker-t3micro-capacity-smoke.sh`로 CPU/메모리 cgroup 제한을 적용합니다.
 - 로컬 HTTP 부하 테스트: `compose.loadtest.yml`로 backend, k6, Prometheus, Grafana, Alertmanager, Postgres exporter를 함께 띄웁니다. Prometheus/Grafana는 부하테스트/선택 운영 자산이며 앱/DB host 상시 필수 구성에서 제외합니다.
 - cloud 1억 건 synthetic 조회 테스트: dataset 생성은 OCI A1 PostgreSQL을 향해 `tools/test/prepare-transaction-read-model-100m-fixture.sh`를 실행하고, k6 조회는 remote/off-host runner 또는 기존 legacy 이름의 `tools/test/run-transaction-read-model-100m-k6-local.sh --k6-only`로 분리합니다. 생성 phase와 조회 phase 모두 OCI A1 data volume의 1억 건 dataset을 기준으로 판정합니다.
-- 비용형 1억 건 DB/capacity 기준: [infra/terraform/oci/paid-a1-postgres](/Users/aquila/Custom/GitProjects/aquila-bank/infra/terraform/oci/paid-a1-postgres/README.md)는 `VM.Standard.A1.Flex` 4 OCPU / 24GB + data 300GB self-managed PostgreSQL 18 기준입니다. PostgreSQL 5432 public ingress는 열지 않고 SSH tunnel/private 경로로만 접근합니다.
+- 비용형 1억 건 DB/capacity 기준: [infra/terraform/oci/paid-a1-postgres](/Users/aquila/Custom/GitProjects/aquila-bank/infra/terraform/oci/paid-a1-postgres/README.md)는 `VM.Standard.A1.Flex` 4 OCPU / 24GB + data 200GB self-managed PostgreSQL 18 기준입니다. PostgreSQL 5432 public ingress는 열지 않고 SSH tunnel/private 경로로만 접근합니다.
 - legacy app smoke: `EC2 t3.small + gp3 40GiB`는 AWS 배포 경로 확인용으로만 남기며, remote DB/capacity 기준으로 사용하지 않습니다.
 - reverse proxy baseline template은 [ops/nginx/nginx.conf](/Users/aquila/Custom/GitProjects/aquila-bank/ops/nginx/nginx.conf)에 두고, runtime 값은 `ops/nginx/runtime.env.example` 기반으로 렌더링합니다.
 - `compose.yml`은 로컬 개발 전용이며, 배포용 인프라 정의는 포함하지 않습니다.
@@ -105,7 +105,7 @@ com.aquilabank
 - domain은 framework, web, persistence 구현체에 의존하지 않습니다.
 - global은 domain을 사용해 어댑터와 설정을 구성합니다.
 - util에는 비즈니스 로직을 두지 않고, 공통 기술 보조 코드만 둡니다.
-- 읽기 경로는 대용량 트래픽 방어, 1억 건 저장 규모, OCI A1 4 OCPU / 24GB + data 300GB 운영 budget 한계를 함께 고려해 경량화와 분리를 우선합니다.
+- 읽기 경로는 대용량 트래픽 방어, 1억 건 저장 규모, OCI A1 4 OCPU / 24GB + data 200GB 운영 budget 한계를 함께 고려해 경량화와 분리를 우선합니다.
 - 거래 목록 조회는 `accountId + 기간 + keyset pagination` 경로만 온라인 목표로 둡니다.
 - 전체 1억 건 검색/집계/정렬은 온라인 목표에서 제외합니다.
 

@@ -88,8 +88,18 @@ const coldFirst = new Trend("aquila_transaction_cold_first_ms", true);
 const coldCursor = new Trend("aquila_transaction_cold_cursor_ms", true);
 const coldDeepCursor = new Trend("aquila_transaction_cold_deep_cursor_ms", true);
 const transaction429Rate = new Rate("aquila_transaction_429_rate");
+const edge429Rate = new Rate("aquila_transaction_edge_429_rate");
+const edge429Count = new Counter("aquila_transaction_edge_429_count");
+const backend429Rate = new Rate("aquila_transaction_backend_429_rate");
+const backend429Count = new Counter("aquila_transaction_backend_429_count");
+const unknown429Rate = new Rate("aquila_transaction_unknown_429_rate");
+const unknown429Count = new Counter("aquila_transaction_unknown_429_count");
+const transaction502Rate = new Rate("aquila_transaction_502_rate");
+const transaction502Count = new Counter("aquila_transaction_502_count");
 const transaction503Rate = new Rate("aquila_transaction_503_rate");
 const transaction503Count = new Counter("aquila_transaction_503_count");
+const accepted200Rate = new Rate("aquila_transaction_accepted_200_rate");
+const accepted200Count = new Counter("aquila_transaction_accepted_200_count");
 const retryAfterSleep = new Trend("aquila_transaction_retry_after_sleep_ms", true);
 const retryAfterCount = new Counter("aquila_transaction_retry_after_count");
 
@@ -137,6 +147,8 @@ function thresholds() {
     result.http_req_failed = [`rate<${failedRate}`];
   } else {
     result.aquila_transaction_429_rate = [`rate<${effectiveOverload429RateThreshold}`];
+    result.aquila_transaction_502_rate = ["rate<=0"];
+    result.aquila_transaction_502_count = ["count<1"];
     result.aquila_transaction_503_rate = [`rate<=${overload503RateThreshold}`];
     result.aquila_transaction_503_count = ["count<1"];
   }
@@ -293,6 +305,21 @@ function numericHeader(response, name) {
   return Number.isFinite(value) && value >= 0 ? value : null;
 }
 
+function rejectSource(response) {
+  if (response.status !== 429) {
+    return "";
+  }
+  const source = header(response, "X-Aquila-Reject-Source").toLowerCase();
+  const reason = header(response, "X-Aquila-Reject-Reason").toLowerCase();
+  if (source === "nginx-edge" || reason === "edge-rate-limit") {
+    return "edge";
+  }
+  if (reason === "backend-admission") {
+    return "backend";
+  }
+  return "unknown";
+}
+
 function sleepAfter429(response) {
   if (maxRetryAfterSleepMs <= 0) {
     return;
@@ -338,14 +365,40 @@ function requestPage(shape, path, accountId, from, to, cursor) {
   });
 
   const is429 = response.status === 429;
+  const source = rejectSource(response);
+  const isEdge429 = source === "edge";
+  const isBackend429 = source === "backend";
+  const isUnknown429 = source === "unknown";
+  const is502 = response.status === 502;
   const is503 = response.status === 503;
+  const isAccepted200 = response.status === 200;
   const measured = !exec.scenario.name.endsWith("_warmup");
   if (measured) {
     transaction429Rate.add(is429);
+    edge429Rate.add(isEdge429);
+    backend429Rate.add(isBackend429);
+    unknown429Rate.add(isUnknown429);
+    transaction502Rate.add(is502);
     transaction503Rate.add(is503);
+    accepted200Rate.add(isAccepted200);
+  }
+  if (isEdge429 && measured) {
+    edge429Count.add(1);
+  }
+  if (isBackend429 && measured) {
+    backend429Count.add(1);
+  }
+  if (isUnknown429 && measured) {
+    unknown429Count.add(1);
+  }
+  if (is502 && measured) {
+    transaction502Count.add(1);
   }
   if (is503 && measured) {
     transaction503Count.add(1);
+  }
+  if (isAccepted200 && measured) {
+    accepted200Count.add(1);
   }
   if (is429 && overloadMode) {
     // 429는 admission guard의 정상 보호 신호라 overload mode에서만 예외 없이 집계합니다.
@@ -532,8 +585,18 @@ function markdownSummary(data) {
 - http_req_failed rate: ${metric(data, "http_req_failed", "rate")}
 - checks rate: ${metric(data, "checks", "rate")}
 - transaction 429 rate: ${metric(data, "aquila_transaction_429_rate", "rate")}
+- transaction edge 429 rate: ${metric(data, "aquila_transaction_edge_429_rate", "rate")}
+- transaction edge 429 count: ${metric(data, "aquila_transaction_edge_429_count", "count")}
+- transaction backend 429 rate: ${metric(data, "aquila_transaction_backend_429_rate", "rate")}
+- transaction backend 429 count: ${metric(data, "aquila_transaction_backend_429_count", "count")}
+- transaction unknown 429 rate: ${metric(data, "aquila_transaction_unknown_429_rate", "rate")}
+- transaction unknown 429 count: ${metric(data, "aquila_transaction_unknown_429_count", "count")}
+- transaction 502 rate: ${metric(data, "aquila_transaction_502_rate", "rate")}
+- transaction 502 count: ${metric(data, "aquila_transaction_502_count", "count")}
 - transaction 503 rate: ${metric(data, "aquila_transaction_503_rate", "rate")}
 - transaction 503 count: ${metric(data, "aquila_transaction_503_count", "count")}
+- transaction accepted 200 rate: ${metric(data, "aquila_transaction_accepted_200_rate", "rate")}
+- transaction accepted 200 count: ${metric(data, "aquila_transaction_accepted_200_count", "count")}
 - retry-after sleep count: ${metric(data, "aquila_transaction_retry_after_count", "count")}
 - retry-after sleep avg ms: ${metric(data, "aquila_transaction_retry_after_sleep_ms", "avg")}
 - retry-after sleep p95 ms: ${metric(data, "aquila_transaction_retry_after_sleep_ms", "p(95)")}
