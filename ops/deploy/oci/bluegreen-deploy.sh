@@ -544,10 +544,13 @@ run_green_slot() {
 
 render_nginx_config() {
   local slot="$1"
-  local backend_name frontend_name backend_proxy_host
+  local backend_name frontend_name backend_proxy_host edge_retry_after_seconds edge_retry_after_millis edge_retry_jitter_millis
   backend_name="$(slot_name backend "${slot}")"
   frontend_name="$(slot_name frontend "${slot}")"
   backend_proxy_host="${BACKEND_PROXY_HOST:-${backend_name}}"
+  edge_retry_after_seconds="${NGINX_EDGE_RETRY_AFTER_SECONDS:-1}"
+  edge_retry_after_millis="${NGINX_EDGE_RETRY_AFTER_MILLIS:-250}"
+  edge_retry_jitter_millis="${NGINX_EDGE_RETRY_JITTER_MILLIS:-250}"
 
   cat <<NGINX
 worker_processes auto;
@@ -570,6 +573,8 @@ http {
       '"upstream_connect_time":"\$upstream_connect_time",'
       '"upstream_header_time":"\$upstream_header_time",'
       '"limit_req_status":"\$limit_req_status",'
+      '"reject_source":"\$sent_http_x_aquila_reject_source",'
+      '"reject_reason":"\$sent_http_x_aquila_reject_reason",'
       '"request_id":"\$request_id",'
       '"k6_run_id":"\$http_x_k6_run_id"'
     '}';
@@ -579,10 +584,16 @@ http {
   limit_req_zone \$binary_remote_addr zone=aquila_bank_api_per_ip:10m rate=30r/s;
   # 공개 auth 진입점은 token/bcrypt 비용 전에 더 보수적으로 edge 차단합니다.
   limit_req_zone \$binary_remote_addr zone=aquila_bank_auth_per_ip:10m rate=5r/s;
+  # transaction-read는 k6 iteration당 여러 page 조회가 발생해 generic /api budget과 분리합니다.
+  limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_read_per_ip:10m rate=48r/s;
+  # transfer write는 정합성 비용이 커서 read-heavy traffic과 별도 fail-fast 예산을 둡니다.
+  limit_req_zone \$binary_remote_addr zone=aquila_bank_transfer_per_ip:10m rate=3r/s;
 
   upstream aquila_bank_backend {
     server ${backend_name}:${BACKEND_PORT};
     keepalive 16;
+    keepalive_requests 1000;
+    keepalive_timeout 60s;
   }
 
   upstream aquila_bank_frontend {
@@ -596,6 +607,20 @@ http {
 
     proxy_http_version 1.1;
     proxy_connect_timeout 3s;
+    proxy_socket_keepalive on;
+    error_page 429 = @aquila_edge_rate_limited;
+
+    location @aquila_edge_rate_limited {
+      internal;
+      default_type application/json;
+      add_header X-Aquila-Reject-Source nginx-edge always;
+      add_header X-Aquila-Reject-Reason edge-rate-limit always;
+      add_header Retry-After ${edge_retry_after_seconds} always;
+      add_header X-RateLimit-Scope nginx-edge always;
+      add_header X-RateLimit-Retry-After-Millis ${edge_retry_after_millis} always;
+      add_header X-RateLimit-Retry-Jitter-Millis ${edge_retry_jitter_millis} always;
+      return 429 '{"error":"rate_limited","source":"nginx-edge","reason":"edge-rate-limit","retryAfterMillis":${edge_retry_after_millis},"retryJitterMillis":${edge_retry_jitter_millis}}';
+    }
 
     location = /api/v1/notifications/stream {
       # SSE 장기 연결은 proxy buffering을 끄고 기존 blue 슬롯을 짧게 drain한다.
@@ -684,6 +709,74 @@ http {
       proxy_send_timeout 30s;
     }
 
+    location = /api/v1/transactions {
+      proxy_pass http://aquila_bank_backend;
+      proxy_set_header Host ${backend_proxy_host};
+      proxy_set_header X-Request-Id \$request_id;
+      proxy_set_header X-K6-Run-Id \$http_x_k6_run_id;
+      proxy_set_header X-Real-IP \$remote_addr;
+      proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto \$scheme;
+      proxy_set_header X-Forwarded-Host \$host;
+      proxy_set_header X-Forwarded-Port \$server_port;
+      proxy_set_header Connection "";
+      proxy_next_upstream off;
+      limit_req zone=aquila_bank_transaction_read_per_ip burst=24 delay=8;
+      proxy_read_timeout 30s;
+      proxy_send_timeout 30s;
+    }
+
+    location = /api/v1/transactions/archive {
+      proxy_pass http://aquila_bank_backend;
+      proxy_set_header Host ${backend_proxy_host};
+      proxy_set_header X-Request-Id \$request_id;
+      proxy_set_header X-K6-Run-Id \$http_x_k6_run_id;
+      proxy_set_header X-Real-IP \$remote_addr;
+      proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto \$scheme;
+      proxy_set_header X-Forwarded-Host \$host;
+      proxy_set_header X-Forwarded-Port \$server_port;
+      proxy_set_header Connection "";
+      proxy_next_upstream off;
+      limit_req zone=aquila_bank_transaction_read_per_ip burst=24 delay=8;
+      proxy_read_timeout 30s;
+      proxy_send_timeout 30s;
+    }
+
+    location = /api/v1/transfers {
+      proxy_pass http://aquila_bank_backend;
+      proxy_set_header Host ${backend_proxy_host};
+      proxy_set_header X-Request-Id \$request_id;
+      proxy_set_header X-K6-Run-Id \$http_x_k6_run_id;
+      proxy_set_header X-Real-IP \$remote_addr;
+      proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto \$scheme;
+      proxy_set_header X-Forwarded-Host \$host;
+      proxy_set_header X-Forwarded-Port \$server_port;
+      proxy_set_header Connection "";
+      proxy_next_upstream off;
+      limit_req zone=aquila_bank_transfer_per_ip burst=6 nodelay;
+      proxy_read_timeout 30s;
+      proxy_send_timeout 30s;
+    }
+
+    location ~ ^/api/v1/transfers/[^/]+/reversal$ {
+      proxy_pass http://aquila_bank_backend;
+      proxy_set_header Host ${backend_proxy_host};
+      proxy_set_header X-Request-Id \$request_id;
+      proxy_set_header X-K6-Run-Id \$http_x_k6_run_id;
+      proxy_set_header X-Real-IP \$remote_addr;
+      proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto \$scheme;
+      proxy_set_header X-Forwarded-Host \$host;
+      proxy_set_header X-Forwarded-Port \$server_port;
+      proxy_set_header Connection "";
+      proxy_next_upstream off;
+      limit_req zone=aquila_bank_transfer_per_ip burst=6 nodelay;
+      proxy_read_timeout 30s;
+      proxy_send_timeout 30s;
+    }
+
     location /api/ {
       proxy_pass http://aquila_bank_backend;
       proxy_set_header Host ${backend_proxy_host};
@@ -696,7 +789,7 @@ http {
       proxy_set_header X-Forwarded-Port \$server_port;
       proxy_set_header Connection "";
       proxy_next_upstream off;
-      limit_req zone=aquila_bank_api_per_ip burst=60 nodelay;
+      limit_req zone=aquila_bank_api_per_ip burst=20 delay=5;
       proxy_read_timeout 30s;
       proxy_send_timeout 30s;
     }

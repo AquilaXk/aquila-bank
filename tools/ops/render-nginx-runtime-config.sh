@@ -43,6 +43,22 @@ done
 
 NGINX_BACKEND_SSE_SERVERS="${NGINX_BACKEND_SSE_SERVERS:-${NGINX_BACKEND_API_SERVERS}}"
 NGINX_BACKEND_PROXY_HOST="${NGINX_BACKEND_PROXY_HOST:-aquila-bank-backend}"
+NGINX_EDGE_RETRY_AFTER_SECONDS="${NGINX_EDGE_RETRY_AFTER_SECONDS:-1}"
+NGINX_EDGE_RETRY_AFTER_MILLIS="${NGINX_EDGE_RETRY_AFTER_MILLIS:-250}"
+NGINX_EDGE_RETRY_JITTER_MILLIS="${NGINX_EDGE_RETRY_JITTER_MILLIS:-250}"
+
+require_non_negative_integer() {
+  local name="$1"
+  local value="$2"
+  if ! [[ "${value}" =~ ^[0-9]+$ ]]; then
+    echo "[nginx-render] ${name} must be a non-negative integer: ${value}" >&2
+    exit 1
+  fi
+}
+
+require_non_negative_integer "NGINX_EDGE_RETRY_AFTER_SECONDS" "${NGINX_EDGE_RETRY_AFTER_SECONDS}"
+require_non_negative_integer "NGINX_EDGE_RETRY_AFTER_MILLIS" "${NGINX_EDGE_RETRY_AFTER_MILLIS}"
+require_non_negative_integer "NGINX_EDGE_RETRY_JITTER_MILLIS" "${NGINX_EDGE_RETRY_JITTER_MILLIS}"
 
 render_server_lines() {
   local servers_csv="$1"
@@ -75,6 +91,9 @@ rendered="${rendered//'${NGINX_FRONTEND_SERVER_LINES}'/${NGINX_FRONTEND_SERVER_L
 rendered="${rendered//'${NGINX_BACKEND_API_SERVER_LINES}'/${NGINX_BACKEND_API_SERVER_LINES}}"
 rendered="${rendered//'${NGINX_BACKEND_SSE_SERVER_LINES}'/${NGINX_BACKEND_SSE_SERVER_LINES}}"
 rendered="${rendered//'${NGINX_BACKEND_PROXY_HOST}'/${NGINX_BACKEND_PROXY_HOST}}"
+rendered="${rendered//'${NGINX_EDGE_RETRY_AFTER_SECONDS}'/${NGINX_EDGE_RETRY_AFTER_SECONDS}}"
+rendered="${rendered//'${NGINX_EDGE_RETRY_AFTER_MILLIS}'/${NGINX_EDGE_RETRY_AFTER_MILLIS}}"
+rendered="${rendered//'${NGINX_EDGE_RETRY_JITTER_MILLIS}'/${NGINX_EDGE_RETRY_JITTER_MILLIS}}"
 
 mkdir -p "$(dirname "${output_path}")"
 printf '%s\n' "${rendered}" > "${output_path}"

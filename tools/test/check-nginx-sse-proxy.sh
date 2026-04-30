@@ -33,11 +33,15 @@ required_patterns=(
   '"upstream_connect_time":"$upstream_connect_time"'
   '"upstream_header_time":"$upstream_header_time"'
   '"limit_req_status":"$limit_req_status"'
+  '"reject_source":"$sent_http_x_aquila_reject_source"'
+  '"reject_reason":"$sent_http_x_aquila_reject_reason"'
   '"request_id":"$request_id"'
   '"k6_run_id":"$http_x_k6_run_id"'
   "access_log /var/log/nginx/access.log aquila_bank_upstream;"
   "limit_req_zone \$binary_remote_addr zone=aquila_bank_api_per_ip:10m rate=30r/s;"
   "limit_req_zone \$binary_remote_addr zone=aquila_bank_auth_per_ip:10m rate=5r/s;"
+  "limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_read_per_ip:10m rate=48r/s;"
+  "limit_req_zone \$binary_remote_addr zone=aquila_bank_transfer_per_ip:10m rate=3r/s;"
   "upstream aquila_bank_frontend"
   "\${NGINX_FRONTEND_SERVER_LINES}"
   "upstream aquila_bank_backend_api"
@@ -45,6 +49,8 @@ required_patterns=(
   "upstream aquila_bank_backend_sse"
   "least_conn;"
   "\${NGINX_BACKEND_SSE_SERVER_LINES}"
+  "keepalive_requests 1000;"
+  "keepalive_timeout 60s;"
   "server_name \${NGINX_SERVER_NAME};"
   "location ^~ /.well-known/acme-challenge/"
   "return 308 https://\$server_name\$request_uri;"
@@ -67,10 +73,24 @@ required_patterns=(
   "location = /api/v1/auth/refresh"
   "location = /api/v1/auth/password-recovery/request"
   "limit_req zone=aquila_bank_auth_per_ip burst=10 nodelay;"
+  "error_page 429 = @aquila_edge_rate_limited;"
+  "location @aquila_edge_rate_limited"
+  "add_header X-Aquila-Reject-Source nginx-edge always;"
+  "add_header X-Aquila-Reject-Reason edge-rate-limit always;"
+  "add_header Retry-After \${NGINX_EDGE_RETRY_AFTER_SECONDS} always;"
+  "add_header X-RateLimit-Retry-After-Millis \${NGINX_EDGE_RETRY_AFTER_MILLIS} always;"
+  "add_header X-RateLimit-Retry-Jitter-Millis \${NGINX_EDGE_RETRY_JITTER_MILLIS} always;"
+  '"source":"nginx-edge"'
+  "location = /api/v1/transactions"
+  "location = /api/v1/transactions/archive"
+  "limit_req zone=aquila_bank_transaction_read_per_ip burst=24 delay=8;"
+  "location = /api/v1/transfers"
+  "location ~ ^/api/v1/transfers/[^/]+/reversal$"
+  "limit_req zone=aquila_bank_transfer_per_ip burst=6 nodelay;"
   "location /api/"
   "proxy_pass http://aquila_bank_backend_api;"
   "proxy_next_upstream off;"
-  "limit_req zone=aquila_bank_api_per_ip burst=60 nodelay;"
+  "limit_req zone=aquila_bank_api_per_ip burst=20 delay=5;"
   "location ^~ /actuator/health"
   "location / {"
 )

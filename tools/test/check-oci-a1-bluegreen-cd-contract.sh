@@ -232,18 +232,39 @@ script_patterns=(
   'proxy_set_header X-K6-Run-Id \$http_x_k6_run_id;'
   '"upstream_status":"\$upstream_status"'
   '"limit_req_status":"\$limit_req_status"'
+  '"reject_source":"\$sent_http_x_aquila_reject_source"'
+  '"reject_reason":"\$sent_http_x_aquila_reject_reason"'
   '"k6_run_id":"\$http_x_k6_run_id"'
   "limit_req_status 429;"
   'limit_req_zone \$binary_remote_addr zone=aquila_bank_api_per_ip:10m rate=30r/s;'
   'limit_req_zone \$binary_remote_addr zone=aquila_bank_auth_per_ip:10m rate=5r/s;'
+  'limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_read_per_ip:10m rate=48r/s;'
+  'limit_req_zone \$binary_remote_addr zone=aquila_bank_transfer_per_ip:10m rate=3r/s;'
   'proxy_set_header X-Forwarded-Host \$host;'
+  "error_page 429 = @aquila_edge_rate_limited;"
+  "location @aquila_edge_rate_limited"
+  "add_header X-Aquila-Reject-Source nginx-edge always;"
+  "add_header X-Aquila-Reject-Reason edge-rate-limit always;"
+  'add_header Retry-After ${edge_retry_after_seconds} always;'
+  'add_header X-RateLimit-Retry-After-Millis ${edge_retry_after_millis} always;'
+  'add_header X-RateLimit-Retry-Jitter-Millis ${edge_retry_jitter_millis} always;'
+  '"source":"nginx-edge"'
   "location = /api/v1/notifications/stream"
   "proxy_buffering off;"
   "location = /api/v1/auth/login"
   "location = /api/v1/auth/refresh"
   "location = /api/v1/auth/password-recovery/request"
   "limit_req zone=aquila_bank_auth_per_ip burst=10 nodelay;"
-  "limit_req zone=aquila_bank_api_per_ip burst=60 nodelay;"
+  "location = /api/v1/transactions"
+  "location = /api/v1/transactions/archive"
+  "limit_req zone=aquila_bank_transaction_read_per_ip burst=24 delay=8;"
+  "location = /api/v1/transfers"
+  "location ~ ^/api/v1/transfers/[^/]+/reversal$"
+  "limit_req zone=aquila_bank_transfer_per_ip burst=6 nodelay;"
+  "keepalive_requests 1000;"
+  "keepalive_timeout 60s;"
+  "proxy_socket_keepalive on;"
+  "limit_req zone=aquila_bank_api_per_ip burst=20 delay=5;"
   "nginx -s reload"
   "ensure_nginx_config_visible"
   'docker exec "${NGINX_CONTAINER}" grep -Fq'
