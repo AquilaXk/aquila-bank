@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 
 class ApiAdmissionControlTest {
@@ -150,6 +151,100 @@ class ApiAdmissionControlTest {
   }
 
   @Test
+  void keepsAdaptiveLimitAfterSingleRejectedAdmission() {
+    SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+    ApiAdmissionControl admissionControl =
+        new ApiAdmissionControl(adaptiveProperties(4, 2, 4, 100, 1, 4, 0.5, 1, 1), meterRegistry);
+
+    ApiAdmissionPermit first = admissionControl.tryAcquire("/api/v1/transactions");
+    ApiAdmissionPermit second = admissionControl.tryAcquire("/api/v1/transactions");
+    ApiAdmissionPermit third = admissionControl.tryAcquire("/api/v1/transactions");
+    ApiAdmissionPermit fourth = admissionControl.tryAcquire("/api/v1/transactions");
+    ApiAdmissionPermit rejected = admissionControl.tryAcquire("/api/v1/transactions");
+
+    assertThat(first.allowed()).isTrue();
+    assertThat(second.allowed()).isTrue();
+    assertThat(third.allowed()).isTrue();
+    assertThat(fourth.allowed()).isTrue();
+    assertThat(rejected.allowed()).isFalse();
+    assertCurrentLimit(meterRegistry, 4.0);
+
+    first.release();
+    second.release();
+    third.release();
+    fourth.release();
+  }
+
+  @Test
+  void lowersAdaptiveLimitByRollingRejectionRatioAndCooldown() {
+    AtomicLong now = new AtomicLong();
+    SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+    ApiAdmissionControl admissionControl =
+        new ApiAdmissionControl(
+            adaptiveProperties(4, 2, 4, 100, 1, 4, 0.5, 5, 1), meterRegistry, now::get);
+
+    ApiAdmissionPermit first = admissionControl.tryAcquire("/api/v1/transactions");
+    ApiAdmissionPermit second = admissionControl.tryAcquire("/api/v1/transactions");
+    ApiAdmissionPermit third = admissionControl.tryAcquire("/api/v1/transactions");
+    ApiAdmissionPermit fourth = admissionControl.tryAcquire("/api/v1/transactions");
+
+    assertThat(admissionControl.tryAcquire("/api/v1/transactions").allowed()).isFalse();
+    assertCurrentLimit(meterRegistry, 4.0);
+
+    assertThat(admissionControl.tryAcquire("/api/v1/transactions").allowed()).isFalse();
+    assertCurrentLimit(meterRegistry, 3.0);
+
+    assertThat(admissionControl.tryAcquire("/api/v1/transactions").allowed()).isFalse();
+    assertCurrentLimit(meterRegistry, 3.0);
+
+    now.addAndGet(5_000_000_000L);
+    assertThat(admissionControl.tryAcquire("/api/v1/transactions").allowed()).isFalse();
+    assertCurrentLimit(meterRegistry, 2.0);
+
+    first.release();
+    second.release();
+    third.release();
+    fourth.release();
+  }
+
+  @Test
+  void raisesAdaptiveLimitByRecoveryStepAfterHealthyCompletions() {
+    SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+    ApiAdmissionControl admissionControl =
+        new ApiAdmissionControl(adaptiveProperties(2, 1, 5, 2, 1, 4, 0.5, 1, 2), meterRegistry);
+
+    ApiAdmissionPermit first = admissionControl.tryAcquire("/api/v1/transactions");
+    first.release();
+    ApiAdmissionPermit second = admissionControl.tryAcquire("/api/v1/transactions");
+    second.release();
+
+    assertCurrentLimit(meterRegistry, 4.0);
+  }
+
+  @Test
+  void usesExplicitZeroRetryAfterWithoutDefaultFallback() {
+    SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+    ApiAdmissionControl admissionControl =
+        new ApiAdmissionControl(
+            new ApiAdmissionControlProperties(
+                true,
+                1,
+                List.of(
+                    new ApiAdmissionControlProperties.EndpointLimit(
+                        "transaction-read", 1, 0, List.of("/api/v1/transactions"), null))),
+            meterRegistry);
+
+    ApiAdmissionPermit first = admissionControl.tryAcquire("/api/v1/transactions");
+    ApiAdmissionPermit rejected = admissionControl.tryAcquire("/api/v1/transactions");
+
+    assertThat(first.allowed()).isTrue();
+    assertThat(rejected.allowed()).isFalse();
+    assertThat(rejected.retryAfterSeconds()).isZero();
+
+    first.release();
+  }
+
+  @Test
   void usesEndpointRetryAfterAndOciA1TransactionReadAdaptiveBounds() {
     SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
     ApiAdmissionControl admissionControl =
@@ -163,7 +258,8 @@ class ApiAdmissionControlTest {
                         6,
                         1,
                         List.of("/api/v1/transactions"),
-                        new ApiAdmissionControlProperties.AdaptiveLimit(true, 6, 12, 64, 1)))),
+                        new ApiAdmissionControlProperties.AdaptiveLimit(
+                            true, 6, 12, 64, 1, 20, 0.5, 1, 1)))),
             meterRegistry);
 
     ApiAdmissionPermit first = admissionControl.tryAcquire("/api/v1/transactions");
@@ -206,7 +302,8 @@ class ApiAdmissionControlTest {
                         1,
                         0,
                         List.of("/api/v1/transactions"),
-                        new ApiAdmissionControlProperties.AdaptiveLimit(false, 0, 0, 0, 0)))),
+                        new ApiAdmissionControlProperties.AdaptiveLimit(
+                            false, 0, 0, 0, 0, 0, 0, 0, 0)))),
             meterRegistry);
 
     ApiAdmissionPermit first = admissionControl.tryAcquire("/api/v1/transactions");
@@ -225,7 +322,7 @@ class ApiAdmissionControlTest {
         1,
         List.of(
             new ApiAdmissionControlProperties.EndpointLimit(
-                "transaction-read", 1, 0, List.of("/api/v1/transactions"), null)));
+                "transaction-read", 1, -1, List.of("/api/v1/transactions"), null)));
   }
 
   private ApiAdmissionControlProperties adaptiveProperties(
@@ -241,14 +338,49 @@ class ApiAdmissionControlTest {
             new ApiAdmissionControlProperties.EndpointLimit(
                 "transaction-read",
                 maxConcurrency,
-                0,
+                -1,
                 List.of("/api/v1/transactions"),
                 new ApiAdmissionControlProperties.AdaptiveLimit(
                     true,
                     minConcurrency,
                     adaptiveMaxConcurrency,
                     increaseEverySuccesses,
-                    decreaseOnRejections))));
+                    decreaseOnRejections,
+                    1,
+                    1.0,
+                    0,
+                    1))));
+  }
+
+  private ApiAdmissionControlProperties adaptiveProperties(
+      int maxConcurrency,
+      int minConcurrency,
+      int adaptiveMaxConcurrency,
+      int increaseEverySuccesses,
+      int decreaseOnRejections,
+      int rejectionWindowSize,
+      double decreaseRejectionRatio,
+      int decreaseCooldownSeconds,
+      int recoveryStep) {
+    return new ApiAdmissionControlProperties(
+        true,
+        1,
+        List.of(
+            new ApiAdmissionControlProperties.EndpointLimit(
+                "transaction-read",
+                maxConcurrency,
+                -1,
+                List.of("/api/v1/transactions"),
+                new ApiAdmissionControlProperties.AdaptiveLimit(
+                    true,
+                    minConcurrency,
+                    adaptiveMaxConcurrency,
+                    increaseEverySuccesses,
+                    decreaseOnRejections,
+                    rejectionWindowSize,
+                    decreaseRejectionRatio,
+                    decreaseCooldownSeconds,
+                    recoveryStep))));
   }
 
   private void assertCurrentLimit(SimpleMeterRegistry meterRegistry, double expected) {

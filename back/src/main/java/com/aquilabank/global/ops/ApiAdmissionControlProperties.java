@@ -5,11 +5,15 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = "ops.api-admission-control")
 public record ApiAdmissionControlProperties(
-    Boolean enabled, int retryAfterSeconds, List<EndpointLimit> endpoints) {
+    Boolean enabled, Integer retryAfterSeconds, List<EndpointLimit> endpoints) {
 
   public ApiAdmissionControlProperties {
     enabled = enabled == null ? Boolean.TRUE : enabled;
-    retryAfterSeconds = retryAfterSeconds > 0 ? retryAfterSeconds : 1;
+    retryAfterSeconds = retryAfterSeconds == null ? 1 : retryAfterSeconds;
+    if (retryAfterSeconds < 0) {
+      throw new IllegalArgumentException(
+          "ops.api-admission-control retry-after-seconds must not be negative");
+    }
     endpoints =
         endpoints == null || endpoints.isEmpty() ? defaultEndpoints() : List.copyOf(endpoints);
   }
@@ -21,7 +25,7 @@ public record ApiAdmissionControlProperties(
             6,
             1,
             List.of("/api/v1/transactions"),
-            new AdaptiveLimit(true, 6, 12, 64, 1)),
+            new AdaptiveLimit(true, 6, 12, 64, 1, 20, 0.5, 1, 1)),
         new EndpointLimit("account-read", 4, 0, List.of("/api/v1/accounts"), null),
         new EndpointLimit("transfer-write", 2, 0, List.of("/api/v1/transfers"), null),
         new EndpointLimit(
@@ -44,7 +48,7 @@ public record ApiAdmissionControlProperties(
   public record EndpointLimit(
       String group,
       int maxConcurrency,
-      int retryAfterSeconds,
+      Integer retryAfterSeconds,
       List<String> pathPrefixes,
       AdaptiveLimit adaptive) {
 
@@ -60,9 +64,10 @@ public record ApiAdmissionControlProperties(
         throw new IllegalArgumentException(
             "ops.api-admission-control path-prefixes must not be empty");
       }
-      if (retryAfterSeconds < 0) {
+      retryAfterSeconds = retryAfterSeconds == null ? -1 : retryAfterSeconds;
+      if (retryAfterSeconds < -1) {
         throw new IllegalArgumentException(
-            "ops.api-admission-control retry-after-seconds must not be negative");
+            "ops.api-admission-control endpoint retry-after-seconds must be -1 or greater");
       }
       pathPrefixes = List.copyOf(pathPrefixes);
       adaptive = adaptive == null ? AdaptiveLimit.disabled(maxConcurrency) : adaptive;
@@ -80,7 +85,11 @@ public record ApiAdmissionControlProperties(
       int minConcurrency,
       int maxConcurrency,
       int increaseEverySuccesses,
-      int decreaseOnRejections) {
+      int decreaseOnRejections,
+      int rejectionWindowSize,
+      double decreaseRejectionRatio,
+      int decreaseCooldownSeconds,
+      int recoveryStep) {
 
     public AdaptiveLimit {
       enabled = enabled == null ? Boolean.FALSE : enabled;
@@ -89,20 +98,34 @@ public record ApiAdmissionControlProperties(
         maxConcurrency = maxConcurrency >= minConcurrency ? maxConcurrency : minConcurrency;
         increaseEverySuccesses = increaseEverySuccesses > 0 ? increaseEverySuccesses : 100;
         decreaseOnRejections = decreaseOnRejections > 0 ? decreaseOnRejections : 1;
+        rejectionWindowSize = rejectionWindowSize > 0 ? rejectionWindowSize : 1;
+        decreaseRejectionRatio =
+            decreaseRejectionRatio > 0.0 && decreaseRejectionRatio <= 1.0
+                ? decreaseRejectionRatio
+                : 1.0;
+        decreaseCooldownSeconds = Math.max(decreaseCooldownSeconds, 0);
+        recoveryStep = recoveryStep > 0 ? recoveryStep : 1;
       } else if (minConcurrency <= 0) {
         throw new IllegalArgumentException(
             "ops.api-admission-control adaptive min-concurrency must be positive");
       } else if (maxConcurrency < minConcurrency) {
         throw new IllegalArgumentException(
             "ops.api-admission-control adaptive max-concurrency must be greater than or equal to min-concurrency");
+      } else if (decreaseRejectionRatio > 1.0) {
+        throw new IllegalArgumentException(
+            "ops.api-admission-control adaptive decrease-rejection-ratio must be within (0, 1]");
       } else {
         increaseEverySuccesses = increaseEverySuccesses > 0 ? increaseEverySuccesses : 100;
         decreaseOnRejections = decreaseOnRejections > 0 ? decreaseOnRejections : 1;
+        rejectionWindowSize = rejectionWindowSize > 0 ? rejectionWindowSize : 20;
+        decreaseRejectionRatio = decreaseRejectionRatio > 0.0 ? decreaseRejectionRatio : 0.5;
+        decreaseCooldownSeconds = Math.max(decreaseCooldownSeconds, 0);
+        recoveryStep = recoveryStep > 0 ? recoveryStep : 1;
       }
     }
 
     static AdaptiveLimit disabled(int maxConcurrency) {
-      return new AdaptiveLimit(false, maxConcurrency, maxConcurrency, 100, 1);
+      return new AdaptiveLimit(false, maxConcurrency, maxConcurrency, 100, 1, 1, 1.0, 0, 1);
     }
   }
 }

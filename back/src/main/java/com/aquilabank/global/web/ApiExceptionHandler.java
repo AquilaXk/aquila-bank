@@ -57,6 +57,9 @@ import org.springframework.web.util.ContentCachingRequestWrapper;
 public class ApiExceptionHandler {
 
   private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
+  private static final String REJECT_REASON_HEADER = "X-Aquila-Reject-Reason";
+  private static final String RATE_LIMIT_SCOPE_HEADER = "X-RateLimit-Scope";
+  private static final String RATE_LIMIT_RETRY_AFTER_HEADER = "X-RateLimit-Retry-After-Seconds";
   private static final Pattern USER_STATUS_PATH_PATTERN =
       Pattern.compile("^/internal/api/v1/auth/users/(\\d+)/status$");
   private static final Pattern MEMBERSHIP_STATUS_PATH_PATTERN =
@@ -131,6 +134,9 @@ public class ApiExceptionHandler {
     logInternalAuthStatusFailure(HttpStatus.TOO_MANY_REQUESTS, request, ex.getMessage());
     return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
         .header("Retry-After", Integer.toString(ex.retryAfterSeconds()))
+        .header(REJECT_REASON_HEADER, "backend-admission")
+        .header(RATE_LIMIT_SCOPE_HEADER, ex.group())
+        .header(RATE_LIMIT_RETRY_AFTER_HEADER, Integer.toString(ex.retryAfterSeconds()))
         .body(
             new ApiErrorResponse(
                 Instant.now(),
@@ -162,6 +168,9 @@ public class ApiExceptionHandler {
     // 정상 방어 거절은 429로 분리해 query timeout 503 hard fail과 섞이지 않게 합니다.
     return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
         .header("Retry-After", Integer.toString(ex.retryAfterSeconds()))
+        .header(REJECT_REASON_HEADER, "saturation-guard")
+        .header(RATE_LIMIT_SCOPE_HEADER, "saturation-guard")
+        .header(RATE_LIMIT_RETRY_AFTER_HEADER, Integer.toString(ex.retryAfterSeconds()))
         .body(
             new ApiErrorResponse(
                 Instant.now(),
