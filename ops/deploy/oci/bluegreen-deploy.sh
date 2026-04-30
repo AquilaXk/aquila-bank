@@ -549,8 +549,8 @@ render_nginx_config() {
   frontend_name="$(slot_name frontend "${slot}")"
   backend_proxy_host="${BACKEND_PROXY_HOST:-${backend_name}}"
   edge_retry_after_seconds="${NGINX_EDGE_RETRY_AFTER_SECONDS:-1}"
-  edge_retry_after_millis="${NGINX_EDGE_RETRY_AFTER_MILLIS:-250}"
-  edge_retry_jitter_millis="${NGINX_EDGE_RETRY_JITTER_MILLIS:-250}"
+  edge_retry_after_millis="${NGINX_EDGE_RETRY_AFTER_MILLIS:-150}"
+  edge_retry_jitter_millis="${NGINX_EDGE_RETRY_JITTER_MILLIS:-100}"
 
   cat <<NGINX
 worker_processes auto;

@@ -59,7 +59,7 @@ bash tools/ops/render-nginx-runtime-config.sh /tmp/aquila-bank-nginx.conf ops/ng
 - exact/regex location은 generic `/api/`보다 먼저 매칭되므로 zone을 중첩 적용하지 않습니다.
 - `/api/`에는 `limit_req zone=aquila_bank_api_per_ip burst=20 delay=5;`를 유지합니다.
 - `/api/v1/notifications/stream`은 장기 연결이라 일반 API와 성격이 달라 exact location으로 분리하고 rate limit 대상에서 제외합니다.
-- `429`는 Nginx에서 JSON body와 `X-Aquila-Reject-Source: nginx-edge`, `Retry-After`, `X-RateLimit-Retry-After-Millis`, `X-RateLimit-Retry-Jitter-Millis`를 내려 k6/client backoff가 edge rejection을 구분하게 합니다.
+- `429`는 Nginx에서 JSON body와 `X-Aquila-Reject-Source: nginx-edge`, `Retry-After`, `X-RateLimit-Retry-After-Millis`, `X-RateLimit-Retry-Jitter-Millis`를 내려 k6/client backoff가 edge rejection을 구분하게 합니다. OCI A1 기본값은 `150ms + jitter 100ms`로 retry 동기화를 짧게 분산합니다.
 - backend에는 login/password recovery throttling이 이미 있으므로, Nginx auth zone은 edge 1차 차단으로 보고 backend는 계정/IP 단위 2차 가드로 둡니다.
 - 실제 서비스 트래픽 특성에 따라 `rate`와 `burst`는 조정하되, 로그인/토큰 재발급/SSE 재연결 패턴과 shared IP 영향을 같이 확인합니다.
 
