@@ -73,6 +73,13 @@ const retryAfterAdaptiveMaxMultiplier = Math.max(
   1,
   Math.floor(nonNegativeNumberEnv(__ENV.K6_RETRY_AFTER_ADAPTIVE_MAX_MULTIPLIER, 6)),
 );
+const preemptivePacing = booleanEnv(__ENV.K6_PREEMPTIVE_PACING);
+const preemptivePacingRps = nonNegativeNumberEnv(__ENV.K6_PREEMPTIVE_PACING_RPS, 0);
+const preemptivePacingMaxSleepMs = nonNegativeNumberEnv(__ENV.K6_PREEMPTIVE_PACING_MAX_SLEEP_MS, 250);
+const preemptivePacingJitterMs = nonNegativeNumberEnv(__ENV.K6_PREEMPTIVE_PACING_JITTER_MS, 25);
+const preemptivePacingIntervalMs =
+  preemptivePacingRps > 0 ? (1000 * Math.max(vus, 1)) / preemptivePacingRps : 0;
+const preemptivePacingEnabled = preemptivePacing && preemptivePacingIntervalMs > 0;
 const workloadShape = __ENV.K6_WORKLOAD_SHAPE || "fixed-order";
 const workloadSeed = Number(__ENV.K6_WORKLOAD_SEED || "1");
 const workloadWeightsText =
@@ -124,8 +131,11 @@ const retryAfterRejectStreakTrend = new Trend(
   "aquila_transaction_retry_after_reject_streak",
   true,
 );
+const preemptivePacingSleep = new Trend("aquila_transaction_preemptive_pacing_sleep_ms", true);
+const preemptivePacingCount = new Counter("aquila_transaction_preemptive_pacing_count");
 const workloadShapeCount = new Counter("aquila_transaction_workload_shape_count");
 let retryAfterRejectStreak = 0;
+let nextPreemptiveRequestAtMs = 0;
 
 const supportedQueryShapes = [
   "hot_first",
@@ -396,12 +406,35 @@ function sleepAfter429(response) {
   sleep(sleepMs / 1000);
 }
 
+function preemptivePace() {
+  if (!preemptivePacingEnabled || exec.scenario.name.endsWith("_warmup")) {
+    return;
+  }
+  const nowMs = Date.now();
+  if (nextPreemptiveRequestAtMs === 0 || nowMs > nextPreemptiveRequestAtMs + preemptivePacingMaxSleepMs) {
+    nextPreemptiveRequestAtMs = nowMs;
+  }
+  const jitterMs = preemptivePacingJitterMs > 0 ? Math.random() * preemptivePacingJitterMs : 0;
+  const sleepMs = Math.min(
+    Math.max(nextPreemptiveRequestAtMs - nowMs + jitterMs, 0),
+    preemptivePacingMaxSleepMs,
+  );
+  nextPreemptiveRequestAtMs += preemptivePacingIntervalMs;
+  if (sleepMs <= 0) {
+    return;
+  }
+  preemptivePacingCount.add(1);
+  preemptivePacingSleep.add(sleepMs);
+  sleep(sleepMs / 1000);
+}
+
 function encodeCursor(bookedAt, id) {
   const payload = `${bookedAt}|${id}`;
   return encoding.b64encode(payload, "rawurl");
 }
 
 function requestPage(shape, path, accountId, from, to, cursor) {
+  preemptivePace();
   const query = queryString({
     accountId,
     from,
@@ -717,6 +750,10 @@ function markdownSummary(data) {
 - max retry-after sleep ms: ${maxRetryAfterSleepMs}
 - retry-after adaptive pacing: ${retryAfterAdaptivePacing}
 - retry-after adaptive max multiplier: ${retryAfterAdaptiveMaxMultiplier}
+- preemptive pacing: ${preemptivePacing}
+- preemptive pacing rps: ${preemptivePacingRps}
+- preemptive pacing max sleep ms: ${preemptivePacingMaxSleepMs}
+- preemptive pacing jitter ms: ${preemptivePacingJitterMs}
 - workload shape: ${workloadShape}
 - workload seed: ${workloadSeed}
 - workload weights: ${workloadWeightsText}
@@ -773,6 +810,10 @@ function markdownSummary(data) {
 - retry-after sleep max ms: ${metric(data, "aquila_transaction_retry_after_sleep_ms", "max")}
 - retry-after adaptive multiplier p95: ${metric(data, "aquila_transaction_retry_after_adaptive_multiplier", "p(95)")}
 - retry-after reject streak max: ${metric(data, "aquila_transaction_retry_after_reject_streak", "max")}
+- preemptive pacing count: ${metric(data, "aquila_transaction_preemptive_pacing_count", "count")}
+- preemptive pacing sleep avg ms: ${metric(data, "aquila_transaction_preemptive_pacing_sleep_ms", "avg")}
+- preemptive pacing sleep p95 ms: ${metric(data, "aquila_transaction_preemptive_pacing_sleep_ms", "p(95)")}
+- preemptive pacing sleep max ms: ${metric(data, "aquila_transaction_preemptive_pacing_sleep_ms", "max")}
 - workload shape count: ${metric(data, "aquila_transaction_workload_shape_count", "count")}
 - hot first p95 ms: ${metric(data, "aquila_transaction_hot_first_ms", "p(95)")}
 - hot first p99 ms: ${metric(data, "aquila_transaction_hot_first_ms", "p(99)")}
@@ -804,6 +845,7 @@ function markdownSummary(data) {
 - 이 결과는 k6 HTTP replay 기준입니다.
 - overload mode에서는 admission guard 429를 rejected sample로 집계합니다.
 - overload mode에서도 503은 app/backend failure 신호라 hard fail로 분리합니다.
+- preemptive pacing은 429 이후 재시도가 아니라 요청 전 token pacing으로 overload amplification을 낮춥니다.
 - warmup phase는 endpoint/JVM/cache/pool 초기화를 분리하고, custom latency Trend는 measured phase만 기록합니다.
 - 1억 건 분포는 실행 전 DB에 준비되어 있어야 합니다.
 ${observabilityNote()}
