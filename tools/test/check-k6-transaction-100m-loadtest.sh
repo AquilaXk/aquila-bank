@@ -33,6 +33,7 @@ grep -F "hot deep p95 threshold ms=350" <<<"${plan}" >/dev/null
 grep -F "cold deep p95 threshold ms=750" <<<"${plan}" >/dev/null
 grep -F "overload mode=false max retry-after sleep seconds=1" <<<"${plan}" >/dev/null
 grep -F "retry-after adaptive pacing=true max multiplier=6" <<<"${plan}" >/dev/null
+grep -F "preemptive pacing=false rps=0 max sleep ms=250 jitter ms=25" <<<"${plan}" >/dev/null
 grep -F "overload 429 rate threshold=0.015" <<<"${plan}" >/dev/null
 grep -F "burst 429 rate threshold=0.1" <<<"${plan}" >/dev/null
 grep -F "overload 503 rate threshold=0" <<<"${plan}" >/dev/null
@@ -133,6 +134,17 @@ grep -F "max retry-after sleep ms=2000" <<<"${overload_plan}" >/dev/null
 grep -F "overload 429 rate threshold=0.015" <<<"${overload_plan}" >/dev/null
 grep -F "burst 429 rate threshold=0.1" <<<"${overload_plan}" >/dev/null
 grep -F "overload 503 rate threshold=0" <<<"${overload_plan}" >/dev/null
+
+preemptive_plan="$(
+  K6_REPORT_NAME=transaction-100m-preemptive-check \
+  K6_PREEMPTIVE_PACING=true \
+  K6_PREEMPTIVE_PACING_RPS=64 \
+  K6_PREEMPTIVE_PACING_MAX_SLEEP_MS=150 \
+  K6_PREEMPTIVE_PACING_JITTER_MS=10 \
+    tools/test/run-k6-transaction-100m-loadtest.sh --print-plan
+)"
+grep -F "k6 report name: transaction-100m-preemptive-check" <<<"${preemptive_plan}" >/dev/null
+grep -F "preemptive pacing=true rps=64 max sleep ms=150 jitter ms=10" <<<"${preemptive_plan}" >/dev/null
 
 burst_default_plan="$(
   K6_REPORT_NAME=transaction-100m-burst-default-check \
@@ -258,6 +270,13 @@ grep -F "K6_MAX_RETRY_AFTER_SLEEP_SECONDS" ops/k6/transaction-read-100m.js >/dev
 grep -F "K6_MAX_RETRY_AFTER_SLEEP_MS" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_RETRY_AFTER_ADAPTIVE_PACING" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_RETRY_AFTER_ADAPTIVE_MAX_MULTIPLIER" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "K6_PREEMPTIVE_PACING" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "K6_PREEMPTIVE_PACING_RPS" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "K6_PREEMPTIVE_PACING_MAX_SLEEP_MS" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "K6_PREEMPTIVE_PACING_JITTER_MS" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "preemptivePace" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "aquila_transaction_preemptive_pacing_sleep_ms" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "aquila_transaction_preemptive_pacing_count" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "aquila_transaction_retry_after_adaptive_multiplier" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "aquila_transaction_retry_after_reject_streak" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "retryAfterRejectStreak" ops/k6/transaction-read-100m.js >/dev/null
@@ -308,6 +327,10 @@ grep -F "K6_OVERLOAD_503_RATE_THRESHOLD" tools/test/run-k6-transaction-100m-load
 grep -F "K6_MAX_RETRY_AFTER_SLEEP_MS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_RETRY_AFTER_ADAPTIVE_PACING" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_RETRY_AFTER_ADAPTIVE_MAX_MULTIPLIER" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "K6_PREEMPTIVE_PACING" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "K6_PREEMPTIVE_PACING_RPS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "K6_PREEMPTIVE_PACING_MAX_SLEEP_MS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "K6_PREEMPTIVE_PACING_JITTER_MS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_WORKLOAD_SHAPE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_WORKLOAD_SEED" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_WORKLOAD_WEIGHTS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
@@ -414,6 +437,22 @@ if K6_OVERLOAD_503_RATE_THRESHOLD=1.5 tools/test/run-k6-transaction-100m-loadtes
 fi
 if K6_MAX_RETRY_AFTER_SLEEP_MS=bad tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
   echo "K6_MAX_RETRY_AFTER_SLEEP_MS=bad unexpectedly succeeded" >&2
+  exit 1
+fi
+if K6_PREEMPTIVE_PACING=bad tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
+  echo "K6_PREEMPTIVE_PACING=bad unexpectedly succeeded" >&2
+  exit 1
+fi
+if K6_PREEMPTIVE_PACING_RPS=bad tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
+  echo "K6_PREEMPTIVE_PACING_RPS=bad unexpectedly succeeded" >&2
+  exit 1
+fi
+if K6_PREEMPTIVE_PACING_MAX_SLEEP_MS=bad tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
+  echo "K6_PREEMPTIVE_PACING_MAX_SLEEP_MS=bad unexpectedly succeeded" >&2
+  exit 1
+fi
+if K6_PREEMPTIVE_PACING_JITTER_MS=bad tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
+  echo "K6_PREEMPTIVE_PACING_JITTER_MS=bad unexpectedly succeeded" >&2
   exit 1
 fi
 if K6_HOT_P99_THRESHOLD_MS=0 tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then

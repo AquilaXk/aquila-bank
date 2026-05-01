@@ -15,7 +15,8 @@ Environment:
   WEIGHTED_SOAK_10M_OUTPUT_DIR            default build/reports/k6/<gate>
   WEIGHTED_SOAK_10M_MAX_ACCEPTED_P95_MS   default 350
   WEIGHTED_SOAK_10M_MAX_EDGE_429_RATE     default 0.10
-  WEIGHTED_SOAK_10M_MAX_BACKEND_429_RATE  default 0.02
+  WEIGHTED_SOAK_10M_MAX_BACKEND_429_RATE  default 0.0005
+  WEIGHTED_SOAK_10M_MAX_BACKEND_429_COUNT default 0
 USAGE
 }
 
@@ -46,7 +47,8 @@ resource_snapshot="${WEIGHTED_SOAK_10M_RESOURCE_SNAPSHOT_TSV:-}"
 output_dir="${WEIGHTED_SOAK_10M_OUTPUT_DIR:-build/reports/k6/${name}}"
 max_accepted_p95_ms="${WEIGHTED_SOAK_10M_MAX_ACCEPTED_P95_MS:-350}"
 max_edge_429_rate="${WEIGHTED_SOAK_10M_MAX_EDGE_429_RATE:-0.10}"
-max_backend_429_rate="${WEIGHTED_SOAK_10M_MAX_BACKEND_429_RATE:-0.02}"
+max_backend_429_rate="${WEIGHTED_SOAK_10M_MAX_BACKEND_429_RATE:-0.0005}"
+max_backend_429_count="${WEIGHTED_SOAK_10M_MAX_BACKEND_429_COUNT:-0}"
 report_md="${output_dir}/${name}-weighted-10m-soak.md"
 failure_name="${name}-failure-correlation"
 failure_output_dir="${output_dir}/failure-correlation"
@@ -72,6 +74,15 @@ require_non_negative_number() {
   local value="$2"
   if ! [[ "${value}" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
     echo "${name} must be zero or greater: ${value}" >&2
+    exit 1
+  fi
+}
+
+require_non_negative_integer() {
+  local name="$1"
+  local value="$2"
+  if ! [[ "${value}" =~ ^[0-9]+$ ]]; then
+    echo "${name} must be a non-negative integer: ${value}" >&2
     exit 1
   fi
 }
@@ -178,6 +189,8 @@ print_plan() {
   echo "[transaction-read-weighted-10m] max_accepted_p95_ms=${max_accepted_p95_ms}"
   echo "[transaction-read-weighted-10m] max_edge_429_rate=${max_edge_429_rate}"
   echo "[transaction-read-weighted-10m] max_backend_429_rate=${max_backend_429_rate}"
+  echo "[transaction-read-weighted-10m] max_backend_429_count=${max_backend_429_count}"
+  echo "[transaction-read-weighted-10m] live_soak_required=true"
   echo "[transaction-read-weighted-10m] failure_report=${failure_report}"
   echo "[transaction-read-weighted-10m] report_md=${report_md}"
 }
@@ -186,6 +199,7 @@ require_duration "WEIGHTED_SOAK_10M_DURATION" "${duration}"
 require_non_negative_number "WEIGHTED_SOAK_10M_MAX_ACCEPTED_P95_MS" "${max_accepted_p95_ms}"
 require_non_negative_number "WEIGHTED_SOAK_10M_MAX_EDGE_429_RATE" "${max_edge_429_rate}"
 require_non_negative_number "WEIGHTED_SOAK_10M_MAX_BACKEND_429_RATE" "${max_backend_429_rate}"
+require_non_negative_integer "WEIGHTED_SOAK_10M_MAX_BACKEND_429_COUNT" "${max_backend_429_count}"
 
 print_plan
 if [[ "${mode}" == "print-plan" ]]; then
@@ -214,6 +228,7 @@ accepted_p95_ms="$(accepted_p95)"
 total_429_rate="$(metric_value aquila_transaction_429_rate rate)"
 edge_429_rate="$(metric_value aquila_transaction_edge_429_rate rate)"
 backend_429_rate="$(metric_value aquila_transaction_backend_429_rate rate)"
+backend_429_count="$(metric_value aquila_transaction_backend_429_count count)"
 unknown_429_count="$(metric_value aquila_transaction_unknown_429_count count)"
 edge_delayed_rate="$(metric_value aquila_transaction_edge_delayed_rate rate)"
 five_xx_count="$(
@@ -228,11 +243,15 @@ hikari_warnings="$(hikari_warning_count)"
 adaptive_multiplier_p95="$(metric_value aquila_transaction_retry_after_adaptive_multiplier "p(95)")"
 adaptive_multiplier_max="$(metric_value aquila_transaction_retry_after_adaptive_multiplier max)"
 reject_streak_max="$(metric_value aquila_transaction_retry_after_reject_streak max)"
+preemptive_pacing_count="$(metric_value aquila_transaction_preemptive_pacing_count count)"
+preemptive_pacing_sleep_p95="$(metric_value aquila_transaction_preemptive_pacing_sleep_ms "p(95)")"
+preemptive_pacing_sleep_max="$(metric_value aquila_transaction_preemptive_pacing_sleep_ms max)"
 
 gate_status="pass"
 if number_greater_than "${accepted_p95_ms}" "${max_accepted_p95_ms}" \
     || number_greater_than "${edge_429_rate}" "${max_edge_429_rate}" \
     || number_greater_than "${backend_429_rate}" "${max_backend_429_rate}" \
+    || number_greater_than "${backend_429_count}" "${max_backend_429_count}" \
     || number_greater_than "${unknown_429_count}" "0" \
     || number_greater_than "${edge_delayed_rate}" "0.25" \
     || number_greater_than "${five_xx_count}" "0" \
@@ -250,7 +269,8 @@ cat >"${report_md}" <<REPORT
 
 - gate_status=${gate_status}
 - duration: ${duration}
-- target: accepted p95 < ${max_accepted_p95_ms}ms, edge 429 < ${max_edge_429_rate}, backend 429 < ${max_backend_429_rate}, unknown 429/499/5xx/Hikari warning = 0
+- target: accepted p95 < ${max_accepted_p95_ms}ms, edge 429 < ${max_edge_429_rate}, backend 429 <= ${max_backend_429_rate}, backend 429 count <= ${max_backend_429_count}, unknown 429/499/5xx/Hikari warning = 0
+- live criterion: OCI 1억 row live run 기준
 
 ## SLO
 
@@ -260,6 +280,7 @@ cat >"${report_md}" <<REPORT
 | total 429 rate | ${total_429_rate} |
 | edge 429 rate | ${edge_429_rate} |
 | backend 429 rate | ${backend_429_rate} |
+| backend 429 count | ${backend_429_count} |
 | unknown 429 count | ${unknown_429_count} |
 | edge delayed rate | ${edge_delayed_rate} |
 | 499 count | ${nginx_499_count} |
@@ -269,6 +290,9 @@ cat >"${report_md}" <<REPORT
 | retry-after adaptive multiplier p95 | ${adaptive_multiplier_p95} |
 | retry-after adaptive multiplier max | ${adaptive_multiplier_max} |
 | retry-after reject streak max | ${reject_streak_max} |
+| preemptive pacing count | ${preemptive_pacing_count} |
+| preemptive pacing sleep p95 ms | ${preemptive_pacing_sleep_p95} |
+| preemptive pacing sleep max ms | ${preemptive_pacing_sleep_max} |
 
 ## Resource Snapshot
 
