@@ -98,8 +98,8 @@ if SOAK_10M_GATE_NAME=soak-fail \
 fi
 
 echo "[transaction-read-10m-soak] Hikari profile contract"
-grep -F 'max-lifetime: ${OCI_A1_DB_MAX_LIFETIME_MS:900000}' back/src/main/resources/application-oci-a1.yml >/dev/null
-grep -F 'keepalive-time: ${OCI_A1_DB_KEEPALIVE_TIME_MS:120000}' back/src/main/resources/application-oci-a1.yml >/dev/null
+grep -F 'max-lifetime: ${OCI_A1_DB_MAX_LIFETIME_MS:600000}' back/src/main/resources/application-oci-a1.yml >/dev/null
+grep -F 'keepalive-time: ${OCI_A1_DB_KEEPALIVE_TIME_MS:60000}' back/src/main/resources/application-oci-a1.yml >/dev/null
 grep -F 'validation-timeout: ${OCI_A1_DB_VALIDATION_TIMEOUT_MS:1000}' back/src/main/resources/application-oci-a1.yml >/dev/null
 
 echo "[transaction-read-10m-soak] invalid input fails"

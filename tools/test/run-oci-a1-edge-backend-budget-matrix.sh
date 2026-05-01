@@ -45,8 +45,8 @@ edge_transaction_read_policy="fail-fast-nodelay"
 backend_admission_max=6
 backend_admission_adaptive_max=8
 hikari_max=6
-hikari_max_lifetime_ms=900000
-hikari_keepalive_time_ms=120000
+hikari_max_lifetime_ms=600000
+hikari_keepalive_time_ms=60000
 backend_api_keepalive_timeout_seconds=2
 expected_429_source="edge-or-backend-admission"
 
@@ -112,8 +112,8 @@ require_pattern 'limit_req zone=aquila_bank_transaction_archive_per_ip burst=${t
 require_pattern 'OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_MAX=${OCI_A1_TRANSACTION_READ_ADMISSION_MAX:-6}' "${deploy_script}"
 require_pattern 'OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_ADAPTIVE_MAX=${OCI_A1_TRANSACTION_READ_ADMISSION_ADAPTIVE_MAX:-8}' "${deploy_script}"
 require_pattern 'maximum-pool-size: ${OCI_A1_DB_POOL_MAX_SIZE:6}' "${oci_profile}"
-require_pattern 'max-lifetime: ${OCI_A1_DB_MAX_LIFETIME_MS:900000}' "${oci_profile}"
-require_pattern 'keepalive-time: ${OCI_A1_DB_KEEPALIVE_TIME_MS:120000}' "${oci_profile}"
+require_pattern 'max-lifetime: ${OCI_A1_DB_MAX_LIFETIME_MS:600000}' "${oci_profile}"
+require_pattern 'keepalive-time: ${OCI_A1_DB_KEEPALIVE_TIME_MS:60000}' "${oci_profile}"
 require_pattern 'max: ${OCI_A1_TRANSACTION_READ_ADMISSION_MAX:6}' "${oci_profile}"
 require_pattern 'adaptive-max: ${OCI_A1_TRANSACTION_READ_ADMISSION_ADAPTIVE_MAX:8}' "${oci_profile}"
 require_pattern 'OCI_PUBLIC_ARRIVAL_RATES:-4,5,6,7,8,10,16' "${arrival_gate}"

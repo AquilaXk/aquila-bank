@@ -64,8 +64,8 @@ public class ApiExceptionHandler {
       "X-RateLimit-Retry-After-Millis";
   private static final String RATE_LIMIT_RETRY_JITTER_MILLIS_HEADER =
       "X-RateLimit-Retry-Jitter-Millis";
-  private static final int SHORT_RETRY_AFTER_MILLIS = 100;
-  private static final int SHORT_RETRY_JITTER_MILLIS = 250;
+  private static final int SHORT_RETRY_AFTER_MILLIS = 150;
+  private static final int SHORT_RETRY_JITTER_MILLIS = 100;
   private static final Pattern USER_STATUS_PATH_PATTERN =
       Pattern.compile("^/internal/api/v1/auth/users/(\\d+)/status$");
   private static final Pattern MEMBERSHIP_STATUS_PATH_PATTERN =

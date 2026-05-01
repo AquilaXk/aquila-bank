@@ -36,6 +36,10 @@ class OciA1CapacityProfileTest {
           assertThat(
                   environment.getProperty("spring.datasource.hikari.minimum-idle", Integer.class))
               .isEqualTo(1);
+          assertThat(environment.getProperty("spring.datasource.hikari.max-lifetime", Long.class))
+              .isEqualTo(600_000L);
+          assertThat(environment.getProperty("spring.datasource.hikari.keepalive-time", Long.class))
+              .isEqualTo(60_000L);
           assertThat(
                   environment.getProperty(
                       "transaction.read-replica.maximum-pool-size", Integer.class))
@@ -104,6 +108,8 @@ class OciA1CapacityProfileTest {
                             Map.ofEntries(
                                 entry("OCI_A1_DB_POOL_MAX_SIZE", "7"),
                                 entry("OCI_A1_DB_POOL_MIN_IDLE", "2"),
+                                entry("OCI_A1_DB_MAX_LIFETIME_MS", "480000"),
+                                entry("OCI_A1_DB_KEEPALIVE_TIME_MS", "45000"),
                                 entry("OCI_A1_TRANSACTION_READ_REPLICA_POOL_MAX_SIZE", "5"),
                                 entry("OCI_A1_SERVER_THREADS_MAX", "28"),
                                 entry("OCI_A1_SERVER_THREADS_MIN_SPARE", "3"),
@@ -136,6 +142,13 @@ class OciA1CapacityProfileTest {
                       environment.getProperty(
                           "spring.datasource.hikari.minimum-idle", Integer.class))
                   .isEqualTo(2);
+              assertThat(
+                      environment.getProperty("spring.datasource.hikari.max-lifetime", Long.class))
+                  .isEqualTo(480_000L);
+              assertThat(
+                      environment.getProperty(
+                          "spring.datasource.hikari.keepalive-time", Long.class))
+                  .isEqualTo(45_000L);
               assertThat(
                       environment.getProperty(
                           "transaction.read-replica.maximum-pool-size", Integer.class))
