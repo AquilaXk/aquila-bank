@@ -32,6 +32,7 @@ grep -F "cold deep cursor=2026-01-15T00:00:00Z|9223372036854775807" <<<"${plan}"
 grep -F "hot deep p95 threshold ms=350" <<<"${plan}" >/dev/null
 grep -F "cold deep p95 threshold ms=750" <<<"${plan}" >/dev/null
 grep -F "overload mode=false max retry-after sleep seconds=1" <<<"${plan}" >/dev/null
+grep -F "retry-after adaptive pacing=true max multiplier=6" <<<"${plan}" >/dev/null
 grep -F "overload 429 rate threshold=0.015" <<<"${plan}" >/dev/null
 grep -F "burst 429 rate threshold=0.1" <<<"${plan}" >/dev/null
 grep -F "overload 503 rate threshold=0" <<<"${plan}" >/dev/null
@@ -255,6 +256,11 @@ grep -F "K6_BURST_429_RATE_THRESHOLD" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_OVERLOAD_503_RATE_THRESHOLD" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_MAX_RETRY_AFTER_SLEEP_SECONDS" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_MAX_RETRY_AFTER_SLEEP_MS" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "K6_RETRY_AFTER_ADAPTIVE_PACING" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "K6_RETRY_AFTER_ADAPTIVE_MAX_MULTIPLIER" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "aquila_transaction_retry_after_adaptive_multiplier" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "aquila_transaction_retry_after_reject_streak" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "retryAfterRejectStreak" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_WORKLOAD_SHAPE" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_WORKLOAD_SEED" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_WORKLOAD_WEIGHTS" ops/k6/transaction-read-100m.js >/dev/null
@@ -300,6 +306,8 @@ grep -F "K6_OVERLOAD_429_RATE_THRESHOLD" tools/test/run-k6-transaction-100m-load
 grep -F "K6_BURST_429_RATE_THRESHOLD" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_OVERLOAD_503_RATE_THRESHOLD" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_MAX_RETRY_AFTER_SLEEP_MS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "K6_RETRY_AFTER_ADAPTIVE_PACING" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "K6_RETRY_AFTER_ADAPTIVE_MAX_MULTIPLIER" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_WORKLOAD_SHAPE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_WORKLOAD_SEED" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_WORKLOAD_WEIGHTS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null

@@ -68,6 +68,11 @@ const maxRetryAfterSleepMs = nonNegativeNumberEnv(
   __ENV.K6_MAX_RETRY_AFTER_SLEEP_MS,
   maxRetryAfterSleepSeconds * 1000,
 );
+const retryAfterAdaptivePacing = booleanEnv(__ENV.K6_RETRY_AFTER_ADAPTIVE_PACING || "true");
+const retryAfterAdaptiveMaxMultiplier = Math.max(
+  1,
+  Math.floor(nonNegativeNumberEnv(__ENV.K6_RETRY_AFTER_ADAPTIVE_MAX_MULTIPLIER, 6)),
+);
 const workloadShape = __ENV.K6_WORKLOAD_SHAPE || "fixed-order";
 const workloadSeed = Number(__ENV.K6_WORKLOAD_SEED || "1");
 const workloadWeightsText =
@@ -111,7 +116,16 @@ const edgePassedRate = new Rate("aquila_transaction_edge_passed_rate");
 const edgePassedCount = new Counter("aquila_transaction_edge_passed_count");
 const retryAfterSleep = new Trend("aquila_transaction_retry_after_sleep_ms", true);
 const retryAfterCount = new Counter("aquila_transaction_retry_after_count");
+const retryAfterAdaptiveMultiplier = new Trend(
+  "aquila_transaction_retry_after_adaptive_multiplier",
+  true,
+);
+const retryAfterRejectStreakTrend = new Trend(
+  "aquila_transaction_retry_after_reject_streak",
+  true,
+);
 const workloadShapeCount = new Counter("aquila_transaction_workload_shape_count");
+let retryAfterRejectStreak = 0;
 
 const supportedQueryShapes = [
   "hot_first",
@@ -354,6 +368,7 @@ function rejectSource(response) {
 }
 
 function sleepAfter429(response) {
+  retryAfterRejectStreak += 1;
   if (maxRetryAfterSleepMs <= 0) {
     return;
   }
@@ -367,12 +382,17 @@ function sleepAfter429(response) {
         ? retryAfterSeconds * 1000
         : 0;
   const jitterMs = retryJitterMillis > 0 ? Math.random() * retryJitterMillis : 0;
-  const sleepMs = Math.min(baseSleepMs + jitterMs, maxRetryAfterSleepMs);
+  const multiplier = retryAfterAdaptivePacing
+    ? Math.min(retryAfterRejectStreak, retryAfterAdaptiveMaxMultiplier)
+    : 1;
+  const sleepMs = Math.min((baseSleepMs + jitterMs) * multiplier, maxRetryAfterSleepMs);
   if (sleepMs <= 0) {
     return;
   }
   retryAfterCount.add(1);
   retryAfterSleep.add(sleepMs);
+  retryAfterAdaptiveMultiplier.add(multiplier);
+  retryAfterRejectStreakTrend.add(retryAfterRejectStreak);
   sleep(sleepMs / 1000);
 }
 
@@ -452,6 +472,7 @@ function requestPage(shape, path, accountId, from, to, cursor) {
     sleepAfter429(response);
     return null;
   }
+  retryAfterRejectStreak = 0;
 
   record(shape, response.timings.duration);
 
@@ -694,6 +715,8 @@ function markdownSummary(data) {
 - overload mode: ${overloadMode}
 - max retry-after sleep seconds: ${maxRetryAfterSleepSeconds}
 - max retry-after sleep ms: ${maxRetryAfterSleepMs}
+- retry-after adaptive pacing: ${retryAfterAdaptivePacing}
+- retry-after adaptive max multiplier: ${retryAfterAdaptiveMaxMultiplier}
 - workload shape: ${workloadShape}
 - workload seed: ${workloadSeed}
 - workload weights: ${workloadWeightsText}
@@ -748,6 +771,8 @@ function markdownSummary(data) {
 - retry-after sleep avg ms: ${metric(data, "aquila_transaction_retry_after_sleep_ms", "avg")}
 - retry-after sleep p95 ms: ${metric(data, "aquila_transaction_retry_after_sleep_ms", "p(95)")}
 - retry-after sleep max ms: ${metric(data, "aquila_transaction_retry_after_sleep_ms", "max")}
+- retry-after adaptive multiplier p95: ${metric(data, "aquila_transaction_retry_after_adaptive_multiplier", "p(95)")}
+- retry-after reject streak max: ${metric(data, "aquila_transaction_retry_after_reject_streak", "max")}
 - workload shape count: ${metric(data, "aquila_transaction_workload_shape_count", "count")}
 - hot first p95 ms: ${metric(data, "aquila_transaction_hot_first_ms", "p(95)")}
 - hot first p99 ms: ${metric(data, "aquila_transaction_hot_first_ms", "p(99)")}
