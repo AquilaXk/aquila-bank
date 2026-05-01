@@ -47,6 +47,7 @@ backend_admission_adaptive_max=8
 hikari_max=6
 hikari_max_lifetime_ms=900000
 hikari_keepalive_time_ms=120000
+backend_api_keepalive_timeout_seconds=2
 expected_429_source="edge-or-backend-admission"
 
 contains() {
@@ -81,6 +82,7 @@ print_plan() {
   echo "[oci-a1-budget-matrix] hikari_max=${hikari_max}"
   echo "[oci-a1-budget-matrix] hikari_max_lifetime_ms=${hikari_max_lifetime_ms}"
   echo "[oci-a1-budget-matrix] hikari_keepalive_time_ms=${hikari_keepalive_time_ms}"
+  echo "[oci-a1-budget-matrix] backend_api_keepalive_timeout_seconds=${backend_api_keepalive_timeout_seconds}"
   echo "[oci-a1-budget-matrix] expected_429_source=${expected_429_source}"
 }
 
@@ -96,7 +98,11 @@ require_pattern 'limit_req zone=aquila_bank_transaction_archive_per_ip burst=${N
 require_pattern 'add_header X-Aquila-Reject-Source nginx-edge always;' "${nginx_config}"
 require_pattern 'add_header X-Aquila-Reject-Reason edge-rate-limit always;' "${nginx_config}"
 require_pattern 'keepalive_requests 1000;' "${nginx_config}"
-require_pattern 'keepalive_timeout 60s;' "${nginx_config}"
+require_pattern 'keepalive_timeout ${NGINX_BACKEND_API_KEEPALIVE_TIMEOUT_SECONDS}s;' "${nginx_config}"
+require_pattern 'proxy_next_upstream error timeout http_502;' "${nginx_config}"
+require_pattern 'proxy_next_upstream_tries 2;' "${nginx_config}"
+require_pattern 'proxy_next_upstream_timeout 2s;' "${nginx_config}"
+require_pattern 'backend_api_keepalive_timeout_seconds="${NGINX_BACKEND_API_KEEPALIVE_TIMEOUT_SECONDS:-2}"' "${deploy_script}"
 require_pattern 'transaction_read_hot_rate_rps="${OCI_A1_TRANSACTION_READ_HOT_RATE_RPS:-64}"' "${deploy_script}"
 require_pattern 'transaction_read_archive_rate_rps="${OCI_A1_TRANSACTION_READ_ARCHIVE_RATE_RPS:-64}"' "${deploy_script}"
 require_pattern 'limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_hot_per_ip:10m rate=${transaction_read_hot_rate_rps}r/s;' "${deploy_script}"
@@ -139,6 +145,7 @@ cat >"${report_md}" <<REPORT
 | Hikari max pool | ${hikari_max} |
 | Hikari max lifetime ms | ${hikari_max_lifetime_ms} |
 | Hikari keepalive time ms | ${hikari_keepalive_time_ms} |
+| Backend API keepalive timeout seconds | ${backend_api_keepalive_timeout_seconds} |
 | expected 429 source | ${expected_429_source} |
 
 ## Checked Files

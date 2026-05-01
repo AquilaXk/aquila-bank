@@ -545,10 +545,12 @@ run_green_slot() {
 render_nginx_config() {
   local slot="$1"
   local backend_name frontend_name backend_proxy_host edge_retry_after_seconds edge_retry_after_millis edge_retry_jitter_millis
+  local backend_api_keepalive_timeout_seconds
   local transaction_read_hot_rate_rps transaction_read_archive_rate_rps transaction_read_hot_burst transaction_read_archive_burst
   backend_name="$(slot_name backend "${slot}")"
   frontend_name="$(slot_name frontend "${slot}")"
   backend_proxy_host="${BACKEND_PROXY_HOST:-${backend_name}}"
+  backend_api_keepalive_timeout_seconds="${NGINX_BACKEND_API_KEEPALIVE_TIMEOUT_SECONDS:-2}"
   edge_retry_after_seconds="${NGINX_EDGE_RETRY_AFTER_SECONDS:-1}"
   edge_retry_after_millis="${NGINX_EDGE_RETRY_AFTER_MILLIS:-150}"
   edge_retry_jitter_millis="${NGINX_EDGE_RETRY_JITTER_MILLIS:-100}"
@@ -599,7 +601,8 @@ http {
     server ${backend_name}:${BACKEND_PORT};
     keepalive 16;
     keepalive_requests 1000;
-    keepalive_timeout 60s;
+    # backend idle close보다 짧게 유지해 stale upstream reuse로 인한 즉시 502를 줄인다.
+    keepalive_timeout ${backend_api_keepalive_timeout_seconds}s;
   }
 
   upstream aquila_bank_frontend {
@@ -726,7 +729,10 @@ http {
       proxy_set_header X-Forwarded-Host \$host;
       proxy_set_header X-Forwarded-Port \$server_port;
       proxy_set_header Connection "";
-      proxy_next_upstream off;
+      # transaction read는 GET 전용이라 stale upstream connection만 짧게 재시도합니다.
+      proxy_next_upstream error timeout http_502;
+      proxy_next_upstream_tries 2;
+      proxy_next_upstream_timeout 2s;
       # overload는 accepted delay보다 빠른 429가 client backoff와 p95 해석에 유리합니다.
       limit_req zone=aquila_bank_transaction_hot_per_ip burst=${transaction_read_hot_burst} nodelay;
       add_header X-Aquila-Edge-Limit-Status \$limit_req_status always;
@@ -745,7 +751,10 @@ http {
       proxy_set_header X-Forwarded-Host \$host;
       proxy_set_header X-Forwarded-Port \$server_port;
       proxy_set_header Connection "";
-      proxy_next_upstream off;
+      # archive read도 GET 전용이라 connection 경계 502만 bounded retry로 흡수합니다.
+      proxy_next_upstream error timeout http_502;
+      proxy_next_upstream_tries 2;
+      proxy_next_upstream_timeout 2s;
       # archive query도 같은 fail-fast 정책으로 cold read 지연을 edge에서 길게 만들지 않습니다.
       limit_req zone=aquila_bank_transaction_archive_per_ip burst=${transaction_read_archive_burst} nodelay;
       add_header X-Aquila-Edge-Limit-Status \$limit_req_status always;
