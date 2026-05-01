@@ -26,8 +26,9 @@ grep -F "edge_transaction_read_policy=fail-fast-nodelay" <<<"${plan}" >/dev/null
 grep -F "backend_admission_max=6" <<<"${plan}" >/dev/null
 grep -F "backend_admission_adaptive_max=8" <<<"${plan}" >/dev/null
 grep -F "hikari_max=6" <<<"${plan}" >/dev/null
-grep -F "hikari_max_lifetime_ms=900000" <<<"${plan}" >/dev/null
-grep -F "hikari_keepalive_time_ms=120000" <<<"${plan}" >/dev/null
+grep -F "hikari_max_lifetime_ms=600000" <<<"${plan}" >/dev/null
+grep -F "hikari_keepalive_time_ms=60000" <<<"${plan}" >/dev/null
+grep -F "backend_api_keepalive_timeout_seconds=2" <<<"${plan}" >/dev/null
 grep -F "expected_429_source=edge-or-backend-admission" <<<"${plan}" >/dev/null
 
 echo "[oci-a1-budget-matrix] report"
@@ -47,8 +48,9 @@ grep -F "| edge transaction-read policy | fail-fast-nodelay |" "${report_md}" >/
 grep -F "| backend admission max | 6 |" "${report_md}" >/dev/null
 grep -F "| backend admission adaptive max | 8 |" "${report_md}" >/dev/null
 grep -F "| Hikari max pool | 6 |" "${report_md}" >/dev/null
-grep -F "| Hikari max lifetime ms | 900000 |" "${report_md}" >/dev/null
-grep -F "| Hikari keepalive time ms | 120000 |" "${report_md}" >/dev/null
+grep -F "| Hikari max lifetime ms | 600000 |" "${report_md}" >/dev/null
+grep -F "| Hikari keepalive time ms | 60000 |" "${report_md}" >/dev/null
+grep -F "| Backend API keepalive timeout seconds | 2 |" "${report_md}" >/dev/null
 grep -F "| expected 429 source | edge-or-backend-admission |" "${report_md}" >/dev/null
 
 echo "[oci-a1-budget-matrix] source contract"
@@ -56,9 +58,11 @@ grep -F 'limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_hot_per
 grep -F 'limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_archive_per_ip:10m rate=${NGINX_TRANSACTION_READ_ARCHIVE_RATE_RPS}r/s;' ops/nginx/nginx.conf >/dev/null
 grep -F 'limit_req zone=aquila_bank_transaction_hot_per_ip burst=${NGINX_TRANSACTION_READ_HOT_BURST} nodelay;' ops/nginx/nginx.conf >/dev/null
 grep -F 'limit_req zone=aquila_bank_transaction_archive_per_ip burst=${NGINX_TRANSACTION_READ_ARCHIVE_BURST} nodelay;' ops/nginx/nginx.conf >/dev/null
+grep -F 'keepalive_timeout ${NGINX_BACKEND_API_KEEPALIVE_TIMEOUT_SECONDS}s;' ops/nginx/nginx.conf >/dev/null
+grep -F 'proxy_next_upstream error timeout http_502;' ops/nginx/nginx.conf >/dev/null
 grep -F 'maximum-pool-size: ${OCI_A1_DB_POOL_MAX_SIZE:6}' back/src/main/resources/application-oci-a1.yml >/dev/null
-grep -F 'max-lifetime: ${OCI_A1_DB_MAX_LIFETIME_MS:900000}' back/src/main/resources/application-oci-a1.yml >/dev/null
-grep -F 'keepalive-time: ${OCI_A1_DB_KEEPALIVE_TIME_MS:120000}' back/src/main/resources/application-oci-a1.yml >/dev/null
+grep -F 'max-lifetime: ${OCI_A1_DB_MAX_LIFETIME_MS:600000}' back/src/main/resources/application-oci-a1.yml >/dev/null
+grep -F 'keepalive-time: ${OCI_A1_DB_KEEPALIVE_TIME_MS:60000}' back/src/main/resources/application-oci-a1.yml >/dev/null
 grep -F 'max: ${OCI_A1_TRANSACTION_READ_ADMISSION_MAX:6}' back/src/main/resources/application-oci-a1.yml >/dev/null
 grep -F 'adaptive-max: ${OCI_A1_TRANSACTION_READ_ADMISSION_ADAPTIVE_MAX:8}' back/src/main/resources/application-oci-a1.yml >/dev/null
 grep -F 'OCI_PUBLIC_ARRIVAL_RATES:-4,5,6,7,8,10,16' tools/test/run-oci-public-api-arrival-capacity-gate.sh >/dev/null

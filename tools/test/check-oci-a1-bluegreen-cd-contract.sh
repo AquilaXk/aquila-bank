@@ -265,7 +265,11 @@ script_patterns=(
   "location ~ ^/api/v1/transfers/[^/]+/reversal$"
   "limit_req zone=aquila_bank_transfer_per_ip burst=6 nodelay;"
   "keepalive_requests 1000;"
-  "keepalive_timeout 60s;"
+  'backend_api_keepalive_timeout_seconds="${NGINX_BACKEND_API_KEEPALIVE_TIMEOUT_SECONDS:-2}"'
+  'keepalive_timeout ${backend_api_keepalive_timeout_seconds}s;'
+  "proxy_next_upstream error timeout http_502;"
+  "proxy_next_upstream_tries 2;"
+  "proxy_next_upstream_timeout 2s;"
   "proxy_socket_keepalive on;"
   "limit_req zone=aquila_bank_api_per_ip burst=20 delay=5;"
   "nginx -s reload"
