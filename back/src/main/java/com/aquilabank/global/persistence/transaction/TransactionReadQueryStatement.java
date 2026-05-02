@@ -25,8 +25,9 @@ final class TransactionReadQueryStatement {
             .addValue("fetchLimit", query.limit() + 1);
 
     StringBuilder sql =
-        new StringBuilder(
-            """
+        new StringBuilder(TransactionReadSqlTraceComment.current("hot-timeline"))
+            .append(
+                """
             SELECT id,
                    account_id,
                    transaction_reference,

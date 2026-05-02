@@ -23,7 +23,8 @@ final class TransactionDetailQueryStatement {
             .addValue("rowLimit", 2);
 
     return new TransactionDetailQueryStatement(
-        """
+        TransactionReadSqlTraceComment.current("detail-exact")
+            + """
         SELECT trm.account_id,
                trm.transaction_reference,
                trm.direction,

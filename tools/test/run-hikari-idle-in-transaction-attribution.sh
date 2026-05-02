@@ -168,10 +168,21 @@ awk '
 }
 ' "${hikari_log}" >"${warning_tsv}"
 
-awk -F '\t' -v warnings="${warning_tsv}" '
+awk -F '\t' -v warnings="${warning_tsv}" -v correlation_window_seconds="${correlation_window_seconds}" '
 function value(name, fallback) {
   if (!(name in col) || col[name] == "") return fallback
   return $(col[name])
+}
+function day_part(ts) {
+  return substr(ts, 1, 10)
+}
+function second_of_day(ts) {
+  return (substr(ts, 12, 2) * 3600) + (substr(ts, 15, 2) * 60) + substr(ts, 18, 2)
+}
+function within_window(left, right) {
+  delta = second_of_day(left) - second_of_day(right)
+  if (delta < 0) delta = -delta
+  return day_part(left) == day_part(right) && delta <= correlation_window_seconds
 }
 function request_id_from_query(text) {
   if (match(text, /requestId=[A-Za-z0-9_.:-]+/)) {
@@ -182,7 +193,6 @@ function request_id_from_query(text) {
 BEGIN {
   while ((getline line < warnings) > 0) {
     split(line, parts, "\t")
-    warning_seen[parts[1]] = 1
     warning_order[++warning_count] = parts[1]
   }
   close(warnings)
@@ -195,17 +205,21 @@ NR == 1 {
 }
 {
   ts = value("sample_time_utc", "")
-  if (warning_seen[ts] && !(ts in matched)) {
-    matched[ts] = 1
-    pid[ts] = value("pid", "n/a")
-    request_id[ts] = value("request_id", "")
-    state[ts] = value("state", "n/a")
-    wait_type[ts] = value("wait_event_type", "n/a")
-    wait_event[ts] = value("wait_event", "n/a")
-    age[ts] = value("xact_age_seconds", "0")
-    query[ts] = value("query", "n/a")
-    if (request_id[ts] == "" || request_id[ts] == "n/a") {
-      request_id[ts] = request_id_from_query(query[ts])
+  for (i = 1; i <= warning_count; i++) {
+    warning_ts = warning_order[i]
+    if (!(warning_ts in matched) && within_window(ts, warning_ts)) {
+      matched[warning_ts] = 1
+      sample_time[warning_ts] = ts
+      pid[warning_ts] = value("pid", "n/a")
+      request_id[warning_ts] = value("request_id", "")
+      state[warning_ts] = value("state", "n/a")
+      wait_type[warning_ts] = value("wait_event_type", "n/a")
+      wait_event[warning_ts] = value("wait_event", "n/a")
+      age[warning_ts] = value("xact_age_seconds", "0")
+      query[warning_ts] = value("query", "n/a")
+      if (request_id[warning_ts] == "" || request_id[warning_ts] == "n/a") {
+        request_id[warning_ts] = request_id_from_query(query[warning_ts])
+      }
     }
   }
 }
@@ -214,8 +228,12 @@ END {
   for (i = 1; i <= warning_count; i++) {
     ts = warning_order[i]
     if (matched[ts]) {
-      cause = (state[ts] == "idle in transaction") ? "idle-in-transaction-candidate" : "postgres-timeout-candidate"
-      printf "%s\tpass\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", ts, pid[ts], request_id[ts], state[ts], wait_type[ts], wait_event[ts], age[ts], query[ts], cause
+      if (request_id[ts] == "" || request_id[ts] == "n/a") {
+        printf "%s\tfail\t%s\tn/a\t%s\t%s\t%s\t%s\t%s\trequest-id-missing\n", ts, pid[ts], state[ts], wait_type[ts], wait_event[ts], age[ts], query[ts]
+      } else {
+        cause = (state[ts] == "idle in transaction") ? "idle-in-transaction-candidate" : "postgres-timeout-candidate"
+        printf "%s\tpass\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", ts, pid[ts], request_id[ts], state[ts], wait_type[ts], wait_event[ts], age[ts], query[ts], cause
+      }
     } else {
       printf "%s\tfail\tn/a\tn/a\tn/a\tn/a\tn/a\t0\tn/a\tunattributed-warning\n", ts
     }
