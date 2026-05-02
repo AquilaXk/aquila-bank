@@ -13,13 +13,13 @@ evidence_tsv="${temp_dir}/operational-evidence.tsv"
 output_dir="${temp_dir}/output"
 
 cat >"${evidence_tsv}" <<'TSV'
-scenario	duration_min	source_ips	cold_p95_ms	warm_p95_ms	p999_ms	edge_429_rate	backend_429_count	five_xx_count	nginx_499_count	hikari_validation_warnings	db_pool_pending_max	sse_reject_count	deploy_drain_5xx_count	pg_wait_p95_ms	timeline_artifact
-hikari-soak	10	1	420	210	390	0.01	0	0	0	0	0	0	0	3	oci/hikari-soak.json
-cold-warm	3	1	760	240	410	0.02	0	0	0	0	0	0	0	4	oci/cold-warm.json
-mixed-workload	30	1	650	260	450	0.08	0	0	0	0	0	0	0	6	oci/mixed-workload.json
-real-ip-multisource	2	3	560	230	430	0.07	0	0	0	0	0	0	0	5	oci/real-ip.json
-deploy-drain	5	1	590	250	470	0.04	0	0	0	0	0	0	0	5	oci/deploy-drain.json
-p999-long	30	1	700	280	490	0.06	0	0	0	0	0	0	0	8	oci/p999-long.json
+scenario	duration_min	source_ips	cold_p95_ms	warm_p95_ms	p999_ms	edge_429_rate	backend_429_count	five_xx_count	nginx_499_count	hikari_validation_warnings	db_pool_pending_max	sse_reject_count	deploy_drain_5xx_count	pg_wait_p95_ms	pg_wait_p999_ms	cpu_max_pct	memory_max_pct	disk_io_wait_pct	network_rx_drop_count	network_tx_drop_count	timeline_artifact	resource_timeline_artifact
+hikari-soak	10	1	420	210	390	0.01	0	0	0	0	0	0	0	3	21	55	61	2	0	0	oci/hikari-soak.json	oci/hikari-soak-resources.json
+cold-warm	3	1	760	240	410	0.02	0	0	0	0	0	0	0	4	24	58	63	3	0	0	oci/cold-warm.json	oci/cold-warm-resources.json
+mixed-workload	30	1	650	260	450	0.08	0	0	0	0	0	0	0	6	35	72	68	5	0	0	oci/mixed-workload.json	oci/mixed-workload-resources.json
+real-ip-multisource	2	3	560	230	430	0.07	0	0	0	0	0	0	0	5	31	60	62	4	0	0	oci/real-ip.json	oci/real-ip-resources.json
+deploy-drain	5	1	590	250	470	0.04	0	0	0	0	0	0	0	5	29	64	65	5	0	0	oci/deploy-drain.json	oci/deploy-drain-resources.json
+p999-long	30	1	700	280	490	0.06	0	0	0	0	0	0	0	8	40	66	64	6	0	0	oci/p999-long.json	oci/p999-long-resources.json
 TSV
 
 echo "[transaction-read-operational-evidence] print plan"
@@ -34,6 +34,10 @@ grep -F "input_tsv=${evidence_tsv}" <<<"${plan}" >/dev/null
 grep -F "required_scenarios=hikari-soak,cold-warm,mixed-workload,real-ip-multisource,deploy-drain,p999-long" <<<"${plan}" >/dev/null
 grep -F "max_edge_429_rate=0.10" <<<"${plan}" >/dev/null
 grep -F "max_p999_ms=500" <<<"${plan}" >/dev/null
+grep -F "max_pg_wait_p95_ms=20" <<<"${plan}" >/dev/null
+grep -F "max_pg_wait_p999_ms=100" <<<"${plan}" >/dev/null
+grep -F "max_cpu_pct=95" <<<"${plan}" >/dev/null
+grep -F "max_memory_pct=90" <<<"${plan}" >/dev/null
 grep -F "mixed_min_duration_min=30" <<<"${plan}" >/dev/null
 grep -F "min_real_source_ips=2" <<<"${plan}" >/dev/null
 
@@ -52,11 +56,13 @@ grep -F "Hikari validation warning: 0" "${report_md}" >/dev/null
 grep -F "499/5xx/backend429 hard target: 0" "${report_md}" >/dev/null
 grep -F "mixed workload min duration: 30m" "${report_md}" >/dev/null
 grep -F "p99.9 long observation max: 500ms" "${report_md}" >/dev/null
-grep -F $'mixed-workload\tpass\tok\t30\t1\t650\t260\t450\t0.08\t0\t0\t0\t0\t0\t0\t0\t6\toci/mixed-workload.json' "${summary_tsv}" >/dev/null
+grep -F "resource timeline artifact: required" "${report_md}" >/dev/null
+grep -F "PG wait p95/p99.9 max: 20ms / 100ms" "${report_md}" >/dev/null
+grep -F $'mixed-workload\tpass\tok\t30\t1\t650\t260\t450\t0.08\t0\t0\t0\t0\t0\t0\t0\t6\t35\t72\t68\t5\t0\t0\toci/mixed-workload.json\toci/mixed-workload-resources.json' "${summary_tsv}" >/dev/null
 grep -F $'real-ip-multisource\tpass\tok\t2\t3' "${summary_tsv}" >/dev/null
 
 echo "[transaction-read-operational-evidence] fail report"
-awk -F '\t' 'BEGIN { OFS = FS } NR == 1 { print; next } $1 == "mixed-workload" { $6 = 560; $7 = 0.12; $9 = 1; $10 = 1; $11 = 1 } { print }' \
+awk -F '\t' 'BEGIN { OFS = FS } NR == 1 { print; next } $1 == "mixed-workload" { $6 = 560; $7 = 0.12; $9 = 1; $10 = 1; $11 = 1; $16 = 120; $20 = 1; $23 = "n/a" } { print }' \
   "${evidence_tsv}" >"${evidence_tsv}.fail"
 if OP_EVIDENCE_NAME=operational-fail \
   OP_EVIDENCE_INPUT_TSV="${evidence_tsv}.fail" \
@@ -75,6 +81,9 @@ grep -F "edge429>0.10" "${output_dir}/operational-fail-operational-evidence.tsv"
 grep -F "5xx>0" "${output_dir}/operational-fail-operational-evidence.tsv" >/dev/null
 grep -F "499>0" "${output_dir}/operational-fail-operational-evidence.tsv" >/dev/null
 grep -F "hikari-warning>0" "${output_dir}/operational-fail-operational-evidence.tsv" >/dev/null
+grep -F "pg-wait-p999>100" "${output_dir}/operational-fail-operational-evidence.tsv" >/dev/null
+grep -F "network-drop>0" "${output_dir}/operational-fail-operational-evidence.tsv" >/dev/null
+grep -F "resource-timeline-missing" "${output_dir}/operational-fail-operational-evidence.tsv" >/dev/null
 
 echo "[transaction-read-operational-evidence] missing scenario fails"
 awk -F '\t' '$1 != "deploy-drain"' "${evidence_tsv}" >"${evidence_tsv}.missing"
