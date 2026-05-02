@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE' >&2
-usage: tools/test/run-k6-transaction-100m-loadtest.sh [--print-plan|--no-up] [--no-deps]
+usage: tools/test/run-k6-transaction-100m-loadtest.sh [--print-plan|--auth-preflight-only|--no-up] [--no-deps]
 
 Required environment:
   K6_HOT_ACCOUNT_ID
@@ -51,6 +51,14 @@ Optional environment:
   K6_HOT_DEEP_P99_THRESHOLD_MS default K6_HOT_P99_THRESHOLD_MS
   K6_COLD_DEEP_P99_THRESHOLD_MS default K6_COLD_P99_THRESHOLD_MS
   K6_AUTH_TOKEN        bearer token, optional when bootstrap header auth is enabled
+  K6_AUTH_TOKEN_FILE   optional bearer token file; content is never printed
+  K6_AUTH_TOKEN_REQUIRED true|false|auto, default auto; auto requires token for docker-context non-smoke
+  K6_AUTH_PREFLIGHT    true|false|auto, default auto; auto runs when a preflight URL/path is configured
+  K6_AUTH_PREFLIGHT_URL full URL for token status smoke, optional
+  K6_AUTH_PREFLIGHT_PATH path appended to K6_AUTH_PREFLIGHT_BASE_URL, optional
+  K6_AUTH_PREFLIGHT_BASE_URL default remote base URL or backend readiness base URL
+  K6_AUTH_PREFLIGHT_EXPECTED_STATUS default 200
+  K6_AUTH_PREFLIGHT_TIMEOUT_SECONDS default 5
   K6_BASE_URL          optional backend base URL for local generator; default k6 script value
   K6_ARCHIVE_RESULTS   copy markdown summary to docs/performance-results, default true
   K6_ARCHIVE_FAILED_SUMMARY archive summary even when hard gate fails, default true
@@ -228,6 +236,90 @@ require_run_purpose() {
   esac
 }
 
+auth_token_source="missing"
+
+resolve_auth_token() {
+  # secret-safe: token 값은 env/file에서만 읽고 plan/report에는 존재 여부만 남긴다.
+  if [[ -n "${K6_AUTH_TOKEN}" ]]; then
+    auth_token_source="env"
+    return 0
+  fi
+  if [[ -z "${K6_AUTH_TOKEN_FILE}" ]]; then
+    auth_token_source="missing"
+    return 0
+  fi
+  if [[ ! -s "${K6_AUTH_TOKEN_FILE}" ]]; then
+    echo "K6_AUTH_TOKEN_FILE must be a non-empty file" >&2
+    exit 1
+  fi
+
+  K6_AUTH_TOKEN="$(LC_ALL=C tr -d '\r\n' <"${K6_AUTH_TOKEN_FILE}")"
+  if [[ -z "${K6_AUTH_TOKEN}" ]]; then
+    echo "K6_AUTH_TOKEN_FILE did not contain a token" >&2
+    exit 1
+  fi
+  auth_token_source="file"
+  export K6_AUTH_TOKEN
+}
+
+effective_auth_token_required() {
+  case "${K6_AUTH_TOKEN_REQUIRED}" in
+    true|false)
+      echo "${K6_AUTH_TOKEN_REQUIRED}"
+      ;;
+    auto)
+      if [[ "${K6_GENERATOR_MODE}" == "docker-context" && "${K6_RUN_PURPOSE}" != "smoke" ]]; then
+        echo "true"
+      else
+        echo "false"
+      fi
+      ;;
+  esac
+}
+
+auth_preflight_url() {
+  if [[ -n "${K6_AUTH_PREFLIGHT_URL}" ]]; then
+    echo "${K6_AUTH_PREFLIGHT_URL}"
+    return 0
+  fi
+  if [[ -n "${K6_AUTH_PREFLIGHT_PATH}" ]]; then
+    local base_url="${K6_AUTH_PREFLIGHT_BASE_URL:-}"
+    if [[ -z "${base_url}" ]]; then
+      if [[ "${K6_GENERATOR_MODE}" == "docker-context" ]]; then
+        base_url="${K6_REMOTE_BASE_URL}"
+      else
+        base_url="${K6_BACKEND_READINESS_BASE_URL}"
+      fi
+    fi
+    echo "${base_url%/}/${K6_AUTH_PREFLIGHT_PATH#/}"
+    return 0
+  fi
+  echo ""
+}
+
+effective_auth_preflight_enabled() {
+  case "${K6_AUTH_PREFLIGHT}" in
+    true|false)
+      echo "${K6_AUTH_PREFLIGHT}"
+      ;;
+    auto)
+      if [[ -n "$(auth_preflight_url)" ]]; then
+        echo "true"
+      else
+        echo "false"
+      fi
+      ;;
+  esac
+}
+
+auth_token_presence() {
+  if [[ -n "${K6_AUTH_TOKEN}" ]]; then
+    echo "present"
+  else
+    echo "missing"
+  fi
+}
+
 mode="run"
 run_dependencies="true"
 summary_gate_json=""
@@ -236,6 +328,9 @@ while [[ "$#" -gt 0 ]]; do
   case "$1" in
     --print-plan)
       mode="print-plan"
+      ;;
+    --auth-preflight-only)
+      mode="auth-preflight-only"
       ;;
     --assert-summary)
       if [[ "$#" -lt 3 ]]; then
@@ -371,6 +466,15 @@ K6_BACKEND_READINESS_GATE="${K6_BACKEND_READINESS_GATE:-true}"
 K6_BACKEND_READINESS_BASE_URL="${K6_BACKEND_READINESS_BASE_URL:-http://localhost:${LOADTEST_BACKEND_PORT:-18080}}"
 K6_BACKEND_READINESS_PATH="${K6_BACKEND_READINESS_PATH:-/actuator/health/readiness}"
 K6_BACKEND_READINESS_TIMEOUT_SECONDS="${K6_BACKEND_READINESS_TIMEOUT_SECONDS:-120}"
+K6_AUTH_TOKEN="${K6_AUTH_TOKEN:-}"
+K6_AUTH_TOKEN_FILE="${K6_AUTH_TOKEN_FILE:-}"
+K6_AUTH_TOKEN_REQUIRED="${K6_AUTH_TOKEN_REQUIRED:-auto}"
+K6_AUTH_PREFLIGHT="${K6_AUTH_PREFLIGHT:-auto}"
+K6_AUTH_PREFLIGHT_URL="${K6_AUTH_PREFLIGHT_URL:-}"
+K6_AUTH_PREFLIGHT_PATH="${K6_AUTH_PREFLIGHT_PATH:-}"
+K6_AUTH_PREFLIGHT_BASE_URL="${K6_AUTH_PREFLIGHT_BASE_URL:-}"
+K6_AUTH_PREFLIGHT_EXPECTED_STATUS="${K6_AUTH_PREFLIGHT_EXPECTED_STATUS:-200}"
+K6_AUTH_PREFLIGHT_TIMEOUT_SECONDS="${K6_AUTH_PREFLIGHT_TIMEOUT_SECONDS:-5}"
 K6_DOCKER_CONTEXT="${K6_DOCKER_CONTEXT:-}"
 K6_REMOTE_BASE_URL="${K6_REMOTE_BASE_URL:-}"
 K6_REMOTE_PROMETHEUS_RW_SERVER_URL="${K6_REMOTE_PROMETHEUS_RW_SERVER_URL:-}"
@@ -399,7 +503,8 @@ loadtest_postgres_exporter_cpus="${LOADTEST_POSTGRES_EXPORTER_CPUS:-0.10}"
 loadtest_postgres_exporter_memory="${LOADTEST_POSTGRES_EXPORTER_MEMORY:-128m}"
 loadtest_postgres_container="${LOADTEST_POSTGRES_CONTAINER_NAME:-aquila-bank-postgres-loadtest}"
 loadtest_backend_container="${LOADTEST_BACKEND_CONTAINER_NAME:-aquila-bank-backend-loadtest}"
-export K6_VUS K6_SCENARIO_MODE K6_RATE K6_TIME_UNIT K6_PRE_ALLOCATED_VUS K6_MAX_VUS K6_BURST_RATE K6_BURST_DURATION K6_BURST_HEADROOM_PREFLIGHT K6_BURST_MIN_HEADROOM_VUS K6_WARMUP_DURATION K6_WARMUP_MODE K6_WARMUP_RATE K6_WARMUP_TIME_UNIT K6_WARMUP_PRE_ALLOCATED_VUS K6_WARMUP_MAX_VUS K6_LIMIT K6_HOT_ACCOUNT_IDS K6_COLD_ACCOUNT_IDS K6_HOT_DEEP_CURSOR_BOOKED_AT K6_HOT_DEEP_CURSOR_ID K6_COLD_DEEP_CURSOR_BOOKED_AT K6_COLD_DEEP_CURSOR_ID K6_HOT_P95_THRESHOLD_MS K6_COLD_P95_THRESHOLD_MS K6_HOT_P99_THRESHOLD_MS K6_COLD_P99_THRESHOLD_MS K6_HOT_P999_THRESHOLD_MS K6_COLD_P999_THRESHOLD_MS K6_HOT_MAX_THRESHOLD_MS K6_COLD_MAX_THRESHOLD_MS K6_HOT_DEEP_P95_THRESHOLD_MS K6_COLD_DEEP_P95_THRESHOLD_MS K6_HOT_DEEP_P99_THRESHOLD_MS K6_COLD_DEEP_P99_THRESHOLD_MS K6_HOT_DEEP_P999_THRESHOLD_MS K6_COLD_DEEP_P999_THRESHOLD_MS K6_HOT_DEEP_MAX_THRESHOLD_MS K6_COLD_DEEP_MAX_THRESHOLD_MS K6_HTTP_FAILED_RATE K6_ARCHIVE_RESULTS K6_ARCHIVE_FAILED_SUMMARY K6_PREFLIGHT K6_POSTGRES_HEALTH_GATE K6_POSTGRES_RECOVERY_GATE K6_POSTGRES_RECOVERY_STABLE_SECONDS K6_POSTGRES_RECOVERY_NOISE_WINDOW_SECONDS K6_POSTGRES_EXPORTER_STABLE_GATE K6_POSTGRES_EXPORTER_STABLE_TIMEOUT_SECONDS K6_OUTBOX_PREFLIGHT K6_OUTBOX_PREFLIGHT_BASE_URL K6_EXPLAIN_SNAPSHOT K6_OBSERVABILITY_MODE K6_OVERLOAD_MODE K6_OVERLOAD_429_RATE_THRESHOLD K6_BURST_429_RATE_THRESHOLD K6_OVERLOAD_503_RATE_THRESHOLD K6_MAX_RETRY_AFTER_SLEEP_SECONDS K6_MAX_RETRY_AFTER_SLEEP_MS K6_RETRY_AFTER_ADAPTIVE_PACING K6_RETRY_AFTER_ADAPTIVE_MAX_MULTIPLIER K6_PREEMPTIVE_PACING K6_PREEMPTIVE_PACING_RPS K6_PREEMPTIVE_PACING_MAX_SLEEP_MS K6_PREEMPTIVE_PACING_JITTER_MS K6_WORKLOAD_SHAPE K6_WORKLOAD_SEED K6_WORKLOAD_WEIGHTS K6_RUN_PURPOSE K6_SUMMARY_GATE K6_BACKEND_READINESS_GATE K6_BACKEND_READINESS_BASE_URL K6_BACKEND_READINESS_PATH K6_BACKEND_READINESS_TIMEOUT_SECONDS K6_GENERATOR_MODE K6_DOCKER_CONTEXT K6_REMOTE_BASE_URL K6_REMOTE_PROMETHEUS_RW_SERVER_URL K6_REMOTE_WORKDIR K6_REMOTE_PREFLIGHT K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS K6_REMOTE_PREFLIGHT_IMAGE K6_REMOTE_READINESS_PATH K6_REMOTE_ARTIFACT_IMAGE K6_REMOTE_COLLECT_ARTIFACTS K6_REPORT_NAME K6_RUN_ID
+resolve_auth_token
+export K6_VUS K6_SCENARIO_MODE K6_RATE K6_TIME_UNIT K6_PRE_ALLOCATED_VUS K6_MAX_VUS K6_BURST_RATE K6_BURST_DURATION K6_BURST_HEADROOM_PREFLIGHT K6_BURST_MIN_HEADROOM_VUS K6_WARMUP_DURATION K6_WARMUP_MODE K6_WARMUP_RATE K6_WARMUP_TIME_UNIT K6_WARMUP_PRE_ALLOCATED_VUS K6_WARMUP_MAX_VUS K6_LIMIT K6_HOT_ACCOUNT_IDS K6_COLD_ACCOUNT_IDS K6_HOT_DEEP_CURSOR_BOOKED_AT K6_HOT_DEEP_CURSOR_ID K6_COLD_DEEP_CURSOR_BOOKED_AT K6_COLD_DEEP_CURSOR_ID K6_HOT_P95_THRESHOLD_MS K6_COLD_P95_THRESHOLD_MS K6_HOT_P99_THRESHOLD_MS K6_COLD_P99_THRESHOLD_MS K6_HOT_P999_THRESHOLD_MS K6_COLD_P999_THRESHOLD_MS K6_HOT_MAX_THRESHOLD_MS K6_COLD_MAX_THRESHOLD_MS K6_HOT_DEEP_P95_THRESHOLD_MS K6_COLD_DEEP_P95_THRESHOLD_MS K6_HOT_DEEP_P99_THRESHOLD_MS K6_COLD_DEEP_P99_THRESHOLD_MS K6_HOT_DEEP_P999_THRESHOLD_MS K6_COLD_DEEP_P999_THRESHOLD_MS K6_HOT_DEEP_MAX_THRESHOLD_MS K6_COLD_DEEP_MAX_THRESHOLD_MS K6_HTTP_FAILED_RATE K6_ARCHIVE_RESULTS K6_ARCHIVE_FAILED_SUMMARY K6_PREFLIGHT K6_POSTGRES_HEALTH_GATE K6_POSTGRES_RECOVERY_GATE K6_POSTGRES_RECOVERY_STABLE_SECONDS K6_POSTGRES_RECOVERY_NOISE_WINDOW_SECONDS K6_POSTGRES_EXPORTER_STABLE_GATE K6_POSTGRES_EXPORTER_STABLE_TIMEOUT_SECONDS K6_OUTBOX_PREFLIGHT K6_OUTBOX_PREFLIGHT_BASE_URL K6_EXPLAIN_SNAPSHOT K6_OBSERVABILITY_MODE K6_OVERLOAD_MODE K6_OVERLOAD_429_RATE_THRESHOLD K6_BURST_429_RATE_THRESHOLD K6_OVERLOAD_503_RATE_THRESHOLD K6_MAX_RETRY_AFTER_SLEEP_SECONDS K6_MAX_RETRY_AFTER_SLEEP_MS K6_RETRY_AFTER_ADAPTIVE_PACING K6_RETRY_AFTER_ADAPTIVE_MAX_MULTIPLIER K6_PREEMPTIVE_PACING K6_PREEMPTIVE_PACING_RPS K6_PREEMPTIVE_PACING_MAX_SLEEP_MS K6_PREEMPTIVE_PACING_JITTER_MS K6_WORKLOAD_SHAPE K6_WORKLOAD_SEED K6_WORKLOAD_WEIGHTS K6_RUN_PURPOSE K6_SUMMARY_GATE K6_BACKEND_READINESS_GATE K6_BACKEND_READINESS_BASE_URL K6_BACKEND_READINESS_PATH K6_BACKEND_READINESS_TIMEOUT_SECONDS K6_AUTH_TOKEN K6_AUTH_TOKEN_REQUIRED K6_AUTH_PREFLIGHT K6_AUTH_PREFLIGHT_URL K6_AUTH_PREFLIGHT_PATH K6_AUTH_PREFLIGHT_BASE_URL K6_AUTH_PREFLIGHT_EXPECTED_STATUS K6_AUTH_PREFLIGHT_TIMEOUT_SECONDS K6_GENERATOR_MODE K6_DOCKER_CONTEXT K6_REMOTE_BASE_URL K6_REMOTE_PROMETHEUS_RW_SERVER_URL K6_REMOTE_WORKDIR K6_REMOTE_PREFLIGHT K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS K6_REMOTE_PREFLIGHT_IMAGE K6_REMOTE_READINESS_PATH K6_REMOTE_ARTIFACT_IMAGE K6_REMOTE_COLLECT_ARTIFACTS K6_REPORT_NAME K6_RUN_ID
 
 require_positive_integer K6_VUS
 require_positive_integer K6_RATE
@@ -450,6 +555,14 @@ require_bool_value() {
     exit 1
   fi
 }
+require_auto_bool_value() {
+  local name="$1"
+  local value="${!name:-}"
+  if [[ "${value}" != "true" && "${value}" != "false" && "${value}" != "auto" ]]; then
+    echo "${name} must be true, false, or auto" >&2
+    exit 1
+  fi
+}
 require_bool_value K6_OUTBOX_PREFLIGHT
 require_bool_value K6_EXPLAIN_SNAPSHOT
 require_bool_value K6_ARCHIVE_RESULTS
@@ -457,10 +570,18 @@ require_bool_value K6_ARCHIVE_FAILED_SUMMARY
 require_bool_value K6_SUMMARY_GATE
 require_bool_value K6_BURST_HEADROOM_PREFLIGHT
 require_bool_value K6_BACKEND_READINESS_GATE
+require_auto_bool_value K6_AUTH_TOKEN_REQUIRED
+require_auto_bool_value K6_AUTH_PREFLIGHT
 require_bool_value K6_POSTGRES_HEALTH_GATE
 require_bool_value K6_POSTGRES_RECOVERY_GATE
 require_bool_value K6_POSTGRES_EXPORTER_STABLE_GATE
 require_positive_integer K6_BACKEND_READINESS_TIMEOUT_SECONDS
+require_positive_integer K6_AUTH_PREFLIGHT_EXPECTED_STATUS
+require_positive_integer K6_AUTH_PREFLIGHT_TIMEOUT_SECONDS
+if ((K6_AUTH_PREFLIGHT_EXPECTED_STATUS < 100 || K6_AUTH_PREFLIGHT_EXPECTED_STATUS > 599)); then
+  echo "K6_AUTH_PREFLIGHT_EXPECTED_STATUS must be an HTTP status code" >&2
+  exit 1
+fi
 require_non_negative_integer K6_POSTGRES_RECOVERY_STABLE_SECONDS
 require_non_negative_integer K6_POSTGRES_RECOVERY_NOISE_WINDOW_SECONDS
 require_positive_integer K6_POSTGRES_EXPORTER_STABLE_TIMEOUT_SECONDS
@@ -656,6 +777,12 @@ print_plan() {
   else
     echo "[k6-transaction-100m] backend readiness gate=${K6_BACKEND_READINESS_GATE} base=${K6_BACKEND_READINESS_BASE_URL} path=${K6_BACKEND_READINESS_PATH} timeout=${K6_BACKEND_READINESS_TIMEOUT_SECONDS}"
   fi
+  echo "[k6-transaction-100m] auth token required=$(effective_auth_token_required) token=$(auth_token_presence) source=${auth_token_source}"
+  if [[ -n "$(auth_preflight_url)" ]]; then
+    echo "[k6-transaction-100m] auth preflight=$(effective_auth_preflight_enabled) url=configured expected_status=${K6_AUTH_PREFLIGHT_EXPECTED_STATUS} timeout=${K6_AUTH_PREFLIGHT_TIMEOUT_SECONDS}"
+  else
+    echo "[k6-transaction-100m] auth preflight=$(effective_auth_preflight_enabled) url=not-configured expected_status=${K6_AUTH_PREFLIGHT_EXPECTED_STATUS} timeout=${K6_AUTH_PREFLIGHT_TIMEOUT_SECONDS}"
+  fi
   echo "[k6-transaction-100m] postgres health gate=${K6_POSTGRES_HEALTH_GATE} required_status=healthy"
   echo "[k6-transaction-100m] postgres recovery gate=${K6_POSTGRES_RECOVERY_GATE} stable_seconds=${K6_POSTGRES_RECOVERY_STABLE_SECONDS}"
   echo "[k6-transaction-100m] postgres recovery noise window seconds=${K6_POSTGRES_RECOVERY_NOISE_WINDOW_SECONDS}"
@@ -701,15 +828,60 @@ print_plan() {
   echo "[k6-transaction-100m] archive output dir=${archive_output_dir}"
 }
 
+assert_auth_preflight() {
+  local token_required preflight_enabled preflight_url status
+  token_required="$(effective_auth_token_required)"
+  if [[ "${token_required}" == "true" && -z "${K6_AUTH_TOKEN}" ]]; then
+    echo "K6_AUTH_TOKEN is required before OCI k6 run; set K6_AUTH_TOKEN or K6_AUTH_TOKEN_FILE" >&2
+    exit 1
+  fi
+
+  preflight_enabled="$(effective_auth_preflight_enabled)"
+  if [[ "${preflight_enabled}" != "true" ]]; then
+    echo "[k6-transaction-100m] auth preflight skipped"
+    return 0
+  fi
+  if [[ -z "${K6_AUTH_TOKEN}" ]]; then
+    echo "K6_AUTH_TOKEN is required when K6_AUTH_PREFLIGHT=true" >&2
+    exit 1
+  fi
+
+  preflight_url="$(auth_preflight_url)"
+  if [[ -z "${preflight_url}" ]]; then
+    echo "K6_AUTH_PREFLIGHT_URL or K6_AUTH_PREFLIGHT_PATH is required when K6_AUTH_PREFLIGHT=true" >&2
+    exit 1
+  fi
+
+  require_command curl
+  echo "[k6-transaction-100m] auth status preflight: expected_status=${K6_AUTH_PREFLIGHT_EXPECTED_STATUS} timeout=${K6_AUTH_PREFLIGHT_TIMEOUT_SECONDS}"
+  status="$(
+    curl -sS -o /dev/null -w "%{http_code}" \
+      --max-time "${K6_AUTH_PREFLIGHT_TIMEOUT_SECONDS}" \
+      -H "Authorization: Bearer ${K6_AUTH_TOKEN}" \
+      "${preflight_url}" 2>/dev/null || true
+  )"
+  status="${status:0:3}"
+  if [[ "${status}" != "${K6_AUTH_PREFLIGHT_EXPECTED_STATUS}" ]]; then
+    echo "auth status preflight failed: expected=${K6_AUTH_PREFLIGHT_EXPECTED_STATUS} actual=${status:-000}" >&2
+    exit 1
+  fi
+}
+
 print_plan
 
 if [[ "${mode}" == "print-plan" ]]; then
+  exit 0
+fi
+if [[ "${mode}" == "auth-preflight-only" ]]; then
+  assert_auth_preflight
   exit 0
 fi
 if [[ "${mode}" == "assert-summary" ]]; then
   assert_k6_summary_gate "${summary_gate_json}" "${summary_gate_log}" 0
   exit $?
 fi
+
+assert_auth_preflight
 
 if [[ -z "${K6_HOT_ACCOUNT_ID:-}" && -z "${K6_HOT_ACCOUNT_IDS:-}" ]]; then
   echo "K6_HOT_ACCOUNT_ID or K6_HOT_ACCOUNT_IDS is required" >&2
