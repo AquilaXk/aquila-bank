@@ -43,7 +43,9 @@ class TransactionArchiveQueryControllerTest {
                 new TransactionArchiveQueryController(
                     transactionArchiveQueryUseCase,
                     requestAccountAuthorizationService,
-                    new TransactionReadHotPathMetrics(meterRegistry)))
+                    new TransactionReadHotPathMetrics(meterRegistry),
+                    new TransactionReadSingleFlight(),
+                    new TransactionReadAccountFairnessLimiter(2)))
             .addFilters(new BootstrapHeaderAuthenticationFilter("X-Account-Id", "X-Subject"))
             .setCustomArgumentResolvers(new CurrentAuthenticatedPrincipalArgumentResolver())
             .build();
@@ -125,6 +127,32 @@ class TransactionArchiveQueryControllerTest {
   }
 
   @Test
+  void decodesIncomingArchiveCursor() throws Exception {
+    TransactionCursor cursor = new TransactionCursor(Instant.parse("2025-01-16T09:00:00Z"), 777L);
+    String encoded = TransactionCursorCodec.encode(cursor);
+    when(transactionArchiveQueryUseCase.getArchivedTransactions(
+            argThat(query -> cursor.equals(query.cursor()))))
+        .thenReturn(new TransactionSlice(List.of(), null, false, 20));
+    when(requestAccountAuthorizationService.resolveReadableAccountId(
+            org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(101L)))
+        .thenReturn(101L);
+
+    mockMvc
+        .perform(
+            get("/api/v1/transactions/archive")
+                .header("X-Account-Id", "101")
+                .param("accountId", "101")
+                .param("from", "2025-01-01T00:00:00Z")
+                .param("to", "2025-01-31T00:00:00Z")
+                .param("limit", "20")
+                .param("cursor", encoded))
+        .andExpect(status().isOk());
+
+    verify(transactionArchiveQueryUseCase)
+        .getArchivedTransactions(argThat(query -> cursor.equals(query.cursor())));
+  }
+
+  @Test
   void rejectsArchiveDateRangeLargerThanThirtyOneDays() throws Exception {
     when(requestAccountAuthorizationService.resolveReadableAccountId(
             org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(101L)))
@@ -137,6 +165,36 @@ class TransactionArchiveQueryControllerTest {
                 .param("accountId", "101")
                 .param("from", "2025-01-01T00:00:00Z")
                 .param("to", "2025-03-01T00:00:00Z"))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  void usesLimit50AsDefaultAndHardCapForArchive() throws Exception {
+    when(transactionArchiveQueryUseCase.getArchivedTransactions(
+            argThat(query -> query.limit() == 50)))
+        .thenReturn(new TransactionSlice(List.of(), null, false, 50));
+    when(requestAccountAuthorizationService.resolveReadableAccountId(
+            org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(101L)))
+        .thenReturn(101L);
+
+    mockMvc
+        .perform(
+            get("/api/v1/transactions/archive")
+                .header("X-Account-Id", "101")
+                .param("accountId", "101")
+                .param("from", "2025-01-01T00:00:00Z")
+                .param("to", "2025-01-31T00:00:00Z"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.limit").value(50));
+
+    mockMvc
+        .perform(
+            get("/api/v1/transactions/archive")
+                .header("X-Account-Id", "101")
+                .param("accountId", "101")
+                .param("from", "2025-01-01T00:00:00Z")
+                .param("to", "2025-01-31T00:00:00Z")
+                .param("limit", "51"))
         .andExpect(status().isBadRequest());
   }
 

@@ -526,11 +526,20 @@ class DomainModelCoverageTest {
                     null,
                     null))
         .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(
+            () ->
+                new TransactionQuery(
+                    1L, base, base.plusSeconds(1), 51, null, null, null, null, null, null))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("limit must be between 1 and 50");
 
     TransactionCursor transactionCursor = new TransactionCursor(base, 1L);
     assertThat(new TransactionSlice(List.of(), null, false, 10).hasNext()).isFalse();
     assertThat(new TransactionSlice(List.of(), transactionCursor, true, 10).nextCursor())
         .isEqualTo(transactionCursor);
+    assertThatThrownBy(() -> new TransactionSlice(List.of(), null, false, 51))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("limit must be between 1 and 50");
     NotificationCursor notificationCursor = new NotificationCursor(base, 1L);
     assertThat(new NotificationSlice(List.of(), null, false, 10).hasNext()).isFalse();
     assertThat(new NotificationSlice(List.of(), notificationCursor, true, 10).nextCursor())

@@ -43,7 +43,9 @@ class TransactionQueryControllerTest {
                 new TransactionQueryController(
                     transactionQueryUseCase,
                     requestAccountAuthorizationService,
-                    new TransactionReadHotPathMetrics(meterRegistry)))
+                    new TransactionReadHotPathMetrics(meterRegistry),
+                    new TransactionReadSingleFlight(),
+                    new TransactionReadAccountFairnessLimiter(2)))
             .addFilters(new BootstrapHeaderAuthenticationFilter("X-Account-Id", "X-Subject"))
             .setCustomArgumentResolvers(new CurrentAuthenticatedPrincipalArgumentResolver())
             .build();
@@ -113,6 +115,35 @@ class TransactionQueryControllerTest {
   }
 
   @Test
+  void usesLimit50AsDefaultAndHardCap() throws Exception {
+    when(transactionQueryUseCase.getTransactions(argThat(query -> query.limit() == 50)))
+        .thenReturn(new TransactionSlice(List.of(), null, false, 50));
+    when(requestAccountAuthorizationService.resolveReadableAccountId(
+            org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(101L)))
+        .thenReturn(101L);
+
+    mockMvc
+        .perform(
+            get("/api/v1/transactions")
+                .header("X-Account-Id", "101")
+                .param("accountId", "101")
+                .param("from", "2026-04-01T00:00:00Z")
+                .param("to", "2026-04-17T00:00:00Z"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.limit").value(50));
+
+    mockMvc
+        .perform(
+            get("/api/v1/transactions")
+                .header("X-Account-Id", "101")
+                .param("accountId", "101")
+                .param("from", "2026-04-01T00:00:00Z")
+                .param("to", "2026-04-17T00:00:00Z")
+                .param("limit", "51"))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
   void decodesIncomingCursor() throws Exception {
     TransactionCursor cursor = new TransactionCursor(Instant.parse("2026-04-16T09:00:00Z"), 777L);
     String encoded = TransactionCursorCodec.encode(cursor);
@@ -161,6 +192,64 @@ class TransactionQueryControllerTest {
         .andExpect(status().isOk());
 
     verify(transactionQueryUseCase).getTransactions(argThat(this::matchesExpandedFilters));
+  }
+
+  @Test
+  void returnsSlimResponseShapeWithoutHeavyDisplayFields() throws Exception {
+    when(transactionQueryUseCase.getTransactions(argThat(query -> query.accountId() == 101L)))
+        .thenReturn(
+            new TransactionSlice(
+                List.of(
+                    new TransactionSummary(
+                        778L,
+                        101L,
+                        "TX-778",
+                        TransactionDirection.CREDIT,
+                        TransactionStatus.BOOKED,
+                        3400L,
+                        123400L,
+                        "KRW",
+                        "payroll settlement",
+                        "EMPLOYER",
+                        Instant.parse("2026-04-16T10:00:00Z"))),
+                null,
+                false,
+                50));
+    when(requestAccountAuthorizationService.resolveReadableAccountId(
+            org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(101L)))
+        .thenReturn(101L);
+
+    mockMvc
+        .perform(
+            get("/api/v1/transactions")
+                .header("X-Account-Id", "101")
+                .param("accountId", "101")
+                .param("from", "2026-04-01T00:00:00Z")
+                .param("to", "2026-04-17T00:00:00Z")
+                .param("responseShape", "slim"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items[0].transactionReference").value("TX-778"))
+        .andExpect(jsonPath("$.items[0].amountMinor").value(3400))
+        .andExpect(jsonPath("$.items[0].balanceAfterMinor").doesNotExist())
+        .andExpect(jsonPath("$.items[0].summary").doesNotExist())
+        .andExpect(jsonPath("$.items[0].counterpartyMaskedName").doesNotExist());
+  }
+
+  @Test
+  void rejectsInvalidResponseShape() throws Exception {
+    when(requestAccountAuthorizationService.resolveReadableAccountId(
+            org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(101L)))
+        .thenReturn(101L);
+
+    mockMvc
+        .perform(
+            get("/api/v1/transactions")
+                .header("X-Account-Id", "101")
+                .param("accountId", "101")
+                .param("from", "2026-04-01T00:00:00Z")
+                .param("to", "2026-04-17T00:00:00Z")
+                .param("responseShape", "compact"))
+        .andExpect(status().isBadRequest());
   }
 
   @Test

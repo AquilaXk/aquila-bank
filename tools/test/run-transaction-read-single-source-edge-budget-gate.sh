@@ -9,8 +9,8 @@ Environment:
   SINGLE_SOURCE_EDGE_BUDGET_NAME                           default transaction-read-single-source-edge-budget-<timestamp>
   SINGLE_SOURCE_EDGE_BUDGET_INPUT_TSV                      required TSV with run/source_mode/429/failure columns
   SINGLE_SOURCE_EDGE_BUDGET_OUTPUT_DIR                     default build/reports/k6/<gate>
-  SINGLE_SOURCE_EDGE_BUDGET_DEFENSIVE_MAX_EDGE_429_RATE    default 0.30
-  SINGLE_SOURCE_EDGE_BUDGET_DEFENSIVE_MAX_BACKEND_429_RATE default 0.005
+  SINGLE_SOURCE_EDGE_BUDGET_MAX_EDGE_429_RATE              default 0.10
+  SINGLE_SOURCE_EDGE_BUDGET_MAX_BACKEND_429_RATE           default 0
   SINGLE_SOURCE_EDGE_BUDGET_OPERATING_MAX_EDGE_429_RATE    default 0.10
   SINGLE_SOURCE_EDGE_BUDGET_OPERATING_MAX_BACKEND_429_RATE default 0.0005
 USAGE
@@ -37,8 +37,8 @@ done
 name="${SINGLE_SOURCE_EDGE_BUDGET_NAME:-transaction-read-single-source-edge-budget-$(date +%Y-%m-%d-%H%M%S)}"
 input_tsv="${SINGLE_SOURCE_EDGE_BUDGET_INPUT_TSV:-}"
 output_dir="${SINGLE_SOURCE_EDGE_BUDGET_OUTPUT_DIR:-build/reports/k6/${name}}"
-defensive_edge_429_rate="${SINGLE_SOURCE_EDGE_BUDGET_DEFENSIVE_MAX_EDGE_429_RATE:-0.30}"
-defensive_backend_429_rate="${SINGLE_SOURCE_EDGE_BUDGET_DEFENSIVE_MAX_BACKEND_429_RATE:-0.005}"
+single_source_edge_429_rate="${SINGLE_SOURCE_EDGE_BUDGET_MAX_EDGE_429_RATE:-0.10}"
+single_source_backend_429_rate="${SINGLE_SOURCE_EDGE_BUDGET_MAX_BACKEND_429_RATE:-0}"
 operating_edge_429_rate="${SINGLE_SOURCE_EDGE_BUDGET_OPERATING_MAX_EDGE_429_RATE:-0.10}"
 operating_backend_429_rate="${SINGLE_SOURCE_EDGE_BUDGET_OPERATING_MAX_BACKEND_429_RATE:-0.0005}"
 summary_tsv="${output_dir}/${name}-single-source-edge-budget.tsv"
@@ -95,17 +95,17 @@ print_plan() {
   echo "[transaction-read-single-source-budget] input_tsv=${input_tsv:-missing}"
   echo "[transaction-read-single-source-budget] output_dir=${output_dir}"
   echo "[transaction-read-single-source-budget] source_modes=$(source_modes)"
-  echo "[transaction-read-single-source-budget] defensive_single_source_edge_429_rate=${defensive_edge_429_rate}"
-  echo "[transaction-read-single-source-budget] defensive_single_source_backend_429_rate=${defensive_backend_429_rate}"
+  echo "[transaction-read-single-source-budget] single_source_edge_429_rate=${single_source_edge_429_rate}"
+  echo "[transaction-read-single-source-budget] single_source_backend_429_rate=${single_source_backend_429_rate}"
   echo "[transaction-read-single-source-budget] operating_edge_429_rate=${operating_edge_429_rate}"
   echo "[transaction-read-single-source-budget] operating_backend_429_rate=${operating_backend_429_rate}"
-  echo "[transaction-read-single-source-budget] decision=single-source-defensive-lab-only"
+  echo "[transaction-read-single-source-budget] decision=single-source-operating-budget"
   echo "[transaction-read-single-source-budget] summary_tsv=${summary_tsv}"
   echo "[transaction-read-single-source-budget] report_md=${report_md}"
 }
 
-require_rate "SINGLE_SOURCE_EDGE_BUDGET_DEFENSIVE_MAX_EDGE_429_RATE" "${defensive_edge_429_rate}"
-require_rate "SINGLE_SOURCE_EDGE_BUDGET_DEFENSIVE_MAX_BACKEND_429_RATE" "${defensive_backend_429_rate}"
+require_rate "SINGLE_SOURCE_EDGE_BUDGET_MAX_EDGE_429_RATE" "${single_source_edge_429_rate}"
+require_rate "SINGLE_SOURCE_EDGE_BUDGET_MAX_BACKEND_429_RATE" "${single_source_backend_429_rate}"
 require_rate "SINGLE_SOURCE_EDGE_BUDGET_OPERATING_MAX_EDGE_429_RATE" "${operating_edge_429_rate}"
 require_rate "SINGLE_SOURCE_EDGE_BUDGET_OPERATING_MAX_BACKEND_429_RATE" "${operating_backend_429_rate}"
 
@@ -119,8 +119,8 @@ require_file "SINGLE_SOURCE_EDGE_BUDGET_INPUT_TSV" "${input_tsv}"
 mkdir -p "${output_dir}"
 
 awk -F '\t' \
-  -v defensive_edge="${defensive_edge_429_rate}" \
-  -v defensive_backend="${defensive_backend_429_rate}" \
+  -v single_source_edge="${single_source_edge_429_rate}" \
+  -v single_source_backend="${single_source_backend_429_rate}" \
   -v operating_edge="${operating_edge_429_rate}" \
   -v operating_backend="${operating_backend_429_rate}" \
   '
@@ -156,11 +156,11 @@ awk -F '\t' \
     reason = ""
 
     if (source == "single-source") {
-      budget_class = "defensive-lab"
-      edge_budget = defensive_edge
-      backend_budget = defensive_backend
-      operating_candidate = "no"
-      reason = "within-defensive-single-source-budget"
+      budget_class = "operating-candidate"
+      edge_budget = single_source_edge
+      backend_budget = single_source_backend
+      operating_candidate = "yes"
+      reason = "within-single-source-operating-budget"
     } else if (source == "multi-source" || source == "preemptive-pacing") {
       budget_class = "operating-candidate"
       edge_budget = operating_edge
@@ -218,8 +218,9 @@ cat >"${report_md}" <<REPORT
 ## Summary
 
 - gate_status=${gate_status}
-- single-source decision: defensive-lab-only
-- defensive single-source edge 429 target: <= ${defensive_edge_429_rate}
+- single-source decision: operating-budget
+- single-source edge 429 target: <= ${single_source_edge_429_rate}
+- single-source backend 429 target: <= ${single_source_backend_429_rate}
 - operating edge 429 target: < ${operating_edge_429_rate}
 - operating backend 429 target: <= ${operating_backend_429_rate}
 - 499/502/Hikari target: 0
@@ -231,7 +232,7 @@ ${budget_table}
 
 ## Contract Notes
 
-- single-source VU16은 \`\$binary_remote_addr\` 병목 확인용 defensive lab budget으로만 해석한다.
+- single-source VU16은 NAT/shared-client 방어 상한이라 운영 budget과 같은 10% 이하로 유지한다.
 - 운영 후보는 multi-source 또는 preemptive pacing evidence에서 edge 429와 backend reject를 동시에 낮춰야 한다.
 - 499/502/Hikari warning은 overload 방어 budget이 아니라 hard-zero gate로 유지한다.
 

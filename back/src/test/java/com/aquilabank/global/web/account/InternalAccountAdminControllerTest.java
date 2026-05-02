@@ -13,6 +13,7 @@ import com.aquilabank.domain.account.usecase.AccountStatusUpdateUseCase;
 import com.aquilabank.global.security.InternalServiceScope;
 import com.aquilabank.global.security.InternalServiceTokenTestSupport;
 import com.aquilabank.global.web.ApiExceptionHandler;
+import com.aquilabank.global.web.security.RequestAccountAuthorizationService;
 import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -25,15 +26,19 @@ class InternalAccountAdminControllerTest {
   private static final String REQUEST_ID_HEADER = "X-Request-Id";
 
   private AccountStatusUpdateUseCase accountStatusUpdateUseCase;
+  private RequestAccountAuthorizationService requestAccountAuthorizationService;
   private MockMvc mockMvc;
 
   @BeforeEach
   void setUp() {
     accountStatusUpdateUseCase = mock(AccountStatusUpdateUseCase.class);
+    requestAccountAuthorizationService = mock(RequestAccountAuthorizationService.class);
     mockMvc =
         MockMvcBuilders.standaloneSetup(
                 new InternalAccountAdminController(
-                    accountStatusUpdateUseCase, InternalServiceTokenTestSupport.authorizer()))
+                    accountStatusUpdateUseCase,
+                    InternalServiceTokenTestSupport.authorizer(),
+                    requestAccountAuthorizationService))
             .setControllerAdvice(new ApiExceptionHandler())
             .build();
   }
@@ -87,6 +92,7 @@ class InternalAccountAdminControllerTest {
                         && command.status().name().equals("LOCKED")
                         && command.actorSubject().equals(SUBJECT)
                         && command.requestId().equals("account-lock-request")));
+    verify(requestAccountAuthorizationService).evictAccount(101L);
   }
 
   @Test

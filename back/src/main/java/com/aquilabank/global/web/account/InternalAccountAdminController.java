@@ -8,6 +8,7 @@ import com.aquilabank.global.security.InternalServiceRequestAuthorizer;
 import com.aquilabank.global.security.InternalServiceScope;
 import com.aquilabank.global.security.InternalServiceTokenClaims;
 import com.aquilabank.global.web.RequestTraceContext;
+import com.aquilabank.global.web.security.RequestAccountAuthorizationService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -29,12 +30,15 @@ public class InternalAccountAdminController {
 
   private final AccountStatusUpdateUseCase accountStatusUpdateUseCase;
   private final InternalServiceRequestAuthorizer internalServiceRequestAuthorizer;
+  private final RequestAccountAuthorizationService requestAccountAuthorizationService;
 
   public InternalAccountAdminController(
       AccountStatusUpdateUseCase accountStatusUpdateUseCase,
-      InternalServiceRequestAuthorizer internalServiceRequestAuthorizer) {
+      InternalServiceRequestAuthorizer internalServiceRequestAuthorizer,
+      RequestAccountAuthorizationService requestAccountAuthorizationService) {
     this.accountStatusUpdateUseCase = accountStatusUpdateUseCase;
     this.internalServiceRequestAuthorizer = internalServiceRequestAuthorizer;
+    this.requestAccountAuthorizationService = requestAccountAuthorizationService;
   }
 
   @PutMapping("/{accountId}/status")
@@ -45,13 +49,15 @@ public class InternalAccountAdminController {
     InternalServiceTokenClaims claims =
         internalServiceRequestAuthorizer.requireScope(
             httpServletRequest, InternalServiceScope.ACCOUNT_ADMIN);
-    return AccountResponse.from(
+    AccountSummary summary =
         accountStatusUpdateUseCase.update(
             new AccountStatusUpdateCommand(
                 accountId,
                 request.accountStatus(),
                 claims.subject(),
-                resolveRequestId(httpServletRequest))));
+                resolveRequestId(httpServletRequest)));
+    requestAccountAuthorizationService.evictAccount(accountId);
+    return AccountResponse.from(summary);
   }
 
   /** 내부 계좌 상태 변경 요청 body */
