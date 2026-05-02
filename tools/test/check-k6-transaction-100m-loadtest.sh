@@ -5,6 +5,9 @@ echo "[k6-transaction-100m] shell syntax"
 bash -n tools/test/run-k6-transaction-100m-loadtest.sh
 bash -n tools/test/archive-k6-transaction-100m-result.sh
 
+temp_dir="$(mktemp -d)"
+trap 'rm -rf "${temp_dir}"' EXIT
+
 echo "[k6-transaction-100m] compose config"
 docker compose -f compose.yml -f compose.t3micro.yml -f compose.loadtest.yml config >/dev/null
 
@@ -44,6 +47,8 @@ grep -F "archive output dir=docs/performance-results/k6-smoke" <<<"${plan}" >/de
 grep -F "summary gate=true" <<<"${plan}" >/dev/null
 grep -F "archive failed summary=true" <<<"${plan}" >/dev/null
 grep -F "backend readiness gate=true base=http://localhost:18080 path=/actuator/health/readiness timeout=120" <<<"${plan}" >/dev/null
+grep -F "auth token required=false token=missing source=missing" <<<"${plan}" >/dev/null
+grep -F "auth preflight=false url=not-configured expected_status=200 timeout=5" <<<"${plan}" >/dev/null
 grep -F "postgres health gate=true required_status=healthy" <<<"${plan}" >/dev/null
 grep -F "postgres recovery gate=true stable_seconds=10" <<<"${plan}" >/dev/null
 grep -F "postgres recovery noise window seconds=30" <<<"${plan}" >/dev/null
@@ -122,6 +127,56 @@ capacity_archive_plan="$(
 )"
 grep -F "run purpose=capacity" <<<"${capacity_archive_plan}" >/dev/null
 grep -F "archive output dir=docs/performance-results/k6-capacity" <<<"${capacity_archive_plan}" >/dev/null
+grep -F "auth token required=true token=missing source=missing" <<<"${capacity_archive_plan}" >/dev/null
+
+echo "[k6-transaction-100m] auth preflight"
+auth_token_file="${temp_dir}/k6-token.secret"
+printf "secret-token-value\n" >"${auth_token_file}"
+auth_file_plan="$(
+  K6_REPORT_NAME=transaction-100m-auth-file-check \
+  K6_RUN_PURPOSE=capacity \
+  K6_OBSERVABILITY_MODE=summary-only \
+  K6_GENERATOR_MODE=docker-context \
+  K6_DOCKER_CONTEXT=transaction-k6-remote \
+  K6_REMOTE_BASE_URL=http://192.0.2.10:8080 \
+  K6_AUTH_TOKEN_FILE="${auth_token_file}" \
+    tools/test/run-k6-transaction-100m-loadtest.sh --print-plan
+)"
+grep -F "auth token required=true token=present source=file" <<<"${auth_file_plan}" >/dev/null
+if grep -F "secret-token-value" <<<"${auth_file_plan}" >/dev/null; then
+  echo "auth token leaked into k6 plan output" >&2
+  exit 1
+fi
+if K6_RUN_PURPOSE=capacity \
+  K6_OBSERVABILITY_MODE=summary-only \
+  K6_GENERATOR_MODE=docker-context \
+  K6_DOCKER_CONTEXT=transaction-k6-remote \
+  K6_REMOTE_BASE_URL=http://192.0.2.10:8080 \
+    tools/test/run-k6-transaction-100m-loadtest.sh --auth-preflight-only >/dev/null 2>&1; then
+  echo "missing K6_AUTH_TOKEN unexpectedly passed auth preflight" >&2
+  exit 1
+fi
+K6_RUN_PURPOSE=capacity \
+K6_OBSERVABILITY_MODE=summary-only \
+K6_GENERATOR_MODE=docker-context \
+K6_DOCKER_CONTEXT=transaction-k6-remote \
+K6_REMOTE_BASE_URL=http://192.0.2.10:8080 \
+K6_AUTH_TOKEN_FILE="${auth_token_file}" \
+K6_AUTH_PREFLIGHT=false \
+  tools/test/run-k6-transaction-100m-loadtest.sh --auth-preflight-only >/dev/null
+if K6_RUN_PURPOSE=capacity \
+  K6_OBSERVABILITY_MODE=summary-only \
+  K6_GENERATOR_MODE=docker-context \
+  K6_DOCKER_CONTEXT=transaction-k6-remote \
+  K6_REMOTE_BASE_URL=http://192.0.2.10:8080 \
+  K6_AUTH_TOKEN_FILE="${auth_token_file}" \
+  K6_AUTH_PREFLIGHT=true \
+  K6_AUTH_PREFLIGHT_URL=http://127.0.0.1:1/api/v1/transactions \
+  K6_AUTH_PREFLIGHT_TIMEOUT_SECONDS=1 \
+    tools/test/run-k6-transaction-100m-loadtest.sh --auth-preflight-only >/dev/null 2>&1; then
+  echo "unreachable auth status preflight unexpectedly passed" >&2
+  exit 1
+fi
 
 overload_plan="$(
   K6_REPORT_NAME=transaction-100m-overload-check \
@@ -401,8 +456,6 @@ grep -F "hot deep cursor p95 ms" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "cold deep cursor p95 ms" ops/k6/transaction-read-100m.js >/dev/null
 
 echo "[k6-transaction-100m] summary hard gate"
-temp_dir="$(mktemp -d)"
-trap 'rm -rf "${temp_dir}"' EXIT
 summary_ok="${temp_dir}/summary-ok.json"
 summary_zero="${temp_dir}/summary-zero.json"
 summary_interrupted="${temp_dir}/summary-interrupted.json"
