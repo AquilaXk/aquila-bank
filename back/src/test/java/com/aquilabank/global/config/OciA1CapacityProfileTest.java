@@ -60,6 +60,10 @@ class OciA1CapacityProfileTest {
               .isEqualTo(200);
           assertThat(
                   environment.getProperty(
+                      "ops.api-admission-control.endpoints[0].group", String.class))
+              .isEqualTo("transaction-read-archive");
+          assertThat(
+                  environment.getProperty(
                       "ops.api-admission-control.endpoints[0].max-concurrency", Integer.class))
               .isEqualTo(6);
           assertThat(
@@ -91,6 +95,14 @@ class OciA1CapacityProfileTest {
                       "ops.api-admission-control.endpoints[0].adaptive.decrease-cooldown-seconds",
                       Integer.class))
               .isEqualTo(2);
+          assertThat(
+                  environment.getProperty(
+                      "ops.api-admission-control.endpoints[1].group", String.class))
+              .isEqualTo("transaction-read-hot");
+          assertThat(
+                  environment.getProperty(
+                      "ops.api-admission-control.endpoints[1].max-concurrency", Integer.class))
+              .isEqualTo(6);
         });
   }
 
@@ -172,6 +184,10 @@ class OciA1CapacityProfileTest {
                   .isEqualTo(160);
               assertThat(
                       environment.getProperty(
+                          "ops.api-admission-control.endpoints[0].group", String.class))
+                  .isEqualTo("transaction-read-archive");
+              assertThat(
+                      environment.getProperty(
                           "ops.api-admission-control.endpoints[0].max-concurrency", Integer.class))
                   .isEqualTo(7);
               assertThat(
@@ -204,6 +220,14 @@ class OciA1CapacityProfileTest {
                           "ops.api-admission-control.endpoints[0].adaptive.decrease-cooldown-seconds",
                           Integer.class))
                   .isEqualTo(3);
+              assertThat(
+                      environment.getProperty(
+                          "ops.api-admission-control.endpoints[1].group", String.class))
+                  .isEqualTo("transaction-read-hot");
+              assertThat(
+                      environment.getProperty(
+                          "ops.api-admission-control.endpoints[1].max-concurrency", Integer.class))
+                  .isEqualTo(7);
             });
   }
 
@@ -224,15 +248,23 @@ class OciA1CapacityProfileTest {
         .run(
             context -> {
               assertThat(context).hasNotFailed();
-              ApiAdmissionControlProperties.EndpointLimit endpoint =
+              ApiAdmissionControlProperties.EndpointLimit archiveEndpoint =
                   context.getBean(ApiAdmissionControlProperties.class).endpoints().stream()
-                      .filter(item -> item.group().equals("transaction-read"))
+                      .filter(item -> item.group().equals("transaction-read-archive"))
+                      .findFirst()
+                      .orElseThrow();
+              ApiAdmissionControlProperties.EndpointLimit hotEndpoint =
+                  context.getBean(ApiAdmissionControlProperties.class).endpoints().stream()
+                      .filter(item -> item.group().equals("transaction-read-hot"))
                       .findFirst()
                       .orElseThrow();
 
-              assertThat(endpoint.maxConcurrency()).isEqualTo(4);
-              assertThat(endpoint.adaptive().minConcurrency()).isEqualTo(4);
-              assertThat(endpoint.adaptive().maxConcurrency()).isEqualTo(8);
+              assertThat(archiveEndpoint.maxConcurrency()).isEqualTo(4);
+              assertThat(archiveEndpoint.adaptive().minConcurrency()).isEqualTo(4);
+              assertThat(archiveEndpoint.adaptive().maxConcurrency()).isEqualTo(8);
+              assertThat(hotEndpoint.maxConcurrency()).isEqualTo(4);
+              assertThat(hotEndpoint.adaptive().minConcurrency()).isEqualTo(4);
+              assertThat(hotEndpoint.adaptive().maxConcurrency()).isEqualTo(8);
             });
   }
 

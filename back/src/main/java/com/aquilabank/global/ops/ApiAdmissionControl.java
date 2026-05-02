@@ -52,12 +52,17 @@ public class ApiAdmissionControl {
   }
 
   private EndpointState findEndpoint(String path) {
+    EndpointState result = null;
+    int longestPrefix = -1;
     for (EndpointState endpoint : endpoints) {
-      if (endpoint.matches(path)) {
-        return endpoint;
+      int matchedPrefix = endpoint.matchedPrefixLength(path);
+      if (matchedPrefix > longestPrefix) {
+        result = endpoint;
+        longestPrefix = matchedPrefix;
       }
     }
-    return null;
+    // archive처럼 겹치는 prefix는 더 구체적인 endpoint group이 admission budget을 가져간다.
+    return result;
   }
 
   private void increment(String group, String outcome) {
@@ -124,8 +129,14 @@ public class ApiAdmissionControl {
       return retryAfterSeconds;
     }
 
-    private boolean matches(String path) {
-      return pathPrefixes.stream().anyMatch(path::startsWith);
+    private int matchedPrefixLength(String path) {
+      int result = -1;
+      for (String prefix : pathPrefixes) {
+        if (path.startsWith(prefix) && prefix.length() > result) {
+          result = prefix.length();
+        }
+      }
+      return result;
     }
 
     private boolean tryAcquire() {
@@ -202,12 +213,18 @@ public class ApiAdmissionControl {
         return;
       }
       int completions = healthyCompletions.incrementAndGet();
-      if (completions < adaptive.increaseEverySuccesses()) {
+      // in-flight가 낮으면 포화가 풀린 구간으로 보고 limit 회복을 더 빠르게 허용한다.
+      boolean lowSaturation = inFlight.get() <= adaptive.lowSaturationMaxInFlight();
+      int requiredCompletions =
+          lowSaturation
+              ? adaptive.lowSaturationIncreaseEverySuccesses()
+              : adaptive.increaseEverySuccesses();
+      int step = lowSaturation ? adaptive.lowSaturationRecoveryStep() : adaptive.recoveryStep();
+      if (completions < requiredCompletions) {
         return;
       }
       if (healthyCompletions.compareAndSet(completions, 0)) {
-        currentLimit.updateAndGet(
-            value -> Math.min(adaptive.maxConcurrency(), value + adaptive.recoveryStep()));
+        currentLimit.updateAndGet(value -> Math.min(adaptive.maxConcurrency(), value + step));
       }
     }
   }
