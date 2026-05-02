@@ -367,6 +367,14 @@ function header(response, name) {
   return "";
 }
 
+function normalizedHeader(response, name) {
+  const value = header(response, name);
+  return String(value || "")
+    .split(",")[0]
+    .trim()
+    .toLowerCase();
+}
+
 function numericHeader(response, name) {
   const value = Number(header(response, name));
   return Number.isFinite(value) && value >= 0 ? value : null;
@@ -376,14 +384,19 @@ function rejectSource(response) {
   if (response.status !== 429) {
     return "";
   }
-  const source = header(response, "X-Aquila-Reject-Source").toLowerCase();
-  const reason = header(response, "X-Aquila-Reject-Reason").toLowerCase();
-  if (source === "nginx-edge" || reason === "edge-rate-limit") {
+  const detailedSource = normalizedHeader(response, "X-Aquila-429-Source");
+  const coarseSource = normalizedHeader(response, "X-Aquila-Reject-Source");
+  const reason = normalizedHeader(response, "X-Aquila-Reject-Reason");
+  if (coarseSource === "nginx-edge" || detailedSource === "nginx-edge" || reason === "edge-rate-limit") {
     return "edge";
   }
   if (
-    source === "backend" ||
-    source === "security" ||
+    coarseSource === "backend" ||
+    coarseSource === "security" ||
+    detailedSource === "backend-admission" ||
+    detailedSource === "saturation-guard" ||
+    detailedSource === "fairness-limiter" ||
+    detailedSource === "security-filter" ||
     reason === "backend-admission" ||
     reason === "saturation-guard" ||
     reason === "fairness-limiter" ||
