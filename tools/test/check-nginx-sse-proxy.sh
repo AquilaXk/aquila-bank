@@ -89,8 +89,8 @@ required_patterns=(
   '"source":"nginx-edge"'
   "location = /api/v1/transactions"
   "location = /api/v1/transactions/archive"
-  "limit_req zone=aquila_bank_transaction_hot_per_ip burst=\${NGINX_TRANSACTION_READ_HOT_BURST} nodelay;"
-  "limit_req zone=aquila_bank_transaction_archive_per_ip burst=\${NGINX_TRANSACTION_READ_ARCHIVE_BURST} nodelay;"
+  "limit_req zone=aquila_bank_transaction_hot_per_ip burst=\${NGINX_TRANSACTION_READ_HOT_BURST} \${NGINX_TRANSACTION_READ_HOT_LIMIT_MODE};"
+  "limit_req zone=aquila_bank_transaction_archive_per_ip burst=\${NGINX_TRANSACTION_READ_ARCHIVE_BURST} \${NGINX_TRANSACTION_READ_ARCHIVE_LIMIT_MODE};"
   "proxy_next_upstream error timeout http_502;"
   "proxy_next_upstream_tries 2;"
   "proxy_next_upstream_timeout 2s;"

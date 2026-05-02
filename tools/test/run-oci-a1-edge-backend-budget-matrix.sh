@@ -42,7 +42,7 @@ edge_transaction_hot_rate_rps=80
 edge_transaction_archive_rate_rps=80
 edge_transaction_hot_burst=10
 edge_transaction_archive_burst=10
-edge_transaction_read_policy="fail-fast-nodelay"
+edge_transaction_read_policy="small-delay-queue"
 backend_admission_max=8
 backend_admission_adaptive_max=12
 backend_hot_admission_max=8
@@ -104,8 +104,8 @@ fi
 
 require_pattern 'limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_hot_per_ip:10m rate=${NGINX_TRANSACTION_READ_HOT_RATE_RPS}r/s;' "${nginx_config}"
 require_pattern 'limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_archive_per_ip:10m rate=${NGINX_TRANSACTION_READ_ARCHIVE_RATE_RPS}r/s;' "${nginx_config}"
-require_pattern 'limit_req zone=aquila_bank_transaction_hot_per_ip burst=${NGINX_TRANSACTION_READ_HOT_BURST} nodelay;' "${nginx_config}"
-require_pattern 'limit_req zone=aquila_bank_transaction_archive_per_ip burst=${NGINX_TRANSACTION_READ_ARCHIVE_BURST} nodelay;' "${nginx_config}"
+require_pattern 'limit_req zone=aquila_bank_transaction_hot_per_ip burst=${NGINX_TRANSACTION_READ_HOT_BURST} ${NGINX_TRANSACTION_READ_HOT_LIMIT_MODE};' "${nginx_config}"
+require_pattern 'limit_req zone=aquila_bank_transaction_archive_per_ip burst=${NGINX_TRANSACTION_READ_ARCHIVE_BURST} ${NGINX_TRANSACTION_READ_ARCHIVE_LIMIT_MODE};' "${nginx_config}"
 require_pattern 'add_header X-Aquila-Reject-Source nginx-edge always;' "${nginx_config}"
 require_pattern 'add_header X-Aquila-Reject-Reason edge-rate-limit always;' "${nginx_config}"
 require_pattern 'keepalive_requests 1000;' "${nginx_config}"
@@ -118,8 +118,8 @@ require_pattern 'transaction_read_hot_rate_rps="${OCI_A1_TRANSACTION_READ_HOT_RA
 require_pattern 'transaction_read_archive_rate_rps="${OCI_A1_TRANSACTION_READ_ARCHIVE_RATE_RPS:-80}"' "${deploy_script}"
 require_pattern 'limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_hot_per_ip:10m rate=${transaction_read_hot_rate_rps}r/s;' "${deploy_script}"
 require_pattern 'limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_archive_per_ip:10m rate=${transaction_read_archive_rate_rps}r/s;' "${deploy_script}"
-require_pattern 'limit_req zone=aquila_bank_transaction_hot_per_ip burst=${transaction_read_hot_burst} nodelay;' "${deploy_script}"
-require_pattern 'limit_req zone=aquila_bank_transaction_archive_per_ip burst=${transaction_read_archive_burst} nodelay;' "${deploy_script}"
+require_pattern 'limit_req zone=aquila_bank_transaction_hot_per_ip burst=${transaction_read_hot_burst} ${transaction_read_hot_limit_mode};' "${deploy_script}"
+require_pattern 'limit_req zone=aquila_bank_transaction_archive_per_ip burst=${transaction_read_archive_burst} ${transaction_read_archive_limit_mode};' "${deploy_script}"
 require_pattern 'OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_MAX=${OCI_A1_TRANSACTION_READ_ADMISSION_MAX:-8}' "${deploy_script}"
 require_pattern 'OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_ADAPTIVE_MAX=${OCI_A1_TRANSACTION_READ_ADMISSION_ADAPTIVE_MAX:-12}' "${deploy_script}"
 require_pattern 'OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_HOT_MAX=${OCI_A1_TRANSACTION_READ_HOT_ADMISSION_MAX:-${OCI_A1_TRANSACTION_READ_ADMISSION_MAX:-8}}' "${deploy_script}"

@@ -265,8 +265,8 @@ script_patterns=(
   "limit_req zone=aquila_bank_auth_per_ip burst=10 nodelay;"
   "location = /api/v1/transactions"
   "location = /api/v1/transactions/archive"
-  'limit_req zone=aquila_bank_transaction_hot_per_ip burst=${transaction_read_hot_burst} nodelay;'
-  'limit_req zone=aquila_bank_transaction_archive_per_ip burst=${transaction_read_archive_burst} nodelay;'
+  'limit_req zone=aquila_bank_transaction_hot_per_ip burst=${transaction_read_hot_burst} ${transaction_read_hot_limit_mode};'
+  'limit_req zone=aquila_bank_transaction_archive_per_ip burst=${transaction_read_archive_burst} ${transaction_read_archive_limit_mode};'
   "location = /api/v1/transfers"
   "location ~ ^/api/v1/transfers/[^/]+/reversal$"
   "limit_req zone=aquila_bank_transfer_per_ip burst=6 nodelay;"

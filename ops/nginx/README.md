@@ -34,6 +34,8 @@
   - `NGINX_TRANSACTION_READ_ARCHIVE_RATE_RPS` 기본값 `80`
   - `NGINX_TRANSACTION_READ_HOT_BURST` 기본값 `10`
   - `NGINX_TRANSACTION_READ_ARCHIVE_BURST` 기본값 `10`
+  - `NGINX_TRANSACTION_READ_HOT_DELAY` 기본값 `2`, `0`이면 `nodelay`
+  - `NGINX_TRANSACTION_READ_ARCHIVE_DELAY` 기본값 `2`, `0`이면 `nodelay`
 - `NGINX_BACKEND_SSE_SERVERS`를 비우면 API upstream과 같은 backend pool을 재사용합니다.
 - render 명령:
 
@@ -61,15 +63,15 @@ bash tools/ops/render-nginx-runtime-config.sh /tmp/aquila-bank-nginx.conf ops/ng
 - `limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_archive_per_ip:10m rate=80r/s;`
 - `limit_req_zone $binary_remote_addr zone=aquila_bank_transfer_per_ip:10m rate=3r/s;`
 - `location = /api/v1/auth/login`, `location = /api/v1/auth/refresh`, `location = /api/v1/auth/password-recovery/request`에 `limit_req zone=aquila_bank_auth_per_ip burst=10 nodelay;`를 적용합니다.
-- `location = /api/v1/transactions`에는 `limit_req zone=aquila_bank_transaction_hot_per_ip burst=10 nodelay;`를 적용합니다.
-- `location = /api/v1/transactions/archive`에는 `limit_req zone=aquila_bank_transaction_archive_per_ip burst=10 nodelay;`를 적용합니다.
+- `location = /api/v1/transactions`에는 `limit_req zone=aquila_bank_transaction_hot_per_ip burst=10 delay=2;`를 적용합니다.
+- `location = /api/v1/transactions/archive`에는 `limit_req zone=aquila_bank_transaction_archive_per_ip burst=10 delay=2;`를 적용합니다.
 - `location = /api/v1/transfers`, `location ~ ^/api/v1/transfers/[^/]+/reversal$`에는 `limit_req zone=aquila_bank_transfer_per_ip burst=6 nodelay;`를 적용합니다.
 - exact/regex location은 generic `/api/`보다 먼저 매칭되므로 zone을 중첩 적용하지 않습니다.
 - `/api/`에는 `limit_req zone=aquila_bank_api_per_ip burst=20 delay=5;`를 유지합니다.
 - `/api/v1/notifications/stream`은 장기 연결이라 일반 API와 성격이 달라 exact location으로 분리하고 rate limit 대상에서 제외합니다.
 - `429`는 Nginx에서 JSON body와 `X-Aquila-Reject-Source: nginx-edge`, `Retry-After`, `X-RateLimit-Retry-After-Millis`, `X-RateLimit-Retry-Jitter-Millis`를 내려 k6/client backoff가 edge rejection을 구분하게 합니다. OCI A1 기본값은 `150ms + jitter 100ms`로 retry 동기화를 짧게 분산합니다.
 - backend에는 login/password recovery throttling이 이미 있으므로, Nginx auth zone은 edge 1차 차단으로 보고 backend는 계정/IP 단위 2차 가드로 둡니다.
-- transaction-read는 accepted 200 delay보다 빠른 429를 우선해 p95 해석을 단순하게 유지합니다.
+- transaction-read는 짧은 burst만 `delay=2` queue로 흡수하고, queue 초과는 429로 돌려 p95와 client backoff를 분리합니다.
 - 실제 서비스 트래픽 특성에 따라 `rate`와 `burst`는 조정하되, 로그인/토큰 재발급/SSE 재연결 패턴과 shared IP 영향을 같이 확인합니다.
 
 ## Multi-Node Load Balancer 기준

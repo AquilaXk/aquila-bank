@@ -22,7 +22,7 @@ grep -F "edge_transaction_hot_rate_rps=80" <<<"${plan}" >/dev/null
 grep -F "edge_transaction_archive_rate_rps=80" <<<"${plan}" >/dev/null
 grep -F "edge_transaction_hot_burst=10" <<<"${plan}" >/dev/null
 grep -F "edge_transaction_archive_burst=10" <<<"${plan}" >/dev/null
-grep -F "edge_transaction_read_policy=fail-fast-nodelay" <<<"${plan}" >/dev/null
+grep -F "edge_transaction_read_policy=small-delay-queue" <<<"${plan}" >/dev/null
 grep -F "backend_admission_max=8" <<<"${plan}" >/dev/null
 grep -F "backend_admission_adaptive_max=12" <<<"${plan}" >/dev/null
 grep -F "backend_hot_admission_max=8" <<<"${plan}" >/dev/null
@@ -49,7 +49,7 @@ grep -F "| edge transaction-hot rate | 80r/s |" "${report_md}" >/dev/null
 grep -F "| edge transaction-archive rate | 80r/s |" "${report_md}" >/dev/null
 grep -F "| edge transaction-hot burst | 10 |" "${report_md}" >/dev/null
 grep -F "| edge transaction-archive burst | 10 |" "${report_md}" >/dev/null
-grep -F "| edge transaction-read policy | fail-fast-nodelay |" "${report_md}" >/dev/null
+grep -F "| edge transaction-read policy | small-delay-queue |" "${report_md}" >/dev/null
 grep -F "| backend admission max | 8 |" "${report_md}" >/dev/null
 grep -F "| backend admission adaptive max | 12 |" "${report_md}" >/dev/null
 grep -F "| backend hot admission max | 8 |" "${report_md}" >/dev/null
@@ -66,8 +66,8 @@ grep -F "| expected 429 source | edge-or-backend-admission |" "${report_md}" >/d
 echo "[oci-a1-budget-matrix] source contract"
 grep -F 'limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_hot_per_ip:10m rate=${NGINX_TRANSACTION_READ_HOT_RATE_RPS}r/s;' ops/nginx/nginx.conf >/dev/null
 grep -F 'limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_archive_per_ip:10m rate=${NGINX_TRANSACTION_READ_ARCHIVE_RATE_RPS}r/s;' ops/nginx/nginx.conf >/dev/null
-grep -F 'limit_req zone=aquila_bank_transaction_hot_per_ip burst=${NGINX_TRANSACTION_READ_HOT_BURST} nodelay;' ops/nginx/nginx.conf >/dev/null
-grep -F 'limit_req zone=aquila_bank_transaction_archive_per_ip burst=${NGINX_TRANSACTION_READ_ARCHIVE_BURST} nodelay;' ops/nginx/nginx.conf >/dev/null
+grep -F 'limit_req zone=aquila_bank_transaction_hot_per_ip burst=${NGINX_TRANSACTION_READ_HOT_BURST} ${NGINX_TRANSACTION_READ_HOT_LIMIT_MODE};' ops/nginx/nginx.conf >/dev/null
+grep -F 'limit_req zone=aquila_bank_transaction_archive_per_ip burst=${NGINX_TRANSACTION_READ_ARCHIVE_BURST} ${NGINX_TRANSACTION_READ_ARCHIVE_LIMIT_MODE};' ops/nginx/nginx.conf >/dev/null
 grep -F 'keepalive_timeout ${NGINX_BACKEND_API_KEEPALIVE_TIMEOUT_SECONDS}s;' ops/nginx/nginx.conf >/dev/null
 grep -F 'proxy_next_upstream error timeout http_502;' ops/nginx/nginx.conf >/dev/null
 grep -F 'maximum-pool-size: ${OCI_A1_DB_POOL_MAX_SIZE:8}' back/src/main/resources/application-oci-a1.yml >/dev/null

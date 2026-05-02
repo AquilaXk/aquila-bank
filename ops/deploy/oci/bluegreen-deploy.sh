@@ -590,12 +590,26 @@ render_nginx_real_ip_trusted_proxy_lines() {
   printf '%b' "${lines}"
 }
 
+render_nginx_limit_req_mode() {
+  local delay="$1"
+  if ! [[ "${delay}" =~ ^[0-9]+$ ]]; then
+    log "transaction read Nginx delay must be a non-negative integer: ${delay}"
+    exit 1
+  fi
+  if [[ "${delay}" == "0" ]]; then
+    printf 'nodelay'
+    return
+  fi
+  printf 'delay=%s' "${delay}"
+}
+
 render_nginx_config() {
   local slot="$1"
   local backend_name frontend_name backend_proxy_host edge_retry_after_seconds edge_retry_after_millis edge_retry_jitter_millis
   local backend_api_keepalive_timeout_seconds
   local real_ip_header real_ip_trusted_proxies real_ip_trusted_proxy_lines
   local transaction_read_hot_rate_rps transaction_read_archive_rate_rps transaction_read_hot_burst transaction_read_archive_burst
+  local transaction_read_hot_delay transaction_read_archive_delay transaction_read_hot_limit_mode transaction_read_archive_limit_mode
   backend_name="$(slot_name backend "${slot}")"
   frontend_name="$(slot_name frontend "${slot}")"
   backend_proxy_host="${BACKEND_PROXY_HOST:-${backend_name}}"
@@ -611,6 +625,10 @@ render_nginx_config() {
   transaction_read_archive_rate_rps="${OCI_A1_TRANSACTION_READ_ARCHIVE_RATE_RPS:-80}"
   transaction_read_hot_burst="${OCI_A1_TRANSACTION_READ_HOT_BURST:-10}"
   transaction_read_archive_burst="${OCI_A1_TRANSACTION_READ_ARCHIVE_BURST:-10}"
+  transaction_read_hot_delay="${OCI_A1_TRANSACTION_READ_HOT_DELAY:-2}"
+  transaction_read_archive_delay="${OCI_A1_TRANSACTION_READ_ARCHIVE_DELAY:-2}"
+  transaction_read_hot_limit_mode="$(render_nginx_limit_req_mode "${transaction_read_hot_delay}")"
+  transaction_read_archive_limit_mode="$(render_nginx_limit_req_mode "${transaction_read_archive_delay}")"
 
   cat <<NGINX
 worker_processes auto;
@@ -793,8 +811,8 @@ ${real_ip_trusted_proxy_lines}
       proxy_next_upstream error timeout http_502;
       proxy_next_upstream_tries 2;
       proxy_next_upstream_timeout 2s;
-      # overload는 accepted delay보다 빠른 429가 client backoff와 p95 해석에 유리합니다.
-      limit_req zone=aquila_bank_transaction_hot_per_ip burst=${transaction_read_hot_burst} nodelay;
+      # 짧은 burst는 작은 delay queue로 흡수하고, queue 초과만 429로 돌려 client backoff와 분리합니다.
+      limit_req zone=aquila_bank_transaction_hot_per_ip burst=${transaction_read_hot_burst} ${transaction_read_hot_limit_mode};
       add_header X-Aquila-Edge-Limit-Status \$limit_req_status always;
       proxy_read_timeout 30s;
       proxy_send_timeout 30s;
@@ -815,8 +833,8 @@ ${real_ip_trusted_proxy_lines}
       proxy_next_upstream error timeout http_502;
       proxy_next_upstream_tries 2;
       proxy_next_upstream_timeout 2s;
-      # archive query도 같은 fail-fast 정책으로 cold read 지연을 edge에서 길게 만들지 않습니다.
-      limit_req zone=aquila_bank_transaction_archive_per_ip burst=${transaction_read_archive_burst} nodelay;
+      # archive query도 같은 작은 delay queue로 short-burst edge 429를 먼저 낮춥니다.
+      limit_req zone=aquila_bank_transaction_archive_per_ip burst=${transaction_read_archive_burst} ${transaction_read_archive_limit_mode};
       add_header X-Aquila-Edge-Limit-Status \$limit_req_status always;
       proxy_read_timeout 30s;
       proxy_send_timeout 30s;
