@@ -9,7 +9,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
-import org.springframework.web.server.ResponseStatusException;
 
 class TransactionReadAccountFairnessLimiterTest {
 
@@ -33,8 +32,8 @@ class TransactionReadAccountFairnessLimiterTest {
       assertThat(ownerStarted.await(1, TimeUnit.SECONDS)).isTrue();
 
       assertThatThrownBy(() -> limiter.execute(101L, () -> "rejected"))
-          .isInstanceOf(ResponseStatusException.class)
-          .hasMessageContaining("429 TOO_MANY_REQUESTS");
+          .isInstanceOf(TransactionReadAccountFairnessRejectedException.class)
+          .hasMessage("transaction read account concurrency limit exceeded");
 
       releaseOwner.countDown();
       assertThat(owner.get(1, TimeUnit.SECONDS)).isEqualTo("owner");

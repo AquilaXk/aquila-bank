@@ -4,16 +4,11 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
-import org.springframework.web.server.ResponseStatusException;
 
 /** 단일 hot account가 transaction read worker를 독점하지 않게 계좌별 동시 실행을 제한합니다. */
 @Component
 public class TransactionReadAccountFairnessLimiter {
-
-  private static final String REJECTION_REASON =
-      "transaction read account concurrency limit exceeded";
 
   private final ConcurrentHashMap<Long, AtomicInteger> activeRequests = new ConcurrentHashMap<>();
   private final int maxConcurrentRequests;
@@ -32,7 +27,7 @@ public class TransactionReadAccountFairnessLimiter {
     int active = counter.incrementAndGet();
     if (active > maxConcurrentRequests) {
       release(accountId, counter);
-      throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, REJECTION_REASON);
+      throw new TransactionReadAccountFairnessRejectedException();
     }
 
     try {
