@@ -10,6 +10,7 @@ Environment:
   HIKARI_IDLE_ATTRIBUTION_PG_ACTIVITY_TSV            required pg_stat_activity sampler TSV
   HIKARI_IDLE_ATTRIBUTION_HIKARI_LOG                 required Hikari warning log
   HIKARI_IDLE_ATTRIBUTION_CONFIG_TSV                 required key/value timeout config TSV
+  HIKARI_IDLE_ATTRIBUTION_HTTP_STATUS_TSV            optional key/value HTTP status TSV; required when EXPECT_WARNING_COUNT=0
   HIKARI_IDLE_ATTRIBUTION_OUTPUT_DIR                 default build/reports/k6/<name>
   HIKARI_IDLE_ATTRIBUTION_CORRELATION_WINDOW_SECONDS default 5
   HIKARI_IDLE_ATTRIBUTION_EXPECT_WARNING_COUNT       optional exact warning count, use 0 for 30m soak removal gate
@@ -71,6 +72,7 @@ name="${HIKARI_IDLE_ATTRIBUTION_NAME:-hikari-idle-attribution-$(date +%Y-%m-%d-%
 pg_activity_tsv="${HIKARI_IDLE_ATTRIBUTION_PG_ACTIVITY_TSV:-}"
 hikari_log="${HIKARI_IDLE_ATTRIBUTION_HIKARI_LOG:-}"
 config_tsv="${HIKARI_IDLE_ATTRIBUTION_CONFIG_TSV:-}"
+http_status_tsv="${HIKARI_IDLE_ATTRIBUTION_HTTP_STATUS_TSV:-}"
 output_dir="${HIKARI_IDLE_ATTRIBUTION_OUTPUT_DIR:-build/reports/k6/${name}}"
 correlation_window_seconds="${HIKARI_IDLE_ATTRIBUTION_CORRELATION_WINDOW_SECONDS:-5}"
 expected_warning_count="${HIKARI_IDLE_ATTRIBUTION_EXPECT_WARNING_COUNT:-}"
@@ -102,6 +104,7 @@ print_plan() {
   echo "[hikari-idle-attribution] pg_activity_tsv=${pg_activity_tsv:-missing}"
   echo "[hikari-idle-attribution] hikari_log=${hikari_log:-missing}"
   echo "[hikari-idle-attribution] config_tsv=${config_tsv:-missing}"
+  echo "[hikari-idle-attribution] http_status_tsv=${http_status_tsv:-missing}"
   echo "[hikari-idle-attribution] output_dir=${output_dir}"
   echo "[hikari-idle-attribution] sampler=pg_stat_activity"
   echo "[hikari-idle-attribution] correlation_window_seconds=${correlation_window_seconds}"
@@ -123,13 +126,42 @@ if [[ "${mode}" == "print-plan" ]]; then
   require_file "HIKARI_IDLE_ATTRIBUTION_PG_ACTIVITY_TSV" "${pg_activity_tsv}"
   require_file "HIKARI_IDLE_ATTRIBUTION_HIKARI_LOG" "${hikari_log}"
   require_file "HIKARI_IDLE_ATTRIBUTION_CONFIG_TSV" "${config_tsv}"
+  if [[ -n "${http_status_tsv}" || "${expected_warning_count}" == "0" ]]; then
+    require_file "HIKARI_IDLE_ATTRIBUTION_HTTP_STATUS_TSV" "${http_status_tsv}"
+  fi
   exit 0
 fi
 
 require_file "HIKARI_IDLE_ATTRIBUTION_PG_ACTIVITY_TSV" "${pg_activity_tsv}"
 require_file "HIKARI_IDLE_ATTRIBUTION_HIKARI_LOG" "${hikari_log}"
 require_file "HIKARI_IDLE_ATTRIBUTION_CONFIG_TSV" "${config_tsv}"
+if [[ -n "${http_status_tsv}" || "${expected_warning_count}" == "0" ]]; then
+  require_file "HIKARI_IDLE_ATTRIBUTION_HTTP_STATUS_TSV" "${http_status_tsv}"
+fi
 mkdir -p "${output_dir}"
+
+idle_in_transaction_samples="$(
+  awk -F '\t' '
+    NR == 1 {
+      for (i = 1; i <= NF; i++) if ($i == "state") state_col = i
+      next
+    }
+    state_col && $state_col == "idle in transaction" { count++ }
+    END { print count + 0 }
+  ' "${pg_activity_tsv}"
+)"
+
+five_xx_count="0"
+if [[ -n "${http_status_tsv}" ]]; then
+  five_xx_count="$(
+    awk -F '\t' '
+      NR == 1 { next }
+      $1 == "five_xx_count" { print $2; found = 1 }
+      END { if (!found) print "missing" }
+    ' "${http_status_tsv}"
+  )"
+  require_non_negative_integer "HIKARI_IDLE_ATTRIBUTION_HTTP_STATUS_TSV five_xx_count" "${five_xx_count}"
+fi
 
 awk -F '\t' '
 NR == 1 { next }
@@ -250,6 +282,11 @@ fi
 if [[ -n "${expected_warning_count}" && "${warning_count}" != "${expected_warning_count}" ]]; then
   gate_status="fail"
 fi
+if [[ "${expected_warning_count}" == "0" ]]; then
+  if [[ "${idle_in_transaction_samples}" != "0" || "${five_xx_count}" != "0" ]]; then
+    gate_status="fail"
+  fi
+fi
 if [[ -z "${expected_warning_count}" && "${warning_count}" == "0" ]]; then
   gate_status="fail"
 fi
@@ -275,11 +312,14 @@ cat >"${report_md}" <<REPORT
 - warning_count=${warning_count}
 - expected_warning_count=${expected_warning_count:-not-set}
 - unattributed_warning_count=${unattributed_count}
+- idle_in_transaction_samples=${idle_in_transaction_samples}
+- five_xx_count=${five_xx_count}
 - sampler: pg_stat_activity
 - correlation window seconds: ${correlation_window_seconds}
 - soak_duration_min=${soak_duration_min}
 - OCI A1 lifetime alignment: maxLifetime < NAT idle, keepalive < maxLifetime, scheduled worker <= PostgreSQL idle timeout
 - ${soak_duration_min}m soak Hikari warning budget: ${expected_warning_count:-attribution-required}
+- zero-budget hard target: Hikari warning 0, idle in transaction 0, 5xx 0
 
 ## Correlation
 
