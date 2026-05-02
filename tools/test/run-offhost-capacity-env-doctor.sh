@@ -15,6 +15,8 @@ Environment:
   CAPACITY_REMOTE_PREFLIGHT_TIMEOUT_SECONDS default 30
   CAPACITY_REMOTE_PREFLIGHT_IMAGE default curlimages/curl:8.11.1
   CAPACITY_REMOTE_READINESS_PATH default /actuator/health/readiness
+  CAPACITY_K6_AUTH_TOKEN_REQUIRED default false
+  CAPACITY_K6_AUTH_TOKEN optional bearer token; printed only as present/missing
 
 Examples:
   OFFHOST_CAPACITY_ENV_FILE=.env/offhost-capacity.env \
@@ -76,6 +78,8 @@ timeout_seconds="${CAPACITY_REMOTE_PREFLIGHT_TIMEOUT_SECONDS:-${K6_REMOTE_PREFLI
 preflight_image="${CAPACITY_REMOTE_PREFLIGHT_IMAGE:-${K6_REMOTE_PREFLIGHT_IMAGE:-curlimages/curl:8.11.1}}"
 readiness_path="${CAPACITY_REMOTE_READINESS_PATH:-${K6_REMOTE_READINESS_PATH:-/actuator/health/readiness}}"
 readiness_url="${remote_base_url%/}${readiness_path}"
+auth_token_required="${CAPACITY_K6_AUTH_TOKEN_REQUIRED:-false}"
+auth_token="${CAPACITY_K6_AUTH_TOKEN:-${K6_AUTH_TOKEN:-}}"
 
 require_bool() {
   local name="$1"
@@ -114,12 +118,16 @@ require_url() {
 }
 
 require_bool "OFFHOST_CAPACITY_CHECK_CONNECTIVITY" "${check_connectivity}"
+require_bool "CAPACITY_K6_AUTH_TOKEN_REQUIRED" "${auth_token_required}"
 require_positive_integer "CAPACITY_REMOTE_PREFLIGHT_TIMEOUT_SECONDS" "${timeout_seconds}"
 require_env_value "CAPACITY_K6_DOCKER_CONTEXT" "${docker_context}"
 require_env_value "CAPACITY_K6_REMOTE_BASE_URL" "${remote_base_url}"
 require_env_value "CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL" "${remote_prometheus_rw_url}"
 require_url "CAPACITY_K6_REMOTE_BASE_URL" "${remote_base_url}"
 require_url "CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL" "${remote_prometheus_rw_url}"
+if [[ "${auth_token_required}" == "true" ]]; then
+  require_env_value "CAPACITY_K6_AUTH_TOKEN" "${auth_token}"
+fi
 
 print_plan() {
   echo "[offhost-capacity-env-doctor] mode=${mode}"
@@ -132,6 +140,12 @@ print_plan() {
   echo "[offhost-capacity-env-doctor] preflight_image=${preflight_image}"
   echo "[offhost-capacity-env-doctor] timeout_seconds=${timeout_seconds}"
   echo "[offhost-capacity-env-doctor] check_connectivity=${check_connectivity}"
+  echo "[offhost-capacity-env-doctor] auth_token_required=${auth_token_required}"
+  if [[ -n "${auth_token}" ]]; then
+    echo "[offhost-capacity-env-doctor] auth_token=present"
+  else
+    echo "[offhost-capacity-env-doctor] auth_token=missing"
+  fi
 }
 
 print_plan
