@@ -103,7 +103,7 @@ print_plan() {
   echo "[transaction-read-production-evidence-pack] required_scenarios=${required_scenarios}"
   echo "[transaction-read-production-evidence-pack] min_real_source_ips=${min_real_source_ips}"
   echo "[transaction-read-production-evidence-pack] max_edge_429_rate=${max_edge_429_rate}"
-  echo "[transaction-read-production-evidence-pack] required_refs=k6_summary_ref,nginx_aggregate_ref,nginx_499_aggregate_ref,spring_429_ref,hikari_log_ref,postgres_explain_ref,postgres_activity_ref,postgres_wait_ref,prometheus_timeline_ref,hikari_closure_ref(hikari-soak)"
+  echo "[transaction-read-production-evidence-pack] required_refs=k6_summary_ref,nginx_aggregate_ref,nginx_499_aggregate_ref,spring_429_ref,hikari_log_ref,postgres_explain_ref,postgres_activity_ref,postgres_wait_ref,prometheus_timeline_ref,artifact_manifest_ref,hikari_closure_ref(hikari-soak)"
   echo "[transaction-read-production-evidence-pack] hard_zero=backend_429_count,unknown_429_count,five_xx_count,nginx_499_count,hikari_validation_warnings,db_pool_pending_max"
   echo "[transaction-read-production-evidence-pack] summary_tsv=${summary_tsv}"
   echo "[transaction-read-production-evidence-pack] report_md=${report_md}"
@@ -142,8 +142,8 @@ function require_ref(name) {
 BEGIN {
   split(required_scenarios, required_items, ",")
   for (i in required_items) required[required_items[i]] = 1
-  split("scenario run_id duration_min source_ips k6_summary_ref nginx_aggregate_ref nginx_499_aggregate_ref spring_429_ref hikari_log_ref hikari_closure_ref postgres_explain_ref postgres_activity_ref postgres_wait_ref prometheus_timeline_ref edge_429_rate backend_429_count unknown_429_count five_xx_count nginx_499_count hikari_validation_warnings db_pool_pending_max", header_items, " ")
-  print "scenario\tstatus\treason\trun_id\tduration_min\tsource_ips\tedge_429_rate\tbackend_429_count\tunknown_429_count\tfive_xx_count\tnginx_499_count\thikari_validation_warnings\tdb_pool_pending_max\tk6_summary_ref\tnginx_aggregate_ref\tnginx_499_aggregate_ref\tspring_429_ref\thikari_log_ref\thikari_closure_ref\tpostgres_explain_ref\tpostgres_activity_ref\tpostgres_wait_ref\tprometheus_timeline_ref\tsource_fairness_ref\tcache_state_ref\tdeploy_event_ref"
+  split("scenario run_id duration_min source_ips k6_summary_ref nginx_aggregate_ref nginx_499_aggregate_ref spring_429_ref hikari_log_ref hikari_closure_ref postgres_explain_ref postgres_activity_ref postgres_wait_ref prometheus_timeline_ref artifact_manifest_ref mixed_workload_ref p999_latency_ref source_fairness_ref cache_state_ref deploy_event_ref edge_429_rate backend_429_count unknown_429_count five_xx_count nginx_499_count hikari_validation_warnings db_pool_pending_max", header_items, " ")
+  print "scenario\tstatus\treason\trun_id\tduration_min\tsource_ips\tedge_429_rate\tbackend_429_count\tunknown_429_count\tfive_xx_count\tnginx_499_count\thikari_validation_warnings\tdb_pool_pending_max\tk6_summary_ref\tnginx_aggregate_ref\tnginx_499_aggregate_ref\tspring_429_ref\thikari_log_ref\thikari_closure_ref\tpostgres_explain_ref\tpostgres_activity_ref\tpostgres_wait_ref\tprometheus_timeline_ref\tartifact_manifest_ref\tmixed_workload_ref\tp999_latency_ref\tsource_fairness_ref\tcache_state_ref\tdeploy_event_ref"
 }
 NR == 1 {
   for (i = 1; i <= NF; i++) col[$i] = i
@@ -170,14 +170,7 @@ NR == 1 {
   require_ref("postgres_activity_ref")
   require_ref("postgres_wait_ref")
   require_ref("prometheus_timeline_ref")
-
-  hikari_closure_ref = value("hikari_closure_ref", "n/a")
-  if (scenario == "hikari-soak") {
-    if (hikari_closure_ref == "" || hikari_closure_ref == "n/a") add_reason("hikari_closure_ref-missing")
-    else if (unsafe_ref(hikari_closure_ref)) add_reason("hikari_closure_ref-unsafe")
-  } else if (hikari_closure_ref != "" && hikari_closure_ref != "n/a" && unsafe_ref(hikari_closure_ref)) {
-    add_reason("hikari_closure_ref-unsafe")
-  }
+  require_ref("artifact_manifest_ref")
 
   if (value("edge_429_rate", "1") + 0 > max_edge_429_rate) add_reason("edge429>" max_edge_429_rate)
   if (value("backend_429_count", "1") + 0 > 0) add_reason("backend429>0")
@@ -190,7 +183,14 @@ NR == 1 {
   source_fairness_ref = value("source_fairness_ref", "n/a")
   cache_state_ref = value("cache_state_ref", "n/a")
   deploy_event_ref = value("deploy_event_ref", "n/a")
+  artifact_manifest_ref = value("artifact_manifest_ref", "n/a")
+  hikari_closure_ref = value("hikari_closure_ref", "n/a")
+  mixed_workload_ref = value("mixed_workload_ref", "n/a")
+  p999_latency_ref = value("p999_latency_ref", "n/a")
 
+  if (scenario == "hikari-soak") require_ref("hikari_closure_ref")
+  if (scenario == "mixed-workload") require_ref("mixed_workload_ref")
+  if (scenario == "p999-long") require_ref("p999_latency_ref")
   if (scenario == "real-ip-multisource") {
     if (value("source_ips", "0") + 0 < min_real_source_ips) add_reason("source-ips<" min_real_source_ips)
     if (source_fairness_ref == "" || source_fairness_ref == "n/a") add_reason("source-fairness-missing")
@@ -206,7 +206,7 @@ NR == 1 {
   }
 
   if (status == "fail") fail_count++
-  printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+  printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
     scenario, status, reason, value("run_id", ""),
     value("duration_min", "0"), value("source_ips", "0"), value("edge_429_rate", "0"),
     value("backend_429_count", "0"), value("unknown_429_count", "0"),
@@ -216,7 +216,9 @@ NR == 1 {
     value("nginx_499_aggregate_ref", ""), value("spring_429_ref", ""),
     value("hikari_log_ref", ""), hikari_closure_ref, value("postgres_explain_ref", ""),
     value("postgres_activity_ref", ""), value("postgres_wait_ref", ""),
-    value("prometheus_timeline_ref", ""), source_fairness_ref, cache_state_ref, deploy_event_ref
+    value("prometheus_timeline_ref", ""), artifact_manifest_ref, mixed_workload_ref,
+    p999_latency_ref, source_fairness_ref, cache_state_ref,
+    deploy_event_ref
 }
 END {
   missing = ""
@@ -273,6 +275,10 @@ cat >"${report_md}" <<REPORT
 - PostgreSQL activity sampler
 - PostgreSQL wait timeline
 - Prometheus timeline
+- OCI artifact manifest
+- Hikari zero-budget closure artifact for hikari-soak runs
+- mixed workload interference artifact for mixed-workload runs
+- p99.9 latency artifact for p999-long runs
 - source fairness artifact for real multi-source runs
 - cache state artifact for cold/warm runs
 - deploy event artifact for drain runs
