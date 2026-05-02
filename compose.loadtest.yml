@@ -211,9 +211,11 @@ services:
       K6_PROMETHEUS_RW_TREND_STATS: "p(50),p(90),p(95),p(99),p(99.9),min,max,avg"
       K6_REPORT_NAME: ${K6_REPORT_NAME:-transaction-100m}
       K6_HOT_ACCOUNT_ID: ${K6_HOT_ACCOUNT_ID:-}
+      K6_HOT_ACCOUNT_IDS: ${K6_HOT_ACCOUNT_IDS:-}
       K6_HOT_FROM: ${K6_HOT_FROM:-}
       K6_HOT_TO: ${K6_HOT_TO:-}
       K6_COLD_ACCOUNT_ID: ${K6_COLD_ACCOUNT_ID:-}
+      K6_COLD_ACCOUNT_IDS: ${K6_COLD_ACCOUNT_IDS:-}
       K6_COLD_FROM: ${K6_COLD_FROM:-}
       K6_COLD_TO: ${K6_COLD_TO:-}
       K6_AUTH_TOKEN: ${K6_AUTH_TOKEN:-}

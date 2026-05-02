@@ -16,6 +16,13 @@ function nonNegativeNumberEnv(value, fallback) {
   return result;
 }
 
+function parseAccountIds(value) {
+  return String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => /^[1-9][0-9]*$/.test(item));
+}
+
 const baseUrl = (__ENV.BASE_URL || "http://aquila-bank-backend:8080").replace(/\/$/, "");
 const hotAccountId = __ENV.K6_HOT_ACCOUNT_ID || "";
 const hotFrom = __ENV.K6_HOT_FROM || "";
@@ -23,6 +30,8 @@ const hotTo = __ENV.K6_HOT_TO || "";
 const coldAccountId = __ENV.K6_COLD_ACCOUNT_ID || "";
 const coldFrom = __ENV.K6_COLD_FROM || "";
 const coldTo = __ENV.K6_COLD_TO || "";
+const hotAccountIds = parseAccountIds(__ENV.K6_HOT_ACCOUNT_IDS || hotAccountId);
+const coldAccountIds = parseAccountIds(__ENV.K6_COLD_ACCOUNT_IDS || coldAccountId);
 const hotDeepCursorBookedAt = __ENV.K6_HOT_DEEP_CURSOR_BOOKED_AT || "2026-04-15T00:00:00Z";
 const hotDeepCursorId = __ENV.K6_HOT_DEEP_CURSOR_ID || "9223372036854775807";
 const coldDeepCursorBookedAt = __ENV.K6_COLD_DEEP_CURSOR_BOOKED_AT || "2026-01-15T00:00:00Z";
@@ -139,6 +148,8 @@ const retryAfterRejectStreakTrend = new Trend(
 const preemptivePacingSleep = new Trend("aquila_transaction_preemptive_pacing_sleep_ms", true);
 const preemptivePacingCount = new Counter("aquila_transaction_preemptive_pacing_count");
 const workloadShapeCount = new Counter("aquila_transaction_workload_shape_count");
+const requestByAccountCount = new Counter("aquila_transaction_request_by_account_count");
+const fairness429Count = new Counter("aquila_transaction_fairness_429_count");
 let retryAfterRejectStreak = 0;
 let nextPreemptiveRequestAtMs = 0;
 
@@ -407,6 +418,15 @@ function rejectSource(response) {
   return "unknown";
 }
 
+function detailedRejectSource(response) {
+  return (
+    normalizedHeader(response, "X-Aquila-429-Source") ||
+    normalizedHeader(response, "X-Aquila-Reject-Reason") ||
+    normalizedHeader(response, "X-Aquila-Reject-Source") ||
+    "unknown"
+  );
+}
+
 function sleepAfter429(response) {
   retryAfterRejectStreak += 1;
   if (maxRetryAfterSleepMs <= 0) {
@@ -463,8 +483,14 @@ function encodeCursor(bookedAt, id) {
   return encoding.b64encode(payload, "rawurl");
 }
 
+function pickAccount(accountIds) {
+  const index = (exec.scenario.iterationInTest + exec.vu.idInTest) % accountIds.length;
+  return accountIds[index];
+}
+
 function requestPage(shape, path, accountId, from, to, cursor) {
   preemptivePace();
+  const accountGroup = shape.startsWith("hot") ? "hot" : "cold";
   const query = queryString({
     accountId,
     from,
@@ -477,11 +503,14 @@ function requestPage(shape, path, accountId, from, to, cursor) {
     tags: {
       name: shape,
       query_shape: shape,
+      account_group: accountGroup,
+      account_id: String(accountId),
     },
   });
 
   const is429 = response.status === 429;
   const source = rejectSource(response);
+  const detailedSource = detailedRejectSource(response);
   const isEdge429 = source === "edge";
   const isBackend429 = source === "backend";
   const isUnknown429 = source === "unknown";
@@ -493,6 +522,10 @@ function requestPage(shape, path, accountId, from, to, cursor) {
   const isEdgePassed = edgeLimitStatus === "PASSED";
   const measured = !exec.scenario.name.endsWith("_warmup");
   if (measured) {
+    requestByAccountCount.add(1, {
+      account_group: accountGroup,
+      account_id: String(accountId),
+    });
     transaction429Rate.add(is429);
     edge429Rate.add(isEdge429);
     backend429Rate.add(isBackend429);
@@ -508,6 +541,12 @@ function requestPage(shape, path, accountId, from, to, cursor) {
   }
   if (isBackend429 && measured) {
     backend429Count.add(1);
+  }
+  if (isBackend429 && detailedSource === "fairness-limiter" && measured) {
+    fairness429Count.add(1, {
+      account_group: accountGroup,
+      account_id: String(accountId),
+    });
   }
   if (isUnknown429 && measured) {
     unknown429Count.add(1);
@@ -586,14 +625,14 @@ function recordWorkloadShape(queryShape) {
 function requestWeightedStep(shape) {
   recordWorkloadShape(shape);
   if (shape === "hot_first") {
-    requestPage("hot_first", "/api/v1/transactions", hotAccountId, hotFrom, hotTo, "");
+    requestPage("hot_first", "/api/v1/transactions", pickAccount(hotAccountIds), hotFrom, hotTo, "");
     return;
   }
   if (shape === "hot_cursor") {
     requestPage(
       "hot_cursor",
       "/api/v1/transactions",
-      hotAccountId,
+      pickAccount(hotAccountIds),
       hotFrom,
       hotTo,
       encodeCursor(hotDeepCursorBookedAt, hotDeepCursorId),
@@ -604,7 +643,7 @@ function requestWeightedStep(shape) {
     requestPage(
       "hot_deep_cursor",
       "/api/v1/transactions",
-      hotAccountId,
+      pickAccount(hotAccountIds),
       hotFrom,
       hotTo,
       encodeCursor(hotDeepCursorBookedAt, hotDeepCursorId),
@@ -612,14 +651,14 @@ function requestWeightedStep(shape) {
     return;
   }
   if (shape === "cold_first") {
-    requestPage("cold_first", "/api/v1/transactions/archive", coldAccountId, coldFrom, coldTo, "");
+    requestPage("cold_first", "/api/v1/transactions/archive", pickAccount(coldAccountIds), coldFrom, coldTo, "");
     return;
   }
   if (shape === "cold_cursor") {
     requestPage(
       "cold_cursor",
       "/api/v1/transactions/archive",
-      coldAccountId,
+      pickAccount(coldAccountIds),
       coldFrom,
       coldTo,
       encodeCursor(coldDeepCursorBookedAt, coldDeepCursorId),
@@ -629,26 +668,35 @@ function requestWeightedStep(shape) {
   requestPage(
     "cold_deep_cursor",
     "/api/v1/transactions/archive",
-    coldAccountId,
+    pickAccount(coldAccountIds),
     coldFrom,
     coldTo,
     encodeCursor(coldDeepCursorBookedAt, coldDeepCursorId),
   );
 }
 
-function runFixedOrder() {
-  recordWorkloadShape("fixed_order_iteration");
-  requireEnv("K6_HOT_ACCOUNT_ID", hotAccountId);
+function requireAccountSets() {
+  if (hotAccountIds.length === 0) {
+    requireEnv("K6_HOT_ACCOUNT_ID or K6_HOT_ACCOUNT_IDS", "");
+  }
+  if (coldAccountIds.length === 0) {
+    requireEnv("K6_COLD_ACCOUNT_ID or K6_COLD_ACCOUNT_IDS", "");
+  }
   requireEnv("K6_HOT_FROM", hotFrom);
   requireEnv("K6_HOT_TO", hotTo);
-  requireEnv("K6_COLD_ACCOUNT_ID", coldAccountId);
   requireEnv("K6_COLD_FROM", coldFrom);
   requireEnv("K6_COLD_TO", coldTo);
+}
+
+function runFixedOrder() {
+  recordWorkloadShape("fixed_order_iteration");
+  const hotAccount = pickAccount(hotAccountIds);
+  const coldAccount = pickAccount(coldAccountIds);
 
   const hotFirstBody = requestPage(
     "hot_first",
     "/api/v1/transactions",
-    hotAccountId,
+    hotAccount,
     hotFrom,
     hotTo,
     "",
@@ -662,7 +710,7 @@ function runFixedOrder() {
   const hotCursorBody = requestPage(
     "hot_cursor",
     "/api/v1/transactions",
-    hotAccountId,
+    hotAccount,
     hotFrom,
     hotTo,
     hotFirstBody.nextCursor,
@@ -673,7 +721,7 @@ function runFixedOrder() {
   const hotDeepCursorBody = requestPage(
     "hot_deep_cursor",
     "/api/v1/transactions",
-    hotAccountId,
+    hotAccount,
     hotFrom,
     hotTo,
     encodeCursor(hotDeepCursorBookedAt, hotDeepCursorId),
@@ -685,7 +733,7 @@ function runFixedOrder() {
   const coldFirstBody = requestPage(
     "cold_first",
     "/api/v1/transactions/archive",
-    coldAccountId,
+    coldAccount,
     coldFrom,
     coldTo,
     "",
@@ -699,7 +747,7 @@ function runFixedOrder() {
   const coldCursorBody = requestPage(
     "cold_cursor",
     "/api/v1/transactions/archive",
-    coldAccountId,
+    coldAccount,
     coldFrom,
     coldTo,
     coldFirstBody.nextCursor,
@@ -710,7 +758,7 @@ function runFixedOrder() {
   const coldDeepCursorBody = requestPage(
     "cold_deep_cursor",
     "/api/v1/transactions/archive",
-    coldAccountId,
+    coldAccount,
     coldFrom,
     coldTo,
     encodeCursor(coldDeepCursorBookedAt, coldDeepCursorId),
@@ -721,12 +769,7 @@ function runFixedOrder() {
 }
 
 export default function () {
-  requireEnv("K6_HOT_ACCOUNT_ID", hotAccountId);
-  requireEnv("K6_HOT_FROM", hotFrom);
-  requireEnv("K6_HOT_TO", hotTo);
-  requireEnv("K6_COLD_ACCOUNT_ID", coldAccountId);
-  requireEnv("K6_COLD_FROM", coldFrom);
-  requireEnv("K6_COLD_TO", coldTo);
+  requireAccountSets();
 
   if (workloadShape === "weighted-random") {
     requestWeightedStep(pickWeightedStep());
@@ -791,7 +834,9 @@ function markdownSummary(data) {
 - workload seed: ${workloadSeed}
 - workload weights: ${workloadWeightsText}
 - hot account id: ${hotAccountId}
+- hot account ids: ${hotAccountIds.join(",")}
 - cold account id: ${coldAccountId}
+- cold account ids: ${coldAccountIds.join(",")}
 - hot deep cursor: ${hotDeepCursorBookedAt}|${hotDeepCursorId}
 - cold deep cursor: ${coldDeepCursorBookedAt}|${coldDeepCursorId}
 - hot p95 threshold ms: ${hotP95ThresholdMs}
@@ -833,6 +878,8 @@ function markdownSummary(data) {
 - transaction 503 count: ${metric(data, "aquila_transaction_503_count", "count")}
 - transaction accepted 200 rate: ${metric(data, "aquila_transaction_accepted_200_rate", "rate")}
 - transaction accepted 200 count: ${metric(data, "aquila_transaction_accepted_200_count", "count")}
+- transaction request by account count: ${metric(data, "aquila_transaction_request_by_account_count", "count")}
+- transaction fairness 429 count: ${metric(data, "aquila_transaction_fairness_429_count", "count")}
 - transaction edge delayed rate: ${metric(data, "aquila_transaction_edge_delayed_rate", "rate")}
 - transaction edge delayed count: ${metric(data, "aquila_transaction_edge_delayed_count", "count")}
 - transaction edge passed rate: ${metric(data, "aquila_transaction_edge_passed_rate", "rate")}
