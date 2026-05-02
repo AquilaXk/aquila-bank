@@ -10,9 +10,12 @@ temp_dir="$(mktemp -d)"
 trap 'rm -rf "${temp_dir}"' EXIT
 
 pg_tsv="${temp_dir}/pg-activity.tsv"
+pg_zero_tsv="${temp_dir}/pg-activity-zero.tsv"
 hikari_log="${temp_dir}/hikari.log"
 hikari_log_zero="${temp_dir}/hikari-zero.log"
 config_tsv="${temp_dir}/config.tsv"
+http_status_tsv="${temp_dir}/http-status.tsv"
+http_status_5xx_tsv="${temp_dir}/http-status-5xx.tsv"
 output_dir="${temp_dir}/output"
 
 cat >"${pg_tsv}" <<'TSV'
@@ -20,6 +23,11 @@ sample_time_utc	pid	usename	application_name	request_id	state	wait_event_type	wa
 2026-05-02T03:00:05Z	123	aquila	aquila-bank	tx-read-req-001	idle in transaction	Client	ClientRead	182	select pg_sleep(30) /* requestId=tx-read-req-001 */
 2026-05-02T03:00:10Z	124	aquila	aquila-bank	n/a	idle in transaction	Client	ClientRead	188	select 1 /* requestId=tx-read-req-002 */
 2026-05-02T03:00:20Z	125	aquila	aquila-bank	tx-read-req-003	active	IO	DataFileRead	1	select 1
+TSV
+
+cat >"${pg_zero_tsv}" <<'TSV'
+sample_time_utc	pid	usename	application_name	request_id	state	wait_event_type	wait_event	xact_age_seconds	query
+2026-05-02T03:30:05Z	223	aquila	aquila-bank	tx-read-req-101	active	IO	DataFileRead	1	select 1 /* requestId=tx-read-req-101 */
 TSV
 
 cat >"${hikari_log}" <<'LOG'
@@ -41,12 +49,23 @@ hikari_keepalive_time_ms	60000
 scheduled_worker_max_interval_ms	120000
 TSV
 
+cat >"${http_status_tsv}" <<'TSV'
+key	value
+five_xx_count	0
+TSV
+
+cat >"${http_status_5xx_tsv}" <<'TSV'
+key	value
+five_xx_count	1
+TSV
+
 echo "[hikari-idle-attribution] print plan"
 plan="$(
   HIKARI_IDLE_ATTRIBUTION_NAME=hikari-check \
   HIKARI_IDLE_ATTRIBUTION_PG_ACTIVITY_TSV="${pg_tsv}" \
   HIKARI_IDLE_ATTRIBUTION_HIKARI_LOG="${hikari_log}" \
   HIKARI_IDLE_ATTRIBUTION_CONFIG_TSV="${config_tsv}" \
+  HIKARI_IDLE_ATTRIBUTION_HTTP_STATUS_TSV="${http_status_tsv}" \
   HIKARI_IDLE_ATTRIBUTION_OUTPUT_DIR="${output_dir}" \
     "${runner}" --print-plan
 )"
@@ -78,6 +97,8 @@ test "${report_md}" = "${output_dir}/hikari-check-hikari-idle-attribution.md"
 grep -F "gate_status=pass" "${report_md}" >/dev/null
 grep -F "config_status=pass" "${report_md}" >/dev/null
 grep -F "warning_count=3" "${report_md}" >/dev/null
+grep -F "idle_in_transaction_samples=2" "${report_md}" >/dev/null
+grep -F "five_xx_count=0" "${report_md}" >/dev/null
 grep -F "OCI A1 lifetime alignment" "${report_md}" >/dev/null
 grep -F "PostgreSQL PID/query/requestId correlation" "${report_md}" >/dev/null
 grep -F $'warning_time_utc\tstatus\tpid\trequest_id\tstate\twait_event_type\twait_event\txact_age_seconds\tquery\tcause' "${summary_tsv}" >/dev/null
@@ -88,9 +109,10 @@ grep -F $'2026-05-02T03:00:18Z\tpass\t125\ttx-read-req-003\tactive\tIO\tDataFile
 echo "[hikari-idle-attribution] 30m zero warning soak passes"
 zero_output="$(
   HIKARI_IDLE_ATTRIBUTION_NAME=hikari-zero \
-  HIKARI_IDLE_ATTRIBUTION_PG_ACTIVITY_TSV="${pg_tsv}" \
+  HIKARI_IDLE_ATTRIBUTION_PG_ACTIVITY_TSV="${pg_zero_tsv}" \
   HIKARI_IDLE_ATTRIBUTION_HIKARI_LOG="${hikari_log_zero}" \
   HIKARI_IDLE_ATTRIBUTION_CONFIG_TSV="${config_tsv}" \
+  HIKARI_IDLE_ATTRIBUTION_HTTP_STATUS_TSV="${http_status_tsv}" \
   HIKARI_IDLE_ATTRIBUTION_OUTPUT_DIR="${output_dir}" \
   HIKARI_IDLE_ATTRIBUTION_EXPECT_WARNING_COUNT=0 \
   HIKARI_IDLE_ATTRIBUTION_SOAK_DURATION_MIN=30 \
@@ -100,13 +122,45 @@ zero_report_md="$(tail -1 <<<"${zero_output}")"
 grep -F "gate_status=pass" "${zero_report_md}" >/dev/null
 grep -F "warning_count=0" "${zero_report_md}" >/dev/null
 grep -F "expected_warning_count=0" "${zero_report_md}" >/dev/null
+grep -F "idle_in_transaction_samples=0" "${zero_report_md}" >/dev/null
+grep -F "five_xx_count=0" "${zero_report_md}" >/dev/null
+grep -F "zero-budget hard target: Hikari warning 0, idle in transaction 0, 5xx 0" "${zero_report_md}" >/dev/null
 grep -F "30m soak Hikari warning budget: 0" "${zero_report_md}" >/dev/null
+
+echo "[hikari-idle-attribution] 30m zero warning with idle transaction fails"
+if HIKARI_IDLE_ATTRIBUTION_NAME=hikari-zero-idle-fail \
+  HIKARI_IDLE_ATTRIBUTION_PG_ACTIVITY_TSV="${pg_tsv}" \
+  HIKARI_IDLE_ATTRIBUTION_HIKARI_LOG="${hikari_log_zero}" \
+  HIKARI_IDLE_ATTRIBUTION_CONFIG_TSV="${config_tsv}" \
+  HIKARI_IDLE_ATTRIBUTION_HTTP_STATUS_TSV="${http_status_tsv}" \
+  HIKARI_IDLE_ATTRIBUTION_OUTPUT_DIR="${output_dir}" \
+  HIKARI_IDLE_ATTRIBUTION_EXPECT_WARNING_COUNT=0 \
+  HIKARI_IDLE_ATTRIBUTION_SOAK_DURATION_MIN=30 \
+    "${runner}" >/dev/null 2>&1; then
+  echo "hikari attribution unexpectedly passed zero-warning run with idle in transaction samples" >&2
+  exit 1
+fi
+
+echo "[hikari-idle-attribution] 30m zero warning with 5xx fails"
+if HIKARI_IDLE_ATTRIBUTION_NAME=hikari-zero-5xx-fail \
+  HIKARI_IDLE_ATTRIBUTION_PG_ACTIVITY_TSV="${pg_zero_tsv}" \
+  HIKARI_IDLE_ATTRIBUTION_HIKARI_LOG="${hikari_log_zero}" \
+  HIKARI_IDLE_ATTRIBUTION_CONFIG_TSV="${config_tsv}" \
+  HIKARI_IDLE_ATTRIBUTION_HTTP_STATUS_TSV="${http_status_5xx_tsv}" \
+  HIKARI_IDLE_ATTRIBUTION_OUTPUT_DIR="${output_dir}" \
+  HIKARI_IDLE_ATTRIBUTION_EXPECT_WARNING_COUNT=0 \
+  HIKARI_IDLE_ATTRIBUTION_SOAK_DURATION_MIN=30 \
+    "${runner}" >/dev/null 2>&1; then
+  echo "hikari attribution unexpectedly passed zero-warning run with 5xx" >&2
+  exit 1
+fi
 
 echo "[hikari-idle-attribution] 30m zero warning violation fails"
 if HIKARI_IDLE_ATTRIBUTION_NAME=hikari-zero-fail \
   HIKARI_IDLE_ATTRIBUTION_PG_ACTIVITY_TSV="${pg_tsv}" \
   HIKARI_IDLE_ATTRIBUTION_HIKARI_LOG="${hikari_log}" \
   HIKARI_IDLE_ATTRIBUTION_CONFIG_TSV="${config_tsv}" \
+  HIKARI_IDLE_ATTRIBUTION_HTTP_STATUS_TSV="${http_status_tsv}" \
   HIKARI_IDLE_ATTRIBUTION_OUTPUT_DIR="${output_dir}" \
   HIKARI_IDLE_ATTRIBUTION_EXPECT_WARNING_COUNT=0 \
   HIKARI_IDLE_ATTRIBUTION_SOAK_DURATION_MIN=30 \
