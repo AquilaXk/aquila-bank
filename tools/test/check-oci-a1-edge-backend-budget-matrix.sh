@@ -18,10 +18,10 @@ plan="$(
     "${runner}" --print-plan
 )"
 grep -F "name=matrix-check" <<<"${plan}" >/dev/null
-grep -F "edge_transaction_hot_rate_rps=80" <<<"${plan}" >/dev/null
-grep -F "edge_transaction_archive_rate_rps=80" <<<"${plan}" >/dev/null
-grep -F "edge_transaction_hot_burst=10" <<<"${plan}" >/dev/null
-grep -F "edge_transaction_archive_burst=10" <<<"${plan}" >/dev/null
+grep -F "edge_transaction_hot_rate_rps=96" <<<"${plan}" >/dev/null
+grep -F "edge_transaction_archive_rate_rps=96" <<<"${plan}" >/dev/null
+grep -F "edge_transaction_hot_burst=12" <<<"${plan}" >/dev/null
+grep -F "edge_transaction_archive_burst=12" <<<"${plan}" >/dev/null
 grep -F "edge_transaction_read_policy=small-delay-queue" <<<"${plan}" >/dev/null
 grep -F "backend_admission_max=8" <<<"${plan}" >/dev/null
 grep -F "backend_admission_adaptive_max=12" <<<"${plan}" >/dev/null
@@ -46,10 +46,10 @@ output="$(
 report_md="$(tail -1 <<<"${output}")"
 test "${report_md}" = "${output_dir}/matrix-check-budget-matrix.md"
 grep -F "gate_status=pass" "${report_md}" >/dev/null
-grep -F "| edge transaction-hot rate | 80r/s |" "${report_md}" >/dev/null
-grep -F "| edge transaction-archive rate | 80r/s |" "${report_md}" >/dev/null
-grep -F "| edge transaction-hot burst | 10 |" "${report_md}" >/dev/null
-grep -F "| edge transaction-archive burst | 10 |" "${report_md}" >/dev/null
+grep -F "| edge transaction-hot rate | 96r/s |" "${report_md}" >/dev/null
+grep -F "| edge transaction-archive rate | 96r/s |" "${report_md}" >/dev/null
+grep -F "| edge transaction-hot burst | 12 |" "${report_md}" >/dev/null
+grep -F "| edge transaction-archive burst | 12 |" "${report_md}" >/dev/null
 grep -F "| edge transaction-read policy | small-delay-queue |" "${report_md}" >/dev/null
 grep -F "| backend admission max | 8 |" "${report_md}" >/dev/null
 grep -F "| backend admission adaptive max | 12 |" "${report_md}" >/dev/null

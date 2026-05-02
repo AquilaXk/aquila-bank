@@ -39,10 +39,10 @@ arrival_gate="tools/test/run-oci-public-api-arrival-capacity-gate.sh"
 weighted_gate="tools/test/run-transaction-read-weighted-10m-soak-gate.sh"
 smoothing_gate="tools/test/run-transaction-read-short-burst-smoothing-matrix.sh"
 
-edge_transaction_hot_rate_rps=80
-edge_transaction_archive_rate_rps=80
-edge_transaction_hot_burst=10
-edge_transaction_archive_burst=10
+edge_transaction_hot_rate_rps=96
+edge_transaction_archive_rate_rps=96
+edge_transaction_hot_burst=12
+edge_transaction_archive_burst=12
 edge_transaction_read_policy="small-delay-queue"
 backend_admission_max=8
 backend_admission_adaptive_max=12
@@ -117,8 +117,12 @@ require_pattern 'proxy_next_upstream error timeout http_502;' "${nginx_config}"
 require_pattern 'proxy_next_upstream_tries 2;' "${nginx_config}"
 require_pattern 'proxy_next_upstream_timeout 2s;' "${nginx_config}"
 require_pattern 'backend_api_keepalive_timeout_seconds="${NGINX_BACKEND_API_KEEPALIVE_TIMEOUT_SECONDS:-2}"' "${deploy_script}"
-require_pattern 'transaction_read_hot_rate_rps="${OCI_A1_TRANSACTION_READ_HOT_RATE_RPS:-80}"' "${deploy_script}"
-require_pattern 'transaction_read_archive_rate_rps="${OCI_A1_TRANSACTION_READ_ARCHIVE_RATE_RPS:-80}"' "${deploy_script}"
+require_pattern 'transaction_read_hot_rate_rps="${OCI_A1_TRANSACTION_READ_HOT_RATE_RPS:-96}"' "${deploy_script}"
+require_pattern 'transaction_read_archive_rate_rps="${OCI_A1_TRANSACTION_READ_ARCHIVE_RATE_RPS:-96}"' "${deploy_script}"
+require_pattern 'transaction_read_hot_burst="${OCI_A1_TRANSACTION_READ_HOT_BURST:-12}"' "${deploy_script}"
+require_pattern 'transaction_read_archive_burst="${OCI_A1_TRANSACTION_READ_ARCHIVE_BURST:-12}"' "${deploy_script}"
+require_pattern 'transaction_read_hot_delay="${OCI_A1_TRANSACTION_READ_HOT_DELAY:-1}"' "${deploy_script}"
+require_pattern 'transaction_read_archive_delay="${OCI_A1_TRANSACTION_READ_ARCHIVE_DELAY:-1}"' "${deploy_script}"
 require_pattern 'limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_hot_per_ip:10m rate=${transaction_read_hot_rate_rps}r/s;' "${deploy_script}"
 require_pattern 'limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_archive_per_ip:10m rate=${transaction_read_archive_rate_rps}r/s;' "${deploy_script}"
 require_pattern 'limit_req zone=aquila_bank_transaction_hot_per_ip burst=${transaction_read_hot_burst} ${transaction_read_hot_limit_mode};' "${deploy_script}"
