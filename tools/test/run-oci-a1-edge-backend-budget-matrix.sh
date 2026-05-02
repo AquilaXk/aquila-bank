@@ -37,14 +37,14 @@ deploy_script="ops/deploy/oci/bluegreen-deploy.sh"
 oci_profile="back/src/main/resources/application-oci-a1.yml"
 arrival_gate="tools/test/run-oci-public-api-arrival-capacity-gate.sh"
 
-edge_transaction_hot_rate_rps=64
-edge_transaction_archive_rate_rps=64
-edge_transaction_hot_burst=8
-edge_transaction_archive_burst=8
+edge_transaction_hot_rate_rps=80
+edge_transaction_archive_rate_rps=80
+edge_transaction_hot_burst=10
+edge_transaction_archive_burst=10
 edge_transaction_read_policy="fail-fast-nodelay"
-backend_admission_max=6
-backend_admission_adaptive_max=8
-hikari_max=6
+backend_admission_max=8
+backend_admission_adaptive_max=12
+hikari_max=8
 hikari_max_lifetime_ms=600000
 hikari_keepalive_time_ms=60000
 backend_api_keepalive_timeout_seconds=2
@@ -103,19 +103,19 @@ require_pattern 'proxy_next_upstream error timeout http_502;' "${nginx_config}"
 require_pattern 'proxy_next_upstream_tries 2;' "${nginx_config}"
 require_pattern 'proxy_next_upstream_timeout 2s;' "${nginx_config}"
 require_pattern 'backend_api_keepalive_timeout_seconds="${NGINX_BACKEND_API_KEEPALIVE_TIMEOUT_SECONDS:-2}"' "${deploy_script}"
-require_pattern 'transaction_read_hot_rate_rps="${OCI_A1_TRANSACTION_READ_HOT_RATE_RPS:-64}"' "${deploy_script}"
-require_pattern 'transaction_read_archive_rate_rps="${OCI_A1_TRANSACTION_READ_ARCHIVE_RATE_RPS:-64}"' "${deploy_script}"
+require_pattern 'transaction_read_hot_rate_rps="${OCI_A1_TRANSACTION_READ_HOT_RATE_RPS:-80}"' "${deploy_script}"
+require_pattern 'transaction_read_archive_rate_rps="${OCI_A1_TRANSACTION_READ_ARCHIVE_RATE_RPS:-80}"' "${deploy_script}"
 require_pattern 'limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_hot_per_ip:10m rate=${transaction_read_hot_rate_rps}r/s;' "${deploy_script}"
 require_pattern 'limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_archive_per_ip:10m rate=${transaction_read_archive_rate_rps}r/s;' "${deploy_script}"
 require_pattern 'limit_req zone=aquila_bank_transaction_hot_per_ip burst=${transaction_read_hot_burst} nodelay;' "${deploy_script}"
 require_pattern 'limit_req zone=aquila_bank_transaction_archive_per_ip burst=${transaction_read_archive_burst} nodelay;' "${deploy_script}"
-require_pattern 'OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_MAX=${OCI_A1_TRANSACTION_READ_ADMISSION_MAX:-6}' "${deploy_script}"
-require_pattern 'OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_ADAPTIVE_MAX=${OCI_A1_TRANSACTION_READ_ADMISSION_ADAPTIVE_MAX:-8}' "${deploy_script}"
-require_pattern 'maximum-pool-size: ${OCI_A1_DB_POOL_MAX_SIZE:6}' "${oci_profile}"
+require_pattern 'OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_MAX=${OCI_A1_TRANSACTION_READ_ADMISSION_MAX:-8}' "${deploy_script}"
+require_pattern 'OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_ADAPTIVE_MAX=${OCI_A1_TRANSACTION_READ_ADMISSION_ADAPTIVE_MAX:-12}' "${deploy_script}"
+require_pattern 'maximum-pool-size: ${OCI_A1_DB_POOL_MAX_SIZE:8}' "${oci_profile}"
 require_pattern 'max-lifetime: ${OCI_A1_DB_MAX_LIFETIME_MS:600000}' "${oci_profile}"
 require_pattern 'keepalive-time: ${OCI_A1_DB_KEEPALIVE_TIME_MS:60000}' "${oci_profile}"
-require_pattern 'max: ${OCI_A1_TRANSACTION_READ_ADMISSION_MAX:6}' "${oci_profile}"
-require_pattern 'adaptive-max: ${OCI_A1_TRANSACTION_READ_ADMISSION_ADAPTIVE_MAX:8}' "${oci_profile}"
+require_pattern 'max: ${OCI_A1_TRANSACTION_READ_ADMISSION_MAX:8}' "${oci_profile}"
+require_pattern 'adaptive-max: ${OCI_A1_TRANSACTION_READ_ADMISSION_ADAPTIVE_MAX:12}' "${oci_profile}"
 require_pattern 'OCI_PUBLIC_ARRIVAL_RATES:-4,5,6,7,8,10,16' "${arrival_gate}"
 require_pattern 'OCI_PUBLIC_ARRIVAL_FAIL_RATE:-0.10' "${arrival_gate}"
 require_pattern 'OCI_PUBLIC_ARRIVAL_ACCEPTED_P95_MS:-350' "${arrival_gate}"
