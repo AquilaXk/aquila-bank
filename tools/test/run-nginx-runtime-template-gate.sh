@@ -121,9 +121,9 @@ if ! contains_pattern "real_ip_header X-Forwarded-For;" ||
   exit 1
 fi
 
-if ! contains_pattern "limit_req zone=aquila_bank_transaction_hot_per_ip burst=12 delay=1;" ||
-  ! contains_pattern "limit_req zone=aquila_bank_transaction_archive_per_ip burst=12 delay=1;"; then
-  echo "[nginx-runtime-gate] rendered config must use transaction-read small delay queue defaults" >&2
+if ! contains_pattern "limit_req zone=aquila_bank_transaction_hot_per_ip burst=16 nodelay;" ||
+  ! contains_pattern "limit_req zone=aquila_bank_transaction_archive_per_ip burst=16 nodelay;"; then
+  echo "[nginx-runtime-gate] rendered config must use transaction-read burst64 nodelay defaults" >&2
   exit 1
 fi
 

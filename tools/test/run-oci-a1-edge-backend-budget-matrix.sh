@@ -39,11 +39,14 @@ arrival_gate="tools/test/run-oci-public-api-arrival-capacity-gate.sh"
 weighted_gate="tools/test/run-transaction-read-weighted-10m-soak-gate.sh"
 smoothing_gate="tools/test/run-transaction-read-short-burst-smoothing-matrix.sh"
 
-edge_transaction_hot_rate_rps=96
-edge_transaction_archive_rate_rps=96
-edge_transaction_hot_burst=12
-edge_transaction_archive_burst=12
-edge_transaction_read_policy="small-delay-queue"
+edge_transaction_budget_profile="burst64"
+edge_transaction_hot_rate_rps=128
+edge_transaction_archive_rate_rps=128
+edge_transaction_hot_burst=16
+edge_transaction_archive_burst=16
+edge_transaction_hot_delay=0
+edge_transaction_archive_delay=0
+edge_transaction_read_policy="burst64-nodelay"
 backend_admission_max=8
 backend_admission_adaptive_max=12
 backend_hot_admission_max=8
@@ -51,7 +54,7 @@ backend_hot_admission_adaptive_max=12
 backend_archive_admission_max=6
 backend_archive_admission_adaptive_max=10
 weighted_vu16_max_429_rate=0.05
-short_burst48_max_429_rate=0.10
+short_burst64_max_429_rate=0.10
 hikari_max=8
 hikari_max_lifetime_ms=600000
 hikari_keepalive_time_ms=60000
@@ -80,10 +83,13 @@ require_pattern() {
 print_plan() {
   echo "[oci-a1-budget-matrix] name=${name}"
   echo "[oci-a1-budget-matrix] output=${report_md}"
+  echo "[oci-a1-budget-matrix] edge_transaction_budget_profile=${edge_transaction_budget_profile}"
   echo "[oci-a1-budget-matrix] edge_transaction_hot_rate_rps=${edge_transaction_hot_rate_rps}"
   echo "[oci-a1-budget-matrix] edge_transaction_archive_rate_rps=${edge_transaction_archive_rate_rps}"
   echo "[oci-a1-budget-matrix] edge_transaction_hot_burst=${edge_transaction_hot_burst}"
   echo "[oci-a1-budget-matrix] edge_transaction_archive_burst=${edge_transaction_archive_burst}"
+  echo "[oci-a1-budget-matrix] edge_transaction_hot_delay=${edge_transaction_hot_delay}"
+  echo "[oci-a1-budget-matrix] edge_transaction_archive_delay=${edge_transaction_archive_delay}"
   echo "[oci-a1-budget-matrix] edge_transaction_read_policy=${edge_transaction_read_policy}"
   echo "[oci-a1-budget-matrix] backend_admission_max=${backend_admission_max}"
   echo "[oci-a1-budget-matrix] backend_admission_adaptive_max=${backend_admission_adaptive_max}"
@@ -92,7 +98,7 @@ print_plan() {
   echo "[oci-a1-budget-matrix] backend_archive_admission_max=${backend_archive_admission_max}"
   echo "[oci-a1-budget-matrix] backend_archive_admission_adaptive_max=${backend_archive_admission_adaptive_max}"
   echo "[oci-a1-budget-matrix] weighted_vu16_max_429_rate=${weighted_vu16_max_429_rate}"
-  echo "[oci-a1-budget-matrix] short_burst48_max_429_rate=${short_burst48_max_429_rate}"
+  echo "[oci-a1-budget-matrix] short_burst64_max_429_rate=${short_burst64_max_429_rate}"
   echo "[oci-a1-budget-matrix] hikari_max=${hikari_max}"
   echo "[oci-a1-budget-matrix] hikari_max_lifetime_ms=${hikari_max_lifetime_ms}"
   echo "[oci-a1-budget-matrix] hikari_keepalive_time_ms=${hikari_keepalive_time_ms}"
@@ -117,12 +123,13 @@ require_pattern 'proxy_next_upstream error timeout http_502;' "${nginx_config}"
 require_pattern 'proxy_next_upstream_tries 2;' "${nginx_config}"
 require_pattern 'proxy_next_upstream_timeout 2s;' "${nginx_config}"
 require_pattern 'backend_api_keepalive_timeout_seconds="${NGINX_BACKEND_API_KEEPALIVE_TIMEOUT_SECONDS:-2}"' "${deploy_script}"
-require_pattern 'transaction_read_hot_rate_rps="${OCI_A1_TRANSACTION_READ_HOT_RATE_RPS:-96}"' "${deploy_script}"
-require_pattern 'transaction_read_archive_rate_rps="${OCI_A1_TRANSACTION_READ_ARCHIVE_RATE_RPS:-96}"' "${deploy_script}"
-require_pattern 'transaction_read_hot_burst="${OCI_A1_TRANSACTION_READ_HOT_BURST:-12}"' "${deploy_script}"
-require_pattern 'transaction_read_archive_burst="${OCI_A1_TRANSACTION_READ_ARCHIVE_BURST:-12}"' "${deploy_script}"
-require_pattern 'transaction_read_hot_delay="${OCI_A1_TRANSACTION_READ_HOT_DELAY:-1}"' "${deploy_script}"
-require_pattern 'transaction_read_archive_delay="${OCI_A1_TRANSACTION_READ_ARCHIVE_DELAY:-1}"' "${deploy_script}"
+require_pattern 'transaction_read_budget_profile="${OCI_A1_TRANSACTION_READ_BUDGET_PROFILE:-${NGINX_TRANSACTION_READ_BUDGET_PROFILE:-burst64}}"' "${deploy_script}"
+require_pattern 'transaction_read_hot_rate_rps="${OCI_A1_TRANSACTION_READ_HOT_RATE_RPS:-${transaction_read_profile_hot_rate_rps}}"' "${deploy_script}"
+require_pattern 'transaction_read_archive_rate_rps="${OCI_A1_TRANSACTION_READ_ARCHIVE_RATE_RPS:-${transaction_read_profile_archive_rate_rps}}"' "${deploy_script}"
+require_pattern 'transaction_read_hot_burst="${OCI_A1_TRANSACTION_READ_HOT_BURST:-${transaction_read_profile_hot_burst}}"' "${deploy_script}"
+require_pattern 'transaction_read_archive_burst="${OCI_A1_TRANSACTION_READ_ARCHIVE_BURST:-${transaction_read_profile_archive_burst}}"' "${deploy_script}"
+require_pattern 'transaction_read_hot_delay="${OCI_A1_TRANSACTION_READ_HOT_DELAY:-${transaction_read_profile_hot_delay}}"' "${deploy_script}"
+require_pattern 'transaction_read_archive_delay="${OCI_A1_TRANSACTION_READ_ARCHIVE_DELAY:-${transaction_read_profile_archive_delay}}"' "${deploy_script}"
 require_pattern 'limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_hot_per_ip:10m rate=${transaction_read_hot_rate_rps}r/s;' "${deploy_script}"
 require_pattern 'limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_archive_per_ip:10m rate=${transaction_read_archive_rate_rps}r/s;' "${deploy_script}"
 require_pattern 'limit_req zone=aquila_bank_transaction_hot_per_ip burst=${transaction_read_hot_burst} ${transaction_read_hot_limit_mode};' "${deploy_script}"
@@ -145,7 +152,9 @@ require_pattern 'OCI_PUBLIC_ARRIVAL_RATES:-4,5,6,7,8,10,16' "${arrival_gate}"
 require_pattern 'OCI_PUBLIC_ARRIVAL_FAIL_RATE:-0.10' "${arrival_gate}"
 require_pattern 'OCI_PUBLIC_ARRIVAL_ACCEPTED_P95_MS:-350' "${arrival_gate}"
 require_pattern 'WEIGHTED_SOAK_10M_MAX_TOTAL_429_RATE:-0.05' "${weighted_gate}"
+require_pattern 'WEIGHTED_SOAK_10M_MAX_DELAYED_RATE:-0.25' "${weighted_gate}"
 require_pattern 'SHORT_BURST_SMOOTHING_MAX_BURST48_429_RATE:-0.10' "${smoothing_gate}"
+require_pattern 'SHORT_BURST_SMOOTHING_MAX_BURST64_429_RATE:-0.10' "${smoothing_gate}"
 
 mkdir -p "${output_dir}"
 cat >"${report_md}" <<REPORT
@@ -156,16 +165,19 @@ cat >"${report_md}" <<REPORT
 - gate_status=pass
 - runtime: OCI A1 Flex 4 OCPU / 24GB + data 200GB self-managed PostgreSQL 18
 - expected 429 source: ${expected_429_source}
-- live target: arrival-16rps 429 = 0, paced-weighted-vu16 429 <= ${weighted_vu16_max_429_rate}, short-burst-48 429 <= ${short_burst48_max_429_rate}, delayed ratio < 25%, 502/503 = 0, accepted request p95 <= 200ms, p99 <= 300ms
+- live target: arrival-16rps 429 = 0, paced-weighted-vu16 429 <= ${weighted_vu16_max_429_rate}, short-burst-64 429 <= ${short_burst64_max_429_rate}, delayed ratio < 25%, 502/503 = 0, accepted request p95 <= 200ms, p99 <= 300ms
 
 ## Matrix
 
 | Budget | Value |
 | --- | --- |
+| edge transaction budget profile | ${edge_transaction_budget_profile} |
 | edge transaction-hot rate | ${edge_transaction_hot_rate_rps}r/s |
 | edge transaction-archive rate | ${edge_transaction_archive_rate_rps}r/s |
 | edge transaction-hot burst | ${edge_transaction_hot_burst} |
 | edge transaction-archive burst | ${edge_transaction_archive_burst} |
+| edge transaction-hot delay | ${edge_transaction_hot_delay} |
+| edge transaction-archive delay | ${edge_transaction_archive_delay} |
 | edge transaction-read policy | ${edge_transaction_read_policy} |
 | backend admission max | ${backend_admission_max} |
 | backend admission adaptive max | ${backend_admission_adaptive_max} |
@@ -174,7 +186,7 @@ cat >"${report_md}" <<REPORT
 | backend archive admission max | ${backend_archive_admission_max} |
 | backend archive admission adaptive max | ${backend_archive_admission_adaptive_max} |
 | paced-weighted-vu16 max 429 rate | ${weighted_vu16_max_429_rate} |
-| short-burst-48 max 429 rate | ${short_burst48_max_429_rate} |
+| short-burst-64 max 429 rate | ${short_burst64_max_429_rate} |
 | Hikari max pool | ${hikari_max} |
 | Hikari max lifetime ms | ${hikari_max_lifetime_ms} |
 | Hikari keepalive time ms | ${hikari_keepalive_time_ms} |

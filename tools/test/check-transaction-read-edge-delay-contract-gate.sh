@@ -111,12 +111,13 @@ grep -F 'limit_req zone=aquila_bank_transaction_hot_per_ip burst=${NGINX_TRANSAC
 grep -F 'limit_req zone=aquila_bank_transaction_archive_per_ip burst=${NGINX_TRANSACTION_READ_ARCHIVE_BURST} ${NGINX_TRANSACTION_READ_ARCHIVE_LIMIT_MODE};' ops/nginx/nginx.conf >/dev/null
 grep -F 'NGINX_EDGE_RETRY_AFTER_MILLIS="${NGINX_EDGE_RETRY_AFTER_MILLIS:-150}"' tools/ops/render-nginx-runtime-config.sh >/dev/null
 grep -F 'NGINX_EDGE_RETRY_JITTER_MILLIS="${NGINX_EDGE_RETRY_JITTER_MILLIS:-100}"' tools/ops/render-nginx-runtime-config.sh >/dev/null
-grep -F 'NGINX_TRANSACTION_READ_HOT_RATE_RPS="${NGINX_TRANSACTION_READ_HOT_RATE_RPS:-96}"' tools/ops/render-nginx-runtime-config.sh >/dev/null
-grep -F 'NGINX_TRANSACTION_READ_ARCHIVE_RATE_RPS="${NGINX_TRANSACTION_READ_ARCHIVE_RATE_RPS:-96}"' tools/ops/render-nginx-runtime-config.sh >/dev/null
-grep -F 'NGINX_TRANSACTION_READ_HOT_BURST="${NGINX_TRANSACTION_READ_HOT_BURST:-12}"' tools/ops/render-nginx-runtime-config.sh >/dev/null
-grep -F 'NGINX_TRANSACTION_READ_ARCHIVE_BURST="${NGINX_TRANSACTION_READ_ARCHIVE_BURST:-12}"' tools/ops/render-nginx-runtime-config.sh >/dev/null
-grep -F 'NGINX_TRANSACTION_READ_HOT_DELAY="${NGINX_TRANSACTION_READ_HOT_DELAY:-1}"' tools/ops/render-nginx-runtime-config.sh >/dev/null
-grep -F 'NGINX_TRANSACTION_READ_ARCHIVE_DELAY="${NGINX_TRANSACTION_READ_ARCHIVE_DELAY:-1}"' tools/ops/render-nginx-runtime-config.sh >/dev/null
+grep -F 'NGINX_TRANSACTION_READ_BUDGET_PROFILE="${NGINX_TRANSACTION_READ_BUDGET_PROFILE:-${OCI_A1_TRANSACTION_READ_BUDGET_PROFILE:-burst64}}"' tools/ops/render-nginx-runtime-config.sh >/dev/null
+grep -F 'NGINX_TRANSACTION_READ_HOT_RATE_RPS="${NGINX_TRANSACTION_READ_HOT_RATE_RPS:-${transaction_read_profile_hot_rate_rps}}"' tools/ops/render-nginx-runtime-config.sh >/dev/null
+grep -F 'NGINX_TRANSACTION_READ_ARCHIVE_RATE_RPS="${NGINX_TRANSACTION_READ_ARCHIVE_RATE_RPS:-${transaction_read_profile_archive_rate_rps}}"' tools/ops/render-nginx-runtime-config.sh >/dev/null
+grep -F 'NGINX_TRANSACTION_READ_HOT_BURST="${NGINX_TRANSACTION_READ_HOT_BURST:-${transaction_read_profile_hot_burst}}"' tools/ops/render-nginx-runtime-config.sh >/dev/null
+grep -F 'NGINX_TRANSACTION_READ_ARCHIVE_BURST="${NGINX_TRANSACTION_READ_ARCHIVE_BURST:-${transaction_read_profile_archive_burst}}"' tools/ops/render-nginx-runtime-config.sh >/dev/null
+grep -F 'NGINX_TRANSACTION_READ_HOT_DELAY="${NGINX_TRANSACTION_READ_HOT_DELAY:-${transaction_read_profile_hot_delay}}"' tools/ops/render-nginx-runtime-config.sh >/dev/null
+grep -F 'NGINX_TRANSACTION_READ_ARCHIVE_DELAY="${NGINX_TRANSACTION_READ_ARCHIVE_DELAY:-${transaction_read_profile_archive_delay}}"' tools/ops/render-nginx-runtime-config.sh >/dev/null
 
 echo "[transaction-read-edge-delay-contract] invalid input fails"
 if EDGE_DELAY_CONTRACT_SOURCE_MODE=single-source "${runner}" --print-plan >/dev/null 2>&1; then

@@ -608,6 +608,8 @@ render_nginx_config() {
   local backend_name frontend_name backend_proxy_host edge_retry_after_seconds edge_retry_after_millis edge_retry_jitter_millis
   local backend_api_keepalive_timeout_seconds
   local real_ip_header real_ip_trusted_proxies real_ip_trusted_proxy_lines
+  local transaction_read_budget_profile transaction_read_profile_hot_rate_rps transaction_read_profile_archive_rate_rps
+  local transaction_read_profile_hot_burst transaction_read_profile_archive_burst transaction_read_profile_hot_delay transaction_read_profile_archive_delay
   local transaction_read_hot_rate_rps transaction_read_archive_rate_rps transaction_read_hot_burst transaction_read_archive_burst
   local transaction_read_hot_delay transaction_read_archive_delay transaction_read_hot_limit_mode transaction_read_archive_limit_mode
   backend_name="$(slot_name backend "${slot}")"
@@ -621,12 +623,43 @@ render_nginx_config() {
   real_ip_trusted_proxies="${NGINX_REAL_IP_TRUSTED_PROXIES:-${OCI_A1_NGINX_REAL_IP_TRUSTED_PROXIES:-10.60.0.0/16}}"
   validate_nginx_real_ip_header "${real_ip_header}"
   real_ip_trusted_proxy_lines="$(render_nginx_real_ip_trusted_proxy_lines "${real_ip_trusted_proxies}")"
-  transaction_read_hot_rate_rps="${OCI_A1_TRANSACTION_READ_HOT_RATE_RPS:-96}"
-  transaction_read_archive_rate_rps="${OCI_A1_TRANSACTION_READ_ARCHIVE_RATE_RPS:-96}"
-  transaction_read_hot_burst="${OCI_A1_TRANSACTION_READ_HOT_BURST:-12}"
-  transaction_read_archive_burst="${OCI_A1_TRANSACTION_READ_ARCHIVE_BURST:-12}"
-  transaction_read_hot_delay="${OCI_A1_TRANSACTION_READ_HOT_DELAY:-1}"
-  transaction_read_archive_delay="${OCI_A1_TRANSACTION_READ_ARCHIVE_DELAY:-1}"
+  transaction_read_budget_profile="${OCI_A1_TRANSACTION_READ_BUDGET_PROFILE:-${NGINX_TRANSACTION_READ_BUDGET_PROFILE:-burst64}}"
+  case "${transaction_read_budget_profile}" in
+    burst64)
+      transaction_read_profile_hot_rate_rps=128
+      transaction_read_profile_archive_rate_rps=128
+      transaction_read_profile_hot_burst=16
+      transaction_read_profile_archive_burst=16
+      transaction_read_profile_hot_delay=0
+      transaction_read_profile_archive_delay=0
+      ;;
+    balanced)
+      transaction_read_profile_hot_rate_rps=96
+      transaction_read_profile_archive_rate_rps=96
+      transaction_read_profile_hot_burst=12
+      transaction_read_profile_archive_burst=12
+      transaction_read_profile_hot_delay=1
+      transaction_read_profile_archive_delay=1
+      ;;
+    fail-fast)
+      transaction_read_profile_hot_rate_rps=96
+      transaction_read_profile_archive_rate_rps=96
+      transaction_read_profile_hot_burst=12
+      transaction_read_profile_archive_burst=12
+      transaction_read_profile_hot_delay=0
+      transaction_read_profile_archive_delay=0
+      ;;
+    *)
+      log "transaction read Nginx budget profile must be burst64, balanced, or fail-fast: ${transaction_read_budget_profile}"
+      exit 1
+      ;;
+  esac
+  transaction_read_hot_rate_rps="${OCI_A1_TRANSACTION_READ_HOT_RATE_RPS:-${transaction_read_profile_hot_rate_rps}}"
+  transaction_read_archive_rate_rps="${OCI_A1_TRANSACTION_READ_ARCHIVE_RATE_RPS:-${transaction_read_profile_archive_rate_rps}}"
+  transaction_read_hot_burst="${OCI_A1_TRANSACTION_READ_HOT_BURST:-${transaction_read_profile_hot_burst}}"
+  transaction_read_archive_burst="${OCI_A1_TRANSACTION_READ_ARCHIVE_BURST:-${transaction_read_profile_archive_burst}}"
+  transaction_read_hot_delay="${OCI_A1_TRANSACTION_READ_HOT_DELAY:-${transaction_read_profile_hot_delay}}"
+  transaction_read_archive_delay="${OCI_A1_TRANSACTION_READ_ARCHIVE_DELAY:-${transaction_read_profile_archive_delay}}"
   transaction_read_hot_limit_mode="$(render_nginx_limit_req_mode "${transaction_read_hot_delay}")"
   transaction_read_archive_limit_mode="$(render_nginx_limit_req_mode "${transaction_read_archive_delay}")"
 

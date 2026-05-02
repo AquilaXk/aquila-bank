@@ -18,11 +18,14 @@ plan="$(
     "${runner}" --print-plan
 )"
 grep -F "name=matrix-check" <<<"${plan}" >/dev/null
-grep -F "edge_transaction_hot_rate_rps=96" <<<"${plan}" >/dev/null
-grep -F "edge_transaction_archive_rate_rps=96" <<<"${plan}" >/dev/null
-grep -F "edge_transaction_hot_burst=12" <<<"${plan}" >/dev/null
-grep -F "edge_transaction_archive_burst=12" <<<"${plan}" >/dev/null
-grep -F "edge_transaction_read_policy=small-delay-queue" <<<"${plan}" >/dev/null
+grep -F "edge_transaction_budget_profile=burst64" <<<"${plan}" >/dev/null
+grep -F "edge_transaction_hot_rate_rps=128" <<<"${plan}" >/dev/null
+grep -F "edge_transaction_archive_rate_rps=128" <<<"${plan}" >/dev/null
+grep -F "edge_transaction_hot_burst=16" <<<"${plan}" >/dev/null
+grep -F "edge_transaction_archive_burst=16" <<<"${plan}" >/dev/null
+grep -F "edge_transaction_hot_delay=0" <<<"${plan}" >/dev/null
+grep -F "edge_transaction_archive_delay=0" <<<"${plan}" >/dev/null
+grep -F "edge_transaction_read_policy=burst64-nodelay" <<<"${plan}" >/dev/null
 grep -F "backend_admission_max=8" <<<"${plan}" >/dev/null
 grep -F "backend_admission_adaptive_max=12" <<<"${plan}" >/dev/null
 grep -F "backend_hot_admission_max=8" <<<"${plan}" >/dev/null
@@ -30,7 +33,7 @@ grep -F "backend_hot_admission_adaptive_max=12" <<<"${plan}" >/dev/null
 grep -F "backend_archive_admission_max=6" <<<"${plan}" >/dev/null
 grep -F "backend_archive_admission_adaptive_max=10" <<<"${plan}" >/dev/null
 grep -F "weighted_vu16_max_429_rate=0.05" <<<"${plan}" >/dev/null
-grep -F "short_burst48_max_429_rate=0.10" <<<"${plan}" >/dev/null
+grep -F "short_burst64_max_429_rate=0.10" <<<"${plan}" >/dev/null
 grep -F "hikari_max=8" <<<"${plan}" >/dev/null
 grep -F "hikari_max_lifetime_ms=600000" <<<"${plan}" >/dev/null
 grep -F "hikari_keepalive_time_ms=60000" <<<"${plan}" >/dev/null
@@ -46,11 +49,14 @@ output="$(
 report_md="$(tail -1 <<<"${output}")"
 test "${report_md}" = "${output_dir}/matrix-check-budget-matrix.md"
 grep -F "gate_status=pass" "${report_md}" >/dev/null
-grep -F "| edge transaction-hot rate | 96r/s |" "${report_md}" >/dev/null
-grep -F "| edge transaction-archive rate | 96r/s |" "${report_md}" >/dev/null
-grep -F "| edge transaction-hot burst | 12 |" "${report_md}" >/dev/null
-grep -F "| edge transaction-archive burst | 12 |" "${report_md}" >/dev/null
-grep -F "| edge transaction-read policy | small-delay-queue |" "${report_md}" >/dev/null
+grep -F "| edge transaction budget profile | burst64 |" "${report_md}" >/dev/null
+grep -F "| edge transaction-hot rate | 128r/s |" "${report_md}" >/dev/null
+grep -F "| edge transaction-archive rate | 128r/s |" "${report_md}" >/dev/null
+grep -F "| edge transaction-hot burst | 16 |" "${report_md}" >/dev/null
+grep -F "| edge transaction-archive burst | 16 |" "${report_md}" >/dev/null
+grep -F "| edge transaction-hot delay | 0 |" "${report_md}" >/dev/null
+grep -F "| edge transaction-archive delay | 0 |" "${report_md}" >/dev/null
+grep -F "| edge transaction-read policy | burst64-nodelay |" "${report_md}" >/dev/null
 grep -F "| backend admission max | 8 |" "${report_md}" >/dev/null
 grep -F "| backend admission adaptive max | 12 |" "${report_md}" >/dev/null
 grep -F "| backend hot admission max | 8 |" "${report_md}" >/dev/null
@@ -58,7 +64,7 @@ grep -F "| backend hot admission adaptive max | 12 |" "${report_md}" >/dev/null
 grep -F "| backend archive admission max | 6 |" "${report_md}" >/dev/null
 grep -F "| backend archive admission adaptive max | 10 |" "${report_md}" >/dev/null
 grep -F "| paced-weighted-vu16 max 429 rate | 0.05 |" "${report_md}" >/dev/null
-grep -F "| short-burst-48 max 429 rate | 0.10 |" "${report_md}" >/dev/null
+grep -F "| short-burst-64 max 429 rate | 0.10 |" "${report_md}" >/dev/null
 grep -F "| Hikari max pool | 8 |" "${report_md}" >/dev/null
 grep -F "| Hikari max lifetime ms | 600000 |" "${report_md}" >/dev/null
 grep -F "| Hikari keepalive time ms | 60000 |" "${report_md}" >/dev/null
@@ -83,6 +89,8 @@ grep -F 'group: transaction-read-hot' back/src/main/resources/application.yml >/
 grep -F 'group: transaction-read-archive' back/src/main/resources/application.yml >/dev/null
 grep -F 'OCI_PUBLIC_ARRIVAL_RATES:-4,5,6,7,8,10,16' tools/test/run-oci-public-api-arrival-capacity-gate.sh >/dev/null
 grep -F 'WEIGHTED_SOAK_10M_MAX_TOTAL_429_RATE:-0.05' tools/test/run-transaction-read-weighted-10m-soak-gate.sh >/dev/null
+grep -F 'WEIGHTED_SOAK_10M_MAX_DELAYED_RATE:-0.25' tools/test/run-transaction-read-weighted-10m-soak-gate.sh >/dev/null
 grep -F 'SHORT_BURST_SMOOTHING_MAX_BURST48_429_RATE:-0.10' tools/test/run-transaction-read-short-burst-smoothing-matrix.sh >/dev/null
+grep -F 'SHORT_BURST_SMOOTHING_MAX_BURST64_429_RATE:-0.10' tools/test/run-transaction-read-short-burst-smoothing-matrix.sh >/dev/null
 grep -F 'SHORT_BURST_SMOOTHING_MAX_ACCEPTED_P95_MS:-200' tools/test/run-transaction-read-short-burst-smoothing-matrix.sh >/dev/null
 grep -F 'SHORT_BURST_SMOOTHING_MAX_ACCEPTED_P99_MS:-300' tools/test/run-transaction-read-short-burst-smoothing-matrix.sh >/dev/null
