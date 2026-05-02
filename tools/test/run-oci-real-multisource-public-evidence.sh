@@ -79,6 +79,8 @@ print_plan() {
   echo "[oci-real-multisource-public-evidence] name=${name}"
   echo "[oci-real-multisource-public-evidence] docker_contexts=${contexts_csv}"
   echo "[oci-real-multisource-public-evidence] docker_context_count=${#contexts[@]}"
+  echo "[oci-real-multisource-public-evidence] true_multi_source_required=true"
+  echo "[oci-real-multisource-public-evidence] minimum_remote_docker_contexts=2"
   echo "[oci-real-multisource-public-evidence] single_source_summary=${single_summary:-missing}"
   echo "[oci-real-multisource-public-evidence] multi_source_summary=${multi_summary:-missing}"
   echo "[oci-real-multisource-public-evidence] nginx_status_tsv=${nginx_status_tsv:-missing}"
@@ -126,8 +128,9 @@ cat >"${report_md}" <<REPORT
 
 - gate_status=pass
 - docker context count: ${#contexts[@]}
+- true multi-source public traffic evidence: fixed
 - single-source vs multi-source comparison: fixed
-- real IP bucket split: delegated to replay gate
+- real IP bucket split: verified
 - multi-source runner: ${multi_source_runner}
 - replay gate report: ${replay_report}
 

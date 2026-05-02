@@ -129,7 +129,7 @@ NR == 1 {
   for (i = 1; i <= NF; i++) {
     col[$i] = i
   }
-  print "scenario\trun_id\texecuted_at_utc\tduration_min\tsource_ips\trun_script\tk6_summary_ref\tnginx_access_ref\tspring_metrics_ref\thikari_log_ref\tpostgres_wait_ref\tdeploy_event_ref\tcache_state_ref\ttimeline_ref\tedge_429_rate\tbackend_429_count\tfive_xx_count\tnginx_499_count\thikari_validation_warnings\tdb_pool_pending_max\tp999_ms"
+  print "scenario\trun_id\texecuted_at_utc\tduration_min\tsource_ips\trun_script\tk6_summary_ref\tnginx_access_ref\tspring_metrics_ref\thikari_log_ref\tpostgres_wait_ref\tdeploy_event_ref\tcache_state_ref\ttimeline_ref\tedge_429_rate\tbackend_429_count\tunknown_429_count\tfive_xx_count\tnginx_499_count\thikari_validation_warnings\tdb_pool_pending_max\tp999_ms"
   next
 }
 {
@@ -139,7 +139,7 @@ NR == 1 {
     printf "unknown OCI evidence scenario: %s\n", scenario > "/dev/stderr"
     exit 1
   }
-  printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+  printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
     scenario,
     value("run_id", ""),
     executed_at,
@@ -156,6 +156,7 @@ NR == 1 {
     value("timeline_ref", ""),
     value("edge_429_rate", "1"),
     value("backend_429_count", "1"),
+    value("unknown_429_count", "1"),
     value("five_xx_count", "1"),
     value("nginx_499_count", "1"),
     value("hikari_validation_warnings", "1"),

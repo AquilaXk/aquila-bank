@@ -63,6 +63,8 @@ plan="$(
 )"
 grep -F "name=real-multi-check" <<<"${plan}" >/dev/null
 grep -F "docker_context_count=2" <<<"${plan}" >/dev/null
+grep -F "true_multi_source_required=true" <<<"${plan}" >/dev/null
+grep -F "minimum_remote_docker_contexts=2" <<<"${plan}" >/dev/null
 grep -F "multi_source_runner=tools/test/run-k6-transaction-100m-multisource.sh" <<<"${plan}" >/dev/null
 grep -F "replay_gate=tools/test/run-oci-real-ip-multisource-capacity-replay.sh" <<<"${plan}" >/dev/null
 
@@ -82,7 +84,8 @@ test "${report_md}" = "${output_dir}/real-multi-check-real-multisource-public-ev
 grep -F "gate_status=pass" "${report_md}" >/dev/null
 grep -F "docker context count: 2" "${report_md}" >/dev/null
 grep -F "single-source vs multi-source comparison: fixed" "${report_md}" >/dev/null
-grep -F "real IP bucket split: delegated to replay gate" "${report_md}" >/dev/null
+grep -F "real IP bucket split: verified" "${report_md}" >/dev/null
+grep -F "true multi-source public traffic evidence: fixed" "${report_md}" >/dev/null
 grep -F $'index\tdocker_context' "${contexts_tsv}" >/dev/null
 grep -F $'1\toci-k6-a' "${contexts_tsv}" >/dev/null
 grep -F $'2\toci-k6-b' "${contexts_tsv}" >/dev/null
