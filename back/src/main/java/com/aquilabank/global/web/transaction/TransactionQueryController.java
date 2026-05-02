@@ -29,14 +29,20 @@ public class TransactionQueryController {
   private final TransactionQueryUseCase transactionQueryUseCase;
   private final RequestAccountAuthorizationService requestAccountAuthorizationService;
   private final TransactionReadHotPathMetrics hotPathMetrics;
+  private final TransactionReadSingleFlight singleFlight;
+  private final TransactionReadAccountFairnessLimiter accountFairnessLimiter;
 
   public TransactionQueryController(
       TransactionQueryUseCase transactionQueryUseCase,
       RequestAccountAuthorizationService requestAccountAuthorizationService,
-      TransactionReadHotPathMetrics hotPathMetrics) {
+      TransactionReadHotPathMetrics hotPathMetrics,
+      TransactionReadSingleFlight singleFlight,
+      TransactionReadAccountFairnessLimiter accountFairnessLimiter) {
     this.transactionQueryUseCase = transactionQueryUseCase;
     this.requestAccountAuthorizationService = requestAccountAuthorizationService;
     this.hotPathMetrics = hotPathMetrics;
+    this.singleFlight = singleFlight;
+    this.accountFairnessLimiter = accountFairnessLimiter;
   }
 
   @GetMapping
@@ -113,7 +119,14 @@ public class TransactionQueryController {
           hotPathMetrics.record(
               TransactionReadHotPathMetrics.ENDPOINT_ACTIVE,
               TransactionReadHotPathMetrics.STAGE_USECASE,
-              () -> transactionQueryUseCase.getTransactions(query));
+              () ->
+                  singleFlight.get(
+                      TransactionReadHotPathMetrics.ENDPOINT_ACTIVE,
+                      query,
+                      () ->
+                          accountFairnessLimiter.execute(
+                              resolvedAccountId,
+                              () -> transactionQueryUseCase.getTransactions(query))));
       return hotPathMetrics.record(
           TransactionReadHotPathMetrics.ENDPOINT_ACTIVE,
           TransactionReadHotPathMetrics.STAGE_RESPONSE_MAPPING,

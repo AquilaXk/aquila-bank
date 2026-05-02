@@ -29,14 +29,20 @@ public class TransactionArchiveQueryController {
   private final TransactionArchiveQueryUseCase transactionArchiveQueryUseCase;
   private final RequestAccountAuthorizationService requestAccountAuthorizationService;
   private final TransactionReadHotPathMetrics hotPathMetrics;
+  private final TransactionReadSingleFlight singleFlight;
+  private final TransactionReadAccountFairnessLimiter accountFairnessLimiter;
 
   public TransactionArchiveQueryController(
       TransactionArchiveQueryUseCase transactionArchiveQueryUseCase,
       RequestAccountAuthorizationService requestAccountAuthorizationService,
-      TransactionReadHotPathMetrics hotPathMetrics) {
+      TransactionReadHotPathMetrics hotPathMetrics,
+      TransactionReadSingleFlight singleFlight,
+      TransactionReadAccountFairnessLimiter accountFairnessLimiter) {
     this.transactionArchiveQueryUseCase = transactionArchiveQueryUseCase;
     this.requestAccountAuthorizationService = requestAccountAuthorizationService;
     this.hotPathMetrics = hotPathMetrics;
+    this.singleFlight = singleFlight;
+    this.accountFairnessLimiter = accountFairnessLimiter;
   }
 
   @GetMapping
@@ -112,7 +118,15 @@ public class TransactionArchiveQueryController {
           hotPathMetrics.record(
               TransactionReadHotPathMetrics.ENDPOINT_ARCHIVE,
               TransactionReadHotPathMetrics.STAGE_USECASE,
-              () -> transactionArchiveQueryUseCase.getArchivedTransactions(query));
+              () ->
+                  singleFlight.get(
+                      TransactionReadHotPathMetrics.ENDPOINT_ARCHIVE,
+                      query,
+                      () ->
+                          accountFairnessLimiter.execute(
+                              resolvedAccountId,
+                              () ->
+                                  transactionArchiveQueryUseCase.getArchivedTransactions(query))));
       return hotPathMetrics.record(
           TransactionReadHotPathMetrics.ENDPOINT_ARCHIVE,
           TransactionReadHotPathMetrics.STAGE_RESPONSE_MAPPING,

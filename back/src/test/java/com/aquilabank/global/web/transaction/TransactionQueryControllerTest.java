@@ -43,7 +43,9 @@ class TransactionQueryControllerTest {
                 new TransactionQueryController(
                     transactionQueryUseCase,
                     requestAccountAuthorizationService,
-                    new TransactionReadHotPathMetrics(meterRegistry)))
+                    new TransactionReadHotPathMetrics(meterRegistry),
+                    new TransactionReadSingleFlight(),
+                    new TransactionReadAccountFairnessLimiter(2)))
             .addFilters(new BootstrapHeaderAuthenticationFilter("X-Account-Id", "X-Subject"))
             .setCustomArgumentResolvers(new CurrentAuthenticatedPrincipalArgumentResolver())
             .build();
