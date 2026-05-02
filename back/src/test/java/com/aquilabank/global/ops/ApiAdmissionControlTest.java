@@ -259,7 +259,7 @@ class ApiAdmissionControlTest {
                         1,
                         List.of("/api/v1/transactions"),
                         new ApiAdmissionControlProperties.AdaptiveLimit(
-                            true, 6, 12, 64, 1, 20, 0.5, 1, 1)))),
+                            true, 6, 12, 64, 1, 20, 0.5, 1, 1, 0, 0, 0)))),
             meterRegistry);
 
     ApiAdmissionPermit first = admissionControl.tryAcquire("/api/v1/transactions");
@@ -289,6 +289,51 @@ class ApiAdmissionControlTest {
   }
 
   @Test
+  void defaultTransactionReadEndpointsUseSeparateHotAndArchiveGroups() {
+    SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+    ApiAdmissionControl admissionControl =
+        new ApiAdmissionControl(new ApiAdmissionControlProperties(true, 1, null), meterRegistry);
+
+    ApiAdmissionPermit archive = admissionControl.tryAcquire("/api/v1/transactions/archive");
+    ApiAdmissionPermit hot = admissionControl.tryAcquire("/api/v1/transactions");
+
+    assertThat(archive.allowed()).isTrue();
+    assertThat(archive.group()).isEqualTo("transaction-read-archive");
+    assertThat(hot.allowed()).isTrue();
+    assertThat(hot.group()).isEqualTo("transaction-read-hot");
+
+    archive.release();
+    hot.release();
+  }
+
+  @Test
+  void raisesAdaptiveLimitFasterWhenLowSaturationCompletes() {
+    SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+    ApiAdmissionControl admissionControl =
+        new ApiAdmissionControl(
+            new ApiAdmissionControlProperties(
+                true,
+                1,
+                List.of(
+                    new ApiAdmissionControlProperties.EndpointLimit(
+                        "transaction-read-hot",
+                        2,
+                        -1,
+                        List.of("/api/v1/transactions"),
+                        new ApiAdmissionControlProperties.AdaptiveLimit(
+                            true, 1, 6, 100, 1, 4, 0.5, 1, 1, 2, 2, 0)))),
+            meterRegistry);
+
+    ApiAdmissionPermit first = admissionControl.tryAcquire("/api/v1/transactions");
+    first.release();
+    assertCurrentLimit(meterRegistry, "transaction-read-hot", 2.0);
+
+    ApiAdmissionPermit second = admissionControl.tryAcquire("/api/v1/transactions");
+    second.release();
+    assertCurrentLimit(meterRegistry, "transaction-read-hot", 4.0);
+  }
+
+  @Test
   void disabledAdaptiveBlockDoesNotRequireBounds() {
     SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
     ApiAdmissionControl admissionControl =
@@ -303,7 +348,7 @@ class ApiAdmissionControlTest {
                         0,
                         List.of("/api/v1/transactions"),
                         new ApiAdmissionControlProperties.AdaptiveLimit(
-                            false, 0, 0, 0, 0, 0, 0, 0, 0)))),
+                            false, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)))),
             meterRegistry);
 
     ApiAdmissionPermit first = admissionControl.tryAcquire("/api/v1/transactions");
@@ -349,7 +394,10 @@ class ApiAdmissionControlTest {
                     1,
                     1.0,
                     0,
-                    1))));
+                    1,
+                    0,
+                    0,
+                    0))));
   }
 
   private ApiAdmissionControlProperties adaptiveProperties(
@@ -380,16 +428,19 @@ class ApiAdmissionControlTest {
                     rejectionWindowSize,
                     decreaseRejectionRatio,
                     decreaseCooldownSeconds,
-                    recoveryStep))));
+                    recoveryStep,
+                    0,
+                    0,
+                    0))));
   }
 
   private void assertCurrentLimit(SimpleMeterRegistry meterRegistry, double expected) {
-    assertThat(
-            meterRegistry
-                .find("aquila.api.admission.limit")
-                .tag("group", "transaction-read")
-                .gauge()
-                .value())
+    assertCurrentLimit(meterRegistry, "transaction-read", expected);
+  }
+
+  private void assertCurrentLimit(
+      SimpleMeterRegistry meterRegistry, String group, double expected) {
+    assertThat(meterRegistry.find("aquila.api.admission.limit").tag("group", group).gauge().value())
         .isEqualTo(expected);
   }
 }

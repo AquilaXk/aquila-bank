@@ -355,8 +355,8 @@ run_combination() {
   wait_for_prometheus_readiness
 
   # 조합별 backend env가 docker compose run 의존성 처리로 바뀌지 않도록 k6는 --no-deps로 실행합니다.
-  accepted_before="$(prometheus_value 'aquila_api_admission_requests_total{group="transaction-read",outcome="accepted"}')"
-  rejected_before="$(prometheus_value 'aquila_api_admission_requests_total{group="transaction-read",outcome="rejected"}')"
+  accepted_before="$(prometheus_value 'sum(aquila_api_admission_requests_total{group=~"transaction-read-(hot|archive)",outcome="accepted"})')"
+  rejected_before="$(prometheus_value 'sum(aquila_api_admission_requests_total{group=~"transaction-read-(hot|archive)",outcome="rejected"})')"
 
   start_cpu_sampler "${stats_path}"
   set +e
@@ -372,8 +372,8 @@ run_combination() {
     sleep "${metric_scrape_wait_seconds}"
   fi
 
-  accepted_after="$(prometheus_value 'aquila_api_admission_requests_total{group="transaction-read",outcome="accepted"}')"
-  rejected_after="$(prometheus_value 'aquila_api_admission_requests_total{group="transaction-read",outcome="rejected"}')"
+  accepted_after="$(prometheus_value 'sum(aquila_api_admission_requests_total{group=~"transaction-read-(hot|archive)",outcome="accepted"})')"
+  rejected_after="$(prometheus_value 'sum(aquila_api_admission_requests_total{group=~"transaction-read-(hot|archive)",outcome="rejected"})')"
   accepted_delta="$(numeric_delta "${accepted_before}" "${accepted_after}")"
   rejected_delta="$(numeric_delta "${rejected_before}" "${rejected_after}")"
   total_admission="$(numeric_sum "${accepted_delta}" "${rejected_delta}")"

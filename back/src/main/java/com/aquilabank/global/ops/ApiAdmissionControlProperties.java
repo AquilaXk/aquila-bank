@@ -21,11 +21,17 @@ public record ApiAdmissionControlProperties(
   private static List<EndpointLimit> defaultEndpoints() {
     return List.of(
         new EndpointLimit(
-            "transaction-read",
+            "transaction-read-archive",
+            6,
+            1,
+            List.of("/api/v1/transactions/archive"),
+            new AdaptiveLimit(true, 6, 12, 64, 1, 20, 0.5, 1, 1, 0, 0, 0)),
+        new EndpointLimit(
+            "transaction-read-hot",
             6,
             1,
             List.of("/api/v1/transactions"),
-            new AdaptiveLimit(true, 6, 12, 64, 1, 20, 0.5, 1, 1)),
+            new AdaptiveLimit(true, 6, 12, 64, 1, 20, 0.5, 1, 1, 0, 0, 0)),
         new EndpointLimit("account-read", 4, 0, List.of("/api/v1/accounts"), null),
         new EndpointLimit("transfer-write", 2, 0, List.of("/api/v1/transfers"), null),
         new EndpointLimit(
@@ -89,7 +95,10 @@ public record ApiAdmissionControlProperties(
       int rejectionWindowSize,
       double decreaseRejectionRatio,
       int decreaseCooldownSeconds,
-      int recoveryStep) {
+      int recoveryStep,
+      int lowSaturationIncreaseEverySuccesses,
+      int lowSaturationRecoveryStep,
+      int lowSaturationMaxInFlight) {
 
     public AdaptiveLimit {
       enabled = enabled == null ? Boolean.FALSE : enabled;
@@ -105,6 +114,13 @@ public record ApiAdmissionControlProperties(
                 : 1.0;
         decreaseCooldownSeconds = Math.max(decreaseCooldownSeconds, 0);
         recoveryStep = recoveryStep > 0 ? recoveryStep : 1;
+        lowSaturationIncreaseEverySuccesses =
+            lowSaturationIncreaseEverySuccesses > 0
+                ? lowSaturationIncreaseEverySuccesses
+                : increaseEverySuccesses;
+        lowSaturationRecoveryStep =
+            lowSaturationRecoveryStep > 0 ? lowSaturationRecoveryStep : recoveryStep;
+        lowSaturationMaxInFlight = Math.max(lowSaturationMaxInFlight, 0);
       } else if (minConcurrency <= 0) {
         throw new IllegalArgumentException(
             "ops.api-admission-control adaptive min-concurrency must be positive");
@@ -121,11 +137,19 @@ public record ApiAdmissionControlProperties(
         decreaseRejectionRatio = decreaseRejectionRatio > 0.0 ? decreaseRejectionRatio : 0.5;
         decreaseCooldownSeconds = Math.max(decreaseCooldownSeconds, 0);
         recoveryStep = recoveryStep > 0 ? recoveryStep : 1;
+        lowSaturationIncreaseEverySuccesses =
+            lowSaturationIncreaseEverySuccesses > 0
+                ? lowSaturationIncreaseEverySuccesses
+                : increaseEverySuccesses;
+        lowSaturationRecoveryStep =
+            lowSaturationRecoveryStep > 0 ? lowSaturationRecoveryStep : recoveryStep;
+        lowSaturationMaxInFlight = Math.max(lowSaturationMaxInFlight, 0);
       }
     }
 
     static AdaptiveLimit disabled(int maxConcurrency) {
-      return new AdaptiveLimit(false, maxConcurrency, maxConcurrency, 100, 1, 1, 1.0, 0, 1);
+      return new AdaptiveLimit(
+          false, maxConcurrency, maxConcurrency, 100, 1, 1, 1.0, 0, 1, 0, 0, 0);
     }
   }
 }

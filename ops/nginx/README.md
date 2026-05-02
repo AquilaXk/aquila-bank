@@ -28,10 +28,10 @@
   - `NGINX_EDGE_RETRY_AFTER_SECONDS` 기본값 `1`
   - `NGINX_EDGE_RETRY_AFTER_MILLIS` 기본값 `150`
   - `NGINX_EDGE_RETRY_JITTER_MILLIS` 기본값 `100`
-  - `NGINX_TRANSACTION_READ_HOT_RATE_RPS` 기본값 `64`
-  - `NGINX_TRANSACTION_READ_ARCHIVE_RATE_RPS` 기본값 `64`
-  - `NGINX_TRANSACTION_READ_HOT_BURST` 기본값 `8`
-  - `NGINX_TRANSACTION_READ_ARCHIVE_BURST` 기본값 `8`
+  - `NGINX_TRANSACTION_READ_HOT_RATE_RPS` 기본값 `80`
+  - `NGINX_TRANSACTION_READ_ARCHIVE_RATE_RPS` 기본값 `80`
+  - `NGINX_TRANSACTION_READ_HOT_BURST` 기본값 `10`
+  - `NGINX_TRANSACTION_READ_ARCHIVE_BURST` 기본값 `10`
 - `NGINX_BACKEND_SSE_SERVERS`를 비우면 API upstream과 같은 backend pool을 재사용합니다.
 - render 명령:
 
@@ -53,12 +53,12 @@ bash tools/ops/render-nginx-runtime-config.sh /tmp/aquila-bank-nginx.conf ops/ng
 
 - `limit_req_zone $binary_remote_addr zone=aquila_bank_api_per_ip:10m rate=30r/s;`
 - `limit_req_zone $binary_remote_addr zone=aquila_bank_auth_per_ip:10m rate=5r/s;`
-- `limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_hot_per_ip:10m rate=64r/s;`
-- `limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_archive_per_ip:10m rate=64r/s;`
+- `limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_hot_per_ip:10m rate=80r/s;`
+- `limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_archive_per_ip:10m rate=80r/s;`
 - `limit_req_zone $binary_remote_addr zone=aquila_bank_transfer_per_ip:10m rate=3r/s;`
 - `location = /api/v1/auth/login`, `location = /api/v1/auth/refresh`, `location = /api/v1/auth/password-recovery/request`에 `limit_req zone=aquila_bank_auth_per_ip burst=10 nodelay;`를 적용합니다.
-- `location = /api/v1/transactions`에는 `limit_req zone=aquila_bank_transaction_hot_per_ip burst=8 nodelay;`를 적용합니다.
-- `location = /api/v1/transactions/archive`에는 `limit_req zone=aquila_bank_transaction_archive_per_ip burst=8 nodelay;`를 적용합니다.
+- `location = /api/v1/transactions`에는 `limit_req zone=aquila_bank_transaction_hot_per_ip burst=10 nodelay;`를 적용합니다.
+- `location = /api/v1/transactions/archive`에는 `limit_req zone=aquila_bank_transaction_archive_per_ip burst=10 nodelay;`를 적용합니다.
 - `location = /api/v1/transfers`, `location ~ ^/api/v1/transfers/[^/]+/reversal$`에는 `limit_req zone=aquila_bank_transfer_per_ip burst=6 nodelay;`를 적용합니다.
 - exact/regex location은 generic `/api/`보다 먼저 매칭되므로 zone을 중첩 적용하지 않습니다.
 - `/api/`에는 `limit_req zone=aquila_bank_api_per_ip burst=20 delay=5;`를 유지합니다.

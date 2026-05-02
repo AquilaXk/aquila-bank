@@ -34,14 +34,13 @@ class ApiAdmissionControlConfigurationTest {
   void keepsDefaultOciA1AdaptiveBoundsWhenMaxIsNotOverridden() {
     contextRunner.run(
         context -> {
-          ApiAdmissionControlProperties.EndpointLimit endpoint = transactionReadEndpoint(context);
+          ApiAdmissionControlProperties.EndpointLimit archiveEndpoint =
+              transactionReadEndpoint(context, "transaction-read-archive");
+          ApiAdmissionControlProperties.EndpointLimit hotEndpoint =
+              transactionReadEndpoint(context, "transaction-read-hot");
 
-          assertThat(endpoint.maxConcurrency()).isEqualTo(6);
-          assertThat(endpoint.retryAfterSeconds()).isEqualTo(1);
-          assertThat(endpoint.adaptive().minConcurrency()).isEqualTo(6);
-          assertThat(endpoint.adaptive().maxConcurrency()).isEqualTo(12);
-          assertThat(endpoint.adaptive().increaseEverySuccesses()).isEqualTo(64);
-          assertThat(endpoint.adaptive().decreaseOnRejections()).isEqualTo(1);
+          assertTransactionReadDefaults(archiveEndpoint, 12);
+          assertTransactionReadDefaults(hotEndpoint, 12);
         });
   }
 
@@ -60,12 +59,13 @@ class ApiAdmissionControlConfigurationTest {
         .run(
             context -> {
               assertThat(context).hasNotFailed();
-              ApiAdmissionControlProperties.EndpointLimit endpoint =
-                  transactionReadEndpoint(context);
+              ApiAdmissionControlProperties.EndpointLimit archiveEndpoint =
+                  transactionReadEndpoint(context, "transaction-read-archive");
+              ApiAdmissionControlProperties.EndpointLimit hotEndpoint =
+                  transactionReadEndpoint(context, "transaction-read-hot");
 
-              assertThat(endpoint.maxConcurrency()).isEqualTo(16);
-              assertThat(endpoint.adaptive().minConcurrency()).isEqualTo(16);
-              assertThat(endpoint.adaptive().maxConcurrency()).isEqualTo(16);
+              assertLegacyMaxOverride(archiveEndpoint, 16);
+              assertLegacyMaxOverride(hotEndpoint, 16);
             });
   }
 
@@ -84,20 +84,38 @@ class ApiAdmissionControlConfigurationTest {
         .run(
             context -> {
               assertThat(context).hasNotFailed();
-              ApiAdmissionControlProperties.EndpointLimit endpoint =
-                  transactionReadEndpoint(context);
+              ApiAdmissionControlProperties.EndpointLimit archiveEndpoint =
+                  transactionReadEndpoint(context, "transaction-read-archive");
+              ApiAdmissionControlProperties.EndpointLimit hotEndpoint =
+                  transactionReadEndpoint(context, "transaction-read-hot");
 
-              assertThat(endpoint.maxConcurrency()).isEqualTo(3);
-              assertThat(endpoint.adaptive().minConcurrency()).isEqualTo(3);
-              assertThat(endpoint.adaptive().maxConcurrency()).isEqualTo(3);
+              assertLegacyMaxOverride(archiveEndpoint, 3);
+              assertLegacyMaxOverride(hotEndpoint, 3);
             });
   }
 
   private ApiAdmissionControlProperties.EndpointLimit transactionReadEndpoint(
-      org.springframework.context.ApplicationContext context) {
+      org.springframework.context.ApplicationContext context, String group) {
     return context.getBean(ApiAdmissionControlProperties.class).endpoints().stream()
-        .filter(endpoint -> endpoint.group().equals("transaction-read"))
+        .filter(endpoint -> endpoint.group().equals(group))
         .findFirst()
         .orElseThrow();
+  }
+
+  private void assertTransactionReadDefaults(
+      ApiAdmissionControlProperties.EndpointLimit endpoint, int adaptiveMaxConcurrency) {
+    assertThat(endpoint.maxConcurrency()).isEqualTo(6);
+    assertThat(endpoint.retryAfterSeconds()).isEqualTo(1);
+    assertThat(endpoint.adaptive().minConcurrency()).isEqualTo(6);
+    assertThat(endpoint.adaptive().maxConcurrency()).isEqualTo(adaptiveMaxConcurrency);
+    assertThat(endpoint.adaptive().increaseEverySuccesses()).isEqualTo(64);
+    assertThat(endpoint.adaptive().decreaseOnRejections()).isEqualTo(1);
+  }
+
+  private void assertLegacyMaxOverride(
+      ApiAdmissionControlProperties.EndpointLimit endpoint, int expected) {
+    assertThat(endpoint.maxConcurrency()).isEqualTo(expected);
+    assertThat(endpoint.adaptive().minConcurrency()).isEqualTo(expected);
+    assertThat(endpoint.adaptive().maxConcurrency()).isEqualTo(expected);
   }
 }

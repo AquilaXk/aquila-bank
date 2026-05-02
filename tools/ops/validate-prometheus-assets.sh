@@ -36,8 +36,8 @@ jq -e '
   and any(.panels[]?.targets[]?.expr?; contains("aquila_api_admission_requests_total"))
   and any(.panels[]?.targets[]?.expr?; contains("aquila_api_admission_inflight"))
   and any(.panels[]?; .title == "Transaction Read Accepted P95 SLO" and any(.targets[]?.expr?; contains("aquila_transaction_query_latency_seconds_bucket{outcome=\"success\"") and contains("histogram_quantile(0.95")))
-  and any(.panels[]?; .title == "Transaction Read Rejected Ratio" and any(.targets[]?.expr?; contains("aquila_api_admission_requests_total{group=\"transaction-read\",outcome=\"rejected\"")))
-  and any(.panels[]?; .title == "Transaction Read Inflight and 429" and any(.targets[]?.expr?; contains("aquila_api_admission_inflight{group=\"transaction-read\"")))
+  and any(.panels[]?; .title == "Transaction Read Rejected Ratio" and any(.targets[]?.expr?; contains("aquila_api_admission_requests_total{group=~\"transaction-read-(hot|archive)\",outcome=\"rejected\"")))
+  and any(.panels[]?; .title == "Transaction Read Inflight and 429" and any(.targets[]?.expr?; contains("aquila_api_admission_inflight{group=~\"transaction-read-(hot|archive)\"")))
   and any(.panels[]?.targets[]?.expr?; contains("aquila_transaction_429_rate"))
   and any(.panels[]?.targets[]?.expr?; contains("aquila_t3micro_saturation_guard_requests_total"))
   and any(.panels[]?.targets[]?.expr?; contains("aquila_t3micro_saturation_guard_saturated"))
@@ -91,7 +91,7 @@ def require_alert(data, alert_name, required_fragments)
 end
 
 {
-  "AquilaTransactionRead429BudgetHigh" => ["aquila_transaction_429_rate", "0.10"],
+  "AquilaTransactionRead429BudgetHigh" => ["aquila_transaction_429_rate", "0.05"],
   "AquilaTransactionRead503HardFailDetected" => ["aquila_transaction_503_count", "aquila_transaction_503_rate"],
   "AquilaAuthThrottlingRejectBurstDetected" => ["aquila_auth_throttling_reject_count_total"],
   "AquilaApiAdmissionRejectBurstDetected" => ["aquila_api_admission_requests_total"],

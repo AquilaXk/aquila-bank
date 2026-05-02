@@ -5,7 +5,7 @@ spring:
   datasource:
     hikari:
       # OCI A1 4 OCPU / 24GB 기준: DB connection은 admission floor보다 조금 크게 둔다.
-      maximum-pool-size: ${OCI_A1_DB_POOL_MAX_SIZE:6}
+      maximum-pool-size: ${OCI_A1_DB_POOL_MAX_SIZE:8}
       minimum-idle: ${OCI_A1_DB_POOL_MIN_IDLE:1}
       # OCI idle close와 10m soak 경계 전 connection을 먼저 순환해 validation warning을 줄인다.
       max-lifetime: ${OCI_A1_DB_MAX_LIFETIME_MS:600000}
@@ -27,19 +27,22 @@ server:
 
 transaction:
   read-replica:
-    maximum-pool-size: ${OCI_A1_TRANSACTION_READ_REPLICA_POOL_MAX_SIZE:4}
+    maximum-pool-size: ${OCI_A1_TRANSACTION_READ_REPLICA_POOL_MAX_SIZE:6}
 
 oci-a1:
   transaction-read:
     admission:
-      # 64 it/s 경계에서 limit 3까지 하락한 증거를 반영해 floor를 DB pool보다 조금 낮게 고정한다.
-      max: ${OCI_A1_TRANSACTION_READ_ADMISSION_MAX:6}
+      # paced-weighted-vu16에서 Hikari pending이 낮아 admission 회복 여지를 둔다.
+      max: ${OCI_A1_TRANSACTION_READ_ADMISSION_MAX:8}
       retry-after-seconds: ${OCI_A1_TRANSACTION_READ_ADMISSION_RETRY_AFTER_SECONDS:0}
-      min: ${OCI_A1_TRANSACTION_READ_ADMISSION_MIN:5}
-      adaptive-max: ${OCI_A1_TRANSACTION_READ_ADMISSION_ADAPTIVE_MAX:8}
-      increase-every-successes: ${OCI_A1_TRANSACTION_READ_ADMISSION_INCREASE_EVERY_SUCCESSES:48}
+      min: ${OCI_A1_TRANSACTION_READ_ADMISSION_MIN:6}
+      adaptive-max: ${OCI_A1_TRANSACTION_READ_ADMISSION_ADAPTIVE_MAX:12}
+      increase-every-successes: ${OCI_A1_TRANSACTION_READ_ADMISSION_INCREASE_EVERY_SUCCESSES:32}
       decrease-on-rejections: ${OCI_A1_TRANSACTION_READ_ADMISSION_DECREASE_ON_REJECTIONS:1}
-      rejection-window-size: ${OCI_A1_TRANSACTION_READ_ADMISSION_REJECTION_WINDOW_SIZE:24}
-      decrease-rejection-ratio: ${OCI_A1_TRANSACTION_READ_ADMISSION_DECREASE_REJECTION_RATIO:0.35}
+      rejection-window-size: ${OCI_A1_TRANSACTION_READ_ADMISSION_REJECTION_WINDOW_SIZE:32}
+      decrease-rejection-ratio: ${OCI_A1_TRANSACTION_READ_ADMISSION_DECREASE_REJECTION_RATIO:0.45}
       decrease-cooldown-seconds: ${OCI_A1_TRANSACTION_READ_ADMISSION_DECREASE_COOLDOWN_SECONDS:2}
       recovery-step: ${OCI_A1_TRANSACTION_READ_ADMISSION_RECOVERY_STEP:1}
+      low-saturation-increase-every-successes: ${OCI_A1_TRANSACTION_READ_ADMISSION_LOW_SATURATION_INCREASE_EVERY_SUCCESSES:16}
+      low-saturation-recovery-step: ${OCI_A1_TRANSACTION_READ_ADMISSION_LOW_SATURATION_RECOVERY_STEP:2}
+      low-saturation-max-in-flight: ${OCI_A1_TRANSACTION_READ_ADMISSION_LOW_SATURATION_MAX_IN_FLIGHT:1}

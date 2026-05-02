@@ -417,7 +417,7 @@ groups:
         expr: |
           max by (run_id) (
             max_over_time(aquila_transaction_429_rate{workload="transaction-read-100m"}[5m])
-          ) > 0.10
+          ) > 0.05
         for: 2m
         labels:
           severity: warning
@@ -428,7 +428,7 @@ groups:
           slo: "429"
         annotations:
           summary: "Aquila Bank transaction read 429 budget is high"
-          description: "transaction read burst의 429 rate가 5분 window에서 10% budget을 초과했습니다. nginx upstream queue와 backend admission reject를 분리해 확인합니다."
+          description: "transaction read burst의 429 rate가 5분 window에서 5% budget을 초과했습니다. nginx upstream queue와 backend admission reject를 hot/archive group으로 분리해 확인합니다."
           runbook_path: "back/README.md#prometheus-metrics"
 
       - alert: AquilaTransactionRead503HardFailDetected

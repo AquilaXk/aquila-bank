@@ -15,8 +15,8 @@ jq -e '
   and any(.panels[]?; .title == "Transaction Read Rejected Ratio")
   and any(.panels[]?; .title == "Transaction Read Inflight and 429")
   and any(.panels[]?.targets[]?.expr?; contains("aquila_transaction_query_latency_seconds_bucket{outcome=\"success\""))
-  and any(.panels[]?.targets[]?.expr?; contains("aquila_api_admission_requests_total{group=\"transaction-read\",outcome=\"rejected\""))
-  and any(.panels[]?.targets[]?.expr?; contains("aquila_api_admission_inflight{group=\"transaction-read\""))
+  and any(.panels[]?.targets[]?.expr?; contains("aquila_api_admission_requests_total{group=~\"transaction-read-(hot|archive)\",outcome=\"rejected\""))
+  and any(.panels[]?.targets[]?.expr?; contains("aquila_api_admission_inflight{group=~\"transaction-read-(hot|archive)\""))
   and any(.panels[]?.targets[]?.expr?; contains("aquila_transaction_429_rate"))
 ' "${dashboard}" >/dev/null
 

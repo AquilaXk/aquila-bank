@@ -91,7 +91,7 @@ OCI A1 Flex 4 OCPU / 24GB + data 200GB self-managed PostgreSQL 18 runtime에서�
 - transaction baseline:
   - success query p95 SLO: reference_exact `80ms`, first_page `120ms`, cursor/status/direction `150ms`, amount/mixed `180ms`
   - success query p99 SLO: reference_exact `160ms`, first_page `240ms`, cursor/status/direction `300ms`, amount/mixed `360ms`
-  - transaction read 429 budget: `> 10%` for `2m`
+  - transaction read 429 budget: `> 5%` for `2m`
   - transaction read 503 hard fail: `> 0` for `1m`
 
 ## Postgres Exporter Metrics
@@ -207,7 +207,7 @@ tools/test/run-alertmanager-receiver-secret-workflow-gate.sh
 - `AquilaPostgresLockWaitDetected`는 custom exporter metric이 없으면 평가 series가 없으므로, 환경별 exporter 설정 적용 후 Prometheus rule을 활성화합니다.
 - `AquilaNotificationSseSessionPressureHigh`의 `56`은 기본 `NOTIFICATION_SSE_MAX_TOTAL_SESSIONS=64`의 `87.5%` baseline입니다.
 - transaction p95/p99 SLO는 baseline fixture 기준 회귀 감지선입니다. 실제 production에서는 `query_shape`, account volume, DB latency 분포를 보고 threshold와 `for` 시간을 같이 조정합니다.
-- transaction read 429 alert는 burst admission budget 초과 신호이고, 503 alert는 보호 실패 hard fail 신호입니다. 평균 latency alert는 tail latency를 가리므로 SLO 기준에서 제외합니다.
+- transaction read 429 alert는 burst admission budget 초과 신호이고, hot/archive admission group과 edge limiter를 분리해 확인합니다. 503 alert는 보호 실패 hard fail 신호입니다. 평균 latency alert는 tail latency를 가리므로 SLO 기준에서 제외합니다.
 - notification lag/DLQ alert는 `NOTIFICATION_INBOX_CONSUMER_OPS_ENABLED=true`가 아니면 metric 자체가 export되지 않을 수 있습니다.
 - multi-instance SSE 합계는 Grafana/Prometheus 쿼리에서 인스턴스 합산으로 해석하고, 단일 instance alert는 node별 pressure 확인 용도로만 씁니다.
 - `AquilaCurrentSessionActiveGateRejectDetected`는 `reason_code`만 집계합니다. `requestId`, `userId`, `sessionId`, `path`는 cardinality 때문에 alert label로 올리지 않고 app structured log에서 drill-down합니다.
