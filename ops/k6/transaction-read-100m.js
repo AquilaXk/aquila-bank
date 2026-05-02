@@ -39,6 +39,11 @@ const maxVUs = Number(__ENV.AQUILA_K6_MAX_VUS || String(preAllocatedVUs));
 const burstRate = Number(__ENV.AQUILA_K6_BURST_RATE || "16");
 const burstDuration = __ENV.AQUILA_K6_BURST_DURATION || "20s";
 const warmupDuration = __ENV.AQUILA_K6_WARMUP_DURATION || "10s";
+const warmupMode = __ENV.AQUILA_K6_WARMUP_MODE || "arrival-rate";
+const warmupRate = Number(__ENV.AQUILA_K6_WARMUP_RATE || "2");
+const warmupTimeUnit = __ENV.AQUILA_K6_WARMUP_TIME_UNIT || "1s";
+const warmupPreAllocatedVUs = Number(__ENV.AQUILA_K6_WARMUP_PRE_ALLOCATED_VUS || "1");
+const warmupMaxVUs = Number(__ENV.AQUILA_K6_WARMUP_MAX_VUS || "2");
 const hotP95ThresholdMs = Number(__ENV.K6_HOT_P95_THRESHOLD_MS || "350");
 const coldP95ThresholdMs = Number(__ENV.K6_COLD_P95_THRESHOLD_MS || "750");
 const hotP99ThresholdMs = Number(__ENV.K6_HOT_P99_THRESHOLD_MS || "750");
@@ -232,12 +237,17 @@ function warmupScenario() {
   }
   return {
     transaction_read_100m_warmup: {
-      executor: "constant-vus",
-      vus: 1,
+      executor: "constant-arrival-rate",
+      rate: warmupRate,
+      timeUnit: warmupTimeUnit,
       duration: warmupDuration,
+      preAllocatedVUs: warmupPreAllocatedVUs,
+      maxVUs: warmupMaxVUs,
       gracefulStop: "0s",
       tags: {
         phase: "warmup",
+        warmup_mode: warmupMode,
+        warmup_contamination_guard: "measured-custom-metrics-disabled",
       },
     },
   };
@@ -744,6 +754,9 @@ function markdownSummary(data) {
 - vus: ${vus}
 - duration: ${duration}
 - warmup duration: ${warmupDuration}
+- warmup mode: ${warmupMode}
+- warmup arrival rate: ${warmupRate}/${warmupTimeUnit}
+- warmup VUs: preAllocated=${warmupPreAllocatedVUs} max=${warmupMaxVUs}
 - scenario mode: ${scenarioMode}
 - arrival rate: ${rate}/${timeUnit}
 - burst rate: ${burstRate}/1s
@@ -853,7 +866,7 @@ function markdownSummary(data) {
 - overload mode에서는 admission guard 429를 rejected sample로 집계합니다.
 - overload mode에서도 503은 app/backend failure 신호라 hard fail로 분리합니다.
 - preemptive pacing은 429 이후 재시도가 아니라 요청 전 token pacing으로 overload amplification을 낮춥니다.
-- warmup phase는 endpoint/JVM/cache/pool 초기화를 분리하고, custom latency Trend는 measured phase만 기록합니다.
+- warmup phase는 arrival-rate로 endpoint/JVM/cache/pool 초기화를 분리하고, custom latency Trend는 measured phase만 기록합니다.
 - 1억 건 분포는 실행 전 DB에 준비되어 있어야 합니다.
 ${observabilityNote()}
 `;
