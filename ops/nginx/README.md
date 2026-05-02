@@ -117,10 +117,12 @@ bash tools/ops/render-nginx-runtime-config.sh /tmp/aquila-bank-nginx.conf ops/ng
 ```bash
 bash tools/test/check-nginx-sse-proxy.sh
 bash tools/test/run-nginx-runtime-template-gate.sh
+bash tools/test/check-transaction-read-short-burst-smoothing-matrix.sh
 tools/test/run-sse-multinode-drain-smoke.sh --print-plan
 tools/test/run-sse-multinode-drain-smoke.sh
 ```
 
 - `check-nginx-sse-proxy.sh`는 template directive drift만 확인합니다.
 - `run-nginx-runtime-template-gate.sh`는 env render 후 unresolved placeholder를 막고, `nginx` binary가 있으면 `nginx -t`까지 수행합니다.
+- `check-transaction-read-short-burst-smoothing-matrix.sh`는 `nodelay`와 `delay=2` 후보를 429/p95/Retry-After/5xx 기준으로 비교합니다.
 - strict gate는 PR workflow `Nginx Runtime Gate`에서 `nginx`와 `openssl`을 설치한 뒤 같은 script를 `NGINX_RUNTIME_GATE_STRICT=true`로 실행합니다.

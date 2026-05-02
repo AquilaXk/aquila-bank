@@ -30,6 +30,7 @@ grep -F "backend_hot_admission_adaptive_max=12" <<<"${plan}" >/dev/null
 grep -F "backend_archive_admission_max=6" <<<"${plan}" >/dev/null
 grep -F "backend_archive_admission_adaptive_max=10" <<<"${plan}" >/dev/null
 grep -F "weighted_vu16_max_429_rate=0.05" <<<"${plan}" >/dev/null
+grep -F "short_burst48_max_429_rate=0.10" <<<"${plan}" >/dev/null
 grep -F "hikari_max=8" <<<"${plan}" >/dev/null
 grep -F "hikari_max_lifetime_ms=600000" <<<"${plan}" >/dev/null
 grep -F "hikari_keepalive_time_ms=60000" <<<"${plan}" >/dev/null
@@ -57,6 +58,7 @@ grep -F "| backend hot admission adaptive max | 12 |" "${report_md}" >/dev/null
 grep -F "| backend archive admission max | 6 |" "${report_md}" >/dev/null
 grep -F "| backend archive admission adaptive max | 10 |" "${report_md}" >/dev/null
 grep -F "| paced-weighted-vu16 max 429 rate | 0.05 |" "${report_md}" >/dev/null
+grep -F "| short-burst-48 max 429 rate | 0.10 |" "${report_md}" >/dev/null
 grep -F "| Hikari max pool | 8 |" "${report_md}" >/dev/null
 grep -F "| Hikari max lifetime ms | 600000 |" "${report_md}" >/dev/null
 grep -F "| Hikari keepalive time ms | 60000 |" "${report_md}" >/dev/null
@@ -80,3 +82,4 @@ grep -F 'group: transaction-read-hot' back/src/main/resources/application.yml >/
 grep -F 'group: transaction-read-archive' back/src/main/resources/application.yml >/dev/null
 grep -F 'OCI_PUBLIC_ARRIVAL_RATES:-4,5,6,7,8,10,16' tools/test/run-oci-public-api-arrival-capacity-gate.sh >/dev/null
 grep -F 'WEIGHTED_SOAK_10M_MAX_TOTAL_429_RATE:-0.05' tools/test/run-transaction-read-weighted-10m-soak-gate.sh >/dev/null
+grep -F 'SHORT_BURST_SMOOTHING_MAX_BURST48_429_RATE:-0.10' tools/test/run-transaction-read-short-burst-smoothing-matrix.sh >/dev/null
