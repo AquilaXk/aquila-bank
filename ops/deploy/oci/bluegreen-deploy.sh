@@ -564,8 +564,8 @@ render_nginx_real_ip_trusted_proxy_lines() {
   local lines=""
   local raw_proxy proxy
 
-  if [[ -z "${proxies_csv}" ]]; then
-    printf '  # NGINX_REAL_IP_TRUSTED_PROXIES unset: limiter key stays on TCP peer address.\n'
+  if [[ -z "${proxies_csv}" || "${proxies_csv}" == "none" ]]; then
+    printf '  # NGINX_REAL_IP_TRUSTED_PROXIES disabled: limiter key stays on TCP peer address.\n'
     return
   fi
 
@@ -618,15 +618,15 @@ render_nginx_config() {
   edge_retry_after_millis="${NGINX_EDGE_RETRY_AFTER_MILLIS:-150}"
   edge_retry_jitter_millis="${NGINX_EDGE_RETRY_JITTER_MILLIS:-100}"
   real_ip_header="${NGINX_REAL_IP_HEADER:-X-Forwarded-For}"
-  real_ip_trusted_proxies="${NGINX_REAL_IP_TRUSTED_PROXIES:-}"
+  real_ip_trusted_proxies="${NGINX_REAL_IP_TRUSTED_PROXIES:-${OCI_A1_NGINX_REAL_IP_TRUSTED_PROXIES:-10.60.0.0/16}}"
   validate_nginx_real_ip_header "${real_ip_header}"
   real_ip_trusted_proxy_lines="$(render_nginx_real_ip_trusted_proxy_lines "${real_ip_trusted_proxies}")"
-  transaction_read_hot_rate_rps="${OCI_A1_TRANSACTION_READ_HOT_RATE_RPS:-80}"
-  transaction_read_archive_rate_rps="${OCI_A1_TRANSACTION_READ_ARCHIVE_RATE_RPS:-80}"
-  transaction_read_hot_burst="${OCI_A1_TRANSACTION_READ_HOT_BURST:-10}"
-  transaction_read_archive_burst="${OCI_A1_TRANSACTION_READ_ARCHIVE_BURST:-10}"
-  transaction_read_hot_delay="${OCI_A1_TRANSACTION_READ_HOT_DELAY:-2}"
-  transaction_read_archive_delay="${OCI_A1_TRANSACTION_READ_ARCHIVE_DELAY:-2}"
+  transaction_read_hot_rate_rps="${OCI_A1_TRANSACTION_READ_HOT_RATE_RPS:-96}"
+  transaction_read_archive_rate_rps="${OCI_A1_TRANSACTION_READ_ARCHIVE_RATE_RPS:-96}"
+  transaction_read_hot_burst="${OCI_A1_TRANSACTION_READ_HOT_BURST:-12}"
+  transaction_read_archive_burst="${OCI_A1_TRANSACTION_READ_ARCHIVE_BURST:-12}"
+  transaction_read_hot_delay="${OCI_A1_TRANSACTION_READ_HOT_DELAY:-1}"
+  transaction_read_archive_delay="${OCI_A1_TRANSACTION_READ_ARCHIVE_DELAY:-1}"
   transaction_read_hot_limit_mode="$(render_nginx_limit_req_mode "${transaction_read_hot_delay}")"
   transaction_read_archive_limit_mode="$(render_nginx_limit_req_mode "${transaction_read_archive_delay}")"
 

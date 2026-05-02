@@ -29,13 +29,13 @@
   - `NGINX_EDGE_RETRY_AFTER_MILLIS` 기본값 `150`
   - `NGINX_EDGE_RETRY_JITTER_MILLIS` 기본값 `100`
   - `NGINX_REAL_IP_HEADER` 기본값 `X-Forwarded-For`, 허용값 `X-Forwarded-For` 또는 `X-Real-IP`
-  - `NGINX_REAL_IP_TRUSTED_PROXIES` 기본값 empty, comma-separated trusted LB/CDN CIDR
-  - `NGINX_TRANSACTION_READ_HOT_RATE_RPS` 기본값 `80`
-  - `NGINX_TRANSACTION_READ_ARCHIVE_RATE_RPS` 기본값 `80`
-  - `NGINX_TRANSACTION_READ_HOT_BURST` 기본값 `10`
-  - `NGINX_TRANSACTION_READ_ARCHIVE_BURST` 기본값 `10`
-  - `NGINX_TRANSACTION_READ_HOT_DELAY` 기본값 `2`, `0`이면 `nodelay`
-  - `NGINX_TRANSACTION_READ_ARCHIVE_DELAY` 기본값 `2`, `0`이면 `nodelay`
+  - `NGINX_REAL_IP_TRUSTED_PROXIES` 기본값 `10.60.0.0/16`, comma-separated trusted LB/CDN CIDR, `none`이면 TCP peer address
+  - `NGINX_TRANSACTION_READ_HOT_RATE_RPS` 기본값 `96`
+  - `NGINX_TRANSACTION_READ_ARCHIVE_RATE_RPS` 기본값 `96`
+  - `NGINX_TRANSACTION_READ_HOT_BURST` 기본값 `12`
+  - `NGINX_TRANSACTION_READ_ARCHIVE_BURST` 기본값 `12`
+  - `NGINX_TRANSACTION_READ_HOT_DELAY` 기본값 `1`, `0`이면 `nodelay`
+  - `NGINX_TRANSACTION_READ_ARCHIVE_DELAY` 기본값 `1`, `0`이면 `nodelay`
 - `NGINX_BACKEND_SSE_SERVERS`를 비우면 API upstream과 같은 backend pool을 재사용합니다.
 - render 명령:
 
@@ -56,22 +56,22 @@ bash tools/ops/render-nginx-runtime-config.sh /tmp/aquila-bank-nginx.conf ops/ng
 ## Rate Limit 기준
 
 - `NGINX_REAL_IP_TRUSTED_PROXIES`가 설정된 proxy/LB CIDR에서 온 요청만 `NGINX_REAL_IP_HEADER` 값을 real client IP로 승격합니다.
-- trusted proxy가 없으면 limiter key는 기존처럼 TCP peer address 기준입니다. header spoofing 방지를 위해 운영 LB/CDN subnet만 등록합니다.
+- OCI paid A1 기본값은 VCN CIDR `10.60.0.0/16`입니다. LB/CDN subnet을 더 좁게 알면 해당 CIDR로 줄이고, TCP peer 기준으로 되돌릴 때만 `none`을 사용합니다.
 - `limit_req_zone $binary_remote_addr zone=aquila_bank_api_per_ip:10m rate=30r/s;`
 - `limit_req_zone $binary_remote_addr zone=aquila_bank_auth_per_ip:10m rate=5r/s;`
-- `limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_hot_per_ip:10m rate=80r/s;`
-- `limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_archive_per_ip:10m rate=80r/s;`
+- `limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_hot_per_ip:10m rate=96r/s;`
+- `limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_archive_per_ip:10m rate=96r/s;`
 - `limit_req_zone $binary_remote_addr zone=aquila_bank_transfer_per_ip:10m rate=3r/s;`
 - `location = /api/v1/auth/login`, `location = /api/v1/auth/refresh`, `location = /api/v1/auth/password-recovery/request`에 `limit_req zone=aquila_bank_auth_per_ip burst=10 nodelay;`를 적용합니다.
-- `location = /api/v1/transactions`에는 `limit_req zone=aquila_bank_transaction_hot_per_ip burst=10 delay=2;`를 적용합니다.
-- `location = /api/v1/transactions/archive`에는 `limit_req zone=aquila_bank_transaction_archive_per_ip burst=10 delay=2;`를 적용합니다.
+- `location = /api/v1/transactions`에는 `limit_req zone=aquila_bank_transaction_hot_per_ip burst=12 delay=1;`를 적용합니다.
+- `location = /api/v1/transactions/archive`에는 `limit_req zone=aquila_bank_transaction_archive_per_ip burst=12 delay=1;`를 적용합니다.
 - `location = /api/v1/transfers`, `location ~ ^/api/v1/transfers/[^/]+/reversal$`에는 `limit_req zone=aquila_bank_transfer_per_ip burst=6 nodelay;`를 적용합니다.
 - exact/regex location은 generic `/api/`보다 먼저 매칭되므로 zone을 중첩 적용하지 않습니다.
 - `/api/`에는 `limit_req zone=aquila_bank_api_per_ip burst=20 delay=5;`를 유지합니다.
 - `/api/v1/notifications/stream`은 장기 연결이라 일반 API와 성격이 달라 exact location으로 분리하고 rate limit 대상에서 제외합니다.
 - `429`는 Nginx에서 JSON body와 `X-Aquila-Reject-Source: nginx-edge`, `Retry-After`, `X-RateLimit-Retry-After-Millis`, `X-RateLimit-Retry-Jitter-Millis`를 내려 k6/client backoff가 edge rejection을 구분하게 합니다. OCI A1 기본값은 `150ms + jitter 100ms`로 retry 동기화를 짧게 분산합니다.
 - backend에는 login/password recovery throttling이 이미 있으므로, Nginx auth zone은 edge 1차 차단으로 보고 backend는 계정/IP 단위 2차 가드로 둡니다.
-- transaction-read는 짧은 burst만 `delay=2` queue로 흡수하고, queue 초과는 429로 돌려 p95와 client backoff를 분리합니다.
+- transaction-read는 짧은 burst만 `delay=1` queue로 흡수하고, queue 초과는 429로 돌려 p95와 client backoff를 분리합니다.
 - 실제 서비스 트래픽 특성에 따라 `rate`와 `burst`는 조정하되, 로그인/토큰 재발급/SSE 재연결 패턴과 shared IP 영향을 같이 확인합니다.
 
 ## Multi-Node Load Balancer 기준
@@ -124,5 +124,5 @@ tools/test/run-sse-multinode-drain-smoke.sh
 
 - `check-nginx-sse-proxy.sh`는 template directive drift만 확인합니다.
 - `run-nginx-runtime-template-gate.sh`는 env render 후 unresolved placeholder를 막고, `nginx` binary가 있으면 `nginx -t`까지 수행합니다.
-- `check-transaction-read-short-burst-smoothing-matrix.sh`는 `nodelay`와 `delay=2` 후보를 429/p95/Retry-After/5xx 기준으로 비교합니다.
+- `check-transaction-read-short-burst-smoothing-matrix.sh`는 `nodelay`와 shallow delay queue 후보를 429/p95/p99/Retry-After/5xx 기준으로 비교합니다.
 - strict gate는 PR workflow `Nginx Runtime Gate`에서 `nginx`와 `openssl`을 설치한 뒤 같은 script를 `NGINX_RUNTIME_GATE_STRICT=true`로 실행합니다.
