@@ -625,8 +625,8 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(aquila_api_admission_requests_total{group=\"transaction-read\",outcome=\"rejected\"}[5m])) / clamp_min(sum(rate(aquila_api_admission_requests_total{group=\"transaction-read\"}[5m])), 0.001)",
-          "legendFormat": "admission_rejected_ratio",
+          "expr": "sum by (group) (rate(aquila_api_admission_requests_total{group=~\"transaction-read-(hot|archive)\",outcome=\"rejected\"}[5m])) / clamp_min(sum by (group) (rate(aquila_api_admission_requests_total{group=~\"transaction-read-(hot|archive)\"}[5m])), 0.001)",
+          "legendFormat": "{{group}}_rejected_ratio",
           "refId": "A"
         },
         {
@@ -667,8 +667,8 @@
       },
       "targets": [
         {
-          "expr": "max(aquila_api_admission_inflight{group=\"transaction-read\"})",
-          "legendFormat": "admission_inflight",
+          "expr": "max by (group) (aquila_api_admission_inflight{group=~\"transaction-read-(hot|archive)\"})",
+          "legendFormat": "{{group}}_inflight",
           "refId": "A"
         },
         {

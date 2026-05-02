@@ -36,6 +36,7 @@ nginx_config="ops/nginx/nginx.conf"
 deploy_script="ops/deploy/oci/bluegreen-deploy.sh"
 oci_profile="back/src/main/resources/application-oci-a1.yml"
 arrival_gate="tools/test/run-oci-public-api-arrival-capacity-gate.sh"
+weighted_gate="tools/test/run-transaction-read-weighted-10m-soak-gate.sh"
 
 edge_transaction_hot_rate_rps=80
 edge_transaction_archive_rate_rps=80
@@ -44,6 +45,11 @@ edge_transaction_archive_burst=10
 edge_transaction_read_policy="fail-fast-nodelay"
 backend_admission_max=8
 backend_admission_adaptive_max=12
+backend_hot_admission_max=8
+backend_hot_admission_adaptive_max=12
+backend_archive_admission_max=6
+backend_archive_admission_adaptive_max=10
+weighted_vu16_max_429_rate=0.05
 hikari_max=8
 hikari_max_lifetime_ms=600000
 hikari_keepalive_time_ms=60000
@@ -79,6 +85,11 @@ print_plan() {
   echo "[oci-a1-budget-matrix] edge_transaction_read_policy=${edge_transaction_read_policy}"
   echo "[oci-a1-budget-matrix] backend_admission_max=${backend_admission_max}"
   echo "[oci-a1-budget-matrix] backend_admission_adaptive_max=${backend_admission_adaptive_max}"
+  echo "[oci-a1-budget-matrix] backend_hot_admission_max=${backend_hot_admission_max}"
+  echo "[oci-a1-budget-matrix] backend_hot_admission_adaptive_max=${backend_hot_admission_adaptive_max}"
+  echo "[oci-a1-budget-matrix] backend_archive_admission_max=${backend_archive_admission_max}"
+  echo "[oci-a1-budget-matrix] backend_archive_admission_adaptive_max=${backend_archive_admission_adaptive_max}"
+  echo "[oci-a1-budget-matrix] weighted_vu16_max_429_rate=${weighted_vu16_max_429_rate}"
   echo "[oci-a1-budget-matrix] hikari_max=${hikari_max}"
   echo "[oci-a1-budget-matrix] hikari_max_lifetime_ms=${hikari_max_lifetime_ms}"
   echo "[oci-a1-budget-matrix] hikari_keepalive_time_ms=${hikari_keepalive_time_ms}"
@@ -111,14 +122,22 @@ require_pattern 'limit_req zone=aquila_bank_transaction_hot_per_ip burst=${trans
 require_pattern 'limit_req zone=aquila_bank_transaction_archive_per_ip burst=${transaction_read_archive_burst} nodelay;' "${deploy_script}"
 require_pattern 'OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_MAX=${OCI_A1_TRANSACTION_READ_ADMISSION_MAX:-8}' "${deploy_script}"
 require_pattern 'OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_ADAPTIVE_MAX=${OCI_A1_TRANSACTION_READ_ADMISSION_ADAPTIVE_MAX:-12}' "${deploy_script}"
+require_pattern 'OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_HOT_MAX=${OCI_A1_TRANSACTION_READ_HOT_ADMISSION_MAX:-${OCI_A1_TRANSACTION_READ_ADMISSION_MAX:-8}}' "${deploy_script}"
+require_pattern 'OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_HOT_ADAPTIVE_MAX=${OCI_A1_TRANSACTION_READ_HOT_ADMISSION_ADAPTIVE_MAX:-${OCI_A1_TRANSACTION_READ_ADMISSION_ADAPTIVE_MAX:-12}}' "${deploy_script}"
+require_pattern 'OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_ARCHIVE_MAX=${OCI_A1_TRANSACTION_READ_ARCHIVE_ADMISSION_MAX:-6}' "${deploy_script}"
+require_pattern 'OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_ARCHIVE_ADAPTIVE_MAX=${OCI_A1_TRANSACTION_READ_ARCHIVE_ADMISSION_ADAPTIVE_MAX:-10}' "${deploy_script}"
 require_pattern 'maximum-pool-size: ${OCI_A1_DB_POOL_MAX_SIZE:8}' "${oci_profile}"
 require_pattern 'max-lifetime: ${OCI_A1_DB_MAX_LIFETIME_MS:600000}' "${oci_profile}"
 require_pattern 'keepalive-time: ${OCI_A1_DB_KEEPALIVE_TIME_MS:60000}' "${oci_profile}"
 require_pattern 'max: ${OCI_A1_TRANSACTION_READ_ADMISSION_MAX:8}' "${oci_profile}"
 require_pattern 'adaptive-max: ${OCI_A1_TRANSACTION_READ_ADMISSION_ADAPTIVE_MAX:12}' "${oci_profile}"
+require_pattern 'low-saturation-increase-every-successes: ${OCI_A1_TRANSACTION_READ_ADMISSION_LOW_SATURATION_INCREASE_EVERY_SUCCESSES:16}' "${oci_profile}"
+require_pattern 'group: transaction-read-hot' "back/src/main/resources/application.yml"
+require_pattern 'group: transaction-read-archive' "back/src/main/resources/application.yml"
 require_pattern 'OCI_PUBLIC_ARRIVAL_RATES:-4,5,6,7,8,10,16' "${arrival_gate}"
 require_pattern 'OCI_PUBLIC_ARRIVAL_FAIL_RATE:-0.10' "${arrival_gate}"
 require_pattern 'OCI_PUBLIC_ARRIVAL_ACCEPTED_P95_MS:-350' "${arrival_gate}"
+require_pattern 'WEIGHTED_SOAK_10M_MAX_TOTAL_429_RATE:-0.05' "${weighted_gate}"
 
 mkdir -p "${output_dir}"
 cat >"${report_md}" <<REPORT
@@ -129,7 +148,7 @@ cat >"${report_md}" <<REPORT
 - gate_status=pass
 - runtime: OCI A1 Flex 4 OCPU / 24GB + data 200GB self-managed PostgreSQL 18
 - expected 429 source: ${expected_429_source}
-- live target: arrival-16rps 429 = 0, delayed ratio < 25%, 502/503 = 0, accepted request p95 < 350ms
+- live target: arrival-16rps 429 = 0, paced-weighted-vu16 429 <= ${weighted_vu16_max_429_rate}, delayed ratio < 25%, 502/503 = 0, accepted request p95 < 350ms
 
 ## Matrix
 
@@ -142,6 +161,11 @@ cat >"${report_md}" <<REPORT
 | edge transaction-read policy | ${edge_transaction_read_policy} |
 | backend admission max | ${backend_admission_max} |
 | backend admission adaptive max | ${backend_admission_adaptive_max} |
+| backend hot admission max | ${backend_hot_admission_max} |
+| backend hot admission adaptive max | ${backend_hot_admission_adaptive_max} |
+| backend archive admission max | ${backend_archive_admission_max} |
+| backend archive admission adaptive max | ${backend_archive_admission_adaptive_max} |
+| paced-weighted-vu16 max 429 rate | ${weighted_vu16_max_429_rate} |
 | Hikari max pool | ${hikari_max} |
 | Hikari max lifetime ms | ${hikari_max_lifetime_ms} |
 | Hikari keepalive time ms | ${hikari_keepalive_time_ms} |
@@ -154,6 +178,7 @@ cat >"${report_md}" <<REPORT
 - ${deploy_script}
 - ${oci_profile}
 - ${arrival_gate}
+- ${weighted_gate}
 REPORT
 
 echo "${report_md}"

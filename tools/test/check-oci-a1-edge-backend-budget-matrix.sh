@@ -25,6 +25,11 @@ grep -F "edge_transaction_archive_burst=10" <<<"${plan}" >/dev/null
 grep -F "edge_transaction_read_policy=fail-fast-nodelay" <<<"${plan}" >/dev/null
 grep -F "backend_admission_max=8" <<<"${plan}" >/dev/null
 grep -F "backend_admission_adaptive_max=12" <<<"${plan}" >/dev/null
+grep -F "backend_hot_admission_max=8" <<<"${plan}" >/dev/null
+grep -F "backend_hot_admission_adaptive_max=12" <<<"${plan}" >/dev/null
+grep -F "backend_archive_admission_max=6" <<<"${plan}" >/dev/null
+grep -F "backend_archive_admission_adaptive_max=10" <<<"${plan}" >/dev/null
+grep -F "weighted_vu16_max_429_rate=0.05" <<<"${plan}" >/dev/null
 grep -F "hikari_max=8" <<<"${plan}" >/dev/null
 grep -F "hikari_max_lifetime_ms=600000" <<<"${plan}" >/dev/null
 grep -F "hikari_keepalive_time_ms=60000" <<<"${plan}" >/dev/null
@@ -47,6 +52,11 @@ grep -F "| edge transaction-archive burst | 10 |" "${report_md}" >/dev/null
 grep -F "| edge transaction-read policy | fail-fast-nodelay |" "${report_md}" >/dev/null
 grep -F "| backend admission max | 8 |" "${report_md}" >/dev/null
 grep -F "| backend admission adaptive max | 12 |" "${report_md}" >/dev/null
+grep -F "| backend hot admission max | 8 |" "${report_md}" >/dev/null
+grep -F "| backend hot admission adaptive max | 12 |" "${report_md}" >/dev/null
+grep -F "| backend archive admission max | 6 |" "${report_md}" >/dev/null
+grep -F "| backend archive admission adaptive max | 10 |" "${report_md}" >/dev/null
+grep -F "| paced-weighted-vu16 max 429 rate | 0.05 |" "${report_md}" >/dev/null
 grep -F "| Hikari max pool | 8 |" "${report_md}" >/dev/null
 grep -F "| Hikari max lifetime ms | 600000 |" "${report_md}" >/dev/null
 grep -F "| Hikari keepalive time ms | 60000 |" "${report_md}" >/dev/null
@@ -65,4 +75,8 @@ grep -F 'max-lifetime: ${OCI_A1_DB_MAX_LIFETIME_MS:600000}' back/src/main/resour
 grep -F 'keepalive-time: ${OCI_A1_DB_KEEPALIVE_TIME_MS:60000}' back/src/main/resources/application-oci-a1.yml >/dev/null
 grep -F 'max: ${OCI_A1_TRANSACTION_READ_ADMISSION_MAX:8}' back/src/main/resources/application-oci-a1.yml >/dev/null
 grep -F 'adaptive-max: ${OCI_A1_TRANSACTION_READ_ADMISSION_ADAPTIVE_MAX:12}' back/src/main/resources/application-oci-a1.yml >/dev/null
+grep -F 'low-saturation-increase-every-successes: ${OCI_A1_TRANSACTION_READ_ADMISSION_LOW_SATURATION_INCREASE_EVERY_SUCCESSES:16}' back/src/main/resources/application-oci-a1.yml >/dev/null
+grep -F 'group: transaction-read-hot' back/src/main/resources/application.yml >/dev/null
+grep -F 'group: transaction-read-archive' back/src/main/resources/application.yml >/dev/null
 grep -F 'OCI_PUBLIC_ARRIVAL_RATES:-4,5,6,7,8,10,16' tools/test/run-oci-public-api-arrival-capacity-gate.sh >/dev/null
+grep -F 'WEIGHTED_SOAK_10M_MAX_TOTAL_429_RATE:-0.05' tools/test/run-transaction-read-weighted-10m-soak-gate.sh >/dev/null

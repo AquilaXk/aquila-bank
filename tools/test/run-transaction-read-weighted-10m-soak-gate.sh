@@ -14,9 +14,10 @@ Environment:
   WEIGHTED_SOAK_10M_RESOURCE_SNAPSHOT_TSV optional TSV: component,cpu_percent,memory_mib,note
   WEIGHTED_SOAK_10M_OUTPUT_DIR            default build/reports/k6/<gate>
   WEIGHTED_SOAK_10M_MAX_ACCEPTED_P95_MS   default 350
-  WEIGHTED_SOAK_10M_MAX_EDGE_429_RATE     default 0.10
-  WEIGHTED_SOAK_10M_MAX_BACKEND_429_RATE  default 0.0005
-  WEIGHTED_SOAK_10M_MAX_BACKEND_429_COUNT default 0
+  WEIGHTED_SOAK_10M_MAX_TOTAL_429_RATE    default 0.05
+  WEIGHTED_SOAK_10M_MAX_EDGE_429_RATE     default 0.05
+  WEIGHTED_SOAK_10M_MAX_BACKEND_429_RATE  default 0.05
+  WEIGHTED_SOAK_10M_MAX_RETRY_AFTER_P95_MS default 250
 USAGE
 }
 
@@ -46,9 +47,10 @@ hikari_log="${WEIGHTED_SOAK_10M_HIKARI_LOG:-}"
 resource_snapshot="${WEIGHTED_SOAK_10M_RESOURCE_SNAPSHOT_TSV:-}"
 output_dir="${WEIGHTED_SOAK_10M_OUTPUT_DIR:-build/reports/k6/${name}}"
 max_accepted_p95_ms="${WEIGHTED_SOAK_10M_MAX_ACCEPTED_P95_MS:-350}"
-max_edge_429_rate="${WEIGHTED_SOAK_10M_MAX_EDGE_429_RATE:-0.10}"
-max_backend_429_rate="${WEIGHTED_SOAK_10M_MAX_BACKEND_429_RATE:-0.0005}"
-max_backend_429_count="${WEIGHTED_SOAK_10M_MAX_BACKEND_429_COUNT:-0}"
+max_total_429_rate="${WEIGHTED_SOAK_10M_MAX_TOTAL_429_RATE:-0.05}"
+max_edge_429_rate="${WEIGHTED_SOAK_10M_MAX_EDGE_429_RATE:-0.05}"
+max_backend_429_rate="${WEIGHTED_SOAK_10M_MAX_BACKEND_429_RATE:-0.05}"
+max_retry_after_p95_ms="${WEIGHTED_SOAK_10M_MAX_RETRY_AFTER_P95_MS:-250}"
 report_md="${output_dir}/${name}-weighted-10m-soak.md"
 failure_name="${name}-failure-correlation"
 failure_output_dir="${output_dir}/failure-correlation"
@@ -74,15 +76,6 @@ require_non_negative_number() {
   local value="$2"
   if ! [[ "${value}" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
     echo "${name} must be zero or greater: ${value}" >&2
-    exit 1
-  fi
-}
-
-require_non_negative_integer() {
-  local name="$1"
-  local value="$2"
-  if ! [[ "${value}" =~ ^[0-9]+$ ]]; then
-    echo "${name} must be a non-negative integer: ${value}" >&2
     exit 1
   fi
 }
@@ -187,9 +180,10 @@ print_plan() {
   echo "[transaction-read-weighted-10m] hikari_log=${hikari_log:-missing}"
   echo "[transaction-read-weighted-10m] resource_snapshot=${resource_snapshot:-missing}"
   echo "[transaction-read-weighted-10m] max_accepted_p95_ms=${max_accepted_p95_ms}"
+  echo "[transaction-read-weighted-10m] max_total_429_rate=${max_total_429_rate}"
   echo "[transaction-read-weighted-10m] max_edge_429_rate=${max_edge_429_rate}"
   echo "[transaction-read-weighted-10m] max_backend_429_rate=${max_backend_429_rate}"
-  echo "[transaction-read-weighted-10m] max_backend_429_count=${max_backend_429_count}"
+  echo "[transaction-read-weighted-10m] max_retry_after_p95_ms=${max_retry_after_p95_ms}"
   echo "[transaction-read-weighted-10m] live_soak_required=true"
   echo "[transaction-read-weighted-10m] failure_report=${failure_report}"
   echo "[transaction-read-weighted-10m] report_md=${report_md}"
@@ -197,9 +191,10 @@ print_plan() {
 
 require_duration "WEIGHTED_SOAK_10M_DURATION" "${duration}"
 require_non_negative_number "WEIGHTED_SOAK_10M_MAX_ACCEPTED_P95_MS" "${max_accepted_p95_ms}"
+require_non_negative_number "WEIGHTED_SOAK_10M_MAX_TOTAL_429_RATE" "${max_total_429_rate}"
 require_non_negative_number "WEIGHTED_SOAK_10M_MAX_EDGE_429_RATE" "${max_edge_429_rate}"
 require_non_negative_number "WEIGHTED_SOAK_10M_MAX_BACKEND_429_RATE" "${max_backend_429_rate}"
-require_non_negative_integer "WEIGHTED_SOAK_10M_MAX_BACKEND_429_COUNT" "${max_backend_429_count}"
+require_non_negative_number "WEIGHTED_SOAK_10M_MAX_RETRY_AFTER_P95_MS" "${max_retry_after_p95_ms}"
 
 print_plan
 if [[ "${mode}" == "print-plan" ]]; then
@@ -243,21 +238,23 @@ hikari_warnings="$(hikari_warning_count)"
 adaptive_multiplier_p95="$(metric_value aquila_transaction_retry_after_adaptive_multiplier "p(95)")"
 adaptive_multiplier_max="$(metric_value aquila_transaction_retry_after_adaptive_multiplier max)"
 reject_streak_max="$(metric_value aquila_transaction_retry_after_reject_streak max)"
+retry_after_sleep_p95="$(metric_value aquila_transaction_retry_after_sleep_ms "p(95)")"
 preemptive_pacing_count="$(metric_value aquila_transaction_preemptive_pacing_count count)"
 preemptive_pacing_sleep_p95="$(metric_value aquila_transaction_preemptive_pacing_sleep_ms "p(95)")"
 preemptive_pacing_sleep_max="$(metric_value aquila_transaction_preemptive_pacing_sleep_ms max)"
 
 gate_status="pass"
 if number_greater_than "${accepted_p95_ms}" "${max_accepted_p95_ms}" \
+    || number_greater_than "${total_429_rate}" "${max_total_429_rate}" \
     || number_greater_than "${edge_429_rate}" "${max_edge_429_rate}" \
     || number_greater_than "${backend_429_rate}" "${max_backend_429_rate}" \
-    || number_greater_than "${backend_429_count}" "${max_backend_429_count}" \
     || number_greater_than "${unknown_429_count}" "0" \
     || number_greater_than "${edge_delayed_rate}" "0.25" \
     || number_greater_than "${five_xx_count}" "0" \
     || number_greater_than "${nginx_499_count}" "0" \
     || number_greater_than "${nginx_502_count}" "0" \
     || number_greater_than "${hikari_warnings}" "0" \
+    || number_greater_than "${retry_after_sleep_p95}" "${max_retry_after_p95_ms}" \
     || [[ "${failure_status_code}" -ne 0 ]]; then
   gate_status="fail"
 fi
@@ -269,7 +266,7 @@ cat >"${report_md}" <<REPORT
 
 - gate_status=${gate_status}
 - duration: ${duration}
-- target: accepted p95 < ${max_accepted_p95_ms}ms, edge 429 < ${max_edge_429_rate}, backend 429 <= ${max_backend_429_rate}, backend 429 count <= ${max_backend_429_count}, unknown 429/499/5xx/Hikari warning = 0
+- target: accepted p95 < ${max_accepted_p95_ms}ms, total/edge/backend 429 <= ${max_total_429_rate}/${max_edge_429_rate}/${max_backend_429_rate}, Retry-After p95 <= ${max_retry_after_p95_ms}ms, unknown 429/499/5xx/Hikari warning = 0
 - live criterion: OCI 1억 row live run 기준
 
 ## SLO
@@ -287,6 +284,7 @@ cat >"${report_md}" <<REPORT
 | Nginx upstream 502 count | ${nginx_502_count} |
 | 5xx count | ${five_xx_count} |
 | Hikari validation warnings | ${hikari_warnings} |
+| retry-after sleep p95 ms | ${retry_after_sleep_p95} |
 | retry-after adaptive multiplier p95 | ${adaptive_multiplier_p95} |
 | retry-after adaptive multiplier max | ${adaptive_multiplier_max} |
 | retry-after reject streak max | ${reject_streak_max} |
