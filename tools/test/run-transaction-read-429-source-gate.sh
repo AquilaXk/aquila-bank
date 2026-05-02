@@ -75,6 +75,16 @@ status_for_zero() {
   fi
 }
 
+status_for_unknown_zero() {
+  local rate="$1"
+  local count="$2"
+  if number_greater_than "${rate}" "0" || number_greater_than "${count}" "0"; then
+    echo "fail"
+  else
+    echo "pass"
+  fi
+}
+
 metric_value() {
   local metric="$1"
   local field="$2"
@@ -126,7 +136,7 @@ accepted_200_count="$(metric_value aquila_transaction_accepted_200_count count)"
 total_429_status="$(status_for_rate "${total_429_rate}")"
 edge_429_status="$(status_for_rate "${edge_429_rate}")"
 backend_429_status="$(status_for_rate "${backend_429_rate}")"
-unknown_429_status="$(status_for_zero "${unknown_429_count}")"
+unknown_429_status="$(status_for_unknown_zero "${unknown_429_rate}" "${unknown_429_count}")"
 transaction_502_status="$(status_for_zero "${transaction_502_count}")"
 
 gate_status="pass"
@@ -157,6 +167,7 @@ cat >"${report_md}" <<REPORT
 - run_id=${run_id}
 - fail_rate=${fail_rate}
 - http_reqs=${http_reqs}
+- unknown 429 hard-zero: rate=0 and count=0 required
 
 ## Source Split
 

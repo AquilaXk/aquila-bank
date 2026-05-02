@@ -183,7 +183,7 @@ BEGIN {
   for (i in required_items) {
     required[required_items[i]] = 1
   }
-  print "scenario\tstatus\treason\trun_id\tduration_min\tsource_ips\trun_script\tk6_summary_ref\tnginx_access_ref\tspring_metrics_ref\thikari_log_ref\tpostgres_wait_ref\tdeploy_event_ref\tcache_state_ref\ttimeline_ref\tedge_429_rate\tbackend_429_count\tfive_xx_count\tnginx_499_count\thikari_validation_warnings\tdb_pool_pending_max\tp999_ms"
+  print "scenario\tstatus\treason\trun_id\tduration_min\tsource_ips\trun_script\tk6_summary_ref\tnginx_access_ref\tspring_metrics_ref\thikari_log_ref\tpostgres_wait_ref\tdeploy_event_ref\tcache_state_ref\ttimeline_ref\tedge_429_rate\tbackend_429_count\tunknown_429_count\tfive_xx_count\tnginx_499_count\thikari_validation_warnings\tdb_pool_pending_max\tp999_ms"
 }
 NR == 1 {
   for (i = 1; i <= NF; i++) {
@@ -200,6 +200,7 @@ NR == 1 {
   run_script = value("run_script", "")
   edge_429_rate = value("edge_429_rate", "1") + 0
   backend_429_count = value("backend_429_count", "1") + 0
+  unknown_429_count = value("unknown_429_count", "1") + 0
   five_xx_count = value("five_xx_count", "1") + 0
   nginx_499_count = value("nginx_499_count", "1") + 0
   hikari_validation_warnings = value("hikari_validation_warnings", "1") + 0
@@ -229,6 +230,7 @@ NR == 1 {
 
   if (edge_429_rate > max_edge_429_rate) add_reason("edge429>" max_edge_429_rate)
   if (backend_429_count > 0) add_reason("backend429>0")
+  if (unknown_429_count > 0) add_reason("unknown429>0")
   if (five_xx_count > 0) add_reason("5xx>0")
   if (nginx_499_count > 0) add_reason("499>0")
   if (hikari_validation_warnings > 0) add_reason("hikari-warning>0")
@@ -236,12 +238,12 @@ NR == 1 {
   if (p999_ms > max_p999_ms) add_reason("p999>" max_p999_ms)
 
   if (status == "fail") fail_count++
-  printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+  printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
     scenario, status, reason, run_id, duration_min, source_ips, run_script,
     value("k6_summary_ref", ""), value("nginx_access_ref", ""), value("spring_metrics_ref", ""),
     value("hikari_log_ref", ""), value("postgres_wait_ref", ""), value("deploy_event_ref", ""),
     value("cache_state_ref", ""), value("timeline_ref", ""), value("edge_429_rate", "0"),
-    value("backend_429_count", "0"), value("five_xx_count", "0"), value("nginx_499_count", "0"),
+    value("backend_429_count", "0"), value("unknown_429_count", "0"), value("five_xx_count", "0"), value("nginx_499_count", "0"),
     value("hikari_validation_warnings", "0"), value("db_pool_pending_max", "0"), value("p999_ms", "0")
 }
 END {
@@ -270,12 +272,12 @@ fi
 
 result_table="$(awk -F '\t' '
   BEGIN {
-    print "| Scenario | Status | Reason | Run id | Duration min | Source IPs | Script | Edge 429 | 499 | 5xx | Hikari warnings | p99.9 ms | Timeline |"
-    print "| --- | --- | --- | --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | --- |"
+    print "| Scenario | Status | Reason | Run id | Duration min | Source IPs | Script | Edge 429 | Unknown 429 | 499 | 5xx | Hikari warnings | p99.9 ms | Timeline |"
+    print "| --- | --- | --- | --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |"
   }
   NR > 1 {
-    printf "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n",
-      $1, $2, $3, $4, $5, $6, $7, $16, $19, $18, $20, $22, $15
+    printf "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n",
+      $1, $2, $3, $4, $5, $6, $7, $16, $18, $20, $19, $21, $23, $15
   }
 ' "${summary_tsv}")"
 
@@ -295,7 +297,8 @@ cat >"${report_md}" <<REPORT
 - deploy drain min duration: ${deploy_min_duration_min}m
 - edge 429 max rate: ${max_edge_429_rate}
 - p99.9 max: ${max_p999_ms}ms
-- backend 429/499/5xx/Hikari warning/pool pending target: 0
+- backend 429/unknown 429/499/5xx/Hikari warning/pool pending target: 0
+- unknown 429 hard-zero
 
 ## Result Table
 

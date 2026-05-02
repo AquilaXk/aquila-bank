@@ -24,6 +24,7 @@ class ApiExceptionHandlerT3MicroSaturationTest {
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
     assertThat(response.getHeaders().getFirst("Retry-After")).isEqualTo("2");
+    assertThat(response.getHeaders().getFirst("X-Aquila-Reject-Source")).isEqualTo("backend");
     assertThat(response.getHeaders().getFirst("X-Aquila-Reject-Reason"))
         .isEqualTo("saturation-guard");
     assertThat(response.getHeaders().getFirst("X-RateLimit-Scope")).isEqualTo("saturation-guard");

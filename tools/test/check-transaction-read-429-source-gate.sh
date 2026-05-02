@@ -11,6 +11,7 @@ trap 'rm -rf "${temp_dir}"' EXIT
 
 summary_json="${temp_dir}/summary.json"
 fail_json="${temp_dir}/fail-summary.json"
+unknown_fail_json="${temp_dir}/unknown-fail-summary.json"
 output_dir="${temp_dir}/output"
 
 cat >"${summary_json}" <<'JSON'
@@ -24,6 +25,25 @@ cat >"${summary_json}" <<'JSON'
     "aquila_transaction_backend_429_count": {"values": {"count": 50}},
     "aquila_transaction_unknown_429_rate": {"values": {"rate": 0}},
     "aquila_transaction_unknown_429_count": {"values": {"count": 0}},
+    "aquila_transaction_502_rate": {"values": {"rate": 0}},
+    "aquila_transaction_502_count": {"values": {"count": 0}},
+    "aquila_transaction_accepted_200_rate": {"values": {"rate": 0.92}},
+    "aquila_transaction_accepted_200_count": {"values": {"count": 920}}
+  }
+}
+JSON
+
+cat >"${unknown_fail_json}" <<'JSON'
+{
+  "metrics": {
+    "http_reqs": {"values": {"count": 1000}},
+    "aquila_transaction_429_rate": {"values": {"rate": 0.08}},
+    "aquila_transaction_edge_429_rate": {"values": {"rate": 0.03}},
+    "aquila_transaction_edge_429_count": {"values": {"count": 30}},
+    "aquila_transaction_backend_429_rate": {"values": {"rate": 0.04}},
+    "aquila_transaction_backend_429_count": {"values": {"count": 40}},
+    "aquila_transaction_unknown_429_rate": {"values": {"rate": 0.01}},
+    "aquila_transaction_unknown_429_count": {"values": {"count": 10}},
     "aquila_transaction_502_rate": {"values": {"rate": 0}},
     "aquila_transaction_502_count": {"values": {"count": 0}},
     "aquila_transaction_accepted_200_rate": {"values": {"rate": 0.92}},
@@ -85,7 +105,9 @@ grep -F "gate_status=pass" "${report_md}" >/dev/null
 grep -F "run_id=public-arrival-8" "${report_md}" >/dev/null
 grep -F "| edge 429 | pass | 0.03 | 30 |" "${report_md}" >/dev/null
 grep -F "| backend admission 429 | pass | 0.05 | 50 |" "${report_md}" >/dev/null
+grep -F "| unknown 429 | pass | 0 | 0 |" "${report_md}" >/dev/null
 grep -F "| accepted 200 | observe | 0.92 | 920 |" "${report_md}" >/dev/null
+grep -F "unknown 429 hard-zero" "${report_md}" >/dev/null
 
 echo "[transaction-read-429-source] fail report"
 if SOURCE_429_GATE_NAME=source-fail \
@@ -96,12 +118,24 @@ if SOURCE_429_GATE_NAME=source-fail \
   exit 1
 fi
 
+echo "[transaction-read-429-source] unknown 429 hard-zero"
+if SOURCE_429_GATE_NAME=source-unknown-fail \
+  SOURCE_429_SUMMARY_JSON="${unknown_fail_json}" \
+  SOURCE_429_OUTPUT_DIR="${output_dir}" \
+    "${runner}" >/dev/null 2>&1; then
+  echo "source gate unexpectedly passed unknown 429" >&2
+  exit 1
+fi
+
 echo "[transaction-read-429-source] runner contract"
 grep -F "aquila_transaction_edge_429_rate" "${runner}" >/dev/null
 grep -F "aquila_transaction_backend_429_rate" "${runner}" >/dev/null
 grep -F "aquila_transaction_unknown_429_rate" "${runner}" >/dev/null
 grep -F "aquila_transaction_502_count" "${runner}" >/dev/null
 grep -F "aquila_transaction_accepted_200_count" "${runner}" >/dev/null
+grep -F "unknown 429 hard-zero" "${runner}" >/dev/null
+grep -F 'source === "backend"' ops/k6/transaction-read-100m.js >/dev/null
+grep -F 'reason === "saturation-guard"' ops/k6/transaction-read-100m.js >/dev/null
 
 echo "[transaction-read-429-source] invalid input fails"
 if SOURCE_429_FAIL_RATE=2 "${runner}" --print-plan >/dev/null 2>&1; then

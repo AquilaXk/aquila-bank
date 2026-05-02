@@ -10,6 +10,7 @@ fairness_test="back/src/test/java/com/aquilabank/global/web/transaction/Transact
 
 echo "[transaction-read-upstream-429] source header contract"
 grep -F 'X-Aquila-429-Source' "${handler}" >/dev/null
+grep -F 'X-Aquila-Reject-Source' "${handler}" >/dev/null
 grep -F 'X-Aquila-Reject-Reason' "${handler}" >/dev/null
 grep -F 'X-RateLimit-Scope' "${handler}" >/dev/null
 
@@ -34,3 +35,6 @@ grep -F 'tag("source", "fairness-limiter")' "${fairness_test}" >/dev/null
 grep -F 'X-Aquila-429-Source' "${api_overload_test}" >/dev/null
 grep -F 'X-Aquila-429-Source' "${security_test}" >/dev/null
 grep -F 'X-Aquila-429-Source' "${fairness_test}" >/dev/null
+grep -F 'X-Aquila-Reject-Source' "${api_overload_test}" >/dev/null
+grep -F 'X-Aquila-Reject-Source' "${security_test}" >/dev/null
+grep -F 'X-Aquila-Reject-Source' "${fairness_test}" >/dev/null

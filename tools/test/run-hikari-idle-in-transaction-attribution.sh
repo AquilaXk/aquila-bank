@@ -12,6 +12,8 @@ Environment:
   HIKARI_IDLE_ATTRIBUTION_CONFIG_TSV                 required key/value timeout config TSV
   HIKARI_IDLE_ATTRIBUTION_OUTPUT_DIR                 default build/reports/k6/<name>
   HIKARI_IDLE_ATTRIBUTION_CORRELATION_WINDOW_SECONDS default 5
+  HIKARI_IDLE_ATTRIBUTION_EXPECT_WARNING_COUNT       optional exact warning count, use 0 for 30m soak removal gate
+  HIKARI_IDLE_ATTRIBUTION_SOAK_DURATION_MIN          default 30
 USAGE
 }
 
@@ -22,6 +24,11 @@ SELECT
   pid,
   usename,
   application_name,
+  COALESCE(
+    substring(application_name from 'requestId=([A-Za-z0-9_.:-]+)'),
+    substring(query from 'requestId=([A-Za-z0-9_.:-]+)'),
+    ''
+  ) AS request_id,
   state,
   wait_event_type,
   wait_event,
@@ -66,6 +73,8 @@ hikari_log="${HIKARI_IDLE_ATTRIBUTION_HIKARI_LOG:-}"
 config_tsv="${HIKARI_IDLE_ATTRIBUTION_CONFIG_TSV:-}"
 output_dir="${HIKARI_IDLE_ATTRIBUTION_OUTPUT_DIR:-build/reports/k6/${name}}"
 correlation_window_seconds="${HIKARI_IDLE_ATTRIBUTION_CORRELATION_WINDOW_SECONDS:-5}"
+expected_warning_count="${HIKARI_IDLE_ATTRIBUTION_EXPECT_WARNING_COUNT:-}"
+soak_duration_min="${HIKARI_IDLE_ATTRIBUTION_SOAK_DURATION_MIN:-30}"
 summary_tsv="${output_dir}/${name}-hikari-idle-attribution.tsv"
 config_summary_tsv="${output_dir}/${name}-hikari-idle-config.tsv"
 report_md="${output_dir}/${name}-hikari-idle-attribution.md"
@@ -96,12 +105,18 @@ print_plan() {
   echo "[hikari-idle-attribution] output_dir=${output_dir}"
   echo "[hikari-idle-attribution] sampler=pg_stat_activity"
   echo "[hikari-idle-attribution] correlation_window_seconds=${correlation_window_seconds}"
+  echo "[hikari-idle-attribution] soak_duration_min=${soak_duration_min}"
+  echo "[hikari-idle-attribution] expected_warning_count=${expected_warning_count:-not-set}"
   echo "[hikari-idle-attribution] summary_tsv=${summary_tsv}"
   echo "[hikari-idle-attribution] config_summary_tsv=${config_summary_tsv}"
   echo "[hikari-idle-attribution] report_md=${report_md}"
 }
 
 require_non_negative_integer "HIKARI_IDLE_ATTRIBUTION_CORRELATION_WINDOW_SECONDS" "${correlation_window_seconds}"
+require_non_negative_integer "HIKARI_IDLE_ATTRIBUTION_SOAK_DURATION_MIN" "${soak_duration_min}"
+if [[ -n "${expected_warning_count}" ]]; then
+  require_non_negative_integer "HIKARI_IDLE_ATTRIBUTION_EXPECT_WARNING_COUNT" "${expected_warning_count}"
+fi
 
 print_plan
 if [[ "${mode}" == "print-plan" ]]; then
@@ -158,6 +173,12 @@ function value(name, fallback) {
   if (!(name in col) || col[name] == "") return fallback
   return $(col[name])
 }
+function request_id_from_query(text) {
+  if (match(text, /requestId=[A-Za-z0-9_.:-]+/)) {
+    return substr(text, RSTART + 10, RLENGTH - 10)
+  }
+  return "n/a"
+}
 BEGIN {
   while ((getline line < warnings) > 0) {
     split(line, parts, "\t")
@@ -177,22 +198,26 @@ NR == 1 {
   if (warning_seen[ts] && !(ts in matched)) {
     matched[ts] = 1
     pid[ts] = value("pid", "n/a")
+    request_id[ts] = value("request_id", "")
     state[ts] = value("state", "n/a")
     wait_type[ts] = value("wait_event_type", "n/a")
     wait_event[ts] = value("wait_event", "n/a")
     age[ts] = value("xact_age_seconds", "0")
     query[ts] = value("query", "n/a")
+    if (request_id[ts] == "" || request_id[ts] == "n/a") {
+      request_id[ts] = request_id_from_query(query[ts])
+    }
   }
 }
 END {
-  print "warning_time_utc\tstatus\tpid\tstate\twait_event_type\twait_event\txact_age_seconds\tquery\tcause"
+  print "warning_time_utc\tstatus\tpid\trequest_id\tstate\twait_event_type\twait_event\txact_age_seconds\tquery\tcause"
   for (i = 1; i <= warning_count; i++) {
     ts = warning_order[i]
     if (matched[ts]) {
       cause = (state[ts] == "idle in transaction") ? "idle-in-transaction-candidate" : "postgres-timeout-candidate"
-      printf "%s\tpass\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", ts, pid[ts], state[ts], wait_type[ts], wait_event[ts], age[ts], query[ts], cause
+      printf "%s\tpass\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", ts, pid[ts], request_id[ts], state[ts], wait_type[ts], wait_event[ts], age[ts], query[ts], cause
     } else {
-      printf "%s\tfail\tn/a\tn/a\tn/a\tn/a\t0\tn/a\tunattributed-warning\n", ts
+      printf "%s\tfail\tn/a\tn/a\tn/a\tn/a\tn/a\t0\tn/a\tunattributed-warning\n", ts
     }
   }
 }
@@ -201,17 +226,23 @@ END {
 unattributed_count="$(awk -F '\t' 'NR > 1 && $2 == "fail" { count++ } END { print count + 0 }' "${summary_tsv}")"
 warning_count="$(awk -F '\t' 'END { print NR + 0 }' "${warning_tsv}")"
 gate_status="pass"
-if [[ "${config_status}" != "pass" || "${unattributed_count}" != "0" || "${warning_count}" == "0" ]]; then
+if [[ "${config_status}" != "pass" || "${unattributed_count}" != "0" ]]; then
+  gate_status="fail"
+fi
+if [[ -n "${expected_warning_count}" && "${warning_count}" != "${expected_warning_count}" ]]; then
+  gate_status="fail"
+fi
+if [[ -z "${expected_warning_count}" && "${warning_count}" == "0" ]]; then
   gate_status="fail"
 fi
 
 correlation_table="$(awk -F '\t' '
   BEGIN {
-    print "| Warning time | Status | PID | State | Wait type | Wait event | Xact age s | Query | Cause |"
-    print "| --- | --- | ---: | --- | --- | --- | ---: | --- | --- |"
+    print "| Warning time | Status | PID | Request ID | State | Wait type | Wait event | Xact age s | Query | Cause |"
+    print "| --- | --- | ---: | --- | --- | --- | --- | ---: | --- | --- |"
   }
   NR > 1 {
-    printf "| %s | %s | %s | %s | %s | %s | %s | `%s` | %s |\n", $1, $2, $3, $4, $5, $6, $7, $8, $9
+    printf "| %s | %s | %s | %s | %s | %s | %s | %s | `%s` | %s |\n", $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
   }
 ' "${summary_tsv}")"
 
@@ -224,10 +255,13 @@ cat >"${report_md}" <<REPORT
 - config_status=${config_status}
 - config_reason=${config_reason}
 - warning_count=${warning_count}
+- expected_warning_count=${expected_warning_count:-not-set}
 - unattributed_warning_count=${unattributed_count}
 - sampler: pg_stat_activity
 - correlation window seconds: ${correlation_window_seconds}
+- soak_duration_min=${soak_duration_min}
 - OCI A1 lifetime alignment: maxLifetime < NAT idle, keepalive < maxLifetime, scheduled worker <= PostgreSQL idle timeout
+- ${soak_duration_min}m soak Hikari warning budget: ${expected_warning_count:-attribution-required}
 
 ## Correlation
 
@@ -235,9 +269,11 @@ ${correlation_table}
 
 ## Contract Notes
 
+- PostgreSQL PID/query/requestId correlation이 있어야 idle-in-transaction 원인을 재현 가능한 artifact로 닫는다.
 - Hikari validation warning은 같은 timestamp의 pg_stat_activity sample과 먼저 연결한다.
 - query text는 sampler에서 240자로 잘라 artifact 크기와 민감정보 노출 위험을 낮춘다.
 - correlation이 없으면 pool warning의 운영 원인을 닫을 수 없으므로 gate에서 실패한다.
+- 30m soak 제거 검증은 HIKARI_IDLE_ATTRIBUTION_EXPECT_WARNING_COUNT=0으로 실행한다.
 
 ## Artifacts
 

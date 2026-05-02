@@ -26,6 +26,7 @@ class TransactionReadAccountFairnessRejectedExceptionHandlerTest {
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
     assertThat(response.getHeaders().getFirst("Retry-After")).isEqualTo("0");
     assertThat(response.getHeaders().getFirst("X-Aquila-429-Source")).isEqualTo("fairness-limiter");
+    assertThat(response.getHeaders().getFirst("X-Aquila-Reject-Source")).isEqualTo("backend");
     assertThat(response.getHeaders().getFirst("X-Aquila-Reject-Reason"))
         .isEqualTo("fairness-limiter");
     assertThat(response.getHeaders().getFirst("X-RateLimit-Scope"))

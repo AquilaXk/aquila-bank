@@ -38,6 +38,7 @@ grep -F "overload 429 rate threshold=0.015" <<<"${plan}" >/dev/null
 grep -F "burst 429 rate threshold=0.1" <<<"${plan}" >/dev/null
 grep -F "overload 503 rate threshold=0" <<<"${plan}" >/dev/null
 grep -F "warmup duration=10s" <<<"${plan}" >/dev/null
+grep -F "warmup mode=arrival-rate rate=2 timeUnit=1s preAllocatedVUs=1 maxVUs=2 contamination=off" <<<"${plan}" >/dev/null
 grep -F "run purpose=smoke" <<<"${plan}" >/dev/null
 grep -F "archive output dir=docs/performance-results/k6-smoke" <<<"${plan}" >/dev/null
 grep -F "summary gate=true" <<<"${plan}" >/dev/null
@@ -145,6 +146,18 @@ preemptive_plan="$(
 )"
 grep -F "k6 report name: transaction-100m-preemptive-check" <<<"${preemptive_plan}" >/dev/null
 grep -F "preemptive pacing=true rps=64 max sleep ms=150 jitter ms=10" <<<"${preemptive_plan}" >/dev/null
+
+warmup_plan="$(
+  K6_REPORT_NAME=transaction-100m-warmup-check \
+  K6_WARMUP_MODE=arrival-rate \
+  K6_WARMUP_RATE=8 \
+  K6_WARMUP_TIME_UNIT=1s \
+  K6_WARMUP_PRE_ALLOCATED_VUS=2 \
+  K6_WARMUP_MAX_VUS=4 \
+    tools/test/run-k6-transaction-100m-loadtest.sh --print-plan
+)"
+grep -F "k6 report name: transaction-100m-warmup-check" <<<"${warmup_plan}" >/dev/null
+grep -F "warmup mode=arrival-rate rate=8 timeUnit=1s preAllocatedVUs=2 maxVUs=4 contamination=off" <<<"${warmup_plan}" >/dev/null
 
 burst_default_plan="$(
   K6_REPORT_NAME=transaction-100m-burst-default-check \
@@ -299,8 +312,12 @@ grep -F "aquila_transaction_accepted_200_count" ops/k6/transaction-read-100m.js 
 grep -F "aquila_transaction_503_rate" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "aquila_transaction_503_count" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "AQUILA_K6_WARMUP_DURATION" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "AQUILA_K6_WARMUP_MODE" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "AQUILA_K6_WARMUP_RATE" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "warmup_contamination_guard" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "transaction_read_100m_warmup" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "exec.scenario.name" ops/k6/transaction-read-100m.js >/dev/null
+grep -F 'executor: "constant-arrival-rate"' ops/k6/transaction-read-100m.js >/dev/null
 grep -F 'rate<${effectiveOverload429RateThreshold}' ops/k6/transaction-read-100m.js >/dev/null
 grep -F 'rate<=${overload503RateThreshold}' ops/k6/transaction-read-100m.js >/dev/null
 grep -F "count<1" ops/k6/transaction-read-100m.js >/dev/null
@@ -339,6 +356,8 @@ grep -F "K6_GENERATOR_MODE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev
 grep -F "K6_OBSERVABILITY_MODE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_BACKEND_READINESS_GATE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_RUN_ID" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "K6_WARMUP_MODE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "K6_WARMUP_RATE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_POSTGRES_RECOVERY_NOISE_WINDOW_SECONDS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_BURST_HEADROOM_PREFLIGHT" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_ARCHIVE_FAILED_SUMMARY" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
@@ -485,6 +504,14 @@ if K6_SCENARIO_MODE=unknown tools/test/run-k6-transaction-100m-loadtest.sh --pri
 fi
 if K6_WARMUP_DURATION=bad tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
   echo "K6_WARMUP_DURATION=bad unexpectedly succeeded" >&2
+  exit 1
+fi
+if K6_WARMUP_MODE=constant-vus tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
+  echo "K6_WARMUP_MODE=constant-vus unexpectedly succeeded" >&2
+  exit 1
+fi
+if K6_WARMUP_RATE=0 tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
+  echo "K6_WARMUP_RATE=0 unexpectedly succeeded" >&2
   exit 1
 fi
 if K6_POSTGRES_HEALTH_GATE=bad tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
