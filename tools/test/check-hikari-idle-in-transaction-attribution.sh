@@ -18,11 +18,14 @@ output_dir="${temp_dir}/output"
 cat >"${pg_tsv}" <<'TSV'
 sample_time_utc	pid	usename	application_name	request_id	state	wait_event_type	wait_event	xact_age_seconds	query
 2026-05-02T03:00:05Z	123	aquila	aquila-bank	tx-read-req-001	idle in transaction	Client	ClientRead	182	select pg_sleep(30) /* requestId=tx-read-req-001 */
-2026-05-02T03:00:10Z	124	aquila	aquila-bank	tx-read-req-002	active	IO	DataFileRead	1	select 1
+2026-05-02T03:00:10Z	124	aquila	aquila-bank	n/a	idle in transaction	Client	ClientRead	188	select 1 /* requestId=tx-read-req-002 */
+2026-05-02T03:00:20Z	125	aquila	aquila-bank	tx-read-req-003	active	IO	DataFileRead	1	select 1
 TSV
 
 cat >"${hikari_log}" <<'LOG'
 2026-05-02T03:00:05Z WARN com.zaxxer.hikari.pool.PoolBase - aquila-bank-pool - Failed to validate connection org.postgresql.jdbc.PgConnection@1 (This connection has been closed.)
+2026-05-02T03:00:12Z WARN com.zaxxer.hikari.pool.PoolBase - aquila-bank-pool - Failed to validate connection org.postgresql.jdbc.PgConnection@2 (This connection has been closed.)
+2026-05-02T03:00:18Z WARN com.zaxxer.hikari.pool.PoolBase - aquila-bank-pool - Failed to validate connection org.postgresql.jdbc.PgConnection@3 (This connection has been closed.)
 LOG
 
 cat >"${hikari_log_zero}" <<'LOG'
@@ -74,10 +77,13 @@ summary_tsv="${output_dir}/hikari-check-hikari-idle-attribution.tsv"
 test "${report_md}" = "${output_dir}/hikari-check-hikari-idle-attribution.md"
 grep -F "gate_status=pass" "${report_md}" >/dev/null
 grep -F "config_status=pass" "${report_md}" >/dev/null
+grep -F "warning_count=3" "${report_md}" >/dev/null
 grep -F "OCI A1 lifetime alignment" "${report_md}" >/dev/null
 grep -F "PostgreSQL PID/query/requestId correlation" "${report_md}" >/dev/null
 grep -F $'warning_time_utc\tstatus\tpid\trequest_id\tstate\twait_event_type\twait_event\txact_age_seconds\tquery\tcause' "${summary_tsv}" >/dev/null
 grep -F $'2026-05-02T03:00:05Z\tpass\t123\ttx-read-req-001\tidle in transaction\tClient\tClientRead\t182\tselect pg_sleep(30) /* requestId=tx-read-req-001 */\tidle-in-transaction-candidate' "${summary_tsv}" >/dev/null
+grep -F $'2026-05-02T03:00:12Z\tpass\t124\ttx-read-req-002\tidle in transaction\tClient\tClientRead\t188\tselect 1 /* requestId=tx-read-req-002 */\tidle-in-transaction-candidate' "${summary_tsv}" >/dev/null
+grep -F $'2026-05-02T03:00:18Z\tpass\t125\ttx-read-req-003\tactive\tIO\tDataFileRead\t1\tselect 1\tpostgres-timeout-candidate' "${summary_tsv}" >/dev/null
 
 echo "[hikari-idle-attribution] 30m zero warning soak passes"
 zero_output="$(

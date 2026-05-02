@@ -25,8 +25,9 @@ final class TransactionArchiveReadQueryStatement {
             .addValue("fetchLimit", query.limit() + 1);
 
     StringBuilder sql =
-        new StringBuilder(
-            """
+        new StringBuilder(TransactionReadSqlTraceComment.current("archive-timeline"))
+            .append(
+                """
             SELECT id,
                    account_id,
                    transaction_reference,
