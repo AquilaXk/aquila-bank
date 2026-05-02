@@ -36,6 +36,8 @@ required_patterns=(
   '"limit_req_status":"$limit_req_status"'
   '"reject_source":"$sent_http_x_aquila_reject_source"'
   '"reject_reason":"$sent_http_x_aquila_reject_reason"'
+  '"upstream_reject_source":"$sent_http_x_aquila_429_source"'
+  '"upstream_reject_reason":"$sent_http_x_aquila_reject_reason"'
   '"request_id":"$request_id"'
   '"k6_run_id":"$http_x_k6_run_id"'
   "access_log /var/log/nginx/access.log aquila_bank_upstream;"

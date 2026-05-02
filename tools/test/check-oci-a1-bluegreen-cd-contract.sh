@@ -237,6 +237,8 @@ script_patterns=(
   '"limit_req_status":"\$limit_req_status"'
   '"reject_source":"\$sent_http_x_aquila_reject_source"'
   '"reject_reason":"\$sent_http_x_aquila_reject_reason"'
+  '"upstream_reject_source":"\$sent_http_x_aquila_429_source"'
+  '"upstream_reject_reason":"\$sent_http_x_aquila_reject_reason"'
   '"k6_run_id":"\$http_x_k6_run_id"'
   "limit_req_status 429;"
   'limit_req_zone \$binary_remote_addr zone=aquila_bank_api_per_ip:10m rate=30r/s;'
