@@ -97,6 +97,8 @@ Optional environment:
   K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS default 30
   K6_REMOTE_PREFLIGHT_IMAGE default curlimages/curl:8.11.1
   K6_REMOTE_READINESS_PATH default /actuator/health/readiness
+  K6_REMOTE_ARTIFACT_IMAGE default busybox:1.36
+  K6_REMOTE_COLLECT_ARTIFACTS copy remote summary md/json to local report dir, default true
   LOADTEST_PROMETHEUS_CPUS/MEMORY default 0.25/256m
   LOADTEST_GRAFANA_CPUS/MEMORY default 0.20/256m
   LOADTEST_ALERTMANAGER_CPUS/MEMORY default 0.10/128m
@@ -363,6 +365,8 @@ K6_REMOTE_PREFLIGHT="${K6_REMOTE_PREFLIGHT:-true}"
 K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS="${K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS:-30}"
 K6_REMOTE_PREFLIGHT_IMAGE="${K6_REMOTE_PREFLIGHT_IMAGE:-curlimages/curl:8.11.1}"
 K6_REMOTE_READINESS_PATH="${K6_REMOTE_READINESS_PATH:-/actuator/health/readiness}"
+K6_REMOTE_ARTIFACT_IMAGE="${K6_REMOTE_ARTIFACT_IMAGE:-busybox:1.36}"
+K6_REMOTE_COLLECT_ARTIFACTS="${K6_REMOTE_COLLECT_ARTIFACTS:-true}"
 K6_REPORT_NAME="${K6_REPORT_NAME:-transaction-100m-$(date +%Y-%m-%d-%H%M%S)}"
 K6_RUN_ID="${K6_RUN_ID:-${K6_REPORT_NAME}}"
 loadtest_db_port="${LOADTEST_DB_PORT:-15432}"
@@ -381,7 +385,7 @@ loadtest_postgres_exporter_cpus="${LOADTEST_POSTGRES_EXPORTER_CPUS:-0.10}"
 loadtest_postgres_exporter_memory="${LOADTEST_POSTGRES_EXPORTER_MEMORY:-128m}"
 loadtest_postgres_container="${LOADTEST_POSTGRES_CONTAINER_NAME:-aquila-bank-postgres-loadtest}"
 loadtest_backend_container="${LOADTEST_BACKEND_CONTAINER_NAME:-aquila-bank-backend-loadtest}"
-export K6_VUS K6_SCENARIO_MODE K6_RATE K6_TIME_UNIT K6_PRE_ALLOCATED_VUS K6_MAX_VUS K6_BURST_RATE K6_BURST_DURATION K6_BURST_HEADROOM_PREFLIGHT K6_BURST_MIN_HEADROOM_VUS K6_WARMUP_DURATION K6_LIMIT K6_HOT_DEEP_CURSOR_BOOKED_AT K6_HOT_DEEP_CURSOR_ID K6_COLD_DEEP_CURSOR_BOOKED_AT K6_COLD_DEEP_CURSOR_ID K6_HOT_P95_THRESHOLD_MS K6_COLD_P95_THRESHOLD_MS K6_HOT_P99_THRESHOLD_MS K6_COLD_P99_THRESHOLD_MS K6_HOT_P999_THRESHOLD_MS K6_COLD_P999_THRESHOLD_MS K6_HOT_MAX_THRESHOLD_MS K6_COLD_MAX_THRESHOLD_MS K6_HOT_DEEP_P95_THRESHOLD_MS K6_COLD_DEEP_P95_THRESHOLD_MS K6_HOT_DEEP_P99_THRESHOLD_MS K6_COLD_DEEP_P99_THRESHOLD_MS K6_HOT_DEEP_P999_THRESHOLD_MS K6_COLD_DEEP_P999_THRESHOLD_MS K6_HOT_DEEP_MAX_THRESHOLD_MS K6_COLD_DEEP_MAX_THRESHOLD_MS K6_HTTP_FAILED_RATE K6_ARCHIVE_RESULTS K6_ARCHIVE_FAILED_SUMMARY K6_PREFLIGHT K6_POSTGRES_HEALTH_GATE K6_POSTGRES_RECOVERY_GATE K6_POSTGRES_RECOVERY_STABLE_SECONDS K6_POSTGRES_RECOVERY_NOISE_WINDOW_SECONDS K6_POSTGRES_EXPORTER_STABLE_GATE K6_POSTGRES_EXPORTER_STABLE_TIMEOUT_SECONDS K6_OUTBOX_PREFLIGHT K6_OUTBOX_PREFLIGHT_BASE_URL K6_EXPLAIN_SNAPSHOT K6_OBSERVABILITY_MODE K6_OVERLOAD_MODE K6_OVERLOAD_429_RATE_THRESHOLD K6_BURST_429_RATE_THRESHOLD K6_OVERLOAD_503_RATE_THRESHOLD K6_MAX_RETRY_AFTER_SLEEP_SECONDS K6_MAX_RETRY_AFTER_SLEEP_MS K6_RETRY_AFTER_ADAPTIVE_PACING K6_RETRY_AFTER_ADAPTIVE_MAX_MULTIPLIER K6_PREEMPTIVE_PACING K6_PREEMPTIVE_PACING_RPS K6_PREEMPTIVE_PACING_MAX_SLEEP_MS K6_PREEMPTIVE_PACING_JITTER_MS K6_WORKLOAD_SHAPE K6_WORKLOAD_SEED K6_WORKLOAD_WEIGHTS K6_RUN_PURPOSE K6_SUMMARY_GATE K6_BACKEND_READINESS_GATE K6_BACKEND_READINESS_BASE_URL K6_BACKEND_READINESS_PATH K6_BACKEND_READINESS_TIMEOUT_SECONDS K6_GENERATOR_MODE K6_DOCKER_CONTEXT K6_REMOTE_BASE_URL K6_REMOTE_PROMETHEUS_RW_SERVER_URL K6_REMOTE_WORKDIR K6_REMOTE_PREFLIGHT K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS K6_REMOTE_PREFLIGHT_IMAGE K6_REMOTE_READINESS_PATH K6_REPORT_NAME K6_RUN_ID
+export K6_VUS K6_SCENARIO_MODE K6_RATE K6_TIME_UNIT K6_PRE_ALLOCATED_VUS K6_MAX_VUS K6_BURST_RATE K6_BURST_DURATION K6_BURST_HEADROOM_PREFLIGHT K6_BURST_MIN_HEADROOM_VUS K6_WARMUP_DURATION K6_LIMIT K6_HOT_DEEP_CURSOR_BOOKED_AT K6_HOT_DEEP_CURSOR_ID K6_COLD_DEEP_CURSOR_BOOKED_AT K6_COLD_DEEP_CURSOR_ID K6_HOT_P95_THRESHOLD_MS K6_COLD_P95_THRESHOLD_MS K6_HOT_P99_THRESHOLD_MS K6_COLD_P99_THRESHOLD_MS K6_HOT_P999_THRESHOLD_MS K6_COLD_P999_THRESHOLD_MS K6_HOT_MAX_THRESHOLD_MS K6_COLD_MAX_THRESHOLD_MS K6_HOT_DEEP_P95_THRESHOLD_MS K6_COLD_DEEP_P95_THRESHOLD_MS K6_HOT_DEEP_P99_THRESHOLD_MS K6_COLD_DEEP_P99_THRESHOLD_MS K6_HOT_DEEP_P999_THRESHOLD_MS K6_COLD_DEEP_P999_THRESHOLD_MS K6_HOT_DEEP_MAX_THRESHOLD_MS K6_COLD_DEEP_MAX_THRESHOLD_MS K6_HTTP_FAILED_RATE K6_ARCHIVE_RESULTS K6_ARCHIVE_FAILED_SUMMARY K6_PREFLIGHT K6_POSTGRES_HEALTH_GATE K6_POSTGRES_RECOVERY_GATE K6_POSTGRES_RECOVERY_STABLE_SECONDS K6_POSTGRES_RECOVERY_NOISE_WINDOW_SECONDS K6_POSTGRES_EXPORTER_STABLE_GATE K6_POSTGRES_EXPORTER_STABLE_TIMEOUT_SECONDS K6_OUTBOX_PREFLIGHT K6_OUTBOX_PREFLIGHT_BASE_URL K6_EXPLAIN_SNAPSHOT K6_OBSERVABILITY_MODE K6_OVERLOAD_MODE K6_OVERLOAD_429_RATE_THRESHOLD K6_BURST_429_RATE_THRESHOLD K6_OVERLOAD_503_RATE_THRESHOLD K6_MAX_RETRY_AFTER_SLEEP_SECONDS K6_MAX_RETRY_AFTER_SLEEP_MS K6_RETRY_AFTER_ADAPTIVE_PACING K6_RETRY_AFTER_ADAPTIVE_MAX_MULTIPLIER K6_PREEMPTIVE_PACING K6_PREEMPTIVE_PACING_RPS K6_PREEMPTIVE_PACING_MAX_SLEEP_MS K6_PREEMPTIVE_PACING_JITTER_MS K6_WORKLOAD_SHAPE K6_WORKLOAD_SEED K6_WORKLOAD_WEIGHTS K6_RUN_PURPOSE K6_SUMMARY_GATE K6_BACKEND_READINESS_GATE K6_BACKEND_READINESS_BASE_URL K6_BACKEND_READINESS_PATH K6_BACKEND_READINESS_TIMEOUT_SECONDS K6_GENERATOR_MODE K6_DOCKER_CONTEXT K6_REMOTE_BASE_URL K6_REMOTE_PROMETHEUS_RW_SERVER_URL K6_REMOTE_WORKDIR K6_REMOTE_PREFLIGHT K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS K6_REMOTE_PREFLIGHT_IMAGE K6_REMOTE_READINESS_PATH K6_REMOTE_ARTIFACT_IMAGE K6_REMOTE_COLLECT_ARTIFACTS K6_REPORT_NAME K6_RUN_ID
 
 require_positive_integer K6_VUS
 require_positive_integer K6_RATE
@@ -436,6 +440,7 @@ require_non_negative_integer K6_POSTGRES_RECOVERY_STABLE_SECONDS
 require_non_negative_integer K6_POSTGRES_RECOVERY_NOISE_WINDOW_SECONDS
 require_positive_integer K6_POSTGRES_EXPORTER_STABLE_TIMEOUT_SECONDS
 require_bool_value K6_REMOTE_PREFLIGHT
+require_bool_value K6_REMOTE_COLLECT_ARTIFACTS
 require_positive_integer K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS
 require_non_negative_integer K6_MAX_RETRY_AFTER_SLEEP_SECONDS
 require_non_negative_integer K6_MAX_RETRY_AFTER_SLEEP_MS
@@ -619,7 +624,11 @@ print_plan() {
   echo "[k6-transaction-100m] run purpose=${K6_RUN_PURPOSE}"
   echo "[k6-transaction-100m] summary gate=${K6_SUMMARY_GATE}"
   echo "[k6-transaction-100m] archive failed summary=${K6_ARCHIVE_FAILED_SUMMARY}"
-  echo "[k6-transaction-100m] backend readiness gate=${K6_BACKEND_READINESS_GATE} base=${K6_BACKEND_READINESS_BASE_URL} path=${K6_BACKEND_READINESS_PATH} timeout=${K6_BACKEND_READINESS_TIMEOUT_SECONDS}"
+  if [[ "${K6_GENERATOR_MODE}" == "docker-context" && "${K6_REMOTE_PREFLIGHT}" == "true" ]]; then
+    echo "[k6-transaction-100m] backend readiness gate=remote-preflight base=${K6_REMOTE_BASE_URL} path=${K6_REMOTE_READINESS_PATH} timeout=${K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS}"
+  else
+    echo "[k6-transaction-100m] backend readiness gate=${K6_BACKEND_READINESS_GATE} base=${K6_BACKEND_READINESS_BASE_URL} path=${K6_BACKEND_READINESS_PATH} timeout=${K6_BACKEND_READINESS_TIMEOUT_SECONDS}"
+  fi
   echo "[k6-transaction-100m] postgres health gate=${K6_POSTGRES_HEALTH_GATE} required_status=healthy"
   echo "[k6-transaction-100m] postgres recovery gate=${K6_POSTGRES_RECOVERY_GATE} stable_seconds=${K6_POSTGRES_RECOVERY_STABLE_SECONDS}"
   echo "[k6-transaction-100m] postgres recovery noise window seconds=${K6_POSTGRES_RECOVERY_NOISE_WINDOW_SECONDS}"
@@ -636,6 +645,9 @@ print_plan() {
     echo "[k6-transaction-100m] remote workdir=${K6_REMOTE_WORKDIR}"
     echo "[k6-transaction-100m] remote preflight=${K6_REMOTE_PREFLIGHT} timeout=${K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS} readiness_path=${K6_REMOTE_READINESS_PATH}"
     echo "[k6-transaction-100m] remote preflight image=${K6_REMOTE_PREFLIGHT_IMAGE}"
+    echo "[k6-transaction-100m] remote artifact image=${K6_REMOTE_ARTIFACT_IMAGE}"
+    echo "[k6-transaction-100m] remote artifact collect=${K6_REMOTE_COLLECT_ARTIFACTS}"
+    echo "[k6-transaction-100m] remote summary local=${summary_md%summary.md}summary.{md,json}"
     if [[ "${K6_OBSERVABILITY_MODE}" == "prometheus" ]]; then
       echo "[k6-transaction-100m] remote prometheus preflight=enabled"
     else
@@ -842,6 +854,10 @@ run_outbox_preflight() {
 }
 
 wait_for_backend_readiness() {
+  if [[ "${K6_GENERATOR_MODE}" == "docker-context" && "${K6_REMOTE_PREFLIGHT}" == "true" ]]; then
+    echo "[k6-transaction-100m] backend readiness skipped for docker-context; remote preflight owns readiness"
+    return 0
+  fi
   if [[ "${K6_BACKEND_READINESS_GATE}" != "true" ]]; then
     echo "[k6-transaction-100m] backend readiness skipped"
     return 0
@@ -1079,6 +1095,68 @@ run_k6_docker_context() {
     "${k6_command[@]}"
 }
 
+remote_report_dir() {
+  echo "${K6_REMOTE_WORKDIR}/build/reports/k6"
+}
+
+normalize_remote_report_permissions() {
+  if [[ "${K6_GENERATOR_MODE}" != "docker-context" || "${K6_REMOTE_COLLECT_ARTIFACTS}" != "true" ]]; then
+    return 0
+  fi
+
+  # remote Docker host bind mount 소유자가 달라도 local 수집 container가 읽을 수 있게 둡니다.
+  docker --context "${K6_DOCKER_CONTEXT}" run --rm \
+    -v "$(remote_report_dir):/reports" \
+    --entrypoint sh "${K6_REMOTE_ARTIFACT_IMAGE}" \
+    -c 'chmod -R a+rX /reports 2>/dev/null || true' >/dev/null
+}
+
+collect_remote_artifact_file() {
+  local remote_file="$1"
+  local local_file="$2"
+  local temp_file="${local_file}.tmp"
+
+  if ! docker --context "${K6_DOCKER_CONTEXT}" run --rm \
+    -v "$(remote_report_dir):/reports:ro" \
+    --entrypoint sh "${K6_REMOTE_ARTIFACT_IMAGE}" \
+    -c 'test -s "/reports/$1" && cat "/reports/$1"' \
+    sh "${remote_file}" >"${temp_file}"; then
+    rm -f "${temp_file}"
+    return 1
+  fi
+  if [[ ! -s "${temp_file}" ]]; then
+    rm -f "${temp_file}"
+    return 1
+  fi
+  mv "${temp_file}" "${local_file}"
+}
+
+collect_remote_k6_artifacts() {
+  local current_status="$1"
+  local result_status="${current_status}"
+
+  if [[ "${K6_GENERATOR_MODE}" != "docker-context" || "${K6_REMOTE_COLLECT_ARTIFACTS}" != "true" ]]; then
+    return "${result_status}"
+  fi
+
+  mkdir -p "${report_dir}"
+  normalize_remote_report_permissions
+
+  if ! collect_remote_artifact_file "${K6_REPORT_NAME}-summary.md" "${summary_md}"; then
+    echo "remote k6 summary markdown collection failed: $(remote_report_dir)/${K6_REPORT_NAME}-summary.md" >&2
+    result_status=1
+  fi
+  if ! collect_remote_artifact_file "${K6_REPORT_NAME}-summary.json" "${summary_json}"; then
+    echo "remote k6 summary JSON collection failed: $(remote_report_dir)/${K6_REPORT_NAME}-summary.json" >&2
+    result_status=1
+  fi
+
+  if [[ -s "${summary_md}" && -s "${summary_json}" ]]; then
+    echo "[k6-transaction-100m] remote summary collected: ${summary_md} ${summary_json}"
+  fi
+  return "${result_status}"
+}
+
 set +e
 if [[ "${K6_GENERATOR_MODE}" == "docker-context" ]]; then
   run_k6_docker_context
@@ -1086,6 +1164,10 @@ else
   run_k6_local
 fi 2>&1 | tee "${k6_runner_log}"
 status=${PIPESTATUS[0]}
+set -e
+set +e
+collect_remote_k6_artifacts "${status}"
+status=$?
 set -e
 set +e
 assert_k6_summary_gate "${summary_json}" "${k6_runner_log}" "${status}"
