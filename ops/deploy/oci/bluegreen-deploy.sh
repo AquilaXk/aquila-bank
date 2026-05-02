@@ -551,10 +551,50 @@ run_green_slot() {
   fi
 }
 
+validate_nginx_real_ip_header() {
+  local header="$1"
+  case "${header}" in
+    X-Forwarded-For|X-Real-IP) ;;
+    *) log "NGINX_REAL_IP_HEADER must be X-Forwarded-For or X-Real-IP: ${header}"; exit 1 ;;
+  esac
+}
+
+render_nginx_real_ip_trusted_proxy_lines() {
+  local proxies_csv="$1"
+  local lines=""
+  local raw_proxy proxy
+
+  if [[ -z "${proxies_csv}" ]]; then
+    printf '  # NGINX_REAL_IP_TRUSTED_PROXIES unset: limiter key stays on TCP peer address.\n'
+    return
+  fi
+
+  IFS=',' read -r -a proxies <<<"${proxies_csv}"
+  for raw_proxy in "${proxies[@]}"; do
+    proxy="$(printf '%s' "${raw_proxy}" | xargs)"
+    if [[ -z "${proxy}" ]]; then
+      continue
+    fi
+    if ! [[ "${proxy}" =~ ^[0-9A-Fa-f:.\/]+$ ]]; then
+      log "NGINX_REAL_IP_TRUSTED_PROXIES contains an invalid IP/CIDR: ${proxy}"
+      exit 1
+    fi
+    lines="${lines}  set_real_ip_from ${proxy};\n"
+  done
+
+  if [[ -z "${lines}" ]]; then
+    printf '  # NGINX_REAL_IP_TRUSTED_PROXIES empty: limiter key stays on TCP peer address.\n'
+    return
+  fi
+
+  printf '%b' "${lines}"
+}
+
 render_nginx_config() {
   local slot="$1"
   local backend_name frontend_name backend_proxy_host edge_retry_after_seconds edge_retry_after_millis edge_retry_jitter_millis
   local backend_api_keepalive_timeout_seconds
+  local real_ip_header real_ip_trusted_proxies real_ip_trusted_proxy_lines
   local transaction_read_hot_rate_rps transaction_read_archive_rate_rps transaction_read_hot_burst transaction_read_archive_burst
   backend_name="$(slot_name backend "${slot}")"
   frontend_name="$(slot_name frontend "${slot}")"
@@ -563,6 +603,10 @@ render_nginx_config() {
   edge_retry_after_seconds="${NGINX_EDGE_RETRY_AFTER_SECONDS:-1}"
   edge_retry_after_millis="${NGINX_EDGE_RETRY_AFTER_MILLIS:-150}"
   edge_retry_jitter_millis="${NGINX_EDGE_RETRY_JITTER_MILLIS:-100}"
+  real_ip_header="${NGINX_REAL_IP_HEADER:-X-Forwarded-For}"
+  real_ip_trusted_proxies="${NGINX_REAL_IP_TRUSTED_PROXIES:-}"
+  validate_nginx_real_ip_header "${real_ip_header}"
+  real_ip_trusted_proxy_lines="$(render_nginx_real_ip_trusted_proxy_lines "${real_ip_trusted_proxies}")"
   transaction_read_hot_rate_rps="${OCI_A1_TRANSACTION_READ_HOT_RATE_RPS:-80}"
   transaction_read_archive_rate_rps="${OCI_A1_TRANSACTION_READ_ARCHIVE_RATE_RPS:-80}"
   transaction_read_hot_burst="${OCI_A1_TRANSACTION_READ_HOT_BURST:-10}"
@@ -581,6 +625,8 @@ http {
   log_format aquila_bank_upstream escape=json
     '{'
       '"time":"\$time_iso8601",'
+      '"remote_addr":"\$remote_addr",'
+      '"realip_remote_addr":"\$realip_remote_addr",'
       '"request":"\$request",'
       '"status":\$status,'
       '"request_time":\$request_time,'
@@ -595,6 +641,11 @@ http {
       '"k6_run_id":"\$http_x_k6_run_id"'
     '}';
   access_log /var/log/nginx/access.log aquila_bank_upstream;
+
+  # trusted proxy에서만 forwarded client IP를 limiter key의 원천으로 승격합니다.
+${real_ip_trusted_proxy_lines}
+  real_ip_header ${real_ip_header};
+  real_ip_recursive on;
 
   # 짧은 API 요청만 1차 보호하고, SSE는 exact location과 전용 timeout으로 분리합니다.
   limit_req_zone \$binary_remote_addr zone=aquila_bank_api_per_ip:10m rate=30r/s;

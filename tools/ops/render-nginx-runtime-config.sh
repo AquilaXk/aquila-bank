@@ -46,6 +46,8 @@ NGINX_BACKEND_PROXY_HOST="${NGINX_BACKEND_PROXY_HOST:-aquila-bank-backend}"
 NGINX_EDGE_RETRY_AFTER_SECONDS="${NGINX_EDGE_RETRY_AFTER_SECONDS:-1}"
 NGINX_EDGE_RETRY_AFTER_MILLIS="${NGINX_EDGE_RETRY_AFTER_MILLIS:-150}"
 NGINX_EDGE_RETRY_JITTER_MILLIS="${NGINX_EDGE_RETRY_JITTER_MILLIS:-100}"
+NGINX_REAL_IP_HEADER="${NGINX_REAL_IP_HEADER:-X-Forwarded-For}"
+NGINX_REAL_IP_TRUSTED_PROXIES="${NGINX_REAL_IP_TRUSTED_PROXIES:-}"
 NGINX_BACKEND_API_KEEPALIVE_TIMEOUT_SECONDS="${NGINX_BACKEND_API_KEEPALIVE_TIMEOUT_SECONDS:-2}"
 NGINX_TRANSACTION_READ_HOT_RATE_RPS="${NGINX_TRANSACTION_READ_HOT_RATE_RPS:-80}"
 NGINX_TRANSACTION_READ_ARCHIVE_RATE_RPS="${NGINX_TRANSACTION_READ_ARCHIVE_RATE_RPS:-80}"
@@ -79,6 +81,14 @@ require_positive_integer "NGINX_TRANSACTION_READ_ARCHIVE_RATE_RPS" "${NGINX_TRAN
 require_positive_integer "NGINX_TRANSACTION_READ_HOT_BURST" "${NGINX_TRANSACTION_READ_HOT_BURST}"
 require_positive_integer "NGINX_TRANSACTION_READ_ARCHIVE_BURST" "${NGINX_TRANSACTION_READ_ARCHIVE_BURST}"
 
+case "${NGINX_REAL_IP_HEADER}" in
+  X-Forwarded-For|X-Real-IP) ;;
+  *)
+    echo "[nginx-render] NGINX_REAL_IP_HEADER must be X-Forwarded-For or X-Real-IP: ${NGINX_REAL_IP_HEADER}" >&2
+    exit 1
+    ;;
+esac
+
 render_server_lines() {
   local servers_csv="$1"
   local lines=""
@@ -98,9 +108,41 @@ render_server_lines() {
   printf '%b' "${lines}"
 }
 
+render_real_ip_trusted_proxy_lines() {
+  local proxies_csv="$1"
+  local lines=""
+  local raw_proxy proxy
+
+  if [[ -z "${proxies_csv}" ]]; then
+    printf '  # NGINX_REAL_IP_TRUSTED_PROXIES unset: limiter key stays on TCP peer address.\n'
+    return
+  fi
+
+  IFS=',' read -r -a proxies <<<"${proxies_csv}"
+  for raw_proxy in "${proxies[@]}"; do
+    proxy="$(printf '%s' "${raw_proxy}" | xargs)"
+    if [[ -z "${proxy}" ]]; then
+      continue
+    fi
+    if ! [[ "${proxy}" =~ ^[0-9A-Fa-f:.\/]+$ ]]; then
+      echo "[nginx-render] NGINX_REAL_IP_TRUSTED_PROXIES contains an invalid IP/CIDR: ${proxy}" >&2
+      exit 1
+    fi
+    lines="${lines}  set_real_ip_from ${proxy};\n"
+  done
+
+  if [[ -z "${lines}" ]]; then
+    printf '  # NGINX_REAL_IP_TRUSTED_PROXIES empty: limiter key stays on TCP peer address.\n'
+    return
+  fi
+
+  printf '%b' "${lines}"
+}
+
 NGINX_FRONTEND_SERVER_LINES="    server ${NGINX_FRONTEND_SERVER};"
 NGINX_BACKEND_API_SERVER_LINES="$(render_server_lines "${NGINX_BACKEND_API_SERVERS}")"
 NGINX_BACKEND_SSE_SERVER_LINES="$(render_server_lines "${NGINX_BACKEND_SSE_SERVERS}")"
+NGINX_REAL_IP_TRUSTED_PROXY_LINES="$(render_real_ip_trusted_proxy_lines "${NGINX_REAL_IP_TRUSTED_PROXIES}")"
 
 rendered="$(cat "${template_path}")"
 rendered="${rendered//'${NGINX_SERVER_NAME}'/${NGINX_SERVER_NAME}}"
@@ -113,6 +155,8 @@ rendered="${rendered//'${NGINX_BACKEND_PROXY_HOST}'/${NGINX_BACKEND_PROXY_HOST}}
 rendered="${rendered//'${NGINX_EDGE_RETRY_AFTER_SECONDS}'/${NGINX_EDGE_RETRY_AFTER_SECONDS}}"
 rendered="${rendered//'${NGINX_EDGE_RETRY_AFTER_MILLIS}'/${NGINX_EDGE_RETRY_AFTER_MILLIS}}"
 rendered="${rendered//'${NGINX_EDGE_RETRY_JITTER_MILLIS}'/${NGINX_EDGE_RETRY_JITTER_MILLIS}}"
+rendered="${rendered//'${NGINX_REAL_IP_HEADER}'/${NGINX_REAL_IP_HEADER}}"
+rendered="${rendered//'${NGINX_REAL_IP_TRUSTED_PROXY_LINES}'/${NGINX_REAL_IP_TRUSTED_PROXY_LINES}}"
 rendered="${rendered//'${NGINX_BACKEND_API_KEEPALIVE_TIMEOUT_SECONDS}'/${NGINX_BACKEND_API_KEEPALIVE_TIMEOUT_SECONDS}}"
 rendered="${rendered//'${NGINX_TRANSACTION_READ_HOT_RATE_RPS}'/${NGINX_TRANSACTION_READ_HOT_RATE_RPS}}"
 rendered="${rendered//'${NGINX_TRANSACTION_READ_ARCHIVE_RATE_RPS}'/${NGINX_TRANSACTION_READ_ARCHIVE_RATE_RPS}}"

@@ -240,6 +240,9 @@ script_patterns=(
   '"k6_run_id":"\$http_x_k6_run_id"'
   "limit_req_status 429;"
   'limit_req_zone \$binary_remote_addr zone=aquila_bank_api_per_ip:10m rate=30r/s;'
+  'real_ip_header ${real_ip_header};'
+  'real_ip_recursive on;'
+  'render_nginx_real_ip_trusted_proxy_lines "${real_ip_trusted_proxies}"'
   'limit_req_zone \$binary_remote_addr zone=aquila_bank_auth_per_ip:10m rate=5r/s;'
   'limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_hot_per_ip:10m rate=${transaction_read_hot_rate_rps}r/s;'
   'limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_archive_per_ip:10m rate=${transaction_read_archive_rate_rps}r/s;'

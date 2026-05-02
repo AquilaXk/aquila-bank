@@ -114,6 +114,13 @@ if contains_pattern '${'; then
   exit 1
 fi
 
+if ! contains_pattern "real_ip_header X-Forwarded-For;" ||
+  ! contains_pattern "real_ip_recursive on;" ||
+  ! contains_pattern "limiter key stays on TCP peer address"; then
+  echo "[nginx-runtime-gate] rendered config must keep safe real IP limiter defaults" >&2
+  exit 1
+fi
+
 if ! command -v nginx >/dev/null 2>&1; then
   if [[ "${strict_mode}" == "true" ]]; then
     echo "[nginx-runtime-gate] nginx binary is required in strict mode" >&2
