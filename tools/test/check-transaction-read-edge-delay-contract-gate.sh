@@ -107,8 +107,8 @@ grep -F "aquila_bank_transaction_hot_per_ip" ops/nginx/nginx.conf >/dev/null
 grep -F "aquila_bank_transaction_archive_per_ip" ops/nginx/nginx.conf >/dev/null
 grep -F 'rate=${NGINX_TRANSACTION_READ_HOT_RATE_RPS}r/s' ops/nginx/nginx.conf >/dev/null
 grep -F 'rate=${NGINX_TRANSACTION_READ_ARCHIVE_RATE_RPS}r/s' ops/nginx/nginx.conf >/dev/null
-grep -F 'limit_req zone=aquila_bank_transaction_hot_per_ip burst=${NGINX_TRANSACTION_READ_HOT_BURST} nodelay;' ops/nginx/nginx.conf >/dev/null
-grep -F 'limit_req zone=aquila_bank_transaction_archive_per_ip burst=${NGINX_TRANSACTION_READ_ARCHIVE_BURST} nodelay;' ops/nginx/nginx.conf >/dev/null
+grep -F 'limit_req zone=aquila_bank_transaction_hot_per_ip burst=${NGINX_TRANSACTION_READ_HOT_BURST} ${NGINX_TRANSACTION_READ_HOT_LIMIT_MODE};' ops/nginx/nginx.conf >/dev/null
+grep -F 'limit_req zone=aquila_bank_transaction_archive_per_ip burst=${NGINX_TRANSACTION_READ_ARCHIVE_BURST} ${NGINX_TRANSACTION_READ_ARCHIVE_LIMIT_MODE};' ops/nginx/nginx.conf >/dev/null
 grep -F 'NGINX_EDGE_RETRY_AFTER_MILLIS="${NGINX_EDGE_RETRY_AFTER_MILLIS:-150}"' tools/ops/render-nginx-runtime-config.sh >/dev/null
 grep -F 'NGINX_EDGE_RETRY_JITTER_MILLIS="${NGINX_EDGE_RETRY_JITTER_MILLIS:-100}"' tools/ops/render-nginx-runtime-config.sh >/dev/null
 grep -F 'NGINX_TRANSACTION_READ_HOT_RATE_RPS="${NGINX_TRANSACTION_READ_HOT_RATE_RPS:-80}"' tools/ops/render-nginx-runtime-config.sh >/dev/null

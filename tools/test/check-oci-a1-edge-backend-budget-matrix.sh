@@ -22,7 +22,7 @@ grep -F "edge_transaction_hot_rate_rps=80" <<<"${plan}" >/dev/null
 grep -F "edge_transaction_archive_rate_rps=80" <<<"${plan}" >/dev/null
 grep -F "edge_transaction_hot_burst=10" <<<"${plan}" >/dev/null
 grep -F "edge_transaction_archive_burst=10" <<<"${plan}" >/dev/null
-grep -F "edge_transaction_read_policy=fail-fast-nodelay" <<<"${plan}" >/dev/null
+grep -F "edge_transaction_read_policy=small-delay-queue" <<<"${plan}" >/dev/null
 grep -F "backend_admission_max=8" <<<"${plan}" >/dev/null
 grep -F "backend_admission_adaptive_max=12" <<<"${plan}" >/dev/null
 grep -F "backend_hot_admission_max=8" <<<"${plan}" >/dev/null
@@ -30,6 +30,7 @@ grep -F "backend_hot_admission_adaptive_max=12" <<<"${plan}" >/dev/null
 grep -F "backend_archive_admission_max=6" <<<"${plan}" >/dev/null
 grep -F "backend_archive_admission_adaptive_max=10" <<<"${plan}" >/dev/null
 grep -F "weighted_vu16_max_429_rate=0.05" <<<"${plan}" >/dev/null
+grep -F "short_burst48_max_429_rate=0.10" <<<"${plan}" >/dev/null
 grep -F "hikari_max=8" <<<"${plan}" >/dev/null
 grep -F "hikari_max_lifetime_ms=600000" <<<"${plan}" >/dev/null
 grep -F "hikari_keepalive_time_ms=60000" <<<"${plan}" >/dev/null
@@ -49,7 +50,7 @@ grep -F "| edge transaction-hot rate | 80r/s |" "${report_md}" >/dev/null
 grep -F "| edge transaction-archive rate | 80r/s |" "${report_md}" >/dev/null
 grep -F "| edge transaction-hot burst | 10 |" "${report_md}" >/dev/null
 grep -F "| edge transaction-archive burst | 10 |" "${report_md}" >/dev/null
-grep -F "| edge transaction-read policy | fail-fast-nodelay |" "${report_md}" >/dev/null
+grep -F "| edge transaction-read policy | small-delay-queue |" "${report_md}" >/dev/null
 grep -F "| backend admission max | 8 |" "${report_md}" >/dev/null
 grep -F "| backend admission adaptive max | 12 |" "${report_md}" >/dev/null
 grep -F "| backend hot admission max | 8 |" "${report_md}" >/dev/null
@@ -57,6 +58,7 @@ grep -F "| backend hot admission adaptive max | 12 |" "${report_md}" >/dev/null
 grep -F "| backend archive admission max | 6 |" "${report_md}" >/dev/null
 grep -F "| backend archive admission adaptive max | 10 |" "${report_md}" >/dev/null
 grep -F "| paced-weighted-vu16 max 429 rate | 0.05 |" "${report_md}" >/dev/null
+grep -F "| short-burst-48 max 429 rate | 0.10 |" "${report_md}" >/dev/null
 grep -F "| Hikari max pool | 8 |" "${report_md}" >/dev/null
 grep -F "| Hikari max lifetime ms | 600000 |" "${report_md}" >/dev/null
 grep -F "| Hikari keepalive time ms | 60000 |" "${report_md}" >/dev/null
@@ -66,8 +68,8 @@ grep -F "| expected 429 source | edge-or-backend-admission |" "${report_md}" >/d
 echo "[oci-a1-budget-matrix] source contract"
 grep -F 'limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_hot_per_ip:10m rate=${NGINX_TRANSACTION_READ_HOT_RATE_RPS}r/s;' ops/nginx/nginx.conf >/dev/null
 grep -F 'limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_archive_per_ip:10m rate=${NGINX_TRANSACTION_READ_ARCHIVE_RATE_RPS}r/s;' ops/nginx/nginx.conf >/dev/null
-grep -F 'limit_req zone=aquila_bank_transaction_hot_per_ip burst=${NGINX_TRANSACTION_READ_HOT_BURST} nodelay;' ops/nginx/nginx.conf >/dev/null
-grep -F 'limit_req zone=aquila_bank_transaction_archive_per_ip burst=${NGINX_TRANSACTION_READ_ARCHIVE_BURST} nodelay;' ops/nginx/nginx.conf >/dev/null
+grep -F 'limit_req zone=aquila_bank_transaction_hot_per_ip burst=${NGINX_TRANSACTION_READ_HOT_BURST} ${NGINX_TRANSACTION_READ_HOT_LIMIT_MODE};' ops/nginx/nginx.conf >/dev/null
+grep -F 'limit_req zone=aquila_bank_transaction_archive_per_ip burst=${NGINX_TRANSACTION_READ_ARCHIVE_BURST} ${NGINX_TRANSACTION_READ_ARCHIVE_LIMIT_MODE};' ops/nginx/nginx.conf >/dev/null
 grep -F 'keepalive_timeout ${NGINX_BACKEND_API_KEEPALIVE_TIMEOUT_SECONDS}s;' ops/nginx/nginx.conf >/dev/null
 grep -F 'proxy_next_upstream error timeout http_502;' ops/nginx/nginx.conf >/dev/null
 grep -F 'maximum-pool-size: ${OCI_A1_DB_POOL_MAX_SIZE:8}' back/src/main/resources/application-oci-a1.yml >/dev/null
@@ -80,3 +82,4 @@ grep -F 'group: transaction-read-hot' back/src/main/resources/application.yml >/
 grep -F 'group: transaction-read-archive' back/src/main/resources/application.yml >/dev/null
 grep -F 'OCI_PUBLIC_ARRIVAL_RATES:-4,5,6,7,8,10,16' tools/test/run-oci-public-api-arrival-capacity-gate.sh >/dev/null
 grep -F 'WEIGHTED_SOAK_10M_MAX_TOTAL_429_RATE:-0.05' tools/test/run-transaction-read-weighted-10m-soak-gate.sh >/dev/null
+grep -F 'SHORT_BURST_SMOOTHING_MAX_BURST48_429_RATE:-0.10' tools/test/run-transaction-read-short-burst-smoothing-matrix.sh >/dev/null

@@ -27,6 +27,7 @@ required_patterns=(
   "limit_req_status 429;"
   "log_format aquila_bank_upstream escape=json"
   '"status":$status'
+  '"realip_remote_addr":"$realip_remote_addr"'
   '"upstream_status":"$upstream_status"'
   '"request_time":$request_time'
   '"upstream_response_time":"$upstream_response_time"'
@@ -38,6 +39,9 @@ required_patterns=(
   '"request_id":"$request_id"'
   '"k6_run_id":"$http_x_k6_run_id"'
   "access_log /var/log/nginx/access.log aquila_bank_upstream;"
+  "\${NGINX_REAL_IP_TRUSTED_PROXY_LINES}"
+  "real_ip_header \${NGINX_REAL_IP_HEADER};"
+  "real_ip_recursive on;"
   "limit_req_zone \$binary_remote_addr zone=aquila_bank_api_per_ip:10m rate=30r/s;"
   "limit_req_zone \$binary_remote_addr zone=aquila_bank_auth_per_ip:10m rate=5r/s;"
   "limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_hot_per_ip:10m rate=\${NGINX_TRANSACTION_READ_HOT_RATE_RPS}r/s;"
@@ -85,8 +89,8 @@ required_patterns=(
   '"source":"nginx-edge"'
   "location = /api/v1/transactions"
   "location = /api/v1/transactions/archive"
-  "limit_req zone=aquila_bank_transaction_hot_per_ip burst=\${NGINX_TRANSACTION_READ_HOT_BURST} nodelay;"
-  "limit_req zone=aquila_bank_transaction_archive_per_ip burst=\${NGINX_TRANSACTION_READ_ARCHIVE_BURST} nodelay;"
+  "limit_req zone=aquila_bank_transaction_hot_per_ip burst=\${NGINX_TRANSACTION_READ_HOT_BURST} \${NGINX_TRANSACTION_READ_HOT_LIMIT_MODE};"
+  "limit_req zone=aquila_bank_transaction_archive_per_ip burst=\${NGINX_TRANSACTION_READ_ARCHIVE_BURST} \${NGINX_TRANSACTION_READ_ARCHIVE_LIMIT_MODE};"
   "proxy_next_upstream error timeout http_502;"
   "proxy_next_upstream_tries 2;"
   "proxy_next_upstream_timeout 2s;"

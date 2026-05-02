@@ -551,11 +551,65 @@ run_green_slot() {
   fi
 }
 
+validate_nginx_real_ip_header() {
+  local header="$1"
+  case "${header}" in
+    X-Forwarded-For|X-Real-IP) ;;
+    *) log "NGINX_REAL_IP_HEADER must be X-Forwarded-For or X-Real-IP: ${header}"; exit 1 ;;
+  esac
+}
+
+render_nginx_real_ip_trusted_proxy_lines() {
+  local proxies_csv="$1"
+  local lines=""
+  local raw_proxy proxy
+
+  if [[ -z "${proxies_csv}" ]]; then
+    printf '  # NGINX_REAL_IP_TRUSTED_PROXIES unset: limiter key stays on TCP peer address.\n'
+    return
+  fi
+
+  IFS=',' read -r -a proxies <<<"${proxies_csv}"
+  for raw_proxy in "${proxies[@]}"; do
+    proxy="$(printf '%s' "${raw_proxy}" | xargs)"
+    if [[ -z "${proxy}" ]]; then
+      continue
+    fi
+    if ! [[ "${proxy}" =~ ^[0-9A-Fa-f:.\/]+$ ]]; then
+      log "NGINX_REAL_IP_TRUSTED_PROXIES contains an invalid IP/CIDR: ${proxy}"
+      exit 1
+    fi
+    lines="${lines}  set_real_ip_from ${proxy};\n"
+  done
+
+  if [[ -z "${lines}" ]]; then
+    printf '  # NGINX_REAL_IP_TRUSTED_PROXIES empty: limiter key stays on TCP peer address.\n'
+    return
+  fi
+
+  printf '%b' "${lines}"
+}
+
+render_nginx_limit_req_mode() {
+  local delay="$1"
+  if ! [[ "${delay}" =~ ^[0-9]+$ ]]; then
+    log "transaction read Nginx delay must be a non-negative integer: ${delay}"
+    exit 1
+  fi
+  if [[ "${delay}" == "0" ]]; then
+    printf 'nodelay'
+    return
+  fi
+  printf 'delay=%s' "${delay}"
+}
+
 render_nginx_config() {
   local slot="$1"
   local backend_name frontend_name backend_proxy_host edge_retry_after_seconds edge_retry_after_millis edge_retry_jitter_millis
   local backend_api_keepalive_timeout_seconds
+  local real_ip_header real_ip_trusted_proxies real_ip_trusted_proxy_lines
   local transaction_read_hot_rate_rps transaction_read_archive_rate_rps transaction_read_hot_burst transaction_read_archive_burst
+  local transaction_read_hot_delay transaction_read_archive_delay transaction_read_hot_limit_mode transaction_read_archive_limit_mode
   backend_name="$(slot_name backend "${slot}")"
   frontend_name="$(slot_name frontend "${slot}")"
   backend_proxy_host="${BACKEND_PROXY_HOST:-${backend_name}}"
@@ -563,10 +617,18 @@ render_nginx_config() {
   edge_retry_after_seconds="${NGINX_EDGE_RETRY_AFTER_SECONDS:-1}"
   edge_retry_after_millis="${NGINX_EDGE_RETRY_AFTER_MILLIS:-150}"
   edge_retry_jitter_millis="${NGINX_EDGE_RETRY_JITTER_MILLIS:-100}"
+  real_ip_header="${NGINX_REAL_IP_HEADER:-X-Forwarded-For}"
+  real_ip_trusted_proxies="${NGINX_REAL_IP_TRUSTED_PROXIES:-}"
+  validate_nginx_real_ip_header "${real_ip_header}"
+  real_ip_trusted_proxy_lines="$(render_nginx_real_ip_trusted_proxy_lines "${real_ip_trusted_proxies}")"
   transaction_read_hot_rate_rps="${OCI_A1_TRANSACTION_READ_HOT_RATE_RPS:-80}"
   transaction_read_archive_rate_rps="${OCI_A1_TRANSACTION_READ_ARCHIVE_RATE_RPS:-80}"
   transaction_read_hot_burst="${OCI_A1_TRANSACTION_READ_HOT_BURST:-10}"
   transaction_read_archive_burst="${OCI_A1_TRANSACTION_READ_ARCHIVE_BURST:-10}"
+  transaction_read_hot_delay="${OCI_A1_TRANSACTION_READ_HOT_DELAY:-2}"
+  transaction_read_archive_delay="${OCI_A1_TRANSACTION_READ_ARCHIVE_DELAY:-2}"
+  transaction_read_hot_limit_mode="$(render_nginx_limit_req_mode "${transaction_read_hot_delay}")"
+  transaction_read_archive_limit_mode="$(render_nginx_limit_req_mode "${transaction_read_archive_delay}")"
 
   cat <<NGINX
 worker_processes auto;
@@ -581,6 +643,8 @@ http {
   log_format aquila_bank_upstream escape=json
     '{'
       '"time":"\$time_iso8601",'
+      '"remote_addr":"\$remote_addr",'
+      '"realip_remote_addr":"\$realip_remote_addr",'
       '"request":"\$request",'
       '"status":\$status,'
       '"request_time":\$request_time,'
@@ -595,6 +659,11 @@ http {
       '"k6_run_id":"\$http_x_k6_run_id"'
     '}';
   access_log /var/log/nginx/access.log aquila_bank_upstream;
+
+  # trusted proxy에서만 forwarded client IP를 limiter key의 원천으로 승격합니다.
+${real_ip_trusted_proxy_lines}
+  real_ip_header ${real_ip_header};
+  real_ip_recursive on;
 
   # 짧은 API 요청만 1차 보호하고, SSE는 exact location과 전용 timeout으로 분리합니다.
   limit_req_zone \$binary_remote_addr zone=aquila_bank_api_per_ip:10m rate=30r/s;
@@ -742,8 +811,8 @@ http {
       proxy_next_upstream error timeout http_502;
       proxy_next_upstream_tries 2;
       proxy_next_upstream_timeout 2s;
-      # overload는 accepted delay보다 빠른 429가 client backoff와 p95 해석에 유리합니다.
-      limit_req zone=aquila_bank_transaction_hot_per_ip burst=${transaction_read_hot_burst} nodelay;
+      # 짧은 burst는 작은 delay queue로 흡수하고, queue 초과만 429로 돌려 client backoff와 분리합니다.
+      limit_req zone=aquila_bank_transaction_hot_per_ip burst=${transaction_read_hot_burst} ${transaction_read_hot_limit_mode};
       add_header X-Aquila-Edge-Limit-Status \$limit_req_status always;
       proxy_read_timeout 30s;
       proxy_send_timeout 30s;
@@ -764,8 +833,8 @@ http {
       proxy_next_upstream error timeout http_502;
       proxy_next_upstream_tries 2;
       proxy_next_upstream_timeout 2s;
-      # archive query도 같은 fail-fast 정책으로 cold read 지연을 edge에서 길게 만들지 않습니다.
-      limit_req zone=aquila_bank_transaction_archive_per_ip burst=${transaction_read_archive_burst} nodelay;
+      # archive query도 같은 작은 delay queue로 short-burst edge 429를 먼저 낮춥니다.
+      limit_req zone=aquila_bank_transaction_archive_per_ip burst=${transaction_read_archive_burst} ${transaction_read_archive_limit_mode};
       add_header X-Aquila-Edge-Limit-Status \$limit_req_status always;
       proxy_read_timeout 30s;
       proxy_send_timeout 30s;
