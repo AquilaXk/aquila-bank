@@ -45,13 +45,14 @@ public class TransactionArchiveQueryController {
       @RequestParam @Positive(message = "accountId must be positive") long accountId,
       @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime from,
       @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime to,
-      @RequestParam(defaultValue = "20") int limit,
+      @RequestParam(defaultValue = "50") int limit,
       @RequestParam(required = false) String cursor,
       @RequestParam(required = false) TransactionStatus status,
       @RequestParam(required = false) TransactionDirection direction,
       @RequestParam(required = false) Long minAmountMinor,
       @RequestParam(required = false) Long maxAmountMinor,
-      @RequestParam(required = false) String transactionReference) {
+      @RequestParam(required = false) String transactionReference,
+      @RequestParam(defaultValue = "full") String responseShape) {
     return hotPathMetrics.record(
         TransactionReadHotPathMetrics.ENDPOINT_ARCHIVE,
         TransactionReadHotPathMetrics.STAGE_TOTAL,
@@ -67,7 +68,8 @@ public class TransactionArchiveQueryController {
                 direction,
                 minAmountMinor,
                 maxAmountMinor,
-                transactionReference));
+                transactionReference,
+                responseShape));
   }
 
   private TransactionQueryResponse getArchivedTransactionsMeasured(
@@ -81,7 +83,8 @@ public class TransactionArchiveQueryController {
       TransactionDirection direction,
       Long minAmountMinor,
       Long maxAmountMinor,
-      String transactionReference) {
+      String transactionReference,
+      String responseShape) {
     try {
       TransactionCursor decodedCursor =
           cursor == null || cursor.isBlank() ? null : TransactionCursorCodec.decode(cursor);
@@ -104,6 +107,7 @@ public class TransactionArchiveQueryController {
               minAmountMinor,
               maxAmountMinor,
               transactionReference);
+      TransactionResponseShape resolvedResponseShape = TransactionResponseShape.from(responseShape);
       TransactionSlice slice =
           hotPathMetrics.record(
               TransactionReadHotPathMetrics.ENDPOINT_ARCHIVE,
@@ -112,7 +116,7 @@ public class TransactionArchiveQueryController {
       return hotPathMetrics.record(
           TransactionReadHotPathMetrics.ENDPOINT_ARCHIVE,
           TransactionReadHotPathMetrics.STAGE_RESPONSE_MAPPING,
-          () -> TransactionQueryResponse.from(slice));
+          () -> TransactionQueryResponse.from(slice, resolvedResponseShape));
     } catch (IllegalArgumentException ex) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage(), ex);
     }

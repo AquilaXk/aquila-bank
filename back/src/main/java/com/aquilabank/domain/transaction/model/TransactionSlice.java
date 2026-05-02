@@ -9,8 +9,8 @@ public record TransactionSlice(
   public TransactionSlice {
     // 반환 후 외부 수정 차단용 방어 복사
     items = List.copyOf(items);
-    if (limit < 1 || limit > 100) {
-      throw new IllegalArgumentException("limit must be between 1 and 100");
+    if (limit < 1 || limit > TransactionQuery.MAX_LIMIT) {
+      throw new IllegalArgumentException("limit must be between 1 and 50");
     }
     if (!hasNext && nextCursor != null) {
       throw new IllegalArgumentException("nextCursor must be null when hasNext is false");

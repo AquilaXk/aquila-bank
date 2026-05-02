@@ -45,13 +45,14 @@ public class TransactionQueryController {
       @RequestParam @Positive(message = "accountId must be positive") long accountId,
       @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime from,
       @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime to,
-      @RequestParam(defaultValue = "20") int limit,
+      @RequestParam(defaultValue = "50") int limit,
       @RequestParam(required = false) String cursor,
       @RequestParam(required = false) TransactionStatus status,
       @RequestParam(required = false) TransactionDirection direction,
       @RequestParam(required = false) Long minAmountMinor,
       @RequestParam(required = false) Long maxAmountMinor,
-      @RequestParam(required = false) String transactionReference) {
+      @RequestParam(required = false) String transactionReference,
+      @RequestParam(defaultValue = "full") String responseShape) {
     return hotPathMetrics.record(
         TransactionReadHotPathMetrics.ENDPOINT_ACTIVE,
         TransactionReadHotPathMetrics.STAGE_TOTAL,
@@ -67,7 +68,8 @@ public class TransactionQueryController {
                 direction,
                 minAmountMinor,
                 maxAmountMinor,
-                transactionReference));
+                transactionReference,
+                responseShape));
   }
 
   private TransactionQueryResponse getTransactionsMeasured(
@@ -81,7 +83,8 @@ public class TransactionQueryController {
       TransactionDirection direction,
       Long minAmountMinor,
       Long maxAmountMinor,
-      String transactionReference) {
+      String transactionReference,
+      String responseShape) {
     try {
       // 첫 page와 후속 page를 같은 endpoint로 통일
       TransactionCursor decodedCursor =
@@ -105,6 +108,7 @@ public class TransactionQueryController {
               minAmountMinor,
               maxAmountMinor,
               transactionReference);
+      TransactionResponseShape resolvedResponseShape = TransactionResponseShape.from(responseShape);
       TransactionSlice slice =
           hotPathMetrics.record(
               TransactionReadHotPathMetrics.ENDPOINT_ACTIVE,
@@ -113,7 +117,7 @@ public class TransactionQueryController {
       return hotPathMetrics.record(
           TransactionReadHotPathMetrics.ENDPOINT_ACTIVE,
           TransactionReadHotPathMetrics.STAGE_RESPONSE_MAPPING,
-          () -> TransactionQueryResponse.from(slice));
+          () -> TransactionQueryResponse.from(slice, resolvedResponseShape));
     } catch (IllegalArgumentException ex) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage(), ex);
     }

@@ -17,6 +17,7 @@ public record TransactionQuery(
     String transactionReference) {
 
   private static final Duration MAX_RANGE = Duration.ofDays(31);
+  public static final int MAX_LIMIT = 50;
 
   public TransactionQuery {
     if (accountId <= 0) {
@@ -28,8 +29,8 @@ public record TransactionQuery(
     if (!from.isBefore(to)) {
       throw new IllegalArgumentException("from must be before to");
     }
-    if (limit < 1 || limit > 100) {
-      throw new IllegalArgumentException("limit must be between 1 and 100");
+    if (limit < 1 || limit > MAX_LIMIT) {
+      throw new IllegalArgumentException("limit must be between 1 and 50");
     }
     if (minAmountMinor != null && minAmountMinor < 0) {
       throw new IllegalArgumentException("minAmountMinor must be zero or positive");
