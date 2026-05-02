@@ -33,7 +33,10 @@ import com.aquilabank.global.ops.T3MicroSaturationRejectedException;
 import com.aquilabank.global.security.BootstrapApiAccessDeniedException;
 import com.aquilabank.global.security.InternalServiceRequestAuthorizer;
 import com.aquilabank.global.security.InternalServiceTokenClaims;
+import com.aquilabank.global.security.LoginThrottleScope;
 import com.aquilabank.global.security.LoginThrottledException;
+import com.aquilabank.global.web.transaction.TransactionReadAccountFairnessRejectedException;
+import com.aquilabank.global.web.transaction.TransactionReadUpstream429Metrics;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import java.nio.charset.StandardCharsets;
@@ -57,6 +60,7 @@ import org.springframework.web.util.ContentCachingRequestWrapper;
 public class ApiExceptionHandler {
 
   private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
+  private static final String UPSTREAM_429_SOURCE_HEADER = "X-Aquila-429-Source";
   private static final String REJECT_REASON_HEADER = "X-Aquila-Reject-Reason";
   private static final String RATE_LIMIT_SCOPE_HEADER = "X-RateLimit-Scope";
   private static final String RATE_LIMIT_RETRY_AFTER_HEADER = "X-RateLimit-Retry-After-Seconds";
@@ -72,6 +76,7 @@ public class ApiExceptionHandler {
       Pattern.compile("^/internal/api/v1/auth/users/(\\d+)/memberships/(\\d+)/status$");
   private T3MicroQueryTimeoutSignal t3MicroQueryTimeoutSignal;
   private CommandIdempotencyPrometheusMetrics commandIdempotencyPrometheusMetrics;
+  private TransactionReadUpstream429Metrics transactionReadUpstream429Metrics;
 
   @Autowired(required = false)
   void setT3MicroQueryTimeoutSignal(T3MicroQueryTimeoutSignal t3MicroQueryTimeoutSignal) {
@@ -82,6 +87,12 @@ public class ApiExceptionHandler {
   void setCommandIdempotencyPrometheusMetrics(
       CommandIdempotencyPrometheusMetrics commandIdempotencyPrometheusMetrics) {
     this.commandIdempotencyPrometheusMetrics = commandIdempotencyPrometheusMetrics;
+  }
+
+  @Autowired(required = false)
+  public void setTransactionReadUpstream429Metrics(
+      TransactionReadUpstream429Metrics transactionReadUpstream429Metrics) {
+    this.transactionReadUpstream429Metrics = transactionReadUpstream429Metrics;
   }
 
   @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -123,8 +134,15 @@ public class ApiExceptionHandler {
   ResponseEntity<ApiErrorResponse> handleTooManyRequests(
       LoginThrottledException ex, HttpServletRequest request) {
     logInternalAuthStatusFailure(HttpStatus.TOO_MANY_REQUESTS, request, ex.getMessage());
+    String source = "security-filter";
+    String scope = securityScope(ex.scope());
+    recordTransactionReadUpstream429(source, request);
     return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
         .header("Retry-After", Long.toString(ex.retryAfterSeconds()))
+        .header(UPSTREAM_429_SOURCE_HEADER, source)
+        .header(REJECT_REASON_HEADER, source)
+        .header(RATE_LIMIT_SCOPE_HEADER, scope)
+        .header(RATE_LIMIT_RETRY_AFTER_HEADER, Long.toString(ex.retryAfterSeconds()))
         .body(
             new ApiErrorResponse(
                 Instant.now(),
@@ -138,9 +156,12 @@ public class ApiExceptionHandler {
   ResponseEntity<ApiErrorResponse> handleApiOverloadRejected(
       ApiOverloadRejectedException ex, HttpServletRequest request) {
     logInternalAuthStatusFailure(HttpStatus.TOO_MANY_REQUESTS, request, ex.getMessage());
+    String source = "backend-admission";
+    recordTransactionReadUpstream429(source, request);
     return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
         .header("Retry-After", Integer.toString(ex.retryAfterSeconds()))
-        .header(REJECT_REASON_HEADER, "backend-admission")
+        .header(UPSTREAM_429_SOURCE_HEADER, source)
+        .header(REJECT_REASON_HEADER, source)
         .header(RATE_LIMIT_SCOPE_HEADER, ex.group())
         .header(RATE_LIMIT_RETRY_AFTER_HEADER, Integer.toString(ex.retryAfterSeconds()))
         .header(
@@ -149,6 +170,28 @@ public class ApiExceptionHandler {
         .header(
             RATE_LIMIT_RETRY_JITTER_MILLIS_HEADER,
             Integer.toString(retryJitterMillis(ex.retryAfterSeconds())))
+        .body(
+            new ApiErrorResponse(
+                Instant.now(),
+                HttpStatus.TOO_MANY_REQUESTS.value(),
+                HttpStatus.TOO_MANY_REQUESTS.getReasonPhrase(),
+                ex.getMessage(),
+                request.getRequestURI()));
+  }
+
+  @ExceptionHandler(TransactionReadAccountFairnessRejectedException.class)
+  public ResponseEntity<ApiErrorResponse> handleTransactionReadAccountFairnessRejected(
+      TransactionReadAccountFairnessRejectedException ex, HttpServletRequest request) {
+    String source = TransactionReadAccountFairnessRejectedException.SOURCE;
+    recordTransactionReadUpstream429(source, request);
+    return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+        .header("Retry-After", "0")
+        .header(UPSTREAM_429_SOURCE_HEADER, source)
+        .header(REJECT_REASON_HEADER, source)
+        .header(RATE_LIMIT_SCOPE_HEADER, TransactionReadAccountFairnessRejectedException.SCOPE)
+        .header(RATE_LIMIT_RETRY_AFTER_HEADER, "0")
+        .header(RATE_LIMIT_RETRY_AFTER_MILLIS_HEADER, Integer.toString(SHORT_RETRY_AFTER_MILLIS))
+        .header(RATE_LIMIT_RETRY_JITTER_MILLIS_HEADER, Integer.toString(SHORT_RETRY_JITTER_MILLIS))
         .body(
             new ApiErrorResponse(
                 Instant.now(),
@@ -189,10 +232,13 @@ public class ApiExceptionHandler {
   ResponseEntity<ApiErrorResponse> handleT3MicroSaturationRejected(
       T3MicroSaturationRejectedException ex, HttpServletRequest request) {
     // 정상 방어 거절은 429로 분리해 query timeout 503 hard fail과 섞이지 않게 합니다.
+    String source = "saturation-guard";
+    recordTransactionReadUpstream429(source, request);
     return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
         .header("Retry-After", Integer.toString(ex.retryAfterSeconds()))
-        .header(REJECT_REASON_HEADER, "saturation-guard")
-        .header(RATE_LIMIT_SCOPE_HEADER, "saturation-guard")
+        .header(UPSTREAM_429_SOURCE_HEADER, source)
+        .header(REJECT_REASON_HEADER, source)
+        .header(RATE_LIMIT_SCOPE_HEADER, source)
         .header(RATE_LIMIT_RETRY_AFTER_HEADER, Integer.toString(ex.retryAfterSeconds()))
         .body(
             new ApiErrorResponse(
@@ -201,6 +247,29 @@ public class ApiExceptionHandler {
                 HttpStatus.TOO_MANY_REQUESTS.getReasonPhrase(),
                 ex.getMessage(),
                 request.getRequestURI()));
+  }
+
+  private String securityScope(LoginThrottleScope scope) {
+    if (scope == null) {
+      return "security";
+    }
+    return "security-" + scope.name().toLowerCase(java.util.Locale.ROOT);
+  }
+
+  private void recordTransactionReadUpstream429(String source, HttpServletRequest request) {
+    if (transactionReadUpstream429Metrics == null) {
+      return;
+    }
+    String path = request.getRequestURI();
+    String endpoint = transactionReadUpstream429Metrics.record(source, path);
+    if (!"other".equals(endpoint)) {
+      log.warn(
+          "transaction read upstream 429 attributed requestId={} source={} endpoint={} path={}",
+          RequestTraceContext.currentRequestId().orElse("-"),
+          source,
+          endpoint,
+          path);
+    }
   }
 
   @ExceptionHandler(QueryTimeoutException.class)
