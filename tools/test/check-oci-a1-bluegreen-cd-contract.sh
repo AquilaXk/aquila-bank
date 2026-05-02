@@ -242,6 +242,7 @@ script_patterns=(
   'limit_req_zone \$binary_remote_addr zone=aquila_bank_api_per_ip:10m rate=30r/s;'
   'real_ip_header ${real_ip_header};'
   'real_ip_recursive on;'
+  'real_ip_trusted_proxies="${NGINX_REAL_IP_TRUSTED_PROXIES:-${OCI_A1_NGINX_REAL_IP_TRUSTED_PROXIES:-10.60.0.0/16}}"'
   'render_nginx_real_ip_trusted_proxy_lines "${real_ip_trusted_proxies}"'
   'limit_req_zone \$binary_remote_addr zone=aquila_bank_auth_per_ip:10m rate=5r/s;'
   'limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_hot_per_ip:10m rate=${transaction_read_hot_rate_rps}r/s;'

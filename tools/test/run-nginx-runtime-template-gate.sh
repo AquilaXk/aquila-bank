@@ -116,8 +116,8 @@ fi
 
 if ! contains_pattern "real_ip_header X-Forwarded-For;" ||
   ! contains_pattern "real_ip_recursive on;" ||
-  ! contains_pattern "limiter key stays on TCP peer address"; then
-  echo "[nginx-runtime-gate] rendered config must keep safe real IP limiter defaults" >&2
+  ! contains_pattern "set_real_ip_from 10.60.0.0/16;"; then
+  echo "[nginx-runtime-gate] rendered config must include OCI trusted proxy real IP defaults" >&2
   exit 1
 fi
 

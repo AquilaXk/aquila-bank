@@ -29,7 +29,7 @@
   - `NGINX_EDGE_RETRY_AFTER_MILLIS` 기본값 `150`
   - `NGINX_EDGE_RETRY_JITTER_MILLIS` 기본값 `100`
   - `NGINX_REAL_IP_HEADER` 기본값 `X-Forwarded-For`, 허용값 `X-Forwarded-For` 또는 `X-Real-IP`
-  - `NGINX_REAL_IP_TRUSTED_PROXIES` 기본값 empty, comma-separated trusted LB/CDN CIDR
+  - `NGINX_REAL_IP_TRUSTED_PROXIES` 기본값 `10.60.0.0/16`, comma-separated trusted LB/CDN CIDR, `none`이면 TCP peer address
   - `NGINX_TRANSACTION_READ_HOT_RATE_RPS` 기본값 `80`
   - `NGINX_TRANSACTION_READ_ARCHIVE_RATE_RPS` 기본값 `80`
   - `NGINX_TRANSACTION_READ_HOT_BURST` 기본값 `10`
@@ -56,7 +56,7 @@ bash tools/ops/render-nginx-runtime-config.sh /tmp/aquila-bank-nginx.conf ops/ng
 ## Rate Limit 기준
 
 - `NGINX_REAL_IP_TRUSTED_PROXIES`가 설정된 proxy/LB CIDR에서 온 요청만 `NGINX_REAL_IP_HEADER` 값을 real client IP로 승격합니다.
-- trusted proxy가 없으면 limiter key는 기존처럼 TCP peer address 기준입니다. header spoofing 방지를 위해 운영 LB/CDN subnet만 등록합니다.
+- OCI paid A1 기본값은 VCN CIDR `10.60.0.0/16`입니다. LB/CDN subnet을 더 좁게 알면 해당 CIDR로 줄이고, TCP peer 기준으로 되돌릴 때만 `none`을 사용합니다.
 - `limit_req_zone $binary_remote_addr zone=aquila_bank_api_per_ip:10m rate=30r/s;`
 - `limit_req_zone $binary_remote_addr zone=aquila_bank_auth_per_ip:10m rate=5r/s;`
 - `limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_hot_per_ip:10m rate=80r/s;`
