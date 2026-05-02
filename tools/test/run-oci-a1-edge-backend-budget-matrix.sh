@@ -156,7 +156,7 @@ cat >"${report_md}" <<REPORT
 - gate_status=pass
 - runtime: OCI A1 Flex 4 OCPU / 24GB + data 200GB self-managed PostgreSQL 18
 - expected 429 source: ${expected_429_source}
-- live target: arrival-16rps 429 = 0, paced-weighted-vu16 429 <= ${weighted_vu16_max_429_rate}, short-burst-48 429 <= ${short_burst48_max_429_rate}, delayed ratio < 25%, 502/503 = 0, accepted request p95 < 350ms
+- live target: arrival-16rps 429 = 0, paced-weighted-vu16 429 <= ${weighted_vu16_max_429_rate}, short-burst-48 429 <= ${short_burst48_max_429_rate}, delayed ratio < 25%, 502/503 = 0, accepted request p95 <= 200ms, p99 <= 300ms
 
 ## Matrix
 

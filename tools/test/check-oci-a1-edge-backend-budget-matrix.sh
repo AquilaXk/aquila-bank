@@ -64,6 +64,7 @@ grep -F "| Hikari max lifetime ms | 600000 |" "${report_md}" >/dev/null
 grep -F "| Hikari keepalive time ms | 60000 |" "${report_md}" >/dev/null
 grep -F "| Backend API keepalive timeout seconds | 2 |" "${report_md}" >/dev/null
 grep -F "| expected 429 source | edge-or-backend-admission |" "${report_md}" >/dev/null
+grep -F "accepted request p95 <= 200ms, p99 <= 300ms" "${report_md}" >/dev/null
 
 echo "[oci-a1-budget-matrix] source contract"
 grep -F 'limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_hot_per_ip:10m rate=${NGINX_TRANSACTION_READ_HOT_RATE_RPS}r/s;' ops/nginx/nginx.conf >/dev/null
@@ -83,3 +84,5 @@ grep -F 'group: transaction-read-archive' back/src/main/resources/application.ym
 grep -F 'OCI_PUBLIC_ARRIVAL_RATES:-4,5,6,7,8,10,16' tools/test/run-oci-public-api-arrival-capacity-gate.sh >/dev/null
 grep -F 'WEIGHTED_SOAK_10M_MAX_TOTAL_429_RATE:-0.05' tools/test/run-transaction-read-weighted-10m-soak-gate.sh >/dev/null
 grep -F 'SHORT_BURST_SMOOTHING_MAX_BURST48_429_RATE:-0.10' tools/test/run-transaction-read-short-burst-smoothing-matrix.sh >/dev/null
+grep -F 'SHORT_BURST_SMOOTHING_MAX_ACCEPTED_P95_MS:-200' tools/test/run-transaction-read-short-burst-smoothing-matrix.sh >/dev/null
+grep -F 'SHORT_BURST_SMOOTHING_MAX_ACCEPTED_P99_MS:-300' tools/test/run-transaction-read-short-burst-smoothing-matrix.sh >/dev/null
