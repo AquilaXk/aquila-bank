@@ -61,6 +61,7 @@ public class ApiExceptionHandler {
 
   private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
   private static final String UPSTREAM_429_SOURCE_HEADER = "X-Aquila-429-Source";
+  private static final String REJECT_SOURCE_HEADER = "X-Aquila-Reject-Source";
   private static final String REJECT_REASON_HEADER = "X-Aquila-Reject-Reason";
   private static final String RATE_LIMIT_SCOPE_HEADER = "X-RateLimit-Scope";
   private static final String RATE_LIMIT_RETRY_AFTER_HEADER = "X-RateLimit-Retry-After-Seconds";
@@ -140,6 +141,7 @@ public class ApiExceptionHandler {
     return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
         .header("Retry-After", Long.toString(ex.retryAfterSeconds()))
         .header(UPSTREAM_429_SOURCE_HEADER, source)
+        .header(REJECT_SOURCE_HEADER, "security")
         .header(REJECT_REASON_HEADER, source)
         .header(RATE_LIMIT_SCOPE_HEADER, scope)
         .header(RATE_LIMIT_RETRY_AFTER_HEADER, Long.toString(ex.retryAfterSeconds()))
@@ -161,6 +163,7 @@ public class ApiExceptionHandler {
     return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
         .header("Retry-After", Integer.toString(ex.retryAfterSeconds()))
         .header(UPSTREAM_429_SOURCE_HEADER, source)
+        .header(REJECT_SOURCE_HEADER, "backend")
         .header(REJECT_REASON_HEADER, source)
         .header(RATE_LIMIT_SCOPE_HEADER, ex.group())
         .header(RATE_LIMIT_RETRY_AFTER_HEADER, Integer.toString(ex.retryAfterSeconds()))
@@ -187,6 +190,7 @@ public class ApiExceptionHandler {
     return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
         .header("Retry-After", "0")
         .header(UPSTREAM_429_SOURCE_HEADER, source)
+        .header(REJECT_SOURCE_HEADER, "backend")
         .header(REJECT_REASON_HEADER, source)
         .header(RATE_LIMIT_SCOPE_HEADER, TransactionReadAccountFairnessRejectedException.SCOPE)
         .header(RATE_LIMIT_RETRY_AFTER_HEADER, "0")
@@ -237,6 +241,7 @@ public class ApiExceptionHandler {
     return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
         .header("Retry-After", Integer.toString(ex.retryAfterSeconds()))
         .header(UPSTREAM_429_SOURCE_HEADER, source)
+        .header(REJECT_SOURCE_HEADER, "backend")
         .header(REJECT_REASON_HEADER, source)
         .header(RATE_LIMIT_SCOPE_HEADER, source)
         .header(RATE_LIMIT_RETRY_AFTER_HEADER, Integer.toString(ex.retryAfterSeconds()))

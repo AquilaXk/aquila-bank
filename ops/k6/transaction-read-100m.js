@@ -371,7 +371,14 @@ function rejectSource(response) {
   if (source === "nginx-edge" || reason === "edge-rate-limit") {
     return "edge";
   }
-  if (reason === "backend-admission") {
+  if (
+    source === "backend" ||
+    source === "security" ||
+    reason === "backend-admission" ||
+    reason === "saturation-guard" ||
+    reason === "fairness-limiter" ||
+    reason === "security-filter"
+  ) {
     return "backend";
   }
   return "unknown";

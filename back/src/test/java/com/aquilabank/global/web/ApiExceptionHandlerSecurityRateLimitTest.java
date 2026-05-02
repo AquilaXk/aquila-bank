@@ -28,6 +28,7 @@ class ApiExceptionHandlerSecurityRateLimitTest {
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
     assertThat(response.getHeaders().getFirst("Retry-After")).isEqualTo("3");
     assertThat(response.getHeaders().getFirst("X-Aquila-429-Source")).isEqualTo("security-filter");
+    assertThat(response.getHeaders().getFirst("X-Aquila-Reject-Source")).isEqualTo("security");
     assertThat(response.getHeaders().getFirst("X-Aquila-Reject-Reason"))
         .isEqualTo("security-filter");
     assertThat(response.getHeaders().getFirst("X-RateLimit-Scope")).isEqualTo("security-ip");

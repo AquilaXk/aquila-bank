@@ -28,6 +28,7 @@ class ApiExceptionHandlerApiOverloadTest {
     assertThat(response.getHeaders().getFirst("Retry-After")).isEqualTo("0");
     assertThat(response.getHeaders().getFirst("X-Aquila-429-Source"))
         .isEqualTo("backend-admission");
+    assertThat(response.getHeaders().getFirst("X-Aquila-Reject-Source")).isEqualTo("backend");
     assertThat(response.getHeaders().getFirst("X-Aquila-Reject-Reason"))
         .isEqualTo("backend-admission");
     assertThat(response.getHeaders().getFirst("X-RateLimit-Scope")).isEqualTo("transaction-read");
