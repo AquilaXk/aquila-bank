@@ -11,6 +11,7 @@ Environment:
   OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON required single-source k6 summary JSON
   OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON  required multi-source k6 summary JSON
   OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV           required TSV: run,realip_remote_addr,limit_req_status,count
+  OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV        required TSV: source_name,docker_context,realip_remote_addr,edge_429_rate,backend_429_rate,accepted_p95_ms,five_xx_count
   OCI_REAL_MULTISOURCE_OUTPUT_DIR                 default build/reports/k6/<name>
 USAGE
 }
@@ -38,10 +39,12 @@ contexts_csv="${OCI_REAL_MULTISOURCE_CONTEXTS:-}"
 single_summary="${OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON:-}"
 multi_summary="${OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON:-}"
 nginx_status_tsv="${OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV:-}"
+source_evidence_tsv="${OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV:-}"
 output_dir="${OCI_REAL_MULTISOURCE_OUTPUT_DIR:-build/reports/k6/${name}}"
 multi_source_runner="tools/test/run-k6-transaction-100m-multisource.sh"
 replay_gate="tools/test/run-oci-real-ip-multisource-capacity-replay.sh"
 contexts_tsv="${output_dir}/${name}-real-multisource-contexts.tsv"
+source_summary_tsv="${output_dir}/${name}-real-multisource-source-summary.tsv"
 report_md="${output_dir}/${name}-real-multisource-public-evidence.md"
 
 contexts=()
@@ -74,6 +77,56 @@ parse_contexts() {
   fi
 }
 
+validate_source_evidence() {
+  require_file "OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV" "${source_evidence_tsv}"
+  awk -F '\t' -v min_sources="${#contexts[@]}" '
+    NR == 1 {
+      for (i = 1; i <= NF; i++) col[$i] = i
+      split("source_name docker_context realip_remote_addr edge_429_rate backend_429_rate accepted_p95_ms five_xx_count", required, " ")
+      for (i in required) {
+        if (!(required[i] in col)) {
+          printf "missing required column: %s\n", required[i] > "/dev/stderr"
+          exit 2
+        }
+      }
+      print
+      next
+    }
+    {
+      source_name = $(col["source_name"])
+      context = $(col["docker_context"])
+      real_ip = $(col["realip_remote_addr"])
+      edge_429 = $(col["edge_429_rate"]) + 0
+      backend_429 = $(col["backend_429_rate"]) + 0
+      p95 = $(col["accepted_p95_ms"]) + 0
+      five_xx = $(col["five_xx_count"]) + 0
+      if (source_name == "" || context == "" || real_ip == "") {
+        print "source evidence contains blank source/context/real IP" > "/dev/stderr"
+        exit 3
+      }
+      if (edge_429 < 0 || edge_429 > 1 || backend_429 < 0 || backend_429 > 1 || p95 <= 0 || five_xx != 0) {
+        printf "source evidence metric out of contract: source=%s edge429=%s backend429=%s p95=%s five_xx=%s\n", source_name, edge_429, backend_429, p95, five_xx > "/dev/stderr"
+        exit 4
+      }
+      sources[source_name] = 1
+      real_ips[real_ip] = 1
+      print
+    }
+    END {
+      if (NR <= 1) {
+        print "source evidence is empty" > "/dev/stderr"
+        exit 5
+      }
+      for (source in sources) source_count++
+      for (ip in real_ips) real_ip_count++
+      if (source_count < min_sources || real_ip_count < min_sources) {
+        printf "source evidence requires at least %s distinct sources and real IPs: sources=%s real_ips=%s\n", min_sources, source_count, real_ip_count > "/dev/stderr"
+        exit 6
+      }
+    }
+  ' "${source_evidence_tsv}" >"${source_summary_tsv}"
+}
+
 print_plan() {
   parse_contexts
   echo "[oci-real-multisource-public-evidence] name=${name}"
@@ -84,6 +137,7 @@ print_plan() {
   echo "[oci-real-multisource-public-evidence] single_source_summary=${single_summary:-missing}"
   echo "[oci-real-multisource-public-evidence] multi_source_summary=${multi_summary:-missing}"
   echo "[oci-real-multisource-public-evidence] nginx_status_tsv=${nginx_status_tsv:-missing}"
+  echo "[oci-real-multisource-public-evidence] source_evidence_tsv=${source_evidence_tsv:-missing}"
   echo "[oci-real-multisource-public-evidence] multi_source_runner=${multi_source_runner}"
   echo "[oci-real-multisource-public-evidence] replay_gate=${replay_gate}"
   echo "[oci-real-multisource-public-evidence] contexts_tsv=${contexts_tsv}"
@@ -95,12 +149,14 @@ if [[ "${mode}" == "print-plan" ]]; then
   require_file "OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON" "${single_summary}"
   require_file "OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON" "${multi_summary}"
   require_file "OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV" "${nginx_status_tsv}"
+  require_file "OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV" "${source_evidence_tsv}"
   exit 0
 fi
 
 require_file "OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON" "${single_summary}"
 require_file "OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON" "${multi_summary}"
 require_file "OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV" "${nginx_status_tsv}"
+require_file "OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV" "${source_evidence_tsv}"
 mkdir -p "${output_dir}"
 
 {
@@ -109,6 +165,8 @@ mkdir -p "${output_dir}"
     printf "%s\t%s\n" "$((i + 1))" "${contexts[${i}]}"
   done
 } >"${contexts_tsv}"
+
+validate_source_evidence
 
 replay_output="$(
   OCI_REAL_IP_REPLAY_NAME="${name}" \
@@ -131,6 +189,7 @@ cat >"${report_md}" <<REPORT
 - true multi-source public traffic evidence: fixed
 - single-source vs multi-source comparison: fixed
 - real IP bucket split: verified
+- source-level real IP/429/latency split: verified
 - multi-source runner: ${multi_source_runner}
 - replay gate report: ${replay_report}
 
@@ -143,6 +202,7 @@ cat >"${report_md}" <<REPORT
 ## Artifacts
 
 - contexts TSV: ${contexts_tsv}
+- source summary TSV: ${source_summary_tsv}
 - replay summary TSV: ${replay_summary}
 - single-source summary JSON: ${single_summary}
 - multi-source summary JSON: ${multi_summary}
