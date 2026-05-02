@@ -68,6 +68,7 @@ grep -F "duration=10m" <<<"${plan}" >/dev/null
 grep -F "max_total_429_rate=0.05" <<<"${plan}" >/dev/null
 grep -F "max_edge_429_rate=0.05" <<<"${plan}" >/dev/null
 grep -F "max_backend_429_rate=0.05" <<<"${plan}" >/dev/null
+grep -F "max_delayed_rate=0.25" <<<"${plan}" >/dev/null
 grep -F "max_retry_after_p95_ms=250" <<<"${plan}" >/dev/null
 grep -F "live_soak_required=true" <<<"${plan}" >/dev/null
 
@@ -120,6 +121,19 @@ if WEIGHTED_SOAK_10M_NAME=weighted-retry-fail \
   WEIGHTED_SOAK_10M_OUTPUT_DIR="${output_dir}" \
     "${runner}" >/dev/null 2>&1; then
   echo "weighted 10m gate unexpectedly passed Retry-After p95 failure" >&2
+  exit 1
+fi
+
+echo "[transaction-read-weighted-10m] delayed ratio fail report"
+jq '.metrics.aquila_transaction_edge_delayed_rate.values.rate = 0.92' \
+  "${summary_json}" >"${summary_json}.delayed-fail"
+if WEIGHTED_SOAK_10M_NAME=weighted-delayed-fail \
+  WEIGHTED_SOAK_10M_SUMMARY_JSON="${summary_json}.delayed-fail" \
+  WEIGHTED_SOAK_10M_ACCESS_LOG="${access_log}" \
+  WEIGHTED_SOAK_10M_HIKARI_LOG="${hikari_log}" \
+  WEIGHTED_SOAK_10M_OUTPUT_DIR="${output_dir}" \
+    "${runner}" >/dev/null 2>&1; then
+  echo "weighted 10m gate unexpectedly passed delayed ratio failure" >&2
   exit 1
 fi
 

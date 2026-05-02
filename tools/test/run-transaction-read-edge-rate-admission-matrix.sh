@@ -12,6 +12,7 @@ Environment:
   EDGE_RATE_MATRIX_MAX_DELAYED_RATE        default 0.25
   EDGE_RATE_MATRIX_MAX_VU16_429_RATE       default 0.10
   EDGE_RATE_MATRIX_MAX_BURST48_429_RATE    default 0.10
+  EDGE_RATE_MATRIX_MAX_BURST64_429_RATE    default 0.10
   EDGE_RATE_MATRIX_MAX_BACKEND_429_RATE    default 0.0005
   EDGE_RATE_MATRIX_MAX_BACKEND_REJECTED    default 0
   EDGE_RATE_MATRIX_MAX_BACKEND_PENDING     default 0
@@ -45,6 +46,7 @@ output_dir="${EDGE_RATE_MATRIX_OUTPUT_DIR:-build/reports/k6/${name}}"
 max_delayed_rate="${EDGE_RATE_MATRIX_MAX_DELAYED_RATE:-0.25}"
 max_vu16_429_rate="${EDGE_RATE_MATRIX_MAX_VU16_429_RATE:-0.10}"
 max_burst48_429_rate="${EDGE_RATE_MATRIX_MAX_BURST48_429_RATE:-0.10}"
+max_burst64_429_rate="${EDGE_RATE_MATRIX_MAX_BURST64_429_RATE:-0.10}"
 max_backend_429_rate="${EDGE_RATE_MATRIX_MAX_BACKEND_429_RATE:-0.0005}"
 max_backend_rejected="${EDGE_RATE_MATRIX_MAX_BACKEND_REJECTED:-0}"
 max_backend_pending="${EDGE_RATE_MATRIX_MAX_BACKEND_PENDING:-0}"
@@ -147,6 +149,7 @@ print_plan() {
   echo "[transaction-read-edge-rate-matrix] max_delayed_rate=${max_delayed_rate}"
   echo "[transaction-read-edge-rate-matrix] max_vu16_429_rate=${max_vu16_429_rate}"
   echo "[transaction-read-edge-rate-matrix] max_burst48_429_rate=${max_burst48_429_rate}"
+  echo "[transaction-read-edge-rate-matrix] max_burst64_429_rate=${max_burst64_429_rate}"
   echo "[transaction-read-edge-rate-matrix] max_backend_429_rate=${max_backend_429_rate}"
   echo "[transaction-read-edge-rate-matrix] max_backend_rejected=${max_backend_rejected}"
   echo "[transaction-read-edge-rate-matrix] max_backend_pending=${max_backend_pending}"
@@ -159,6 +162,7 @@ print_plan() {
 require_rate "EDGE_RATE_MATRIX_MAX_DELAYED_RATE" "${max_delayed_rate}"
 require_rate "EDGE_RATE_MATRIX_MAX_VU16_429_RATE" "${max_vu16_429_rate}"
 require_rate "EDGE_RATE_MATRIX_MAX_BURST48_429_RATE" "${max_burst48_429_rate}"
+require_rate "EDGE_RATE_MATRIX_MAX_BURST64_429_RATE" "${max_burst64_429_rate}"
 require_rate "EDGE_RATE_MATRIX_MAX_BACKEND_429_RATE" "${max_backend_429_rate}"
 require_non_negative_integer "EDGE_RATE_MATRIX_MAX_BACKEND_REJECTED" "${max_backend_rejected}"
 require_non_negative_integer "EDGE_RATE_MATRIX_MAX_BACKEND_PENDING" "${max_backend_pending}"
@@ -189,6 +193,7 @@ awk -F '\t' \
   -v max_delayed="${max_delayed_rate}" \
   -v max_vu16="${max_vu16_429_rate}" \
   -v max_burst48="${max_burst48_429_rate}" \
+  -v max_burst64="${max_burst64_429_rate}" \
   -v max_backend_429="${max_backend_429_rate}" \
   -v max_backend_rejected="${max_backend_rejected}" \
   -v max_pending="${max_backend_pending}" \
@@ -203,7 +208,7 @@ awk -F '\t' \
     for (i = 1; i <= NF; i++) {
       col[$i] = i
     }
-    print "edge_rate_rps\tstatus\tsource_mode\thot_burst\tarchive_burst\tbackend_admission_max\thikari_max\tarrival16_delayed_rate\tvu16_429_rate\tburst48_429_rate\tbackend_429_rate\tbackend_rejected_count\tbackend_pending\tbackend_cpu_percent\thikari_warning_count"
+    print "edge_rate_rps\tstatus\tsource_mode\thot_burst\tarchive_burst\tbackend_admission_max\thikari_max\tarrival16_delayed_rate\tvu16_429_rate\tburst48_429_rate\tburst64_429_rate\tbackend_429_rate\tbackend_rejected_count\tbackend_pending\tbackend_cpu_percent\thikari_warning_count"
     next
   }
   {
@@ -211,24 +216,25 @@ awk -F '\t' \
     arrival_delayed = value("arrival16_delayed_rate", "0") + 0
     vu16_429 = value("vu16_429_rate", "0") + 0
     burst48_429 = value("burst48_429_rate", "0") + 0
+    burst64_429 = value("burst64_429_rate", "1") + 0
     backend_429 = value("backend_429_rate", "0") + 0
     backend_rejected = value("backend_rejected_count", "0") + 0
     backend_pending = value("backend_pending", "0") + 0
     backend_cpu = value("backend_cpu_percent", "0") + 0
     hikari_warnings = value("hikari_warning_count", "0") + 0
     status = "pass"
-    if (arrival_delayed > max_delayed || vu16_429 > max_vu16 || burst48_429 > max_burst48 || backend_429 > max_backend_429 || backend_rejected > max_backend_rejected || backend_pending > max_pending || backend_cpu > max_cpu || hikari_warnings > max_hikari) {
+    if (arrival_delayed > max_delayed || vu16_429 > max_vu16 || burst48_429 > max_burst48 || burst64_429 > max_burst64 || backend_429 > max_backend_429 || backend_rejected > max_backend_rejected || backend_pending > max_pending || backend_cpu > max_cpu || hikari_warnings > max_hikari) {
       status = "fail"
     }
     if (status == "pass") {
       pass_count++
       recommended = rate
     }
-    printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+    printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
       rate, status, value("source_mode", "n/a"), value("hot_burst", "0"), value("archive_burst", "0"),
       value("backend_admission_max", "0"), value("hikari_max", "0"),
       value("arrival16_delayed_rate", "0"), value("vu16_429_rate", "0"), value("burst48_429_rate", "0"),
-      value("backend_429_rate", "0"), value("backend_rejected_count", "0"),
+      value("burst64_429_rate", "0"), value("backend_429_rate", "0"), value("backend_rejected_count", "0"),
       value("backend_pending", "0"), value("backend_cpu_percent", "0"), value("hikari_warning_count", "0")
   }
   END {
@@ -251,11 +257,11 @@ fi
 
 matrix_table="$(awk -F '\t' '
   BEGIN {
-    print "| Edge rate | Status | Source | Admission | Hikari | arrival16 delayed | VU16 429 | burst48 429 | Backend 429 | Backend rejected | Backend pending | CPU | Hikari warnings |"
-    print "| ---: | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
+    print "| Edge rate | Status | Source | Admission | Hikari | arrival16 delayed | VU16 429 | burst48 429 | burst64 429 | Backend 429 | Backend rejected | Backend pending | CPU | Hikari warnings |"
+    print "| ---: | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
   }
   NR > 1 {
-    printf "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n", $1, $2, $3, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
+    printf "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n", $1, $2, $3, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
   }
 ' "${summary_tsv}")"
 
@@ -271,6 +277,7 @@ cat >"${report_md}" <<REPORT
 - delayed budget: < ${max_delayed_rate}
 - VU16 429 budget: < ${max_vu16_429_rate}
 - burst-48 429 budget: < ${max_burst48_429_rate}
+- burst-64 429 budget: < ${max_burst64_429_rate}
 - backend 429 budget: < ${max_backend_429_rate}
 - backend rejected budget: <= ${max_backend_rejected}
 - backend CPU budget: <= ${max_backend_cpu_percent}%

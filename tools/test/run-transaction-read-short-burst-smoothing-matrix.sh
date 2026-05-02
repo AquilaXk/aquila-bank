@@ -9,8 +9,9 @@ Environment:
   SHORT_BURST_SMOOTHING_NAME                  default transaction-read-short-burst-smoothing-<timestamp>
   SHORT_BURST_SMOOTHING_INPUT_TSV             required TSV with nodelay/delay candidates
   SHORT_BURST_SMOOTHING_OUTPUT_DIR            default build/reports/k6/<gate>
-  SHORT_BURST_SMOOTHING_REQUIRED_POLICIES     default nodelay,delay1
+  SHORT_BURST_SMOOTHING_REQUIRED_POLICIES     default nodelay,delay1,burst64
   SHORT_BURST_SMOOTHING_MAX_BURST48_429_RATE  default 0.10
+  SHORT_BURST_SMOOTHING_MAX_BURST64_429_RATE  default 0.10
   SHORT_BURST_SMOOTHING_MAX_ACCEPTED_P95_MS   default 200
   SHORT_BURST_SMOOTHING_MAX_ACCEPTED_P99_MS   default 300
   SHORT_BURST_SMOOTHING_MAX_RETRY_AFTER_P95_MS default 250
@@ -40,8 +41,9 @@ done
 name="${SHORT_BURST_SMOOTHING_NAME:-transaction-read-short-burst-smoothing-$(date +%Y-%m-%d-%H%M%S)}"
 input_tsv="${SHORT_BURST_SMOOTHING_INPUT_TSV:-}"
 output_dir="${SHORT_BURST_SMOOTHING_OUTPUT_DIR:-build/reports/k6/${name}}"
-required_policies="${SHORT_BURST_SMOOTHING_REQUIRED_POLICIES:-nodelay,delay1}"
+required_policies="${SHORT_BURST_SMOOTHING_REQUIRED_POLICIES:-nodelay,delay1,burst64}"
 max_burst48_429_rate="${SHORT_BURST_SMOOTHING_MAX_BURST48_429_RATE:-0.10}"
+max_burst64_429_rate="${SHORT_BURST_SMOOTHING_MAX_BURST64_429_RATE:-0.10}"
 max_accepted_p95_ms="${SHORT_BURST_SMOOTHING_MAX_ACCEPTED_P95_MS:-200}"
 max_accepted_p99_ms="${SHORT_BURST_SMOOTHING_MAX_ACCEPTED_P99_MS:-300}"
 max_retry_after_p95_ms="${SHORT_BURST_SMOOTHING_MAX_RETRY_AFTER_P95_MS:-250}"
@@ -127,6 +129,7 @@ print_plan() {
   echo "[transaction-read-short-burst-smoothing] required_policies=${required_policies}"
   echo "[transaction-read-short-burst-smoothing] missing_required_policies=$(missing_required_policies "${policies}")"
   echo "[transaction-read-short-burst-smoothing] max_burst48_429_rate=${max_burst48_429_rate}"
+  echo "[transaction-read-short-burst-smoothing] max_burst64_429_rate=${max_burst64_429_rate}"
   echo "[transaction-read-short-burst-smoothing] max_accepted_p95_ms=${max_accepted_p95_ms}"
   echo "[transaction-read-short-burst-smoothing] max_accepted_p99_ms=${max_accepted_p99_ms}"
   echo "[transaction-read-short-burst-smoothing] max_retry_after_p95_ms=${max_retry_after_p95_ms}"
@@ -138,6 +141,7 @@ print_plan() {
 }
 
 require_rate "SHORT_BURST_SMOOTHING_MAX_BURST48_429_RATE" "${max_burst48_429_rate}"
+require_rate "SHORT_BURST_SMOOTHING_MAX_BURST64_429_RATE" "${max_burst64_429_rate}"
 require_rate "SHORT_BURST_SMOOTHING_MAX_DELAYED_RATE" "${max_delayed_rate}"
 require_rate "SHORT_BURST_SMOOTHING_MAX_BACKEND_429_RATE" "${max_backend_429_rate}"
 require_non_negative_number "SHORT_BURST_SMOOTHING_MAX_ACCEPTED_P95_MS" "${max_accepted_p95_ms}"
@@ -167,6 +171,7 @@ fi
 mkdir -p "${output_dir}"
 awk -F '\t' \
   -v max_burst48="${max_burst48_429_rate}" \
+  -v max_burst64="${max_burst64_429_rate}" \
   -v max_p95="${max_accepted_p95_ms}" \
   -v max_p99="${max_accepted_p99_ms}" \
   -v max_retry_p95="${max_retry_after_p95_ms}" \
@@ -181,12 +186,13 @@ awk -F '\t' \
     for (i = 1; i <= NF; i++) {
       col[$i] = i
     }
-    print "policy\tstatus\thot_limit_mode\tarchive_limit_mode\thot_burst\tarchive_burst\tburst48_429_rate\taccepted_p95_ms\taccepted_p99_ms\tretry_after_p95_ms\tedge_delayed_rate\tfive_xx_count\tbackend_429_rate\tbackend_pending\thikari_warning_count"
+    print "policy\tstatus\thot_limit_mode\tarchive_limit_mode\thot_burst\tarchive_burst\tburst48_429_rate\tburst64_429_rate\taccepted_p95_ms\taccepted_p99_ms\tretry_after_p95_ms\tedge_delayed_rate\tfive_xx_count\tbackend_429_rate\tbackend_pending\thikari_warning_count"
     next
   }
   {
     policy = value("policy", "unknown")
     burst48 = value("burst48_429_rate", "1") + 0
+    burst64 = value("burst64_429_rate", "1") + 0
     accepted_p95 = value("accepted_p95_ms", "999999") + 0
     accepted_p99 = value("accepted_p99_ms", "999999") + 0
     retry_after_p95 = value("retry_after_p95_ms", "999999") + 0
@@ -196,7 +202,7 @@ awk -F '\t' \
     backend_pending = value("backend_pending", "1") + 0
     hikari_warnings = value("hikari_warning_count", "1") + 0
     status = "pass"
-    if (burst48 > max_burst48 || accepted_p95 > max_p95 || accepted_p99 > max_p99 || retry_after_p95 > max_retry_p95 || delayed > max_delayed || five_xx > 0 || backend_429 > max_backend_429 || backend_pending > 0 || hikari_warnings > 0) {
+    if (burst48 > max_burst48 || burst64 > max_burst64 || accepted_p95 > max_p95 || accepted_p99 > max_p99 || retry_after_p95 > max_retry_p95 || delayed > max_delayed || five_xx > 0 || backend_429 > max_backend_429 || backend_pending > 0 || hikari_warnings > 0) {
       status = "fail"
     }
     if (status == "pass" && recommended == "") {
@@ -205,10 +211,10 @@ awk -F '\t' \
     if (status == "pass") {
       pass_count++
     }
-    printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+    printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
       policy, status, value("hot_limit_mode", "n/a"), value("archive_limit_mode", "n/a"),
       value("hot_burst", "0"), value("archive_burst", "0"), value("burst48_429_rate", "0"),
-      value("accepted_p95_ms", "0"), value("accepted_p99_ms", "0"), value("retry_after_p95_ms", "0"), value("edge_delayed_rate", "0"),
+      value("burst64_429_rate", "0"), value("accepted_p95_ms", "0"), value("accepted_p99_ms", "0"), value("retry_after_p95_ms", "0"), value("edge_delayed_rate", "0"),
       value("five_xx_count", "0"), value("backend_429_rate", "0"), value("backend_pending", "0"),
       value("hikari_warning_count", "0")
   }
@@ -229,11 +235,11 @@ fi
 
 matrix_table="$(awk -F '\t' '
   BEGIN {
-    print "| Policy | Status | Hot mode | Archive mode | burst48 429 | p95 ms | p99 ms | Retry-After p95 ms | delayed rate | 5xx | backend 429 | backend pending | Hikari warnings |"
-    print "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
+    print "| Policy | Status | Hot mode | Archive mode | burst48 429 | burst64 429 | p95 ms | p99 ms | Retry-After p95 ms | delayed rate | 5xx | backend 429 | backend pending | Hikari warnings |"
+    print "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
   }
   NR > 1 {
-    printf "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n", $1, $2, $3, $4, $7, $8, $9, $10, $11, $12, $13, $14, $15
+    printf "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n", $1, $2, $3, $4, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
   }
 ' "${summary_tsv}")"
 
@@ -247,6 +253,7 @@ cat >"${report_md}" <<REPORT
 - candidate policies: $(candidate_policies)
 - required policies: ${required_policies}
 - burst-48 429 budget: <= ${max_burst48_429_rate}
+- burst-64 429 budget: <= ${max_burst64_429_rate}
 - accepted p95 budget: <= ${max_accepted_p95_ms}ms
 - accepted p99 budget: <= ${max_accepted_p99_ms}ms
 - Retry-After contract: fixed 150ms + jitter 100ms
@@ -261,7 +268,8 @@ ${matrix_table}
 
 ## Contract Notes
 
-- \`delay=1\` keeps the first small excess burst bounded in Nginx without relying on a deep delayed queue.
+- \`burst64\` profile raises per-source rate/burst and uses \`nodelay\` so success cannot hide behind delayed 200s.
+- \`delay=1\` keeps the previous balanced queue option for rollback comparison.
 - \`delay=0\` renders \`nodelay\` and is the rollback path if staging p95 regresses.
 - Nginx OSS does not expose per-request limiter queue depth, so Retry-After stays a fixed client backpressure contract.
 

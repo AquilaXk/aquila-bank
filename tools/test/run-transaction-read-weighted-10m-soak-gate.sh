@@ -17,6 +17,7 @@ Environment:
   WEIGHTED_SOAK_10M_MAX_TOTAL_429_RATE    default 0.05
   WEIGHTED_SOAK_10M_MAX_EDGE_429_RATE     default 0.05
   WEIGHTED_SOAK_10M_MAX_BACKEND_429_RATE  default 0.05
+  WEIGHTED_SOAK_10M_MAX_DELAYED_RATE      default 0.25
   WEIGHTED_SOAK_10M_MAX_RETRY_AFTER_P95_MS default 250
 USAGE
 }
@@ -50,6 +51,7 @@ max_accepted_p95_ms="${WEIGHTED_SOAK_10M_MAX_ACCEPTED_P95_MS:-350}"
 max_total_429_rate="${WEIGHTED_SOAK_10M_MAX_TOTAL_429_RATE:-0.05}"
 max_edge_429_rate="${WEIGHTED_SOAK_10M_MAX_EDGE_429_RATE:-0.05}"
 max_backend_429_rate="${WEIGHTED_SOAK_10M_MAX_BACKEND_429_RATE:-0.05}"
+max_delayed_rate="${WEIGHTED_SOAK_10M_MAX_DELAYED_RATE:-0.25}"
 max_retry_after_p95_ms="${WEIGHTED_SOAK_10M_MAX_RETRY_AFTER_P95_MS:-250}"
 report_md="${output_dir}/${name}-weighted-10m-soak.md"
 failure_name="${name}-failure-correlation"
@@ -183,6 +185,7 @@ print_plan() {
   echo "[transaction-read-weighted-10m] max_total_429_rate=${max_total_429_rate}"
   echo "[transaction-read-weighted-10m] max_edge_429_rate=${max_edge_429_rate}"
   echo "[transaction-read-weighted-10m] max_backend_429_rate=${max_backend_429_rate}"
+  echo "[transaction-read-weighted-10m] max_delayed_rate=${max_delayed_rate}"
   echo "[transaction-read-weighted-10m] max_retry_after_p95_ms=${max_retry_after_p95_ms}"
   echo "[transaction-read-weighted-10m] live_soak_required=true"
   echo "[transaction-read-weighted-10m] failure_report=${failure_report}"
@@ -194,6 +197,7 @@ require_non_negative_number "WEIGHTED_SOAK_10M_MAX_ACCEPTED_P95_MS" "${max_accep
 require_non_negative_number "WEIGHTED_SOAK_10M_MAX_TOTAL_429_RATE" "${max_total_429_rate}"
 require_non_negative_number "WEIGHTED_SOAK_10M_MAX_EDGE_429_RATE" "${max_edge_429_rate}"
 require_non_negative_number "WEIGHTED_SOAK_10M_MAX_BACKEND_429_RATE" "${max_backend_429_rate}"
+require_non_negative_number "WEIGHTED_SOAK_10M_MAX_DELAYED_RATE" "${max_delayed_rate}"
 require_non_negative_number "WEIGHTED_SOAK_10M_MAX_RETRY_AFTER_P95_MS" "${max_retry_after_p95_ms}"
 
 print_plan
@@ -249,7 +253,7 @@ if number_greater_than "${accepted_p95_ms}" "${max_accepted_p95_ms}" \
     || number_greater_than "${edge_429_rate}" "${max_edge_429_rate}" \
     || number_greater_than "${backend_429_rate}" "${max_backend_429_rate}" \
     || number_greater_than "${unknown_429_count}" "0" \
-    || number_greater_than "${edge_delayed_rate}" "0.25" \
+    || number_greater_than "${edge_delayed_rate}" "${max_delayed_rate}" \
     || number_greater_than "${five_xx_count}" "0" \
     || number_greater_than "${nginx_499_count}" "0" \
     || number_greater_than "${nginx_502_count}" "0" \
@@ -266,7 +270,7 @@ cat >"${report_md}" <<REPORT
 
 - gate_status=${gate_status}
 - duration: ${duration}
-- target: accepted p95 < ${max_accepted_p95_ms}ms, total/edge/backend 429 <= ${max_total_429_rate}/${max_edge_429_rate}/${max_backend_429_rate}, Retry-After p95 <= ${max_retry_after_p95_ms}ms, unknown 429/499/5xx/Hikari warning = 0
+- target: accepted p95 < ${max_accepted_p95_ms}ms, total/edge/backend 429 <= ${max_total_429_rate}/${max_edge_429_rate}/${max_backend_429_rate}, edge delayed <= ${max_delayed_rate}, Retry-After p95 <= ${max_retry_after_p95_ms}ms, unknown 429/499/5xx/Hikari warning = 0
 - live criterion: OCI 1억 row live run 기준
 
 ## SLO
