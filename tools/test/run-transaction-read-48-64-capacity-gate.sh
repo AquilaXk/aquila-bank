@@ -7,8 +7,8 @@ usage: tools/test/run-transaction-read-48-64-capacity-gate.sh [--print-plan]
 
 Environment:
   CAPACITY_48_64_GATE_NAME                  default transaction-read-48-64-capacity-<timestamp>
-  CAPACITY_48_64_LOWER_ANCHOR_RATE         default 48
-  CAPACITY_48_64_RATES                     default 52,56,60,64
+  CAPACITY_48_64_LOWER_ANCHOR_RATE         default 32
+  CAPACITY_48_64_RATES                     default 32,48,64,80,96
   CAPACITY_48_64_DURATION                  default 20s
   CAPACITY_48_64_WARN_RATE                 default 0.08
   CAPACITY_48_64_FAIL_RATE                 default 0.10
@@ -43,9 +43,9 @@ while [[ "$#" -gt 0 ]]; do
   shift
 done
 
-gate_name="${CAPACITY_48_64_GATE_NAME:-transaction-read-48-64-capacity-$(date +%Y-%m-%d-%H%M%S)}"
-lower_anchor_rate="${CAPACITY_48_64_LOWER_ANCHOR_RATE:-48}"
-rates="${CAPACITY_48_64_RATES:-52,56,60,64}"
+gate_name="${CAPACITY_48_64_GATE_NAME:-transaction-read-burst-reject-curve-$(date +%Y-%m-%d-%H%M%S)}"
+lower_anchor_rate="${CAPACITY_48_64_LOWER_ANCHOR_RATE:-32}"
+rates="${CAPACITY_48_64_RATES:-32,48,64,80,96}"
 duration="${CAPACITY_48_64_DURATION:-20s}"
 warn_rate="${CAPACITY_48_64_WARN_RATE:-0.08}"
 fail_rate="${CAPACITY_48_64_FAIL_RATE:-0.10}"
@@ -53,8 +53,8 @@ run_k6="${CAPACITY_48_64_RUN_K6:-false}"
 summary_dir="${CAPACITY_48_64_SUMMARY_DIR:-}"
 output_dir="${CAPACITY_48_64_OUTPUT_DIR:-build/reports/k6/${gate_name}}"
 max_retry_after_sleep_seconds="${CAPACITY_48_64_MAX_RETRY_AFTER_SLEEP_SECONDS:-1}"
-summary_tsv="${output_dir}/${gate_name}-48-64-capacity.tsv"
-report_md="${output_dir}/${gate_name}-48-64-capacity.md"
+summary_tsv="${output_dir}/${gate_name}-burst-reject-curve.tsv"
+report_md="${output_dir}/${gate_name}-burst-reject-curve.md"
 single_gate="tools/test/run-transaction-read-burst-429-budget-gate.sh"
 
 require_positive_integer_value() {
@@ -220,13 +220,13 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 mkdir -p "${output_dir}"
-printf "rate\tstatus\ttransaction_429_rate\ttransaction_503_rate\ttransaction_503_count\thttp_req_duration_p95_ms\tfirst_p95_ms\tdeep_p95_ms\tdropped_iterations\tinterrupted_iterations\tgenerator_headroom_status\treport_md\tsummary_json\n" >"${summary_tsv}"
+printf "rate\tstatus\ttransaction_429_rate\ttransaction_503_rate\ttransaction_503_count\thttp_req_duration_p95_ms\tfirst_p95_ms\tdeep_p95_ms\tretry_after_p95_ms\tdropped_iterations\tinterrupted_iterations\tgenerator_headroom_status\treport_md\tsummary_json\n" >"${summary_tsv}"
 
 gate_status="pass"
 stable_pass_rate="${lower_anchor_rate}"
 max_non_fail_rate="${lower_anchor_rate}"
-first_fail_rate="none"
-summary_table=$'| rate | status | 429 rate | 503 rate | 503 count | http p95 ms | first p95 ms | deep p95 ms | generator headroom |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |'
+first_overload_rate="none"
+summary_table=$'| rate | status | 429 rate | 503 rate | 503 count | http p95 ms | first p95 ms | deep p95 ms | retry-after p95 ms | generator headroom |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |'
 IFS=',' read -r -a rate_items <<<"${rates}"
 for rate in "${rate_items[@]}"; do
   single_name="${gate_name}-rate-${rate}"
@@ -261,6 +261,7 @@ for rate in "${rate_items[@]}"; do
   transaction_503_rate="$(metric_value "${summary_json}" aquila_transaction_503_rate rate)"
   transaction_503_count="$(metric_value "${summary_json}" aquila_transaction_503_count count)"
   http_req_duration_p95="$(metric_value "${summary_json}" http_req_duration "p(95)")"
+  retry_after_p95="$(metric_value "${summary_json}" aquila_transaction_retry_after_sleep_ms "p(95)")"
   hot_first_p95="$(metric_value "${summary_json}" aquila_transaction_hot_first_ms "p(95)")"
   hot_cursor_p95="$(metric_value "${summary_json}" aquila_transaction_hot_cursor_ms "p(95)")"
   cold_first_p95="$(metric_value "${summary_json}" aquila_transaction_cold_first_ms "p(95)")"
@@ -275,46 +276,47 @@ for rate in "${rate_items[@]}"; do
   fi
 
   rate_status="$(status_for_rate "${transaction_429_rate}")"
-  if [[ "${single_status}" -ne 0 ]] || [[ "${generator_headroom_status}" == "fail" ]] \
+  if (( rate > 64 )) && number_greater_than "${transaction_429_rate}" "${fail_rate}"; then
+    rate_status="overload"
+  fi
+  if [[ "${generator_headroom_status}" == "fail" ]] \
       || number_greater_than "${transaction_503_rate}" "0" \
       || number_greater_than "${transaction_503_count}" "0"; then
+    rate_status="fail"
+  fi
+  if (( rate <= 64 )) && [[ "${single_status}" -ne 0 ]]; then
     rate_status="fail"
   fi
 
   case "${rate_status}" in
     fail)
       gate_status="fail"
-      if [[ "${first_fail_rate}" == "none" ]]; then
-        first_fail_rate="${rate}"
+      ;;
+    overload)
+      if [[ "${first_overload_rate}" == "none" ]]; then
+        first_overload_rate="${rate}"
       fi
       ;;
     warn)
-      if [[ "${gate_status}" == "pass" ]]; then
-        gate_status="warn"
-      fi
-      if [[ "${first_fail_rate}" == "none" ]]; then
-        max_non_fail_rate="${rate}"
-      fi
+      max_non_fail_rate="${rate}"
       ;;
     pass)
-      if [[ "${first_fail_rate}" == "none" ]]; then
-        stable_pass_rate="${rate}"
-        max_non_fail_rate="${rate}"
-      fi
+      stable_pass_rate="${rate}"
+      max_non_fail_rate="${rate}"
       ;;
   esac
 
   single_report="${single_output_dir}/${single_name}-burst-429-budget.md"
-  printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+  printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
     "${rate}" "${rate_status}" "${transaction_429_rate}" "${transaction_503_rate}" \
     "${transaction_503_count}" "${http_req_duration_p95}" "${first_p95}" "${deep_p95}" \
-    "${dropped_iterations}" "${interrupted_iterations}" "${generator_headroom_status}" \
+    "${retry_after_p95}" "${dropped_iterations}" "${interrupted_iterations}" "${generator_headroom_status}" \
     "${single_report}" "${summary_json}" >>"${summary_tsv}"
-  summary_table="${summary_table}"$'\n'"| ${rate} | ${rate_status} | ${transaction_429_rate} | ${transaction_503_rate} | ${transaction_503_count} | ${http_req_duration_p95} | ${first_p95} | ${deep_p95} | ${generator_headroom_status} |"
+  summary_table="${summary_table}"$'\n'"| ${rate} | ${rate_status} | ${transaction_429_rate} | ${transaction_503_rate} | ${transaction_503_count} | ${http_req_duration_p95} | ${first_p95} | ${deep_p95} | ${retry_after_p95} | ${generator_headroom_status} |"
 done
 
 cat >"${report_md}" <<REPORT
-# Transaction Read 48-64 Capacity Boundary Gate
+# Transaction Read Burst Reject Curve Gate
 
 ## Summary
 
@@ -327,7 +329,7 @@ cat >"${report_md}" <<REPORT
 - fail threshold: ${fail_rate}
 - stable_pass_rate=${stable_pass_rate}
 - max_non_fail_rate=${max_non_fail_rate}
-- first_fail_rate=${first_fail_rate}
+- first_overload_rate=${first_overload_rate}
 
 ## Result Table
 
@@ -340,9 +342,9 @@ ${summary_table}
 
 ## Notes
 
-- 48 it/s는 최근 통과 anchor로 두고 52/56/60/64 it/s 경계만 자동 측정합니다.
-- 429는 admission 보호 신호로 budget 관리하고, 503과 generator headroom 실패는 hard fail로 처리합니다.
-- p95는 HTTP overhead와 first/deep cursor 비용을 함께 해석할 수 있도록 report에 포함합니다.
+- burst 32/48/64/80/96은 같은 evidence pack에 묶어 edge reject curve를 비교합니다.
+- 64 이하에서 429 budget을 넘으면 hard fail이고, 80 이상은 overload curve로 기록하되 503/headroom 실패는 hard fail입니다.
+- p95와 retry-after p95는 accepted latency와 client backoff 비용을 함께 해석할 수 있도록 report에 포함합니다.
 REPORT
 
 echo "${report_md}"

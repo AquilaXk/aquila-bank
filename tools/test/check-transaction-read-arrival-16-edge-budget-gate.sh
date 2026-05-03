@@ -54,12 +54,16 @@ plan="$(
   ARRIVAL16_EDGE_BUDGET_NAME=arrival16-check \
   ARRIVAL16_EDGE_BUDGET_SUMMARY_DIR="${summary_dir}" \
   ARRIVAL16_EDGE_BUDGET_OUTPUT_DIR="${output_dir}" \
+  ARRIVAL16_EDGE_BUDGET_PACING_INPUT_REF=oci://evidence/pacing-input.json \
+  ARRIVAL16_EDGE_BUDGET_PACING_SUMMARY_REF=oci://evidence/pacing-summary.json \
     "${runner}" --print-plan
 )"
 grep -F "name=arrival16-check" <<<"${plan}" >/dev/null
 grep -F "summary_dir=${summary_dir}" <<<"${plan}" >/dev/null
 grep -F "arrival_rate=16" <<<"${plan}" >/dev/null
-grep -F "vu16_429_rate=0.10" <<<"${plan}" >/dev/null
+grep -F "vu16_probe_mode=observe" <<<"${plan}" >/dev/null
+grep -F "pacing_input_ref=oci://evidence/pacing-input.json" <<<"${plan}" >/dev/null
+grep -F "pacing_summary_ref=oci://evidence/pacing-summary.json" <<<"${plan}" >/dev/null
 grep -F "burst_rates=48,64,80,96" <<<"${plan}" >/dev/null
 
 echo "[transaction-read-arrival-16-edge-budget] report"
@@ -67,18 +71,22 @@ output="$(
   ARRIVAL16_EDGE_BUDGET_NAME=arrival16-check \
   ARRIVAL16_EDGE_BUDGET_SUMMARY_DIR="${summary_dir}" \
   ARRIVAL16_EDGE_BUDGET_OUTPUT_DIR="${output_dir}" \
+  ARRIVAL16_EDGE_BUDGET_PACING_INPUT_REF=oci://evidence/pacing-input.json \
+  ARRIVAL16_EDGE_BUDGET_PACING_SUMMARY_REF=oci://evidence/pacing-summary.json \
     "${runner}"
 )"
 report_md="$(tail -1 <<<"${output}")"
 summary_tsv="${output_dir}/arrival16-check-edge-budget.tsv"
 test "${report_md}" = "${output_dir}/arrival16-check-edge-budget.md"
-grep -F $'scenario\tstatus\ttotal_429_rate\tedge_429_rate\tbackend_429_rate\tedge_delayed_rate\tedge_delayed_count\t5xx_count\taccepted_p95_ms\tbudget' "${summary_tsv}" >/dev/null
-grep -F $'arrival-16\tpass\t0.000\t0.000\t0.000\t0.18\t220\t0\t260\t429<=0.000 delayed<0.25 5xx=0' "${summary_tsv}" >/dev/null
-grep -F $'vu16-soak-2m\tpass\t0.080\t0.070\t0.010\t0.10\t340\t0\t275\t429<0.10 delayed<0.25 5xx=0' "${summary_tsv}" >/dev/null
-grep -F $'burst-48\tpass\t0.280\t0.260\t0.020\t0.05\t120\t0\t195\t429<0.35 5xx=0' "${summary_tsv}" >/dev/null
+grep -F $'scenario\tgate_role\tstatus\ttotal_429_rate\tedge_429_rate\tbackend_429_rate\tedge_delayed_rate\tedge_delayed_count\t5xx_count\taccepted_p95_ms\tbudget\tpacing_input_ref\tpacing_summary_ref' "${summary_tsv}" >/dev/null
+grep -F $'arrival-16\tstrict\tpass\t0.000\t0.000\t0.000\t0.18\t220\t0\t260\t429<=0.000 delayed<0.25 5xx=0\toci://evidence/pacing-input.json\toci://evidence/pacing-summary.json' "${summary_tsv}" >/dev/null
+grep -F $'vu16-saturation-probe\tobserve\tobserve\t0.080\t0.070\t0.010\t0.10\t340\t0\t275\t429 observed, not a strict gate\toci://evidence/pacing-input.json\toci://evidence/pacing-summary.json' "${summary_tsv}" >/dev/null
+grep -F $'burst-48\tcurve\tpass\t0.280\t0.260\t0.020\t0.05\t120\t0\t195\t429<0.35 5xx=0\toci://evidence/pacing-input.json\toci://evidence/pacing-summary.json' "${summary_tsv}" >/dev/null
 grep -F "gate_status=pass" "${report_md}" >/dev/null
 grep -F "arrival-16 target: 429 = 0, 5xx = 0, edge delayed < 0.25" "${report_md}" >/dev/null
-grep -F "VU16 soak target: 429 < 0.10" "${report_md}" >/dev/null
+grep -F "VU16 saturation probe: observe-only, not a strict gate" "${report_md}" >/dev/null
+grep -F "preemptive pacing input: oci://evidence/pacing-input.json" "${report_md}" >/dev/null
+grep -F "preemptive pacing summary: oci://evidence/pacing-summary.json" "${report_md}" >/dev/null
 grep -F "burst reject curve" "${report_md}" >/dev/null
 
 echo "[transaction-read-arrival-16-edge-budget] fail report"
@@ -92,7 +100,7 @@ if ARRIVAL16_EDGE_BUDGET_NAME=arrival16-fail \
 fi
 
 echo "[transaction-read-arrival-16-edge-budget] invalid input fails"
-if ARRIVAL16_EDGE_BUDGET_SUMMARY_DIR="${summary_dir}" ARRIVAL16_EDGE_BUDGET_VU16_429_RATE=1.5 "${runner}" --print-plan >/dev/null 2>&1; then
-  echo "invalid VU16 429 rate unexpectedly succeeded" >&2
+if ARRIVAL16_EDGE_BUDGET_SUMMARY_DIR="${summary_dir}" ARRIVAL16_EDGE_BUDGET_VU16_PROBE_MODE=strict "${runner}" --print-plan >/dev/null 2>&1; then
+  echo "invalid VU16 probe mode unexpectedly succeeded" >&2
   exit 1
 fi

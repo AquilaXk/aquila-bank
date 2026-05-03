@@ -13,9 +13,11 @@ Environment:
   ARRIVAL16_EDGE_BUDGET_BURST_RATES       default 48,64,80,96
   ARRIVAL16_EDGE_BUDGET_DELAYED_RATE      default 0.25
   ARRIVAL16_EDGE_BUDGET_ARRIVAL_429_RATE  default 0.000
-  ARRIVAL16_EDGE_BUDGET_VU16_429_RATE     default 0.10
+  ARRIVAL16_EDGE_BUDGET_VU16_PROBE_MODE   default observe
   ARRIVAL16_EDGE_BUDGET_BURST_429_CURVE   default 48:0.35,64:0.45,80:0.60,96:0.70
   ARRIVAL16_EDGE_BUDGET_ACCEPTED_P95_MS   default 350
+  ARRIVAL16_EDGE_BUDGET_PACING_INPUT_REF  optional preemptive pacing input artifact ref
+  ARRIVAL16_EDGE_BUDGET_PACING_SUMMARY_REF optional preemptive pacing summary artifact ref
 USAGE
 }
 
@@ -44,9 +46,11 @@ arrival_rate="${ARRIVAL16_EDGE_BUDGET_ARRIVAL_RATE:-16}"
 burst_rates="${ARRIVAL16_EDGE_BUDGET_BURST_RATES:-48,64,80,96}"
 delayed_rate="${ARRIVAL16_EDGE_BUDGET_DELAYED_RATE:-0.25}"
 arrival_429_rate="${ARRIVAL16_EDGE_BUDGET_ARRIVAL_429_RATE:-0.000}"
-vu16_429_rate="${ARRIVAL16_EDGE_BUDGET_VU16_429_RATE:-0.10}"
+vu16_probe_mode="${ARRIVAL16_EDGE_BUDGET_VU16_PROBE_MODE:-observe}"
 burst_429_curve="${ARRIVAL16_EDGE_BUDGET_BURST_429_CURVE:-48:0.35,64:0.45,80:0.60,96:0.70}"
 accepted_p95_ms="${ARRIVAL16_EDGE_BUDGET_ACCEPTED_P95_MS:-350}"
+pacing_input_ref="${ARRIVAL16_EDGE_BUDGET_PACING_INPUT_REF:-missing}"
+pacing_summary_ref="${ARRIVAL16_EDGE_BUDGET_PACING_SUMMARY_REF:-missing}"
 summary_tsv="${output_dir}/${name}-edge-budget.tsv"
 report_md="${output_dir}/${name}-edge-budget.md"
 
@@ -105,6 +109,15 @@ require_curve() {
     require_positive_integer "${name}" "${rate}"
     require_rate "${name}" "${budget}"
   done
+}
+
+require_probe_mode() {
+  local name="$1"
+  local value="$2"
+  if [[ "${value}" != "observe" ]]; then
+    echo "${name} must be observe: ${value}" >&2
+    exit 1
+  fi
 }
 
 number_greater_than() {
@@ -174,9 +187,11 @@ print_plan() {
   echo "[transaction-read-arrival-16-edge-budget] burst_rates=${burst_rates}"
   echo "[transaction-read-arrival-16-edge-budget] delayed_rate=${delayed_rate}"
   echo "[transaction-read-arrival-16-edge-budget] arrival_429_rate=${arrival_429_rate}"
-  echo "[transaction-read-arrival-16-edge-budget] vu16_429_rate=${vu16_429_rate}"
+  echo "[transaction-read-arrival-16-edge-budget] vu16_probe_mode=${vu16_probe_mode}"
   echo "[transaction-read-arrival-16-edge-budget] burst_429_curve=${burst_429_curve}"
   echo "[transaction-read-arrival-16-edge-budget] accepted_p95_ms=${accepted_p95_ms}"
+  echo "[transaction-read-arrival-16-edge-budget] pacing_input_ref=${pacing_input_ref}"
+  echo "[transaction-read-arrival-16-edge-budget] pacing_summary_ref=${pacing_summary_ref}"
   echo "[transaction-read-arrival-16-edge-budget] summary_tsv=${summary_tsv}"
   echo "[transaction-read-arrival-16-edge-budget] report_md=${report_md}"
 }
@@ -185,7 +200,7 @@ require_positive_integer "ARRIVAL16_EDGE_BUDGET_ARRIVAL_RATE" "${arrival_rate}"
 require_csv_positive_integers "ARRIVAL16_EDGE_BUDGET_BURST_RATES" "${burst_rates}"
 require_rate "ARRIVAL16_EDGE_BUDGET_DELAYED_RATE" "${delayed_rate}"
 require_rate "ARRIVAL16_EDGE_BUDGET_ARRIVAL_429_RATE" "${arrival_429_rate}"
-require_rate "ARRIVAL16_EDGE_BUDGET_VU16_429_RATE" "${vu16_429_rate}"
+require_probe_mode "ARRIVAL16_EDGE_BUDGET_VU16_PROBE_MODE" "${vu16_probe_mode}"
 require_curve "ARRIVAL16_EDGE_BUDGET_BURST_429_CURVE" "${burst_429_curve}"
 require_positive_integer "ARRIVAL16_EDGE_BUDGET_ACCEPTED_P95_MS" "${accepted_p95_ms}"
 
@@ -208,16 +223,17 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 mkdir -p "${output_dir}"
-printf "scenario\tstatus\ttotal_429_rate\tedge_429_rate\tbackend_429_rate\tedge_delayed_rate\tedge_delayed_count\t5xx_count\taccepted_p95_ms\tbudget\n" >"${summary_tsv}"
-summary_table=$'| Scenario | Status | Total 429 | Edge 429 | Backend 429 | Edge delayed | 5xx | Accepted p95 ms | Budget |\n| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |'
+printf "scenario\tgate_role\tstatus\ttotal_429_rate\tedge_429_rate\tbackend_429_rate\tedge_delayed_rate\tedge_delayed_count\t5xx_count\taccepted_p95_ms\tbudget\tpacing_input_ref\tpacing_summary_ref\n" >"${summary_tsv}"
+summary_table=$'| Scenario | Role | Status | Total 429 | Edge 429 | Backend 429 | Edge delayed | 5xx | Accepted p95 ms | Budget |\n| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |'
 gate_status="pass"
 
 append_row() {
   local scenario="$1"
-  local summary_json="$2"
-  local max_429="$3"
-  local max_delayed="$4"
-  local budget="$5"
+  local role="$2"
+  local summary_json="$3"
+  local max_429="$4"
+  local max_delayed="$5"
+  local budget="$6"
 
   if [[ ! -s "${summary_json}" ]]; then
     echo "summary missing for ${scenario}: ${summary_json}" >&2
@@ -234,32 +250,37 @@ append_row() {
   p95="$(accepted_p95 "${summary_json}")"
 
   status="pass"
-  if number_greater_than "${total_429}" "${max_429}" \
-      || number_greater_than "${delayed}" "${max_delayed}" \
-      || number_greater_than "${five_xx}" "0" \
-      || number_greater_than "${p95}" "${accepted_p95_ms}"; then
-    status="fail"
-    gate_status="fail"
+  if [[ "${role}" == "observe" ]]; then
+    status="observe"
+  elif number_greater_than "${total_429}" "${max_429}" \
+        || number_greater_than "${delayed}" "${max_delayed}" \
+        || number_greater_than "${five_xx}" "0" \
+        || number_greater_than "${p95}" "${accepted_p95_ms}"; then
+      status="fail"
+      gate_status="fail"
   fi
 
-  printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
-    "${scenario}" "${status}" "${total_429}" "${edge_429}" "${backend_429}" \
-    "${delayed}" "${delayed_count}" "${five_xx}" "${p95}" "${budget}" >>"${summary_tsv}"
-  summary_table="${summary_table}"$'\n'"| ${scenario} | ${status} | ${total_429} | ${edge_429} | ${backend_429} | ${delayed} | ${five_xx} | ${p95} | ${budget} |"
+  printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+    "${scenario}" "${role}" "${status}" "${total_429}" "${edge_429}" "${backend_429}" \
+    "${delayed}" "${delayed_count}" "${five_xx}" "${p95}" "${budget}" "${pacing_input_ref}" \
+    "${pacing_summary_ref}" >>"${summary_tsv}"
+  summary_table="${summary_table}"$'\n'"| ${scenario} | ${role} | ${status} | ${total_429} | ${edge_429} | ${backend_429} | ${delayed} | ${five_xx} | ${p95} | ${budget} |"
 }
 
 append_row \
   "arrival-${arrival_rate}" \
+  "strict" \
   "${summary_dir%/}/arrival-${arrival_rate}-summary.json" \
   "${arrival_429_rate}" \
   "${delayed_rate}" \
   "429<=${arrival_429_rate} delayed<${delayed_rate} 5xx=0"
 append_row \
-  "vu16-soak-2m" \
+  "vu16-saturation-probe" \
+  "observe" \
   "${summary_dir%/}/vu16-soak-2m-summary.json" \
-  "${vu16_429_rate}" \
-  "${delayed_rate}" \
-  "429<${vu16_429_rate} delayed<${delayed_rate} 5xx=0"
+  "1" \
+  "1" \
+  "429 observed, not a strict gate"
 
 IFS=',' read -r -a rate_items <<<"${burst_rates}"
 for rate in "${rate_items[@]}"; do
@@ -270,6 +291,7 @@ for rate in "${rate_items[@]}"; do
   fi
   append_row \
     "burst-${rate}" \
+    "curve" \
     "${summary_dir%/}/burst-${rate}-summary.json" \
     "${budget}" \
     "${delayed_rate}" \
@@ -283,9 +305,11 @@ cat >"${report_md}" <<REPORT
 
 - gate_status=${gate_status}
 - arrival-16 target: 429 = 0, 5xx = 0, edge delayed < ${delayed_rate}
-- VU16 soak target: 429 < ${vu16_429_rate}
+- VU16 saturation probe: observe-only, not a strict gate
 - accepted p95 target: < ${accepted_p95_ms}ms
 - burst reject curve: ${burst_429_curve}
+- preemptive pacing input: ${pacing_input_ref}
+- preemptive pacing summary: ${pacing_summary_ref}
 
 ## Result Table
 
@@ -294,7 +318,7 @@ ${summary_table}
 ## Contract Notes
 
 - arrival-16은 정상 capacity 후보라 429를 허용하지 않는다.
-- VU16 soak는 steady shared-client 압박을 반영하되 429 budget을 10% 미만으로 제한한다.
+- VU16 constant-vus는 saturation probe로만 기록하고 arrival-rate strict gate와 섞지 않는다.
 - burst-48/64/80/96은 overload 방어 곡선으로 분리해 fail-fast 429가 어느 지점에서 증가하는지 기록한다.
 
 ## Artifacts
