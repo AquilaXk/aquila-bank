@@ -21,6 +21,8 @@ public class T3MicroSaturationGuard {
   private final Counter rejectedCounter;
   private final ConcurrentMap<String, Counter> backgroundWorkerPauseCounters =
       new ConcurrentHashMap<>();
+  private final ConcurrentMap<String, AtomicInteger> protectedSaturationStreaks =
+      new ConcurrentHashMap<>();
   private final AtomicInteger saturatedGauge = new AtomicInteger();
 
   public T3MicroSaturationGuard(
@@ -72,14 +74,26 @@ public class T3MicroSaturationGuard {
       return T3MicroSaturationDecision.allowed(T3MicroSaturationSnapshot.empty());
     }
     T3MicroSaturationSnapshot snapshot = snapshot();
-    if (!protectedPath(path)) {
+    String protectedPathPrefix = protectedPathPrefix(path);
+    if (protectedPathPrefix == null) {
       return T3MicroSaturationDecision.allowed(snapshot);
     }
     if (snapshot.saturated() || readReplicaPoolSaturated(path, snapshot)) {
+      int streak =
+          protectedSaturationStreaks
+              .computeIfAbsent(protectedPathPrefix, ignored -> new AtomicInteger())
+              .incrementAndGet();
+      if (streak < properties.hysteresis().consecutiveSaturatedSamples()) {
+        // 짧은 spike 1회는 false-positive가 잦아 연속 포화일 때만 request reject.
+        saturatedGauge.set(0);
+        acceptedCounter.increment();
+        return T3MicroSaturationDecision.allowed(snapshot);
+      }
       saturatedGauge.set(1);
       rejectedCounter.increment();
       return T3MicroSaturationDecision.rejected(properties.retryAfterSeconds(), snapshot);
     }
+    protectedSaturationStreaks.remove(protectedPathPrefix);
     saturatedGauge.set(0);
     acceptedCounter.increment();
     return T3MicroSaturationDecision.allowed(snapshot);
@@ -129,8 +143,11 @@ public class T3MicroSaturationGuard {
         jvmPressureSaturated);
   }
 
-  private boolean protectedPath(String path) {
-    return properties.protectedPathPrefixes().stream().anyMatch(path::startsWith);
+  private String protectedPathPrefix(String path) {
+    return properties.protectedPathPrefixes().stream()
+        .filter(path::startsWith)
+        .findFirst()
+        .orElse(null);
   }
 
   private boolean readReplicaPoolSaturated(String path, T3MicroSaturationSnapshot snapshot) {
