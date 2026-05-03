@@ -13,11 +13,20 @@ test -f "${example}"
 grep -F "tools/ops/production-github-environment.env.example" .env.example >/dev/null
 grep -F "tools/ops/production-github-environment.env" .gitignore >/dev/null
 grep -F "Do not commit real token" "${example}" >/dev/null
+grep -F "OCI_A1_PRODUCTION_ENV" "${example}" >/dev/null
 grep -F "gh secret set" "${script}" >/dev/null
 grep -F "gh variable set" "${script}" >/dev/null
 grep -F "gh api --method PUT" "${script}" >/dev/null
 grep -F -- "-F wait_timer=0" "${script}" >/dev/null
 grep -F -- "--vars-only" "${script}" >/dev/null
+if grep -F "PRODUCTION_DEPLOY_WEBHOOK_URL" "${example}" "${script}" "${workflow}" >/dev/null; then
+  echo "production env bootstrap must not require public deploy webhook URL" >&2
+  exit 1
+fi
+if grep -F "PRODUCTION_DEPLOY_TOKEN" "${example}" "${script}" "${workflow}" >/dev/null; then
+  echo "production env bootstrap must not require public deploy hook token" >&2
+  exit 1
+fi
 
 echo "[production-env-bootstrap] workflow key coverage"
 ruby <<'RUBY'
@@ -45,7 +54,15 @@ RUBY
 echo "[production-env-bootstrap] print plan"
 plan="$("${script}" --print-plan)"
 grep -F "[production-env-bootstrap] repo=AquilaXk/aquila-bank environment=production" <<<"${plan}" >/dev/null
-grep -F "PRODUCTION_DEPLOY_WEBHOOK_URL" <<<"${plan}" >/dev/null
+grep -F "OCI_A1_PRODUCTION_ENV" <<<"${plan}" >/dev/null
+if grep -F "PRODUCTION_DEPLOY_WEBHOOK_URL" <<<"${plan}" >/dev/null; then
+  echo "production env bootstrap plan must not include deploy webhook URL" >&2
+  exit 1
+fi
+if grep -F "PRODUCTION_DEPLOY_TOKEN" <<<"${plan}" >/dev/null; then
+  echo "production env bootstrap plan must not include deploy hook token" >&2
+  exit 1
+fi
 grep -F "OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_MAX" <<<"${plan}" >/dev/null
 
 echo "[production-env-bootstrap] placeholder env refuses writes"

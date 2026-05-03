@@ -14,6 +14,7 @@ on:
 permissions:
   contents: read
   deployments: write
+  packages: read
 
 concurrency:
   group: production-promotion
@@ -26,6 +27,7 @@ jobs:
     timeout-minutes: 10
     outputs:
       target_sha: ${{ steps.resolve.outputs.target_sha }}
+      image_tag: ${{ steps.resolve.outputs.image_tag }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -67,6 +69,7 @@ jobs:
           fi
 
           echo "target_sha=${target_sha}" >> "${GITHUB_OUTPUT}"
+          echo "image_tag=${target_sha:0:12}" >> "${GITHUB_OUTPUT}"
 
       - name: Verify staging deployment success
         env:
@@ -154,12 +157,13 @@ jobs:
     name: Promote SHA To Production
     needs:
       - guard
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    runs-on: [self-hosted, oci-a1-staging]
+    timeout-minutes: 35
     environment:
       name: production
     env:
       TARGET_SHA: ${{ needs.guard.outputs.target_sha }}
+      IMAGE_TAG: ${{ needs.guard.outputs.image_tag }}
       PROMOTION_LOG_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - name: Checkout promotion SHA
@@ -177,6 +181,20 @@ jobs:
             echo "::error::Checked out ${checked_out_sha}, expected ${TARGET_SHA}."
             exit 1
           fi
+
+      - name: Resolve OCI A1 production image names
+        shell: bash
+        run: |
+          set -euo pipefail
+          owner_lc="${GITHUB_REPOSITORY_OWNER,,}"
+          printf 'BACKEND_IMAGE=ghcr.io/%s/aquila-bank-backend\n' "${owner_lc}" >>"${GITHUB_ENV}"
+          printf 'FRONTEND_IMAGE=ghcr.io/%s/aquila-bank-frontend\n' "${owner_lc}" >>"${GITHUB_ENV}"
+
+      - name: Check OCI self-hosted runner prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          ops/deploy/oci/check-self-hosted-runner.sh
 
       - name: Run Alertmanager receiver secret smoke
         env:
@@ -273,6 +291,85 @@ jobs:
 
           echo "deployment_id=${deployment_id}" >> "${GITHUB_OUTPUT}"
 
+      - name: Load OCI A1 production env
+        env:
+          OCI_A1_PRODUCTION_ENV: ${{ secrets.OCI_A1_PRODUCTION_ENV }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${OCI_A1_PRODUCTION_ENV}" ]]; then
+            echo "::error::Missing OCI_A1_PRODUCTION_ENV environment secret."
+            exit 1
+          fi
+
+          production_env_path="${RUNNER_TEMP}/oci-a1-production.env"
+          printf '%s\n' "${OCI_A1_PRODUCTION_ENV}" >"${production_env_path}"
+          chmod 600 "${production_env_path}"
+
+          set -a
+          # production 배포 설정은 Environment secret 하나에 shell env 파일 형식으로 격리한다.
+          source "${production_env_path}"
+          set +a
+
+          OCI_A1_CAPACITY_PROFILE_ENABLED="${OCI_A1_CAPACITY_PROFILE_ENABLED:-true}"
+          PRODUCTION_BASE_URL="${PRODUCTION_BASE_URL:-${STAGING_BASE_URL:-}}"
+          PRODUCTION_SMOKE_SHA_PATH="${PRODUCTION_SMOKE_SHA_PATH:-${STAGING_SMOKE_SHA_PATH:-/actuator/info}}"
+          PRODUCTION_SMOKE_HEALTH_PATH="${PRODUCTION_SMOKE_HEALTH_PATH:-${STAGING_SMOKE_HEALTH_PATH:-/actuator/health}}"
+          PRODUCTION_SMOKE_READ_PATH="${PRODUCTION_SMOKE_READ_PATH:-${STAGING_SMOKE_READ_PATH:-}}"
+          PRODUCTION_SMOKE_WRITE_PATH="${PRODUCTION_SMOKE_WRITE_PATH:-${STAGING_SMOKE_WRITE_PATH:-}}"
+          PRODUCTION_SMOKE_WRITE_METHOD="${PRODUCTION_SMOKE_WRITE_METHOD:-${STAGING_SMOKE_WRITE_METHOD:-POST}}"
+          PRODUCTION_SMOKE_WRITE_BODY="${PRODUCTION_SMOKE_WRITE_BODY:-${STAGING_SMOKE_WRITE_BODY:-{}}}"
+          PRODUCTION_SMOKE_AUTH_HEADER_NAME="${PRODUCTION_SMOKE_AUTH_HEADER_NAME:-${STAGING_SMOKE_AUTH_HEADER_NAME:-}}"
+          PRODUCTION_SMOKE_AUTH_HEADER_VALUE="${PRODUCTION_SMOKE_AUTH_HEADER_VALUE:-${STAGING_SMOKE_AUTH_HEADER_VALUE:-}}"
+          PRODUCTION_SMOKE_TIMEOUT_SECONDS="${PRODUCTION_SMOKE_TIMEOUT_SECONDS:-${STAGING_SMOKE_TIMEOUT_SECONDS:-5}}"
+
+          missing=()
+          [[ -z "${OCI_A1_BACKEND_ENV_B64:-}" ]] && missing+=("OCI_A1_BACKEND_ENV_B64")
+          [[ -z "${PRODUCTION_BASE_URL:-}" ]] && missing+=("PRODUCTION_BASE_URL")
+          [[ -z "${PRODUCTION_SMOKE_READ_PATH:-}" ]] && missing+=("PRODUCTION_SMOKE_READ_PATH")
+          [[ -z "${PRODUCTION_SMOKE_WRITE_PATH:-}" ]] && missing+=("PRODUCTION_SMOKE_WRITE_PATH")
+
+          if (( ${#missing[@]} > 0 )); then
+            printf '::error::Missing OCI A1 production env keys: %s\n' "${missing[*]}"
+            exit 1
+          fi
+
+          env_names=(
+            OCI_A1_BACKEND_ENV_B64
+            OCI_A1_FRONTEND_ENV_B64
+            OCI_A1_CAPACITY_PROFILE_ENABLED
+            PRODUCTION_BASE_URL
+            PRODUCTION_SMOKE_SHA_PATH
+            PRODUCTION_SMOKE_HEALTH_PATH
+            PRODUCTION_SMOKE_READ_PATH
+            PRODUCTION_SMOKE_WRITE_PATH
+            PRODUCTION_SMOKE_WRITE_METHOD
+            PRODUCTION_SMOKE_WRITE_BODY
+            PRODUCTION_SMOKE_AUTH_HEADER_NAME
+            PRODUCTION_SMOKE_AUTH_HEADER_VALUE
+            PRODUCTION_SMOKE_TIMEOUT_SECONDS
+            PRODUCTION_ROLLBACK_WEBHOOK_URL
+            PRODUCTION_ROLLBACK_TOKEN
+            PRODUCTION_ROLLBACK_TARGET_SHA
+          )
+
+          for name in "${env_names[@]}"; do
+            value="${!name:-}"
+            if [[ -n "${value}" ]]; then
+              echo "::add-mask::${value}"
+            fi
+            if [[ "${value}" == *$'\n'* ]]; then
+              delimiter="AQUILA_${name}_EOF_$(date +%s%N)"
+              {
+                printf '%s<<%s\n' "${name}" "${delimiter}"
+                printf '%s\n' "${value}"
+                printf '%s\n' "${delimiter}"
+              } >>"${GITHUB_ENV}"
+            else
+              printf '%s=%s\n' "${name}" "${value}" >>"${GITHUB_ENV}"
+            fi
+          done
+
       - name: Mark production deployment in progress
         env:
           GH_TOKEN: ${{ github.token }}
@@ -292,60 +389,24 @@ jobs:
           )"
           gh api --method POST "repos/${GITHUB_REPOSITORY}/deployments/${DEPLOYMENT_ID}/statuses" --input - <<< "${payload}"
 
-      - name: Dispatch production deploy hook
+      - name: Run OCI A1 production blue-green deploy locally
         env:
-          PRODUCTION_DEPLOY_WEBHOOK_URL: ${{ secrets.PRODUCTION_DEPLOY_WEBHOOK_URL }}
-          PRODUCTION_DEPLOY_TOKEN: ${{ secrets.PRODUCTION_DEPLOY_TOKEN }}
+          GITHUB_ACTOR_VALUE: ${{ github.actor }}
+          GITHUB_TOKEN_VALUE: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
+          github_token_b64="$(printf '%s' "${GITHUB_TOKEN_VALUE}" | base64 -w0)"
 
-          if [ -z "${PRODUCTION_DEPLOY_WEBHOOK_URL}" ]; then
-            echo "::error::Missing PRODUCTION_DEPLOY_WEBHOOK_URL environment secret."
-            exit 1
-          fi
+          export GITHUB_ACTOR="${GITHUB_ACTOR_VALUE}"
+          export GITHUB_TOKEN_B64="${github_token_b64}"
+          export BACKEND_ENV_B64="${OCI_A1_BACKEND_ENV_B64}"
+          export FRONTEND_ENV_B64="${OCI_A1_FRONTEND_ENV_B64:-}"
+          export OCI_A1_CAPACITY_PROFILE_ENABLED="${OCI_A1_CAPACITY_PROFILE_ENABLED}"
 
-          if [ -z "${PRODUCTION_DEPLOY_TOKEN}" ]; then
-            echo "::error::Missing PRODUCTION_DEPLOY_TOKEN environment secret."
-            exit 1
-          fi
-
-          payload="$(
-            jq -n \
-              --arg sha "${TARGET_SHA}" \
-              --arg repository "${GITHUB_REPOSITORY}" \
-              --arg run_url "${PROMOTION_LOG_URL}" \
-              --arg trigger "${GITHUB_EVENT_NAME}" \
-              --arg ref "${GITHUB_REF_NAME}" \
-              '{
-                sha: $sha,
-                repository: $repository,
-                environment: "production",
-                runUrl: $run_url,
-                trigger: $trigger,
-                ref: $ref
-              }'
-          )"
-
-          curl --fail-with-body --show-error --silent \
-            --request POST \
-            --header "Authorization: Bearer ${PRODUCTION_DEPLOY_TOKEN}" \
-            --header "Content-Type: application/json" \
-            --data "${payload}" \
-            "${PRODUCTION_DEPLOY_WEBHOOK_URL}"
+          ops/deploy/oci/bluegreen-deploy.sh
 
       - name: Run production post-deploy smoke
-        env:
-          PRODUCTION_BASE_URL: ${{ secrets.PRODUCTION_BASE_URL }}
-          PRODUCTION_SMOKE_SHA_PATH: ${{ secrets.PRODUCTION_SMOKE_SHA_PATH }}
-          PRODUCTION_SMOKE_HEALTH_PATH: ${{ secrets.PRODUCTION_SMOKE_HEALTH_PATH }}
-          PRODUCTION_SMOKE_READ_PATH: ${{ secrets.PRODUCTION_SMOKE_READ_PATH }}
-          PRODUCTION_SMOKE_WRITE_PATH: ${{ secrets.PRODUCTION_SMOKE_WRITE_PATH }}
-          PRODUCTION_SMOKE_WRITE_METHOD: ${{ secrets.PRODUCTION_SMOKE_WRITE_METHOD }}
-          PRODUCTION_SMOKE_WRITE_BODY: ${{ secrets.PRODUCTION_SMOKE_WRITE_BODY }}
-          PRODUCTION_SMOKE_AUTH_HEADER_NAME: ${{ secrets.PRODUCTION_SMOKE_AUTH_HEADER_NAME }}
-          PRODUCTION_SMOKE_AUTH_HEADER_VALUE: ${{ secrets.PRODUCTION_SMOKE_AUTH_HEADER_VALUE }}
-          PRODUCTION_SMOKE_TIMEOUT_SECONDS: ${{ secrets.PRODUCTION_SMOKE_TIMEOUT_SECONDS }}
         shell: bash
         run: tools/ops/production-postdeploy-smoke.sh
 

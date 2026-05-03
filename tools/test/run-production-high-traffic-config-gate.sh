@@ -15,21 +15,63 @@ require 'yaml'
 workflow = YAML.load_file('.github/workflows/production-promotion.yml')
 guard_steps = workflow.fetch('jobs').fetch('guard').fetch('steps')
 guard_step_names = guard_steps.map { |step| step['name'] }
+guard_outputs = workflow.fetch('jobs').fetch('guard').fetch('outputs')
+abort('guard must expose image_tag output for OCI deploy') unless guard_outputs.fetch('image_tag').include?('steps.resolve.outputs.image_tag')
 staging_success_index = guard_step_names.index('Verify staging deployment success') or abort('staging deployment success guard missing')
 replay_evidence_index = guard_step_names.index('Verify staging 100m replay evidence success') or abort('staging 100m replay evidence guard missing')
 abort('staging replay evidence guard must run after staging deployment guard') unless staging_success_index < replay_evidence_index
 replay_evidence_run = guard_steps.fetch(replay_evidence_index).fetch('run')
 abort('staging replay evidence guard must query separate environment') unless replay_evidence_run.include?('staging-100m-replay')
 abort('staging replay evidence guard must require success') unless replay_evidence_run.include?('No successful staging 100m replay evidence')
+resolve_step = guard_steps.fetch(guard_step_names.index('Resolve promotion target SHA'))
+abort('resolve step must write 12-char image tag') unless resolve_step.fetch('run').include?('image_tag=${target_sha:0:12}')
 
-steps = workflow.fetch('jobs').fetch('promote').fetch('steps')
+promote = workflow.fetch('jobs').fetch('promote')
+abort('production promote job must run on OCI self-hosted runner') unless promote.fetch('runs-on') == ['self-hosted', 'oci-a1-staging']
+promote_env = promote.fetch('env')
+abort('production promote job must receive guard image tag') unless promote_env.fetch('IMAGE_TAG').include?('needs.guard.outputs.image_tag')
+
+workflow_text = File.read('.github/workflows/production-promotion.yml')
+forbidden_contracts = [
+  'PRODUCTION_DEPLOY_WEBHOOK_URL',
+  'PRODUCTION_DEPLOY_TOKEN',
+  'Dispatch production deploy hook',
+]
+forbidden_contracts.each do |forbidden|
+  abort("production promotion must not use public deploy hook contract: #{forbidden}") if workflow_text.include?(forbidden)
+end
+
+steps = promote.fetch('steps')
 step_names = steps.map { |step| step['name'] }
 target_name = 'Run production high-traffic config gate'
 target_index = step_names.index(target_name) or abort("missing step: #{target_name}")
 alert_index = step_names.index('Run Alertmanager receiver secret smoke') or abort('alertmanager smoke missing')
 deploy_index = step_names.index('Create production deployment') or abort('production deployment step missing')
+load_env_index = step_names.index('Load OCI A1 production env') or abort('production env load step missing')
+direct_deploy_index = step_names.index('Run OCI A1 production blue-green deploy locally') or abort('direct OCI production deploy step missing')
+in_progress_index = step_names.index('Mark production deployment in progress') or abort('production in-progress step missing')
+smoke_index = step_names.index('Run production post-deploy smoke') or abort('production smoke step missing')
 abort('high-traffic gate must run after alertmanager smoke') unless alert_index < target_index
 abort('high-traffic gate must run before production deployment') unless target_index < deploy_index
+abort('production env must load after deployment record is created') unless deploy_index < load_env_index
+abort('direct deploy must run after in-progress status') unless in_progress_index < direct_deploy_index
+abort('direct deploy must run before production smoke') unless direct_deploy_index < smoke_index
+
+load_step = steps.fetch(load_env_index)
+abort('production env load must read unified production secret') unless load_step.fetch('env').fetch('OCI_A1_PRODUCTION_ENV').include?('secrets.OCI_A1_PRODUCTION_ENV')
+load_run = load_step.fetch('run')
+abort('production env load must require backend env b64') unless load_run.include?('OCI_A1_BACKEND_ENV_B64')
+abort('production env load must export deploy env through GITHUB_ENV') unless load_run.include?('GITHUB_ENV')
+
+direct_deploy_step = steps.fetch(direct_deploy_index)
+direct_deploy_env = direct_deploy_step.fetch('env')
+abort('direct deploy must receive GitHub actor') unless direct_deploy_env.fetch('GITHUB_ACTOR_VALUE').include?('github.actor')
+abort('direct deploy must receive GitHub token') unless direct_deploy_env.fetch('GITHUB_TOKEN_VALUE').include?('github.token')
+direct_deploy_run = direct_deploy_step.fetch('run')
+abort('direct deploy must base64-wrap GitHub token') unless direct_deploy_run.include?('GITHUB_TOKEN_B64')
+abort('direct deploy must export backend env') unless direct_deploy_run.include?('BACKEND_ENV_B64')
+abort('direct deploy must export frontend env') unless direct_deploy_run.include?('FRONTEND_ENV_B64')
+abort('direct deploy must call local bluegreen script') unless direct_deploy_run.include?('ops/deploy/oci/bluegreen-deploy.sh')
 
 step = steps.fetch(target_index)
 run = step.fetch('run')

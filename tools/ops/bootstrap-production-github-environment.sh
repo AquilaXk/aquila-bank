@@ -53,12 +53,11 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 required_secrets=(
+  OCI_A1_PRODUCTION_ENV
   ALERTMANAGER_RECEIVER_SLACK_ENABLED
   ALERTMANAGER_RECEIVER_PAGERDUTY_ENABLED
   ALERTMANAGER_RECEIVER_WEBHOOK_ENABLED
   ALERTMANAGER_RECEIVER_WEBHOOK_URL
-  PRODUCTION_DEPLOY_WEBHOOK_URL
-  PRODUCTION_DEPLOY_TOKEN
   PRODUCTION_BASE_URL
   PRODUCTION_SMOKE_SHA_PATH
   PRODUCTION_SMOKE_HEALTH_PATH
@@ -145,10 +144,42 @@ value_of() {
   printf '%s' "${!name:-}"
 }
 
+secret_value_of() {
+  local name="$1"
+  if [[ "${name}" == "OCI_A1_PRODUCTION_ENV" ]]; then
+    local env_path="${OCI_A1_PRODUCTION_ENV_FILE:-}"
+    if [[ -n "${env_path}" ]] && ! is_placeholder "${env_path}"; then
+      if [[ ! -f "${env_path}" ]]; then
+        echo "::error::OCI_A1_PRODUCTION_ENV_FILE does not exist: ${env_path}"
+        exit 1
+      fi
+      cat "${env_path}"
+      return
+    fi
+  fi
+
+  value_of "${name}"
+}
+
+is_secret_name() {
+  local name="$1"
+  local item
+  for item in "${required_secrets[@]}" "${optional_secrets[@]}"; do
+    if [[ "${item}" == "${name}" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 require_value() {
   local name="$1"
   local value
-  value="$(value_of "$name")"
+  if is_secret_name "${name}"; then
+    value="$(secret_value_of "${name}")"
+  else
+    value="$(value_of "$name")"
+  fi
   if [[ -z "${value}" ]] || is_placeholder "${value}"; then
     echo "::error::${name} must be set in ${env_file} before writing production ${environment}."
     exit 1
@@ -192,7 +223,7 @@ gh api --method PUT "repos/${repo}/environments/${environment}" -F wait_timer=0 
 
 if [[ "${vars_only}" != "true" ]]; then
   for name in "${required_secrets[@]}" "${optional_secrets[@]}"; do
-    value="$(value_of "${name}")"
+    value="$(secret_value_of "${name}")"
     if [[ -z "${value}" ]] || is_placeholder "${value}"; then
       continue
     fi
