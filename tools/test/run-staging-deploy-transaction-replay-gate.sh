@@ -12,6 +12,7 @@ require 'yaml'
 
 workflow = YAML.load_file('.github/workflows/staging-deploy.yml')
 jobs = workflow.fetch('jobs')
+noop_job = jobs.fetch('record-noop')
 deploy_job = jobs.fetch('deploy-and-verify')
 finalize_job = jobs.fetch('finalize-deployment')
 steps = deploy_job.fetch('steps')
@@ -28,6 +29,21 @@ deploy_name = 'Run OCI A1 blue-green deploy locally'
 resolver_name = 'Resolve OCI A1 staging database URL'
 load_env_name = 'Load OCI A1 staging env'
 prerequisite_name = 'Check OCI self-hosted runner prerequisites'
+
+noop_needs = Array(noop_job.fetch('needs'))
+abort('no-op deploy recorder must depend on prepare') unless noop_needs.include?('prepare')
+noop_if = noop_job.fetch('if')
+abort('no-op deploy recorder must run with always guard') unless noop_if.include?('always()')
+abort('no-op deploy recorder must cover skipped prepare') unless noop_if.include?("needs.prepare.result == 'skipped'")
+abort('no-op deploy recorder must cover prepare should_deploy=false') unless noop_if.include?("needs.prepare.outputs.should_deploy != 'true'")
+noop_steps = noop_job.fetch('steps')
+noop_step = noop_steps.find { |step| step['name'] == 'Record no-op staging deploy' } or abort('missing no-op staging deploy record step')
+noop_run = noop_step.fetch('run')
+abort('no-op summary must declare staging deploy no-op') unless noop_run.include?('Staging Deploy No-Op')
+abort('no-op summary must record skipped status') unless noop_run.include?('status: skipped')
+abort('no-op summary must record skipped reason') unless noop_run.include?('reason=')
+abort('no-op summary must record that deployment was not created') unless noop_run.include?('deployment_created: false')
+abort('no-op summary must record that staging success was not recorded') unless noop_run.include?('staging_success_recorded: false')
 
 replay_index = step_names.index(replay_name) or abort("missing step: #{replay_name}")
 replay_result_index = step_names.index(replay_result_name) or abort("missing step: #{replay_result_name}")
@@ -118,7 +134,7 @@ abort('replay summary must run even after replay failure') unless append_replay_
 append_replay_summary_run = append_replay_summary_step.fetch('run')
 abort('replay summary must append summary.md to GITHUB_STEP_SUMMARY') unless append_replay_summary_run.include?('build/reports/transaction-staging-replay/summary.md') && append_replay_summary_run.include?('GITHUB_STEP_SUMMARY')
 abort('replay report upload must run even after replay failure') unless upload_replay_report_step.fetch('if').include?('always()')
-abort('replay report upload must use upload-artifact') unless upload_replay_report_step.fetch('uses') == 'actions/upload-artifact@v4'
+abort('replay report upload must use upload-artifact') unless upload_replay_report_step.fetch('uses') == 'actions/upload-artifact@v7'
 upload_with = upload_replay_report_step.fetch('with')
 abort('replay report upload name must be stable') unless upload_with.fetch('name') == 'transaction-read-model-staging-replay'
 abort('replay report upload path must include replay report directory') unless upload_with.fetch('path') == 'build/reports/transaction-staging-replay/'
