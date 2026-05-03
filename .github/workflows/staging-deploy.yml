@@ -70,6 +70,51 @@ jobs:
           echo "deploy_sha=${DEPLOY_SHA}" >> "${GITHUB_OUTPUT}"
           echo "image_tag=${DEPLOY_SHA:0:12}" >> "${GITHUB_OUTPUT}"
 
+  record-noop:
+    name: Record No-Op Staging Deploy
+    needs:
+      - prepare
+    if: >-
+      always() &&
+      (
+        needs.prepare.result == 'skipped' ||
+        (
+          needs.prepare.result == 'success' &&
+          needs.prepare.outputs.should_deploy != 'true'
+        )
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Record no-op staging deploy
+        env:
+          WORKFLOW_RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          WORKFLOW_RUN_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          WORKFLOW_RUN_EVENT: ${{ github.event.workflow_run.event }}
+          PREPARE_RESULT: ${{ needs.prepare.result }}
+          PREPARE_SHOULD_DEPLOY: ${{ needs.prepare.outputs.should_deploy }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          reason="not-main-push-success"
+          if [[ "${PREPARE_RESULT}" == "success" && "${PREPARE_SHOULD_DEPLOY}" != "true" ]]; then
+            reason="stale-main-sha"
+          fi
+
+          {
+            echo "## Staging Deploy No-Op"
+            echo "- status: skipped"
+            echo "- reason: ${reason}"
+            echo "- prepare_result: ${PREPARE_RESULT}"
+            echo "- prepare_should_deploy: ${PREPARE_SHOULD_DEPLOY:-unset}"
+            echo "- workflow_run_conclusion: ${WORKFLOW_RUN_CONCLUSION}"
+            echo "- workflow_run_head_branch: ${WORKFLOW_RUN_HEAD_BRANCH}"
+            echo "- workflow_run_event: ${WORKFLOW_RUN_EVENT}"
+            echo "- deployment_created: false"
+            echo "- staging_success_recorded: false"
+          } >> "${GITHUB_STEP_SUMMARY}"
+          echo "::notice::Staging deploy no-op reason=${reason}"
+
   create-deployment:
     name: Create Staging Deployment
     needs:
