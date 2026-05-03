@@ -10,7 +10,7 @@ Environment:
   HIKARI_IDLE_ATTRIBUTION_PG_ACTIVITY_TSV            required pg_stat_activity sampler TSV
   HIKARI_IDLE_ATTRIBUTION_HIKARI_LOG                 required Hikari warning log
   HIKARI_IDLE_ATTRIBUTION_CONFIG_TSV                 required key/value timeout config TSV
-  HIKARI_IDLE_ATTRIBUTION_HTTP_STATUS_TSV            optional key/value HTTP status TSV; required when EXPECT_WARNING_COUNT=0
+  HIKARI_IDLE_ATTRIBUTION_HTTP_STATUS_TSV            optional key/value HTTP/pool TSV; required when EXPECT_WARNING_COUNT=0
   HIKARI_IDLE_ATTRIBUTION_OUTPUT_DIR                 default build/reports/k6/<name>
   HIKARI_IDLE_ATTRIBUTION_CORRELATION_WINDOW_SECONDS default 5
   HIKARI_IDLE_ATTRIBUTION_EXPECT_WARNING_COUNT       optional exact warning count, use 0 for 30m soak removal gate
@@ -152,6 +152,7 @@ idle_in_transaction_samples="$(
 )"
 
 five_xx_count="0"
+db_pool_pending_max="0"
 if [[ -n "${http_status_tsv}" ]]; then
   five_xx_count="$(
     awk -F '\t' '
@@ -161,6 +162,14 @@ if [[ -n "${http_status_tsv}" ]]; then
     ' "${http_status_tsv}"
   )"
   require_non_negative_integer "HIKARI_IDLE_ATTRIBUTION_HTTP_STATUS_TSV five_xx_count" "${five_xx_count}"
+  db_pool_pending_max="$(
+    awk -F '\t' '
+      NR == 1 { next }
+      $1 == "db_pool_pending_max" { print $2; found = 1 }
+      END { if (!found) print "missing" }
+    ' "${http_status_tsv}"
+  )"
+  require_non_negative_integer "HIKARI_IDLE_ATTRIBUTION_HTTP_STATUS_TSV db_pool_pending_max" "${db_pool_pending_max}"
 fi
 
 awk -F '\t' '
@@ -283,7 +292,7 @@ if [[ -n "${expected_warning_count}" && "${warning_count}" != "${expected_warnin
   gate_status="fail"
 fi
 if [[ "${expected_warning_count}" == "0" ]]; then
-  if [[ "${idle_in_transaction_samples}" != "0" || "${five_xx_count}" != "0" ]]; then
+  if [[ "${idle_in_transaction_samples}" != "0" || "${five_xx_count}" != "0" || "${db_pool_pending_max}" != "0" ]]; then
     gate_status="fail"
   fi
 fi
@@ -314,12 +323,13 @@ cat >"${report_md}" <<REPORT
 - unattributed_warning_count=${unattributed_count}
 - idle_in_transaction_samples=${idle_in_transaction_samples}
 - five_xx_count=${five_xx_count}
+- db_pool_pending_max=${db_pool_pending_max}
 - sampler: pg_stat_activity
 - correlation window seconds: ${correlation_window_seconds}
 - soak_duration_min=${soak_duration_min}
 - OCI A1 lifetime alignment: maxLifetime < NAT idle, keepalive < maxLifetime, scheduled worker <= PostgreSQL idle timeout
 - ${soak_duration_min}m soak Hikari warning budget: ${expected_warning_count:-attribution-required}
-- zero-budget hard target: Hikari warning 0, idle in transaction 0, 5xx 0
+- zero-budget hard target: Hikari warning 0, idle in transaction 0, DB pool pending 0, 5xx 0
 
 ## Correlation
 

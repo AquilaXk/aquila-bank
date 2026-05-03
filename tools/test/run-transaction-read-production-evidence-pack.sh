@@ -11,6 +11,7 @@ Environment:
   PROD_EVIDENCE_PACK_OUTPUT_DIR           default build/reports/k6/<name>
   PROD_EVIDENCE_PACK_REQUIRED_SCENARIOS   default hikari-soak,cold-warm,mixed-workload,real-ip-multisource,deploy-drain,p999-long
   PROD_EVIDENCE_PACK_MIN_REAL_SOURCE_IPS  default 2
+  PROD_EVIDENCE_PACK_MIN_HIKARI_SOAK_MIN  default 30
   PROD_EVIDENCE_PACK_MAX_EDGE_429_RATE    default 0.10
 USAGE
 }
@@ -38,6 +39,7 @@ input_tsv="${PROD_EVIDENCE_PACK_INPUT_TSV:-}"
 output_dir="${PROD_EVIDENCE_PACK_OUTPUT_DIR:-build/reports/k6/${name}}"
 required_scenarios="${PROD_EVIDENCE_PACK_REQUIRED_SCENARIOS:-hikari-soak,cold-warm,mixed-workload,real-ip-multisource,deploy-drain,p999-long}"
 min_real_source_ips="${PROD_EVIDENCE_PACK_MIN_REAL_SOURCE_IPS:-2}"
+min_hikari_soak_duration_min="${PROD_EVIDENCE_PACK_MIN_HIKARI_SOAK_MIN:-30}"
 max_edge_429_rate="${PROD_EVIDENCE_PACK_MAX_EDGE_429_RATE:-0.10}"
 summary_tsv="${output_dir}/${name}-production-evidence-pack.tsv"
 report_md="${output_dir}/${name}-production-evidence-pack.md"
@@ -93,6 +95,7 @@ scenario_list() {
 }
 
 require_non_negative_integer "PROD_EVIDENCE_PACK_MIN_REAL_SOURCE_IPS" "${min_real_source_ips}"
+require_non_negative_integer "PROD_EVIDENCE_PACK_MIN_HIKARI_SOAK_MIN" "${min_hikari_soak_duration_min}"
 require_rate "PROD_EVIDENCE_PACK_MAX_EDGE_429_RATE" "${max_edge_429_rate}"
 
 print_plan() {
@@ -102,6 +105,7 @@ print_plan() {
   echo "[transaction-read-production-evidence-pack] scenarios=$(scenario_list)"
   echo "[transaction-read-production-evidence-pack] required_scenarios=${required_scenarios}"
   echo "[transaction-read-production-evidence-pack] min_real_source_ips=${min_real_source_ips}"
+  echo "[transaction-read-production-evidence-pack] min_hikari_soak_duration_min=${min_hikari_soak_duration_min}"
   echo "[transaction-read-production-evidence-pack] max_edge_429_rate=${max_edge_429_rate}"
   echo "[transaction-read-production-evidence-pack] required_refs=k6_summary_ref,nginx_aggregate_ref,nginx_499_aggregate_ref,spring_429_ref,hikari_log_ref,postgres_explain_ref,postgres_activity_ref,postgres_wait_ref,prometheus_timeline_ref,artifact_manifest_ref,hikari_closure_ref(hikari-soak)"
   echo "[transaction-read-production-evidence-pack] hard_zero=backend_429_count,unknown_429_count,five_xx_count,nginx_499_count,hikari_validation_warnings,db_pool_pending_max"
@@ -121,6 +125,7 @@ mkdir -p "${output_dir}"
 awk -F '\t' \
   -v required_scenarios="${required_scenarios}" \
   -v min_real_source_ips="${min_real_source_ips}" \
+  -v min_hikari_soak_duration_min="${min_hikari_soak_duration_min}" \
   -v max_edge_429_rate="${max_edge_429_rate}" '
 function value(name, fallback) {
   if (!(name in col) || col[name] == "") return fallback
@@ -188,7 +193,12 @@ NR == 1 {
   mixed_workload_ref = value("mixed_workload_ref", "n/a")
   p999_latency_ref = value("p999_latency_ref", "n/a")
 
-  if (scenario == "hikari-soak") require_ref("hikari_closure_ref")
+  if (scenario == "hikari-soak") {
+    require_ref("hikari_closure_ref")
+    if (value("duration_min", "0") + 0 < min_hikari_soak_duration_min) {
+      add_reason("hikari-soak-duration<" min_hikari_soak_duration_min)
+    }
+  }
   if (scenario == "mixed-workload") require_ref("mixed_workload_ref")
   if (scenario == "p999-long") require_ref("p999_latency_ref")
   if (scenario == "real-ip-multisource") {
@@ -260,6 +270,7 @@ cat >"${report_md}" <<REPORT
 - required scenarios: ${required_scenarios}
 - missing scenarios: ${missing_scenarios:-none}
 - min real source IPs: ${min_real_source_ips}
+- min Hikari soak duration min: ${min_hikari_soak_duration_min}
 - max edge 429 rate: ${max_edge_429_rate}
 - hard-zero: backend 429, unknown 429, 499, 5xx, Hikari warning, Hikari pending
 
