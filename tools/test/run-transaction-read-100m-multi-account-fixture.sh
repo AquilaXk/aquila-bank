@@ -7,14 +7,19 @@ usage: tools/test/run-transaction-read-100m-multi-account-fixture.sh [--print-pl
 
 Environment:
   MULTI_ACCOUNT_FIXTURE_NAME            default transaction-100m-multi-account-<timestamp>
+  MULTI_ACCOUNT_RUN_ID                  default same as MULTI_ACCOUNT_FIXTURE_NAME
   MULTI_ACCOUNT_HOT_ACCOUNT_IDS         comma-separated hot account ids, min 2
-  MULTI_ACCOUNT_COLD_ACCOUNT_IDS        comma-separated cold account ids, min 1
+  MULTI_ACCOUNT_COLD_ACCOUNT_IDS        comma-separated cold account ids, min 2
+  MULTI_ACCOUNT_MIN_TOTAL_ACCOUNT_COUNT default 4
+  MULTI_ACCOUNT_MIN_COLD_ACCOUNT_COUNT  default 2
   MULTI_ACCOUNT_TARGET_TOTAL_ROWS       default 100000000
   MULTI_ACCOUNT_HOT_ROWS_PER_ACCOUNT    default derived from target total rows
   MULTI_ACCOUNT_COLD_ROWS_PER_ACCOUNT   default 500000
   MULTI_ACCOUNT_ENFORCE_TARGET_TOTAL_ROWS default true
-  MULTI_ACCOUNT_ACCOUNT_RESULT_TSV      optional TSV: account_group,account_id,planned_rows,accepted_p95_ms,rejected_429_rate
-  MULTI_ACCOUNT_REQUIRE_ACCOUNT_RESULT_TSV default false
+  MULTI_ACCOUNT_ACCOUNT_RESULT_TSV      TSV: account_group,account_id,planned_rows,accepted_p95_ms,rejected_429_rate
+  MULTI_ACCOUNT_REQUIRE_ACCOUNT_RESULT_TSV default true
+  MULTI_ACCOUNT_ARTIFACT_URI            required evidence artifact reference
+  MULTI_ACCOUNT_REQUIRE_ARTIFACT_URI    default true
   MULTI_ACCOUNT_HOT_FROM                default 2026-04-01T00:00:00Z
   MULTI_ACCOUNT_HOT_TO                  default 2026-04-30T00:00:00Z
   MULTI_ACCOUNT_COLD_FROM               default 2026-01-01T00:00:00Z
@@ -42,14 +47,19 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 name="${MULTI_ACCOUNT_FIXTURE_NAME:-transaction-100m-multi-account-$(date +%Y-%m-%d-%H%M%S)}"
+run_id="${MULTI_ACCOUNT_RUN_ID:-${name}}"
 hot_ids="${MULTI_ACCOUNT_HOT_ACCOUNT_IDS:-}"
 cold_ids="${MULTI_ACCOUNT_COLD_ACCOUNT_IDS:-}"
+min_total_account_count="${MULTI_ACCOUNT_MIN_TOTAL_ACCOUNT_COUNT:-4}"
+min_cold_account_count="${MULTI_ACCOUNT_MIN_COLD_ACCOUNT_COUNT:-2}"
 target_total_rows="${MULTI_ACCOUNT_TARGET_TOTAL_ROWS:-100000000}"
 hot_rows_per_account="${MULTI_ACCOUNT_HOT_ROWS_PER_ACCOUNT:-}"
 cold_rows_per_account="${MULTI_ACCOUNT_COLD_ROWS_PER_ACCOUNT:-500000}"
 enforce_target_total_rows="${MULTI_ACCOUNT_ENFORCE_TARGET_TOTAL_ROWS:-true}"
 account_result_tsv="${MULTI_ACCOUNT_ACCOUNT_RESULT_TSV:-}"
-require_account_result_tsv="${MULTI_ACCOUNT_REQUIRE_ACCOUNT_RESULT_TSV:-false}"
+require_account_result_tsv="${MULTI_ACCOUNT_REQUIRE_ACCOUNT_RESULT_TSV:-true}"
+artifact_uri="${MULTI_ACCOUNT_ARTIFACT_URI:-}"
+require_artifact_uri="${MULTI_ACCOUNT_REQUIRE_ARTIFACT_URI:-true}"
 hot_from="${MULTI_ACCOUNT_HOT_FROM:-2026-04-01T00:00:00Z}"
 hot_to="${MULTI_ACCOUNT_HOT_TO:-2026-04-30T00:00:00Z}"
 cold_from="${MULTI_ACCOUNT_COLD_FROM:-2026-01-01T00:00:00Z}"
@@ -75,6 +85,15 @@ require_bool() {
   local value="$2"
   if [[ "${value}" != "true" && "${value}" != "false" ]]; then
     echo "${key} must be true or false: ${value}" >&2
+    exit 1
+  fi
+}
+
+require_non_empty() {
+  local key="$1"
+  local value="$2"
+  if [[ -z "${value}" ]]; then
+    echo "${key} is required" >&2
     exit 1
   fi
 }
@@ -138,14 +157,22 @@ json_array() {
 }
 
 validate_account_csv "MULTI_ACCOUNT_HOT_ACCOUNT_IDS" "${hot_ids}" 2
-validate_account_csv "MULTI_ACCOUNT_COLD_ACCOUNT_IDS" "${cold_ids}" 1
+validate_account_csv "MULTI_ACCOUNT_COLD_ACCOUNT_IDS" "${cold_ids}" "${min_cold_account_count}"
+require_positive_integer "MULTI_ACCOUNT_MIN_TOTAL_ACCOUNT_COUNT" "${min_total_account_count}"
+require_positive_integer "MULTI_ACCOUNT_MIN_COLD_ACCOUNT_COUNT" "${min_cold_account_count}"
 require_positive_integer "MULTI_ACCOUNT_TARGET_TOTAL_ROWS" "${target_total_rows}"
 require_positive_integer "MULTI_ACCOUNT_COLD_ROWS_PER_ACCOUNT" "${cold_rows_per_account}"
 require_bool "MULTI_ACCOUNT_ENFORCE_TARGET_TOTAL_ROWS" "${enforce_target_total_rows}"
 require_bool "MULTI_ACCOUNT_REQUIRE_ACCOUNT_RESULT_TSV" "${require_account_result_tsv}"
+require_bool "MULTI_ACCOUNT_REQUIRE_ARTIFACT_URI" "${require_artifact_uri}"
 
 hot_count="$(csv_count "${hot_ids}")"
 cold_count="$(csv_count "${cold_ids}")"
+total_account_count="$((hot_count + cold_count))"
+if ((total_account_count < min_total_account_count)); then
+  echo "multi-account fixture requires at least ${min_total_account_count} accounts: total=${total_account_count}" >&2
+  exit 1
+fi
 cold_total_rows="$((cold_count * cold_rows_per_account))"
 hot_rows_remainder=0
 if [[ -z "${hot_rows_per_account}" ]]; then
@@ -168,16 +195,23 @@ fi
 if [[ "${require_account_result_tsv}" == "true" ]]; then
   require_file "MULTI_ACCOUNT_ACCOUNT_RESULT_TSV" "${account_result_tsv}"
 fi
+if [[ "${require_artifact_uri}" == "true" ]]; then
+  require_non_empty "MULTI_ACCOUNT_ARTIFACT_URI" "${artifact_uri}"
+fi
 
 print_plan() {
   echo "[transaction-100m-multi-account] name=${name}"
+  echo "[transaction-100m-multi-account] run_id=${run_id}"
   echo "[transaction-100m-multi-account] hot_account_count=${hot_count}"
   echo "[transaction-100m-multi-account] cold_account_count=${cold_count}"
+  echo "[transaction-100m-multi-account] total_account_count=${total_account_count}"
+  echo "[transaction-100m-multi-account] minimum_total_account_count=${min_total_account_count}"
   echo "[transaction-100m-multi-account] target_total_rows=${target_total_rows}"
   echo "[transaction-100m-multi-account] total_rows=${total_rows}"
   echo "[transaction-100m-multi-account] hot_rows_per_account=${hot_rows_per_account} hot_rows_remainder=${hot_rows_remainder}"
   echo "[transaction-100m-multi-account] cold_rows_per_account=${cold_rows_per_account}"
   echo "[transaction-100m-multi-account] account_result_tsv=${account_result_tsv:-missing}"
+  echo "[transaction-100m-multi-account] artifact_uri=${artifact_uri:-missing}"
   echo "[transaction-100m-multi-account] k6_env=K6_HOT_ACCOUNT_IDS=${hot_ids} K6_COLD_ACCOUNT_IDS=${cold_ids}"
   echo "[transaction-100m-multi-account] k6_command=${k6_runner}"
   echo "[transaction-100m-multi-account] manifest_json=${manifest_json}"
@@ -218,9 +252,9 @@ write_distribution_tsv() {
 
 write_account_summary_tsv() {
   {
-    printf "scope\taccount_count\tplanned_rows\taccepted_p95_spread_ms\trejected_429_spread\n"
+    printf "scope\taccount_count\tplanned_rows\tplanned_row_skew_ratio\taccepted_p95_spread_ms\trejected_429_spread\n"
     if [[ -z "${account_result_tsv}" ]]; then
-      printf "all\t0\t0\t0\t0\n"
+      printf "all\t0\t0\t0.000\t0\t0\n"
       return 0
     fi
     require_file "MULTI_ACCOUNT_ACCOUNT_RESULT_TSV" "${account_result_tsv}"
@@ -238,7 +272,10 @@ write_account_summary_tsv() {
       }
       {
         count++
-        rows += $(col["planned_rows"])
+        planned_rows = $(col["planned_rows"]) + 0
+        rows += planned_rows
+        if (count == 1 || planned_rows < min_rows) min_rows = planned_rows
+        if (count == 1 || planned_rows > max_rows) max_rows = planned_rows
         p95 = $(col["accepted_p95_ms"]) + 0
         rejected = $(col["rejected_429_rate"]) + 0
         if (count == 1 || p95 < min_p95) min_p95 = p95
@@ -255,7 +292,8 @@ write_account_summary_tsv() {
           printf "account result planned rows mismatch: rows=%s expected=%s\n", rows, expected_total > "/dev/stderr"
           exit 4
         }
-        printf "all\t%d\t%d\t%.0f\t%.3f\n", count, rows, max_p95 - min_p95, max_rejected - min_rejected
+        skew_ratio = (min_rows > 0) ? max_rows / min_rows : 0
+        printf "all\t%d\t%d\t%.3f\t%.0f\t%.3f\n", count, rows, skew_ratio, max_p95 - min_p95, max_rejected - min_rejected
       }
     ' "${account_result_tsv}"
   } >"${account_summary_tsv}"
@@ -265,7 +303,7 @@ write_distribution_tsv
 write_account_summary_tsv
 
 cat >"${manifest_json}" <<JSON
-{"name":"${name}","hotAccountIds":$(json_array "${hot_ids}"),"coldAccountIds":$(json_array "${cold_ids}"),"targetTotalRows":${target_total_rows},"hotRowsPerAccount":${hot_rows_per_account},"hotRowsRemainder":${hot_rows_remainder},"coldRowsPerAccount":${cold_rows_per_account},"totalRows":${total_rows},"hotWindow":{"from":"${hot_from}","to":"${hot_to}"},"coldWindow":{"from":"${cold_from}","to":"${cold_to}"}}
+{"name":"${name}","runId":"${run_id}","artifactUri":"${artifact_uri}","hotAccountIds":$(json_array "${hot_ids}"),"coldAccountIds":$(json_array "${cold_ids}"),"minimumTotalAccountCount":${min_total_account_count},"targetTotalRows":${target_total_rows},"hotRowsPerAccount":${hot_rows_per_account},"hotRowsRemainder":${hot_rows_remainder},"coldRowsPerAccount":${cold_rows_per_account},"totalRows":${total_rows},"hotWindow":{"from":"${hot_from}","to":"${hot_to}"},"coldWindow":{"from":"${cold_from}","to":"${cold_to}"}}
 JSON
 
 cat >"${report_md}" <<REPORT
@@ -274,8 +312,12 @@ cat >"${report_md}" <<REPORT
 ## Summary
 
 - fixture: ${name}
+- actual execution run id: ${run_id}
+- artifact reference: ${artifact_uri}
 - hot account count: ${hot_count}
 - cold account count: ${cold_count}
+- total account count: ${total_account_count}
+- minimum total account count: ${min_total_account_count}
 - target total rows: ${target_total_rows}
 - total planned rows: ${total_rows}
 - hot rows per account: ${hot_rows_per_account} (+1 for first ${hot_rows_remainder} hot accounts)

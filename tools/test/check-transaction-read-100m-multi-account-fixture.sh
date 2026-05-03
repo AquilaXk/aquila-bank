@@ -40,27 +40,34 @@ TSV
 echo "[transaction-100m-multi-account] print plan"
 plan="$(
   MULTI_ACCOUNT_FIXTURE_NAME=multi-account-check \
+  MULTI_ACCOUNT_RUN_ID=oci-100m-source-evidence-20260503 \
   MULTI_ACCOUNT_HOT_ACCOUNT_IDS=910000001,910000003,910000005 \
   MULTI_ACCOUNT_COLD_ACCOUNT_IDS=910000002,910000004 \
   MULTI_ACCOUNT_ACCOUNT_RESULT_TSV="${account_result_tsv}" \
+  MULTI_ACCOUNT_ARTIFACT_URI=oci://aquila-evidence/transaction-read/oci-100m-source-evidence-20260503 \
   MULTI_ACCOUNT_OUTPUT_DIR="${output_dir}" \
     "${runner}" --print-plan
 )"
+grep -F "run_id=oci-100m-source-evidence-20260503" <<<"${plan}" >/dev/null
 grep -F "hot_account_count=3" <<<"${plan}" >/dev/null
 grep -F "cold_account_count=2" <<<"${plan}" >/dev/null
+grep -F "minimum_total_account_count=4" <<<"${plan}" >/dev/null
 grep -F "target_total_rows=100000000" <<<"${plan}" >/dev/null
 grep -F "total_rows=100000000" <<<"${plan}" >/dev/null
 grep -F "hot_rows_per_account=33000000 hot_rows_remainder=0" <<<"${plan}" >/dev/null
 grep -F "cold_rows_per_account=500000" <<<"${plan}" >/dev/null
 grep -F "account_result_tsv=${account_result_tsv}" <<<"${plan}" >/dev/null
+grep -F "artifact_uri=oci://aquila-evidence/transaction-read/oci-100m-source-evidence-20260503" <<<"${plan}" >/dev/null
 grep -F "k6_env=K6_HOT_ACCOUNT_IDS=910000001,910000003,910000005 K6_COLD_ACCOUNT_IDS=910000002,910000004" <<<"${plan}" >/dev/null
 
 echo "[transaction-100m-multi-account] manifest report"
 output="$(
   MULTI_ACCOUNT_FIXTURE_NAME=multi-account-check \
+  MULTI_ACCOUNT_RUN_ID=oci-100m-source-evidence-20260503 \
   MULTI_ACCOUNT_HOT_ACCOUNT_IDS=910000001,910000003,910000005 \
   MULTI_ACCOUNT_COLD_ACCOUNT_IDS=910000002,910000004 \
   MULTI_ACCOUNT_ACCOUNT_RESULT_TSV="${account_result_tsv}" \
+  MULTI_ACCOUNT_ARTIFACT_URI=oci://aquila-evidence/transaction-read/oci-100m-source-evidence-20260503 \
   MULTI_ACCOUNT_OUTPUT_DIR="${output_dir}" \
     "${runner}"
 )"
@@ -69,6 +76,8 @@ manifest_json="${output_dir}/multi-account-check-multi-account-fixture.json"
 distribution_tsv="${output_dir}/multi-account-check-multi-account-distribution.tsv"
 account_summary_tsv="${output_dir}/multi-account-check-multi-account-account-summary.tsv"
 test "${report_md}" = "${output_dir}/multi-account-check-multi-account-fixture.md"
+grep -F '"runId":"oci-100m-source-evidence-20260503"' "${manifest_json}" >/dev/null
+grep -F '"artifactUri":"oci://aquila-evidence/transaction-read/oci-100m-source-evidence-20260503"' "${manifest_json}" >/dev/null
 grep -F '"hotAccountIds":["910000001","910000003","910000005"]' "${manifest_json}" >/dev/null
 grep -F '"coldAccountIds":["910000002","910000004"]' "${manifest_json}" >/dev/null
 grep -F '"targetTotalRows":100000000' "${manifest_json}" >/dev/null
@@ -78,19 +87,33 @@ grep -F '"coldRowsPerAccount":500000' "${manifest_json}" >/dev/null
 grep -F $'account_group\taccount_id\tplanned_rows' "${distribution_tsv}" >/dev/null
 grep -F $'hot\t910000001\t33000000' "${distribution_tsv}" >/dev/null
 grep -F $'cold\t910000004\t500000' "${distribution_tsv}" >/dev/null
-grep -F $'all\t5\t100000000\t29\t0.004' "${account_summary_tsv}" >/dev/null
+grep -F $'scope\taccount_count\tplanned_rows\tplanned_row_skew_ratio\taccepted_p95_spread_ms\trejected_429_spread' "${account_summary_tsv}" >/dev/null
+grep -F $'all\t5\t100000000\t66.000\t29\t0.004' "${account_summary_tsv}" >/dev/null
+grep -F "actual execution run id: oci-100m-source-evidence-20260503" "${report_md}" >/dev/null
+grep -F "artifact reference: oci://aquila-evidence/transaction-read/oci-100m-source-evidence-20260503" "${report_md}" >/dev/null
 grep -F "per-account fairness metric: aquila_transaction_fairness_429_count{account_id,account_group}" "${report_md}" >/dev/null
 grep -F "global throughput and per-account fairness are reported separately" "${report_md}" >/dev/null
 grep -F "account result summary: ${account_summary_tsv}" "${report_md}" >/dev/null
 
-echo "[transaction-100m-multi-account] missing account result fails when required"
+echo "[transaction-100m-multi-account] missing account result fails by default"
 if MULTI_ACCOUNT_FIXTURE_NAME=multi-account-missing-result \
   MULTI_ACCOUNT_HOT_ACCOUNT_IDS=910000001,910000003,910000005 \
   MULTI_ACCOUNT_COLD_ACCOUNT_IDS=910000002,910000004 \
-  MULTI_ACCOUNT_REQUIRE_ACCOUNT_RESULT_TSV=true \
+  MULTI_ACCOUNT_ARTIFACT_URI=oci://aquila-evidence/transaction-read/missing-result \
   MULTI_ACCOUNT_OUTPUT_DIR="${output_dir}" \
     "${runner}" >/dev/null 2>&1; then
   echo "multi-account fixture unexpectedly passed missing account result TSV" >&2
+  exit 1
+fi
+
+echo "[transaction-100m-multi-account] missing artifact reference fails by default"
+if MULTI_ACCOUNT_FIXTURE_NAME=multi-account-missing-artifact \
+  MULTI_ACCOUNT_HOT_ACCOUNT_IDS=910000001,910000003,910000005 \
+  MULTI_ACCOUNT_COLD_ACCOUNT_IDS=910000002,910000004 \
+  MULTI_ACCOUNT_ACCOUNT_RESULT_TSV="${account_result_tsv}" \
+  MULTI_ACCOUNT_OUTPUT_DIR="${output_dir}" \
+    "${runner}" >/dev/null 2>&1; then
+  echo "multi-account fixture unexpectedly passed missing artifact URI" >&2
   exit 1
 fi
 
@@ -98,8 +121,22 @@ echo "[transaction-100m-multi-account] single hot account fails"
 if MULTI_ACCOUNT_FIXTURE_NAME=multi-account-fail \
   MULTI_ACCOUNT_HOT_ACCOUNT_IDS=910000001 \
   MULTI_ACCOUNT_COLD_ACCOUNT_IDS=910000002,910000004 \
+  MULTI_ACCOUNT_ACCOUNT_RESULT_TSV="${account_result_tsv}" \
+  MULTI_ACCOUNT_ARTIFACT_URI=oci://aquila-evidence/transaction-read/single-hot \
   MULTI_ACCOUNT_OUTPUT_DIR="${output_dir}" \
     "${runner}" >/dev/null 2>&1; then
   echo "multi-account fixture unexpectedly passed single hot account" >&2
+  exit 1
+fi
+
+echo "[transaction-100m-multi-account] single cold account fails"
+if MULTI_ACCOUNT_FIXTURE_NAME=multi-account-single-cold \
+  MULTI_ACCOUNT_HOT_ACCOUNT_IDS=910000001,910000003,910000005 \
+  MULTI_ACCOUNT_COLD_ACCOUNT_IDS=910000002 \
+  MULTI_ACCOUNT_ACCOUNT_RESULT_TSV="${account_result_tsv}" \
+  MULTI_ACCOUNT_ARTIFACT_URI=oci://aquila-evidence/transaction-read/single-cold \
+  MULTI_ACCOUNT_OUTPUT_DIR="${output_dir}" \
+    "${runner}" >/dev/null 2>&1; then
+  echo "multi-account fixture unexpectedly passed single cold account" >&2
   exit 1
 fi
