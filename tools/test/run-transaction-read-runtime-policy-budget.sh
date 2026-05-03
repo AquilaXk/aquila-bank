@@ -11,7 +11,7 @@ Environment:
   RUNTIME_POLICY_OUTPUT_DIR           default build/reports/k6/<name>
   RUNTIME_POLICY_REQUIRED_PROFILES    default burst48,burst64,burst96,vu16,paced-weighted-vu16
   RUNTIME_POLICY_BURST64_429_RATE     default 0.10
-  RUNTIME_POLICY_PACED_VU16_429_RATE  default 0.005
+  RUNTIME_POLICY_PACED_VU16_429_RATE  default 0.001
   RUNTIME_POLICY_REJECT_STREAK_MAX    default 3
   RUNTIME_POLICY_ACCEPTED_P95_MS      default 350
   RUNTIME_POLICY_DELAYED_RATE         default 0.25
@@ -43,7 +43,7 @@ input_tsv="${RUNTIME_POLICY_INPUT_TSV:-}"
 output_dir="${RUNTIME_POLICY_OUTPUT_DIR:-build/reports/k6/${name}}"
 required_profiles="${RUNTIME_POLICY_REQUIRED_PROFILES:-burst48,burst64,burst96,vu16,paced-weighted-vu16}"
 burst64_429_rate="${RUNTIME_POLICY_BURST64_429_RATE:-0.10}"
-paced_vu16_429_rate="${RUNTIME_POLICY_PACED_VU16_429_RATE:-0.005}"
+paced_vu16_429_rate="${RUNTIME_POLICY_PACED_VU16_429_RATE:-0.001}"
 reject_streak_max="${RUNTIME_POLICY_REJECT_STREAK_MAX:-3}"
 accepted_p95_ms="${RUNTIME_POLICY_ACCEPTED_P95_MS:-350}"
 delayed_rate="${RUNTIME_POLICY_DELAYED_RATE:-0.25}"
@@ -202,7 +202,7 @@ cat >"${report_md}" <<REPORT
 - required profiles: ${required_profiles}
 - missing profiles: ${missing_profiles}
 - burst64 <= 10% 429: ${burst64_429_rate}
-- paced weighted VU16 <= 0.005 429: ${paced_vu16_429_rate}
+- paced weighted VU16 <= 0.001 429: ${paced_vu16_429_rate}
 - unpaced VU16 operating decision: client-pacing-required
 - Retry-After reject streak <= 3: ${reject_streak_max}
 - accepted p95 budget: <= ${accepted_p95_ms}ms

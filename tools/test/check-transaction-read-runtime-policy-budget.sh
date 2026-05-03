@@ -30,7 +30,7 @@ plan="$(
 )"
 grep -F "required_profiles=burst48,burst64,burst96,vu16,paced-weighted-vu16" <<<"${plan}" >/dev/null
 grep -F "burst64_429_rate=0.10" <<<"${plan}" >/dev/null
-grep -F "paced_vu16_429_rate=0.005" <<<"${plan}" >/dev/null
+grep -F "paced_vu16_429_rate=0.001" <<<"${plan}" >/dev/null
 grep -F "reject_streak_max=3" <<<"${plan}" >/dev/null
 grep -F "accepted_p95_ms=350" <<<"${plan}" >/dev/null
 
@@ -46,7 +46,7 @@ summary_tsv="${output_dir}/runtime-policy-check-runtime-policy.tsv"
 test "${report_md}" = "${output_dir}/runtime-policy-check-runtime-policy.md"
 grep -F "gate_status=pass" "${report_md}" >/dev/null
 grep -F "burst64 <= 10% 429" "${report_md}" >/dev/null
-grep -F "paced weighted VU16 <= 0.005 429" "${report_md}" >/dev/null
+grep -F "paced weighted VU16 <= 0.001 429" "${report_md}" >/dev/null
 grep -F "unpaced VU16 operating decision: client-pacing-required" "${report_md}" >/dev/null
 grep -F "Retry-After reject streak <= 3" "${report_md}" >/dev/null
 grep -F $'profile\tstatus\tdecision\ttotal_429_rate\tedge_429_rate\tbackend_429_rate\tunknown_429_count\tfive_xx_count\taccepted_p95_ms\tdelayed_rate\tretry_after_p95_ms\treject_streak_max\tpolicy_candidate' "${summary_tsv}" >/dev/null
