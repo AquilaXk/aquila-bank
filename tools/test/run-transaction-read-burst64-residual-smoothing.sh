@@ -14,7 +14,7 @@ Environment:
   BURST64_SMOOTHING_MAX_BACKEND_429_RATE  default 0.005
   BURST64_SMOOTHING_MIN_BURST80_429_RATE  default 0.10
   BURST64_SMOOTHING_MIN_BURST96_429_RATE  default 0.10
-  BURST64_SMOOTHING_MAX_ACCEPTED_P95_MS   default 120
+  BURST64_SMOOTHING_MAX_ACCEPTED_P95_MS   default 100
   BURST64_SMOOTHING_MAX_RETRY_P95_MS      default 250
   BURST64_SMOOTHING_MAX_REJECT_STREAK     default 4
   BURST64_SMOOTHING_MAX_DELAYED_RATE      default 0.05
@@ -48,7 +48,7 @@ max_burst64_429_rate="${BURST64_SMOOTHING_MAX_BURST64_429_RATE:-0.10}"
 max_backend_429_rate="${BURST64_SMOOTHING_MAX_BACKEND_429_RATE:-0.005}"
 min_burst80_429_rate="${BURST64_SMOOTHING_MIN_BURST80_429_RATE:-0.10}"
 min_burst96_429_rate="${BURST64_SMOOTHING_MIN_BURST96_429_RATE:-0.10}"
-max_accepted_p95_ms="${BURST64_SMOOTHING_MAX_ACCEPTED_P95_MS:-120}"
+max_accepted_p95_ms="${BURST64_SMOOTHING_MAX_ACCEPTED_P95_MS:-100}"
 max_retry_p95_ms="${BURST64_SMOOTHING_MAX_RETRY_P95_MS:-250}"
 max_reject_streak="${BURST64_SMOOTHING_MAX_REJECT_STREAK:-4}"
 max_delayed_rate="${BURST64_SMOOTHING_MAX_DELAYED_RATE:-0.05}"
@@ -163,19 +163,24 @@ awk -F '\t' \
     if (!(name in col) || col[name] == "") return fallback
     return $(col[name])
   }
+  function value_any(primary, legacy, fallback) {
+    if ((primary in col) && col[primary] != "") return $(col[primary])
+    if ((legacy in col) && col[legacy] != "") return $(col[legacy])
+    return fallback
+  }
   NR == 1 {
     for (i = 1; i <= NF; i++) {
       col[$i] = i
     }
-    print "policy\tstatus\tburst48_429_rate\tburst64_429_rate\tburst80_429_rate\tburst96_429_rate\taccepted_p95_ms\tretry_after_p95_ms\treject_streak_max\tdelayed_rate\tfive_xx_count\tbackend_429_rate\tbackend_429_count"
+    print "policy\tstatus\tburst48_edge_429_rate\tburst64_edge_429_rate\tburst80_edge_429_rate\tburst96_edge_429_rate\taccepted_p95_ms\tretry_after_p95_ms\treject_streak_max\tdelayed_rate\tfive_xx_count\tbackend_429_rate\tbackend_429_count"
     next
   }
   {
     policy = value("policy", "unknown")
-    burst48 = value("burst48_429_rate", "1") + 0
-    burst64 = value("burst64_429_rate", "1") + 0
-    burst80 = value("burst80_429_rate", "0") + 0
-    burst96 = value("burst96_429_rate", "0") + 0
+    burst48 = value_any("burst48_edge_429_rate", "burst48_429_rate", "1") + 0
+    burst64 = value_any("burst64_edge_429_rate", "burst64_429_rate", "1") + 0
+    burst80 = value_any("burst80_edge_429_rate", "burst80_429_rate", "0") + 0
+    burst96 = value_any("burst96_edge_429_rate", "burst96_429_rate", "0") + 0
     accepted_p95 = value("accepted_p95_ms", "999999") + 0
     retry_p95 = value("retry_after_p95_ms", "999999") + 0
     streak = value("reject_streak_max", "999999") + 0
@@ -184,15 +189,15 @@ awk -F '\t' \
     backend_429_rate = value("backend_429_rate", "1") + 0
     backend_429 = value("backend_429_count", "1") + 0
     status = "pass"
-    if (burst48 > max_burst48 || burst64 > max_burst64 || burst80 < min_burst80 || burst96 < min_burst96 || accepted_p95 > max_p95 || retry_p95 > max_retry_p95 || streak > max_streak || delayed > max_delayed || five_xx > 0 || backend_429_rate > max_backend_429) {
+    if (burst48 > max_burst48 || burst64 > max_burst64 || burst80 < min_burst80 || burst96 < min_burst96 || accepted_p95 >= max_p95 || retry_p95 > max_retry_p95 || streak > max_streak || delayed > max_delayed || five_xx > 0 || backend_429_rate > max_backend_429) {
       status = "fail"
       fail_count++
     } else {
       pass_count++
     }
     printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-      policy, status, value("burst48_429_rate", "0"), value("burst64_429_rate", "0"),
-      value("burst80_429_rate", "0"), value("burst96_429_rate", "0"), value("accepted_p95_ms", "0"),
+      policy, status, value_any("burst48_edge_429_rate", "burst48_429_rate", "0"), value_any("burst64_edge_429_rate", "burst64_429_rate", "0"),
+      value_any("burst80_edge_429_rate", "burst80_429_rate", "0"), value_any("burst96_edge_429_rate", "burst96_429_rate", "0"), value("accepted_p95_ms", "0"),
       value("retry_after_p95_ms", "0"), value("reject_streak_max", "0"), value("delayed_rate", "0"),
       value("five_xx_count", "0"), value("backend_429_rate", "0"), value("backend_429_count", "0")
   }
@@ -213,7 +218,7 @@ fi
 
 matrix_table="$(awk -F '\t' '
   BEGIN {
-    print "| Policy | Status | burst48 429 | burst64 429 | burst80 429 | burst96 429 | p95 ms | Retry p95 ms | Streak max | Delayed | 5xx | Backend 429 rate | Backend 429 count |"
+    print "| Policy | Status | burst48 edge 429 | burst64 edge 429 | burst80 edge 429 | burst96 edge 429 | p95 ms | Retry p95 ms | Streak max | Delayed | 5xx | Backend 429 rate | Backend 429 count |"
     print "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
   }
   NR > 1 {
@@ -227,12 +232,12 @@ cat >"${report_md}" <<REPORT
 ## Summary
 
 - gate_status=${gate_status}
-- burst 48 total 429 budget: <= ${max_burst48_429_rate}
-- burst 64 total 429 budget: <= ${max_burst64_429_rate}
+- burst 48 edge 429 budget: <= ${max_burst48_429_rate}
+- burst 64 edge 429 budget: <= ${max_burst64_429_rate}
 - main659 observed burst64 429: ${observed_main659_burst64_429_rate}
 - backend 429 budget: <= ${max_backend_429_rate}
 - burst 80/96 policy: fail-fast overload lower bound >= ${min_burst80_429_rate}/${min_burst96_429_rate}
-- accepted p95 budget: <= ${max_accepted_p95_ms}ms
+- accepted p95 budget: < ${max_accepted_p95_ms}ms
 - retry-after p95 budget: <= ${max_retry_p95_ms}ms
 - reject streak max: <= ${max_reject_streak}
 - delayed ratio budget: <= ${max_delayed_rate}
@@ -244,7 +249,7 @@ ${matrix_table}
 
 ## Contract Notes
 
-- burst64는 residual 총 429 10% 이하를 pass 경계로 둔다.
+- burst64는 edge 429 10% 이하와 accepted p95 < 100ms를 pass 경계로 둔다.
 - burst80 이상은 낮은 latency의 fail-fast overload로 남기며 accepted delay를 늘려 pass 처리하지 않는다.
 - backend 429와 5xx는 edge smoothing 후보에서 즉시 탈락한다.
 
