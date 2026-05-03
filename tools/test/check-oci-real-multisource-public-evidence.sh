@@ -53,38 +53,44 @@ multi-source	198.51.100.13	REJECTED	80
 TSV
 
 cat >"${source_evidence_tsv}" <<'TSV'
-source_name	docker_context	realip_remote_addr	edge_429_rate	backend_429_rate	accepted_p95_ms	five_xx_count
-source-a	oci-k6-a	198.51.100.10	0.081	0	154.0	0
-source-b	oci-k6-b	198.51.100.11	0.089	0	158.0	0
+source_name	run_id	docker_context	realip_remote_addr	edge_429_rate	backend_429_rate	accepted_p95_ms	five_xx_count	artifact_uri
+source-a	oci-source-evidence-20260503	oci-k6-a	198.51.100.10	0.081	0	154.0	0	oci://aquila-evidence/transaction-read/oci-source-evidence-20260503/source-a
+source-b	oci-source-evidence-20260503	oci-k6-b	198.51.100.11	0.089	0	158.0	0	oci://aquila-evidence/transaction-read/oci-source-evidence-20260503/source-b
 TSV
 
 echo "[oci-real-multisource-public-evidence] print plan"
 plan="$(
   OCI_REAL_MULTISOURCE_NAME=real-multi-check \
+  OCI_REAL_MULTISOURCE_RUN_ID=oci-source-evidence-20260503 \
   OCI_REAL_MULTISOURCE_CONTEXTS=oci-k6-a,oci-k6-b \
   OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON="${single_summary}" \
   OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON="${multi_summary}" \
   OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV="${status_tsv}" \
   OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV="${source_evidence_tsv}" \
+  OCI_REAL_MULTISOURCE_ARTIFACT_URI=oci://aquila-evidence/transaction-read/oci-source-evidence-20260503 \
   OCI_REAL_MULTISOURCE_OUTPUT_DIR="${output_dir}" \
     "${runner}" --print-plan
 )"
 grep -F "name=real-multi-check" <<<"${plan}" >/dev/null
+grep -F "run_id=oci-source-evidence-20260503" <<<"${plan}" >/dev/null
 grep -F "docker_context_count=2" <<<"${plan}" >/dev/null
 grep -F "true_multi_source_required=true" <<<"${plan}" >/dev/null
 grep -F "minimum_remote_docker_contexts=2" <<<"${plan}" >/dev/null
 grep -F "source_evidence_tsv=${source_evidence_tsv}" <<<"${plan}" >/dev/null
+grep -F "artifact_uri=oci://aquila-evidence/transaction-read/oci-source-evidence-20260503" <<<"${plan}" >/dev/null
 grep -F "multi_source_runner=tools/test/run-k6-transaction-100m-multisource.sh" <<<"${plan}" >/dev/null
 grep -F "replay_gate=tools/test/run-oci-real-ip-multisource-capacity-replay.sh" <<<"${plan}" >/dev/null
 
 echo "[oci-real-multisource-public-evidence] pass report"
 output="$(
   OCI_REAL_MULTISOURCE_NAME=real-multi-check \
+  OCI_REAL_MULTISOURCE_RUN_ID=oci-source-evidence-20260503 \
   OCI_REAL_MULTISOURCE_CONTEXTS=oci-k6-a,oci-k6-b \
   OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON="${single_summary}" \
   OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON="${multi_summary}" \
   OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV="${status_tsv}" \
   OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV="${source_evidence_tsv}" \
+  OCI_REAL_MULTISOURCE_ARTIFACT_URI=oci://aquila-evidence/transaction-read/oci-source-evidence-20260503 \
   OCI_REAL_MULTISOURCE_OUTPUT_DIR="${output_dir}" \
     "${runner}"
 )"
@@ -93,6 +99,8 @@ contexts_tsv="${output_dir}/real-multi-check-real-multisource-contexts.tsv"
 source_summary_tsv="${output_dir}/real-multi-check-real-multisource-source-summary.tsv"
 test "${report_md}" = "${output_dir}/real-multi-check-real-multisource-public-evidence.md"
 grep -F "gate_status=pass" "${report_md}" >/dev/null
+grep -F "actual execution run id: oci-source-evidence-20260503" "${report_md}" >/dev/null
+grep -F "artifact reference: oci://aquila-evidence/transaction-read/oci-source-evidence-20260503" "${report_md}" >/dev/null
 grep -F "docker context count: 2" "${report_md}" >/dev/null
 grep -F "single-source vs multi-source comparison: fixed" "${report_md}" >/dev/null
 grep -F "real IP bucket split: verified" "${report_md}" >/dev/null
@@ -101,17 +109,19 @@ grep -F "true multi-source public traffic evidence: fixed" "${report_md}" >/dev/
 grep -F $'index\tdocker_context' "${contexts_tsv}" >/dev/null
 grep -F $'1\toci-k6-a' "${contexts_tsv}" >/dev/null
 grep -F $'2\toci-k6-b' "${contexts_tsv}" >/dev/null
-grep -F $'source_name\tdocker_context\trealip_remote_addr\tedge_429_rate\tbackend_429_rate\taccepted_p95_ms\tfive_xx_count' "${source_summary_tsv}" >/dev/null
-grep -F $'source-a\toci-k6-a\t198.51.100.10\t0.081\t0\t154.0\t0' "${source_summary_tsv}" >/dev/null
-grep -F $'source-b\toci-k6-b\t198.51.100.11\t0.089\t0\t158.0\t0' "${source_summary_tsv}" >/dev/null
+grep -F $'source_name\trun_id\tdocker_context\trealip_remote_addr\tedge_429_rate\tbackend_429_rate\taccepted_p95_ms\tfive_xx_count\tartifact_uri' "${source_summary_tsv}" >/dev/null
+grep -F $'source-a\toci-source-evidence-20260503\toci-k6-a\t198.51.100.10\t0.081\t0\t154.0\t0\toci://aquila-evidence/transaction-read/oci-source-evidence-20260503/source-a' "${source_summary_tsv}" >/dev/null
+grep -F $'source-b\toci-source-evidence-20260503\toci-k6-b\t198.51.100.11\t0.089\t0\t158.0\t0\toci://aquila-evidence/transaction-read/oci-source-evidence-20260503/source-b' "${source_summary_tsv}" >/dev/null
 
 echo "[oci-real-multisource-public-evidence] one context fails"
 if OCI_REAL_MULTISOURCE_NAME=real-multi-one-context \
+  OCI_REAL_MULTISOURCE_RUN_ID=oci-source-evidence-20260503 \
   OCI_REAL_MULTISOURCE_CONTEXTS=oci-k6-a \
   OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON="${single_summary}" \
   OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON="${multi_summary}" \
   OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV="${status_tsv}" \
   OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV="${source_evidence_tsv}" \
+  OCI_REAL_MULTISOURCE_ARTIFACT_URI=oci://aquila-evidence/transaction-read/oci-source-evidence-20260503 \
   OCI_REAL_MULTISOURCE_OUTPUT_DIR="${output_dir}" \
     "${runner}" >/dev/null 2>&1; then
   echo "real multi-source public evidence unexpectedly passed one context" >&2
@@ -121,13 +131,31 @@ fi
 echo "[oci-real-multisource-public-evidence] one source evidence fails"
 awk -F '\t' 'NR == 1 || $1 == "source-a"' "${source_evidence_tsv}" >"${source_evidence_tsv}.one-source"
 if OCI_REAL_MULTISOURCE_NAME=real-multi-one-source \
+  OCI_REAL_MULTISOURCE_RUN_ID=oci-source-evidence-20260503 \
   OCI_REAL_MULTISOURCE_CONTEXTS=oci-k6-a,oci-k6-b \
   OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON="${single_summary}" \
   OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON="${multi_summary}" \
   OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV="${status_tsv}" \
   OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV="${source_evidence_tsv}.one-source" \
+  OCI_REAL_MULTISOURCE_ARTIFACT_URI=oci://aquila-evidence/transaction-read/oci-source-evidence-20260503 \
   OCI_REAL_MULTISOURCE_OUTPUT_DIR="${output_dir}" \
     "${runner}" >/dev/null 2>&1; then
   echo "real multi-source public evidence unexpectedly passed one source evidence row" >&2
+  exit 1
+fi
+
+echo "[oci-real-multisource-public-evidence] blank source artifact fails"
+awk -F '\t' 'BEGIN { OFS = "\t" } NR == 1 { print; next } { if ($1 == "source-b") $9 = ""; print }' "${source_evidence_tsv}" >"${source_evidence_tsv}.blank-artifact"
+if OCI_REAL_MULTISOURCE_NAME=real-multi-blank-artifact \
+  OCI_REAL_MULTISOURCE_RUN_ID=oci-source-evidence-20260503 \
+  OCI_REAL_MULTISOURCE_CONTEXTS=oci-k6-a,oci-k6-b \
+  OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON="${single_summary}" \
+  OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON="${multi_summary}" \
+  OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV="${status_tsv}" \
+  OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV="${source_evidence_tsv}.blank-artifact" \
+  OCI_REAL_MULTISOURCE_ARTIFACT_URI=oci://aquila-evidence/transaction-read/oci-source-evidence-20260503 \
+  OCI_REAL_MULTISOURCE_OUTPUT_DIR="${output_dir}" \
+    "${runner}" >/dev/null 2>&1; then
+  echo "real multi-source public evidence unexpectedly passed blank source artifact" >&2
   exit 1
 fi

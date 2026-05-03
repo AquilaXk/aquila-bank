@@ -7,11 +7,13 @@ usage: tools/test/run-oci-real-multisource-public-evidence.sh [--print-plan]
 
 Environment:
   OCI_REAL_MULTISOURCE_NAME                       default oci-real-multisource-public-<timestamp>
+  OCI_REAL_MULTISOURCE_RUN_ID                     default same as OCI_REAL_MULTISOURCE_NAME
   OCI_REAL_MULTISOURCE_CONTEXTS                   required comma-separated remote Docker contexts, at least 2
   OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON required single-source k6 summary JSON
   OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON  required multi-source k6 summary JSON
   OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV           required TSV: run,realip_remote_addr,limit_req_status,count
-  OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV        required TSV: source_name,docker_context,realip_remote_addr,edge_429_rate,backend_429_rate,accepted_p95_ms,five_xx_count
+  OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV        required TSV: source_name,run_id,docker_context,realip_remote_addr,edge_429_rate,backend_429_rate,accepted_p95_ms,five_xx_count,artifact_uri
+  OCI_REAL_MULTISOURCE_ARTIFACT_URI               required evidence artifact reference
   OCI_REAL_MULTISOURCE_OUTPUT_DIR                 default build/reports/k6/<name>
 USAGE
 }
@@ -35,11 +37,13 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 name="${OCI_REAL_MULTISOURCE_NAME:-oci-real-multisource-public-$(date +%Y-%m-%d-%H%M%S)}"
+run_id="${OCI_REAL_MULTISOURCE_RUN_ID:-${name}}"
 contexts_csv="${OCI_REAL_MULTISOURCE_CONTEXTS:-}"
 single_summary="${OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON:-}"
 multi_summary="${OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON:-}"
 nginx_status_tsv="${OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV:-}"
 source_evidence_tsv="${OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV:-}"
+artifact_uri="${OCI_REAL_MULTISOURCE_ARTIFACT_URI:-}"
 output_dir="${OCI_REAL_MULTISOURCE_OUTPUT_DIR:-build/reports/k6/${name}}"
 multi_source_runner="tools/test/run-k6-transaction-100m-multisource.sh"
 replay_gate="tools/test/run-oci-real-ip-multisource-capacity-replay.sh"
@@ -54,6 +58,15 @@ require_file() {
   local file="$2"
   if [[ -z "${file}" || ! -s "${file}" ]]; then
     echo "${key} is required and must be a non-empty file: ${file:-missing}" >&2
+    exit 1
+  fi
+}
+
+require_non_empty() {
+  local key="$1"
+  local value="$2"
+  if [[ -z "${value}" ]]; then
+    echo "${key} is required" >&2
     exit 1
   fi
 }
@@ -79,10 +92,10 @@ parse_contexts() {
 
 validate_source_evidence() {
   require_file "OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV" "${source_evidence_tsv}"
-  awk -F '\t' -v min_sources="${#contexts[@]}" '
+  awk -F '\t' -v min_sources="${#contexts[@]}" -v expected_run_id="${run_id}" '
     NR == 1 {
       for (i = 1; i <= NF; i++) col[$i] = i
-      split("source_name docker_context realip_remote_addr edge_429_rate backend_429_rate accepted_p95_ms five_xx_count", required, " ")
+      split("source_name run_id docker_context realip_remote_addr edge_429_rate backend_429_rate accepted_p95_ms five_xx_count artifact_uri", required, " ")
       for (i in required) {
         if (!(required[i] in col)) {
           printf "missing required column: %s\n", required[i] > "/dev/stderr"
@@ -94,15 +107,21 @@ validate_source_evidence() {
     }
     {
       source_name = $(col["source_name"])
+      source_run_id = $(col["run_id"])
       context = $(col["docker_context"])
       real_ip = $(col["realip_remote_addr"])
+      source_artifact_uri = $(col["artifact_uri"])
       edge_429 = $(col["edge_429_rate"]) + 0
       backend_429 = $(col["backend_429_rate"]) + 0
       p95 = $(col["accepted_p95_ms"]) + 0
       five_xx = $(col["five_xx_count"]) + 0
-      if (source_name == "" || context == "" || real_ip == "") {
-        print "source evidence contains blank source/context/real IP" > "/dev/stderr"
+      if (source_name == "" || source_run_id == "" || context == "" || real_ip == "" || source_artifact_uri == "") {
+        print "source evidence contains blank source/run/context/real IP/artifact" > "/dev/stderr"
         exit 3
+      }
+      if (source_run_id != expected_run_id) {
+        printf "source evidence run id mismatch: source=%s run_id=%s expected=%s\n", source_name, source_run_id, expected_run_id > "/dev/stderr"
+        exit 7
       }
       if (edge_429 < 0 || edge_429 > 1 || backend_429 < 0 || backend_429 > 1 || p95 <= 0 || five_xx != 0) {
         printf "source evidence metric out of contract: source=%s edge429=%s backend429=%s p95=%s five_xx=%s\n", source_name, edge_429, backend_429, p95, five_xx > "/dev/stderr"
@@ -130,6 +149,7 @@ validate_source_evidence() {
 print_plan() {
   parse_contexts
   echo "[oci-real-multisource-public-evidence] name=${name}"
+  echo "[oci-real-multisource-public-evidence] run_id=${run_id}"
   echo "[oci-real-multisource-public-evidence] docker_contexts=${contexts_csv}"
   echo "[oci-real-multisource-public-evidence] docker_context_count=${#contexts[@]}"
   echo "[oci-real-multisource-public-evidence] true_multi_source_required=true"
@@ -138,6 +158,7 @@ print_plan() {
   echo "[oci-real-multisource-public-evidence] multi_source_summary=${multi_summary:-missing}"
   echo "[oci-real-multisource-public-evidence] nginx_status_tsv=${nginx_status_tsv:-missing}"
   echo "[oci-real-multisource-public-evidence] source_evidence_tsv=${source_evidence_tsv:-missing}"
+  echo "[oci-real-multisource-public-evidence] artifact_uri=${artifact_uri:-missing}"
   echo "[oci-real-multisource-public-evidence] multi_source_runner=${multi_source_runner}"
   echo "[oci-real-multisource-public-evidence] replay_gate=${replay_gate}"
   echo "[oci-real-multisource-public-evidence] contexts_tsv=${contexts_tsv}"
@@ -157,6 +178,7 @@ require_file "OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON" "${single_summary
 require_file "OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON" "${multi_summary}"
 require_file "OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV" "${nginx_status_tsv}"
 require_file "OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV" "${source_evidence_tsv}"
+require_non_empty "OCI_REAL_MULTISOURCE_ARTIFACT_URI" "${artifact_uri}"
 mkdir -p "${output_dir}"
 
 {
@@ -185,6 +207,8 @@ cat >"${report_md}" <<REPORT
 ## Summary
 
 - gate_status=pass
+- actual execution run id: ${run_id}
+- artifact reference: ${artifact_uri}
 - docker context count: ${#contexts[@]}
 - true multi-source public traffic evidence: fixed
 - single-source vs multi-source comparison: fixed
