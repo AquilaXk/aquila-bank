@@ -53,10 +53,10 @@ NGINX_TRANSACTION_READ_BUDGET_PROFILE="${NGINX_TRANSACTION_READ_BUDGET_PROFILE:-
 
 case "${NGINX_TRANSACTION_READ_BUDGET_PROFILE}" in
   burst64)
-    transaction_read_profile_hot_rate_rps=128
-    transaction_read_profile_archive_rate_rps=128
-    transaction_read_profile_hot_burst=16
-    transaction_read_profile_archive_burst=16
+    transaction_read_profile_hot_rate_rps=160
+    transaction_read_profile_archive_rate_rps=160
+    transaction_read_profile_hot_burst=20
+    transaction_read_profile_archive_burst=20
     transaction_read_profile_hot_delay=0
     transaction_read_profile_archive_delay=0
     ;;
