@@ -385,6 +385,13 @@ jobs:
           printf 'K6_PACING_INPUT_REF=%s\n' "${pacing_input}" >>"${GITHUB_ENV}"
           printf 'K6_PACING_SUMMARY_REF=%s\n' "${pacing_summary}" >>"${GITHUB_ENV}"
 
+      - name: Capture transaction read Nginx log window
+        shell: bash
+        run: |
+          set -euo pipefail
+          K6_NGINX_LOG_SINCE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          printf 'K6_NGINX_LOG_SINCE=%s\n' "${K6_NGINX_LOG_SINCE}" >>"${GITHUB_ENV}"
+
       - name: Run auth preflight
         shell: bash
         run: |
@@ -407,10 +414,33 @@ jobs:
         run: |
           set -euo pipefail
           if [[ -n "${K6_NGINX_ACCESS_LOG:-}" && -s "${K6_NGINX_ACCESS_LOG}" ]]; then
-            exit 0
+            original_log="${K6_NGINX_ACCESS_LOG}"
+          else
+            original_log=""
           fi
 
-          candidate_log="${RUNNER_TEMP}/${K6_RUN_ID}-nginx-access.log"
+          candidate_raw_log="${RUNNER_TEMP}/${K6_RUN_ID}-nginx-access.raw.jsonl"
+          candidate_run_log="${RUNNER_TEMP}/${K6_RUN_ID}-nginx-access.jsonl"
+
+          select_current_run_log() {
+            if [[ ! -s "${candidate_raw_log}" ]]; then
+              return 1
+            fi
+            grep -F "\"k6_run_id\":\"${K6_RUN_ID}\"" "${candidate_raw_log}" >"${candidate_run_log}" || true
+            if [[ -s "${candidate_run_log}" ]]; then
+              printf 'K6_NGINX_ACCESS_LOG=%s\n' "${candidate_run_log}" >>"${GITHUB_ENV}"
+              return 0
+            fi
+            return 1
+          }
+
+          if [[ -n "${original_log}" ]]; then
+            cp "${original_log}" "${candidate_raw_log}"
+            if select_current_run_log; then
+              exit 0
+            fi
+          fi
+
           container_candidates=(
             "${K6_NGINX_CONTAINER:-}"
             "${NGINX_CONTAINER:-}"
@@ -428,9 +458,14 @@ jobs:
           for container in "${container_candidates[@]}"; do
             [[ -z "${container}" ]] && continue
             if docker exec "${container}" test -s /var/log/nginx/access.log 2>/dev/null; then
-              docker cp "${container}:/var/log/nginx/access.log" "${candidate_log}"
-              if [[ -s "${candidate_log}" ]]; then
-                printf 'K6_NGINX_ACCESS_LOG=%s\n' "${candidate_log}" >>"${GITHUB_ENV}"
+              if docker cp "${container}:/var/log/nginx/access.log" "${candidate_raw_log}" 2>/dev/null; then
+                if select_current_run_log; then
+                  exit 0
+                fi
+              fi
+            fi
+            if docker logs --since "${K6_NGINX_LOG_SINCE:-1h}" "${container}" >"${candidate_raw_log}" 2>/dev/null; then
+              if select_current_run_log; then
                 exit 0
               fi
             fi
@@ -446,11 +481,12 @@ jobs:
           report_dir="build/reports/k6/${K6_REPORT_NAME}"
           mkdir -p "${report_dir}"
           if [[ -z "${K6_NGINX_ACCESS_LOG:-}" || ! -s "${K6_NGINX_ACCESS_LOG:-}" ]]; then
-            echo "::notice::K6_NGINX_ACCESS_LOG is missing or empty; transaction-read-nginx-access-aggregate artifact skipped."
-            exit 0
+            echo "::error::K6_NGINX_ACCESS_LOG is missing or empty; transaction-read-nginx-access-aggregate artifact required."
+            exit 1
           fi
           NGINX_ACCESS_AGGREGATE_NAME="${K6_REPORT_NAME}" \
           NGINX_ACCESS_AGGREGATE_LOG="${K6_NGINX_ACCESS_LOG}" \
+          NGINX_ACCESS_AGGREGATE_RUN_ID="${K6_RUN_ID}" \
           NGINX_ACCESS_AGGREGATE_OUTPUT_DIR="${report_dir}/transaction-read-nginx-access-aggregate" \
             tools/test/run-transaction-read-nginx-access-aggregate-artifact.sh
 
