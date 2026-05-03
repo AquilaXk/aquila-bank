@@ -86,16 +86,27 @@ grep -F 'OCI_K6_BURST_MATRIX_OUTPUT_DIR="${matrix_dir}/burst-reject-curve-matrix
 grep -F "tools/test/run-oci-k6-burst-reject-curve-matrix.sh" "${workflow}" >/dev/null
 grep -F "actions/upload-artifact@v7" "${workflow}" >/dev/null
 grep -F "oci-k6-burst-reject-curve-matrix" "${workflow}" >/dev/null
+grep -F "deployments: write" "${workflow}" >/dev/null
+grep -F "Record transaction read admission profile evidence deployment" "${workflow}" >/dev/null
+grep -F "staging-transaction-read-admission-profile" "${workflow}" >/dev/null
+grep -F 'gh api --method POST "repos/${GITHUB_REPOSITORY}/deployments"' "${workflow}" >/dev/null
+grep -F 'gh api --method POST "repos/${GITHUB_REPOSITORY}/deployments/${deployment_id}/statuses"' "${workflow}" >/dev/null
+grep -F '"state": "success"' "${workflow}" >/dev/null
 
 preflight_line="$(grep -n -- "--auth-preflight-only" "${workflow}" | head -1 | cut -d: -f1)"
 k6_run_line="$(grep -n -- "--no-up --no-deps" "${workflow}" | head -1 | cut -d: -f1)"
 matrix_line="$(grep -n -- "run-oci-k6-burst-reject-curve-matrix.sh" "${workflow}" | tail -1 | cut -d: -f1)"
+admission_deployment_line="$(grep -n -- "Record transaction read admission profile evidence deployment" "${workflow}" | head -1 | cut -d: -f1)"
 if [[ -z "${preflight_line}" || -z "${k6_run_line}" || "${preflight_line}" -ge "${k6_run_line}" ]]; then
   echo "auth preflight must run before authenticated k6 burst run" >&2
   exit 1
 fi
 if [[ -z "${matrix_line}" || "${k6_run_line}" -ge "${matrix_line}" ]]; then
   echo "matrix pack runner must run after burst k6 runs" >&2
+  exit 1
+fi
+if [[ -z "${admission_deployment_line}" || "${matrix_line}" -ge "${admission_deployment_line}" ]]; then
+  echo "admission profile evidence deployment must be recorded after burst matrix pack" >&2
   exit 1
 fi
 
