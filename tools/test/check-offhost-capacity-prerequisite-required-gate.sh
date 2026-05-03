@@ -25,6 +25,7 @@ grep -F 'DEFAULT_CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL="http://172.17.0.2:
 grep -F 'CAPACITY_K6_DOCKER_CONTEXT="${DOCKER_CONTEXT_INPUT:-${CAPACITY_K6_DOCKER_CONTEXT:-${CAPACITY_K6_DOCKER_CONTEXT_VAR:-${DEFAULT_CAPACITY_K6_DOCKER_CONTEXT}}}}"' "${workflow}" >/dev/null
 grep -F 'CAPACITY_K6_REMOTE_BASE_URL="${REMOTE_BASE_URL_INPUT:-${CAPACITY_K6_REMOTE_BASE_URL:-${CAPACITY_K6_REMOTE_BASE_URL_VAR:-${DEFAULT_CAPACITY_K6_REMOTE_BASE_URL}}}}"' "${workflow}" >/dev/null
 grep -F 'CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL="${REMOTE_PROMETHEUS_RW_URL_INPUT:-${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL:-${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL_VAR:-${DEFAULT_CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL}}}}"' "${workflow}" >/dev/null
+grep -F 'CAPACITY_K6_REMOTE_WORKDIR="${REMOTE_WORKDIR_INPUT:-${CAPACITY_K6_REMOTE_WORKDIR:-${CAPACITY_K6_REMOTE_WORKDIR_VAR:-${GITHUB_WORKSPACE}}}}"' "${workflow}" >/dev/null
 grep -F 'CAPACITY_REMOTE_PREFLIGHT="true"' "${workflow}" >/dev/null
 grep -F "Run off-host remote preflight" "${workflow}" >/dev/null
 grep -F "tools/test/run-offhost-capacity-env-doctor.sh" "${workflow}" >/dev/null
@@ -36,6 +37,10 @@ grep -F "offhost-capacity-prerequisite" "${workflow}" >/dev/null
 grep -F "build/reports/k6/ci-offhost-100m-capacity-prerequisite/" "${workflow}" >/dev/null
 if grep -F 'CAPACITY_K6_DOCKER_CONTEXT: ${{ inputs.docker_context || vars.CAPACITY_K6_DOCKER_CONTEXT }}' "${workflow}" >/dev/null; then
   echo "off-host workflow must not rely only on dispatch inputs and repository vars" >&2
+  exit 1
+fi
+if grep -F 'default: "/srv/aquila-bank"' "${workflow}" >/dev/null; then
+  echo "off-host workflow must not default remote workdir to a stale path" >&2
   exit 1
 fi
 

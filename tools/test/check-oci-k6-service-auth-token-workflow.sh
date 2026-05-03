@@ -24,6 +24,7 @@ grep -F 'DEFAULT_K6_REMOTE_PROMETHEUS_RW_SERVER_URL="http://172.17.0.2:9090/api/
 grep -F 'K6_DOCKER_CONTEXT="${DOCKER_CONTEXT_INPUT:-${CAPACITY_K6_DOCKER_CONTEXT:-${CAPACITY_K6_DOCKER_CONTEXT_VAR:-${DEFAULT_K6_DOCKER_CONTEXT}}}}"' "${workflow}" >/dev/null
 grep -F 'K6_REMOTE_BASE_URL="${REMOTE_BASE_URL_INPUT:-${CAPACITY_K6_REMOTE_BASE_URL:-${CAPACITY_K6_REMOTE_BASE_URL_VAR:-${DEFAULT_K6_REMOTE_BASE_URL}}}}"' "${workflow}" >/dev/null
 grep -F 'K6_REMOTE_PROMETHEUS_RW_SERVER_URL="${REMOTE_PROMETHEUS_RW_URL_INPUT:-${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL:-${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL_VAR:-${DEFAULT_K6_REMOTE_PROMETHEUS_RW_SERVER_URL}}}}"' "${workflow}" >/dev/null
+grep -F 'K6_REMOTE_WORKDIR="${REMOTE_WORKDIR_INPUT:-${CAPACITY_K6_REMOTE_WORKDIR:-${CAPACITY_K6_REMOTE_WORKDIR_VAR:-${GITHUB_WORKSPACE}}}}"' "${workflow}" >/dev/null
 grep -F "STAGING_REPLAY_TOKEN" "${workflow}" >/dev/null
 grep -F 'K6_AUTH_TOKEN_ENV_NAME="STAGING_REPLAY_TOKEN"' "${workflow}" >/dev/null
 grep -F 'K6_AUTH_PREFLIGHT="true"' "${workflow}" >/dev/null
@@ -65,5 +66,9 @@ if grep -F 'secrets.STAGING_REPLAY_TOKEN' "${workflow}" >/dev/null; then
 fi
 if grep -F 'K6_AUTH_TOKEN:' "${workflow}" >/dev/null; then
   echo "workflow must not map token value directly into K6_AUTH_TOKEN" >&2
+  exit 1
+fi
+if grep -F 'default: "/srv/aquila-bank"' "${workflow}" >/dev/null; then
+  echo "service auth workflow must not default remote workdir to a stale path" >&2
   exit 1
 fi
