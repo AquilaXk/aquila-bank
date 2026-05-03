@@ -38,7 +38,12 @@ end
 
 def check_load_step!(path, job_name, run_step_name, required_env_names)
   data = workflow(path)
-  steps = data.fetch("jobs").fetch(job_name).fetch("steps")
+  job = data.fetch("jobs").fetch(job_name)
+  runner_labels = Array(job.fetch("runs-on"))
+  assert(runner_labels.include?("self-hosted") && runner_labels.include?("oci-a1-staging"),
+    "#{path} #{job_name} must run on OCI A1 self-hosted staging runner")
+
+  steps = job.fetch("steps")
   names = steps.map { |step| step["name"] }
   load_index = names.index("Load OCI A1 staging env")
   run_index = names.index(run_step_name)

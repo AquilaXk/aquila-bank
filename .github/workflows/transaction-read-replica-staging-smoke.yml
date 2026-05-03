@@ -36,7 +36,7 @@ concurrency:
 jobs:
   smoke:
     name: Verify Transaction Read Replica Lag And Route
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, oci-a1-staging]
     timeout-minutes: 10
     environment:
       name: staging
