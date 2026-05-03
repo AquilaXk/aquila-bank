@@ -71,6 +71,89 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Load OCI A1 staging env
+        env:
+          OCI_A1_STAGING_ENV: ${{ secrets.OCI_A1_STAGING_ENV }}
+          HOT_ACCOUNT_ID_INPUT: ${{ inputs.hot_account_id }}
+          HOT_FROM_INPUT: ${{ inputs.hot_from }}
+          HOT_TO_INPUT: ${{ inputs.hot_to }}
+          COLD_ACCOUNT_ID_INPUT: ${{ inputs.cold_account_id }}
+          COLD_FROM_INPUT: ${{ inputs.cold_from }}
+          COLD_TO_INPUT: ${{ inputs.cold_to }}
+          ITERATIONS_INPUT: ${{ inputs.iterations }}
+          PAGE_LIMIT_INPUT: ${{ inputs.page_limit }}
+          EXPECTED_TOTAL_ROWS_INPUT: ${{ inputs.expected_total_rows }}
+          HOT_P95_THRESHOLD_MS_INPUT: ${{ inputs.hot_p95_threshold_ms }}
+          COLD_P95_THRESHOLD_MS_INPUT: ${{ inputs.cold_p95_threshold_ms }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${OCI_A1_STAGING_ENV}" ]]; then
+            echo "::error::Missing OCI_A1_STAGING_ENV environment secret."
+            exit 1
+          fi
+
+          staging_env_path="${RUNNER_TEMP}/oci-a1-staging.env"
+          printf '%s\n' "${OCI_A1_STAGING_ENV}" >"${staging_env_path}"
+          chmod 600 "${staging_env_path}"
+
+          set -a
+          # workflow_dispatch replay도 staging-deploy와 같은 unified staging secret contract를 사용한다.
+          source "${staging_env_path}"
+          set +a
+
+          STAGING_RDS_DATABASE_URL="${STAGING_RDS_DATABASE_URL:-${STAGING_OCI_A1_DATABASE_URL:-}}"
+          HOT_ACCOUNT_ID="${HOT_ACCOUNT_ID_INPUT}"
+          HOT_FROM="${HOT_FROM_INPUT}"
+          HOT_TO="${HOT_TO_INPUT}"
+          COLD_ACCOUNT_ID="${COLD_ACCOUNT_ID_INPUT}"
+          COLD_FROM="${COLD_FROM_INPUT}"
+          COLD_TO="${COLD_TO_INPUT}"
+          ITERATIONS="${ITERATIONS_INPUT}"
+          PAGE_LIMIT="${PAGE_LIMIT_INPUT}"
+          EXPECTED_TOTAL_ROWS="${EXPECTED_TOTAL_ROWS_INPUT}"
+          HOT_P95_THRESHOLD_MS="${HOT_P95_THRESHOLD_MS_INPUT}"
+          COLD_P95_THRESHOLD_MS="${COLD_P95_THRESHOLD_MS_INPUT}"
+
+          missing=()
+          [[ -z "${STAGING_BASE_URL:-}" ]] && missing+=("STAGING_BASE_URL")
+          [[ -z "${STAGING_REPLAY_TOKEN:-}" ]] && missing+=("STAGING_REPLAY_TOKEN")
+          [[ -z "${STAGING_RDS_DATABASE_URL:-}" ]] && missing+=("STAGING_RDS_DATABASE_URL")
+          if (( ${#missing[@]} > 0 )); then
+            printf '::error::Missing OCI A1 staging replay env keys: %s\n' "${missing[*]}"
+            exit 1
+          fi
+
+          env_names=(
+            STAGING_BASE_URL
+            STAGING_REPLAY_TOKEN
+            STAGING_OCI_A1_DATABASE_URL
+            STAGING_RDS_DATABASE_URL
+            HOT_ACCOUNT_ID
+            HOT_FROM
+            HOT_TO
+            COLD_ACCOUNT_ID
+            COLD_FROM
+            COLD_TO
+            ITERATIONS
+            PAGE_LIMIT
+            EXPECTED_TOTAL_ROWS
+            HOT_P95_THRESHOLD_MS
+            COLD_P95_THRESHOLD_MS
+          )
+
+          for name in "${env_names[@]}"; do
+            value="${!name:-}"
+            if [[ -n "${value}" ]]; then
+              case "${name}" in
+                STAGING_BASE_URL|STAGING_REPLAY_TOKEN|*DATABASE_URL)
+                  echo "::add-mask::${value}"
+                  ;;
+              esac
+              printf '%s=%s\n' "${name}" "${value}" >>"${GITHUB_ENV}"
+            fi
+          done
+
       - name: Install PostgreSQL client
         shell: bash
         run: |
@@ -82,21 +165,6 @@ jobs:
           sudo apt-get install -y postgresql-client
 
       - name: Run staging replay
-        env:
-          STAGING_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
-          STAGING_REPLAY_TOKEN: ${{ secrets.STAGING_REPLAY_TOKEN }}
-          STAGING_RDS_DATABASE_URL: ${{ secrets.STAGING_RDS_DATABASE_URL }}
-          HOT_ACCOUNT_ID: ${{ inputs.hot_account_id }}
-          HOT_FROM: ${{ inputs.hot_from }}
-          HOT_TO: ${{ inputs.hot_to }}
-          COLD_ACCOUNT_ID: ${{ inputs.cold_account_id }}
-          COLD_FROM: ${{ inputs.cold_from }}
-          COLD_TO: ${{ inputs.cold_to }}
-          ITERATIONS: ${{ inputs.iterations }}
-          PAGE_LIMIT: ${{ inputs.page_limit }}
-          EXPECTED_TOTAL_ROWS: ${{ inputs.expected_total_rows }}
-          HOT_P95_THRESHOLD_MS: ${{ inputs.hot_p95_threshold_ms }}
-          COLD_P95_THRESHOLD_MS: ${{ inputs.cold_p95_threshold_ms }}
         shell: bash
         run: |
           set -euo pipefail
