@@ -11,9 +11,14 @@ Environment:
   K6_MULTI_SOURCE_BASE_URLS                  required comma-separated backend URLs; one URL may be shared by all contexts
   K6_MULTI_SOURCE_PROMETHEUS_RW_SERVER_URLS  optional comma-separated remote-write URLs; one URL may be shared by all contexts
   K6_MULTI_SOURCE_REMOTE_WORKDIRS            optional comma-separated repo paths; one path may be shared by all contexts
+  K6_MULTI_SOURCE_SOURCE_NAMES               optional comma-separated source names; defaults source-<shard>
+  K6_MULTI_SOURCE_GENERATOR_HOST_METRICS_TSVS optional comma-separated generator host metric refs; one ref may be shared
+  K6_MULTI_SOURCE_TARGET_HOST_METRICS_TSV    optional target app/DB host metric ref
+  K6_MULTI_SOURCE_EVIDENCE_ARTIFACT_URI      optional evidence pack reference
   K6_MULTI_SOURCE_RUN_ID_PREFIX              default K6_MULTI_SOURCE_NAME
   K6_MULTI_SOURCE_OUTPUT_DIR                 default build/reports/k6/<name>
   K6_MULTI_SOURCE_PARALLEL                   run shards in parallel, default true
+  K6_MULTI_SOURCE_CHILD_RUNNER               default tools/test/run-k6-transaction-100m-loadtest.sh
 
 Pass-through environment such as K6_DURATION, K6_WORKLOAD_SHAPE, K6_VUS, and account/date
 fixture values is forwarded to tools/test/run-k6-transaction-100m-loadtest.sh.
@@ -47,15 +52,23 @@ contexts_csv="${K6_MULTI_SOURCE_CONTEXTS:-}"
 base_urls_csv="${K6_MULTI_SOURCE_BASE_URLS:-}"
 prometheus_urls_csv="${K6_MULTI_SOURCE_PROMETHEUS_RW_SERVER_URLS:-}"
 workdirs_csv="${K6_MULTI_SOURCE_REMOTE_WORKDIRS:-}"
+source_names_csv="${K6_MULTI_SOURCE_SOURCE_NAMES:-}"
+generator_host_metrics_csv="${K6_MULTI_SOURCE_GENERATOR_HOST_METRICS_TSVS:-}"
+target_host_metrics_tsv="${K6_MULTI_SOURCE_TARGET_HOST_METRICS_TSV:-}"
+evidence_artifact_uri="${K6_MULTI_SOURCE_EVIDENCE_ARTIFACT_URI:-}"
 run_id_prefix="${K6_MULTI_SOURCE_RUN_ID_PREFIX:-${name}}"
 output_dir="${K6_MULTI_SOURCE_OUTPUT_DIR:-build/reports/k6/${name}}"
 parallel="${K6_MULTI_SOURCE_PARALLEL:-true}"
-child_runner="tools/test/run-k6-transaction-100m-loadtest.sh"
+child_runner="${K6_MULTI_SOURCE_CHILD_RUNNER:-tools/test/run-k6-transaction-100m-loadtest.sh}"
 default_workdir="$(pwd)"
+manifest_tsv="${output_dir}/${name}-execution-manifest.tsv"
+report_md="${output_dir}/${name}-execution-manifest.md"
 contexts=()
 base_urls=()
 prometheus_urls=()
 workdirs=()
+source_names=()
+generator_host_metrics=()
 
 split_csv() {
   local value="$1"
@@ -86,6 +99,12 @@ split_csv() {
     workdirs)
       if [[ "${#items[@]}" -eq 0 ]]; then workdirs=(); else workdirs=("${items[@]}"); fi
       ;;
+    source_names)
+      if [[ "${#items[@]}" -eq 0 ]]; then source_names=(); else source_names=("${items[@]}"); fi
+      ;;
+    generator_host_metrics)
+      if [[ "${#items[@]}" -eq 0 ]]; then generator_host_metrics=(); else generator_host_metrics=("${items[@]}"); fi
+      ;;
     *)
       echo "unknown split target: ${target}" >&2
       exit 1
@@ -111,6 +130,8 @@ validate_required_lists() {
   split_csv "${base_urls_csv}" base_urls
   split_csv "${prometheus_urls_csv}" prometheus_urls
   split_csv "${workdirs_csv}" workdirs
+  split_csv "${source_names_csv}" source_names
+  split_csv "${generator_host_metrics_csv}" generator_host_metrics
   validate_boolean "K6_MULTI_SOURCE_PARALLEL" "${parallel}"
 
   if [[ "${#contexts[@]}" -lt 2 ]]; then
@@ -127,6 +148,14 @@ validate_required_lists() {
   fi
   if [[ "${#workdirs[@]}" -ne 0 && "${#workdirs[@]}" -ne 1 && "${#workdirs[@]}" -ne "${#contexts[@]}" ]]; then
     echo "K6_MULTI_SOURCE_REMOTE_WORKDIRS must contain 0, 1, or context-count paths" >&2
+    exit 1
+  fi
+  if [[ "${#source_names[@]}" -ne 0 && "${#source_names[@]}" -ne "${#contexts[@]}" ]]; then
+    echo "K6_MULTI_SOURCE_SOURCE_NAMES must match context count when provided" >&2
+    exit 1
+  fi
+  if [[ "${#generator_host_metrics[@]}" -ne 0 && "${#generator_host_metrics[@]}" -ne 1 && "${#generator_host_metrics[@]}" -ne "${#contexts[@]}" ]]; then
+    echo "K6_MULTI_SOURCE_GENERATOR_HOST_METRICS_TSVS must contain 0, 1, or context-count refs" >&2
     exit 1
   fi
 }
@@ -160,6 +189,22 @@ item_for_shard() {
         echo "${workdirs[${index}]}"
       fi
       ;;
+    source_name)
+      if [[ "${#source_names[@]}" -eq 0 ]]; then
+        echo "source-$((index + 1))"
+      else
+        echo "${source_names[${index}]}"
+      fi
+      ;;
+    generator_host_metrics)
+      if [[ "${#generator_host_metrics[@]}" -eq 0 ]]; then
+        echo "missing"
+      elif [[ "${#generator_host_metrics[@]}" -eq 1 ]]; then
+        echo "${generator_host_metrics[0]}"
+      else
+        echo "${generator_host_metrics[${index}]}"
+      fi
+      ;;
     *)
       echo "unknown shard item kind: ${kind}" >&2
       exit 1
@@ -180,13 +225,65 @@ print_plan() {
   echo "[k6-transaction-100m-multisource] child runner=${child_runner}"
   echo "[k6-transaction-100m-multisource] child generator mode=docker-context"
   echo "[k6-transaction-100m-multisource] shared_env K6_WORKLOAD_SHAPE=${K6_WORKLOAD_SHAPE:-fixed-order} K6_DURATION=${K6_DURATION:-1m}"
+  echo "[k6-transaction-100m-multisource] target_host_metrics_tsv=${target_host_metrics_tsv:-missing}"
+  echo "[k6-transaction-100m-multisource] evidence_artifact_uri=${evidence_artifact_uri:-missing}"
   for i in "${!contexts[@]}"; do
     shard_number="$((i + 1))"
     run_id="${run_id_prefix}-shard-${shard_number}"
     report_name="${run_id}"
-    echo "[k6-transaction-100m-multisource] shard=${shard_number} context=${contexts[${i}]} base_url=$(item_for_shard "${i}" base_url) prometheus_rw=$(item_for_shard "${i}" prometheus_url) workdir=$(item_for_shard "${i}" workdir) run_id=${run_id} report_name=${report_name}"
+    echo "[k6-transaction-100m-multisource] shard=${shard_number} source=$(item_for_shard "${i}" source_name) context=${contexts[${i}]} base_url=$(item_for_shard "${i}" base_url) prometheus_rw=$(item_for_shard "${i}" prometheus_url) workdir=$(item_for_shard "${i}" workdir) run_id=${run_id} report_name=${report_name} generator_host_metrics=$(item_for_shard "${i}" generator_host_metrics)"
   done
   echo "[k6-transaction-100m-multisource] output_dir=${output_dir}"
+  echo "[k6-transaction-100m-multisource] execution_manifest_tsv=${manifest_tsv}"
+  echo "[k6-transaction-100m-multisource] execution_report_md=${report_md}"
+}
+
+write_execution_manifest() {
+  local i
+  local shard_number
+  local run_id
+  local report_name
+  mkdir -p "${output_dir}"
+  printf "shard\tsource_name\tdocker_context\tbase_url\tprometheus_rw\tworkdir\trun_id\treport_name\tgenerator_host_metrics_tsv\ttarget_host_metrics_tsv\tevidence_artifact_uri\n" >"${manifest_tsv}"
+  for i in "${!contexts[@]}"; do
+    shard_number="$((i + 1))"
+    run_id="${run_id_prefix}-shard-${shard_number}"
+    report_name="${run_id}"
+    printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+      "${shard_number}" \
+      "$(item_for_shard "${i}" source_name)" \
+      "${contexts[${i}]}" \
+      "$(item_for_shard "${i}" base_url)" \
+      "$(item_for_shard "${i}" prometheus_url)" \
+      "$(item_for_shard "${i}" workdir)" \
+      "${run_id}" \
+      "${report_name}" \
+      "$(item_for_shard "${i}" generator_host_metrics)" \
+      "${target_host_metrics_tsv:-missing}" \
+      "${evidence_artifact_uri:-missing}" >>"${manifest_tsv}"
+  done
+
+  cat >"${report_md}" <<REPORT
+# k6 Transaction 100M Multi-Source Execution Manifest
+
+## Summary
+
+- source boundary: multi-source-real-ip
+- shard count: ${#contexts[@]}
+- parallel: ${parallel}
+- target host metrics TSV: ${target_host_metrics_tsv:-missing}
+- evidence artifact URI: ${evidence_artifact_uri:-missing}
+
+## Artifacts
+
+- execution manifest TSV: ${manifest_tsv}
+- output dir: ${output_dir}
+
+## Contract Notes
+
+- shard별 Docker context/run id/report name/source name을 같은 manifest에 묶어 source별 429/latency evidence와 host metric evidence를 조인한다.
+- generator host metric ref는 shard 단위, target host metric ref는 app/DB host 단위 evidence로 사용한다.
+REPORT
 }
 
 run_shard() {
@@ -200,20 +297,28 @@ run_shard() {
   if [[ "${prometheus_url}" == "disabled" ]]; then
     K6_REPORT_NAME="${report_name}" \
     K6_RUN_ID="${run_id}" \
+    K6_RUN_SOURCE_NAME="$(item_for_shard "${index}" source_name)" \
     K6_GENERATOR_MODE=docker-context \
     K6_DOCKER_CONTEXT="${contexts[${index}]}" \
     K6_REMOTE_BASE_URL="$(item_for_shard "${index}" base_url)" \
     K6_REMOTE_WORKDIR="$(item_for_shard "${index}" workdir)" \
+    K6_GENERATOR_HOST_METRICS_TSV="$(item_for_shard "${index}" generator_host_metrics)" \
+    K6_TARGET_HOST_METRICS_TSV="${target_host_metrics_tsv}" \
+    K6_EVIDENCE_ARTIFACT_URI="${evidence_artifact_uri}" \
     K6_OBSERVABILITY_MODE="${K6_OBSERVABILITY_MODE:-summary-only}" \
       "${child_runner}" "${child_args[@]}"
   else
     K6_REPORT_NAME="${report_name}" \
     K6_RUN_ID="${run_id}" \
+    K6_RUN_SOURCE_NAME="$(item_for_shard "${index}" source_name)" \
     K6_GENERATOR_MODE=docker-context \
     K6_DOCKER_CONTEXT="${contexts[${index}]}" \
     K6_REMOTE_BASE_URL="$(item_for_shard "${index}" base_url)" \
     K6_REMOTE_PROMETHEUS_RW_SERVER_URL="${prometheus_url}" \
     K6_REMOTE_WORKDIR="$(item_for_shard "${index}" workdir)" \
+    K6_GENERATOR_HOST_METRICS_TSV="$(item_for_shard "${index}" generator_host_metrics)" \
+    K6_TARGET_HOST_METRICS_TSV="${target_host_metrics_tsv}" \
+    K6_EVIDENCE_ARTIFACT_URI="${evidence_artifact_uri}" \
       "${child_runner}" "${child_args[@]}"
   fi
 }
@@ -224,6 +329,7 @@ if [[ "${mode}" == "print-plan" ]]; then
 fi
 
 mkdir -p "${output_dir}"
+write_execution_manifest
 status=0
 if [[ "${parallel}" == "true" ]]; then
   pids=()
