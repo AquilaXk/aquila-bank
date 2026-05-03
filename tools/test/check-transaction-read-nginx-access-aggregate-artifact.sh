@@ -29,6 +29,7 @@ plan="$(
 )"
 grep -F "name=nginx-agg-check" <<<"${plan}" >/dev/null
 grep -F "aggregate_key=k6_run_id,status,limit_req_status,upstream_status,reject_source,upstream_reject_source,upstream_reject_reason" <<<"${plan}" >/dev/null
+grep -F "run_id_filter=none" <<<"${plan}" >/dev/null
 grep -F "summary_json=${output_dir}/nginx-agg-check-nginx-access-aggregate.json" <<<"${plan}" >/dev/null
 
 echo "[transaction-read-nginx-access-aggregate] report"
@@ -52,6 +53,28 @@ grep -F $'run-a\t429\tREJECTED\tnone\tnginx-edge\tedge-rate-limit\tnone\tedge-ra
 grep -F $'run-b\t499\tDELAYED\tnone\tnone\tnone\tnone\tnone\t1\t1\t0\t30100.000\t0.000' "${summary_tsv}" >/dev/null
 jq -e '.[] | select(.k6_run_id == "run-a" and .status == 429 and .limit_req_status == "REJECTED" and .rejected_count == 1)' "${summary_json}" >/dev/null
 jq -e '.[] | select(.k6_run_id == "run-b" and .status == 499 and .limit_req_status == "DELAYED" and .count == 1)' "${summary_json}" >/dev/null
+
+echo "[transaction-read-nginx-access-aggregate] run id filter"
+filtered_output_dir="${temp_dir}/filtered-output"
+filtered_output="$(
+  NGINX_ACCESS_AGGREGATE_NAME=nginx-agg-filtered \
+  NGINX_ACCESS_AGGREGATE_LOG="${access_log}" \
+  NGINX_ACCESS_AGGREGATE_RUN_ID=run-a \
+  NGINX_ACCESS_AGGREGATE_OUTPUT_DIR="${filtered_output_dir}" \
+    "${runner}"
+)"
+filtered_report_md="$(tail -1 <<<"${filtered_output}")"
+filtered_summary_tsv="${filtered_output_dir}/nginx-agg-filtered-nginx-access-aggregate.tsv"
+filtered_summary_json="${filtered_output_dir}/nginx-agg-filtered-nginx-access-aggregate.json"
+grep -F "run_id_filter=run-a" "${filtered_report_md}" >/dev/null
+grep -F "transaction_read_rows=3" "${filtered_report_md}" >/dev/null
+grep -F "499 count: 0" "${filtered_report_md}" >/dev/null
+grep -F $'run-a\t200\tPASSED\t200\tnone\tnone\tnone\tnone\t1\t0\t0\t91.000\t80.000' "${filtered_summary_tsv}" >/dev/null
+if grep -F $'run-b\t499' "${filtered_summary_tsv}" >/dev/null; then
+  echo "filtered aggregate must not include another k6 run id" >&2
+  exit 1
+fi
+jq -e 'all(.[]; .k6_run_id == "run-a")' "${filtered_summary_json}" >/dev/null
 
 echo "[transaction-read-nginx-access-aggregate] invalid json fails"
 printf '{bad-json\n' >"${access_log}.bad"

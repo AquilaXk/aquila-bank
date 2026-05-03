@@ -8,6 +8,7 @@ usage: tools/test/run-transaction-read-nginx-access-aggregate-artifact.sh [--pri
 Environment:
   NGINX_ACCESS_AGGREGATE_NAME       default transaction-read-nginx-access-aggregate-<timestamp>
   NGINX_ACCESS_AGGREGATE_LOG        required Nginx JSON access log
+  NGINX_ACCESS_AGGREGATE_RUN_ID     optional k6 run id filter
   NGINX_ACCESS_AGGREGATE_OUTPUT_DIR default build/reports/k6/<artifact>
 USAGE
 }
@@ -32,6 +33,7 @@ done
 
 name="${NGINX_ACCESS_AGGREGATE_NAME:-transaction-read-nginx-access-aggregate-$(date +%Y-%m-%d-%H%M%S)}"
 access_log="${NGINX_ACCESS_AGGREGATE_LOG:-}"
+run_id_filter="${NGINX_ACCESS_AGGREGATE_RUN_ID:-}"
 output_dir="${NGINX_ACCESS_AGGREGATE_OUTPUT_DIR:-build/reports/k6/${name}}"
 summary_tsv="${output_dir}/${name}-nginx-access-aggregate.tsv"
 summary_json="${output_dir}/${name}-nginx-access-aggregate.json"
@@ -40,6 +42,7 @@ report_md="${output_dir}/${name}-nginx-access-aggregate.md"
 print_plan() {
   echo "[transaction-read-nginx-access-aggregate] name=${name}"
   echo "[transaction-read-nginx-access-aggregate] access_log=${access_log:-missing}"
+  echo "[transaction-read-nginx-access-aggregate] run_id_filter=${run_id_filter:-none}"
   echo "[transaction-read-nginx-access-aggregate] output_dir=${output_dir}"
   echo "[transaction-read-nginx-access-aggregate] aggregate_key=k6_run_id,status,limit_req_status,upstream_status,reject_source,upstream_reject_source,upstream_reject_reason"
   echo "[transaction-read-nginx-access-aggregate] summary_tsv=${summary_tsv}"
@@ -68,7 +71,7 @@ fi
 mkdir -p "${output_dir}"
 {
   printf "k6_run_id\tstatus\tlimit_req_status\tupstream_status\treject_source\treject_reason\tupstream_reject_source\tupstream_reject_reason\tcount\tdelayed_count\trejected_count\trequest_p95_ms\tupstream_p95_ms\n"
-  jq -r -s '
+  jq -r -s --arg run_id_filter "${run_id_filter}" '
     def clean($value; $fallback):
       (($value // $fallback) | tostring) as $text
       | if $text == "" then $fallback else $text end;
@@ -88,6 +91,7 @@ mkdir -p "${output_dir}"
         else $values[((($values | length) - 1) * 0.95 | floor)]
         end;
     map(select((.request // "") | contains("/api/v1/transactions")))
+    | map(select(($run_id_filter == "") or (run_id == $run_id_filter)))
     | sort_by(
         run_id,
         status_text,
@@ -187,6 +191,7 @@ cat >"${report_md}" <<REPORT
 ## Summary
 
 - aggregate key: k6_run_id/status/limit_req_status/upstream_status/reject_source/upstream_reject_source/upstream_reject_reason
+- run_id_filter=${run_id_filter:-none}
 - transaction_read_rows=${transaction_read_rows}
 - delayed count: ${delayed_count}
 - delayed ratio: ${delayed_ratio}
