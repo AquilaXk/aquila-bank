@@ -13,7 +13,8 @@ public record T3MicroSaturationGuardProperties(
     QueryTimeout queryTimeout,
     JvmPressure jvmPressure,
     BackgroundWorkers backgroundWorkers,
-    ReadReplicaPool readReplicaPool) {
+    ReadReplicaPool readReplicaPool,
+    Hysteresis hysteresis) {
 
   public T3MicroSaturationGuardProperties {
     enabled = enabled == null ? Boolean.TRUE : enabled;
@@ -38,6 +39,7 @@ public record T3MicroSaturationGuardProperties(
         readReplicaPool == null
             ? new ReadReplicaPool(true, List.of("/api/v1/transactions"))
             : readReplicaPool;
+    hysteresis = hysteresis == null ? new Hysteresis(2) : hysteresis;
   }
 
   public record Pool(int activeThresholdPercent, int awaitingThreadsThreshold) {
@@ -99,6 +101,14 @@ public record T3MicroSaturationGuardProperties(
           protectedPathPrefixes == null || protectedPathPrefixes.isEmpty()
               ? List.of("/api/v1/transactions")
               : List.copyOf(protectedPathPrefixes);
+    }
+  }
+
+  public record Hysteresis(int consecutiveSaturatedSamples) {
+
+    public Hysteresis {
+      consecutiveSaturatedSamples =
+          consecutiveSaturatedSamples > 0 ? consecutiveSaturatedSamples : 2;
     }
   }
 }
