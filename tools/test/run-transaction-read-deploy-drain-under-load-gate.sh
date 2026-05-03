@@ -83,12 +83,14 @@ cat >"${report_md}" <<REPORT
 - paced load 중 backend restart/blue-green drain
 - 5xx/499/unknown 429 hard-zero
 - deploy event artifact: required
+- deploy retry/reconnect and 499 budget artifact: required
 - execution gate report: ${execution_report}
 
 ## Contract Notes
 
 - deploy/restart/drain은 정상 트래픽 pacing 중 실행한 evidence만 인정한다.
 - deploy event ref와 Nginx/Spring/Hikari/PostgreSQL timeline ref가 같은 run id로 묶여야 한다.
+- retry/reconnect contract와 499 budget ref로 client-visible drain 결과를 닫는다.
 - unknown 429, 499, 5xx, Hikari warning은 execution gate에서 hard-zero로 검증한다.
 
 ## Artifacts

@@ -222,6 +222,11 @@ NR == 1 {
 
   if (scenario == "cold-warm-cache") require_ref("cache_state_ref", "cache-state-missing")
   if (scenario == "deploy-drain") require_ref("deploy_event_ref", "deploy-event-missing")
+  if (scenario == "deploy-drain") {
+    require_ref("deploy_retry_contract_ref", "deploy-retry-contract-missing")
+    require_ref("deploy_499_budget_ref", "deploy-499-budget-missing")
+    if (value("deploy_reconnect_success_count", "0") + 0 <= 0) add_reason("deploy-reconnect-missing")
+  }
   if (scenario == "mixed-workload-30m" && duration_min < mixed_min_duration_min) add_reason("mixed-duration<" mixed_min_duration_min)
   if (scenario == "mixed-workload-30m") {
     require_ref("workload_mix_ref", "workload-mix-missing")
@@ -312,6 +317,7 @@ cat >"${report_md}" <<REPORT
 - unknown 429 hard-zero
 - p99.9 closure artifacts: PostgreSQL checkpoint, temp file, Nginx upstream latency
 - mixed workload closure artifacts: workload mix, component split, outbox lag
+- deploy drain closure artifacts: 499 budget, retry contract, reconnect success
 
 ## Result Table
 
@@ -322,7 +328,7 @@ ${result_table}
 - OCI evidence는 run id, 실행 시각, 실행 script, k6 summary, Nginx access, Spring metrics, Hikari log, PostgreSQL wait, timeline을 같은 row에 남긴다.
 - p99.9 long correlation은 PostgreSQL checkpoint, temp file, Nginx upstream latency artifact를 같은 run id로 묶는다.
 - mixed workload는 workload mix, component split, outbox lag artifact를 같은 run id로 묶고 outbox lag max 0을 요구한다.
-- cold/warm cache는 cache state artifact, deploy drain은 deploy event artifact를 추가로 요구한다.
+- cold/warm cache는 cache state artifact, deploy drain은 deploy event, retry/reconnect, 499 budget artifact를 추가로 요구한다.
 - 이 gate는 실제 실행을 대신하지 않고, 실행 결과가 PR/issue에서 재검증 가능한 artifact manifest인지 닫는다.
 
 ## Artifacts
