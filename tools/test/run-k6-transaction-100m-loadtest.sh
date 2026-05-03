@@ -65,16 +65,16 @@ Optional environment:
   K6_ARCHIVE_RESULTS   copy markdown summary to docs/performance-results, default true
   K6_ARCHIVE_FAILED_SUMMARY archive summary even when hard gate fails, default true
   K6_ARCHIVE_OUTPUT_ROOT default docs/performance-results
-  K6_PREFLIGHT         check PostgreSQL OOM/index readiness before k6, default true
-  K6_POSTGRES_HEALTH_GATE require PostgreSQL Docker health=healthy before k6, default true
-  K6_POSTGRES_RECOVERY_GATE require pg_is_in_recovery()=false before k6, default true
+  K6_PREFLIGHT         check PostgreSQL OOM/index readiness before k6, default true for local, false for docker-context
+  K6_POSTGRES_HEALTH_GATE require PostgreSQL Docker health=healthy before k6, default true for local, false for docker-context
+  K6_POSTGRES_RECOVERY_GATE require pg_is_in_recovery()=false before k6, default true for local, false for docker-context
   K6_POSTGRES_RECOVERY_STABLE_SECONDS re-check non-recovery after this delay, default 10
   K6_POSTGRES_RECOVERY_NOISE_WINDOW_SECONDS wait after recovery gate before measured run, default 30
-  K6_POSTGRES_EXPORTER_STABLE_GATE require pg_up=1 before k6 when prometheus mode, default true
+  K6_POSTGRES_EXPORTER_STABLE_GATE require pg_up=1 before k6 when prometheus mode, default true for local, false for docker-context
   K6_POSTGRES_EXPORTER_STABLE_TIMEOUT_SECONDS default 60
   K6_OUTBOX_PREFLIGHT  run local outbox backlog gate before k6, default false
   K6_OUTBOX_PREFLIGHT_BASE_URL default http://localhost:${LOADTEST_BACKEND_PORT:-18080}
-  K6_EXPLAIN_SNAPSHOT  write pre/post hot/cold query plans, default true
+  K6_EXPLAIN_SNAPSHOT  write pre/post hot/cold query plans, default true for local, false for docker-context
   K6_OBSERVABILITY_MODE prometheus|summary-only, default prometheus
   K6_OVERLOAD_MODE     treat 429 as expected rejected samples, default false
   K6_OVERLOAD_429_RATE_THRESHOLD
@@ -459,16 +459,21 @@ K6_HTTP_FAILED_RATE="${K6_HTTP_FAILED_RATE:-0.01}"
 K6_ARCHIVE_RESULTS="${K6_ARCHIVE_RESULTS:-true}"
 K6_ARCHIVE_FAILED_SUMMARY="${K6_ARCHIVE_FAILED_SUMMARY:-true}"
 K6_ARCHIVE_OUTPUT_ROOT="${K6_ARCHIVE_OUTPUT_ROOT:-docs/performance-results}"
-K6_PREFLIGHT="${K6_PREFLIGHT:-true}"
-K6_POSTGRES_HEALTH_GATE="${K6_POSTGRES_HEALTH_GATE:-true}"
-K6_POSTGRES_RECOVERY_GATE="${K6_POSTGRES_RECOVERY_GATE:-true}"
+if [[ "${K6_GENERATOR_MODE}" == "docker-context" ]]; then
+  default_local_compose_gate="false"
+else
+  default_local_compose_gate="true"
+fi
+K6_PREFLIGHT="${K6_PREFLIGHT:-${default_local_compose_gate}}"
+K6_POSTGRES_HEALTH_GATE="${K6_POSTGRES_HEALTH_GATE:-${default_local_compose_gate}}"
+K6_POSTGRES_RECOVERY_GATE="${K6_POSTGRES_RECOVERY_GATE:-${default_local_compose_gate}}"
 K6_POSTGRES_RECOVERY_STABLE_SECONDS="${K6_POSTGRES_RECOVERY_STABLE_SECONDS:-10}"
 K6_POSTGRES_RECOVERY_NOISE_WINDOW_SECONDS="${K6_POSTGRES_RECOVERY_NOISE_WINDOW_SECONDS:-30}"
-K6_POSTGRES_EXPORTER_STABLE_GATE="${K6_POSTGRES_EXPORTER_STABLE_GATE:-true}"
+K6_POSTGRES_EXPORTER_STABLE_GATE="${K6_POSTGRES_EXPORTER_STABLE_GATE:-${default_local_compose_gate}}"
 K6_POSTGRES_EXPORTER_STABLE_TIMEOUT_SECONDS="${K6_POSTGRES_EXPORTER_STABLE_TIMEOUT_SECONDS:-60}"
 K6_OUTBOX_PREFLIGHT="${K6_OUTBOX_PREFLIGHT:-false}"
 K6_OUTBOX_PREFLIGHT_BASE_URL="${K6_OUTBOX_PREFLIGHT_BASE_URL:-http://localhost:${LOADTEST_BACKEND_PORT:-18080}}"
-K6_EXPLAIN_SNAPSHOT="${K6_EXPLAIN_SNAPSHOT:-true}"
+K6_EXPLAIN_SNAPSHOT="${K6_EXPLAIN_SNAPSHOT:-${default_local_compose_gate}}"
 K6_OBSERVABILITY_MODE="${K6_OBSERVABILITY_MODE:-prometheus}"
 K6_OVERLOAD_MODE="${K6_OVERLOAD_MODE:-false}"
 K6_OVERLOAD_429_RATE_THRESHOLD="${K6_OVERLOAD_429_RATE_THRESHOLD:-0.015}"

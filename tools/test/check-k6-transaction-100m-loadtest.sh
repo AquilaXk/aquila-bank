@@ -116,6 +116,47 @@ grep -F "k6 report name: transaction-100m-remote-prometheus-check" <<<"${remote_
 grep -F "remote prometheus rw=http://192.0.2.10:9090/api/v1/write" <<<"${remote_prometheus_plan}" >/dev/null
 grep -F "remote prometheus preflight=enabled" <<<"${remote_prometheus_plan}" >/dev/null
 
+remote_staging_plan="$(
+  K6_REPORT_NAME=transaction-100m-remote-staging-check \
+  K6_RUN_PURPOSE=capacity \
+  K6_OBSERVABILITY_MODE=prometheus \
+  K6_GENERATOR_MODE=docker-context \
+  K6_DOCKER_CONTEXT=transaction-k6-remote \
+  K6_REMOTE_BASE_URL=http://192.0.2.10:8080 \
+  K6_REMOTE_PROMETHEUS_RW_SERVER_URL=http://192.0.2.10:9090/api/v1/write \
+  K6_REMOTE_WORKDIR=/srv/aquila-bank \
+    tools/test/run-k6-transaction-100m-loadtest.sh --print-plan
+)"
+grep -F "k6 report name: transaction-100m-remote-staging-check" <<<"${remote_staging_plan}" >/dev/null
+grep -F "postgres health gate=false required_status=healthy" <<<"${remote_staging_plan}" >/dev/null
+grep -F "postgres recovery gate=false stable_seconds=10" <<<"${remote_staging_plan}" >/dev/null
+grep -F "postgres exporter stable gate=false timeout=60" <<<"${remote_staging_plan}" >/dev/null
+grep -F "preflight=false" <<<"${remote_staging_plan}" >/dev/null
+grep -F "explain_snapshot=false" <<<"${remote_staging_plan}" >/dev/null
+
+remote_staging_override_plan="$(
+  K6_REPORT_NAME=transaction-100m-remote-staging-override-check \
+  K6_RUN_PURPOSE=capacity \
+  K6_OBSERVABILITY_MODE=prometheus \
+  K6_GENERATOR_MODE=docker-context \
+  K6_DOCKER_CONTEXT=transaction-k6-remote \
+  K6_REMOTE_BASE_URL=http://192.0.2.10:8080 \
+  K6_REMOTE_PROMETHEUS_RW_SERVER_URL=http://192.0.2.10:9090/api/v1/write \
+  K6_REMOTE_WORKDIR=/srv/aquila-bank \
+  K6_PREFLIGHT=true \
+  K6_POSTGRES_HEALTH_GATE=true \
+  K6_POSTGRES_RECOVERY_GATE=true \
+  K6_POSTGRES_EXPORTER_STABLE_GATE=true \
+  K6_EXPLAIN_SNAPSHOT=true \
+    tools/test/run-k6-transaction-100m-loadtest.sh --print-plan
+)"
+grep -F "k6 report name: transaction-100m-remote-staging-override-check" <<<"${remote_staging_override_plan}" >/dev/null
+grep -F "postgres health gate=true required_status=healthy" <<<"${remote_staging_override_plan}" >/dev/null
+grep -F "postgres recovery gate=true stable_seconds=10" <<<"${remote_staging_override_plan}" >/dev/null
+grep -F "postgres exporter stable gate=true timeout=60" <<<"${remote_staging_override_plan}" >/dev/null
+grep -F "preflight=true" <<<"${remote_staging_override_plan}" >/dev/null
+grep -F "explain_snapshot=true" <<<"${remote_staging_override_plan}" >/dev/null
+
 capacity_archive_plan="$(
   K6_REPORT_NAME=transaction-100m-capacity-archive-check \
   K6_RUN_PURPOSE=capacity \
