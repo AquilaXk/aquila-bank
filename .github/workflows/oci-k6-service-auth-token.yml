@@ -226,6 +226,7 @@ jobs:
           K6_BURST_429_RATE_THRESHOLD="${BURST_429_RATE_THRESHOLD_INPUT}"
           K6_BACKEND_429_RATE_THRESHOLD="${BACKEND_429_RATE_THRESHOLD_INPUT}"
           K6_OVERLOAD_503_RATE_THRESHOLD="${OVERLOAD_503_RATE_THRESHOLD_INPUT}"
+          K6_NGINX_ACCESS_LOG="${K6_NGINX_ACCESS_LOG:-${NGINX_ACCESS_LOG:-}}"
 
           if ! [[ "${K6_REPORT_NAME}" =~ ^[A-Za-z0-9._-]+$ ]]; then
             echo "::error::K6 report name must contain only letters, numbers, dot, underscore, or hyphen."
@@ -281,6 +282,7 @@ jobs:
             K6_BURST_429_RATE_THRESHOLD
             K6_BACKEND_429_RATE_THRESHOLD
             K6_OVERLOAD_503_RATE_THRESHOLD
+            K6_NGINX_ACCESS_LOG
           )
 
           for name in "${env_names[@]}"; do
@@ -310,6 +312,22 @@ jobs:
           report_dir="build/reports/k6/${K6_REPORT_NAME}"
           mkdir -p "${report_dir}"
           tools/test/run-k6-transaction-100m-loadtest.sh --no-up --no-deps >"${report_dir}/k6-capacity.log" 2>&1
+
+      - name: Build transaction read Nginx aggregate artifact
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          report_dir="build/reports/k6/${K6_REPORT_NAME}"
+          mkdir -p "${report_dir}"
+          if [[ -z "${K6_NGINX_ACCESS_LOG:-}" || ! -s "${K6_NGINX_ACCESS_LOG:-}" ]]; then
+            echo "::notice::K6_NGINX_ACCESS_LOG is missing or empty; transaction-read-nginx-access-aggregate artifact skipped."
+            exit 0
+          fi
+          NGINX_ACCESS_AGGREGATE_NAME="${K6_REPORT_NAME}" \
+          NGINX_ACCESS_AGGREGATE_LOG="${K6_NGINX_ACCESS_LOG}" \
+          NGINX_ACCESS_AGGREGATE_OUTPUT_DIR="${report_dir}/transaction-read-nginx-access-aggregate" \
+            tools/test/run-transaction-read-nginx-access-aggregate-artifact.sh
 
       - name: Upload OCI k6 auth artifact
         if: always()

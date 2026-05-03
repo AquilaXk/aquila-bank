@@ -54,6 +54,10 @@ grep -F "Run auth preflight" "${workflow}" >/dev/null
 grep -F "tools/test/run-k6-transaction-100m-loadtest.sh --auth-preflight-only" "${workflow}" >/dev/null
 grep -F "Run authenticated k6 capacity" "${workflow}" >/dev/null
 grep -F "tools/test/run-k6-transaction-100m-loadtest.sh --no-up --no-deps" "${workflow}" >/dev/null
+grep -F "Build transaction read Nginx aggregate artifact" "${workflow}" >/dev/null
+grep -F "K6_NGINX_ACCESS_LOG" "${workflow}" >/dev/null
+grep -F "tools/test/run-transaction-read-nginx-access-aggregate-artifact.sh" "${workflow}" >/dev/null
+grep -F "transaction-read-nginx-access-aggregate" "${workflow}" >/dev/null
 grep -F "actions/upload-artifact@" "${workflow}" >/dev/null
 grep -F "oci-k6-service-auth-token" "${workflow}" >/dev/null
 
