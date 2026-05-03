@@ -23,6 +23,8 @@ Environment:
   OP_EVIDENCE_MAX_DISK_IO_WAIT_PCT default 25
   OP_EVIDENCE_MIN_CACHE_BUFFER_HIT_RATIO default 0.95
   OP_EVIDENCE_MAX_NGINX_UPSTREAM_P999_MS default 500
+  OP_EVIDENCE_MAX_READ_P95_MS     default 120
+  OP_EVIDENCE_MAX_READ_P999_MS    default 500
   OP_EVIDENCE_MIXED_MIN_DURATION_MIN  default 30
   OP_EVIDENCE_P999_MIN_DURATION_MIN   default 30
   OP_EVIDENCE_HIKARI_MIN_DURATION_MIN default 30
@@ -66,6 +68,8 @@ max_memory_pct="${OP_EVIDENCE_MAX_MEMORY_PCT:-90}"
 max_disk_io_wait_pct="${OP_EVIDENCE_MAX_DISK_IO_WAIT_PCT:-25}"
 min_cache_buffer_hit_ratio="${OP_EVIDENCE_MIN_CACHE_BUFFER_HIT_RATIO:-0.95}"
 max_nginx_upstream_p999_ms="${OP_EVIDENCE_MAX_NGINX_UPSTREAM_P999_MS:-500}"
+max_read_p95_ms="${OP_EVIDENCE_MAX_READ_P95_MS:-120}"
+max_read_p999_ms="${OP_EVIDENCE_MAX_READ_P999_MS:-500}"
 mixed_min_duration_min="${OP_EVIDENCE_MIXED_MIN_DURATION_MIN:-30}"
 p999_min_duration_min="${OP_EVIDENCE_P999_MIN_DURATION_MIN:-30}"
 hikari_min_duration_min="${OP_EVIDENCE_HIKARI_MIN_DURATION_MIN:-30}"
@@ -115,6 +119,8 @@ require_non_negative_number "OP_EVIDENCE_MAX_MEMORY_PCT" "${max_memory_pct}"
 require_non_negative_number "OP_EVIDENCE_MAX_DISK_IO_WAIT_PCT" "${max_disk_io_wait_pct}"
 require_rate "OP_EVIDENCE_MIN_CACHE_BUFFER_HIT_RATIO" "${min_cache_buffer_hit_ratio}"
 require_non_negative_number "OP_EVIDENCE_MAX_NGINX_UPSTREAM_P999_MS" "${max_nginx_upstream_p999_ms}"
+require_non_negative_number "OP_EVIDENCE_MAX_READ_P95_MS" "${max_read_p95_ms}"
+require_non_negative_number "OP_EVIDENCE_MAX_READ_P999_MS" "${max_read_p999_ms}"
 require_non_negative_integer "OP_EVIDENCE_MIXED_MIN_DURATION_MIN" "${mixed_min_duration_min}"
 require_non_negative_integer "OP_EVIDENCE_P999_MIN_DURATION_MIN" "${p999_min_duration_min}"
 require_non_negative_integer "OP_EVIDENCE_HIKARI_MIN_DURATION_MIN" "${hikari_min_duration_min}"
@@ -139,6 +145,8 @@ print_plan() {
   echo "[transaction-read-operational-evidence] max_disk_io_wait_pct=${max_disk_io_wait_pct}"
   echo "[transaction-read-operational-evidence] min_cache_buffer_hit_ratio=${min_cache_buffer_hit_ratio}"
   echo "[transaction-read-operational-evidence] max_nginx_upstream_p999_ms=${max_nginx_upstream_p999_ms}"
+  echo "[transaction-read-operational-evidence] max_read_p95_ms=${max_read_p95_ms}"
+  echo "[transaction-read-operational-evidence] max_read_p999_ms=${max_read_p999_ms}"
   echo "[transaction-read-operational-evidence] mixed_min_duration_min=${mixed_min_duration_min}"
   echo "[transaction-read-operational-evidence] p999_min_duration_min=${p999_min_duration_min}"
   echo "[transaction-read-operational-evidence] hikari_min_duration_min=${hikari_min_duration_min}"
@@ -178,6 +186,8 @@ awk -F '\t' \
   -v max_disk_io_wait_pct="${max_disk_io_wait_pct}" \
   -v min_cache_buffer_hit_ratio="${min_cache_buffer_hit_ratio}" \
   -v max_nginx_upstream_p999_ms="${max_nginx_upstream_p999_ms}" \
+  -v max_read_p95_ms="${max_read_p95_ms}" \
+  -v max_read_p999_ms="${max_read_p999_ms}" \
   -v mixed_min_duration_min="${mixed_min_duration_min}" \
   -v p999_min_duration_min="${p999_min_duration_min}" \
   -v hikari_min_duration_min="${hikari_min_duration_min}" \
@@ -197,8 +207,8 @@ BEGIN {
   for (i in required_items) {
     required[required_items[i]] = 1
   }
-  split("scenario duration_min source_ips cold_p95_ms warm_p95_ms p999_ms edge_429_rate backend_429_count five_xx_count nginx_499_count hikari_validation_warnings db_pool_pending_max sse_reject_count deploy_drain_5xx_count pg_wait_p95_ms pg_wait_p999_ms cpu_max_pct memory_max_pct disk_io_wait_pct network_rx_drop_count network_tx_drop_count timeline_artifact resource_timeline_artifact workload_mix_ref outbox_lag_max cache_buffer_hit_ratio cache_wait_event_ref nginx_upstream_p999_ms deploy_retry_contract_ref deploy_reconnect_success_count run_id unknown_429_count artifact_manifest_ref correlation_artifact_ref", header_items, " ")
-  print "scenario\tstatus\treason\tduration_min\tsource_ips\tcold_p95_ms\twarm_p95_ms\tp999_ms\tedge_429_rate\tbackend_429_count\tfive_xx_count\tnginx_499_count\thikari_validation_warnings\tdb_pool_pending_max\tsse_reject_count\tdeploy_drain_5xx_count\tpg_wait_p95_ms\tpg_wait_p999_ms\tcpu_max_pct\tmemory_max_pct\tdisk_io_wait_pct\tnetwork_rx_drop_count\tnetwork_tx_drop_count\ttimeline_artifact\tresource_timeline_artifact\tworkload_mix_ref\toutbox_lag_max\tcache_buffer_hit_ratio\tcache_wait_event_ref\tnginx_upstream_p999_ms\tdeploy_retry_contract_ref\tdeploy_reconnect_success_count\trun_id\tunknown_429_count\tartifact_manifest_ref\tcorrelation_artifact_ref"
+  split("scenario duration_min source_ips cold_p95_ms warm_p95_ms p999_ms edge_429_rate backend_429_count five_xx_count nginx_499_count hikari_validation_warnings db_pool_pending_max sse_reject_count deploy_drain_5xx_count pg_wait_p95_ms pg_wait_p999_ms cpu_max_pct memory_max_pct disk_io_wait_pct network_rx_drop_count network_tx_drop_count timeline_artifact resource_timeline_artifact workload_mix_ref outbox_lag_max cache_buffer_hit_ratio cache_wait_event_ref nginx_upstream_p999_ms deploy_retry_contract_ref deploy_reconnect_success_count run_id unknown_429_count artifact_manifest_ref correlation_artifact_ref read_p95_ms read_p999_ms edge_429_source_ref workload_component_ref deploy_499_budget_ref", header_items, " ")
+  print "scenario\tstatus\treason\tduration_min\tsource_ips\tcold_p95_ms\twarm_p95_ms\tp999_ms\tedge_429_rate\tbackend_429_count\tfive_xx_count\tnginx_499_count\thikari_validation_warnings\tdb_pool_pending_max\tsse_reject_count\tdeploy_drain_5xx_count\tpg_wait_p95_ms\tpg_wait_p999_ms\tcpu_max_pct\tmemory_max_pct\tdisk_io_wait_pct\tnetwork_rx_drop_count\tnetwork_tx_drop_count\ttimeline_artifact\tresource_timeline_artifact\tworkload_mix_ref\toutbox_lag_max\tcache_buffer_hit_ratio\tcache_wait_event_ref\tnginx_upstream_p999_ms\tdeploy_retry_contract_ref\tdeploy_reconnect_success_count\trun_id\tunknown_429_count\tartifact_manifest_ref\tcorrelation_artifact_ref\tread_p95_ms\tread_p999_ms\tedge_429_source_ref\tworkload_component_ref\tdeploy_499_budget_ref"
 }
 NR == 1 {
   for (i = 1; i <= NF; i++) {
@@ -240,6 +250,11 @@ NR == 1 {
   row_run_id = $col["run_id"]
   artifact_manifest_ref = $col["artifact_manifest_ref"]
   correlation_artifact_ref = $col["correlation_artifact_ref"]
+  read_p95_ms = $col["read_p95_ms"] + 0
+  read_p999_ms = $col["read_p999_ms"] + 0
+  edge_429_source_ref = $col["edge_429_source_ref"]
+  workload_component_ref = $col["workload_component_ref"]
+  deploy_499_budget_ref = $col["deploy_499_budget_ref"]
   workload_mix_ref = $col["workload_mix_ref"]
   outbox_lag_max = $col["outbox_lag_max"] + 0
   cache_buffer_hit_ratio = $col["cache_buffer_hit_ratio"] + 0
@@ -254,6 +269,8 @@ NR == 1 {
   if (cold_p95_ms > max_cold_p95_ms) add_reason("cold-p95>" max_cold_p95_ms)
   if (warm_p95_ms > max_warm_p95_ms) add_reason("warm-p95>" max_warm_p95_ms)
   if (p999_ms > max_p999_ms) add_reason("p999>" max_p999_ms)
+  if (read_p95_ms > max_read_p95_ms) add_reason("read-p95>" max_read_p95_ms)
+  if (read_p999_ms > max_read_p999_ms) add_reason("read-p999>" max_read_p999_ms)
   if (row_run_id == "" || row_run_id != expected_run_id) add_reason("run-id-mismatch")
   if (edge_429_rate > max_edge_429_rate) add_reason("edge429>" max_edge_429_rate)
   if (backend_429_count > 0) add_reason("backend429>0")
@@ -274,9 +291,11 @@ NR == 1 {
   if (resource_timeline_artifact == "" || resource_timeline_artifact == "n/a") add_reason("resource-timeline-missing")
   if (artifact_manifest_ref == "" || artifact_manifest_ref == "n/a") add_reason("artifact-manifest-missing")
   if (correlation_artifact_ref == "" || correlation_artifact_ref == "n/a") add_reason("correlation-artifact-missing")
+  if (edge_429_source_ref == "" || edge_429_source_ref == "n/a") add_reason("edge429-source-missing")
   if (nginx_upstream_p999_ms > max_nginx_upstream_p999_ms) add_reason("nginx-p999>" max_nginx_upstream_p999_ms)
   if (scenario == "mixed-workload") {
     if (workload_mix_ref == "" || workload_mix_ref == "n/a") add_reason("workload-mix-missing")
+    if (workload_component_ref == "" || workload_component_ref == "n/a") add_reason("workload-component-missing")
     if (outbox_lag_max > 0) add_reason("outbox-lag>0")
   }
   if (scenario == "cold-warm") {
@@ -285,6 +304,7 @@ NR == 1 {
   }
   if (scenario == "deploy-drain") {
     if (deploy_retry_contract_ref == "" || deploy_retry_contract_ref == "n/a") add_reason("deploy-retry-contract-missing")
+    if (deploy_499_budget_ref == "" || deploy_499_budget_ref == "n/a") add_reason("deploy-499-budget-missing")
     if (deploy_reconnect_success_count <= 0) add_reason("deploy-reconnect-missing")
   }
   if (scenario == "mixed-workload" && duration_min < mixed_min_duration_min) {
@@ -304,7 +324,7 @@ NR == 1 {
   }
 
   if (status == "fail") fail_count++
-  printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+  printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
     scenario, status, reason, duration_min, source_ips, cold_p95_ms, warm_p95_ms, p999_ms,
     edge_429_rate, backend_429_count, five_xx_count, nginx_499_count,
     hikari_validation_warnings, db_pool_pending_max, sse_reject_count,
@@ -313,7 +333,9 @@ NR == 1 {
     timeline_artifact, resource_timeline_artifact, workload_mix_ref, outbox_lag_max,
     cache_buffer_hit_ratio, cache_wait_event_ref, nginx_upstream_p999_ms,
     deploy_retry_contract_ref, deploy_reconnect_success_count, row_run_id,
-    unknown_429_count, artifact_manifest_ref, correlation_artifact_ref
+    unknown_429_count, artifact_manifest_ref, correlation_artifact_ref,
+    read_p95_ms, read_p999_ms, edge_429_source_ref, workload_component_ref,
+    deploy_499_budget_ref
 }
 END {
   missing = ""
@@ -366,14 +388,18 @@ cat >"${report_md}" <<REPORT
 - warm steady-read p95 max: ${max_warm_p95_ms}ms
 - p99.9 long observation max: ${max_p999_ms}ms
 - PG wait p95/p99.9 max: ${max_pg_wait_p95_ms}ms / ${max_pg_wait_p999_ms}ms
+- transaction read p95/p99.9 max: ${max_read_p95_ms}ms / ${max_read_p999_ms}ms
 - resource max: CPU ${max_cpu_pct}%, memory ${max_memory_pct}%, disk io wait ${max_disk_io_wait_pct}%
 - network drop hard target: 0
 - resource timeline artifact: required
 - artifact manifest: required
 - p99.9/resource/PG wait correlation artifact: required
+- 429 source artifact: required
 - mixed workload outbox lag hard target: 0
+- mixed workload component manifest: required
 - cache buffer hit min: ${min_cache_buffer_hit_ratio}
 - Nginx upstream p99.9 max: ${max_nginx_upstream_p999_ms}ms
+- deploy 499 budget ref: required
 - deploy retry/reconnect contract: required
 - Hikari timeline min duration: ${hikari_min_duration_min}m
 - mixed workload min duration: ${mixed_min_duration_min}m
