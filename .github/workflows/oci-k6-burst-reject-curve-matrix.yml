@@ -457,7 +457,7 @@ jobs:
           status_payload="$(
             jq -n \
               --arg log_url "${EVIDENCE_LOG_URL}" \
-              --arg description "transaction read burst boundary matrix passed: ${matrix_report}" \
+              --arg description "transaction read burst matrix passed" \
               '{
                 "state": "success",
                 "log_url": $log_url,
