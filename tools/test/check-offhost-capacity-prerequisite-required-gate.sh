@@ -19,6 +19,12 @@ grep -F "name: staging" "${workflow}" >/dev/null
 grep -F 'OCI_A1_STAGING_ENV: ${{ secrets.OCI_A1_STAGING_ENV }}' "${workflow}" >/dev/null
 grep -F "Load off-host capacity env" "${workflow}" >/dev/null
 grep -F "CAPACITY_K6_DOCKER_CONTEXT_VAR" "${workflow}" >/dev/null
+grep -F 'DEFAULT_CAPACITY_K6_DOCKER_CONTEXT="default"' "${workflow}" >/dev/null
+grep -F 'DEFAULT_CAPACITY_K6_REMOTE_BASE_URL="${STAGING_BASE_URL:-}"' "${workflow}" >/dev/null
+grep -F 'DEFAULT_CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL="http://172.17.0.2:9090/api/v1/write"' "${workflow}" >/dev/null
+grep -F 'CAPACITY_K6_DOCKER_CONTEXT="${DOCKER_CONTEXT_INPUT:-${CAPACITY_K6_DOCKER_CONTEXT:-${CAPACITY_K6_DOCKER_CONTEXT_VAR:-${DEFAULT_CAPACITY_K6_DOCKER_CONTEXT}}}}"' "${workflow}" >/dev/null
+grep -F 'CAPACITY_K6_REMOTE_BASE_URL="${REMOTE_BASE_URL_INPUT:-${CAPACITY_K6_REMOTE_BASE_URL:-${CAPACITY_K6_REMOTE_BASE_URL_VAR:-${DEFAULT_CAPACITY_K6_REMOTE_BASE_URL}}}}"' "${workflow}" >/dev/null
+grep -F 'CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL="${REMOTE_PROMETHEUS_RW_URL_INPUT:-${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL:-${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL_VAR:-${DEFAULT_CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL}}}}"' "${workflow}" >/dev/null
 grep -F 'CAPACITY_REMOTE_PREFLIGHT="true"' "${workflow}" >/dev/null
 grep -F "Run off-host remote preflight" "${workflow}" >/dev/null
 grep -F "tools/test/run-offhost-capacity-env-doctor.sh" "${workflow}" >/dev/null
