@@ -54,9 +54,9 @@ on:
         default: "1s"
         type: string
       scenario_mode:
-        description: "k6 scenario mode"
+        description: "k6 scenario mode (default constant-arrival-rate strict gate)"
         required: false
-        default: "constant-vus"
+        default: "constant-arrival-rate"
         type: choice
         options:
           - constant-vus
@@ -400,6 +400,43 @@ jobs:
           report_dir="build/reports/k6/${K6_REPORT_NAME}"
           mkdir -p "${report_dir}"
           tools/test/run-k6-transaction-100m-loadtest.sh --no-up --no-deps >"${report_dir}/k6-capacity.log" 2>&1
+
+      - name: Resolve transaction read Nginx access log
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${K6_NGINX_ACCESS_LOG:-}" && -s "${K6_NGINX_ACCESS_LOG}" ]]; then
+            exit 0
+          fi
+
+          candidate_log="${RUNNER_TEMP}/${K6_RUN_ID}-nginx-access.log"
+          container_candidates=(
+            "${K6_NGINX_CONTAINER:-}"
+            "${NGINX_CONTAINER:-}"
+            "aquila-bank-nginx"
+            "aquila-nginx"
+            "nginx"
+          )
+
+          if command -v docker >/dev/null 2>&1; then
+            while IFS= read -r container; do
+              container_candidates+=("${container}")
+            done < <(docker ps --format '{{.Names}}' 2>/dev/null | grep -E 'nginx|proxy' || true)
+          fi
+
+          for container in "${container_candidates[@]}"; do
+            [[ -z "${container}" ]] && continue
+            if docker exec "${container}" test -s /var/log/nginx/access.log 2>/dev/null; then
+              docker cp "${container}:/var/log/nginx/access.log" "${candidate_log}"
+              if [[ -s "${candidate_log}" ]]; then
+                printf 'K6_NGINX_ACCESS_LOG=%s\n' "${candidate_log}" >>"${GITHUB_ENV}"
+                exit 0
+              fi
+            fi
+          done
+
+          echo "::notice::K6_NGINX_ACCESS_LOG is missing or empty and no Nginx container access log was found."
 
       - name: Build transaction read Nginx aggregate artifact
         if: always()

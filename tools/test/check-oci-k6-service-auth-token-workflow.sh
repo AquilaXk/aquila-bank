@@ -50,6 +50,8 @@ grep -F "time_unit:" "${workflow}" >/dev/null
 grep -F "pre_allocated_vus:" "${workflow}" >/dev/null
 grep -F "max_vus:" "${workflow}" >/dev/null
 grep -F "preemptive_pacing:" "${workflow}" >/dev/null
+grep -F 'description: "k6 scenario mode (default constant-arrival-rate strict gate)"' "${workflow}" >/dev/null
+grep -F 'default: "constant-arrival-rate"' "${workflow}" >/dev/null
 grep -F "nginx_access_log:" "${workflow}" >/dev/null
 grep -F "burst_429_rate_threshold:" "${workflow}" >/dev/null
 grep -F "backend_429_rate_threshold:" "${workflow}" >/dev/null
@@ -82,10 +84,17 @@ grep -F "k6-pacing-input.json" "${workflow}" >/dev/null
 grep -F "k6-pacing-summary.md" "${workflow}" >/dev/null
 grep -F "K6_PACING_INPUT_REF" "${workflow}" >/dev/null
 grep -F "K6_PACING_SUMMARY_REF" "${workflow}" >/dev/null
+grep -F '"gate_role": "saturation_probe"' "${workflow}" >/dev/null
 grep -F "Run auth preflight" "${workflow}" >/dev/null
 grep -F "tools/test/run-k6-transaction-100m-loadtest.sh --auth-preflight-only" "${workflow}" >/dev/null
 grep -F "Run authenticated k6 capacity" "${workflow}" >/dev/null
 grep -F "tools/test/run-k6-transaction-100m-loadtest.sh --no-up --no-deps" "${workflow}" >/dev/null
+grep -F "Resolve transaction read Nginx access log" "${workflow}" >/dev/null
+grep -F 'container_candidates=(' "${workflow}" >/dev/null
+grep -F '"${K6_NGINX_CONTAINER:-}"' "${workflow}" >/dev/null
+grep -F "docker ps --format '{{.Names}}'" "${workflow}" >/dev/null
+grep -F 'docker exec "${container}" test -s /var/log/nginx/access.log' "${workflow}" >/dev/null
+grep -F 'docker cp "${container}:/var/log/nginx/access.log" "${candidate_log}"' "${workflow}" >/dev/null
 grep -F "Build transaction read Nginx aggregate artifact" "${workflow}" >/dev/null
 grep -F "K6_NGINX_ACCESS_LOG" "${workflow}" >/dev/null
 grep -F "tools/test/run-transaction-read-nginx-access-aggregate-artifact.sh" "${workflow}" >/dev/null
