@@ -7,6 +7,7 @@ usage: tools/test/run-transaction-read-operational-evidence-gate.sh [--print-pla
 
 Environment:
   OP_EVIDENCE_NAME                default transaction-read-operational-evidence-<timestamp>
+  OP_EVIDENCE_RUN_ID              default same as OP_EVIDENCE_NAME
   OP_EVIDENCE_INPUT_TSV           required TSV with OCI scenario evidence
   OP_EVIDENCE_OUTPUT_DIR          default build/reports/k6/<gate>
   OP_EVIDENCE_REQUIRED_SCENARIOS  default hikari-soak,cold-warm,mixed-workload,real-ip-multisource,deploy-drain,p999-long
@@ -24,7 +25,7 @@ Environment:
   OP_EVIDENCE_MAX_NGINX_UPSTREAM_P999_MS default 500
   OP_EVIDENCE_MIXED_MIN_DURATION_MIN  default 30
   OP_EVIDENCE_P999_MIN_DURATION_MIN   default 30
-  OP_EVIDENCE_HIKARI_MIN_DURATION_MIN default 10
+  OP_EVIDENCE_HIKARI_MIN_DURATION_MIN default 30
   OP_EVIDENCE_DEPLOY_MIN_DURATION_MIN default 5
   OP_EVIDENCE_MIN_REAL_SOURCE_IPS     default 2
 USAGE
@@ -49,6 +50,7 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 name="${OP_EVIDENCE_NAME:-transaction-read-operational-evidence-$(date +%Y-%m-%d-%H%M%S)}"
+run_id="${OP_EVIDENCE_RUN_ID:-${name}}"
 input_tsv="${OP_EVIDENCE_INPUT_TSV:-}"
 output_dir="${OP_EVIDENCE_OUTPUT_DIR:-build/reports/k6/${name}}"
 required_scenarios="${OP_EVIDENCE_REQUIRED_SCENARIOS:-hikari-soak,cold-warm,mixed-workload,real-ip-multisource,deploy-drain,p999-long}"
@@ -66,7 +68,7 @@ min_cache_buffer_hit_ratio="${OP_EVIDENCE_MIN_CACHE_BUFFER_HIT_RATIO:-0.95}"
 max_nginx_upstream_p999_ms="${OP_EVIDENCE_MAX_NGINX_UPSTREAM_P999_MS:-500}"
 mixed_min_duration_min="${OP_EVIDENCE_MIXED_MIN_DURATION_MIN:-30}"
 p999_min_duration_min="${OP_EVIDENCE_P999_MIN_DURATION_MIN:-30}"
-hikari_min_duration_min="${OP_EVIDENCE_HIKARI_MIN_DURATION_MIN:-10}"
+hikari_min_duration_min="${OP_EVIDENCE_HIKARI_MIN_DURATION_MIN:-30}"
 deploy_min_duration_min="${OP_EVIDENCE_DEPLOY_MIN_DURATION_MIN:-5}"
 min_real_source_ips="${OP_EVIDENCE_MIN_REAL_SOURCE_IPS:-2}"
 summary_tsv="${output_dir}/${name}-operational-evidence.tsv"
@@ -121,6 +123,7 @@ require_non_negative_integer "OP_EVIDENCE_MIN_REAL_SOURCE_IPS" "${min_real_sourc
 
 print_plan() {
   echo "[transaction-read-operational-evidence] name=${name}"
+  echo "[transaction-read-operational-evidence] run_id=${run_id}"
   echo "[transaction-read-operational-evidence] input_tsv=${input_tsv:-missing}"
   echo "[transaction-read-operational-evidence] output_dir=${output_dir}"
   echo "[transaction-read-operational-evidence] required_scenarios=${required_scenarios}"
@@ -179,7 +182,8 @@ awk -F '\t' \
   -v p999_min_duration_min="${p999_min_duration_min}" \
   -v hikari_min_duration_min="${hikari_min_duration_min}" \
   -v deploy_min_duration_min="${deploy_min_duration_min}" \
-  -v min_real_source_ips="${min_real_source_ips}" '
+  -v min_real_source_ips="${min_real_source_ips}" \
+  -v expected_run_id="${run_id}" '
 function add_reason(value) {
   if (reason == "ok") {
     reason = value
@@ -193,8 +197,8 @@ BEGIN {
   for (i in required_items) {
     required[required_items[i]] = 1
   }
-  split("scenario duration_min source_ips cold_p95_ms warm_p95_ms p999_ms edge_429_rate backend_429_count five_xx_count nginx_499_count hikari_validation_warnings db_pool_pending_max sse_reject_count deploy_drain_5xx_count pg_wait_p95_ms pg_wait_p999_ms cpu_max_pct memory_max_pct disk_io_wait_pct network_rx_drop_count network_tx_drop_count timeline_artifact resource_timeline_artifact workload_mix_ref outbox_lag_max cache_buffer_hit_ratio cache_wait_event_ref nginx_upstream_p999_ms deploy_retry_contract_ref deploy_reconnect_success_count", header_items, " ")
-  print "scenario\tstatus\treason\tduration_min\tsource_ips\tcold_p95_ms\twarm_p95_ms\tp999_ms\tedge_429_rate\tbackend_429_count\tfive_xx_count\tnginx_499_count\thikari_validation_warnings\tdb_pool_pending_max\tsse_reject_count\tdeploy_drain_5xx_count\tpg_wait_p95_ms\tpg_wait_p999_ms\tcpu_max_pct\tmemory_max_pct\tdisk_io_wait_pct\tnetwork_rx_drop_count\tnetwork_tx_drop_count\ttimeline_artifact\tresource_timeline_artifact\tworkload_mix_ref\toutbox_lag_max\tcache_buffer_hit_ratio\tcache_wait_event_ref\tnginx_upstream_p999_ms\tdeploy_retry_contract_ref\tdeploy_reconnect_success_count"
+  split("scenario duration_min source_ips cold_p95_ms warm_p95_ms p999_ms edge_429_rate backend_429_count five_xx_count nginx_499_count hikari_validation_warnings db_pool_pending_max sse_reject_count deploy_drain_5xx_count pg_wait_p95_ms pg_wait_p999_ms cpu_max_pct memory_max_pct disk_io_wait_pct network_rx_drop_count network_tx_drop_count timeline_artifact resource_timeline_artifact workload_mix_ref outbox_lag_max cache_buffer_hit_ratio cache_wait_event_ref nginx_upstream_p999_ms deploy_retry_contract_ref deploy_reconnect_success_count run_id unknown_429_count artifact_manifest_ref correlation_artifact_ref", header_items, " ")
+  print "scenario\tstatus\treason\tduration_min\tsource_ips\tcold_p95_ms\twarm_p95_ms\tp999_ms\tedge_429_rate\tbackend_429_count\tfive_xx_count\tnginx_499_count\thikari_validation_warnings\tdb_pool_pending_max\tsse_reject_count\tdeploy_drain_5xx_count\tpg_wait_p95_ms\tpg_wait_p999_ms\tcpu_max_pct\tmemory_max_pct\tdisk_io_wait_pct\tnetwork_rx_drop_count\tnetwork_tx_drop_count\ttimeline_artifact\tresource_timeline_artifact\tworkload_mix_ref\toutbox_lag_max\tcache_buffer_hit_ratio\tcache_wait_event_ref\tnginx_upstream_p999_ms\tdeploy_retry_contract_ref\tdeploy_reconnect_success_count\trun_id\tunknown_429_count\tartifact_manifest_ref\tcorrelation_artifact_ref"
 }
 NR == 1 {
   for (i = 1; i <= NF; i++) {
@@ -217,6 +221,7 @@ NR == 1 {
   p999_ms = $col["p999_ms"] + 0
   edge_429_rate = $col["edge_429_rate"] + 0
   backend_429_count = $col["backend_429_count"] + 0
+  unknown_429_count = $col["unknown_429_count"] + 0
   five_xx_count = $col["five_xx_count"] + 0
   nginx_499_count = $col["nginx_499_count"] + 0
   hikari_validation_warnings = $col["hikari_validation_warnings"] + 0
@@ -232,6 +237,9 @@ NR == 1 {
   network_tx_drop_count = $col["network_tx_drop_count"] + 0
   timeline_artifact = $col["timeline_artifact"]
   resource_timeline_artifact = $col["resource_timeline_artifact"]
+  row_run_id = $col["run_id"]
+  artifact_manifest_ref = $col["artifact_manifest_ref"]
+  correlation_artifact_ref = $col["correlation_artifact_ref"]
   workload_mix_ref = $col["workload_mix_ref"]
   outbox_lag_max = $col["outbox_lag_max"] + 0
   cache_buffer_hit_ratio = $col["cache_buffer_hit_ratio"] + 0
@@ -246,8 +254,10 @@ NR == 1 {
   if (cold_p95_ms > max_cold_p95_ms) add_reason("cold-p95>" max_cold_p95_ms)
   if (warm_p95_ms > max_warm_p95_ms) add_reason("warm-p95>" max_warm_p95_ms)
   if (p999_ms > max_p999_ms) add_reason("p999>" max_p999_ms)
+  if (row_run_id == "" || row_run_id != expected_run_id) add_reason("run-id-mismatch")
   if (edge_429_rate > max_edge_429_rate) add_reason("edge429>" max_edge_429_rate)
   if (backend_429_count > 0) add_reason("backend429>0")
+  if (unknown_429_count > 0) add_reason("unknown429>0")
   if (five_xx_count > 0) add_reason("5xx>0")
   if (nginx_499_count > 0) add_reason("499>0")
   if (hikari_validation_warnings > 0) add_reason("hikari-warning>0")
@@ -262,6 +272,8 @@ NR == 1 {
   if (network_rx_drop_count > 0 || network_tx_drop_count > 0) add_reason("network-drop>0")
   if (timeline_artifact == "" || timeline_artifact == "n/a") add_reason("timeline-missing")
   if (resource_timeline_artifact == "" || resource_timeline_artifact == "n/a") add_reason("resource-timeline-missing")
+  if (artifact_manifest_ref == "" || artifact_manifest_ref == "n/a") add_reason("artifact-manifest-missing")
+  if (correlation_artifact_ref == "" || correlation_artifact_ref == "n/a") add_reason("correlation-artifact-missing")
   if (nginx_upstream_p999_ms > max_nginx_upstream_p999_ms) add_reason("nginx-p999>" max_nginx_upstream_p999_ms)
   if (scenario == "mixed-workload") {
     if (workload_mix_ref == "" || workload_mix_ref == "n/a") add_reason("workload-mix-missing")
@@ -292,7 +304,7 @@ NR == 1 {
   }
 
   if (status == "fail") fail_count++
-  printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+  printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
     scenario, status, reason, duration_min, source_ips, cold_p95_ms, warm_p95_ms, p999_ms,
     edge_429_rate, backend_429_count, five_xx_count, nginx_499_count,
     hikari_validation_warnings, db_pool_pending_max, sse_reject_count,
@@ -300,7 +312,8 @@ NR == 1 {
     memory_max_pct, disk_io_wait_pct, network_rx_drop_count, network_tx_drop_count,
     timeline_artifact, resource_timeline_artifact, workload_mix_ref, outbox_lag_max,
     cache_buffer_hit_ratio, cache_wait_event_ref, nginx_upstream_p999_ms,
-    deploy_retry_contract_ref, deploy_reconnect_success_count
+    deploy_retry_contract_ref, deploy_reconnect_success_count, row_run_id,
+    unknown_429_count, artifact_manifest_ref, correlation_artifact_ref
 }
 END {
   missing = ""
@@ -343,10 +356,11 @@ cat >"${report_md}" <<REPORT
 ## Summary
 
 - gate_status=${gate_status}
+- actual execution run id: ${run_id}
 - missing_scenarios=${missing_scenarios:-none}
 - required scenarios: ${required_scenarios}
 - Hikari validation warning: 0
-- 499/5xx/backend429 hard target: 0
+- 499/5xx/backend429/unknown429 hard target: 0
 - edge 429 max rate: ${max_edge_429_rate}
 - cold first-read p95 max: ${max_cold_p95_ms}ms
 - warm steady-read p95 max: ${max_warm_p95_ms}ms
@@ -355,10 +369,13 @@ cat >"${report_md}" <<REPORT
 - resource max: CPU ${max_cpu_pct}%, memory ${max_memory_pct}%, disk io wait ${max_disk_io_wait_pct}%
 - network drop hard target: 0
 - resource timeline artifact: required
+- artifact manifest: required
+- p99.9/resource/PG wait correlation artifact: required
 - mixed workload outbox lag hard target: 0
 - cache buffer hit min: ${min_cache_buffer_hit_ratio}
 - Nginx upstream p99.9 max: ${max_nginx_upstream_p999_ms}ms
 - deploy retry/reconnect contract: required
+- Hikari timeline min duration: ${hikari_min_duration_min}m
 - mixed workload min duration: ${mixed_min_duration_min}m
 - real-IP multi-source minimum sources: ${min_real_source_ips}
 
@@ -368,7 +385,7 @@ ${status_table}
 
 ## Evidence Contract
 
-- Hikari idle validation warning, 499, 5xx, backend 429은 hard-zero로 묶는다.
+- Hikari idle validation warning, 499, 5xx, backend 429, unknown 429은 hard-zero로 묶는다.
 - cold/warm cache, mixed workload, real-IP multi-source, deploy drain, p99.9 long observation은 같은 TSV timeline artifact로 추적한다.
 - 이 gate는 OCI 실측 산출물을 닫는 검증기이며, 실제 부하 실행은 각 run-* script와 OCI runner에서 수행한다.
 
