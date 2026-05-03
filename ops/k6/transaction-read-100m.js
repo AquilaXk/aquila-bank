@@ -76,6 +76,7 @@ const observabilityMode = __ENV.K6_OBSERVABILITY_MODE || "prometheus";
 const overloadMode = booleanEnv(__ENV.K6_OVERLOAD_MODE);
 const overload429RateThreshold = nonNegativeNumberEnv(__ENV.K6_OVERLOAD_429_RATE_THRESHOLD, 0.015);
 const burst429RateThreshold = nonNegativeNumberEnv(__ENV.K6_BURST_429_RATE_THRESHOLD, 0.10);
+const backend429RateThreshold = nonNegativeNumberEnv(__ENV.K6_BACKEND_429_RATE_THRESHOLD, 0.005);
 const overload503RateThreshold = nonNegativeNumberEnv(__ENV.K6_OVERLOAD_503_RATE_THRESHOLD, 0);
 const maxRetryAfterSleepSeconds = nonNegativeNumberEnv(__ENV.K6_MAX_RETRY_AFTER_SLEEP_SECONDS, 1);
 const maxRetryAfterSleepMs = nonNegativeNumberEnv(
@@ -220,6 +221,7 @@ function thresholds() {
     result.http_req_failed = [`rate<${failedRate}`];
   } else {
     result.aquila_transaction_429_rate = [`rate<${effectiveOverload429RateThreshold}`];
+    result.aquila_transaction_backend_429_rate = [`rate<=${backend429RateThreshold}`];
     result.aquila_transaction_502_rate = ["rate<=0"];
     result.aquila_transaction_502_count = ["count<1"];
     result.aquila_transaction_503_rate = [`rate<=${overload503RateThreshold}`];

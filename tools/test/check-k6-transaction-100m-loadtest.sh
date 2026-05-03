@@ -39,6 +39,7 @@ grep -F "retry-after adaptive pacing=true max multiplier=6" <<<"${plan}" >/dev/n
 grep -F "preemptive pacing=false rps=0 max sleep ms=250 jitter ms=25" <<<"${plan}" >/dev/null
 grep -F "overload 429 rate threshold=0.015" <<<"${plan}" >/dev/null
 grep -F "burst 429 rate threshold=0.1" <<<"${plan}" >/dev/null
+grep -F "backend 429 rate threshold=0.005" <<<"${plan}" >/dev/null
 grep -F "overload 503 rate threshold=0" <<<"${plan}" >/dev/null
 grep -F "warmup duration=10s" <<<"${plan}" >/dev/null
 grep -F "warmup mode=arrival-rate rate=2 timeUnit=1s preAllocatedVUs=1 maxVUs=2 contamination=off" <<<"${plan}" >/dev/null
@@ -272,6 +273,7 @@ grep -F "overload mode=true max retry-after sleep seconds=2" <<<"${overload_plan
 grep -F "max retry-after sleep ms=2000" <<<"${overload_plan}" >/dev/null
 grep -F "overload 429 rate threshold=0.015" <<<"${overload_plan}" >/dev/null
 grep -F "burst 429 rate threshold=0.1" <<<"${overload_plan}" >/dev/null
+grep -F "backend 429 rate threshold=0.005" <<<"${overload_plan}" >/dev/null
 grep -F "overload 503 rate threshold=0" <<<"${overload_plan}" >/dev/null
 
 preemptive_plan="$(
@@ -416,6 +418,7 @@ grep -F "constant-arrival-rate" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "burst_admission" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_OVERLOAD_429_RATE_THRESHOLD" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_BURST_429_RATE_THRESHOLD" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "K6_BACKEND_429_RATE_THRESHOLD" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_OVERLOAD_503_RATE_THRESHOLD" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_MAX_RETRY_AFTER_SLEEP_SECONDS" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_MAX_RETRY_AFTER_SLEEP_MS" ops/k6/transaction-read-100m.js >/dev/null
@@ -457,6 +460,7 @@ grep -F "transaction_read_100m_warmup" ops/k6/transaction-read-100m.js >/dev/nul
 grep -F "exec.scenario.name" ops/k6/transaction-read-100m.js >/dev/null
 grep -F 'executor: "constant-arrival-rate"' ops/k6/transaction-read-100m.js >/dev/null
 grep -F 'rate<${effectiveOverload429RateThreshold}' ops/k6/transaction-read-100m.js >/dev/null
+grep -F 'rate<=${backend429RateThreshold}' ops/k6/transaction-read-100m.js >/dev/null
 grep -F 'rate<=${overload503RateThreshold}' ops/k6/transaction-read-100m.js >/dev/null
 grep -F "count<1" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "summaryTrendStats" ops/k6/transaction-read-100m.js >/dev/null
@@ -478,6 +482,7 @@ grep -F "K6_HOT_DEEP_P95_THRESHOLD_MS" tools/test/run-k6-transaction-100m-loadte
 grep -F "K6_COLD_DEEP_P95_THRESHOLD_MS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_OVERLOAD_429_RATE_THRESHOLD" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_BURST_429_RATE_THRESHOLD" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "K6_BACKEND_429_RATE_THRESHOLD" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_OVERLOAD_503_RATE_THRESHOLD" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_MAX_RETRY_AFTER_SLEEP_MS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_RETRY_AFTER_ADAPTIVE_PACING" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
@@ -584,6 +589,10 @@ if K6_OVERLOAD_429_RATE_THRESHOLD=1.5 tools/test/run-k6-transaction-100m-loadtes
 fi
 if K6_BURST_429_RATE_THRESHOLD=1.5 tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
   echo "K6_BURST_429_RATE_THRESHOLD=1.5 unexpectedly succeeded" >&2
+  exit 1
+fi
+if K6_BACKEND_429_RATE_THRESHOLD=1.5 tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
+  echo "K6_BACKEND_429_RATE_THRESHOLD=1.5 unexpectedly succeeded" >&2
   exit 1
 fi
 if K6_OVERLOAD_503_RATE_THRESHOLD=1.5 tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then

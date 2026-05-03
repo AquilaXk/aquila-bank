@@ -28,6 +28,23 @@ grep -F "STAGING_REPLAY_TOKEN" "${workflow}" >/dev/null
 grep -F 'K6_AUTH_TOKEN_ENV_NAME="STAGING_REPLAY_TOKEN"' "${workflow}" >/dev/null
 grep -F 'K6_AUTH_PREFLIGHT="true"' "${workflow}" >/dev/null
 grep -F "K6_AUTH_PREFLIGHT_PATH" "${workflow}" >/dev/null
+grep -F "burst_rate:" "${workflow}" >/dev/null
+grep -F "pre_allocated_vus:" "${workflow}" >/dev/null
+grep -F "max_vus:" "${workflow}" >/dev/null
+grep -F "burst_429_rate_threshold:" "${workflow}" >/dev/null
+grep -F "backend_429_rate_threshold:" "${workflow}" >/dev/null
+grep -F "overload_503_rate_threshold:" "${workflow}" >/dev/null
+grep -F "OVERLOAD_MODE_INPUT" "${workflow}" >/dev/null
+grep -F 'K6_OVERLOAD_MODE="${OVERLOAD_MODE_INPUT}"' "${workflow}" >/dev/null
+grep -F 'if [[ -z "${K6_OVERLOAD_MODE}" && "${K6_SCENARIO_MODE}" == "burst" ]]; then' "${workflow}" >/dev/null
+grep -F 'K6_OVERLOAD_MODE="true"' "${workflow}" >/dev/null
+grep -F 'K6_OVERLOAD_MODE="${K6_OVERLOAD_MODE:-false}"' "${workflow}" >/dev/null
+grep -F 'K6_BURST_RATE="${BURST_RATE_INPUT}"' "${workflow}" >/dev/null
+grep -F 'K6_PRE_ALLOCATED_VUS="${PRE_ALLOCATED_VUS_INPUT}"' "${workflow}" >/dev/null
+grep -F 'K6_MAX_VUS="${MAX_VUS_INPUT}"' "${workflow}" >/dev/null
+grep -F 'K6_BURST_429_RATE_THRESHOLD="${BURST_429_RATE_THRESHOLD_INPUT}"' "${workflow}" >/dev/null
+grep -F 'K6_BACKEND_429_RATE_THRESHOLD="${BACKEND_429_RATE_THRESHOLD_INPUT}"' "${workflow}" >/dev/null
+grep -F 'K6_OVERLOAD_503_RATE_THRESHOLD="${OVERLOAD_503_RATE_THRESHOLD_INPUT}"' "${workflow}" >/dev/null
 grep -F "Run auth preflight" "${workflow}" >/dev/null
 grep -F "tools/test/run-k6-transaction-100m-loadtest.sh --auth-preflight-only" "${workflow}" >/dev/null
 grep -F "Run authenticated k6 capacity" "${workflow}" >/dev/null
