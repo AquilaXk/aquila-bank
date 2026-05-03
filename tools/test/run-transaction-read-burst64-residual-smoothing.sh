@@ -18,7 +18,7 @@ Environment:
   BURST64_SMOOTHING_MAX_RETRY_P95_MS      default 250
   BURST64_SMOOTHING_MAX_REJECT_STREAK     default 4
   BURST64_SMOOTHING_MAX_DELAYED_RATE      default 0.05
-  BURST64_SMOOTHING_OBSERVED_BURST64_429_RATE default 0.12824 (main659 failed boundary)
+  BURST64_SMOOTHING_OBSERVED_BURST64_429_RATE default 0.2719614922 (run 25281461692 failed boundary)
 USAGE
 }
 
@@ -52,7 +52,7 @@ max_accepted_p95_ms="${BURST64_SMOOTHING_MAX_ACCEPTED_P95_MS:-100}"
 max_retry_p95_ms="${BURST64_SMOOTHING_MAX_RETRY_P95_MS:-250}"
 max_reject_streak="${BURST64_SMOOTHING_MAX_REJECT_STREAK:-4}"
 max_delayed_rate="${BURST64_SMOOTHING_MAX_DELAYED_RATE:-0.05}"
-observed_main659_burst64_429_rate="${BURST64_SMOOTHING_OBSERVED_BURST64_429_RATE:-0.12824}"
+observed_burst64_429_rate="${BURST64_SMOOTHING_OBSERVED_BURST64_429_RATE:-0.2719614922}"
 summary_tsv="${output_dir}/${name}-burst64-residual-smoothing.tsv"
 report_md="${output_dir}/${name}-burst64-residual-smoothing.md"
 
@@ -123,7 +123,7 @@ print_plan() {
   echo "[transaction-read-burst64-residual-smoothing] max_retry_p95_ms=${max_retry_p95_ms}"
   echo "[transaction-read-burst64-residual-smoothing] max_reject_streak=${max_reject_streak}"
   echo "[transaction-read-burst64-residual-smoothing] max_delayed_rate=${max_delayed_rate}"
-  echo "[transaction-read-burst64-residual-smoothing] observed_main659_burst64_429_rate=${observed_main659_burst64_429_rate}"
+  echo "[transaction-read-burst64-residual-smoothing] observed_burst64_429_rate=${observed_burst64_429_rate}"
   echo "[transaction-read-burst64-residual-smoothing] summary_tsv=${summary_tsv}"
   echo "[transaction-read-burst64-residual-smoothing] report_md=${report_md}"
 }
@@ -134,7 +134,7 @@ require_rate "BURST64_SMOOTHING_MAX_BACKEND_429_RATE" "${max_backend_429_rate}"
 require_rate "BURST64_SMOOTHING_MIN_BURST80_429_RATE" "${min_burst80_429_rate}"
 require_rate "BURST64_SMOOTHING_MIN_BURST96_429_RATE" "${min_burst96_429_rate}"
 require_rate "BURST64_SMOOTHING_MAX_DELAYED_RATE" "${max_delayed_rate}"
-require_rate "BURST64_SMOOTHING_OBSERVED_BURST64_429_RATE" "${observed_main659_burst64_429_rate}"
+require_rate "BURST64_SMOOTHING_OBSERVED_BURST64_429_RATE" "${observed_burst64_429_rate}"
 require_non_negative_number "BURST64_SMOOTHING_MAX_ACCEPTED_P95_MS" "${max_accepted_p95_ms}"
 require_non_negative_number "BURST64_SMOOTHING_MAX_RETRY_P95_MS" "${max_retry_p95_ms}"
 require_non_negative_number "BURST64_SMOOTHING_MAX_REJECT_STREAK" "${max_reject_streak}"
@@ -234,7 +234,7 @@ cat >"${report_md}" <<REPORT
 - gate_status=${gate_status}
 - burst 48 edge 429 budget: <= ${max_burst48_429_rate}
 - burst 64 edge 429 budget: <= ${max_burst64_429_rate}
-- main659 observed burst64 429: ${observed_main659_burst64_429_rate}
+- latest observed burst64 429: ${observed_burst64_429_rate}
 - backend 429 budget: <= ${max_backend_429_rate}
 - burst 80/96 policy: fail-fast overload lower bound >= ${min_burst80_429_rate}/${min_burst96_429_rate}
 - accepted p95 budget: < ${max_accepted_p95_ms}ms

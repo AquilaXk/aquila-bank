@@ -18,10 +18,11 @@ Environment:
   CAPACITY_48_64_MAX_RETRY_AFTER_SLEEP_SECONDS default 1
 
 Summary input when CAPACITY_48_64_RUN_K6=false:
-  ${CAPACITY_48_64_SUMMARY_DIR}/rate-52-summary.json
-  ${CAPACITY_48_64_SUMMARY_DIR}/rate-56-summary.json
-  ${CAPACITY_48_64_SUMMARY_DIR}/rate-60-summary.json
+  ${CAPACITY_48_64_SUMMARY_DIR}/rate-32-summary.json
+  ${CAPACITY_48_64_SUMMARY_DIR}/rate-48-summary.json
   ${CAPACITY_48_64_SUMMARY_DIR}/rate-64-summary.json
+  ${CAPACITY_48_64_SUMMARY_DIR}/rate-80-summary.json
+  ${CAPACITY_48_64_SUMMARY_DIR}/rate-96-summary.json
 USAGE
 }
 

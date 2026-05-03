@@ -30,7 +30,7 @@ grep -F "max_backend_429_rate=0.005" <<<"${plan}" >/dev/null
 grep -F "max_accepted_p95_ms=100" <<<"${plan}" >/dev/null
 grep -F "min_burst80_429_rate=0.10" <<<"${plan}" >/dev/null
 grep -F "max_reject_streak=4" <<<"${plan}" >/dev/null
-grep -F "observed_main659_burst64_429_rate=0.12824" <<<"${plan}" >/dev/null
+grep -F "observed_burst64_429_rate=0.2719614922" <<<"${plan}" >/dev/null
 
 echo "[transaction-read-burst64-residual-smoothing] pass report"
 output="$(
@@ -44,7 +44,7 @@ summary_tsv="${output_dir}/burst64-check-burst64-residual-smoothing.tsv"
 test "${report_md}" = "${output_dir}/burst64-check-burst64-residual-smoothing.md"
 grep -F "gate_status=pass" "${report_md}" >/dev/null
 grep -F "burst 64 edge 429 budget: <= 0.10" "${report_md}" >/dev/null
-grep -F "main659 observed burst64 429: 0.12824" "${report_md}" >/dev/null
+grep -F "latest observed burst64 429: 0.2719614922" "${report_md}" >/dev/null
 grep -F "backend 429 budget: <= 0.005" "${report_md}" >/dev/null
 grep -F $'policy\tstatus\tburst48_edge_429_rate\tburst64_edge_429_rate\tburst80_edge_429_rate\tburst96_edge_429_rate\taccepted_p95_ms\tretry_after_p95_ms\treject_streak_max\tdelayed_rate\tfive_xx_count\tbackend_429_rate\tbackend_429_count' "${summary_tsv}" >/dev/null
 grep -F $'residual-v2\tpass\t0.080\t0.095\t0.220\t0.330\t98\t220\t4\t0.04\t0\t0.004\t25' "${summary_tsv}" >/dev/null
