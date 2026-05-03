@@ -77,6 +77,42 @@ bash tools/ops/render-nginx-runtime-config.sh /tmp/aquila-bank-nginx.conf ops/ng
 - `fail-fast` profile은 `96r/s`, `burst=12`, `nodelay`로 delayed ratio ceiling 검증이나 latency 우선 rollback에 사용합니다.
 - 실제 서비스 트래픽 특성에 따라 `rate`와 `burst`는 조정하되, 로그인/토큰 재발급/SSE 재연결 패턴과 shared IP 영향을 같이 확인합니다.
 
+## Transaction Read Admission Budget Profile
+
+운영 판단은 traffic profile과 Nginx runtime budget profile을 분리합니다. traffic profile은 k6/evidence gate의 해석 기준이고, runtime profile은 `NGINX_TRANSACTION_READ_BUDGET_PROFILE` 또는 `OCI_A1_TRANSACTION_READ_BUDGET_PROFILE` 값입니다.
+
+| Traffic profile | 목적 | 실행 evidence | 통과 기준 | 승격 판단 |
+| --- | --- | --- | --- | --- |
+| normal profile | 정상 client/paced traffic 확인 | arrival-rate `16/s` strict gate, preemptive pacing input/summary, Nginx aggregate TSV/JSON/MD | edge 429 `0`, backend 429 `<= 0.5%`, 5xx `0`, accepted p95 `< 100ms` | staging promotion 기본 조건 |
+| saturation profile | constant-vus가 어느 지점에서 보호되는지 관측 | VU16 constant-vus saturation probe, generator headroom, host CPU/network | observe-only. edge 429는 실패로 보지 않지만 backend 429 `<= 0.5%`, 5xx `0`, accepted p95 `< 100ms`, generator headroom pass | 단독 production promotion 근거로 사용하지 않음 |
+| overload profile | burst와 fail-fast 보호 확인 | burst64 gate, burst `32/48/64/80/96` reject curve, Retry-After p95, Nginx source split | burst64 edge 429 `<= 10%`, backend 429 `<= 0.5%`, 5xx `0`, accepted p95 `< 100ms`, Retry-After p95 `<= 250ms` | production 승격 전 보호 조건 |
+
+Runtime budget profile 선택 기준:
+
+- `burst64`: 기본 운영 후보. arrival-rate 16/s 정상 구간을 delay queue 없이 통과시키고 burst64에서 edge 429 `<= 10%`를 목표로 합니다.
+- `balanced`: single-source/shared-IP 환경에서 정상 traffic의 edge 429가 높고 accepted latency budget이 남을 때 임시 완화 후보입니다. delay queue를 쓰므로 p95/p99.9와 499를 같이 확인합니다.
+- `fail-fast`: latency queueing이나 deploy/drain 499 위험이 더 클 때 rollback 후보입니다. 429는 더 빠르게 반환될 수 있으나 5xx와 backend saturation을 숨기지 않아야 합니다.
+
+Staging promotion 조건:
+
+- 같은 main SHA가 실제 staging image로 배포된 evidence가 있어야 합니다.
+- 100M replay와 normal profile gate가 통과해야 합니다.
+- burst64 overload profile은 edge 429 `<= 10%`, backend 429 `<= 0.5%`, 5xx `0`, accepted p95 `< 100ms`를 만족해야 합니다.
+- k6 summary, Nginx aggregate TSV/JSON/MD, pacing input/summary가 같은 run id artifact에 있어야 합니다.
+
+Production promotion hold 조건:
+
+- burst64 edge 429가 `10%`를 초과하거나 backend 429가 `0.5%`를 초과하면 보류합니다.
+- 499 또는 5xx가 1건이라도 있으면 deploy/drain closure를 먼저 수행합니다.
+- Nginx aggregate, source split, host metrics 중 하나라도 빠지면 evidence incomplete로 보류합니다.
+- `default` Docker context만 사용한 결과는 off-host/multi-source 공정성 evidence로 보지 않습니다.
+
+Profile 변경 rollback:
+
+- runtime 값 변경은 `OCI_A1_TRANSACTION_READ_BUDGET_PROFILE` 또는 `NGINX_TRANSACTION_READ_BUDGET_PROFILE`만 우선 조정합니다.
+- latency queueing과 499가 문제면 `fail-fast`, single-source edge 429가 문제이고 latency budget이 남으면 `balanced`를 임시 후보로 사용합니다.
+- 개별 `rate`/`burst` override는 profile 결과를 artifact로 남긴 뒤 적용하고, 다음 staging run에서 normal/overload profile을 다시 통과해야 유지합니다.
+
 ## Multi-Node Load Balancer 기준
 
 - backend upstream은 `aquila_bank_backend_api`, `aquila_bank_backend_sse` 두 개로 분리합니다.
@@ -121,6 +157,7 @@ bash tools/ops/render-nginx-runtime-config.sh /tmp/aquila-bank-nginx.conf ops/ng
 bash tools/test/check-nginx-sse-proxy.sh
 bash tools/test/run-nginx-runtime-template-gate.sh
 bash tools/test/check-transaction-read-short-burst-smoothing-matrix.sh
+bash tools/test/check-transaction-read-admission-budget-profile-doc.sh
 tools/test/run-sse-multinode-drain-smoke.sh --print-plan
 tools/test/run-sse-multinode-drain-smoke.sh
 ```
@@ -128,4 +165,5 @@ tools/test/run-sse-multinode-drain-smoke.sh
 - `check-nginx-sse-proxy.sh`는 template directive drift만 확인합니다.
 - `run-nginx-runtime-template-gate.sh`는 env render 후 unresolved placeholder를 막고, `nginx` binary가 있으면 `nginx -t`까지 수행합니다.
 - `check-transaction-read-short-burst-smoothing-matrix.sh`는 `nodelay`와 shallow delay queue 후보를 429/p95/p99/Retry-After/5xx 기준으로 비교합니다.
+- `check-transaction-read-admission-budget-profile-doc.sh`는 normal/saturation/overload profile과 promotion hold 기준이 문서에서 빠지지 않았는지 확인합니다.
 - strict gate는 PR workflow `Nginx Runtime Gate`에서 `nginx`와 `openssl`을 설치한 뒤 같은 script를 `NGINX_RUNTIME_GATE_STRICT=true`로 실행합니다.
