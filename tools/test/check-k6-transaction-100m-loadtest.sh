@@ -39,6 +39,7 @@ grep -F "retry-after adaptive pacing=true max multiplier=6" <<<"${plan}" >/dev/n
 grep -F "preemptive pacing=false rps=0 max sleep ms=250 jitter ms=25" <<<"${plan}" >/dev/null
 grep -F "overload 429 rate threshold=0.015" <<<"${plan}" >/dev/null
 grep -F "burst 429 rate threshold=0.1" <<<"${plan}" >/dev/null
+grep -F "backend 429 rate threshold=0.005" <<<"${plan}" >/dev/null
 grep -F "overload 503 rate threshold=0" <<<"${plan}" >/dev/null
 grep -F "warmup duration=10s" <<<"${plan}" >/dev/null
 grep -F "warmup mode=arrival-rate rate=2 timeUnit=1s preAllocatedVUs=1 maxVUs=2 contamination=off" <<<"${plan}" >/dev/null
@@ -115,6 +116,47 @@ remote_prometheus_plan="$(
 grep -F "k6 report name: transaction-100m-remote-prometheus-check" <<<"${remote_prometheus_plan}" >/dev/null
 grep -F "remote prometheus rw=http://192.0.2.10:9090/api/v1/write" <<<"${remote_prometheus_plan}" >/dev/null
 grep -F "remote prometheus preflight=enabled" <<<"${remote_prometheus_plan}" >/dev/null
+
+remote_staging_plan="$(
+  K6_REPORT_NAME=transaction-100m-remote-staging-check \
+  K6_RUN_PURPOSE=capacity \
+  K6_OBSERVABILITY_MODE=prometheus \
+  K6_GENERATOR_MODE=docker-context \
+  K6_DOCKER_CONTEXT=transaction-k6-remote \
+  K6_REMOTE_BASE_URL=http://192.0.2.10:8080 \
+  K6_REMOTE_PROMETHEUS_RW_SERVER_URL=http://192.0.2.10:9090/api/v1/write \
+  K6_REMOTE_WORKDIR=/srv/aquila-bank \
+    tools/test/run-k6-transaction-100m-loadtest.sh --print-plan
+)"
+grep -F "k6 report name: transaction-100m-remote-staging-check" <<<"${remote_staging_plan}" >/dev/null
+grep -F "postgres health gate=false required_status=healthy" <<<"${remote_staging_plan}" >/dev/null
+grep -F "postgres recovery gate=false stable_seconds=10" <<<"${remote_staging_plan}" >/dev/null
+grep -F "postgres exporter stable gate=false timeout=60" <<<"${remote_staging_plan}" >/dev/null
+grep -F "preflight=false" <<<"${remote_staging_plan}" >/dev/null
+grep -F "explain_snapshot=false" <<<"${remote_staging_plan}" >/dev/null
+
+remote_staging_override_plan="$(
+  K6_REPORT_NAME=transaction-100m-remote-staging-override-check \
+  K6_RUN_PURPOSE=capacity \
+  K6_OBSERVABILITY_MODE=prometheus \
+  K6_GENERATOR_MODE=docker-context \
+  K6_DOCKER_CONTEXT=transaction-k6-remote \
+  K6_REMOTE_BASE_URL=http://192.0.2.10:8080 \
+  K6_REMOTE_PROMETHEUS_RW_SERVER_URL=http://192.0.2.10:9090/api/v1/write \
+  K6_REMOTE_WORKDIR=/srv/aquila-bank \
+  K6_PREFLIGHT=true \
+  K6_POSTGRES_HEALTH_GATE=true \
+  K6_POSTGRES_RECOVERY_GATE=true \
+  K6_POSTGRES_EXPORTER_STABLE_GATE=true \
+  K6_EXPLAIN_SNAPSHOT=true \
+    tools/test/run-k6-transaction-100m-loadtest.sh --print-plan
+)"
+grep -F "k6 report name: transaction-100m-remote-staging-override-check" <<<"${remote_staging_override_plan}" >/dev/null
+grep -F "postgres health gate=true required_status=healthy" <<<"${remote_staging_override_plan}" >/dev/null
+grep -F "postgres recovery gate=true stable_seconds=10" <<<"${remote_staging_override_plan}" >/dev/null
+grep -F "postgres exporter stable gate=true timeout=60" <<<"${remote_staging_override_plan}" >/dev/null
+grep -F "preflight=true" <<<"${remote_staging_override_plan}" >/dev/null
+grep -F "explain_snapshot=true" <<<"${remote_staging_override_plan}" >/dev/null
 
 capacity_archive_plan="$(
   K6_REPORT_NAME=transaction-100m-capacity-archive-check \
@@ -231,6 +273,7 @@ grep -F "overload mode=true max retry-after sleep seconds=2" <<<"${overload_plan
 grep -F "max retry-after sleep ms=2000" <<<"${overload_plan}" >/dev/null
 grep -F "overload 429 rate threshold=0.015" <<<"${overload_plan}" >/dev/null
 grep -F "burst 429 rate threshold=0.1" <<<"${overload_plan}" >/dev/null
+grep -F "backend 429 rate threshold=0.005" <<<"${overload_plan}" >/dev/null
 grep -F "overload 503 rate threshold=0" <<<"${overload_plan}" >/dev/null
 
 preemptive_plan="$(
@@ -375,6 +418,7 @@ grep -F "constant-arrival-rate" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "burst_admission" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_OVERLOAD_429_RATE_THRESHOLD" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_BURST_429_RATE_THRESHOLD" ops/k6/transaction-read-100m.js >/dev/null
+grep -F "K6_BACKEND_429_RATE_THRESHOLD" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_OVERLOAD_503_RATE_THRESHOLD" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_MAX_RETRY_AFTER_SLEEP_SECONDS" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "K6_MAX_RETRY_AFTER_SLEEP_MS" ops/k6/transaction-read-100m.js >/dev/null
@@ -416,6 +460,7 @@ grep -F "transaction_read_100m_warmup" ops/k6/transaction-read-100m.js >/dev/nul
 grep -F "exec.scenario.name" ops/k6/transaction-read-100m.js >/dev/null
 grep -F 'executor: "constant-arrival-rate"' ops/k6/transaction-read-100m.js >/dev/null
 grep -F 'rate<${effectiveOverload429RateThreshold}' ops/k6/transaction-read-100m.js >/dev/null
+grep -F 'rate<=${backend429RateThreshold}' ops/k6/transaction-read-100m.js >/dev/null
 grep -F 'rate<=${overload503RateThreshold}' ops/k6/transaction-read-100m.js >/dev/null
 grep -F "count<1" ops/k6/transaction-read-100m.js >/dev/null
 grep -F "summaryTrendStats" ops/k6/transaction-read-100m.js >/dev/null
@@ -437,6 +482,7 @@ grep -F "K6_HOT_DEEP_P95_THRESHOLD_MS" tools/test/run-k6-transaction-100m-loadte
 grep -F "K6_COLD_DEEP_P95_THRESHOLD_MS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_OVERLOAD_429_RATE_THRESHOLD" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_BURST_429_RATE_THRESHOLD" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "K6_BACKEND_429_RATE_THRESHOLD" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_OVERLOAD_503_RATE_THRESHOLD" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_MAX_RETRY_AFTER_SLEEP_MS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_RETRY_AFTER_ADAPTIVE_PACING" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
@@ -480,6 +526,8 @@ grep -F "PERFORMANCE_RESULT_ARTIFACT_DIR" tools/test/archive-k6-transaction-100m
 grep -F "assert_remote_k6_preflight" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "docker --context \"\${K6_DOCKER_CONTEXT}\" info" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "remote prometheus remote-write preflight" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "prepare_remote_report_dir_permissions" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "chmod -R a+rwX /reports" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_REMOTE_WORKDIR" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_RUN_PURPOSE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "PERFORMANCE_RESULT_PURPOSE=\"\${K6_RUN_PURPOSE}\"" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
@@ -543,6 +591,10 @@ if K6_OVERLOAD_429_RATE_THRESHOLD=1.5 tools/test/run-k6-transaction-100m-loadtes
 fi
 if K6_BURST_429_RATE_THRESHOLD=1.5 tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
   echo "K6_BURST_429_RATE_THRESHOLD=1.5 unexpectedly succeeded" >&2
+  exit 1
+fi
+if K6_BACKEND_429_RATE_THRESHOLD=1.5 tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
+  echo "K6_BACKEND_429_RATE_THRESHOLD=1.5 unexpectedly succeeded" >&2
   exit 1
 fi
 if K6_OVERLOAD_503_RATE_THRESHOLD=1.5 tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then

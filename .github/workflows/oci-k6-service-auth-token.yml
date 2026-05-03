@@ -52,6 +52,38 @@ on:
           - constant-vus
           - constant-arrival-rate
           - burst
+      burst_rate:
+        description: "k6 burst arrival rate per second"
+        required: false
+        default: "16"
+        type: string
+      pre_allocated_vus:
+        description: "k6 pre-allocated VUs"
+        required: false
+        type: string
+      max_vus:
+        description: "k6 max VUs"
+        required: false
+        type: string
+      overload_mode:
+        description: "Treat 429 as capacity rejection; empty auto-enables for burst"
+        required: false
+        type: string
+      burst_429_rate_threshold:
+        description: "Max total 429 rate for burst overload mode"
+        required: false
+        default: "0.10"
+        type: string
+      backend_429_rate_threshold:
+        description: "Max backend 429 rate for overload mode"
+        required: false
+        default: "0.005"
+        type: string
+      overload_503_rate_threshold:
+        description: "Max 503 rate for overload mode"
+        required: false
+        default: "0"
+        type: string
       docker_context:
         description: "Remote Docker context name for off-host k6"
         required: false
@@ -67,7 +99,6 @@ on:
       remote_workdir:
         description: "Repository path on remote Docker context host"
         required: false
-        default: "/srv/aquila-bank"
         type: string
       report_name:
         description: "Optional k6 report name"
@@ -119,6 +150,13 @@ jobs:
           VUS_INPUT: ${{ inputs.vus }}
           DURATION_INPUT: ${{ inputs.duration }}
           SCENARIO_MODE_INPUT: ${{ inputs.scenario_mode }}
+          BURST_RATE_INPUT: ${{ inputs.burst_rate }}
+          PRE_ALLOCATED_VUS_INPUT: ${{ inputs.pre_allocated_vus }}
+          MAX_VUS_INPUT: ${{ inputs.max_vus }}
+          OVERLOAD_MODE_INPUT: ${{ inputs.overload_mode }}
+          BURST_429_RATE_THRESHOLD_INPUT: ${{ inputs.burst_429_rate_threshold }}
+          BACKEND_429_RATE_THRESHOLD_INPUT: ${{ inputs.backend_429_rate_threshold }}
+          OVERLOAD_503_RATE_THRESHOLD_INPUT: ${{ inputs.overload_503_rate_threshold }}
           DOCKER_CONTEXT_INPUT: ${{ inputs.docker_context }}
           REMOTE_BASE_URL_INPUT: ${{ inputs.remote_base_url }}
           REMOTE_PROMETHEUS_RW_URL_INPUT: ${{ inputs.remote_prometheus_rw_url }}
@@ -148,10 +186,20 @@ jobs:
           K6_RUN_PURPOSE="capacity"
           K6_OBSERVABILITY_MODE="prometheus"
           K6_GENERATOR_MODE="docker-context"
-          K6_DOCKER_CONTEXT="${DOCKER_CONTEXT_INPUT:-${CAPACITY_K6_DOCKER_CONTEXT:-${CAPACITY_K6_DOCKER_CONTEXT_VAR:-}}}"
-          K6_REMOTE_BASE_URL="${REMOTE_BASE_URL_INPUT:-${CAPACITY_K6_REMOTE_BASE_URL:-${CAPACITY_K6_REMOTE_BASE_URL_VAR:-}}}"
-          K6_REMOTE_PROMETHEUS_RW_SERVER_URL="${REMOTE_PROMETHEUS_RW_URL_INPUT:-${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL:-${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL_VAR:-}}}"
-          K6_REMOTE_WORKDIR="${REMOTE_WORKDIR_INPUT:-${CAPACITY_K6_REMOTE_WORKDIR:-${CAPACITY_K6_REMOTE_WORKDIR_VAR:-/srv/aquila-bank}}}"
+          DEFAULT_K6_DOCKER_CONTEXT="default"
+          DEFAULT_K6_REMOTE_BASE_URL="${STAGING_BASE_URL:-}"
+          DEFAULT_K6_REMOTE_PROMETHEUS_RW_SERVER_URL="http://172.17.0.2:9090/api/v1/write"
+          K6_DOCKER_CONTEXT="${DOCKER_CONTEXT_INPUT:-${CAPACITY_K6_DOCKER_CONTEXT_VAR:-${DEFAULT_K6_DOCKER_CONTEXT}}}"
+          K6_REMOTE_BASE_URL="${REMOTE_BASE_URL_INPUT:-${CAPACITY_K6_REMOTE_BASE_URL:-${CAPACITY_K6_REMOTE_BASE_URL_VAR:-${DEFAULT_K6_REMOTE_BASE_URL}}}}"
+          K6_REMOTE_PROMETHEUS_RW_SERVER_URL="${REMOTE_PROMETHEUS_RW_URL_INPUT:-${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL:-${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL_VAR:-${DEFAULT_K6_REMOTE_PROMETHEUS_RW_SERVER_URL}}}}"
+          K6_REMOTE_WORKDIR="${REMOTE_WORKDIR_INPUT:-${CAPACITY_K6_REMOTE_WORKDIR_VAR:-}}"
+          if [[ -z "${K6_REMOTE_WORKDIR}" ]]; then
+            if [[ "${K6_DOCKER_CONTEXT}" == "default" ]]; then
+              K6_REMOTE_WORKDIR="${GITHUB_WORKSPACE}"
+            else
+              K6_REMOTE_WORKDIR="${CAPACITY_K6_REMOTE_WORKDIR:-${GITHUB_WORKSPACE}}"
+            fi
+          fi
           K6_REMOTE_PREFLIGHT="true"
           K6_AUTH_TOKEN_ENV_NAME="STAGING_REPLAY_TOKEN"
           K6_AUTH_TOKEN_REQUIRED="true"
@@ -167,6 +215,17 @@ jobs:
           K6_VUS="${VUS_INPUT}"
           K6_DURATION="${DURATION_INPUT}"
           K6_SCENARIO_MODE="${SCENARIO_MODE_INPUT}"
+          K6_OVERLOAD_MODE="${OVERLOAD_MODE_INPUT}"
+          if [[ -z "${K6_OVERLOAD_MODE}" && "${K6_SCENARIO_MODE}" == "burst" ]]; then
+            K6_OVERLOAD_MODE="true"
+          fi
+          K6_OVERLOAD_MODE="${K6_OVERLOAD_MODE:-false}"
+          K6_BURST_RATE="${BURST_RATE_INPUT}"
+          K6_PRE_ALLOCATED_VUS="${PRE_ALLOCATED_VUS_INPUT}"
+          K6_MAX_VUS="${MAX_VUS_INPUT}"
+          K6_BURST_429_RATE_THRESHOLD="${BURST_429_RATE_THRESHOLD_INPUT}"
+          K6_BACKEND_429_RATE_THRESHOLD="${BACKEND_429_RATE_THRESHOLD_INPUT}"
+          K6_OVERLOAD_503_RATE_THRESHOLD="${OVERLOAD_503_RATE_THRESHOLD_INPUT}"
 
           if ! [[ "${K6_REPORT_NAME}" =~ ^[A-Za-z0-9._-]+$ ]]; then
             echo "::error::K6 report name must contain only letters, numbers, dot, underscore, or hyphen."
@@ -215,6 +274,13 @@ jobs:
             K6_VUS
             K6_DURATION
             K6_SCENARIO_MODE
+            K6_OVERLOAD_MODE
+            K6_BURST_RATE
+            K6_PRE_ALLOCATED_VUS
+            K6_MAX_VUS
+            K6_BURST_429_RATE_THRESHOLD
+            K6_BACKEND_429_RATE_THRESHOLD
+            K6_OVERLOAD_503_RATE_THRESHOLD
           )
 
           for name in "${env_names[@]}"; do
