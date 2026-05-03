@@ -32,11 +32,12 @@ promote_env = promote.fetch('env')
 abort('production promote job must receive guard image tag') unless promote_env.fetch('IMAGE_TAG').include?('needs.guard.outputs.image_tag')
 
 workflow_text = File.read('.github/workflows/production-promotion.yml')
-%w[
-  PRODUCTION_DEPLOY_WEBHOOK_URL
-  PRODUCTION_DEPLOY_TOKEN
-  Dispatch production deploy hook
-].each do |forbidden|
+forbidden_contracts = [
+  'PRODUCTION_DEPLOY_WEBHOOK_URL',
+  'PRODUCTION_DEPLOY_TOKEN',
+  'Dispatch production deploy hook',
+]
+forbidden_contracts.each do |forbidden|
   abort("production promotion must not use public deploy hook contract: #{forbidden}") if workflow_text.include?(forbidden)
 end
 
