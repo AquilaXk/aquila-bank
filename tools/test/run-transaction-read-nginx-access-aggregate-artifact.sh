@@ -34,6 +34,7 @@ name="${NGINX_ACCESS_AGGREGATE_NAME:-transaction-read-nginx-access-aggregate-$(d
 access_log="${NGINX_ACCESS_AGGREGATE_LOG:-}"
 output_dir="${NGINX_ACCESS_AGGREGATE_OUTPUT_DIR:-build/reports/k6/${name}}"
 summary_tsv="${output_dir}/${name}-nginx-access-aggregate.tsv"
+summary_json="${output_dir}/${name}-nginx-access-aggregate.json"
 report_md="${output_dir}/${name}-nginx-access-aggregate.md"
 
 print_plan() {
@@ -42,6 +43,7 @@ print_plan() {
   echo "[transaction-read-nginx-access-aggregate] output_dir=${output_dir}"
   echo "[transaction-read-nginx-access-aggregate] aggregate_key=k6_run_id,status,limit_req_status,upstream_status,reject_source,upstream_reject_source,upstream_reject_reason"
   echo "[transaction-read-nginx-access-aggregate] summary_tsv=${summary_tsv}"
+  echo "[transaction-read-nginx-access-aggregate] summary_json=${summary_json}"
   echo "[transaction-read-nginx-access-aggregate] report_md=${report_md}"
 }
 
@@ -141,6 +143,20 @@ mkdir -p "${output_dir}"
   ' "${access_log}" | awk -F '\t' 'BEGIN { OFS = FS } { printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%.3f\t%.3f\n", $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13 }'
 } >"${summary_tsv}"
 
+jq -Rn '
+  def number_or_string:
+    if test("^-?[0-9]+([.][0-9]+)?$") then tonumber else . end;
+  (input | split("\t")) as $headers
+  | [
+      inputs
+      | split("\t") as $row
+      | reduce range(0; $headers | length) as $i (
+          {};
+          .[$headers[$i]] = (($row[$i] // "") | number_or_string)
+        )
+    ]
+' <"${summary_tsv}" >"${summary_json}"
+
 transaction_read_rows="$(awk -F '\t' 'NR > 1 { count += $9 } END { print count + 0 }' "${summary_tsv}")"
 delayed_count="$(awk -F '\t' 'NR > 1 { count += $10 } END { print count + 0 }' "${summary_tsv}")"
 rejected_count="$(awk -F '\t' 'NR > 1 { count += $11 } END { print count + 0 }' "${summary_tsv}")"
@@ -191,6 +207,7 @@ ${aggregate_table}
 ## Artifacts
 
 - summary TSV: ${summary_tsv}
+- summary JSON: ${summary_json}
 - access log: ${access_log}
 REPORT
 
