@@ -14,11 +14,12 @@ output_dir="${temp_dir}/output"
 artifact_dir="${temp_dir}/artifacts"
 mkdir -p "${artifact_dir}"
 touch "${artifact_dir}/k6.json" "${artifact_dir}/nginx.jsonl" "${artifact_dir}/spring.json" \
-  "${artifact_dir}/hikari.log" "${artifact_dir}/postgres.tsv" "${artifact_dir}/timeline.json"
+  "${artifact_dir}/hikari.log" "${artifact_dir}/postgres.tsv" "${artifact_dir}/timeline.json" \
+  "${artifact_dir}/workload-mix.json" "${artifact_dir}/workload-components.tsv" "${artifact_dir}/outbox-lag.tsv"
 
 cat >"${input_tsv}" <<TSV
-scenario	run_id	executed_at_utc	duration_min	source_ips	run_script	k6_summary_ref	nginx_access_ref	spring_metrics_ref	hikari_log_ref	postgres_wait_ref	deploy_event_ref	cache_state_ref	timeline_ref	edge_429_rate	backend_429_count	unknown_429_count	five_xx_count	nginx_499_count	hikari_validation_warnings	db_pool_pending_max	p999_ms
-mixed-workload-30m	run-mixed-001	2026-05-02T02:00:00Z	30	1	tools/test/run-t3micro-mixed-workload-soak.sh	${artifact_dir}/k6.json	${artifact_dir}/nginx.jsonl	${artifact_dir}/spring.json	${artifact_dir}/hikari.log	${artifact_dir}/postgres.tsv	n/a	n/a	${artifact_dir}/timeline.json	0.08	0	0	0	0	0	0	450
+scenario	run_id	executed_at_utc	duration_min	source_ips	run_script	k6_summary_ref	nginx_access_ref	spring_metrics_ref	hikari_log_ref	postgres_wait_ref	deploy_event_ref	cache_state_ref	timeline_ref	edge_429_rate	backend_429_count	unknown_429_count	five_xx_count	nginx_499_count	hikari_validation_warnings	db_pool_pending_max	p999_ms	workload_mix_ref	workload_component_ref	outbox_lag_ref	outbox_lag_max
+mixed-workload-30m	run-mixed-001	2026-05-02T02:00:00Z	30	1	tools/test/run-t3micro-mixed-workload-soak.sh	${artifact_dir}/k6.json	${artifact_dir}/nginx.jsonl	${artifact_dir}/spring.json	${artifact_dir}/hikari.log	${artifact_dir}/postgres.tsv	n/a	n/a	${artifact_dir}/timeline.json	0.08	0	0	0	0	0	0	450	${artifact_dir}/workload-mix.json	${artifact_dir}/workload-components.tsv	${artifact_dir}/outbox-lag.tsv	0
 TSV
 
 echo "[transaction-read-mixed-30m-timeline] print plan"
@@ -46,6 +47,7 @@ grep -F "gate_status=pass" "${report_md}" >/dev/null
 grep -F "read + write interference + SSE/notification" "${report_md}" >/dev/null
 grep -F "Prometheus/Grafana long timeline artifact: required" "${report_md}" >/dev/null
 grep -F "p95/p99.9, 429 source, 499/5xx, Hikari pending/warning hard gate" "${report_md}" >/dev/null
+grep -F "workload mix/component and outbox lag artifact: required" "${report_md}" >/dev/null
 
 echo "[transaction-read-mixed-30m-timeline] unknown 429 fails"
 awk -F '\t' 'BEGIN { OFS = FS } NR == 1 { print; next } { $17 = 1; print }' "${input_tsv}" >"${input_tsv}.unknown"
@@ -54,5 +56,15 @@ if MIXED_30M_TIMELINE_NAME=mixed-30m-unknown \
   MIXED_30M_TIMELINE_OUTPUT_DIR="${output_dir}" \
     "${runner}" >/dev/null 2>&1; then
   echo "mixed 30m timeline unexpectedly passed unknown 429" >&2
+  exit 1
+fi
+
+echo "[transaction-read-mixed-30m-timeline] outbox lag fails"
+awk -F '\t' 'BEGIN { OFS = FS } NR == 1 { print; next } { $25 = "n/a"; $26 = 2; print }' "${input_tsv}" >"${input_tsv}.outbox"
+if MIXED_30M_TIMELINE_NAME=mixed-30m-outbox \
+  MIXED_30M_TIMELINE_INPUT_TSV="${input_tsv}.outbox" \
+  MIXED_30M_TIMELINE_OUTPUT_DIR="${output_dir}" \
+    "${runner}" >/dev/null 2>&1; then
+  echo "mixed 30m timeline unexpectedly passed missing outbox evidence" >&2
   exit 1
 fi

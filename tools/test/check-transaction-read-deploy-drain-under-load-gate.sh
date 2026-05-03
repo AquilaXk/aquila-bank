@@ -15,11 +15,11 @@ artifact_dir="${temp_dir}/artifacts"
 mkdir -p "${artifact_dir}"
 touch "${artifact_dir}/k6.json" "${artifact_dir}/nginx.jsonl" "${artifact_dir}/spring.json" \
   "${artifact_dir}/hikari.log" "${artifact_dir}/postgres.tsv" "${artifact_dir}/timeline.json" \
-  "${artifact_dir}/deploy.json"
+  "${artifact_dir}/deploy.json" "${artifact_dir}/deploy-retry.json" "${artifact_dir}/deploy-499.tsv"
 
 cat >"${input_tsv}" <<TSV
-scenario	run_id	executed_at_utc	duration_min	source_ips	run_script	k6_summary_ref	nginx_access_ref	spring_metrics_ref	hikari_log_ref	postgres_wait_ref	deploy_event_ref	cache_state_ref	timeline_ref	edge_429_rate	backend_429_count	unknown_429_count	five_xx_count	nginx_499_count	hikari_validation_warnings	db_pool_pending_max	p999_ms
-deploy-drain	run-drain-001	2026-05-02T03:00:00Z	5	1	tools/test/run-staging-deploy-transaction-replay-gate.sh	${artifact_dir}/k6.json	${artifact_dir}/nginx.jsonl	${artifact_dir}/spring.json	${artifact_dir}/hikari.log	${artifact_dir}/postgres.tsv	${artifact_dir}/deploy.json	n/a	${artifact_dir}/timeline.json	0.04	0	0	0	0	0	0	470
+scenario	run_id	executed_at_utc	duration_min	source_ips	run_script	k6_summary_ref	nginx_access_ref	spring_metrics_ref	hikari_log_ref	postgres_wait_ref	deploy_event_ref	cache_state_ref	timeline_ref	edge_429_rate	backend_429_count	unknown_429_count	five_xx_count	nginx_499_count	hikari_validation_warnings	db_pool_pending_max	p999_ms	deploy_retry_contract_ref	deploy_reconnect_success_count	deploy_499_budget_ref
+deploy-drain	run-drain-001	2026-05-02T03:00:00Z	5	1	tools/test/run-staging-deploy-transaction-replay-gate.sh	${artifact_dir}/k6.json	${artifact_dir}/nginx.jsonl	${artifact_dir}/spring.json	${artifact_dir}/hikari.log	${artifact_dir}/postgres.tsv	${artifact_dir}/deploy.json	n/a	${artifact_dir}/timeline.json	0.04	0	0	0	0	0	0	470	${artifact_dir}/deploy-retry.json	2	${artifact_dir}/deploy-499.tsv
 TSV
 
 echo "[transaction-read-deploy-drain] print plan"
@@ -47,6 +47,7 @@ grep -F "gate_status=pass" "${report_md}" >/dev/null
 grep -F "paced load 중 backend restart/blue-green drain" "${report_md}" >/dev/null
 grep -F "5xx/499/unknown 429 hard-zero" "${report_md}" >/dev/null
 grep -F "deploy event artifact: required" "${report_md}" >/dev/null
+grep -F "deploy retry/reconnect and 499 budget artifact: required" "${report_md}" >/dev/null
 
 echo "[transaction-read-deploy-drain] missing deploy event fails"
 awk -F '\t' 'BEGIN { OFS = FS } NR == 1 { print; next } { $12 = "n/a"; print }' "${input_tsv}" >"${input_tsv}.missing-deploy"
@@ -55,5 +56,15 @@ if DEPLOY_DRAIN_GATE_NAME=deploy-drain-missing \
   DEPLOY_DRAIN_GATE_OUTPUT_DIR="${output_dir}" \
     "${runner}" >/dev/null 2>&1; then
   echo "deploy drain gate unexpectedly passed missing deploy event" >&2
+  exit 1
+fi
+
+echo "[transaction-read-deploy-drain] missing retry contract fails"
+awk -F '\t' 'BEGIN { OFS = FS } NR == 1 { print; next } { $23 = "n/a"; $24 = 0; $25 = "n/a"; print }' "${input_tsv}" >"${input_tsv}.missing-retry"
+if DEPLOY_DRAIN_GATE_NAME=deploy-drain-missing-retry \
+  DEPLOY_DRAIN_GATE_INPUT_TSV="${input_tsv}.missing-retry" \
+  DEPLOY_DRAIN_GATE_OUTPUT_DIR="${output_dir}" \
+    "${runner}" >/dev/null 2>&1; then
+  echo "deploy drain gate unexpectedly passed missing retry/reconnect evidence" >&2
   exit 1
 fi

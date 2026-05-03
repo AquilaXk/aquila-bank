@@ -83,12 +83,14 @@ cat >"${report_md}" <<REPORT
 - read + write interference + SSE/notification
 - Prometheus/Grafana long timeline artifact: required
 - p95/p99.9, 429 source, 499/5xx, Hikari pending/warning hard gate
+- workload mix/component and outbox lag artifact: required
 - execution gate report: ${execution_report}
 
 ## Contract Notes
 
 - read-only capacity와 운영 혼합 부하는 분리해서 본다.
 - unknown 429, 499, 5xx, Hikari warning, Hikari pending은 execution gate에서 hard-zero로 검증한다.
+- outbox lag는 혼합 부하에서 write/notification 간섭을 닫는 hard-zero evidence로 본다.
 - timeline ref는 k6, Nginx upstream, Spring metric, Hikari, PostgreSQL wait를 같은 run id로 묶는 기준이다.
 
 ## Artifacts
