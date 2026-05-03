@@ -75,6 +75,37 @@ def check_load_step!(path, job_name, run_step_name, required_env_names)
   end
 end
 
+def check_replay_db_resolver!(path)
+  data = workflow(path)
+  steps = data.fetch("jobs").fetch("replay").fetch("steps")
+  names = steps.map { |step| step["name"] }
+  load_index = names.index("Load OCI A1 staging env")
+  resolver_index = names.index("Resolve OCI A1 staging database URL")
+  replay_index = names.index("Run staging replay")
+
+  assert(resolver_index, "#{path} missing Resolve OCI A1 staging database URL step")
+  assert(load_index < resolver_index, "#{path} must resolve DB URL after env load")
+  assert(resolver_index < replay_index, "#{path} must resolve DB URL before staging replay")
+
+  load_run = steps.fetch(load_index).fetch("run")
+  %w[
+    OCI_A1_BACKEND_ENV_B64
+    POSTGRES_CONTAINER_NAME
+    POSTGRES_NETWORK_ALIAS
+    POSTGRES_HOST_BIND
+  ].each do |name|
+    assert(load_run.include?(name), "#{path} must export #{name} for DB URL resolver")
+  end
+
+  resolver_run = steps.fetch(resolver_index).fetch("run")
+  assert(resolver_run.include?("tools/ops/resolve-oci-a1-staging-database-url.sh"),
+    "#{path} DB URL resolver step must call resolver script")
+  assert(resolver_run.include?("::add-mask::${resolved_database_url}"),
+    "#{path} DB URL resolver step must mask resolved database URL")
+  assert(resolver_run.include?("STAGING_OCI_A1_DATABASE_URL=%s"),
+    "#{path} DB URL resolver step must rewrite STAGING_OCI_A1_DATABASE_URL")
+end
+
 replay = ".github/workflows/transaction-read-model-staging-replay.yml"
 replica = ".github/workflows/transaction-read-replica-staging-smoke.yml"
 
@@ -100,8 +131,14 @@ check_load_step!(
     EXPECTED_TOTAL_ROWS
     HOT_P95_THRESHOLD_MS
     COLD_P95_THRESHOLD_MS
+    OCI_A1_BACKEND_ENV_B64
+    POSTGRES_CONTAINER_NAME
+    POSTGRES_NETWORK_ALIAS
+    POSTGRES_HOST_BIND
   ]
 )
+
+check_replay_db_resolver!(replay)
 
 check_load_step!(
   replica,
