@@ -1,0 +1,418 @@
+name: OCI k6 burst reject curve matrix
+
+on:
+  workflow_dispatch:
+    inputs:
+      hot_account_id:
+        description: "Hot account id for authenticated transaction read"
+        required: true
+        default: "910000001"
+        type: string
+      hot_from:
+        description: "Hot account from timestamp"
+        required: true
+        default: "2026-04-01T00:00:00Z"
+        type: string
+      hot_to:
+        description: "Hot account to timestamp"
+        required: true
+        default: "2026-04-30T00:00:00Z"
+        type: string
+      cold_account_id:
+        description: "Cold account id for authenticated transaction read"
+        required: true
+        default: "910000002"
+        type: string
+      cold_from:
+        description: "Cold account from timestamp"
+        required: true
+        default: "2026-01-01T00:00:00Z"
+        type: string
+      cold_to:
+        description: "Cold account to timestamp"
+        required: true
+        default: "2026-01-31T00:00:00Z"
+        type: string
+      duration:
+        description: "k6 burst duration"
+        required: false
+        default: "1m"
+        type: string
+      burst_rates:
+        description: "Comma-separated burst arrival rates per second"
+        required: false
+        default: "32,48,64,80,96"
+        type: string
+      docker_context:
+        description: "Remote Docker context name for off-host k6"
+        required: false
+        type: string
+      remote_base_url:
+        description: "Backend URL reachable from off-host k6"
+        required: false
+        type: string
+      remote_prometheus_rw_url:
+        description: "Prometheus remote-write URL reachable from off-host k6"
+        required: false
+        type: string
+      remote_workdir:
+        description: "Repository path on remote Docker context host"
+        required: false
+        type: string
+      nginx_access_log:
+        description: "Nginx JSON access log path for aggregate artifact"
+        required: false
+        type: string
+      burst_429_rate_threshold:
+        description: "Max total/edge 429 rate for burst64 matrix gate"
+        required: false
+        default: "0.10"
+        type: string
+      backend_429_rate_threshold:
+        description: "Max backend 429 rate for burst64 matrix gate"
+        required: false
+        default: "0.005"
+        type: string
+      overload_503_rate_threshold:
+        description: "Max 503 rate for k6 overload mode"
+        required: false
+        default: "0"
+        type: string
+      report_name:
+        description: "Optional matrix report name"
+        required: false
+        type: string
+  pull_request:
+    paths:
+      - ".github/workflows/oci-k6-burst-reject-curve-matrix.yml"
+      - "tools/test/check-oci-k6-burst-reject-curve-matrix-workflow.sh"
+      - "tools/test/run-oci-k6-burst-reject-curve-matrix.sh"
+      - "tools/test/check-oci-k6-burst-reject-curve-matrix.sh"
+      - "tools/test/run-transaction-read-nginx-access-aggregate-artifact.sh"
+      - "tools/test/check-transaction-read-nginx-access-aggregate-artifact.sh"
+      - "tools/test/run-k6-transaction-100m-loadtest.sh"
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: OCI k6 burst reject curve matrix contract
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Validate workflow contract
+        run: bash tools/test/check-oci-k6-burst-reject-curve-matrix-workflow.sh
+
+  burst-matrix:
+    name: Authenticated OCI k6 burst reject curve matrix
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, oci-a1-staging]
+    timeout-minutes: 90
+    environment:
+      name: staging
+    env:
+      K6_MATRIX_REPORT_NAME: ${{ inputs.report_name || format('oci-k6-burst-reject-curve-matrix-{0}', github.run_id) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Load OCI k6 burst matrix env
+        env:
+          OCI_A1_STAGING_ENV: ${{ secrets.OCI_A1_STAGING_ENV }}
+          HOT_ACCOUNT_ID_INPUT: ${{ inputs.hot_account_id }}
+          HOT_FROM_INPUT: ${{ inputs.hot_from }}
+          HOT_TO_INPUT: ${{ inputs.hot_to }}
+          COLD_ACCOUNT_ID_INPUT: ${{ inputs.cold_account_id }}
+          COLD_FROM_INPUT: ${{ inputs.cold_from }}
+          COLD_TO_INPUT: ${{ inputs.cold_to }}
+          DURATION_INPUT: ${{ inputs.duration }}
+          BURST_RATES_INPUT: ${{ inputs.burst_rates }}
+          BURST_429_RATE_THRESHOLD_INPUT: ${{ inputs.burst_429_rate_threshold }}
+          BACKEND_429_RATE_THRESHOLD_INPUT: ${{ inputs.backend_429_rate_threshold }}
+          OVERLOAD_503_RATE_THRESHOLD_INPUT: ${{ inputs.overload_503_rate_threshold }}
+          NGINX_ACCESS_LOG_INPUT: ${{ inputs.nginx_access_log }}
+          DOCKER_CONTEXT_INPUT: ${{ inputs.docker_context }}
+          REMOTE_BASE_URL_INPUT: ${{ inputs.remote_base_url }}
+          REMOTE_PROMETHEUS_RW_URL_INPUT: ${{ inputs.remote_prometheus_rw_url }}
+          REMOTE_WORKDIR_INPUT: ${{ inputs.remote_workdir }}
+          CAPACITY_K6_DOCKER_CONTEXT_VAR: ${{ vars.CAPACITY_K6_DOCKER_CONTEXT }}
+          CAPACITY_K6_REMOTE_BASE_URL_VAR: ${{ vars.CAPACITY_K6_REMOTE_BASE_URL }}
+          CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL_VAR: ${{ vars.CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL }}
+          CAPACITY_K6_REMOTE_WORKDIR_VAR: ${{ vars.CAPACITY_K6_REMOTE_WORKDIR }}
+          CAPACITY_K6_NGINX_ACCESS_LOG_VAR: ${{ vars.CAPACITY_K6_NGINX_ACCESS_LOG }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${OCI_A1_STAGING_ENV}" ]]; then
+            echo "::error::Missing OCI_A1_STAGING_ENV environment secret."
+            exit 1
+          fi
+
+          staging_env_path="${RUNNER_TEMP}/oci-a1-staging-k6-burst-matrix.env"
+          printf '%s\n' "${OCI_A1_STAGING_ENV}" >"${staging_env_path}"
+          chmod 600 "${staging_env_path}"
+
+          set -a
+          # k6 burst matrix도 staging replay와 같은 unified staging secret contract 사용.
+          source "${staging_env_path}"
+          set +a
+
+          K6_BURST_RATES="${BURST_RATES_INPUT:-32,48,64,80,96}"
+          K6_RUN_PURPOSE="capacity"
+          K6_OBSERVABILITY_MODE="prometheus"
+          K6_GENERATOR_MODE="docker-context"
+          DEFAULT_K6_DOCKER_CONTEXT="default"
+          DEFAULT_K6_REMOTE_BASE_URL="${STAGING_BASE_URL:-}"
+          DEFAULT_K6_REMOTE_PROMETHEUS_RW_SERVER_URL="http://172.17.0.2:9090/api/v1/write"
+          DEFAULT_K6_NGINX_ACCESS_LOG="/var/log/nginx/access.log"
+          K6_DOCKER_CONTEXT="${DOCKER_CONTEXT_INPUT:-${CAPACITY_K6_DOCKER_CONTEXT_VAR:-${DEFAULT_K6_DOCKER_CONTEXT}}}"
+          K6_REMOTE_BASE_URL="${REMOTE_BASE_URL_INPUT:-${CAPACITY_K6_REMOTE_BASE_URL:-${CAPACITY_K6_REMOTE_BASE_URL_VAR:-${DEFAULT_K6_REMOTE_BASE_URL}}}}"
+          K6_REMOTE_PROMETHEUS_RW_SERVER_URL="${REMOTE_PROMETHEUS_RW_URL_INPUT:-${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL:-${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL_VAR:-${DEFAULT_K6_REMOTE_PROMETHEUS_RW_SERVER_URL}}}}"
+          K6_REMOTE_WORKDIR="${REMOTE_WORKDIR_INPUT:-${CAPACITY_K6_REMOTE_WORKDIR_VAR:-}}"
+          if [[ -z "${K6_REMOTE_WORKDIR}" ]]; then
+            if [[ "${K6_DOCKER_CONTEXT}" == "default" ]]; then
+              K6_REMOTE_WORKDIR="${GITHUB_WORKSPACE}"
+            else
+              K6_REMOTE_WORKDIR="${CAPACITY_K6_REMOTE_WORKDIR:-${GITHUB_WORKSPACE}}"
+            fi
+          fi
+          K6_REMOTE_PREFLIGHT="true"
+          K6_AUTH_TOKEN_ENV_NAME="STAGING_REPLAY_TOKEN"
+          K6_AUTH_TOKEN_REQUIRED="true"
+          K6_AUTH_PREFLIGHT="true"
+          K6_AUTH_PREFLIGHT_PATH="api/v1/transactions?accountId=${HOT_ACCOUNT_ID_INPUT}&from=${HOT_FROM_INPUT}&to=${HOT_TO_INPUT}&limit=1"
+          K6_AUTH_PREFLIGHT_EXPECTED_STATUS="200"
+          K6_HOT_ACCOUNT_ID="${HOT_ACCOUNT_ID_INPUT}"
+          K6_HOT_FROM="${HOT_FROM_INPUT}"
+          K6_HOT_TO="${HOT_TO_INPUT}"
+          K6_COLD_ACCOUNT_ID="${COLD_ACCOUNT_ID_INPUT}"
+          K6_COLD_FROM="${COLD_FROM_INPUT}"
+          K6_COLD_TO="${COLD_TO_INPUT}"
+          K6_DURATION="${DURATION_INPUT}"
+          K6_VUS="8"
+          K6_RATE="16"
+          K6_TIME_UNIT="1s"
+          K6_PREEMPTIVE_PACING="false"
+          K6_NGINX_ACCESS_LOG="${NGINX_ACCESS_LOG_INPUT:-${K6_NGINX_ACCESS_LOG:-${NGINX_ACCESS_LOG:-${CAPACITY_K6_NGINX_ACCESS_LOG:-${CAPACITY_K6_NGINX_ACCESS_LOG_VAR:-${DEFAULT_K6_NGINX_ACCESS_LOG}}}}}}"
+
+          if ! [[ "${K6_MATRIX_REPORT_NAME}" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            echo "::error::K6 matrix report name must contain only letters, numbers, dot, underscore, or hyphen."
+            exit 1
+          fi
+
+          missing=()
+          [[ -z "${STAGING_REPLAY_TOKEN:-}" ]] && missing+=("STAGING_REPLAY_TOKEN")
+          [[ -z "${K6_DOCKER_CONTEXT}" ]] && missing+=("K6_DOCKER_CONTEXT")
+          [[ -z "${K6_REMOTE_BASE_URL}" ]] && missing+=("K6_REMOTE_BASE_URL")
+          [[ -z "${K6_REMOTE_PROMETHEUS_RW_SERVER_URL}" ]] && missing+=("K6_REMOTE_PROMETHEUS_RW_SERVER_URL")
+          [[ -z "${K6_HOT_ACCOUNT_ID}" ]] && missing+=("K6_HOT_ACCOUNT_ID")
+          [[ -z "${K6_HOT_FROM}" ]] && missing+=("K6_HOT_FROM")
+          [[ -z "${K6_HOT_TO}" ]] && missing+=("K6_HOT_TO")
+          [[ -z "${K6_COLD_ACCOUNT_ID}" ]] && missing+=("K6_COLD_ACCOUNT_ID")
+          [[ -z "${K6_COLD_FROM}" ]] && missing+=("K6_COLD_FROM")
+          [[ -z "${K6_COLD_TO}" ]] && missing+=("K6_COLD_TO")
+          if (( ${#missing[@]} > 0 )); then
+            printf '::error::Missing OCI k6 burst matrix env keys: %s\n' "${missing[*]}"
+            exit 1
+          fi
+
+          env_names=(
+            STAGING_REPLAY_TOKEN
+            K6_MATRIX_REPORT_NAME
+            K6_BURST_RATES
+            K6_RUN_PURPOSE
+            K6_OBSERVABILITY_MODE
+            K6_GENERATOR_MODE
+            K6_DOCKER_CONTEXT
+            K6_REMOTE_BASE_URL
+            K6_REMOTE_PROMETHEUS_RW_SERVER_URL
+            K6_REMOTE_WORKDIR
+            K6_REMOTE_PREFLIGHT
+            K6_AUTH_TOKEN_ENV_NAME
+            K6_AUTH_TOKEN_REQUIRED
+            K6_AUTH_PREFLIGHT
+            K6_AUTH_PREFLIGHT_PATH
+            K6_AUTH_PREFLIGHT_EXPECTED_STATUS
+            K6_HOT_ACCOUNT_ID
+            K6_HOT_FROM
+            K6_HOT_TO
+            K6_COLD_ACCOUNT_ID
+            K6_COLD_FROM
+            K6_COLD_TO
+            K6_DURATION
+            K6_VUS
+            K6_RATE
+            K6_TIME_UNIT
+            K6_PREEMPTIVE_PACING
+            K6_NGINX_ACCESS_LOG
+            BURST_429_RATE_THRESHOLD_INPUT
+            BACKEND_429_RATE_THRESHOLD_INPUT
+            OVERLOAD_503_RATE_THRESHOLD_INPUT
+          )
+
+          for name in "${env_names[@]}"; do
+            value="${!name:-}"
+            if [[ -n "${value}" ]]; then
+              case "${name}" in
+                STAGING_REPLAY_TOKEN|K6_REMOTE_*|*TOKEN*|*DATABASE_URL|*_ENV_B64)
+                  echo "::add-mask::${value}"
+                  ;;
+              esac
+              printf '%s=%s\n' "${name}" "${value}" >>"${GITHUB_ENV}"
+            fi
+          done
+
+      - name: Run authenticated k6 burst matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          matrix_dir="build/reports/k6/${K6_MATRIX_REPORT_NAME}"
+          mkdir -p "${matrix_dir}"
+          matrix_input_tsv="${matrix_dir}/burst-reject-curve-input.tsv"
+          printf "burst_rate\tk6_run_id\tsummary_json\tnginx_aggregate_json\tnginx_aggregate_tsv\tnginx_aggregate_md\n" >"${matrix_input_tsv}"
+
+          IFS="," read -r -a burst_rates <<<"${K6_BURST_RATES}"
+          k6_failure_count=0
+
+          resolve_current_run_nginx_log() {
+            if [[ -n "${K6_NGINX_ACCESS_LOG:-}" && -s "${K6_NGINX_ACCESS_LOG}" ]]; then
+              original_log="${K6_NGINX_ACCESS_LOG}"
+            else
+              original_log=""
+            fi
+
+            candidate_raw_log="${RUNNER_TEMP}/${K6_RUN_ID}-nginx-access.raw.jsonl"
+            candidate_run_log="${RUNNER_TEMP}/${K6_RUN_ID}-nginx-access.jsonl"
+
+            select_current_run_log() {
+              if [[ ! -s "${candidate_raw_log}" ]]; then
+                return 1
+              fi
+              grep -F "\"k6_run_id\":\"${K6_RUN_ID}\"" "${candidate_raw_log}" >"${candidate_run_log}" || true
+              if [[ -s "${candidate_run_log}" ]]; then
+                K6_NGINX_ACCESS_LOG="${candidate_run_log}"
+                export K6_NGINX_ACCESS_LOG
+                return 0
+              fi
+              return 1
+            }
+
+            if [[ -n "${original_log}" ]]; then
+              cp "${original_log}" "${candidate_raw_log}"
+              if select_current_run_log; then
+                return 0
+              fi
+            fi
+
+            container_candidates=(
+              "${K6_NGINX_CONTAINER:-}"
+              "${NGINX_CONTAINER:-}"
+              "aquila-bank-nginx"
+              "aquila-nginx"
+              "nginx"
+            )
+
+            if command -v docker >/dev/null 2>&1; then
+              while IFS= read -r container; do
+                container_candidates+=("${container}")
+              done < <(docker ps --format '{{.Names}}' 2>/dev/null | grep -E 'nginx|proxy' || true)
+            fi
+
+            for container in "${container_candidates[@]}"; do
+              [[ -z "${container}" ]] && continue
+              if docker exec "${container}" test -s /var/log/nginx/access.log 2>/dev/null; then
+                if docker cp "${container}:/var/log/nginx/access.log" "${candidate_raw_log}" 2>/dev/null; then
+                  if select_current_run_log; then
+                    return 0
+                  fi
+                fi
+              fi
+              if docker logs --since "${K6_NGINX_LOG_SINCE:-1h}" "${container}" >"${candidate_raw_log}" 2>/dev/null; then
+                if select_current_run_log; then
+                  return 0
+                fi
+              fi
+            done
+
+            echo "::error::K6_NGINX_ACCESS_LOG is missing or empty and no Nginx container access log was found for ${K6_RUN_ID}."
+            return 1
+          }
+
+          for burst_rate in "${burst_rates[@]}"; do
+            burst_rate="${burst_rate//[[:space:]]/}"
+            if ! [[ "${burst_rate}" =~ ^[0-9]+$ ]]; then
+              echo "::error::Invalid burst rate: ${burst_rate}"
+              exit 1
+            fi
+
+            K6_REPORT_NAME="${K6_MATRIX_REPORT_NAME}-burst${burst_rate}"
+            K6_RUN_ID="${K6_REPORT_NAME}"
+            K6_SCENARIO_MODE="burst"
+            K6_BURST_RATE="${burst_rate}"
+            K6_PRE_ALLOCATED_VUS="${burst_rate}"
+            K6_MAX_VUS="$((burst_rate * 2))"
+            K6_OVERLOAD_MODE="true"
+            K6_BURST_429_RATE_THRESHOLD="${BURST_429_RATE_THRESHOLD_INPUT:-0.10}"
+            K6_BACKEND_429_RATE_THRESHOLD="${BACKEND_429_RATE_THRESHOLD_INPUT:-0.005}"
+            K6_OVERLOAD_503_RATE_THRESHOLD="${OVERLOAD_503_RATE_THRESHOLD_INPUT:-0}"
+            export K6_REPORT_NAME K6_RUN_ID K6_SCENARIO_MODE K6_BURST_RATE K6_PRE_ALLOCATED_VUS K6_MAX_VUS
+            export K6_OVERLOAD_MODE K6_BURST_429_RATE_THRESHOLD K6_BACKEND_429_RATE_THRESHOLD K6_OVERLOAD_503_RATE_THRESHOLD
+
+            report_dir="build/reports/k6/${K6_REPORT_NAME}"
+            mkdir -p "${report_dir}"
+
+            K6_NGINX_LOG_SINCE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+            export K6_NGINX_LOG_SINCE
+
+            tools/test/run-k6-transaction-100m-loadtest.sh --auth-preflight-only >"${report_dir}/auth-preflight.log" 2>&1
+
+            set +e
+            K6_BURST_429_RATE_THRESHOLD="1" \
+              tools/test/run-k6-transaction-100m-loadtest.sh --no-up --no-deps >"${report_dir}/k6-capacity.log" 2>&1
+            k6_exit=$?
+            set -e
+            if [[ "${k6_exit}" != "0" ]]; then
+              k6_failure_count=$((k6_failure_count + 1))
+              echo "::warning::Burst ${burst_rate} k6 run exited ${k6_exit}; matrix evidence will still be packed when summaries exist."
+            fi
+
+            resolve_current_run_nginx_log
+
+            NGINX_ACCESS_AGGREGATE_NAME="${K6_REPORT_NAME}" \
+            NGINX_ACCESS_AGGREGATE_LOG="${K6_NGINX_ACCESS_LOG}" \
+            NGINX_ACCESS_AGGREGATE_RUN_ID="${K6_RUN_ID}" \
+            NGINX_ACCESS_AGGREGATE_OUTPUT_DIR="${report_dir}/transaction-read-nginx-access-aggregate" \
+              tools/test/run-transaction-read-nginx-access-aggregate-artifact.sh
+
+            summary_json="build/reports/k6/${K6_REPORT_NAME}-summary.json"
+            aggregate_json="${report_dir}/transaction-read-nginx-access-aggregate/${K6_REPORT_NAME}-nginx-access-aggregate.json"
+            aggregate_tsv="${report_dir}/transaction-read-nginx-access-aggregate/${K6_REPORT_NAME}-nginx-access-aggregate.tsv"
+            aggregate_md="${report_dir}/transaction-read-nginx-access-aggregate/${K6_REPORT_NAME}-nginx-access-aggregate.md"
+            printf "%s\t%s\t%s\t%s\t%s\t%s\n" "${burst_rate}" "${K6_RUN_ID}" "${summary_json}" "${aggregate_json}" "${aggregate_tsv}" "${aggregate_md}" >>"${matrix_input_tsv}"
+          done
+
+          OCI_K6_BURST_MATRIX_NAME="${K6_MATRIX_REPORT_NAME}" \
+          OCI_K6_BURST_MATRIX_INPUT_TSV="${matrix_input_tsv}" \
+          OCI_K6_BURST_MATRIX_OUTPUT_DIR="${matrix_dir}/burst-reject-curve-matrix" \
+          OCI_K6_BURST_MATRIX_BURST64_429_THRESHOLD="${BURST_429_RATE_THRESHOLD_INPUT:-0.10}" \
+          OCI_K6_BURST_MATRIX_BACKEND_429_THRESHOLD="${BACKEND_429_RATE_THRESHOLD_INPUT:-0.005}" \
+            tools/test/run-oci-k6-burst-reject-curve-matrix.sh
+
+          if [[ "${k6_failure_count}" != "0" ]]; then
+            echo "::error::${k6_failure_count} burst k6 run(s) exited non-zero."
+            exit 1
+          fi
+
+      - name: Upload OCI k6 burst reject curve matrix artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: oci-k6-burst-reject-curve-matrix-${{ github.run_id }}
+          path: |
+            build/reports/k6/${{ env.K6_MATRIX_REPORT_NAME }}/
+            build/reports/k6/${{ env.K6_MATRIX_REPORT_NAME }}*
+          if-no-files-found: error
