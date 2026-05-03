@@ -12,6 +12,7 @@ Environment:
   CAPACITY_K6_REMOTE_BASE_URL required
   CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL required
   CAPACITY_K6_REMOTE_WORKDIR default current working directory
+  CAPACITY_K6_HOST_METRICS_TSV optional TSV artifact for generator/target CPU and network metrics
   CAPACITY_REMOTE_PREFLIGHT_TIMEOUT_SECONDS default 30
   CAPACITY_REMOTE_PREFLIGHT_IMAGE default curlimages/curl:8.11.1
   CAPACITY_REMOTE_READINESS_PATH default /actuator/health/readiness
@@ -73,6 +74,7 @@ docker_context="${CAPACITY_K6_DOCKER_CONTEXT:-${K6_DOCKER_CONTEXT:-}}"
 remote_base_url="${CAPACITY_K6_REMOTE_BASE_URL:-${K6_REMOTE_BASE_URL:-}}"
 remote_prometheus_rw_url="${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL:-${K6_REMOTE_PROMETHEUS_RW_SERVER_URL:-}}"
 remote_workdir="${CAPACITY_K6_REMOTE_WORKDIR:-${K6_REMOTE_WORKDIR:-$(pwd)}}"
+host_metrics_tsv="${CAPACITY_K6_HOST_METRICS_TSV:-${K6_HOST_METRICS_TSV:-}}"
 check_connectivity="${OFFHOST_CAPACITY_CHECK_CONNECTIVITY:-true}"
 timeout_seconds="${CAPACITY_REMOTE_PREFLIGHT_TIMEOUT_SECONDS:-${K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS:-30}}"
 preflight_image="${CAPACITY_REMOTE_PREFLIGHT_IMAGE:-${K6_REMOTE_PREFLIGHT_IMAGE:-curlimages/curl:8.11.1}}"
@@ -136,6 +138,7 @@ print_plan() {
   echo "[offhost-capacity-env-doctor] remote_base_url=${remote_base_url}"
   echo "[offhost-capacity-env-doctor] remote_prometheus_rw_url=${remote_prometheus_rw_url}"
   echo "[offhost-capacity-env-doctor] remote_workdir=${remote_workdir}"
+  echo "[offhost-capacity-env-doctor] host_metrics_tsv=${host_metrics_tsv:-missing}"
   echo "[offhost-capacity-env-doctor] readiness_url=${readiness_url}"
   echo "[offhost-capacity-env-doctor] preflight_image=${preflight_image}"
   echo "[offhost-capacity-env-doctor] timeout_seconds=${timeout_seconds}"
