@@ -526,6 +526,8 @@ grep -F "PERFORMANCE_RESULT_ARTIFACT_DIR" tools/test/archive-k6-transaction-100m
 grep -F "assert_remote_k6_preflight" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "docker --context \"\${K6_DOCKER_CONTEXT}\" info" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "remote prometheus remote-write preflight" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "prepare_remote_report_dir_permissions" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "chmod -R a+rwX /reports" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_REMOTE_WORKDIR" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_RUN_PURPOSE" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "PERFORMANCE_RESULT_PURPOSE=\"\${K6_RUN_PURPOSE}\"" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null

@@ -1288,6 +1288,7 @@ run_k6_docker_context() {
   # backend/PostgreSQL CPU와 k6 CPU를 분리하기 위한 별도 Docker context 실행 경로.
   echo "[k6-transaction-100m] running remote k6 generator on docker context ${K6_DOCKER_CONTEXT}"
   echo "[k6-transaction-100m] remote reports: ${remote_report_dir}/${K6_REPORT_NAME}-summary.{md,json}"
+  prepare_remote_report_dir_permissions
 
   docker --context "${K6_DOCKER_CONTEXT}" run --rm \
     -e BASE_URL="${K6_REMOTE_BASE_URL}" \
@@ -1366,6 +1367,18 @@ run_k6_docker_context() {
 
 remote_report_dir() {
   echo "${K6_REMOTE_WORKDIR}/build/reports/k6"
+}
+
+prepare_remote_report_dir_permissions() {
+  if [[ "${K6_GENERATOR_MODE}" != "docker-context" || "${K6_REMOTE_COLLECT_ARTIFACTS}" != "true" ]]; then
+    return 0
+  fi
+
+  # grafana/k6 image는 non-root user라 bind mount report dir 쓰기 권한을 먼저 맞춥니다.
+  docker --context "${K6_DOCKER_CONTEXT}" run --rm \
+    -v "$(remote_report_dir):/reports" \
+    --entrypoint sh "${K6_REMOTE_ARTIFACT_IMAGE}" \
+    -c 'chmod -R a+rwX /reports 2>/dev/null || true' >/dev/null
 }
 
 normalize_remote_report_permissions() {
