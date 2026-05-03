@@ -43,7 +43,7 @@ jobs:
     timeout-minutes: 720
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Java 21
         uses: actions/setup-java@v4
@@ -82,7 +82,7 @@ jobs:
         run: tools/test/validate-transaction-100m-fixture-artifact.sh --verify
 
       - name: Upload fixture dump artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ inputs.fixture_name }}
           path: |

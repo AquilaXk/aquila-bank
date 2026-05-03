@@ -28,7 +28,7 @@ jobs:
       target_sha: ${{ steps.resolve.outputs.target_sha }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -163,7 +163,7 @@ jobs:
       PROMOTION_LOG_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - name: Checkout promotion SHA
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ env.TARGET_SHA }}
           fetch-depth: 0

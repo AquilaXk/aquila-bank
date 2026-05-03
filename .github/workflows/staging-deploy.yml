@@ -37,7 +37,7 @@ jobs:
       image_tag: ${{ steps.validate.outputs.image_tag }}
     steps:
       - name: Checkout deploy SHA
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
@@ -137,7 +137,7 @@ jobs:
       backend_image: ${{ steps.images.outputs.backend_image }}
     steps:
       - name: Checkout deploy SHA
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ needs.prepare.outputs.deploy_sha }}
           fetch-depth: 0
@@ -213,7 +213,7 @@ jobs:
       frontend_image: ${{ steps.images.outputs.frontend_image }}
     steps:
       - name: Checkout deploy SHA
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ needs.prepare.outputs.deploy_sha }}
           fetch-depth: 0
@@ -311,7 +311,7 @@ jobs:
       should_deploy: ${{ steps.validate.outputs.should_deploy }}
     steps:
       - name: Checkout deploy SHA
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ needs.prepare.outputs.deploy_sha }}
           fetch-depth: 0
@@ -357,7 +357,7 @@ jobs:
       transaction_replay_result: ${{ steps.resolve-transaction-replay-result.outputs.result }}
     steps:
       - name: Checkout deploy SHA
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ env.DEPLOY_SHA }}
           fetch-depth: 0
@@ -635,7 +635,7 @@ jobs:
 
       - name: Upload transaction replay report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: transaction-read-model-staging-replay
           path: build/reports/transaction-staging-replay/
@@ -671,7 +671,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout deploy SHA
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ env.DEPLOY_SHA }}
           fetch-depth: 0
