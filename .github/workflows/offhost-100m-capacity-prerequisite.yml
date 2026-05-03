@@ -38,7 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Validate workflow contract
         run: tools/test/check-offhost-capacity-prerequisite-required-gate.sh
@@ -46,26 +46,108 @@ jobs:
   prerequisite:
     name: required off-host capacity env
     if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    env:
-      CAPACITY_NAME: ci-offhost-100m-capacity-prerequisite
-      CAPACITY_K6_GENERATOR_MODE: docker-context
-      CAPACITY_REMOTE_PREFLIGHT: "false"
-      CAPACITY_K6_DOCKER_CONTEXT: ${{ inputs.docker_context || vars.CAPACITY_K6_DOCKER_CONTEXT }}
-      CAPACITY_K6_REMOTE_BASE_URL: ${{ inputs.remote_base_url || vars.CAPACITY_K6_REMOTE_BASE_URL }}
-      CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL: ${{ inputs.remote_prometheus_rw_url || vars.CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL }}
-      CAPACITY_K6_REMOTE_WORKDIR: ${{ inputs.remote_workdir || vars.CAPACITY_K6_REMOTE_WORKDIR || '/srv/aquila-bank' }}
+    runs-on: [self-hosted, oci-a1-staging]
+    timeout-minutes: 10
+    environment:
+      name: staging
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+
+      - name: Load off-host capacity env
+        env:
+          OCI_A1_STAGING_ENV: ${{ secrets.OCI_A1_STAGING_ENV }}
+          DOCKER_CONTEXT_INPUT: ${{ inputs.docker_context }}
+          REMOTE_BASE_URL_INPUT: ${{ inputs.remote_base_url }}
+          REMOTE_PROMETHEUS_RW_URL_INPUT: ${{ inputs.remote_prometheus_rw_url }}
+          REMOTE_WORKDIR_INPUT: ${{ inputs.remote_workdir }}
+          CAPACITY_K6_DOCKER_CONTEXT_VAR: ${{ vars.CAPACITY_K6_DOCKER_CONTEXT }}
+          CAPACITY_K6_REMOTE_BASE_URL_VAR: ${{ vars.CAPACITY_K6_REMOTE_BASE_URL }}
+          CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL_VAR: ${{ vars.CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL }}
+          CAPACITY_K6_REMOTE_WORKDIR_VAR: ${{ vars.CAPACITY_K6_REMOTE_WORKDIR }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          report_dir="build/reports/k6/ci-offhost-100m-capacity-prerequisite"
+          mkdir -p "${report_dir}"
+
+          if [[ -n "${OCI_A1_STAGING_ENV}" ]]; then
+            staging_env_path="${RUNNER_TEMP}/oci-a1-staging-offhost-capacity.env"
+            printf '%s\n' "${OCI_A1_STAGING_ENV}" >"${staging_env_path}"
+            chmod 600 "${staging_env_path}"
+
+            set -a
+            # off-host capacity도 staging-deploy와 같은 unified staging secret contract를 사용한다.
+            source "${staging_env_path}"
+            set +a
+          fi
+
+          CAPACITY_NAME="ci-offhost-100m-capacity-prerequisite"
+          CAPACITY_K6_GENERATOR_MODE="docker-context"
+          CAPACITY_REMOTE_PREFLIGHT="true"
+          CAPACITY_PREREQUISITE_FAILURE_REPORT_PATH="${report_dir}/capacity-prerequisite-failure.env"
+          CAPACITY_K6_DOCKER_CONTEXT="${DOCKER_CONTEXT_INPUT:-${CAPACITY_K6_DOCKER_CONTEXT:-${CAPACITY_K6_DOCKER_CONTEXT_VAR:-}}}"
+          CAPACITY_K6_REMOTE_BASE_URL="${REMOTE_BASE_URL_INPUT:-${CAPACITY_K6_REMOTE_BASE_URL:-${CAPACITY_K6_REMOTE_BASE_URL_VAR:-}}}"
+          CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL="${REMOTE_PROMETHEUS_RW_URL_INPUT:-${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL:-${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL_VAR:-}}}"
+          CAPACITY_K6_REMOTE_WORKDIR="${REMOTE_WORKDIR_INPUT:-${CAPACITY_K6_REMOTE_WORKDIR:-${CAPACITY_K6_REMOTE_WORKDIR_VAR:-/srv/aquila-bank}}}"
+
+          missing=()
+          [[ -z "${CAPACITY_K6_DOCKER_CONTEXT}" ]] && missing+=("CAPACITY_K6_DOCKER_CONTEXT")
+          [[ -z "${CAPACITY_K6_REMOTE_BASE_URL}" ]] && missing+=("CAPACITY_K6_REMOTE_BASE_URL")
+          [[ -z "${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL}" ]] && missing+=("CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL")
+          if (( ${#missing[@]} > 0 )); then
+            {
+              echo "CAPACITY_PREREQUISITE_STATUS=failed"
+              echo "CAPACITY_PREREQUISITE_FAILURE_REASON=missing-required-env"
+              printf 'CAPACITY_PREREQUISITE_MISSING=%s\n' "${missing[*]}"
+            } >"${CAPACITY_PREREQUISITE_FAILURE_REPORT_PATH}"
+            printf '::error::Missing off-host capacity env keys: %s\n' "${missing[*]}"
+            exit 1
+          fi
+
+          env_names=(
+            CAPACITY_NAME
+            CAPACITY_K6_GENERATOR_MODE
+            CAPACITY_REMOTE_PREFLIGHT
+            CAPACITY_PREREQUISITE_FAILURE_REPORT_PATH
+            CAPACITY_K6_DOCKER_CONTEXT
+            CAPACITY_K6_REMOTE_BASE_URL
+            CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL
+            CAPACITY_K6_REMOTE_WORKDIR
+          )
+
+          for name in "${env_names[@]}"; do
+            value="${!name:-}"
+            if [[ -n "${value}" ]]; then
+              case "${name}" in
+                CAPACITY_K6_*|*TOKEN*|*DATABASE_URL|*_ENV_B64)
+                  echo "::add-mask::${value}"
+                  ;;
+              esac
+              printf '%s=%s\n' "${name}" "${value}" >>"${GITHUB_ENV}"
+            fi
+          done
+
+      - name: Run off-host remote preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          report_dir="build/reports/k6/ci-offhost-100m-capacity-prerequisite"
+          mkdir -p "${report_dir}"
+          tools/test/run-offhost-capacity-env-doctor.sh >"${report_dir}/offhost-capacity-preflight.log" 2>&1
 
       - name: Required prerequisite check
-        run: tools/test/run-transaction-100m-capacity-gates.sh --print-plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          report_dir="build/reports/k6/ci-offhost-100m-capacity-prerequisite"
+          mkdir -p "${report_dir}"
+          tools/test/run-transaction-100m-capacity-gates.sh --print-plan >"${report_dir}/capacity-prerequisite-plan.log" 2>&1
 
-      - name: Upload prerequisite failure artifact
+      - name: Upload prerequisite artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: offhost-capacity-prerequisite-failure
-          path: build/reports/k6/ci-offhost-100m-capacity-prerequisite/capacity-prerequisite-failure.env
+          name: offhost-capacity-prerequisite
+          path: build/reports/k6/ci-offhost-100m-capacity-prerequisite/
           if-no-files-found: ignore
