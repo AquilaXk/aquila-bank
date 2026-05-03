@@ -93,6 +93,7 @@ grep -F 'curl --fail-with-body --silent --show-error --location' "${workflow}" >
 grep -F '"${github_api_url}/repos/${GITHUB_REPOSITORY}/deployments"' "${workflow}" >/dev/null
 grep -F '"${github_api_url}/repos/${GITHUB_REPOSITORY}/deployments/${deployment_id}/statuses"' "${workflow}" >/dev/null
 grep -F 'Authorization: Bearer ${GH_TOKEN}' "${workflow}" >/dev/null
+grep -F 'description "transaction read burst matrix passed"' "${workflow}" >/dev/null
 grep -F '"state": "success"' "${workflow}" >/dev/null
 
 preflight_line="$(grep -n -- "--auth-preflight-only" "${workflow}" | head -1 | cut -d: -f1)"
@@ -122,5 +123,9 @@ if grep -F 'K6_AUTH_TOKEN:' "${workflow}" >/dev/null; then
 fi
 if grep -F 'gh api' "${workflow}" >/dev/null; then
   echo "self-hosted OCI burst matrix workflow must not depend on GitHub CLI" >&2
+  exit 1
+fi
+if grep -F 'transaction read burst boundary matrix passed: ${matrix_report}' "${workflow}" >/dev/null; then
+  echo "deployment status description must stay short; do not include artifact path" >&2
   exit 1
 fi
