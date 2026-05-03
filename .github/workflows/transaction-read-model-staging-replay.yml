@@ -153,7 +153,7 @@ jobs:
             value="${!name:-}"
             if [[ -n "${value}" ]]; then
               case "${name}" in
-                STAGING_BASE_URL|STAGING_REPLAY_TOKEN|*DATABASE_URL)
+                STAGING_BASE_URL|STAGING_REPLAY_TOKEN|*DATABASE_URL|*_ENV_B64)
                   echo "::add-mask::${value}"
                   ;;
               esac

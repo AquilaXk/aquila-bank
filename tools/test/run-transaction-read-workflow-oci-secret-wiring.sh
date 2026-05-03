@@ -60,6 +60,10 @@ def check_load_step!(path, job_name, run_step_name, required_env_names)
     "#{path} must read only OCI_A1_STAGING_ENV secret")
   assert(load_run.include?('source "${staging_env_path}"'), "#{path} must source staging env file")
   assert(load_run.include?("::add-mask::${value}"), "#{path} must mask exported secret values")
+  if load_run.include?("OCI_A1_BACKEND_ENV_B64")
+    assert(load_run.include?("*_ENV_B64"),
+      "#{path} must mask backend env base64 secrets before persisting them")
+  end
   assert(load_run.include?("GITHUB_ENV"), "#{path} must persist restored env through GITHUB_ENV")
   assert(load_run.include?('STAGING_RDS_DATABASE_URL="${STAGING_RDS_DATABASE_URL:-${STAGING_OCI_A1_DATABASE_URL:-}}"'),
     "#{path} must fallback STAGING_RDS_DATABASE_URL to STAGING_OCI_A1_DATABASE_URL")
