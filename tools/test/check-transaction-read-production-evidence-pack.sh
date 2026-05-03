@@ -32,6 +32,7 @@ plan="$(
 grep -F "name=production-check" <<<"${plan}" >/dev/null
 grep -F "required_scenarios=hikari-soak,cold-warm,mixed-workload,real-ip-multisource,deploy-drain,p999-long" <<<"${plan}" >/dev/null
 grep -F "min_real_source_ips=2" <<<"${plan}" >/dev/null
+grep -F "min_hikari_soak_duration_min=30" <<<"${plan}" >/dev/null
 grep -F "required_refs=k6_summary_ref,nginx_aggregate_ref,nginx_499_aggregate_ref,spring_429_ref,hikari_log_ref,postgres_explain_ref,postgres_activity_ref,postgres_wait_ref,prometheus_timeline_ref,artifact_manifest_ref,hikari_closure_ref(hikari-soak)" <<<"${plan}" >/dev/null
 
 echo "[transaction-read-production-evidence-pack] pass report"
@@ -60,6 +61,22 @@ grep -F "oci/latency/p999.tsv" "${summary_tsv}" >/dev/null
 grep -F "oci/source/real-ip-fairness.tsv" "${summary_tsv}" >/dev/null
 grep -F "oci/deploy/drain-events.tsv" "${summary_tsv}" >/dev/null
 grep -F "oci/cache/cold-warm.tsv" "${summary_tsv}" >/dev/null
+
+echo "[transaction-read-production-evidence-pack] Hikari 30m duration fail"
+awk -F '\t' 'BEGIN { OFS = FS } NR == 1 { print; next } $1 == "hikari-soak" { $3 = 10 } { print }' \
+  "${input_tsv}" >"${input_tsv}.hikari-duration-fail"
+if PROD_EVIDENCE_PACK_NAME=production-hikari-duration-fail \
+  PROD_EVIDENCE_PACK_INPUT_TSV="${input_tsv}.hikari-duration-fail" \
+  PROD_EVIDENCE_PACK_OUTPUT_DIR="${output_dir}" \
+    "${runner}" >/dev/null 2>&1; then
+  echo "production evidence pack unexpectedly passed short Hikari soak duration" >&2
+  exit 1
+fi
+PROD_EVIDENCE_PACK_NAME=production-hikari-duration-fail \
+PROD_EVIDENCE_PACK_INPUT_TSV="${input_tsv}.hikari-duration-fail" \
+PROD_EVIDENCE_PACK_OUTPUT_DIR="${output_dir}" \
+  "${runner}" >/dev/null 2>&1 || true
+grep -F "hikari-soak-duration<30" "${output_dir}/production-hikari-duration-fail-production-evidence-pack.tsv" >/dev/null
 
 echo "[transaction-read-production-evidence-pack] hard-zero fail"
 awk -F '\t' 'BEGIN { OFS = FS } NR == 1 { print; next } $1 == "mixed-workload" { $22 = 1; $23 = 1; $24 = 1; $25 = 1; $26 = 1; $27 = 1 } { print }' \
