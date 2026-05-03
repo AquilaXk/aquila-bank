@@ -19,10 +19,15 @@ guard_outputs = workflow.fetch('jobs').fetch('guard').fetch('outputs')
 abort('guard must expose image_tag output for OCI deploy') unless guard_outputs.fetch('image_tag').include?('steps.resolve.outputs.image_tag')
 staging_success_index = guard_step_names.index('Verify staging deployment success') or abort('staging deployment success guard missing')
 replay_evidence_index = guard_step_names.index('Verify staging 100m replay evidence success') or abort('staging 100m replay evidence guard missing')
+admission_evidence_index = guard_step_names.index('Verify staging transaction read admission profile evidence success') or abort('staging transaction read admission profile evidence guard missing')
 abort('staging replay evidence guard must run after staging deployment guard') unless staging_success_index < replay_evidence_index
+abort('staging admission profile evidence guard must run after staging replay evidence guard') unless replay_evidence_index < admission_evidence_index
 replay_evidence_run = guard_steps.fetch(replay_evidence_index).fetch('run')
 abort('staging replay evidence guard must query separate environment') unless replay_evidence_run.include?('staging-100m-replay')
 abort('staging replay evidence guard must require success') unless replay_evidence_run.include?('No successful staging 100m replay evidence')
+admission_evidence_run = guard_steps.fetch(admission_evidence_index).fetch('run')
+abort('staging admission profile evidence guard must query separate environment') unless admission_evidence_run.include?('staging-transaction-read-admission-profile')
+abort('staging admission profile evidence guard must require success') unless admission_evidence_run.include?('No successful staging transaction read admission profile evidence')
 resolve_step = guard_steps.fetch(guard_step_names.index('Resolve promotion target SHA'))
 abort('resolve step must write 12-char image tag') unless resolve_step.fetch('run').include?('image_tag=${target_sha:0:12}')
 

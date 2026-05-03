@@ -94,6 +94,7 @@ on:
 
 permissions:
   contents: read
+  deployments: write
 
 jobs:
   contract:
@@ -416,3 +417,47 @@ jobs:
             build/reports/k6/${{ env.K6_MATRIX_REPORT_NAME }}/
             build/reports/k6/${{ env.K6_MATRIX_REPORT_NAME }}*
           if-no-files-found: error
+
+      - name: Record transaction read admission profile evidence deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVIDENCE_ENVIRONMENT: staging-transaction-read-admission-profile
+          EVIDENCE_LOG_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_sha="$(git rev-parse HEAD)"
+          matrix_report="build/reports/k6/${K6_MATRIX_REPORT_NAME}/burst-reject-curve-matrix/${K6_MATRIX_REPORT_NAME}-burst-reject-curve-matrix.md"
+
+          deployment_payload="$(
+            jq -n \
+              --arg ref "${evidence_sha}" \
+              --arg environment "${EVIDENCE_ENVIRONMENT}" \
+              --arg description "transaction read burst boundary admission profile evidence" \
+              '{
+                "ref": $ref,
+                "environment": $environment,
+                "description": $description,
+                "auto_merge": false,
+                "required_contexts": []
+              }'
+          )"
+          deployment_id="$(
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/deployments" \
+              --input - \
+              --jq ".id" <<<"${deployment_payload}"
+          )"
+
+          status_payload="$(
+            jq -n \
+              --arg log_url "${EVIDENCE_LOG_URL}" \
+              --arg description "transaction read burst boundary matrix passed: ${matrix_report}" \
+              '{
+                "state": "success",
+                "log_url": $log_url,
+                "description": $description,
+                "auto_inactive": false
+              }'
+          )"
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/deployments/${deployment_id}/statuses" \
+            --input - <<<"${status_payload}"
