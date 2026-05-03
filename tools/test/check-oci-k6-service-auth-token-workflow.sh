@@ -21,10 +21,14 @@ grep -F "Load OCI k6 service auth env" "${workflow}" >/dev/null
 grep -F 'DEFAULT_K6_DOCKER_CONTEXT="default"' "${workflow}" >/dev/null
 grep -F 'DEFAULT_K6_REMOTE_BASE_URL="${STAGING_BASE_URL:-}"' "${workflow}" >/dev/null
 grep -F 'DEFAULT_K6_REMOTE_PROMETHEUS_RW_SERVER_URL="http://172.17.0.2:9090/api/v1/write"' "${workflow}" >/dev/null
-grep -F 'K6_DOCKER_CONTEXT="${DOCKER_CONTEXT_INPUT:-${CAPACITY_K6_DOCKER_CONTEXT:-${CAPACITY_K6_DOCKER_CONTEXT_VAR:-${DEFAULT_K6_DOCKER_CONTEXT}}}}"' "${workflow}" >/dev/null
+grep -F 'K6_DOCKER_CONTEXT="${DOCKER_CONTEXT_INPUT:-${CAPACITY_K6_DOCKER_CONTEXT_VAR:-${DEFAULT_K6_DOCKER_CONTEXT}}}"' "${workflow}" >/dev/null
 grep -F 'K6_REMOTE_BASE_URL="${REMOTE_BASE_URL_INPUT:-${CAPACITY_K6_REMOTE_BASE_URL:-${CAPACITY_K6_REMOTE_BASE_URL_VAR:-${DEFAULT_K6_REMOTE_BASE_URL}}}}"' "${workflow}" >/dev/null
 grep -F 'K6_REMOTE_PROMETHEUS_RW_SERVER_URL="${REMOTE_PROMETHEUS_RW_URL_INPUT:-${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL:-${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL_VAR:-${DEFAULT_K6_REMOTE_PROMETHEUS_RW_SERVER_URL}}}}"' "${workflow}" >/dev/null
-grep -F 'K6_REMOTE_WORKDIR="${REMOTE_WORKDIR_INPUT:-${CAPACITY_K6_REMOTE_WORKDIR:-${CAPACITY_K6_REMOTE_WORKDIR_VAR:-${GITHUB_WORKSPACE}}}}"' "${workflow}" >/dev/null
+grep -F 'K6_REMOTE_WORKDIR="${REMOTE_WORKDIR_INPUT:-${CAPACITY_K6_REMOTE_WORKDIR_VAR:-}}"' "${workflow}" >/dev/null
+grep -F 'if [[ -z "${K6_REMOTE_WORKDIR}" ]]; then' "${workflow}" >/dev/null
+grep -F 'if [[ "${K6_DOCKER_CONTEXT}" == "default" ]]; then' "${workflow}" >/dev/null
+grep -F 'K6_REMOTE_WORKDIR="${GITHUB_WORKSPACE}"' "${workflow}" >/dev/null
+grep -F 'K6_REMOTE_WORKDIR="${CAPACITY_K6_REMOTE_WORKDIR:-${GITHUB_WORKSPACE}}"' "${workflow}" >/dev/null
 grep -F "STAGING_REPLAY_TOKEN" "${workflow}" >/dev/null
 grep -F 'K6_AUTH_TOKEN_ENV_NAME="STAGING_REPLAY_TOKEN"' "${workflow}" >/dev/null
 grep -F 'K6_AUTH_PREFLIGHT="true"' "${workflow}" >/dev/null
