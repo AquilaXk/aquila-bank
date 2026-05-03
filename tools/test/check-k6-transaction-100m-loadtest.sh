@@ -147,6 +147,48 @@ if grep -F "secret-token-value" <<<"${auth_file_plan}" >/dev/null; then
   echo "auth token leaked into k6 plan output" >&2
   exit 1
 fi
+
+auth_env_plan="$(
+  STAGING_REPLAY_TOKEN="env-secret-token-value" \
+  K6_REPORT_NAME=transaction-100m-auth-env-name-check \
+  K6_RUN_PURPOSE=capacity \
+  K6_OBSERVABILITY_MODE=summary-only \
+  K6_GENERATOR_MODE=docker-context \
+  K6_DOCKER_CONTEXT=transaction-k6-remote \
+  K6_REMOTE_BASE_URL=http://192.0.2.10:8080 \
+  K6_AUTH_TOKEN_ENV_NAME=STAGING_REPLAY_TOKEN \
+    tools/test/run-k6-transaction-100m-loadtest.sh --print-plan
+)"
+grep -F "auth token required=true token=present source=env:STAGING_REPLAY_TOKEN" <<<"${auth_env_plan}" >/dev/null
+if grep -F "env-secret-token-value" <<<"${auth_env_plan}" >/dev/null; then
+  echo "env auth token leaked into k6 plan output" >&2
+  exit 1
+fi
+
+issuer_script="${temp_dir}/issue-loadtest-token.sh"
+cat >"${issuer_script}" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'issuer-secret-token-value\n'
+EOF
+chmod +x "${issuer_script}"
+
+auth_issuer_plan="$(
+  K6_REPORT_NAME=transaction-100m-auth-issuer-check \
+  K6_RUN_PURPOSE=capacity \
+  K6_OBSERVABILITY_MODE=summary-only \
+  K6_GENERATOR_MODE=docker-context \
+  K6_DOCKER_CONTEXT=transaction-k6-remote \
+  K6_REMOTE_BASE_URL=http://192.0.2.10:8080 \
+  K6_AUTH_TOKEN_ISSUER_COMMAND="${issuer_script}" \
+    tools/test/run-k6-transaction-100m-loadtest.sh --print-plan
+)"
+grep -F "auth token required=true token=present source=issuer-command" <<<"${auth_issuer_plan}" >/dev/null
+if grep -F "issuer-secret-token-value" <<<"${auth_issuer_plan}" >/dev/null; then
+  echo "issuer auth token leaked into k6 plan output" >&2
+  exit 1
+fi
+
 if K6_RUN_PURPOSE=capacity \
   K6_OBSERVABILITY_MODE=summary-only \
   K6_GENERATOR_MODE=docker-context \

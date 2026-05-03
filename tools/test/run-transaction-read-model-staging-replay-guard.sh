@@ -43,9 +43,11 @@ exit 0
 EOF
 chmod +x "${bin_dir}/psql"
 
+guard_report_dir="${temp_dir}/guard-report"
 set +e
 output="$(
   PATH="${bin_dir}:${PATH}" \
+  REPORT_DIR="${guard_report_dir}" \
   GUARD_MARKER_PATH="${temp_dir}/guard-called" \
   PSQL_MARKER_PATH="${psql_marker}" \
   PLANNER_STATS_GUARD_SCRIPT="${guard_script}" \
@@ -69,6 +71,9 @@ if [ "${status}" -eq 0 ]; then
 fi
 
 grep -F "Planner stats freshness guard failed" <<<"${output}" >/dev/null
+grep -F "planner_stats_guard_failed" "${guard_report_dir}/summary.md" >/dev/null
+grep -F "Run ANALYZE on reported tables before replay." "${guard_report_dir}/summary.md" >/dev/null
+test -f "${guard_report_dir}/summary.json"
 [ -f "${temp_dir}/guard-called" ] || {
   echo "planner stats guard was not called" >&2
   exit 1

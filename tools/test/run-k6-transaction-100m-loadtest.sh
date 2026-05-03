@@ -51,7 +51,9 @@ Optional environment:
   K6_HOT_DEEP_P99_THRESHOLD_MS default K6_HOT_P99_THRESHOLD_MS
   K6_COLD_DEEP_P99_THRESHOLD_MS default K6_COLD_P99_THRESHOLD_MS
   K6_AUTH_TOKEN        bearer token, optional when bootstrap header auth is enabled
+  K6_AUTH_TOKEN_ENV_NAME optional env var name containing bearer token; value is never printed
   K6_AUTH_TOKEN_FILE   optional bearer token file; content is never printed
+  K6_AUTH_TOKEN_ISSUER_COMMAND optional restricted command that prints bearer token to stdout
   K6_AUTH_TOKEN_REQUIRED true|false|auto, default auto; auto requires token for docker-context non-smoke
   K6_AUTH_PREFLIGHT    true|false|auto, default auto; auto runs when a preflight URL/path is configured
   K6_AUTH_PREFLIGHT_URL full URL for token status smoke, optional
@@ -239,13 +241,42 @@ require_run_purpose() {
 auth_token_source="missing"
 
 resolve_auth_token() {
-  # secret-safe: token 값은 env/file에서만 읽고 plan/report에는 존재 여부만 남긴다.
+  # secret-safe: token 값은 env/file/issuer에서만 읽고 plan/report에는 존재 여부만 남긴다.
   if [[ -n "${K6_AUTH_TOKEN}" ]]; then
     auth_token_source="env"
     return 0
   fi
+  if [[ -n "${K6_AUTH_TOKEN_ENV_NAME}" ]]; then
+    if ! [[ "${K6_AUTH_TOKEN_ENV_NAME}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+      echo "K6_AUTH_TOKEN_ENV_NAME must be a valid environment variable name" >&2
+      exit 1
+    fi
+    K6_AUTH_TOKEN="${!K6_AUTH_TOKEN_ENV_NAME:-}"
+    if [[ -z "${K6_AUTH_TOKEN}" ]]; then
+      echo "K6_AUTH_TOKEN_ENV_NAME points to an empty environment variable" >&2
+      exit 1
+    fi
+    auth_token_source="env:${K6_AUTH_TOKEN_ENV_NAME}"
+    export K6_AUTH_TOKEN
+    return 0
+  fi
   if [[ -z "${K6_AUTH_TOKEN_FILE}" ]]; then
-    auth_token_source="missing"
+    if [[ -z "${K6_AUTH_TOKEN_ISSUER_COMMAND}" ]]; then
+      auth_token_source="missing"
+      return 0
+    fi
+    K6_AUTH_TOKEN="$(
+      bash -c "${K6_AUTH_TOKEN_ISSUER_COMMAND}" 2>/dev/null | LC_ALL=C tr -d '\r\n'
+    )" || {
+      echo "K6_AUTH_TOKEN_ISSUER_COMMAND failed" >&2
+      exit 1
+    }
+    if [[ -z "${K6_AUTH_TOKEN}" ]]; then
+      echo "K6_AUTH_TOKEN_ISSUER_COMMAND did not return a token" >&2
+      exit 1
+    fi
+    auth_token_source="issuer-command"
+    export K6_AUTH_TOKEN
     return 0
   fi
   if [[ ! -s "${K6_AUTH_TOKEN_FILE}" ]]; then
@@ -467,7 +498,9 @@ K6_BACKEND_READINESS_BASE_URL="${K6_BACKEND_READINESS_BASE_URL:-http://localhost
 K6_BACKEND_READINESS_PATH="${K6_BACKEND_READINESS_PATH:-/actuator/health/readiness}"
 K6_BACKEND_READINESS_TIMEOUT_SECONDS="${K6_BACKEND_READINESS_TIMEOUT_SECONDS:-120}"
 K6_AUTH_TOKEN="${K6_AUTH_TOKEN:-}"
+K6_AUTH_TOKEN_ENV_NAME="${K6_AUTH_TOKEN_ENV_NAME:-}"
 K6_AUTH_TOKEN_FILE="${K6_AUTH_TOKEN_FILE:-}"
+K6_AUTH_TOKEN_ISSUER_COMMAND="${K6_AUTH_TOKEN_ISSUER_COMMAND:-}"
 K6_AUTH_TOKEN_REQUIRED="${K6_AUTH_TOKEN_REQUIRED:-auto}"
 K6_AUTH_PREFLIGHT="${K6_AUTH_PREFLIGHT:-auto}"
 K6_AUTH_PREFLIGHT_URL="${K6_AUTH_PREFLIGHT_URL:-}"

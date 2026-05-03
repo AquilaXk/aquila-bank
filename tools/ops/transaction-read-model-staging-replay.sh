@@ -80,6 +80,39 @@ write_distribution_failure_report() {
   } >"$SUMMARY_MD"
 }
 
+write_planner_guard_failure_report() {
+  local detail guidance
+  detail="Planner stats freshness guard failed"
+  guidance="Run ANALYZE on reported tables before replay."
+
+  jq -n \
+    --arg generatedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --arg baseUrl "$STAGING_BASE_URL" \
+    --arg phase "planner-stats" \
+    --arg status "planner_stats_guard_failed" \
+    --arg detail "$detail" \
+    --arg guidance "$guidance" \
+    '{
+      generatedAt: $generatedAt,
+      baseUrl: $baseUrl,
+      phase: $phase,
+      status: $status,
+      detail: $detail,
+      guidance: $guidance,
+      failed: true
+    }' >"$SUMMARY_JSON"
+
+  {
+    echo "# Transaction Read Model Staging Replay"
+    echo
+    echo "- status: failed"
+    echo "- phase: planner-stats"
+    echo "- failure: planner_stats_guard_failed"
+    echo "- detail: ${detail}"
+    echo "- guidance: ${guidance}"
+  } >"$SUMMARY_MD"
+}
+
 require_command() {
   command -v "$1" >/dev/null 2>&1 || fail "Missing required command: $1"
 }
@@ -153,6 +186,7 @@ run_planner_stats_guard() {
     STATS_MAX_AGE_HOURS="$PLANNER_STATS_MAX_AGE_HOURS" \
     STATS_MAX_MODIFIED_RATIO="$PLANNER_STATS_MAX_MODIFIED_RATIO" \
     "$PLANNER_STATS_GUARD_SCRIPT"; then
+    write_planner_guard_failure_report
     fail "Planner stats freshness guard failed. Run ANALYZE on reported tables before replay."
   fi
 }
