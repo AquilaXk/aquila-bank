@@ -57,7 +57,7 @@ required_secrets=(
   ALERTMANAGER_RECEIVER_SLACK_ENABLED
   ALERTMANAGER_RECEIVER_PAGERDUTY_ENABLED
   ALERTMANAGER_RECEIVER_WEBHOOK_ENABLED
-  ALERTMANAGER_RECEIVER_WEBHOOK_URL
+  ALERTMANAGER_RECEIVER_TELEGRAM_ENABLED
   PRODUCTION_BASE_URL
   PRODUCTION_SMOKE_SHA_PATH
   PRODUCTION_SMOKE_HEALTH_PATH
@@ -71,6 +71,9 @@ required_secrets=(
 optional_secrets=(
   ALERTMANAGER_RECEIVER_SLACK_WEBHOOK_URL
   ALERTMANAGER_RECEIVER_PAGERDUTY_ROUTING_KEY
+  ALERTMANAGER_RECEIVER_WEBHOOK_URL
+  ALERTMANAGER_RECEIVER_TELEGRAM_BOT_TOKEN
+  ALERTMANAGER_RECEIVER_TELEGRAM_CHAT_ID
   REDIS_HOST
   TRANSACTION_READ_REPLICA_URL
   TRANSACTION_READ_REPLICA_USERNAME
@@ -209,6 +212,11 @@ fi
 for name in "${validation_names[@]}"; do
   require_value "${name}"
 done
+
+if [[ "${vars_only}" != "true" ]]; then
+  ALERTMANAGER_RECEIVER_SECRET_SMOKE_ENVIRONMENT="${environment}" \
+    tools/ops/validate-alertmanager-receiver-secrets.sh >/dev/null
+fi
 
 echo "[production-env-bootstrap] target repo=${repo} environment=${environment}"
 echo "[production-env-bootstrap] secrets=${#required_secrets[@]} optional_secrets=${#optional_secrets[@]} vars=${#environment_vars[@]}"
