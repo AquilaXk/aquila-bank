@@ -89,8 +89,10 @@ grep -F "oci-k6-burst-reject-curve-matrix" "${workflow}" >/dev/null
 grep -F "deployments: write" "${workflow}" >/dev/null
 grep -F "Record transaction read admission profile evidence deployment" "${workflow}" >/dev/null
 grep -F "staging-transaction-read-admission-profile" "${workflow}" >/dev/null
-grep -F 'gh api --method POST "repos/${GITHUB_REPOSITORY}/deployments"' "${workflow}" >/dev/null
-grep -F 'gh api --method POST "repos/${GITHUB_REPOSITORY}/deployments/${deployment_id}/statuses"' "${workflow}" >/dev/null
+grep -F 'curl --fail-with-body --silent --show-error --location' "${workflow}" >/dev/null
+grep -F '"${github_api_url}/repos/${GITHUB_REPOSITORY}/deployments"' "${workflow}" >/dev/null
+grep -F '"${github_api_url}/repos/${GITHUB_REPOSITORY}/deployments/${deployment_id}/statuses"' "${workflow}" >/dev/null
+grep -F 'Authorization: Bearer ${GH_TOKEN}' "${workflow}" >/dev/null
 grep -F '"state": "success"' "${workflow}" >/dev/null
 
 preflight_line="$(grep -n -- "--auth-preflight-only" "${workflow}" | head -1 | cut -d: -f1)"
@@ -116,5 +118,9 @@ if grep -F 'secrets.STAGING_REPLAY_TOKEN' "${workflow}" >/dev/null; then
 fi
 if grep -F 'K6_AUTH_TOKEN:' "${workflow}" >/dev/null; then
   echo "workflow must not map token value directly into K6_AUTH_TOKEN" >&2
+  exit 1
+fi
+if grep -F 'gh api' "${workflow}" >/dev/null; then
+  echo "self-hosted OCI burst matrix workflow must not depend on GitHub CLI" >&2
   exit 1
 fi
