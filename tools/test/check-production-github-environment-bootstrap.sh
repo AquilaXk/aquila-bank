@@ -55,6 +55,7 @@ echo "[production-env-bootstrap] print plan"
 plan="$("${script}" --print-plan)"
 grep -F "[production-env-bootstrap] repo=AquilaXk/aquila-bank environment=production" <<<"${plan}" >/dev/null
 grep -F "OCI_A1_PRODUCTION_ENV" <<<"${plan}" >/dev/null
+grep -F "ALERTMANAGER_RECEIVER_TELEGRAM_BOT_TOKEN" <<<"${plan}" >/dev/null
 if grep -F "PRODUCTION_DEPLOY_WEBHOOK_URL" <<<"${plan}" >/dev/null; then
   echo "production env bootstrap plan must not include deploy webhook URL" >&2
   exit 1
