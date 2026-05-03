@@ -10,6 +10,17 @@ echo "[oci-k6-service-auth] workflow contract"
 grep -F "name: OCI k6 service auth token" "${workflow}" >/dev/null
 grep -F "workflow_dispatch:" "${workflow}" >/dev/null
 grep -F "pull_request:" "${workflow}" >/dev/null
+dispatch_input_count="$(awk '
+  /^  workflow_dispatch:/ { in_dispatch = 1; next }
+  in_dispatch && /^    inputs:/ { in_inputs = 1; next }
+  in_inputs && /^  [A-Za-z_]/ { exit }
+  in_inputs && /^      [A-Za-z0-9_]+:/ { count++ }
+  END { print count + 0 }
+' "${workflow}")"
+if [[ "${dispatch_input_count}" -gt 25 ]]; then
+  echo "workflow_dispatch inputs must be 25 or fewer, got ${dispatch_input_count}" >&2
+  exit 1
+fi
 grep -F "OCI k6 service auth token contract" "${workflow}" >/dev/null
 grep -F "tools/test/check-oci-k6-service-auth-token-workflow.sh" "${workflow}" >/dev/null
 grep -F "if: github.event_name == 'workflow_dispatch'" "${workflow}" >/dev/null
@@ -39,9 +50,6 @@ grep -F "time_unit:" "${workflow}" >/dev/null
 grep -F "pre_allocated_vus:" "${workflow}" >/dev/null
 grep -F "max_vus:" "${workflow}" >/dev/null
 grep -F "preemptive_pacing:" "${workflow}" >/dev/null
-grep -F "preemptive_pacing_rps:" "${workflow}" >/dev/null
-grep -F "preemptive_pacing_max_sleep_ms:" "${workflow}" >/dev/null
-grep -F "preemptive_pacing_jitter_ms:" "${workflow}" >/dev/null
 grep -F "nginx_access_log:" "${workflow}" >/dev/null
 grep -F "burst_429_rate_threshold:" "${workflow}" >/dev/null
 grep -F "backend_429_rate_threshold:" "${workflow}" >/dev/null
@@ -49,9 +57,6 @@ grep -F "overload_503_rate_threshold:" "${workflow}" >/dev/null
 grep -F "ARRIVAL_RATE_INPUT" "${workflow}" >/dev/null
 grep -F "TIME_UNIT_INPUT" "${workflow}" >/dev/null
 grep -F "PREEMPTIVE_PACING_INPUT" "${workflow}" >/dev/null
-grep -F "PREEMPTIVE_PACING_RPS_INPUT" "${workflow}" >/dev/null
-grep -F "PREEMPTIVE_PACING_MAX_SLEEP_MS_INPUT" "${workflow}" >/dev/null
-grep -F "PREEMPTIVE_PACING_JITTER_MS_INPUT" "${workflow}" >/dev/null
 grep -F "NGINX_ACCESS_LOG_INPUT" "${workflow}" >/dev/null
 grep -F "OVERLOAD_MODE_INPUT" "${workflow}" >/dev/null
 grep -F 'DEFAULT_K6_NGINX_ACCESS_LOG="/var/log/nginx/access.log"' "${workflow}" >/dev/null
@@ -65,9 +70,9 @@ grep -F 'K6_BURST_RATE="${BURST_RATE_INPUT}"' "${workflow}" >/dev/null
 grep -F 'K6_PRE_ALLOCATED_VUS="${PRE_ALLOCATED_VUS_INPUT}"' "${workflow}" >/dev/null
 grep -F 'K6_MAX_VUS="${MAX_VUS_INPUT}"' "${workflow}" >/dev/null
 grep -F 'K6_PREEMPTIVE_PACING="${PREEMPTIVE_PACING_INPUT}"' "${workflow}" >/dev/null
-grep -F 'K6_PREEMPTIVE_PACING_RPS="${PREEMPTIVE_PACING_RPS_INPUT}"' "${workflow}" >/dev/null
-grep -F 'K6_PREEMPTIVE_PACING_MAX_SLEEP_MS="${PREEMPTIVE_PACING_MAX_SLEEP_MS_INPUT}"' "${workflow}" >/dev/null
-grep -F 'K6_PREEMPTIVE_PACING_JITTER_MS="${PREEMPTIVE_PACING_JITTER_MS_INPUT}"' "${workflow}" >/dev/null
+grep -F 'K6_PREEMPTIVE_PACING_RPS="${K6_PREEMPTIVE_PACING_RPS:-16}"' "${workflow}" >/dev/null
+grep -F 'K6_PREEMPTIVE_PACING_MAX_SLEEP_MS="${K6_PREEMPTIVE_PACING_MAX_SLEEP_MS:-250}"' "${workflow}" >/dev/null
+grep -F 'K6_PREEMPTIVE_PACING_JITTER_MS="${K6_PREEMPTIVE_PACING_JITTER_MS:-25}"' "${workflow}" >/dev/null
 grep -F 'K6_BURST_429_RATE_THRESHOLD="${BURST_429_RATE_THRESHOLD_INPUT}"' "${workflow}" >/dev/null
 grep -F 'K6_BACKEND_429_RATE_THRESHOLD="${BACKEND_429_RATE_THRESHOLD_INPUT}"' "${workflow}" >/dev/null
 grep -F 'K6_OVERLOAD_503_RATE_THRESHOLD="${OVERLOAD_503_RATE_THRESHOLD_INPUT}"' "${workflow}" >/dev/null

@@ -80,21 +80,6 @@ on:
         required: false
         default: false
         type: boolean
-      preemptive_pacing_rps:
-        description: "Global preemptive pacing RPS budget"
-        required: false
-        default: "16"
-        type: string
-      preemptive_pacing_max_sleep_ms:
-        description: "Max preemptive pacing sleep per request"
-        required: false
-        default: "250"
-        type: string
-      preemptive_pacing_jitter_ms:
-        description: "Preemptive pacing jitter"
-        required: false
-        default: "25"
-        type: string
       overload_mode:
         description: "Treat 429 as capacity rejection; empty auto-enables for burst"
         required: false
@@ -192,9 +177,6 @@ jobs:
           PRE_ALLOCATED_VUS_INPUT: ${{ inputs.pre_allocated_vus }}
           MAX_VUS_INPUT: ${{ inputs.max_vus }}
           PREEMPTIVE_PACING_INPUT: ${{ inputs.preemptive_pacing }}
-          PREEMPTIVE_PACING_RPS_INPUT: ${{ inputs.preemptive_pacing_rps }}
-          PREEMPTIVE_PACING_MAX_SLEEP_MS_INPUT: ${{ inputs.preemptive_pacing_max_sleep_ms }}
-          PREEMPTIVE_PACING_JITTER_MS_INPUT: ${{ inputs.preemptive_pacing_jitter_ms }}
           OVERLOAD_MODE_INPUT: ${{ inputs.overload_mode }}
           BURST_429_RATE_THRESHOLD_INPUT: ${{ inputs.burst_429_rate_threshold }}
           BACKEND_429_RATE_THRESHOLD_INPUT: ${{ inputs.backend_429_rate_threshold }}
@@ -271,9 +253,9 @@ jobs:
           K6_PRE_ALLOCATED_VUS="${PRE_ALLOCATED_VUS_INPUT}"
           K6_MAX_VUS="${MAX_VUS_INPUT}"
           K6_PREEMPTIVE_PACING="${PREEMPTIVE_PACING_INPUT}"
-          K6_PREEMPTIVE_PACING_RPS="${PREEMPTIVE_PACING_RPS_INPUT}"
-          K6_PREEMPTIVE_PACING_MAX_SLEEP_MS="${PREEMPTIVE_PACING_MAX_SLEEP_MS_INPUT}"
-          K6_PREEMPTIVE_PACING_JITTER_MS="${PREEMPTIVE_PACING_JITTER_MS_INPUT}"
+          K6_PREEMPTIVE_PACING_RPS="${K6_PREEMPTIVE_PACING_RPS:-16}"
+          K6_PREEMPTIVE_PACING_MAX_SLEEP_MS="${K6_PREEMPTIVE_PACING_MAX_SLEEP_MS:-250}"
+          K6_PREEMPTIVE_PACING_JITTER_MS="${K6_PREEMPTIVE_PACING_JITTER_MS:-25}"
           K6_BURST_429_RATE_THRESHOLD="${BURST_429_RATE_THRESHOLD_INPUT}"
           K6_BACKEND_429_RATE_THRESHOLD="${BACKEND_429_RATE_THRESHOLD_INPUT}"
           K6_OVERLOAD_503_RATE_THRESHOLD="${OVERLOAD_503_RATE_THRESHOLD_INPUT}"
