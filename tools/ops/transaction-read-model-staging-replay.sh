@@ -25,6 +25,8 @@ COLD_P95_THRESHOLD_MS="${COLD_P95_THRESHOLD_MS:-750}"
 PLANNER_STATS_GUARD_SCRIPT="${PLANNER_STATS_GUARD_SCRIPT:-tools/ops/transaction-read-model-planner-stats-freshness-guard.sh}"
 PLANNER_STATS_MAX_AGE_HOURS="${PLANNER_STATS_MAX_AGE_HOURS:-24}"
 PLANNER_STATS_MAX_MODIFIED_RATIO="${PLANNER_STATS_MAX_MODIFIED_RATIO:-0.05}"
+PLANNER_STATS_AUTO_ANALYZE="${PLANNER_STATS_AUTO_ANALYZE:-true}"
+PLANNER_STATS_ANALYZE_SCRIPT="${PLANNER_STATS_ANALYZE_SCRIPT:-tools/ops/transaction-read-model-chunk-lifecycle.sh}"
 
 fail() {
   echo "::error::$*" >&2
@@ -138,6 +140,15 @@ require_ratio_between_zero_and_one() {
     || fail "${name} must be greater than 0 and less than 1"
 }
 
+require_bool() {
+  local name="$1"
+  local value="${!name:-}"
+  case "$value" in
+    true|false) ;;
+    *) fail "${name} must be true or false" ;;
+  esac
+}
+
 psql_scalar() {
   local sql="$1"
   psql "$STAGING_DATABASE_URL" -v ON_ERROR_STOP=1 --no-align --tuples-only --command "$sql"
@@ -170,25 +181,48 @@ validate_inputs() {
   require_positive_integer COLD_P95_THRESHOLD_MS
   require_positive_integer PLANNER_STATS_MAX_AGE_HOURS
   require_ratio_between_zero_and_one PLANNER_STATS_MAX_MODIFIED_RATIO
+  require_bool PLANNER_STATS_AUTO_ANALYZE
 
   if [ "$PAGE_LIMIT" -gt 100 ]; then
     fail "PAGE_LIMIT must be 100 or less"
   fi
 
   [ -x "$PLANNER_STATS_GUARD_SCRIPT" ] || fail "Planner stats guard script is not executable: ${PLANNER_STATS_GUARD_SCRIPT}"
+  if [ "$PLANNER_STATS_AUTO_ANALYZE" = "true" ]; then
+    [ -x "$PLANNER_STATS_ANALYZE_SCRIPT" ] || fail "Planner stats analyze script is not executable: ${PLANNER_STATS_ANALYZE_SCRIPT}"
+  fi
 
   STAGING_BASE_URL="${STAGING_BASE_URL%/}"
 }
 
+run_planner_stats_analyze() {
+  notice "Planner stats freshness guard failed; running ANALYZE before replay."
+  # stats refresh는 replay evidence 정확도 목적이며, chunk lifecycle script의 lock/statement timeout을 사용합니다.
+  DATABASE_URL="$STAGING_DATABASE_URL" \
+    "$PLANNER_STATS_ANALYZE_SCRIPT" --action analyze --target both
+}
+
 run_planner_stats_guard() {
   # `reltuples` estimate는 stale stats에 취약해서 replay 전에 ANALYZE 필요 여부를 먼저 차단합니다.
-  if ! DATABASE_URL="$STAGING_DATABASE_URL" \
+  if DATABASE_URL="$STAGING_DATABASE_URL" \
     STATS_MAX_AGE_HOURS="$PLANNER_STATS_MAX_AGE_HOURS" \
     STATS_MAX_MODIFIED_RATIO="$PLANNER_STATS_MAX_MODIFIED_RATIO" \
     "$PLANNER_STATS_GUARD_SCRIPT"; then
-    write_planner_guard_failure_report
-    fail "Planner stats freshness guard failed. Run ANALYZE on reported tables before replay."
+    return 0
   fi
+
+  if [ "$PLANNER_STATS_AUTO_ANALYZE" = "true" ]; then
+    run_planner_stats_analyze
+    if DATABASE_URL="$STAGING_DATABASE_URL" \
+      STATS_MAX_AGE_HOURS="$PLANNER_STATS_MAX_AGE_HOURS" \
+      STATS_MAX_MODIFIED_RATIO="$PLANNER_STATS_MAX_MODIFIED_RATIO" \
+      "$PLANNER_STATS_GUARD_SCRIPT"; then
+      return 0
+    fi
+  fi
+
+  write_planner_guard_failure_report
+  fail "Planner stats freshness guard failed. Run ANALYZE on reported tables before replay."
 }
 
 verify_staging_distribution() {
@@ -350,11 +384,11 @@ run_replay() {
 
 p95_ms() {
   local file="$1"
-  local count index
+  local count percentile_index
   count="$(wc -l <"$file" | tr -d ' ')"
   [ "$count" -gt 0 ] || fail "No latency samples in ${file}"
-  index=$(((count * 95 + 99) / 100))
-  sort -n "$file" | awk -v index="$index" 'NR == index { print; exit }'
+  percentile_index=$(((count * 95 + 99) / 100))
+  sort -n "$file" | awk -v percentile_index="$percentile_index" 'NR == percentile_index { print; exit }'
 }
 
 write_summary() {
