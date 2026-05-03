@@ -44,6 +44,7 @@ CAPACITY_K6_BURST_MATRIX_TSV=build/reports/k6/offhost-check/burst-reject-curve.t
 CAPACITY_K6_SOURCE_EVIDENCE_TSV=build/reports/k6/offhost-check/source-evidence.tsv
 CAPACITY_K6_GENERATOR_HOST_METRICS_TSV=build/reports/k6/offhost-check/generator-host-metrics.tsv
 CAPACITY_K6_TARGET_HOST_METRICS_TSV=build/reports/k6/offhost-check/target-host-metrics.tsv
+CAPACITY_K6_HOST_METRICS_RUN_ID=offhost-check
 ENV
 
 echo "[offhost-capacity-env-doctor] plan"
@@ -64,6 +65,8 @@ grep -F "burst_matrix_tsv=build/reports/k6/offhost-check/burst-reject-curve.tsv"
 grep -F "source_evidence_tsv=build/reports/k6/offhost-check/source-evidence.tsv" <<<"${plan}" >/dev/null
 grep -F "generator_host_metrics_tsv=build/reports/k6/offhost-check/generator-host-metrics.tsv" <<<"${plan}" >/dev/null
 grep -F "target_host_metrics_tsv=build/reports/k6/offhost-check/target-host-metrics.tsv" <<<"${plan}" >/dev/null
+grep -F "host_metrics_run_id=offhost-check" <<<"${plan}" >/dev/null
+grep -F "require_host_metrics=true" <<<"${plan}" >/dev/null
 grep -F "timeout_seconds=15" <<<"${plan}" >/dev/null
 grep -F "check_connectivity=false" <<<"${plan}" >/dev/null
 
@@ -92,9 +95,23 @@ if OFFHOST_CAPACITY_ENV_FILE="${bad_env_file}" "${script}" --print-plan >/dev/nu
   exit 1
 fi
 
+missing_metrics_env_file="${temp_dir}/missing-metrics.env"
+cat >"${missing_metrics_env_file}" <<'ENV'
+CAPACITY_K6_DOCKER_CONTEXT=capacity-k6-remote
+CAPACITY_K6_REMOTE_BASE_URL=http://192.0.2.20:18080
+CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL=http://192.0.2.20:9090/api/v1/write
+ENV
+if OFFHOST_CAPACITY_ENV_FILE="${missing_metrics_env_file}" OFFHOST_CAPACITY_CHECK_CONNECTIVITY=false "${script}" --print-plan >"${temp_dir}/missing-metrics.log" 2>&1; then
+  echo "missing off-host host metrics unexpectedly passed" >&2
+  exit 1
+fi
+grep -F "CAPACITY_K6_GENERATOR_HOST_METRICS_TSV is required when CAPACITY_REQUIRE_HOST_METRICS=true" "${temp_dir}/missing-metrics.log" >/dev/null
+
 echo "[offhost-capacity-env-doctor] runner contract"
 grep -F "OFFHOST_CAPACITY_ENV_FILE" "${script}" >/dev/null
 grep -F "OFFHOST_CAPACITY_CHECK_CONNECTIVITY" "${script}" >/dev/null
+grep -F "CAPACITY_REQUIRE_HOST_METRICS" "${script}" >/dev/null
+grep -F "CAPACITY_K6_HOST_METRICS_RUN_ID" "${script}" >/dev/null
 grep -F "CAPACITY_K6_HOST_METRICS_TSV" "${script}" >/dev/null
 grep -F "CAPACITY_K6_VU16_SUMMARY_JSON" "${script}" >/dev/null
 grep -F "CAPACITY_K6_BURST_MATRIX_TSV" "${script}" >/dev/null

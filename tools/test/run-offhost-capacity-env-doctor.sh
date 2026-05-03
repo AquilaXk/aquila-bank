@@ -18,6 +18,8 @@ Environment:
   CAPACITY_K6_SOURCE_EVIDENCE_TSV optional source-level edge/backend 429 and latency TSV ref
   CAPACITY_K6_GENERATOR_HOST_METRICS_TSV optional generator host CPU/network TSV ref
   CAPACITY_K6_TARGET_HOST_METRICS_TSV optional app/DB target host CPU/network TSV ref
+  CAPACITY_K6_HOST_METRICS_RUN_ID optional host metrics run id ref
+  CAPACITY_REQUIRE_HOST_METRICS default true
   CAPACITY_REMOTE_PREFLIGHT_TIMEOUT_SECONDS default 30
   CAPACITY_REMOTE_PREFLIGHT_IMAGE default curlimages/curl:8.11.1
   CAPACITY_REMOTE_READINESS_PATH default /actuator/health/readiness
@@ -85,6 +87,8 @@ burst_matrix_tsv="${CAPACITY_K6_BURST_MATRIX_TSV:-${K6_BURST_MATRIX_TSV:-}}"
 source_evidence_tsv="${CAPACITY_K6_SOURCE_EVIDENCE_TSV:-${K6_SOURCE_EVIDENCE_TSV:-}}"
 generator_host_metrics_tsv="${CAPACITY_K6_GENERATOR_HOST_METRICS_TSV:-${K6_GENERATOR_HOST_METRICS_TSV:-${host_metrics_tsv}}}"
 target_host_metrics_tsv="${CAPACITY_K6_TARGET_HOST_METRICS_TSV:-${K6_TARGET_HOST_METRICS_TSV:-}}"
+host_metrics_run_id="${CAPACITY_K6_HOST_METRICS_RUN_ID:-${K6_HOST_METRICS_RUN_ID:-${CAPACITY_NAME:-}}}"
+require_host_metrics="${CAPACITY_REQUIRE_HOST_METRICS:-true}"
 check_connectivity="${OFFHOST_CAPACITY_CHECK_CONNECTIVITY:-true}"
 timeout_seconds="${CAPACITY_REMOTE_PREFLIGHT_TIMEOUT_SECONDS:-${K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS:-30}}"
 preflight_image="${CAPACITY_REMOTE_PREFLIGHT_IMAGE:-${K6_REMOTE_PREFLIGHT_IMAGE:-curlimages/curl:8.11.1}}"
@@ -131,6 +135,7 @@ require_url() {
 
 require_bool "OFFHOST_CAPACITY_CHECK_CONNECTIVITY" "${check_connectivity}"
 require_bool "CAPACITY_K6_AUTH_TOKEN_REQUIRED" "${auth_token_required}"
+require_bool "CAPACITY_REQUIRE_HOST_METRICS" "${require_host_metrics}"
 require_positive_integer "CAPACITY_REMOTE_PREFLIGHT_TIMEOUT_SECONDS" "${timeout_seconds}"
 require_env_value "CAPACITY_K6_DOCKER_CONTEXT" "${docker_context}"
 require_env_value "CAPACITY_K6_REMOTE_BASE_URL" "${remote_base_url}"
@@ -139,6 +144,10 @@ require_url "CAPACITY_K6_REMOTE_BASE_URL" "${remote_base_url}"
 require_url "CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL" "${remote_prometheus_rw_url}"
 if [[ "${auth_token_required}" == "true" ]]; then
   require_env_value "CAPACITY_K6_AUTH_TOKEN" "${auth_token}"
+fi
+if [[ "${require_host_metrics}" == "true" ]]; then
+  require_env_value "CAPACITY_K6_GENERATOR_HOST_METRICS_TSV is required when CAPACITY_REQUIRE_HOST_METRICS=true" "${generator_host_metrics_tsv}"
+  require_env_value "CAPACITY_K6_TARGET_HOST_METRICS_TSV is required when CAPACITY_REQUIRE_HOST_METRICS=true" "${target_host_metrics_tsv}"
 fi
 
 print_plan() {
@@ -154,6 +163,8 @@ print_plan() {
   echo "[offhost-capacity-env-doctor] source_evidence_tsv=${source_evidence_tsv:-missing}"
   echo "[offhost-capacity-env-doctor] generator_host_metrics_tsv=${generator_host_metrics_tsv:-missing}"
   echo "[offhost-capacity-env-doctor] target_host_metrics_tsv=${target_host_metrics_tsv:-missing}"
+  echo "[offhost-capacity-env-doctor] host_metrics_run_id=${host_metrics_run_id:-missing}"
+  echo "[offhost-capacity-env-doctor] require_host_metrics=${require_host_metrics}"
   echo "[offhost-capacity-env-doctor] readiness_url=${readiness_url}"
   echo "[offhost-capacity-env-doctor] preflight_image=${preflight_image}"
   echo "[offhost-capacity-env-doctor] timeout_seconds=${timeout_seconds}"

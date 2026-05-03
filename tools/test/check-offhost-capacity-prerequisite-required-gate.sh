@@ -23,12 +23,14 @@ grep -F "host_metrics_tsv:" "${workflow}" >/dev/null
 grep -F "vu16_summary_json:" "${workflow}" >/dev/null
 grep -F "burst_matrix_tsv:" "${workflow}" >/dev/null
 grep -F "source_evidence_tsv:" "${workflow}" >/dev/null
+grep -F "host_metrics_run_id:" "${workflow}" >/dev/null
 grep -F "generator_host_metrics_tsv:" "${workflow}" >/dev/null
 grep -F "target_host_metrics_tsv:" "${workflow}" >/dev/null
 grep -F "HOST_METRICS_TSV_INPUT" "${workflow}" >/dev/null
 grep -F "VU16_SUMMARY_JSON_INPUT" "${workflow}" >/dev/null
 grep -F "BURST_MATRIX_TSV_INPUT" "${workflow}" >/dev/null
 grep -F "SOURCE_EVIDENCE_TSV_INPUT" "${workflow}" >/dev/null
+grep -F "HOST_METRICS_RUN_ID_INPUT" "${workflow}" >/dev/null
 grep -F "GENERATOR_HOST_METRICS_TSV_INPUT" "${workflow}" >/dev/null
 grep -F "TARGET_HOST_METRICS_TSV_INPUT" "${workflow}" >/dev/null
 grep -F 'DEFAULT_CAPACITY_K6_DOCKER_CONTEXT="default"' "${workflow}" >/dev/null
@@ -47,12 +49,20 @@ grep -F 'CAPACITY_K6_HOST_METRICS_TSV="${HOST_METRICS_TSV_INPUT:-${CAPACITY_K6_H
 grep -F 'CAPACITY_K6_VU16_SUMMARY_JSON="${VU16_SUMMARY_JSON_INPUT:-${CAPACITY_K6_VU16_SUMMARY_JSON:-${CAPACITY_K6_VU16_SUMMARY_JSON_VAR:-}}}"' "${workflow}" >/dev/null
 grep -F 'CAPACITY_K6_BURST_MATRIX_TSV="${BURST_MATRIX_TSV_INPUT:-${CAPACITY_K6_BURST_MATRIX_TSV:-${CAPACITY_K6_BURST_MATRIX_TSV_VAR:-}}}"' "${workflow}" >/dev/null
 grep -F 'CAPACITY_K6_SOURCE_EVIDENCE_TSV="${SOURCE_EVIDENCE_TSV_INPUT:-${CAPACITY_K6_SOURCE_EVIDENCE_TSV:-${CAPACITY_K6_SOURCE_EVIDENCE_TSV_VAR:-}}}"' "${workflow}" >/dev/null
+grep -F 'CAPACITY_K6_HOST_METRICS_RUN_ID="${HOST_METRICS_RUN_ID_INPUT:-${CAPACITY_K6_HOST_METRICS_RUN_ID:-${CAPACITY_NAME}}}"' "${workflow}" >/dev/null
 grep -F 'CAPACITY_K6_GENERATOR_HOST_METRICS_TSV="${GENERATOR_HOST_METRICS_TSV_INPUT:-${CAPACITY_K6_GENERATOR_HOST_METRICS_TSV:-${CAPACITY_K6_GENERATOR_HOST_METRICS_TSV_VAR:-${CAPACITY_K6_HOST_METRICS_TSV}}}}"' "${workflow}" >/dev/null
 grep -F 'CAPACITY_K6_TARGET_HOST_METRICS_TSV="${TARGET_HOST_METRICS_TSV_INPUT:-${CAPACITY_K6_TARGET_HOST_METRICS_TSV:-${CAPACITY_K6_TARGET_HOST_METRICS_TSV_VAR:-}}}"' "${workflow}" >/dev/null
 grep -F 'CAPACITY_REMOTE_PREFLIGHT="true"' "${workflow}" >/dev/null
+grep -F 'CAPACITY_REQUIRE_HOST_METRICS="true"' "${workflow}" >/dev/null
 grep -F "Run off-host remote preflight" "${workflow}" >/dev/null
 grep -F "tools/test/run-offhost-capacity-env-doctor.sh" "${workflow}" >/dev/null
 grep -F "offhost-capacity-preflight.log" "${workflow}" >/dev/null
+grep -F "Build off-host host metrics evidence artifact" "${workflow}" >/dev/null
+grep -F 'OCI_OFFHOST_HOST_METRICS_NAME="${CAPACITY_NAME}"' "${workflow}" >/dev/null
+grep -F 'OCI_OFFHOST_HOST_METRICS_RUN_ID="${CAPACITY_K6_HOST_METRICS_RUN_ID}"' "${workflow}" >/dev/null
+grep -F 'OCI_OFFHOST_GENERATOR_HOST_METRICS_TSV="${CAPACITY_K6_GENERATOR_HOST_METRICS_TSV}"' "${workflow}" >/dev/null
+grep -F 'OCI_OFFHOST_TARGET_HOST_METRICS_TSV="${CAPACITY_K6_TARGET_HOST_METRICS_TSV}"' "${workflow}" >/dev/null
+grep -F "tools/test/run-oci-offhost-host-metrics-evidence.sh" "${workflow}" >/dev/null
 grep -F "tools/test/run-transaction-100m-capacity-gates.sh --print-plan" "${workflow}" >/dev/null
 grep -F "capacity-prerequisite-plan.log" "${workflow}" >/dev/null
 grep -F "actions/upload-artifact@" "${workflow}" >/dev/null
