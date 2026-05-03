@@ -22,7 +22,7 @@ jobs:
         working-directory: back
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Java 21
         uses: actions/setup-java@v4
@@ -48,10 +48,10 @@ jobs:
         working-directory: front
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Node.js 20
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "20"
           cache: yarn

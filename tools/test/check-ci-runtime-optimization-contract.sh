@@ -10,6 +10,7 @@ staging_deploy="${ROOT_DIR}/.github/workflows/staging-deploy.yml"
 backend_runtime_dockerfile="${ROOT_DIR}/back/Dockerfile.runtime"
 backend_dockerignore="${ROOT_DIR}/back/.dockerignore"
 workflow_contract_ci="${ROOT_DIR}/.github/workflows/workflow-contract-ci.yml"
+workflow_dir="${ROOT_DIR}/.github/workflows"
 query_plan_gate="${ROOT_DIR}/tools/test/run-transaction-query-plan-regression-gate.sh"
 flyway_migration_gate="${ROOT_DIR}/tools/test/check-flyway-backward-compatible-migrations.sh"
 
@@ -37,6 +38,22 @@ require_not_contains() {
   local needle="$2"
   if grep -Fq -- "${needle}" "${path}"; then
     printf '[ci-runtime-contract] %s must not contain: %s\n' "${path#${ROOT_DIR}/}" "${needle}" >&2
+    failures=$((failures + 1))
+  fi
+}
+
+require_workflows_contains() {
+  local needle="$1"
+  if ! grep -R -Fq -- "${needle}" "${workflow_dir}"; then
+    printf '[ci-runtime-contract] workflows must contain: %s\n' "${needle}" >&2
+    failures=$((failures + 1))
+  fi
+}
+
+require_workflows_not_contains() {
+  local needle="$1"
+  if grep -R -Fq -- "${needle}" "${workflow_dir}"; then
+    printf '[ci-runtime-contract] workflows must not contain: %s\n' "${needle}" >&2
     failures=$((failures + 1))
   fi
 }
@@ -93,6 +110,13 @@ if (( failures == 0 )); then
   require_contains "${backend_runtime_dockerfile}" 'ARG JAR_FILE=build/libs/*.jar'
   require_contains "${backend_runtime_dockerfile}" 'COPY ${JAR_FILE} /app/app.jar'
   require_contains "${backend_dockerignore}" "!build/libs/*.jar"
+
+  require_workflows_not_contains "actions/checkout@v4"
+  require_workflows_not_contains "actions/upload-artifact@v4"
+  require_workflows_not_contains "actions/setup-node@v4"
+  require_workflows_contains "actions/checkout@v5"
+  require_workflows_contains "actions/upload-artifact@v7"
+  require_workflows_contains "actions/setup-node@v6"
 fi
 
 if (( failures > 0 )); then

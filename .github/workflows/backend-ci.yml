@@ -31,7 +31,7 @@ jobs:
         working-directory: back
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -111,7 +111,7 @@ jobs:
 
       - name: Upload Jacoco full report
         if: always() && hashFiles('back/build/reports/jacoco/pr/jacocoPrReport.xml') != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: jacoco-pr-report
           path: |
