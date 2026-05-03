@@ -30,6 +30,7 @@ expect_failure \
     ALERTMANAGER_RECEIVER_SLACK_ENABLED=false \
     ALERTMANAGER_RECEIVER_PAGERDUTY_ENABLED=false \
     ALERTMANAGER_RECEIVER_WEBHOOK_ENABLED=false \
+    ALERTMANAGER_RECEIVER_TELEGRAM_ENABLED=false \
     bash "${script}"
 
 echo "[alertmanager-secret-smoke-test] fails when enabled receiver secret is missing"
@@ -39,15 +40,41 @@ expect_failure \
     ALERTMANAGER_RECEIVER_SLACK_ENABLED=true \
     ALERTMANAGER_RECEIVER_PAGERDUTY_ENABLED=false \
     ALERTMANAGER_RECEIVER_WEBHOOK_ENABLED=false \
+    ALERTMANAGER_RECEIVER_TELEGRAM_ENABLED=false \
+    bash "${script}"
+
+echo "[alertmanager-secret-smoke-test] fails when Telegram receiver secret is missing"
+expect_failure \
+  "Telegram receiver is enabled but ALERTMANAGER_RECEIVER_TELEGRAM_BOT_TOKEN is missing" \
+  env ALERTMANAGER_RECEIVER_SECRET_SMOKE_ENVIRONMENT=production \
+    ALERTMANAGER_RECEIVER_SLACK_ENABLED=false \
+    ALERTMANAGER_RECEIVER_PAGERDUTY_ENABLED=false \
+    ALERTMANAGER_RECEIVER_WEBHOOK_ENABLED=false \
+    ALERTMANAGER_RECEIVER_TELEGRAM_ENABLED=true \
+    ALERTMANAGER_RECEIVER_TELEGRAM_CHAT_ID=-1001234567890 \
+    bash "${script}"
+
+echo "[alertmanager-secret-smoke-test] fails when Telegram receiver placeholder remains"
+expect_failure \
+  "Telegram receiver is enabled but ALERTMANAGER_RECEIVER_TELEGRAM_BOT_TOKEN is missing" \
+  env ALERTMANAGER_RECEIVER_SECRET_SMOKE_ENVIRONMENT=production \
+    ALERTMANAGER_RECEIVER_SLACK_ENABLED=false \
+    ALERTMANAGER_RECEIVER_PAGERDUTY_ENABLED=false \
+    ALERTMANAGER_RECEIVER_WEBHOOK_ENABLED=false \
+    ALERTMANAGER_RECEIVER_TELEGRAM_ENABLED=true \
+    ALERTMANAGER_RECEIVER_TELEGRAM_BOT_TOKEN="<required-if-telegram-enabled>" \
+    ALERTMANAGER_RECEIVER_TELEGRAM_CHAT_ID=-1001234567890 \
     bash "${script}"
 
 echo "[alertmanager-secret-smoke-test] passes with one configured receiver"
 env \
-  ALERTMANAGER_RECEIVER_SECRET_SMOKE_ENVIRONMENT=staging \
-  ALERTMANAGER_RECEIVER_SLACK_ENABLED=true \
-  ALERTMANAGER_RECEIVER_SLACK_WEBHOOK_URL=https://hooks.slack.example/services/test \
+  ALERTMANAGER_RECEIVER_SECRET_SMOKE_ENVIRONMENT=production \
+  ALERTMANAGER_RECEIVER_SLACK_ENABLED=false \
   ALERTMANAGER_RECEIVER_PAGERDUTY_ENABLED=false \
   ALERTMANAGER_RECEIVER_WEBHOOK_ENABLED=false \
+  ALERTMANAGER_RECEIVER_TELEGRAM_ENABLED=true \
+  ALERTMANAGER_RECEIVER_TELEGRAM_BOT_TOKEN=123456:telegram-token \
+  ALERTMANAGER_RECEIVER_TELEGRAM_CHAT_ID=-1001234567890 \
   bash "${script}"
 
 echo "[alertmanager-secret-smoke-test] passes with multiple configured receivers"
@@ -59,6 +86,9 @@ env \
   ALERTMANAGER_RECEIVER_PAGERDUTY_ROUTING_KEY=prod-routing-key \
   ALERTMANAGER_RECEIVER_WEBHOOK_ENABLED=true \
   ALERTMANAGER_RECEIVER_WEBHOOK_URL=https://alerts.example/internal \
+  ALERTMANAGER_RECEIVER_TELEGRAM_ENABLED=true \
+  ALERTMANAGER_RECEIVER_TELEGRAM_BOT_TOKEN=123456:telegram-token \
+  ALERTMANAGER_RECEIVER_TELEGRAM_CHAT_ID=-1001234567890 \
   bash "${script}"
 
 echo "[alertmanager-secret-smoke-test] passed"

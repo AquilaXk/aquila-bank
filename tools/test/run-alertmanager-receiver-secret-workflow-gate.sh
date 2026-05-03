@@ -40,6 +40,9 @@ def validate_secret_step(workflow_path, job_name, prerequisites, success_step = 
     ALERTMANAGER_RECEIVER_PAGERDUTY_ROUTING_KEY
     ALERTMANAGER_RECEIVER_WEBHOOK_ENABLED
     ALERTMANAGER_RECEIVER_WEBHOOK_URL
+    ALERTMANAGER_RECEIVER_TELEGRAM_ENABLED
+    ALERTMANAGER_RECEIVER_TELEGRAM_BOT_TOKEN
+    ALERTMANAGER_RECEIVER_TELEGRAM_CHAT_ID
   ]
   required_keys.each do |key|
     abort("missing env #{key} in #{workflow_path}") unless env.key?(key)
@@ -49,6 +52,9 @@ def validate_secret_step(workflow_path, job_name, prerequisites, success_step = 
   abort("slack enabled must come from secret in #{workflow_path}") unless env.fetch('ALERTMANAGER_RECEIVER_SLACK_ENABLED').include?('secrets.ALERTMANAGER_RECEIVER_SLACK_ENABLED')
   abort("pagerduty key must come from secret in #{workflow_path}") unless env.fetch('ALERTMANAGER_RECEIVER_PAGERDUTY_ROUTING_KEY').include?('secrets.ALERTMANAGER_RECEIVER_PAGERDUTY_ROUTING_KEY')
   abort("webhook url must come from secret in #{workflow_path}") unless env.fetch('ALERTMANAGER_RECEIVER_WEBHOOK_URL').include?('secrets.ALERTMANAGER_RECEIVER_WEBHOOK_URL')
+  abort("telegram enabled must come from secret in #{workflow_path}") unless env.fetch('ALERTMANAGER_RECEIVER_TELEGRAM_ENABLED').include?('secrets.ALERTMANAGER_RECEIVER_TELEGRAM_ENABLED')
+  abort("telegram token must come from secret in #{workflow_path}") unless env.fetch('ALERTMANAGER_RECEIVER_TELEGRAM_BOT_TOKEN').include?('secrets.ALERTMANAGER_RECEIVER_TELEGRAM_BOT_TOKEN')
+  abort("telegram chat id must come from secret in #{workflow_path}") unless env.fetch('ALERTMANAGER_RECEIVER_TELEGRAM_CHAT_ID').include?('secrets.ALERTMANAGER_RECEIVER_TELEGRAM_CHAT_ID')
 end
 
 def validate_unified_env_step(workflow_path, job_name)
@@ -83,6 +89,9 @@ def validate_unified_env_step(workflow_path, job_name)
     ALERTMANAGER_RECEIVER_PAGERDUTY_ROUTING_KEY
     ALERTMANAGER_RECEIVER_WEBHOOK_ENABLED
     ALERTMANAGER_RECEIVER_WEBHOOK_URL
+    ALERTMANAGER_RECEIVER_TELEGRAM_ENABLED
+    ALERTMANAGER_RECEIVER_TELEGRAM_BOT_TOKEN
+    ALERTMANAGER_RECEIVER_TELEGRAM_CHAT_ID
   ]
   required_keys.each do |key|
     abort("load step must persist env: #{key}") unless load_run.include?(key)

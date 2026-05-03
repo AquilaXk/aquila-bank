@@ -158,7 +158,7 @@ Prometheus는 k6 remote write를 받기 위해 `--web.enable-remote-write-receiv
 tools/test/run-k6-transaction-100m-loadtest.sh --print-plan
 ```
 
-Alertmanager baseline receiver는 route 구조만 고정하며 실제 Slack/PagerDuty/Webhook URL은 저장소에 두지 않습니다. 운영 환경에서는 `aquila-bank-critical`, `aquila-bank-warning` receiver에 환경별 notification config를 추가합니다.
+Alertmanager baseline receiver는 route 구조만 고정하며 실제 Slack/PagerDuty/Webhook/Telegram secret은 저장소에 두지 않습니다. 운영 환경에서는 `aquila-bank-critical`, `aquila-bank-warning` receiver에 환경별 notification config를 추가합니다.
 
 배포 전 secret smoke는 아래 env/secret 이름을 기준으로 실제 receiver 구성을 확인합니다.
 
@@ -166,12 +166,16 @@ Alertmanager baseline receiver는 route 구조만 고정하며 실제 Slack/Page
   - `ALERTMANAGER_RECEIVER_SLACK_ENABLED`
   - `ALERTMANAGER_RECEIVER_PAGERDUTY_ENABLED`
   - `ALERTMANAGER_RECEIVER_WEBHOOK_ENABLED`
+  - `ALERTMANAGER_RECEIVER_TELEGRAM_ENABLED`
 - Slack:
   - `ALERTMANAGER_RECEIVER_SLACK_WEBHOOK_URL`
 - PagerDuty:
   - `ALERTMANAGER_RECEIVER_PAGERDUTY_ROUTING_KEY`
 - Webhook:
   - `ALERTMANAGER_RECEIVER_WEBHOOK_URL`
+- Telegram:
+  - `ALERTMANAGER_RECEIVER_TELEGRAM_BOT_TOKEN`
+  - `ALERTMANAGER_RECEIVER_TELEGRAM_CHAT_ID`
 
 규칙은 단순합니다.
 
