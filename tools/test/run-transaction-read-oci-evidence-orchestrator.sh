@@ -129,7 +129,7 @@ NR == 1 {
   for (i = 1; i <= NF; i++) {
     col[$i] = i
   }
-  print "scenario\trun_id\texecuted_at_utc\tduration_min\tsource_ips\trun_script\tk6_summary_ref\tnginx_access_ref\tspring_metrics_ref\thikari_log_ref\tpostgres_wait_ref\tdeploy_event_ref\tcache_state_ref\ttimeline_ref\tedge_429_rate\tbackend_429_count\tunknown_429_count\tfive_xx_count\tnginx_499_count\thikari_validation_warnings\tdb_pool_pending_max\tp999_ms\tpostgres_checkpoint_ref\tpostgres_temp_file_ref\tnginx_upstream_latency_ref"
+  print "scenario\trun_id\texecuted_at_utc\tduration_min\tsource_ips\trun_script\tk6_summary_ref\tnginx_access_ref\tspring_metrics_ref\thikari_log_ref\tpostgres_wait_ref\tdeploy_event_ref\tcache_state_ref\ttimeline_ref\tedge_429_rate\tbackend_429_count\tunknown_429_count\tfive_xx_count\tnginx_499_count\thikari_validation_warnings\tdb_pool_pending_max\tp999_ms\tpostgres_checkpoint_ref\tpostgres_temp_file_ref\tnginx_upstream_latency_ref\tworkload_mix_ref\tworkload_component_ref\toutbox_lag_ref\toutbox_lag_max"
   next
 }
 {
@@ -139,7 +139,7 @@ NR == 1 {
     printf "unknown OCI evidence scenario: %s\n", scenario > "/dev/stderr"
     exit 1
   }
-  printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+  printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
     scenario,
     value("run_id", ""),
     executed_at,
@@ -164,7 +164,11 @@ NR == 1 {
     value("p999_ms", "999999"),
     value("postgres_checkpoint_ref", "n/a"),
     value("postgres_temp_file_ref", "n/a"),
-    value("nginx_upstream_latency_ref", "n/a")
+    value("nginx_upstream_latency_ref", "n/a"),
+    value("workload_mix_ref", "n/a"),
+    value("workload_component_ref", "n/a"),
+    value("outbox_lag_ref", "n/a"),
+    value("outbox_lag_max", "0")
 }
 ' "${input_tsv}" >"${execution_tsv}"
 

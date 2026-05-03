@@ -223,6 +223,12 @@ NR == 1 {
   if (scenario == "cold-warm-cache") require_ref("cache_state_ref", "cache-state-missing")
   if (scenario == "deploy-drain") require_ref("deploy_event_ref", "deploy-event-missing")
   if (scenario == "mixed-workload-30m" && duration_min < mixed_min_duration_min) add_reason("mixed-duration<" mixed_min_duration_min)
+  if (scenario == "mixed-workload-30m") {
+    require_ref("workload_mix_ref", "workload-mix-missing")
+    require_ref("workload_component_ref", "workload-component-missing")
+    require_ref("outbox_lag_ref", "outbox-lag-missing")
+    if (value("outbox_lag_max", "1") + 0 > 0) add_reason("outbox-lag>0")
+  }
   if (scenario == "p999-long-correlation" && duration_min < p999_min_duration_min) add_reason("p999-duration<" p999_min_duration_min)
   if (scenario == "p999-long-correlation") {
     require_ref("postgres_checkpoint_ref", "postgres-checkpoint-missing")
@@ -305,6 +311,7 @@ cat >"${report_md}" <<REPORT
 - backend 429/unknown 429/499/5xx/Hikari warning/pool pending target: 0
 - unknown 429 hard-zero
 - p99.9 closure artifacts: PostgreSQL checkpoint, temp file, Nginx upstream latency
+- mixed workload closure artifacts: workload mix, component split, outbox lag
 
 ## Result Table
 
@@ -314,6 +321,7 @@ ${result_table}
 
 - OCI evidence는 run id, 실행 시각, 실행 script, k6 summary, Nginx access, Spring metrics, Hikari log, PostgreSQL wait, timeline을 같은 row에 남긴다.
 - p99.9 long correlation은 PostgreSQL checkpoint, temp file, Nginx upstream latency artifact를 같은 run id로 묶는다.
+- mixed workload는 workload mix, component split, outbox lag artifact를 같은 run id로 묶고 outbox lag max 0을 요구한다.
 - cold/warm cache는 cache state artifact, deploy drain은 deploy event artifact를 추가로 요구한다.
 - 이 gate는 실제 실행을 대신하지 않고, 실행 결과가 PR/issue에서 재검증 가능한 artifact manifest인지 닫는다.
 
