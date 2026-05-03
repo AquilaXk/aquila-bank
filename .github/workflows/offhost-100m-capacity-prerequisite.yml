@@ -19,11 +19,38 @@ on:
         description: "Repository path on remote Docker context host"
         required: false
         type: string
+      host_metrics_tsv:
+        description: "Combined host CPU/network TSV evidence ref"
+        required: false
+        type: string
+      vu16_summary_json:
+        description: "VU16 saturation summary JSON evidence ref"
+        required: false
+        type: string
+      burst_matrix_tsv:
+        description: "Burst 32/48/64/80/96 matrix TSV evidence ref"
+        required: false
+        type: string
+      source_evidence_tsv:
+        description: "Source-level 429/latency/5xx TSV evidence ref"
+        required: false
+        type: string
+      generator_host_metrics_tsv:
+        description: "Generator host CPU/network TSV evidence ref"
+        required: false
+        type: string
+      target_host_metrics_tsv:
+        description: "Target app/DB host CPU/network TSV evidence ref"
+        required: false
+        type: string
   pull_request:
     paths:
       - ".github/workflows/offhost-100m-capacity-prerequisite.yml"
       - "tools/test/run-transaction-100m-capacity-gates.sh"
       - "tools/test/run-offhost-capacity-env-doctor.sh"
+      - "tools/test/check-offhost-capacity-env-doctor.sh"
+      - "tools/test/offhost-capacity.env.example"
+      - "tools/test/check-offhost-capacity-prerequisite-required-gate.sh"
       - "tools/test/run-transaction-100m-offhost-capacity-baseline-report.sh"
       - "tools/test/run-t3micro-defensive-gates-aggregate-report.sh"
 
@@ -60,10 +87,22 @@ jobs:
           REMOTE_BASE_URL_INPUT: ${{ inputs.remote_base_url }}
           REMOTE_PROMETHEUS_RW_URL_INPUT: ${{ inputs.remote_prometheus_rw_url }}
           REMOTE_WORKDIR_INPUT: ${{ inputs.remote_workdir }}
+          HOST_METRICS_TSV_INPUT: ${{ inputs.host_metrics_tsv }}
+          VU16_SUMMARY_JSON_INPUT: ${{ inputs.vu16_summary_json }}
+          BURST_MATRIX_TSV_INPUT: ${{ inputs.burst_matrix_tsv }}
+          SOURCE_EVIDENCE_TSV_INPUT: ${{ inputs.source_evidence_tsv }}
+          GENERATOR_HOST_METRICS_TSV_INPUT: ${{ inputs.generator_host_metrics_tsv }}
+          TARGET_HOST_METRICS_TSV_INPUT: ${{ inputs.target_host_metrics_tsv }}
           CAPACITY_K6_DOCKER_CONTEXT_VAR: ${{ vars.CAPACITY_K6_DOCKER_CONTEXT }}
           CAPACITY_K6_REMOTE_BASE_URL_VAR: ${{ vars.CAPACITY_K6_REMOTE_BASE_URL }}
           CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL_VAR: ${{ vars.CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL }}
           CAPACITY_K6_REMOTE_WORKDIR_VAR: ${{ vars.CAPACITY_K6_REMOTE_WORKDIR }}
+          CAPACITY_K6_HOST_METRICS_TSV_VAR: ${{ vars.CAPACITY_K6_HOST_METRICS_TSV }}
+          CAPACITY_K6_VU16_SUMMARY_JSON_VAR: ${{ vars.CAPACITY_K6_VU16_SUMMARY_JSON }}
+          CAPACITY_K6_BURST_MATRIX_TSV_VAR: ${{ vars.CAPACITY_K6_BURST_MATRIX_TSV }}
+          CAPACITY_K6_SOURCE_EVIDENCE_TSV_VAR: ${{ vars.CAPACITY_K6_SOURCE_EVIDENCE_TSV }}
+          CAPACITY_K6_GENERATOR_HOST_METRICS_TSV_VAR: ${{ vars.CAPACITY_K6_GENERATOR_HOST_METRICS_TSV }}
+          CAPACITY_K6_TARGET_HOST_METRICS_TSV_VAR: ${{ vars.CAPACITY_K6_TARGET_HOST_METRICS_TSV }}
         shell: bash
         run: |
           set -euo pipefail
@@ -100,6 +139,12 @@ jobs:
               CAPACITY_K6_REMOTE_WORKDIR="${CAPACITY_K6_REMOTE_WORKDIR_ENV:-${GITHUB_WORKSPACE}}"
             fi
           fi
+          CAPACITY_K6_HOST_METRICS_TSV="${HOST_METRICS_TSV_INPUT:-${CAPACITY_K6_HOST_METRICS_TSV:-${CAPACITY_K6_HOST_METRICS_TSV_VAR:-}}}"
+          CAPACITY_K6_VU16_SUMMARY_JSON="${VU16_SUMMARY_JSON_INPUT:-${CAPACITY_K6_VU16_SUMMARY_JSON:-${CAPACITY_K6_VU16_SUMMARY_JSON_VAR:-}}}"
+          CAPACITY_K6_BURST_MATRIX_TSV="${BURST_MATRIX_TSV_INPUT:-${CAPACITY_K6_BURST_MATRIX_TSV:-${CAPACITY_K6_BURST_MATRIX_TSV_VAR:-}}}"
+          CAPACITY_K6_SOURCE_EVIDENCE_TSV="${SOURCE_EVIDENCE_TSV_INPUT:-${CAPACITY_K6_SOURCE_EVIDENCE_TSV:-${CAPACITY_K6_SOURCE_EVIDENCE_TSV_VAR:-}}}"
+          CAPACITY_K6_GENERATOR_HOST_METRICS_TSV="${GENERATOR_HOST_METRICS_TSV_INPUT:-${CAPACITY_K6_GENERATOR_HOST_METRICS_TSV:-${CAPACITY_K6_GENERATOR_HOST_METRICS_TSV_VAR:-${CAPACITY_K6_HOST_METRICS_TSV}}}}"
+          CAPACITY_K6_TARGET_HOST_METRICS_TSV="${TARGET_HOST_METRICS_TSV_INPUT:-${CAPACITY_K6_TARGET_HOST_METRICS_TSV:-${CAPACITY_K6_TARGET_HOST_METRICS_TSV_VAR:-}}}"
 
           missing=()
           [[ -z "${CAPACITY_K6_DOCKER_CONTEXT}" ]] && missing+=("CAPACITY_K6_DOCKER_CONTEXT")
@@ -124,6 +169,12 @@ jobs:
             CAPACITY_K6_REMOTE_BASE_URL
             CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL
             CAPACITY_K6_REMOTE_WORKDIR
+            CAPACITY_K6_HOST_METRICS_TSV
+            CAPACITY_K6_VU16_SUMMARY_JSON
+            CAPACITY_K6_BURST_MATRIX_TSV
+            CAPACITY_K6_SOURCE_EVIDENCE_TSV
+            CAPACITY_K6_GENERATOR_HOST_METRICS_TSV
+            CAPACITY_K6_TARGET_HOST_METRICS_TSV
           )
 
           for name in "${env_names[@]}"; do

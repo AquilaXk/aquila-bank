@@ -19,6 +19,18 @@ grep -F "name: staging" "${workflow}" >/dev/null
 grep -F 'OCI_A1_STAGING_ENV: ${{ secrets.OCI_A1_STAGING_ENV }}' "${workflow}" >/dev/null
 grep -F "Load off-host capacity env" "${workflow}" >/dev/null
 grep -F "CAPACITY_K6_DOCKER_CONTEXT_VAR" "${workflow}" >/dev/null
+grep -F "host_metrics_tsv:" "${workflow}" >/dev/null
+grep -F "vu16_summary_json:" "${workflow}" >/dev/null
+grep -F "burst_matrix_tsv:" "${workflow}" >/dev/null
+grep -F "source_evidence_tsv:" "${workflow}" >/dev/null
+grep -F "generator_host_metrics_tsv:" "${workflow}" >/dev/null
+grep -F "target_host_metrics_tsv:" "${workflow}" >/dev/null
+grep -F "HOST_METRICS_TSV_INPUT" "${workflow}" >/dev/null
+grep -F "VU16_SUMMARY_JSON_INPUT" "${workflow}" >/dev/null
+grep -F "BURST_MATRIX_TSV_INPUT" "${workflow}" >/dev/null
+grep -F "SOURCE_EVIDENCE_TSV_INPUT" "${workflow}" >/dev/null
+grep -F "GENERATOR_HOST_METRICS_TSV_INPUT" "${workflow}" >/dev/null
+grep -F "TARGET_HOST_METRICS_TSV_INPUT" "${workflow}" >/dev/null
 grep -F 'DEFAULT_CAPACITY_K6_DOCKER_CONTEXT="default"' "${workflow}" >/dev/null
 grep -F 'DEFAULT_CAPACITY_K6_REMOTE_BASE_URL="${STAGING_BASE_URL:-}"' "${workflow}" >/dev/null
 grep -F 'DEFAULT_CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL="http://172.17.0.2:9090/api/v1/write"' "${workflow}" >/dev/null
@@ -31,6 +43,12 @@ grep -F 'if [[ -z "${CAPACITY_K6_REMOTE_WORKDIR}" ]]; then' "${workflow}" >/dev/
 grep -F 'if [[ "${CAPACITY_K6_DOCKER_CONTEXT}" == "default" ]]; then' "${workflow}" >/dev/null
 grep -F 'CAPACITY_K6_REMOTE_WORKDIR="${GITHUB_WORKSPACE}"' "${workflow}" >/dev/null
 grep -F 'CAPACITY_K6_REMOTE_WORKDIR="${CAPACITY_K6_REMOTE_WORKDIR_ENV:-${GITHUB_WORKSPACE}}"' "${workflow}" >/dev/null
+grep -F 'CAPACITY_K6_HOST_METRICS_TSV="${HOST_METRICS_TSV_INPUT:-${CAPACITY_K6_HOST_METRICS_TSV:-${CAPACITY_K6_HOST_METRICS_TSV_VAR:-}}}"' "${workflow}" >/dev/null
+grep -F 'CAPACITY_K6_VU16_SUMMARY_JSON="${VU16_SUMMARY_JSON_INPUT:-${CAPACITY_K6_VU16_SUMMARY_JSON:-${CAPACITY_K6_VU16_SUMMARY_JSON_VAR:-}}}"' "${workflow}" >/dev/null
+grep -F 'CAPACITY_K6_BURST_MATRIX_TSV="${BURST_MATRIX_TSV_INPUT:-${CAPACITY_K6_BURST_MATRIX_TSV:-${CAPACITY_K6_BURST_MATRIX_TSV_VAR:-}}}"' "${workflow}" >/dev/null
+grep -F 'CAPACITY_K6_SOURCE_EVIDENCE_TSV="${SOURCE_EVIDENCE_TSV_INPUT:-${CAPACITY_K6_SOURCE_EVIDENCE_TSV:-${CAPACITY_K6_SOURCE_EVIDENCE_TSV_VAR:-}}}"' "${workflow}" >/dev/null
+grep -F 'CAPACITY_K6_GENERATOR_HOST_METRICS_TSV="${GENERATOR_HOST_METRICS_TSV_INPUT:-${CAPACITY_K6_GENERATOR_HOST_METRICS_TSV:-${CAPACITY_K6_GENERATOR_HOST_METRICS_TSV_VAR:-${CAPACITY_K6_HOST_METRICS_TSV}}}}"' "${workflow}" >/dev/null
+grep -F 'CAPACITY_K6_TARGET_HOST_METRICS_TSV="${TARGET_HOST_METRICS_TSV_INPUT:-${CAPACITY_K6_TARGET_HOST_METRICS_TSV:-${CAPACITY_K6_TARGET_HOST_METRICS_TSV_VAR:-}}}"' "${workflow}" >/dev/null
 grep -F 'CAPACITY_REMOTE_PREFLIGHT="true"' "${workflow}" >/dev/null
 grep -F "Run off-host remote preflight" "${workflow}" >/dev/null
 grep -F "tools/test/run-offhost-capacity-env-doctor.sh" "${workflow}" >/dev/null
