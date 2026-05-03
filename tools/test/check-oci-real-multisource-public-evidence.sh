@@ -13,6 +13,7 @@ single_summary="${temp_dir}/single-summary.json"
 multi_summary="${temp_dir}/multi-summary.json"
 status_tsv="${temp_dir}/nginx-status.tsv"
 source_evidence_tsv="${temp_dir}/source-evidence.tsv"
+host_metrics_tsv="${temp_dir}/host-metrics.tsv"
 output_dir="${temp_dir}/output"
 
 cat >"${single_summary}" <<'JSON'
@@ -58,6 +59,13 @@ source-a	oci-source-evidence-20260503	oci-k6-a	198.51.100.10	0.081	0	154.0	0	oci
 source-b	oci-source-evidence-20260503	oci-k6-b	198.51.100.11	0.089	0	158.0	0	oci://aquila-evidence/transaction-read/oci-source-evidence-20260503/source-b
 TSV
 
+cat >"${host_metrics_tsv}" <<'TSV'
+run_id	host_role	host_name	docker_context	cpu_pct	rx_mbps	tx_mbps	artifact_uri
+oci-source-evidence-20260503	generator	k6-a	oci-k6-a	41.2	18.5	21.1	oci://aquila-evidence/transaction-read/oci-source-evidence-20260503/host/k6-a
+oci-source-evidence-20260503	generator	k6-b	oci-k6-b	39.8	17.9	20.4	oci://aquila-evidence/transaction-read/oci-source-evidence-20260503/host/k6-b
+oci-source-evidence-20260503	target	oci-a1-staging	target	63.5	38.2	44.6	oci://aquila-evidence/transaction-read/oci-source-evidence-20260503/host/target
+TSV
+
 echo "[oci-real-multisource-public-evidence] print plan"
 plan="$(
   OCI_REAL_MULTISOURCE_NAME=real-multi-check \
@@ -67,6 +75,7 @@ plan="$(
   OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON="${multi_summary}" \
   OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV="${status_tsv}" \
   OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV="${source_evidence_tsv}" \
+  OCI_REAL_MULTISOURCE_HOST_METRICS_TSV="${host_metrics_tsv}" \
   OCI_REAL_MULTISOURCE_ARTIFACT_URI=oci://aquila-evidence/transaction-read/oci-source-evidence-20260503 \
   OCI_REAL_MULTISOURCE_OUTPUT_DIR="${output_dir}" \
     "${runner}" --print-plan
@@ -77,6 +86,7 @@ grep -F "docker_context_count=2" <<<"${plan}" >/dev/null
 grep -F "true_multi_source_required=true" <<<"${plan}" >/dev/null
 grep -F "minimum_remote_docker_contexts=2" <<<"${plan}" >/dev/null
 grep -F "source_evidence_tsv=${source_evidence_tsv}" <<<"${plan}" >/dev/null
+grep -F "host_metrics_tsv=${host_metrics_tsv}" <<<"${plan}" >/dev/null
 grep -F "artifact_uri=oci://aquila-evidence/transaction-read/oci-source-evidence-20260503" <<<"${plan}" >/dev/null
 grep -F "multi_source_runner=tools/test/run-k6-transaction-100m-multisource.sh" <<<"${plan}" >/dev/null
 grep -F "replay_gate=tools/test/run-oci-real-ip-multisource-capacity-replay.sh" <<<"${plan}" >/dev/null
@@ -90,6 +100,7 @@ output="$(
   OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON="${multi_summary}" \
   OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV="${status_tsv}" \
   OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV="${source_evidence_tsv}" \
+  OCI_REAL_MULTISOURCE_HOST_METRICS_TSV="${host_metrics_tsv}" \
   OCI_REAL_MULTISOURCE_ARTIFACT_URI=oci://aquila-evidence/transaction-read/oci-source-evidence-20260503 \
   OCI_REAL_MULTISOURCE_OUTPUT_DIR="${output_dir}" \
     "${runner}"
@@ -97,6 +108,7 @@ output="$(
 report_md="$(tail -1 <<<"${output}")"
 contexts_tsv="${output_dir}/real-multi-check-real-multisource-contexts.tsv"
 source_summary_tsv="${output_dir}/real-multi-check-real-multisource-source-summary.tsv"
+host_metrics_summary_tsv="${output_dir}/real-multi-check-real-multisource-host-metrics.tsv"
 test "${report_md}" = "${output_dir}/real-multi-check-real-multisource-public-evidence.md"
 grep -F "gate_status=pass" "${report_md}" >/dev/null
 grep -F "actual execution run id: oci-source-evidence-20260503" "${report_md}" >/dev/null
@@ -105,6 +117,7 @@ grep -F "docker context count: 2" "${report_md}" >/dev/null
 grep -F "single-source vs multi-source comparison: fixed" "${report_md}" >/dev/null
 grep -F "real IP bucket split: verified" "${report_md}" >/dev/null
 grep -F "source-level real IP/429/latency split: verified" "${report_md}" >/dev/null
+grep -F "host-level CPU/network split: verified" "${report_md}" >/dev/null
 grep -F "true multi-source public traffic evidence: fixed" "${report_md}" >/dev/null
 grep -F $'index\tdocker_context' "${contexts_tsv}" >/dev/null
 grep -F $'1\toci-k6-a' "${contexts_tsv}" >/dev/null
@@ -112,6 +125,9 @@ grep -F $'2\toci-k6-b' "${contexts_tsv}" >/dev/null
 grep -F $'source_name\trun_id\tdocker_context\trealip_remote_addr\tedge_429_rate\tbackend_429_rate\taccepted_p95_ms\tfive_xx_count\tartifact_uri' "${source_summary_tsv}" >/dev/null
 grep -F $'source-a\toci-source-evidence-20260503\toci-k6-a\t198.51.100.10\t0.081\t0\t154.0\t0\toci://aquila-evidence/transaction-read/oci-source-evidence-20260503/source-a' "${source_summary_tsv}" >/dev/null
 grep -F $'source-b\toci-source-evidence-20260503\toci-k6-b\t198.51.100.11\t0.089\t0\t158.0\t0\toci://aquila-evidence/transaction-read/oci-source-evidence-20260503/source-b' "${source_summary_tsv}" >/dev/null
+grep -F $'run_id\thost_role\thost_name\tdocker_context\tcpu_pct\trx_mbps\ttx_mbps\tartifact_uri' "${host_metrics_summary_tsv}" >/dev/null
+grep -F $'oci-source-evidence-20260503\tgenerator\tk6-a\toci-k6-a\t41.2\t18.5\t21.1\toci://aquila-evidence/transaction-read/oci-source-evidence-20260503/host/k6-a' "${host_metrics_summary_tsv}" >/dev/null
+grep -F $'oci-source-evidence-20260503\ttarget\toci-a1-staging\ttarget\t63.5\t38.2\t44.6\toci://aquila-evidence/transaction-read/oci-source-evidence-20260503/host/target' "${host_metrics_summary_tsv}" >/dev/null
 
 echo "[oci-real-multisource-public-evidence] one context fails"
 if OCI_REAL_MULTISOURCE_NAME=real-multi-one-context \
@@ -121,6 +137,7 @@ if OCI_REAL_MULTISOURCE_NAME=real-multi-one-context \
   OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON="${multi_summary}" \
   OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV="${status_tsv}" \
   OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV="${source_evidence_tsv}" \
+  OCI_REAL_MULTISOURCE_HOST_METRICS_TSV="${host_metrics_tsv}" \
   OCI_REAL_MULTISOURCE_ARTIFACT_URI=oci://aquila-evidence/transaction-read/oci-source-evidence-20260503 \
   OCI_REAL_MULTISOURCE_OUTPUT_DIR="${output_dir}" \
     "${runner}" >/dev/null 2>&1; then
@@ -137,6 +154,7 @@ if OCI_REAL_MULTISOURCE_NAME=real-multi-one-source \
   OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON="${multi_summary}" \
   OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV="${status_tsv}" \
   OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV="${source_evidence_tsv}.one-source" \
+  OCI_REAL_MULTISOURCE_HOST_METRICS_TSV="${host_metrics_tsv}" \
   OCI_REAL_MULTISOURCE_ARTIFACT_URI=oci://aquila-evidence/transaction-read/oci-source-evidence-20260503 \
   OCI_REAL_MULTISOURCE_OUTPUT_DIR="${output_dir}" \
     "${runner}" >/dev/null 2>&1; then
@@ -153,9 +171,44 @@ if OCI_REAL_MULTISOURCE_NAME=real-multi-blank-artifact \
   OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON="${multi_summary}" \
   OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV="${status_tsv}" \
   OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV="${source_evidence_tsv}.blank-artifact" \
+  OCI_REAL_MULTISOURCE_HOST_METRICS_TSV="${host_metrics_tsv}" \
   OCI_REAL_MULTISOURCE_ARTIFACT_URI=oci://aquila-evidence/transaction-read/oci-source-evidence-20260503 \
   OCI_REAL_MULTISOURCE_OUTPUT_DIR="${output_dir}" \
     "${runner}" >/dev/null 2>&1; then
   echo "real multi-source public evidence unexpectedly passed blank source artifact" >&2
+  exit 1
+fi
+
+echo "[oci-real-multisource-public-evidence] missing target host metrics fails"
+awk -F '\t' 'NR == 1 || $2 != "target"' "${host_metrics_tsv}" >"${host_metrics_tsv}.missing-target"
+if OCI_REAL_MULTISOURCE_NAME=real-multi-missing-target-host \
+  OCI_REAL_MULTISOURCE_RUN_ID=oci-source-evidence-20260503 \
+  OCI_REAL_MULTISOURCE_CONTEXTS=oci-k6-a,oci-k6-b \
+  OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON="${single_summary}" \
+  OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON="${multi_summary}" \
+  OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV="${status_tsv}" \
+  OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV="${source_evidence_tsv}" \
+  OCI_REAL_MULTISOURCE_HOST_METRICS_TSV="${host_metrics_tsv}.missing-target" \
+  OCI_REAL_MULTISOURCE_ARTIFACT_URI=oci://aquila-evidence/transaction-read/oci-source-evidence-20260503 \
+  OCI_REAL_MULTISOURCE_OUTPUT_DIR="${output_dir}" \
+    "${runner}" >/dev/null 2>&1; then
+  echo "real multi-source public evidence unexpectedly passed without target host metrics" >&2
+  exit 1
+fi
+
+echo "[oci-real-multisource-public-evidence] missing generator host metrics fails"
+awk -F '\t' 'NR == 1 || $4 != "oci-k6-b"' "${host_metrics_tsv}" >"${host_metrics_tsv}.missing-generator"
+if OCI_REAL_MULTISOURCE_NAME=real-multi-missing-generator-host \
+  OCI_REAL_MULTISOURCE_RUN_ID=oci-source-evidence-20260503 \
+  OCI_REAL_MULTISOURCE_CONTEXTS=oci-k6-a,oci-k6-b \
+  OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON="${single_summary}" \
+  OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON="${multi_summary}" \
+  OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV="${status_tsv}" \
+  OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV="${source_evidence_tsv}" \
+  OCI_REAL_MULTISOURCE_HOST_METRICS_TSV="${host_metrics_tsv}.missing-generator" \
+  OCI_REAL_MULTISOURCE_ARTIFACT_URI=oci://aquila-evidence/transaction-read/oci-source-evidence-20260503 \
+  OCI_REAL_MULTISOURCE_OUTPUT_DIR="${output_dir}" \
+    "${runner}" >/dev/null 2>&1; then
+  echo "real multi-source public evidence unexpectedly passed without each generator host metrics" >&2
   exit 1
 fi

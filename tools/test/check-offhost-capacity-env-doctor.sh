@@ -13,11 +13,13 @@ grep -F "export CAPACITY_K6_GENERATOR_MODE=docker-context" "${template}" >/dev/n
 grep -F "export CAPACITY_K6_DOCKER_CONTEXT=<remote-docker-context>" "${template}" >/dev/null
 grep -F "export CAPACITY_K6_REMOTE_BASE_URL=http://<backend-host>:18080" "${template}" >/dev/null
 grep -F "export CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL=http://<prometheus-host>:9090/api/v1/write" "${template}" >/dev/null
+grep -F "export CAPACITY_K6_HOST_METRICS_TSV=build/reports/k6/<run-id>/host-metrics.tsv" "${template}" >/dev/null
 
 echo "[offhost-capacity-env-doctor] print template"
 env_template="$("${script}" --print-env-template)"
 grep -F "CAPACITY_K6_DOCKER_CONTEXT=<remote-docker-context>" <<<"${env_template}" >/dev/null
 grep -F "CAPACITY_REMOTE_READINESS_PATH=/actuator/health/readiness" <<<"${env_template}" >/dev/null
+grep -F "CAPACITY_K6_HOST_METRICS_TSV=build/reports/k6/<run-id>/host-metrics.tsv" <<<"${env_template}" >/dev/null
 
 temp_dir="$(mktemp -d)"
 trap 'rm -rf "${temp_dir}"' EXIT
@@ -30,6 +32,7 @@ CAPACITY_K6_REMOTE_WORKDIR=/srv/aquila-bank
 CAPACITY_REMOTE_PREFLIGHT_TIMEOUT_SECONDS=15
 CAPACITY_REMOTE_PREFLIGHT_IMAGE=curlimages/curl:8.11.1
 CAPACITY_REMOTE_READINESS_PATH=/actuator/health/readiness
+CAPACITY_K6_HOST_METRICS_TSV=build/reports/k6/offhost-check/host-metrics.tsv
 ENV
 
 echo "[offhost-capacity-env-doctor] plan"
@@ -44,6 +47,7 @@ grep -F "remote_base_url=http://192.0.2.20:18080" <<<"${plan}" >/dev/null
 grep -F "remote_prometheus_rw_url=http://192.0.2.20:9090/api/v1/write" <<<"${plan}" >/dev/null
 grep -F "remote_workdir=/srv/aquila-bank" <<<"${plan}" >/dev/null
 grep -F "readiness_url=http://192.0.2.20:18080/actuator/health/readiness" <<<"${plan}" >/dev/null
+grep -F "host_metrics_tsv=build/reports/k6/offhost-check/host-metrics.tsv" <<<"${plan}" >/dev/null
 grep -F "timeout_seconds=15" <<<"${plan}" >/dev/null
 grep -F "check_connectivity=false" <<<"${plan}" >/dev/null
 
@@ -75,6 +79,7 @@ fi
 echo "[offhost-capacity-env-doctor] runner contract"
 grep -F "OFFHOST_CAPACITY_ENV_FILE" "${script}" >/dev/null
 grep -F "OFFHOST_CAPACITY_CHECK_CONNECTIVITY" "${script}" >/dev/null
+grep -F "CAPACITY_K6_HOST_METRICS_TSV" "${script}" >/dev/null
 grep -F "docker context inspect" "${script}" >/dev/null
 grep -F "docker --context \"\${docker_context}\" info" "${script}" >/dev/null
 grep -F "docker --context \"\${docker_context}\" run --rm \"\${preflight_image}\"" "${script}" >/dev/null
