@@ -43,6 +43,16 @@ on:
         required: false
         default: "1m"
         type: string
+      arrival_rate:
+        description: "k6 constant-arrival-rate iterations per time unit"
+        required: false
+        default: "16"
+        type: string
+      time_unit:
+        description: "k6 constant-arrival-rate time unit"
+        required: false
+        default: "1s"
+        type: string
       scenario_mode:
         description: "k6 scenario mode"
         required: false
@@ -64,6 +74,26 @@ on:
       max_vus:
         description: "k6 max VUs"
         required: false
+        type: string
+      preemptive_pacing:
+        description: "Enable request-before token pacing"
+        required: false
+        default: false
+        type: boolean
+      preemptive_pacing_rps:
+        description: "Global preemptive pacing RPS budget"
+        required: false
+        default: "16"
+        type: string
+      preemptive_pacing_max_sleep_ms:
+        description: "Max preemptive pacing sleep per request"
+        required: false
+        default: "250"
+        type: string
+      preemptive_pacing_jitter_ms:
+        description: "Preemptive pacing jitter"
+        required: false
+        default: "25"
         type: string
       overload_mode:
         description: "Treat 429 as capacity rejection; empty auto-enables for burst"
@@ -100,6 +130,10 @@ on:
         description: "Repository path on remote Docker context host"
         required: false
         type: string
+      nginx_access_log:
+        description: "Nginx JSON access log path for aggregate artifact"
+        required: false
+        type: string
       report_name:
         description: "Optional k6 report name"
         required: false
@@ -109,6 +143,8 @@ on:
       - ".github/workflows/oci-k6-service-auth-token.yml"
       - "tools/test/check-oci-k6-service-auth-token-workflow.sh"
       - "tools/test/run-k6-transaction-100m-loadtest.sh"
+      - "tools/test/run-transaction-read-nginx-access-aggregate-artifact.sh"
+      - "tools/test/check-transaction-read-nginx-access-aggregate-artifact.sh"
 
 permissions:
   contents: read
@@ -149,14 +185,21 @@ jobs:
           COLD_TO_INPUT: ${{ inputs.cold_to }}
           VUS_INPUT: ${{ inputs.vus }}
           DURATION_INPUT: ${{ inputs.duration }}
+          ARRIVAL_RATE_INPUT: ${{ inputs.arrival_rate }}
+          TIME_UNIT_INPUT: ${{ inputs.time_unit }}
           SCENARIO_MODE_INPUT: ${{ inputs.scenario_mode }}
           BURST_RATE_INPUT: ${{ inputs.burst_rate }}
           PRE_ALLOCATED_VUS_INPUT: ${{ inputs.pre_allocated_vus }}
           MAX_VUS_INPUT: ${{ inputs.max_vus }}
+          PREEMPTIVE_PACING_INPUT: ${{ inputs.preemptive_pacing }}
+          PREEMPTIVE_PACING_RPS_INPUT: ${{ inputs.preemptive_pacing_rps }}
+          PREEMPTIVE_PACING_MAX_SLEEP_MS_INPUT: ${{ inputs.preemptive_pacing_max_sleep_ms }}
+          PREEMPTIVE_PACING_JITTER_MS_INPUT: ${{ inputs.preemptive_pacing_jitter_ms }}
           OVERLOAD_MODE_INPUT: ${{ inputs.overload_mode }}
           BURST_429_RATE_THRESHOLD_INPUT: ${{ inputs.burst_429_rate_threshold }}
           BACKEND_429_RATE_THRESHOLD_INPUT: ${{ inputs.backend_429_rate_threshold }}
           OVERLOAD_503_RATE_THRESHOLD_INPUT: ${{ inputs.overload_503_rate_threshold }}
+          NGINX_ACCESS_LOG_INPUT: ${{ inputs.nginx_access_log }}
           DOCKER_CONTEXT_INPUT: ${{ inputs.docker_context }}
           REMOTE_BASE_URL_INPUT: ${{ inputs.remote_base_url }}
           REMOTE_PROMETHEUS_RW_URL_INPUT: ${{ inputs.remote_prometheus_rw_url }}
@@ -165,6 +208,7 @@ jobs:
           CAPACITY_K6_REMOTE_BASE_URL_VAR: ${{ vars.CAPACITY_K6_REMOTE_BASE_URL }}
           CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL_VAR: ${{ vars.CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL }}
           CAPACITY_K6_REMOTE_WORKDIR_VAR: ${{ vars.CAPACITY_K6_REMOTE_WORKDIR }}
+          CAPACITY_K6_NGINX_ACCESS_LOG_VAR: ${{ vars.CAPACITY_K6_NGINX_ACCESS_LOG }}
         shell: bash
         run: |
           set -euo pipefail
@@ -189,6 +233,7 @@ jobs:
           DEFAULT_K6_DOCKER_CONTEXT="default"
           DEFAULT_K6_REMOTE_BASE_URL="${STAGING_BASE_URL:-}"
           DEFAULT_K6_REMOTE_PROMETHEUS_RW_SERVER_URL="http://172.17.0.2:9090/api/v1/write"
+          DEFAULT_K6_NGINX_ACCESS_LOG="/var/log/nginx/access.log"
           K6_DOCKER_CONTEXT="${DOCKER_CONTEXT_INPUT:-${CAPACITY_K6_DOCKER_CONTEXT_VAR:-${DEFAULT_K6_DOCKER_CONTEXT}}}"
           K6_REMOTE_BASE_URL="${REMOTE_BASE_URL_INPUT:-${CAPACITY_K6_REMOTE_BASE_URL:-${CAPACITY_K6_REMOTE_BASE_URL_VAR:-${DEFAULT_K6_REMOTE_BASE_URL}}}}"
           K6_REMOTE_PROMETHEUS_RW_SERVER_URL="${REMOTE_PROMETHEUS_RW_URL_INPUT:-${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL:-${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL_VAR:-${DEFAULT_K6_REMOTE_PROMETHEUS_RW_SERVER_URL}}}}"
@@ -215,6 +260,8 @@ jobs:
           K6_VUS="${VUS_INPUT}"
           K6_DURATION="${DURATION_INPUT}"
           K6_SCENARIO_MODE="${SCENARIO_MODE_INPUT}"
+          K6_RATE="${ARRIVAL_RATE_INPUT}"
+          K6_TIME_UNIT="${TIME_UNIT_INPUT}"
           K6_OVERLOAD_MODE="${OVERLOAD_MODE_INPUT}"
           if [[ -z "${K6_OVERLOAD_MODE}" && "${K6_SCENARIO_MODE}" == "burst" ]]; then
             K6_OVERLOAD_MODE="true"
@@ -223,10 +270,14 @@ jobs:
           K6_BURST_RATE="${BURST_RATE_INPUT}"
           K6_PRE_ALLOCATED_VUS="${PRE_ALLOCATED_VUS_INPUT}"
           K6_MAX_VUS="${MAX_VUS_INPUT}"
+          K6_PREEMPTIVE_PACING="${PREEMPTIVE_PACING_INPUT}"
+          K6_PREEMPTIVE_PACING_RPS="${PREEMPTIVE_PACING_RPS_INPUT}"
+          K6_PREEMPTIVE_PACING_MAX_SLEEP_MS="${PREEMPTIVE_PACING_MAX_SLEEP_MS_INPUT}"
+          K6_PREEMPTIVE_PACING_JITTER_MS="${PREEMPTIVE_PACING_JITTER_MS_INPUT}"
           K6_BURST_429_RATE_THRESHOLD="${BURST_429_RATE_THRESHOLD_INPUT}"
           K6_BACKEND_429_RATE_THRESHOLD="${BACKEND_429_RATE_THRESHOLD_INPUT}"
           K6_OVERLOAD_503_RATE_THRESHOLD="${OVERLOAD_503_RATE_THRESHOLD_INPUT}"
-          K6_NGINX_ACCESS_LOG="${K6_NGINX_ACCESS_LOG:-${NGINX_ACCESS_LOG:-}}"
+          K6_NGINX_ACCESS_LOG="${NGINX_ACCESS_LOG_INPUT:-${K6_NGINX_ACCESS_LOG:-${NGINX_ACCESS_LOG:-${CAPACITY_K6_NGINX_ACCESS_LOG:-${CAPACITY_K6_NGINX_ACCESS_LOG_VAR:-${DEFAULT_K6_NGINX_ACCESS_LOG}}}}}}"
 
           if ! [[ "${K6_REPORT_NAME}" =~ ^[A-Za-z0-9._-]+$ ]]; then
             echo "::error::K6 report name must contain only letters, numbers, dot, underscore, or hyphen."
@@ -275,10 +326,16 @@ jobs:
             K6_VUS
             K6_DURATION
             K6_SCENARIO_MODE
+            K6_RATE
+            K6_TIME_UNIT
             K6_OVERLOAD_MODE
             K6_BURST_RATE
             K6_PRE_ALLOCATED_VUS
             K6_MAX_VUS
+            K6_PREEMPTIVE_PACING
+            K6_PREEMPTIVE_PACING_RPS
+            K6_PREEMPTIVE_PACING_MAX_SLEEP_MS
+            K6_PREEMPTIVE_PACING_JITTER_MS
             K6_BURST_429_RATE_THRESHOLD
             K6_BACKEND_429_RATE_THRESHOLD
             K6_OVERLOAD_503_RATE_THRESHOLD
@@ -296,6 +353,55 @@ jobs:
               printf '%s=%s\n' "${name}" "${value}" >>"${GITHUB_ENV}"
             fi
           done
+
+      - name: Write k6 pacing evidence artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          report_dir="build/reports/k6/${K6_REPORT_NAME}"
+          mkdir -p "${report_dir}"
+          pacing_input="${report_dir}/k6-pacing-input.json"
+          pacing_summary="${report_dir}/k6-pacing-summary.md"
+          cat >"${pacing_input}" <<JSON
+          {
+            "k6_run_id": "${K6_RUN_ID}",
+            "scenario_mode": "${K6_SCENARIO_MODE}",
+            "constant_arrival_rate": {
+              "rate": "${K6_RATE}",
+              "time_unit": "${K6_TIME_UNIT}",
+              "gate_role": "strict"
+            },
+            "constant_vus": {
+              "vus": "${K6_VUS}",
+              "duration": "${K6_DURATION}",
+              "gate_role": "saturation_probe"
+            },
+            "burst": {
+              "rate": "${K6_BURST_RATE}",
+              "pre_allocated_vus": "${K6_PRE_ALLOCATED_VUS:-}",
+              "max_vus": "${K6_MAX_VUS:-}",
+              "overload_mode": "${K6_OVERLOAD_MODE}"
+            },
+            "preemptive_pacing": {
+              "enabled": ${K6_PREEMPTIVE_PACING},
+              "rps": "${K6_PREEMPTIVE_PACING_RPS}",
+              "max_sleep_ms": "${K6_PREEMPTIVE_PACING_MAX_SLEEP_MS}",
+              "jitter_ms": "${K6_PREEMPTIVE_PACING_JITTER_MS}"
+            }
+          }
+          JSON
+          cat >"${pacing_summary}" <<SUMMARY
+          # k6 Pacing Evidence
+
+          - k6_run_id=${K6_RUN_ID}
+          - scenario_mode=${K6_SCENARIO_MODE}
+          - arrival-rate gate: ${K6_RATE}/${K6_TIME_UNIT}
+          - constant-vus saturation probe: vus=${K6_VUS}, duration=${K6_DURATION}
+          - burst probe: rate=${K6_BURST_RATE}, preAllocatedVUs=${K6_PRE_ALLOCATED_VUS:-}, maxVUs=${K6_MAX_VUS:-}
+          - preemptive pacing: enabled=${K6_PREEMPTIVE_PACING}, rps=${K6_PREEMPTIVE_PACING_RPS}, maxSleepMs=${K6_PREEMPTIVE_PACING_MAX_SLEEP_MS}, jitterMs=${K6_PREEMPTIVE_PACING_JITTER_MS}
+          SUMMARY
+          printf 'K6_PACING_INPUT_REF=%s\n' "${pacing_input}" >>"${GITHUB_ENV}"
+          printf 'K6_PACING_SUMMARY_REF=%s\n' "${pacing_summary}" >>"${GITHUB_ENV}"
 
       - name: Run auth preflight
         shell: bash

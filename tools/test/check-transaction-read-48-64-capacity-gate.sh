@@ -111,6 +111,10 @@ echo "[transaction-read-48-64-capacity] runner contract"
 grep -F "run-transaction-read-burst-429-budget-gate.sh" "${runner}" >/dev/null
 grep -F "CAPACITY_48_64_RATES" "${runner}" >/dev/null
 grep -F "32,48,64,80,96" "${runner}" >/dev/null
+grep -F 'rate-32-summary.json' "${runner}" >/dev/null
+grep -F 'rate-48-summary.json' "${runner}" >/dev/null
+grep -F 'rate-80-summary.json' "${runner}" >/dev/null
+grep -F 'rate-96-summary.json' "${runner}" >/dev/null
 grep -F "lower_anchor_rate" "${runner}" >/dev/null
 grep -F "stable_pass_rate" "${runner}" >/dev/null
 grep -F "max_non_fail_rate" "${runner}" >/dev/null

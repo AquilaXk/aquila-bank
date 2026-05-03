@@ -34,12 +34,29 @@ grep -F 'K6_AUTH_TOKEN_ENV_NAME="STAGING_REPLAY_TOKEN"' "${workflow}" >/dev/null
 grep -F 'K6_AUTH_PREFLIGHT="true"' "${workflow}" >/dev/null
 grep -F "K6_AUTH_PREFLIGHT_PATH" "${workflow}" >/dev/null
 grep -F "burst_rate:" "${workflow}" >/dev/null
+grep -F "arrival_rate:" "${workflow}" >/dev/null
+grep -F "time_unit:" "${workflow}" >/dev/null
 grep -F "pre_allocated_vus:" "${workflow}" >/dev/null
 grep -F "max_vus:" "${workflow}" >/dev/null
+grep -F "preemptive_pacing:" "${workflow}" >/dev/null
+grep -F "preemptive_pacing_rps:" "${workflow}" >/dev/null
+grep -F "preemptive_pacing_max_sleep_ms:" "${workflow}" >/dev/null
+grep -F "preemptive_pacing_jitter_ms:" "${workflow}" >/dev/null
+grep -F "nginx_access_log:" "${workflow}" >/dev/null
 grep -F "burst_429_rate_threshold:" "${workflow}" >/dev/null
 grep -F "backend_429_rate_threshold:" "${workflow}" >/dev/null
 grep -F "overload_503_rate_threshold:" "${workflow}" >/dev/null
+grep -F "ARRIVAL_RATE_INPUT" "${workflow}" >/dev/null
+grep -F "TIME_UNIT_INPUT" "${workflow}" >/dev/null
+grep -F "PREEMPTIVE_PACING_INPUT" "${workflow}" >/dev/null
+grep -F "PREEMPTIVE_PACING_RPS_INPUT" "${workflow}" >/dev/null
+grep -F "PREEMPTIVE_PACING_MAX_SLEEP_MS_INPUT" "${workflow}" >/dev/null
+grep -F "PREEMPTIVE_PACING_JITTER_MS_INPUT" "${workflow}" >/dev/null
+grep -F "NGINX_ACCESS_LOG_INPUT" "${workflow}" >/dev/null
 grep -F "OVERLOAD_MODE_INPUT" "${workflow}" >/dev/null
+grep -F 'DEFAULT_K6_NGINX_ACCESS_LOG="/var/log/nginx/access.log"' "${workflow}" >/dev/null
+grep -F 'K6_RATE="${ARRIVAL_RATE_INPUT}"' "${workflow}" >/dev/null
+grep -F 'K6_TIME_UNIT="${TIME_UNIT_INPUT}"' "${workflow}" >/dev/null
 grep -F 'K6_OVERLOAD_MODE="${OVERLOAD_MODE_INPUT}"' "${workflow}" >/dev/null
 grep -F 'if [[ -z "${K6_OVERLOAD_MODE}" && "${K6_SCENARIO_MODE}" == "burst" ]]; then' "${workflow}" >/dev/null
 grep -F 'K6_OVERLOAD_MODE="true"' "${workflow}" >/dev/null
@@ -47,9 +64,19 @@ grep -F 'K6_OVERLOAD_MODE="${K6_OVERLOAD_MODE:-false}"' "${workflow}" >/dev/null
 grep -F 'K6_BURST_RATE="${BURST_RATE_INPUT}"' "${workflow}" >/dev/null
 grep -F 'K6_PRE_ALLOCATED_VUS="${PRE_ALLOCATED_VUS_INPUT}"' "${workflow}" >/dev/null
 grep -F 'K6_MAX_VUS="${MAX_VUS_INPUT}"' "${workflow}" >/dev/null
+grep -F 'K6_PREEMPTIVE_PACING="${PREEMPTIVE_PACING_INPUT}"' "${workflow}" >/dev/null
+grep -F 'K6_PREEMPTIVE_PACING_RPS="${PREEMPTIVE_PACING_RPS_INPUT}"' "${workflow}" >/dev/null
+grep -F 'K6_PREEMPTIVE_PACING_MAX_SLEEP_MS="${PREEMPTIVE_PACING_MAX_SLEEP_MS_INPUT}"' "${workflow}" >/dev/null
+grep -F 'K6_PREEMPTIVE_PACING_JITTER_MS="${PREEMPTIVE_PACING_JITTER_MS_INPUT}"' "${workflow}" >/dev/null
 grep -F 'K6_BURST_429_RATE_THRESHOLD="${BURST_429_RATE_THRESHOLD_INPUT}"' "${workflow}" >/dev/null
 grep -F 'K6_BACKEND_429_RATE_THRESHOLD="${BACKEND_429_RATE_THRESHOLD_INPUT}"' "${workflow}" >/dev/null
 grep -F 'K6_OVERLOAD_503_RATE_THRESHOLD="${OVERLOAD_503_RATE_THRESHOLD_INPUT}"' "${workflow}" >/dev/null
+grep -F 'K6_NGINX_ACCESS_LOG="${NGINX_ACCESS_LOG_INPUT:-${K6_NGINX_ACCESS_LOG:-${NGINX_ACCESS_LOG:-${CAPACITY_K6_NGINX_ACCESS_LOG:-${CAPACITY_K6_NGINX_ACCESS_LOG_VAR:-${DEFAULT_K6_NGINX_ACCESS_LOG}}}}}}"' "${workflow}" >/dev/null
+grep -F "Write k6 pacing evidence artifact" "${workflow}" >/dev/null
+grep -F "k6-pacing-input.json" "${workflow}" >/dev/null
+grep -F "k6-pacing-summary.md" "${workflow}" >/dev/null
+grep -F "K6_PACING_INPUT_REF" "${workflow}" >/dev/null
+grep -F "K6_PACING_SUMMARY_REF" "${workflow}" >/dev/null
 grep -F "Run auth preflight" "${workflow}" >/dev/null
 grep -F "tools/test/run-k6-transaction-100m-loadtest.sh --auth-preflight-only" "${workflow}" >/dev/null
 grep -F "Run authenticated k6 capacity" "${workflow}" >/dev/null
@@ -57,6 +84,7 @@ grep -F "tools/test/run-k6-transaction-100m-loadtest.sh --no-up --no-deps" "${wo
 grep -F "Build transaction read Nginx aggregate artifact" "${workflow}" >/dev/null
 grep -F "K6_NGINX_ACCESS_LOG" "${workflow}" >/dev/null
 grep -F "tools/test/run-transaction-read-nginx-access-aggregate-artifact.sh" "${workflow}" >/dev/null
+grep -F "tools/test/check-transaction-read-nginx-access-aggregate-artifact.sh" "${workflow}" >/dev/null
 grep -F "transaction-read-nginx-access-aggregate" "${workflow}" >/dev/null
 grep -F "actions/upload-artifact@" "${workflow}" >/dev/null
 grep -F "oci-k6-service-auth-token" "${workflow}" >/dev/null
