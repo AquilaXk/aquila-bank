@@ -85,18 +85,26 @@ grep -F "k6-pacing-summary.md" "${workflow}" >/dev/null
 grep -F "K6_PACING_INPUT_REF" "${workflow}" >/dev/null
 grep -F "K6_PACING_SUMMARY_REF" "${workflow}" >/dev/null
 grep -F '"gate_role": "saturation_probe"' "${workflow}" >/dev/null
+grep -F "Capture transaction read Nginx log window" "${workflow}" >/dev/null
+grep -F 'K6_NGINX_LOG_SINCE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"' "${workflow}" >/dev/null
 grep -F "Run auth preflight" "${workflow}" >/dev/null
 grep -F "tools/test/run-k6-transaction-100m-loadtest.sh --auth-preflight-only" "${workflow}" >/dev/null
 grep -F "Run authenticated k6 capacity" "${workflow}" >/dev/null
 grep -F "tools/test/run-k6-transaction-100m-loadtest.sh --no-up --no-deps" "${workflow}" >/dev/null
 grep -F "Resolve transaction read Nginx access log" "${workflow}" >/dev/null
+grep -F 'candidate_raw_log="${RUNNER_TEMP}/${K6_RUN_ID}-nginx-access.raw.jsonl"' "${workflow}" >/dev/null
+grep -F 'candidate_run_log="${RUNNER_TEMP}/${K6_RUN_ID}-nginx-access.jsonl"' "${workflow}" >/dev/null
+grep -F 'grep -F "\"k6_run_id\":\"${K6_RUN_ID}\"" "${candidate_raw_log}" >"${candidate_run_log}"' "${workflow}" >/dev/null
 grep -F 'container_candidates=(' "${workflow}" >/dev/null
 grep -F '"${K6_NGINX_CONTAINER:-}"' "${workflow}" >/dev/null
 grep -F "docker ps --format '{{.Names}}'" "${workflow}" >/dev/null
 grep -F 'docker exec "${container}" test -s /var/log/nginx/access.log' "${workflow}" >/dev/null
-grep -F 'docker cp "${container}:/var/log/nginx/access.log" "${candidate_log}"' "${workflow}" >/dev/null
+grep -F 'docker cp "${container}:/var/log/nginx/access.log" "${candidate_raw_log}"' "${workflow}" >/dev/null
+grep -F 'docker logs --since "${K6_NGINX_LOG_SINCE:-1h}" "${container}" >"${candidate_raw_log}"' "${workflow}" >/dev/null
 grep -F "Build transaction read Nginx aggregate artifact" "${workflow}" >/dev/null
 grep -F "K6_NGINX_ACCESS_LOG" "${workflow}" >/dev/null
+grep -F 'echo "::error::K6_NGINX_ACCESS_LOG is missing or empty; transaction-read-nginx-access-aggregate artifact required."' "${workflow}" >/dev/null
+grep -F 'NGINX_ACCESS_AGGREGATE_RUN_ID="${K6_RUN_ID}"' "${workflow}" >/dev/null
 grep -F "tools/test/run-transaction-read-nginx-access-aggregate-artifact.sh" "${workflow}" >/dev/null
 grep -F "tools/test/check-transaction-read-nginx-access-aggregate-artifact.sh" "${workflow}" >/dev/null
 grep -F "transaction-read-nginx-access-aggregate" "${workflow}" >/dev/null
