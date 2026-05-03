@@ -10,6 +10,10 @@ echo "[transaction-staging-replay-guard] distribution estimate uses leaf partiti
 grep -F "pg_partition_tree(('public.' || target.table_name)::regclass)" "${script}" >/dev/null
 grep -F "tree.isleaf" "${script}" >/dev/null
 grep -F "SUM(GREATEST(c.reltuples, 0))" "${script}" >/dev/null
+if grep -F "awk -v index=" "${script}" >/dev/null; then
+  echo "p95 calculation must not use gawk builtin name as variable" >&2
+  exit 1
+fi
 
 temp_dir="$(mktemp -d)"
 trap 'rm -rf "${temp_dir}"' EXIT

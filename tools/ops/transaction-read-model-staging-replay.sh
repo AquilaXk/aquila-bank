@@ -384,11 +384,11 @@ run_replay() {
 
 p95_ms() {
   local file="$1"
-  local count index
+  local count percentile_index
   count="$(wc -l <"$file" | tr -d ' ')"
   [ "$count" -gt 0 ] || fail "No latency samples in ${file}"
-  index=$(((count * 95 + 99) / 100))
-  sort -n "$file" | awk -v index="$index" 'NR == index { print; exit }'
+  percentile_index=$(((count * 95 + 99) / 100))
+  sort -n "$file" | awk -v percentile_index="$percentile_index" 'NR == percentile_index { print; exit }'
 }
 
 write_summary() {
