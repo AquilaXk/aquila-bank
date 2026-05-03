@@ -103,6 +103,9 @@ jobs:
           set +a
 
           STAGING_RDS_DATABASE_URL="${STAGING_RDS_DATABASE_URL:-${STAGING_OCI_A1_DATABASE_URL:-}}"
+          POSTGRES_CONTAINER_NAME="${POSTGRES_CONTAINER_NAME:-aquila-postgres}"
+          POSTGRES_NETWORK_ALIAS="${POSTGRES_NETWORK_ALIAS:-aquila-postgres}"
+          POSTGRES_HOST_BIND="${POSTGRES_HOST_BIND:-127.0.0.1:5432}"
           HOT_ACCOUNT_ID="${HOT_ACCOUNT_ID_INPUT}"
           HOT_FROM="${HOT_FROM_INPUT}"
           HOT_TO="${HOT_TO_INPUT}"
@@ -118,17 +121,21 @@ jobs:
           missing=()
           [[ -z "${STAGING_BASE_URL:-}" ]] && missing+=("STAGING_BASE_URL")
           [[ -z "${STAGING_REPLAY_TOKEN:-}" ]] && missing+=("STAGING_REPLAY_TOKEN")
-          [[ -z "${STAGING_RDS_DATABASE_URL:-}" ]] && missing+=("STAGING_RDS_DATABASE_URL")
+          [[ -z "${STAGING_RDS_DATABASE_URL:-}" && -z "${STAGING_OCI_A1_DATABASE_URL:-}" && -z "${OCI_A1_BACKEND_ENV_B64:-}" ]] && missing+=("STAGING_RDS_DATABASE_URL")
           if (( ${#missing[@]} > 0 )); then
             printf '::error::Missing OCI A1 staging replay env keys: %s\n' "${missing[*]}"
             exit 1
           fi
 
           env_names=(
+            OCI_A1_BACKEND_ENV_B64
             STAGING_BASE_URL
             STAGING_REPLAY_TOKEN
             STAGING_OCI_A1_DATABASE_URL
             STAGING_RDS_DATABASE_URL
+            POSTGRES_CONTAINER_NAME
+            POSTGRES_NETWORK_ALIAS
+            POSTGRES_HOST_BIND
             HOT_ACCOUNT_ID
             HOT_FROM
             HOT_TO
@@ -146,7 +153,7 @@ jobs:
             value="${!name:-}"
             if [[ -n "${value}" ]]; then
               case "${name}" in
-                STAGING_BASE_URL|STAGING_REPLAY_TOKEN|*DATABASE_URL)
+                STAGING_BASE_URL|STAGING_REPLAY_TOKEN|*DATABASE_URL|*_ENV_B64)
                   echo "::add-mask::${value}"
                   ;;
               esac
@@ -163,6 +170,15 @@ jobs:
           fi
           sudo apt-get update
           sudo apt-get install -y postgresql-client
+
+      - name: Resolve OCI A1 staging database URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          # backend가 Docker alias DB를 쓰면 workflow_dispatch도 host-local psql URL로 재산출한다.
+          resolved_database_url="$(tools/ops/resolve-oci-a1-staging-database-url.sh)"
+          echo "::add-mask::${resolved_database_url}"
+          printf 'STAGING_OCI_A1_DATABASE_URL=%s\n' "${resolved_database_url}" >>"${GITHUB_ENV}"
 
       - name: Run staging replay
         shell: bash
