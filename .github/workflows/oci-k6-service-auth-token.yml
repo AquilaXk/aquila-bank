@@ -1,0 +1,256 @@
+name: OCI k6 service auth token
+
+on:
+  workflow_dispatch:
+    inputs:
+      hot_account_id:
+        description: "Hot account id for authenticated transaction read"
+        required: true
+        default: "910000001"
+        type: string
+      hot_from:
+        description: "Hot account from timestamp"
+        required: true
+        default: "2026-04-01T00:00:00Z"
+        type: string
+      hot_to:
+        description: "Hot account to timestamp"
+        required: true
+        default: "2026-04-30T00:00:00Z"
+        type: string
+      cold_account_id:
+        description: "Cold account id for authenticated transaction read"
+        required: true
+        default: "910000002"
+        type: string
+      cold_from:
+        description: "Cold account from timestamp"
+        required: true
+        default: "2026-01-01T00:00:00Z"
+        type: string
+      cold_to:
+        description: "Cold account to timestamp"
+        required: true
+        default: "2026-01-31T00:00:00Z"
+        type: string
+      vus:
+        description: "k6 virtual users"
+        required: false
+        default: "8"
+        type: string
+      duration:
+        description: "k6 duration"
+        required: false
+        default: "1m"
+        type: string
+      scenario_mode:
+        description: "k6 scenario mode"
+        required: false
+        default: "constant-vus"
+        type: choice
+        options:
+          - constant-vus
+          - constant-arrival-rate
+          - burst
+      docker_context:
+        description: "Remote Docker context name for off-host k6"
+        required: false
+        type: string
+      remote_base_url:
+        description: "Backend URL reachable from off-host k6"
+        required: false
+        type: string
+      remote_prometheus_rw_url:
+        description: "Prometheus remote-write URL reachable from off-host k6"
+        required: false
+        type: string
+      remote_workdir:
+        description: "Repository path on remote Docker context host"
+        required: false
+        default: "/srv/aquila-bank"
+        type: string
+      report_name:
+        description: "Optional k6 report name"
+        required: false
+        type: string
+  pull_request:
+    paths:
+      - ".github/workflows/oci-k6-service-auth-token.yml"
+      - "tools/test/check-oci-k6-service-auth-token-workflow.sh"
+      - "tools/test/run-k6-transaction-100m-loadtest.sh"
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: OCI k6 service auth token contract
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate workflow contract
+        run: bash tools/test/check-oci-k6-service-auth-token-workflow.sh
+
+  authenticated-k6:
+    name: Authenticated OCI k6 capacity
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, oci-a1-staging]
+    timeout-minutes: 45
+    environment:
+      name: staging
+    env:
+      K6_REPORT_NAME: ${{ inputs.report_name || format('oci-k6-service-auth-token-{0}', github.run_id) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Load OCI k6 service auth env
+        env:
+          OCI_A1_STAGING_ENV: ${{ secrets.OCI_A1_STAGING_ENV }}
+          HOT_ACCOUNT_ID_INPUT: ${{ inputs.hot_account_id }}
+          HOT_FROM_INPUT: ${{ inputs.hot_from }}
+          HOT_TO_INPUT: ${{ inputs.hot_to }}
+          COLD_ACCOUNT_ID_INPUT: ${{ inputs.cold_account_id }}
+          COLD_FROM_INPUT: ${{ inputs.cold_from }}
+          COLD_TO_INPUT: ${{ inputs.cold_to }}
+          VUS_INPUT: ${{ inputs.vus }}
+          DURATION_INPUT: ${{ inputs.duration }}
+          SCENARIO_MODE_INPUT: ${{ inputs.scenario_mode }}
+          DOCKER_CONTEXT_INPUT: ${{ inputs.docker_context }}
+          REMOTE_BASE_URL_INPUT: ${{ inputs.remote_base_url }}
+          REMOTE_PROMETHEUS_RW_URL_INPUT: ${{ inputs.remote_prometheus_rw_url }}
+          REMOTE_WORKDIR_INPUT: ${{ inputs.remote_workdir }}
+          CAPACITY_K6_DOCKER_CONTEXT_VAR: ${{ vars.CAPACITY_K6_DOCKER_CONTEXT }}
+          CAPACITY_K6_REMOTE_BASE_URL_VAR: ${{ vars.CAPACITY_K6_REMOTE_BASE_URL }}
+          CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL_VAR: ${{ vars.CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL }}
+          CAPACITY_K6_REMOTE_WORKDIR_VAR: ${{ vars.CAPACITY_K6_REMOTE_WORKDIR }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${OCI_A1_STAGING_ENV}" ]]; then
+            echo "::error::Missing OCI_A1_STAGING_ENV environment secret."
+            exit 1
+          fi
+
+          staging_env_path="${RUNNER_TEMP}/oci-a1-staging-k6-service-auth.env"
+          printf '%s\n' "${OCI_A1_STAGING_ENV}" >"${staging_env_path}"
+          chmod 600 "${staging_env_path}"
+
+          set -a
+          # k6 capacity도 staging replay와 같은 unified staging secret contract를 사용한다.
+          source "${staging_env_path}"
+          set +a
+
+          K6_RUN_ID="${K6_REPORT_NAME}"
+          K6_RUN_PURPOSE="capacity"
+          K6_OBSERVABILITY_MODE="prometheus"
+          K6_GENERATOR_MODE="docker-context"
+          K6_DOCKER_CONTEXT="${DOCKER_CONTEXT_INPUT:-${CAPACITY_K6_DOCKER_CONTEXT:-${CAPACITY_K6_DOCKER_CONTEXT_VAR:-}}}"
+          K6_REMOTE_BASE_URL="${REMOTE_BASE_URL_INPUT:-${CAPACITY_K6_REMOTE_BASE_URL:-${CAPACITY_K6_REMOTE_BASE_URL_VAR:-}}}"
+          K6_REMOTE_PROMETHEUS_RW_SERVER_URL="${REMOTE_PROMETHEUS_RW_URL_INPUT:-${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL:-${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL_VAR:-}}}"
+          K6_REMOTE_WORKDIR="${REMOTE_WORKDIR_INPUT:-${CAPACITY_K6_REMOTE_WORKDIR:-${CAPACITY_K6_REMOTE_WORKDIR_VAR:-/srv/aquila-bank}}}"
+          K6_REMOTE_PREFLIGHT="true"
+          K6_AUTH_TOKEN_ENV_NAME="STAGING_REPLAY_TOKEN"
+          K6_AUTH_TOKEN_REQUIRED="true"
+          K6_AUTH_PREFLIGHT="true"
+          K6_AUTH_PREFLIGHT_PATH="api/v1/transactions?accountId=${HOT_ACCOUNT_ID_INPUT}&from=${HOT_FROM_INPUT}&to=${HOT_TO_INPUT}&limit=1"
+          K6_AUTH_PREFLIGHT_EXPECTED_STATUS="200"
+          K6_HOT_ACCOUNT_ID="${HOT_ACCOUNT_ID_INPUT}"
+          K6_HOT_FROM="${HOT_FROM_INPUT}"
+          K6_HOT_TO="${HOT_TO_INPUT}"
+          K6_COLD_ACCOUNT_ID="${COLD_ACCOUNT_ID_INPUT}"
+          K6_COLD_FROM="${COLD_FROM_INPUT}"
+          K6_COLD_TO="${COLD_TO_INPUT}"
+          K6_VUS="${VUS_INPUT}"
+          K6_DURATION="${DURATION_INPUT}"
+          K6_SCENARIO_MODE="${SCENARIO_MODE_INPUT}"
+
+          if ! [[ "${K6_REPORT_NAME}" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            echo "::error::K6 report name must contain only letters, numbers, dot, underscore, or hyphen."
+            exit 1
+          fi
+
+          missing=()
+          [[ -z "${STAGING_REPLAY_TOKEN:-}" ]] && missing+=("STAGING_REPLAY_TOKEN")
+          [[ -z "${K6_DOCKER_CONTEXT}" ]] && missing+=("K6_DOCKER_CONTEXT")
+          [[ -z "${K6_REMOTE_BASE_URL}" ]] && missing+=("K6_REMOTE_BASE_URL")
+          [[ -z "${K6_REMOTE_PROMETHEUS_RW_SERVER_URL}" ]] && missing+=("K6_REMOTE_PROMETHEUS_RW_SERVER_URL")
+          [[ -z "${K6_HOT_ACCOUNT_ID}" ]] && missing+=("K6_HOT_ACCOUNT_ID")
+          [[ -z "${K6_HOT_FROM}" ]] && missing+=("K6_HOT_FROM")
+          [[ -z "${K6_HOT_TO}" ]] && missing+=("K6_HOT_TO")
+          [[ -z "${K6_COLD_ACCOUNT_ID}" ]] && missing+=("K6_COLD_ACCOUNT_ID")
+          [[ -z "${K6_COLD_FROM}" ]] && missing+=("K6_COLD_FROM")
+          [[ -z "${K6_COLD_TO}" ]] && missing+=("K6_COLD_TO")
+          if (( ${#missing[@]} > 0 )); then
+            printf '::error::Missing OCI k6 service auth env keys: %s\n' "${missing[*]}"
+            exit 1
+          fi
+
+          env_names=(
+            STAGING_REPLAY_TOKEN
+            K6_REPORT_NAME
+            K6_RUN_ID
+            K6_RUN_PURPOSE
+            K6_OBSERVABILITY_MODE
+            K6_GENERATOR_MODE
+            K6_DOCKER_CONTEXT
+            K6_REMOTE_BASE_URL
+            K6_REMOTE_PROMETHEUS_RW_SERVER_URL
+            K6_REMOTE_WORKDIR
+            K6_REMOTE_PREFLIGHT
+            K6_AUTH_TOKEN_ENV_NAME
+            K6_AUTH_TOKEN_REQUIRED
+            K6_AUTH_PREFLIGHT
+            K6_AUTH_PREFLIGHT_PATH
+            K6_AUTH_PREFLIGHT_EXPECTED_STATUS
+            K6_HOT_ACCOUNT_ID
+            K6_HOT_FROM
+            K6_HOT_TO
+            K6_COLD_ACCOUNT_ID
+            K6_COLD_FROM
+            K6_COLD_TO
+            K6_VUS
+            K6_DURATION
+            K6_SCENARIO_MODE
+          )
+
+          for name in "${env_names[@]}"; do
+            value="${!name:-}"
+            if [[ -n "${value}" ]]; then
+              case "${name}" in
+                STAGING_REPLAY_TOKEN|K6_REMOTE_*|*TOKEN*|*DATABASE_URL|*_ENV_B64)
+                  echo "::add-mask::${value}"
+                  ;;
+              esac
+              printf '%s=%s\n' "${name}" "${value}" >>"${GITHUB_ENV}"
+            fi
+          done
+
+      - name: Run auth preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          report_dir="build/reports/k6/${K6_REPORT_NAME}"
+          mkdir -p "${report_dir}"
+          tools/test/run-k6-transaction-100m-loadtest.sh --auth-preflight-only >"${report_dir}/auth-preflight.log" 2>&1
+
+      - name: Run authenticated k6 capacity
+        shell: bash
+        run: |
+          set -euo pipefail
+          report_dir="build/reports/k6/${K6_REPORT_NAME}"
+          mkdir -p "${report_dir}"
+          tools/test/run-k6-transaction-100m-loadtest.sh --no-up --no-deps >"${report_dir}/k6-capacity.log" 2>&1
+
+      - name: Upload OCI k6 auth artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: oci-k6-service-auth-token-${{ github.run_id }}
+          path: |
+            build/reports/k6/${{ env.K6_REPORT_NAME }}/
+            build/reports/k6/${{ env.K6_REPORT_NAME }}*
+          if-no-files-found: ignore
