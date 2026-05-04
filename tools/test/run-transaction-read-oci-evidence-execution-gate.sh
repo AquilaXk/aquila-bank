@@ -15,7 +15,7 @@ Environment:
   OCI_EVIDENCE_EXECUTION_MAX_POOL_PENDING        default 0
   OCI_EVIDENCE_EXECUTION_MIXED_MIN_DURATION_MIN  default 30
   OCI_EVIDENCE_EXECUTION_P999_MIN_DURATION_MIN   default 30
-  OCI_EVIDENCE_EXECUTION_HIKARI_MIN_DURATION_MIN default 10
+  OCI_EVIDENCE_EXECUTION_HIKARI_MIN_DURATION_MIN default 30
   OCI_EVIDENCE_EXECUTION_DEPLOY_MIN_DURATION_MIN default 5
   OCI_EVIDENCE_EXECUTION_MIN_REAL_SOURCE_IPS     default 2
 USAGE
@@ -48,7 +48,7 @@ max_p999_ms="${OCI_EVIDENCE_EXECUTION_MAX_P999_MS:-500}"
 max_pool_pending="${OCI_EVIDENCE_EXECUTION_MAX_POOL_PENDING:-0}"
 mixed_min_duration_min="${OCI_EVIDENCE_EXECUTION_MIXED_MIN_DURATION_MIN:-30}"
 p999_min_duration_min="${OCI_EVIDENCE_EXECUTION_P999_MIN_DURATION_MIN:-30}"
-hikari_min_duration_min="${OCI_EVIDENCE_EXECUTION_HIKARI_MIN_DURATION_MIN:-10}"
+hikari_min_duration_min="${OCI_EVIDENCE_EXECUTION_HIKARI_MIN_DURATION_MIN:-30}"
 deploy_min_duration_min="${OCI_EVIDENCE_EXECUTION_DEPLOY_MIN_DURATION_MIN:-5}"
 min_real_source_ips="${OCI_EVIDENCE_EXECUTION_MIN_REAL_SOURCE_IPS:-2}"
 summary_tsv="${output_dir}/${name}-oci-evidence-execution.tsv"
@@ -164,6 +164,17 @@ function value(name, fallback) {
   if (!(name in col) || col[name] == "") return fallback
   return $(col[name])
 }
+function require_number(name, reason_value) {
+  raw = value(name, "")
+  if (raw !~ /^[0-9]+([.][0-9]+)?$/) {
+    add_reason(reason_value)
+    return 0
+  }
+  return raw + 0
+}
+function has_component(items, item) {
+  return index("," items ",", "," item ",") > 0
+}
 function add_reason(reason_value) {
   if (reason == "ok") {
     reason = reason_value
@@ -183,7 +194,7 @@ BEGIN {
   for (i in required_items) {
     required[required_items[i]] = 1
   }
-  print "scenario\tstatus\treason\trun_id\tduration_min\tsource_ips\trun_script\tk6_summary_ref\tnginx_access_ref\tspring_metrics_ref\thikari_log_ref\tpostgres_wait_ref\tdeploy_event_ref\tcache_state_ref\ttimeline_ref\tedge_429_rate\tbackend_429_count\tunknown_429_count\tfive_xx_count\tnginx_499_count\thikari_validation_warnings\tdb_pool_pending_max\tp999_ms"
+  print "scenario\tstatus\treason\trun_id\tduration_min\tsource_ips\trun_script\tk6_summary_ref\tnginx_access_ref\tspring_metrics_ref\thikari_log_ref\tpostgres_wait_ref\tdeploy_event_ref\tcache_state_ref\ttimeline_ref\tedge_429_rate\tbackend_429_count\tunknown_429_count\tfive_xx_count\tnginx_499_count\thikari_validation_warnings\tdb_pool_pending_max\tp999_ms\tp95_ms\tp99_ms\tmax_ms\tpostgres_checkpoint_count\tpostgres_temp_file_count\tnginx_upstream_p95_ms\thikari_config_ref\thikari_max_lifetime_ms\thikari_keepalive_time_ms\tpostgres_idle_timeout_ms\toci_nat_idle_timeout_ms\thikari_zero_warning_soak_ref\tworkload_components\tread_p999_ms\tread_429_source_ref"
 }
 NR == 1 {
   for (i = 1; i <= NF; i++) {
@@ -206,6 +217,21 @@ NR == 1 {
   hikari_validation_warnings = value("hikari_validation_warnings", "1") + 0
   db_pool_pending_max = value("db_pool_pending_max", "999999") + 0
   p999_ms = value("p999_ms", "999999") + 0
+  p95_ms = value("p95_ms", "")
+  p99_ms = value("p99_ms", "")
+  max_ms = value("max_ms", "")
+  postgres_checkpoint_count = value("postgres_checkpoint_count", "")
+  postgres_temp_file_count = value("postgres_temp_file_count", "")
+  nginx_upstream_p95_ms = value("nginx_upstream_p95_ms", "")
+  hikari_config_ref = value("hikari_config_ref", "")
+  hikari_max_lifetime_ms = value("hikari_max_lifetime_ms", "")
+  hikari_keepalive_time_ms = value("hikari_keepalive_time_ms", "")
+  postgres_idle_timeout_ms = value("postgres_idle_timeout_ms", "")
+  oci_nat_idle_timeout_ms = value("oci_nat_idle_timeout_ms", "")
+  hikari_zero_warning_soak_ref = value("hikari_zero_warning_soak_ref", "")
+  workload_components = value("workload_components", "")
+  read_p999_ms = value("read_p999_ms", "")
+  read_429_source_ref = value("read_429_source_ref", "")
   status = "pass"
   reason = "ok"
   seen[scenario] = 1
@@ -232,6 +258,12 @@ NR == 1 {
     require_ref("workload_mix_ref", "workload-mix-missing")
     require_ref("workload_component_ref", "workload-component-missing")
     require_ref("outbox_lag_ref", "outbox-lag-missing")
+    require_ref("read_429_source_ref", "read-429-source-missing")
+    read_p999_ms = require_number("read_p999_ms", "read-p999-missing")
+    if (read_p999_ms > max_p999_ms) add_reason("read-p999>" max_p999_ms)
+    if (!has_component(workload_components, "read") || !has_component(workload_components, "write") || !has_component(workload_components, "auth") || !has_component(workload_components, "notification") || !has_component(workload_components, "sse")) {
+      add_reason("workload-components-missing")
+    }
     if (value("outbox_lag_max", "1") + 0 > 0) add_reason("outbox-lag>0")
   }
   if (scenario == "p999-long-correlation" && duration_min < p999_min_duration_min) add_reason("p999-duration<" p999_min_duration_min)
@@ -239,8 +271,25 @@ NR == 1 {
     require_ref("postgres_checkpoint_ref", "postgres-checkpoint-missing")
     require_ref("postgres_temp_file_ref", "postgres-temp-file-missing")
     require_ref("nginx_upstream_latency_ref", "nginx-upstream-latency-missing")
+    p95_ms = require_number("p95_ms", "p95-missing")
+    p99_ms = require_number("p99_ms", "p99-missing")
+    max_ms = require_number("max_ms", "max-missing")
+    postgres_checkpoint_count = require_number("postgres_checkpoint_count", "postgres-checkpoint-count-missing")
+    postgres_temp_file_count = require_number("postgres_temp_file_count", "postgres-temp-file-count-missing")
+    nginx_upstream_p95_ms = require_number("nginx_upstream_p95_ms", "nginx-upstream-p95-missing")
   }
   if (scenario == "hikari-lifetime" && duration_min < hikari_min_duration_min) add_reason("hikari-duration<" hikari_min_duration_min)
+  if (scenario == "hikari-lifetime") {
+    require_ref("hikari_config_ref", "hikari-config-missing")
+    require_ref("hikari_zero_warning_soak_ref", "hikari-zero-warning-soak-missing")
+    hikari_max_lifetime_ms = require_number("hikari_max_lifetime_ms", "hikari-maxLifetime-missing")
+    hikari_keepalive_time_ms = require_number("hikari_keepalive_time_ms", "hikari-keepalive-missing")
+    postgres_idle_timeout_ms = require_number("postgres_idle_timeout_ms", "postgres-idle-timeout-missing")
+    oci_nat_idle_timeout_ms = require_number("oci_nat_idle_timeout_ms", "oci-nat-idle-timeout-missing")
+    if (hikari_max_lifetime_ms >= oci_nat_idle_timeout_ms) add_reason("hikari-maxLifetime>=oci-nat-idle")
+    if (hikari_keepalive_time_ms >= hikari_max_lifetime_ms) add_reason("hikari-keepalive>=maxLifetime")
+    if (postgres_idle_timeout_ms <= 0) add_reason("postgres-idle-timeout-missing")
+  }
   if (scenario == "deploy-drain" && duration_min < deploy_min_duration_min) add_reason("deploy-duration<" deploy_min_duration_min)
   if (scenario == "real-ip-multisource" && source_ips < min_real_source_ips) add_reason("source-ips<" min_real_source_ips)
 
@@ -254,13 +303,16 @@ NR == 1 {
   if (p999_ms > max_p999_ms) add_reason("p999>" max_p999_ms)
 
   if (status == "fail") fail_count++
-  printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+  printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
     scenario, status, reason, run_id, duration_min, source_ips, run_script,
     value("k6_summary_ref", ""), value("nginx_access_ref", ""), value("spring_metrics_ref", ""),
     value("hikari_log_ref", ""), value("postgres_wait_ref", ""), value("deploy_event_ref", ""),
     value("cache_state_ref", ""), value("timeline_ref", ""), value("edge_429_rate", "0"),
     value("backend_429_count", "0"), value("unknown_429_count", "0"), value("five_xx_count", "0"), value("nginx_499_count", "0"),
-    value("hikari_validation_warnings", "0"), value("db_pool_pending_max", "0"), value("p999_ms", "0")
+    value("hikari_validation_warnings", "0"), value("db_pool_pending_max", "0"), value("p999_ms", "0"),
+    p95_ms, p99_ms, max_ms, postgres_checkpoint_count, postgres_temp_file_count, nginx_upstream_p95_ms,
+    hikari_config_ref, hikari_max_lifetime_ms, hikari_keepalive_time_ms, postgres_idle_timeout_ms, oci_nat_idle_timeout_ms, hikari_zero_warning_soak_ref,
+    workload_components, read_p999_ms, read_429_source_ref
 }
 END {
   missing = ""
@@ -288,12 +340,12 @@ fi
 
 result_table="$(awk -F '\t' '
   BEGIN {
-    print "| Scenario | Status | Reason | Run id | Duration min | Source IPs | Script | Edge 429 | Unknown 429 | 499 | 5xx | Hikari warnings | p99.9 ms | Timeline |"
-    print "| --- | --- | --- | --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |"
+    print "| Scenario | Status | Reason | Run id | Duration min | Source IPs | Script | Edge 429 | Unknown 429 | 499 | 5xx | Hikari warnings | p95 ms | p99 ms | p99.9 ms | max ms | Timeline |"
+    print "| --- | --- | --- | --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |"
   }
   NR > 1 {
-    printf "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n",
-      $1, $2, $3, $4, $5, $6, $7, $16, $18, $20, $19, $21, $23, $15
+    printf "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n",
+      $1, $2, $3, $4, $5, $6, $7, $16, $18, $20, $19, $21, $24, $25, $23, $26, $15
   }
 ' "${summary_tsv}")"
 
@@ -316,7 +368,12 @@ cat >"${report_md}" <<REPORT
 - backend 429/unknown 429/499/5xx/Hikari warning/pool pending target: 0
 - unknown 429 hard-zero
 - p99.9 closure artifacts: PostgreSQL checkpoint, temp file, Nginx upstream latency
+- latency percentiles: p95, p99, p99.9, max
+- p999 long correlation metrics: PostgreSQL checkpoint count, temp file count, Nginx upstream p95
+- Hikari lifetime alignment artifacts: config ref, zero-warning soak ref, timeout basis
 - mixed workload closure artifacts: workload mix, component split, outbox lag
+- mixed workload required components: read,write,auth,notification,sse
+- mixed workload read p99.9 and 429 source artifact: required
 - deploy drain closure artifacts: 499 budget, retry contract, reconnect success
 
 ## Result Table
@@ -327,7 +384,9 @@ ${result_table}
 
 - OCI evidence는 run id, 실행 시각, 실행 script, k6 summary, Nginx access, Spring metrics, Hikari log, PostgreSQL wait, timeline을 같은 row에 남긴다.
 - p99.9 long correlation은 PostgreSQL checkpoint, temp file, Nginx upstream latency artifact를 같은 run id로 묶는다.
+- Hikari lifetime은 maxLifetime/keepaliveTime/PostgreSQL idle/NAT idle 기준과 30m zero-warning artifact를 같은 run id로 묶는다.
 - mixed workload는 workload mix, component split, outbox lag artifact를 같은 run id로 묶고 outbox lag max 0을 요구한다.
+- mixed workload는 read/write/auth/notification/SSE component와 read p99.9, 429 source artifact를 분리 기록한다.
 - cold/warm cache는 cache state artifact, deploy drain은 deploy event, retry/reconnect, 499 budget artifact를 추가로 요구한다.
 - 이 gate는 실제 실행을 대신하지 않고, 실행 결과가 PR/issue에서 재검증 가능한 artifact manifest인지 닫는다.
 
