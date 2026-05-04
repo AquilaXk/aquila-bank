@@ -44,6 +44,33 @@ class TransactionReadAccountFairnessLimiterTest {
   }
 
   @Test
+  void allowsThreeConcurrentRequestsPerAccountForOciBurstShape() throws Exception {
+    TransactionReadAccountFairnessLimiter limiter = new TransactionReadAccountFairnessLimiter(3);
+    ExecutorService executor = Executors.newFixedThreadPool(3);
+    CountDownLatch ownersStarted = new CountDownLatch(3);
+    CountDownLatch releaseOwners = new CountDownLatch(1);
+    try {
+      Future<String> first = submitOwner(executor, limiter, ownersStarted, releaseOwners, "first");
+      Future<String> second =
+          submitOwner(executor, limiter, ownersStarted, releaseOwners, "second");
+      Future<String> third = submitOwner(executor, limiter, ownersStarted, releaseOwners, "third");
+      assertThat(ownersStarted.await(1, TimeUnit.SECONDS)).isTrue();
+
+      assertThatThrownBy(() -> limiter.execute(101L, () -> "rejected"))
+          .isInstanceOf(TransactionReadAccountFairnessRejectedException.class)
+          .hasMessage("transaction read account concurrency limit exceeded");
+
+      releaseOwners.countDown();
+      assertThat(first.get(1, TimeUnit.SECONDS)).isEqualTo("first");
+      assertThat(second.get(1, TimeUnit.SECONDS)).isEqualTo("second");
+      assertThat(third.get(1, TimeUnit.SECONDS)).isEqualTo("third");
+    } finally {
+      releaseOwners.countDown();
+      executor.shutdownNow();
+    }
+  }
+
+  @Test
   void separatesDifferentAccountsAndReleasesAfterFailure() {
     TransactionReadAccountFairnessLimiter limiter = new TransactionReadAccountFairnessLimiter(1);
 
@@ -76,5 +103,22 @@ class TransactionReadAccountFairnessLimiterTest {
       Thread.currentThread().interrupt();
       throw new IllegalStateException(ex);
     }
+  }
+
+  private static Future<String> submitOwner(
+      ExecutorService executor,
+      TransactionReadAccountFairnessLimiter limiter,
+      CountDownLatch ownersStarted,
+      CountDownLatch releaseOwners,
+      String result) {
+    return executor.submit(
+        () ->
+            limiter.execute(
+                101L,
+                () -> {
+                  ownersStarted.countDown();
+                  await(releaseOwners);
+                  return result;
+                }));
   }
 }
