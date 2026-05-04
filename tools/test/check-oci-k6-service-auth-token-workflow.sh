@@ -118,7 +118,11 @@ grep -F 'NGINX_ACCESS_AGGREGATE_RUN_ID="${K6_RUN_ID}"' "${workflow}" >/dev/null
 grep -F "tools/test/run-transaction-read-nginx-access-aggregate-artifact.sh" "${workflow}" >/dev/null
 grep -F "tools/test/check-transaction-read-nginx-access-aggregate-artifact.sh" "${workflow}" >/dev/null
 grep -F "Build transaction read 429 source gate artifact" "${workflow}" >/dev/null
-grep -F 'summary_json="${report_dir}/${K6_REPORT_NAME}-summary.json"' "${workflow}" >/dev/null
+grep -F 'summary_json="build/reports/k6/${K6_REPORT_NAME}-summary.json"' "${workflow}" >/dev/null
+if grep -F 'summary_json="${report_dir}/${K6_REPORT_NAME}-summary.json"' "${workflow}" >/dev/null; then
+  echo "429 source gate must use the root k6 summary JSON, not the nested report dir path" >&2
+  exit 1
+fi
 grep -F 'aggregate_tsv="${report_dir}/transaction-read-nginx-access-aggregate/${K6_REPORT_NAME}-nginx-access-aggregate.tsv"' "${workflow}" >/dev/null
 grep -F 'total_fail_rate="${K6_BURST_429_RATE_THRESHOLD}"' "${workflow}" >/dev/null
 grep -F 'edge_fail_rate="${K6_BURST_429_RATE_THRESHOLD}"' "${workflow}" >/dev/null

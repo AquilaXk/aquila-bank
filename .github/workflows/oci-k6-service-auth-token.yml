@@ -515,7 +515,7 @@ jobs:
           set -euo pipefail
           report_dir="build/reports/k6/${K6_REPORT_NAME}"
           mkdir -p "${report_dir}"
-          summary_json="${report_dir}/${K6_REPORT_NAME}-summary.json"
+          summary_json="build/reports/k6/${K6_REPORT_NAME}-summary.json"
           aggregate_tsv="${report_dir}/transaction-read-nginx-access-aggregate/${K6_REPORT_NAME}-nginx-access-aggregate.tsv"
           if [[ -z "${summary_json}" || ! -s "${summary_json}" ]]; then
             echo "::error::k6 summary JSON is missing or empty; transaction-read-429-source artifact required."
