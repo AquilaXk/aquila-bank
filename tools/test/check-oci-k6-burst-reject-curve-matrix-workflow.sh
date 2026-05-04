@@ -45,9 +45,14 @@ grep -F 'K6_OBSERVABILITY_MODE="prometheus"' "${workflow}" >/dev/null
 grep -F 'K6_GENERATOR_MODE="docker-context"' "${workflow}" >/dev/null
 grep -F "burst_rates:" "${workflow}" >/dev/null
 grep -F 'default: "32,48,64,80,96"' "${workflow}" >/dev/null
+grep -F "promotion_target_rate:" "${workflow}" >/dev/null
+grep -F 'description: "Promotion target burst arrival rate per second"' "${workflow}" >/dev/null
+grep -F 'default: "64"' "${workflow}" >/dev/null
 grep -F 'K6_MATRIX_REPORT_NAME: ${{ inputs.report_name || format(' "${workflow}" >/dev/null
 grep -F 'BURST_RATES_INPUT: ${{ inputs.burst_rates }}' "${workflow}" >/dev/null
+grep -F 'PROMOTION_TARGET_RATE_INPUT: ${{ inputs.promotion_target_rate }}' "${workflow}" >/dev/null
 grep -F 'K6_BURST_RATES="${BURST_RATES_INPUT:-32,48,64,80,96}"' "${workflow}" >/dev/null
+grep -F 'K6_BURST_MATRIX_PROMOTION_TARGET_RATE="${PROMOTION_TARGET_RATE_INPUT:-64}"' "${workflow}" >/dev/null
 grep -F "Run authenticated k6 burst matrix" "${workflow}" >/dev/null
 grep -F 'IFS="," read -r -a burst_rates <<<"${K6_BURST_RATES}"' "${workflow}" >/dev/null
 grep -F 'matrix_input_tsv="${matrix_dir}/burst-reject-curve-input.tsv"' "${workflow}" >/dev/null
@@ -63,6 +68,7 @@ grep -F 'K6_OVERLOAD_MODE="true"' "${workflow}" >/dev/null
 grep -F 'K6_BURST_429_RATE_THRESHOLD="${BURST_429_RATE_THRESHOLD_INPUT:-0.10}"' "${workflow}" >/dev/null
 grep -F 'K6_BACKEND_429_RATE_THRESHOLD="${BACKEND_429_RATE_THRESHOLD_INPUT:-0.005}"' "${workflow}" >/dev/null
 grep -F 'K6_OVERLOAD_503_RATE_THRESHOLD="${OVERLOAD_503_RATE_THRESHOLD_INPUT:-0}"' "${workflow}" >/dev/null
+grep -F 'K6_BURST_MATRIX_PROMOTION_TARGET_RATE' "${workflow}" >/dev/null
 grep -F 'K6_NGINX_LOG_SINCE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"' "${workflow}" >/dev/null
 grep -F "tools/test/run-k6-transaction-100m-loadtest.sh --auth-preflight-only" "${workflow}" >/dev/null
 grep -F "tools/test/run-k6-transaction-100m-loadtest.sh --no-up --no-deps" "${workflow}" >/dev/null
@@ -83,6 +89,7 @@ grep -F 'printf "%s\t%s\t%s\t%s\t%s\t%s\n" "${burst_rate}" "${K6_RUN_ID}" "${sum
 grep -F 'OCI_K6_BURST_MATRIX_NAME="${K6_MATRIX_REPORT_NAME}"' "${workflow}" >/dev/null
 grep -F 'OCI_K6_BURST_MATRIX_INPUT_TSV="${matrix_input_tsv}"' "${workflow}" >/dev/null
 grep -F 'OCI_K6_BURST_MATRIX_OUTPUT_DIR="${matrix_dir}/burst-reject-curve-matrix"' "${workflow}" >/dev/null
+grep -F 'OCI_K6_BURST_MATRIX_PROMOTION_TARGET_RATE="${K6_BURST_MATRIX_PROMOTION_TARGET_RATE}"' "${workflow}" >/dev/null
 grep -F "tools/test/run-oci-k6-burst-reject-curve-matrix.sh" "${workflow}" >/dev/null
 grep -F "actions/upload-artifact@v7" "${workflow}" >/dev/null
 grep -F "oci-k6-burst-reject-curve-matrix" "${workflow}" >/dev/null
@@ -93,7 +100,7 @@ grep -F 'curl --fail-with-body --silent --show-error --location' "${workflow}" >
 grep -F '"${github_api_url}/repos/${GITHUB_REPOSITORY}/deployments"' "${workflow}" >/dev/null
 grep -F '"${github_api_url}/repos/${GITHUB_REPOSITORY}/deployments/${deployment_id}/statuses"' "${workflow}" >/dev/null
 grep -F 'Authorization: Bearer ${GH_TOKEN}' "${workflow}" >/dev/null
-grep -F 'description "transaction read burst matrix passed"' "${workflow}" >/dev/null
+grep -F 'description "transaction read burst matrix target ${K6_BURST_MATRIX_PROMOTION_TARGET_RATE} passed"' "${workflow}" >/dev/null
 grep -F '"state": "success"' "${workflow}" >/dev/null
 
 preflight_line="$(grep -n -- "--auth-preflight-only" "${workflow}" | head -1 | cut -d: -f1)"

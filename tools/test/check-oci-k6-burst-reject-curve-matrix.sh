@@ -133,6 +133,7 @@ plan="$(
 )"
 grep -F "name=burst-matrix-check" <<<"${plan}" >/dev/null
 grep -F "required_burst_rates=32,48,64,80,96" <<<"${plan}" >/dev/null
+grep -F "promotion_target_rate=64" <<<"${plan}" >/dev/null
 grep -F "gate=burst64 total/edge 429 <= 0.10, backend 429 <= 0.005, k6 503 = 0, nginx 5xx = 0, nginx 499 = 0, accepted p95 < 100ms" <<<"${plan}" >/dev/null
 grep -F "summary_tsv=${output_dir}/burst-matrix-check-burst-reject-curve.tsv" <<<"${plan}" >/dev/null
 
@@ -151,9 +152,11 @@ grep -F $'burst_rate\tstatus\tk6_run_id\ttotal_429_rate\tedge_429_rate\tbackend_
 grep -F $'64\tpass\tmatrix-burst64\t0.080000\t0.075000\t0.003000\t2\t0\t0\t0\t5650\t7.500\t40.000\t2' "${summary_tsv}" >/dev/null
 grep -F $'80\tobserve\tmatrix-burst80\t0.220000\t0.216000\t0.004000\t3\t0\t0\t0\t5400\t11.700\t55.000\t4' "${summary_tsv}" >/dev/null
 grep -F "burst64 gate: pass" "${report_md}" >/dev/null
-grep -F "burst80/96: overload observation rows; 429 ceiling is not applied" "${report_md}" >/dev/null
+grep -F "promotion target rate: 64" "${report_md}" >/dev/null
+grep -F "rows above target: overload observation rows; 429 ceiling is not applied" "${report_md}" >/dev/null
 grep -F "matrix input TSV: ${input_tsv}" "${report_md}" >/dev/null
 jq -e '.items | length == 5' "${summary_json}" >/dev/null
+jq -e '.promotion_target_rate == 64' "${summary_json}" >/dev/null
 jq -e '.items[] | select(.burst_rate == 64 and .status == "pass" and .edge_429_rate == 0.075 and .nginx_499_count == 0)' "${summary_json}" >/dev/null
 jq -e '.items[] | select(.burst_rate == 80 and .status == "observe" and .total_429_rate == 0.22)' "${summary_json}" >/dev/null
 
@@ -188,3 +191,14 @@ if OCI_K6_BURST_MATRIX_NAME=burst-matrix-bad \
   exit 1
 fi
 grep -F "burst64 gate failed: total_429_rate=0.110000 > 0.100000" "${temp_dir}/bad.log" >/dev/null
+
+echo "[oci-k6-burst-reject-curve-matrix] burst80 promotion target gate fails"
+if OCI_K6_BURST_MATRIX_NAME=burst-matrix-target80 \
+  OCI_K6_BURST_MATRIX_INPUT_TSV="${input_tsv}" \
+  OCI_K6_BURST_MATRIX_OUTPUT_DIR="${temp_dir}/target80-output" \
+  OCI_K6_BURST_MATRIX_PROMOTION_TARGET_RATE=80 \
+    "${runner}" >"${temp_dir}/target80.log" 2>&1; then
+  echo "burst80 promotion target unexpectedly passed" >&2
+  exit 1
+fi
+grep -F "burst80 gate failed: total_429_rate=0.220000 > 0.100000" "${temp_dir}/target80.log" >/dev/null
