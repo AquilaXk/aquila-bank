@@ -32,8 +32,8 @@ test -s "${generator_tsv}"
 test -s "${target_tsv}"
 test -s "${summary_json}"
 
-grep -F $'run_id\thost_role\thost_name\tdocker_context\tcpu_pct\trx_mbps\ttx_mbps\tartifact_uri\tsample_count\tcpu_pct_max\trx_mbps_max\ttx_mbps_max' "${generator_tsv}" >/dev/null
-grep -F $'run_id\thost_role\thost_name\tdocker_context\tcpu_pct\trx_mbps\ttx_mbps\tartifact_uri\tsample_count\tcpu_pct_max\trx_mbps_max\ttx_mbps_max' "${target_tsv}" >/dev/null
-awk -F '\t' 'NR == 2 && $1 == "offhost-snapshot-run" && $2 == "generator" && $4 == "oci-k6-generator-a" { found = 1 } END { exit !found }' "${generator_tsv}"
-awk -F '\t' 'NR == 2 && $1 == "offhost-snapshot-run" && $2 == "target" && $4 == "target" { found = 1 } END { exit !found }' "${target_tsv}"
-jq -e '.name == "offhost-snapshot-check" and .run_id == "offhost-snapshot-run" and .generator.tsv != "" and .target.tsv != ""' "${summary_json}" >/dev/null
+grep -F $'run_id\thost_role\thost_name\thost_id\tvm_id\tnetwork_id\tdocker_context\tcpu_pct\trx_mbps\ttx_mbps\tartifact_uri\tsample_count\tcpu_pct_max\trx_mbps_max\ttx_mbps_max' "${generator_tsv}" >/dev/null
+grep -F $'run_id\thost_role\thost_name\thost_id\tvm_id\tnetwork_id\tdocker_context\tcpu_pct\trx_mbps\ttx_mbps\tartifact_uri\tsample_count\tcpu_pct_max\trx_mbps_max\ttx_mbps_max' "${target_tsv}" >/dev/null
+awk -F '\t' 'NR == 2 && $1 == "offhost-snapshot-run" && $2 == "generator" && $4 != "" && $5 != "" && $6 != "" && $7 == "oci-k6-generator-a" { found = 1 } END { exit !found }' "${generator_tsv}"
+awk -F '\t' 'NR == 2 && $1 == "offhost-snapshot-run" && $2 == "target" && $4 != "" && $5 != "" && $6 != "" && $7 == "target" { found = 1 } END { exit !found }' "${target_tsv}"
+jq -e '.name == "offhost-snapshot-check" and .run_id == "offhost-snapshot-run" and .generator.tsv != "" and .generator.host_id != "" and .target.tsv != "" and .target.host_id != ""' "${summary_json}" >/dev/null

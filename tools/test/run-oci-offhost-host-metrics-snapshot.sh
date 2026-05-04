@@ -8,6 +8,14 @@ generator_context="${OCI_OFFHOST_GENERATOR_DOCKER_CONTEXT:-default}"
 target_context="${OCI_OFFHOST_TARGET_DOCKER_CONTEXT:-target}"
 sample_interval_seconds="${OCI_OFFHOST_HOST_METRICS_SAMPLE_INTERVAL_SECONDS:-1}"
 host_name="${OCI_OFFHOST_HOST_NAME:-$(hostname 2>/dev/null || echo unknown-host)}"
+generator_host_name="${OCI_OFFHOST_GENERATOR_HOST_NAME:-${host_name}-${generator_context}-generator}"
+target_host_name="${OCI_OFFHOST_TARGET_HOST_NAME:-${host_name}-${target_context}-target}"
+generator_host_id="${OCI_OFFHOST_GENERATOR_HOST_ID:-snapshot:${generator_host_name}:${generator_context}:generator}"
+target_host_id="${OCI_OFFHOST_TARGET_HOST_ID:-snapshot:${target_host_name}:${target_context}:target}"
+generator_vm_id="${OCI_OFFHOST_GENERATOR_VM_ID:-snapshot-vm:${generator_host_name}:${generator_context}:generator}"
+target_vm_id="${OCI_OFFHOST_TARGET_VM_ID:-snapshot-vm:${target_host_name}:${target_context}:target}"
+generator_network_id="${OCI_OFFHOST_GENERATOR_NETWORK_ID:-snapshot-network:${generator_context}:generator}"
+target_network_id="${OCI_OFFHOST_TARGET_NETWORK_ID:-snapshot-network:${target_context}:target}"
 
 generator_tsv="${output_dir}/${name}-generator-host-metrics.tsv"
 target_tsv="${output_dir}/${name}-target-host-metrics.tsv"
@@ -84,15 +92,15 @@ tx_mbps="$(
 )"
 
 mkdir -p "${output_dir}"
-header=$'run_id\thost_role\thost_name\tdocker_context\tcpu_pct\trx_mbps\ttx_mbps\tartifact_uri\tsample_count\tcpu_pct_max\trx_mbps_max\ttx_mbps_max'
+header=$'run_id\thost_role\thost_name\thost_id\tvm_id\tnetwork_id\tdocker_context\tcpu_pct\trx_mbps\ttx_mbps\tartifact_uri\tsample_count\tcpu_pct_max\trx_mbps_max\ttx_mbps_max'
 printf '%s\n' "${header}" >"${generator_tsv}"
 printf '%s\n' "${header}" >"${target_tsv}"
 
-printf '%s\tgenerator\t%s\t%s\t%s\t%s\t%s\tartifact://offhost-capacity-prerequisite/%s/generator-host-metrics.tsv\t1\t%s\t%s\t%s\n' \
-  "${run_id}" "${host_name}" "${generator_context}" "${cpu_pct}" "${rx_mbps}" "${tx_mbps}" "${name}" "${cpu_pct}" "${rx_mbps}" "${tx_mbps}" \
+printf '%s\tgenerator\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\tartifact://offhost-capacity-prerequisite/%s/generator-host-metrics.tsv\t1\t%s\t%s\t%s\n' \
+  "${run_id}" "${generator_host_name}" "${generator_host_id}" "${generator_vm_id}" "${generator_network_id}" "${generator_context}" "${cpu_pct}" "${rx_mbps}" "${tx_mbps}" "${name}" "${cpu_pct}" "${rx_mbps}" "${tx_mbps}" \
   >>"${generator_tsv}"
-printf '%s\ttarget\t%s\t%s\t%s\t%s\t%s\tartifact://offhost-capacity-prerequisite/%s/target-host-metrics.tsv\t1\t%s\t%s\t%s\n' \
-  "${run_id}" "${host_name}" "${target_context}" "${cpu_pct}" "${rx_mbps}" "${tx_mbps}" "${name}" "${cpu_pct}" "${rx_mbps}" "${tx_mbps}" \
+printf '%s\ttarget\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\tartifact://offhost-capacity-prerequisite/%s/target-host-metrics.tsv\t1\t%s\t%s\t%s\n' \
+  "${run_id}" "${target_host_name}" "${target_host_id}" "${target_vm_id}" "${target_network_id}" "${target_context}" "${cpu_pct}" "${rx_mbps}" "${tx_mbps}" "${name}" "${cpu_pct}" "${rx_mbps}" "${tx_mbps}" \
   >>"${target_tsv}"
 
 jq -n \
@@ -100,7 +108,14 @@ jq -n \
   --arg run_id "${run_id}" \
   --arg generator_tsv "${generator_tsv}" \
   --arg target_tsv "${target_tsv}" \
-  --arg host_name "${host_name}" \
+  --arg generator_host_name "${generator_host_name}" \
+  --arg target_host_name "${target_host_name}" \
+  --arg generator_host_id "${generator_host_id}" \
+  --arg target_host_id "${target_host_id}" \
+  --arg generator_vm_id "${generator_vm_id}" \
+  --arg target_vm_id "${target_vm_id}" \
+  --arg generator_network_id "${generator_network_id}" \
+  --arg target_network_id "${target_network_id}" \
   --arg generator_context "${generator_context}" \
   --arg target_context "${target_context}" \
   '{
@@ -108,12 +123,18 @@ jq -n \
     run_id: $run_id,
     generator: {
       tsv: $generator_tsv,
-      host_name: $host_name,
+      host_name: $generator_host_name,
+      host_id: $generator_host_id,
+      vm_id: $generator_vm_id,
+      network_id: $generator_network_id,
       docker_context: $generator_context
     },
     target: {
       tsv: $target_tsv,
-      host_name: $host_name,
+      host_name: $target_host_name,
+      host_id: $target_host_id,
+      vm_id: $target_vm_id,
+      network_id: $target_network_id,
       docker_context: $target_context
     }
   }' >"${summary_json}"
