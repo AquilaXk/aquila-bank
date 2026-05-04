@@ -1,0 +1,93 @@
+name: Transaction Read 30m Soak Live Evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      evidence_manifest_tsv:
+        description: "OCI evidence manifest TSV path on the self-hosted runner workspace"
+        required: true
+        type: string
+      report_name:
+        description: "Optional evidence report name"
+        required: false
+        type: string
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/transaction-read-30m-soak-live-evidence.yml"
+      - "tools/test/run-transaction-read-30m-soak-live-evidence-gate.sh"
+      - "tools/test/check-transaction-read-30m-soak-live-evidence-gate.sh"
+      - "tools/test/check-transaction-read-30m-soak-live-evidence-workflow.sh"
+      - "tools/test/run-transaction-read-oci-evidence-execution-gate.sh"
+      - "tools/test/check-transaction-read-oci-evidence-execution-gate.sh"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: transaction-read-30m-soak-live-evidence-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    name: 30m Soak Live Evidence Contract
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Check 30m soak live evidence gate
+        run: bash tools/test/check-transaction-read-30m-soak-live-evidence-gate.sh
+
+      - name: Check 30m soak live evidence workflow
+        run: bash tools/test/check-transaction-read-30m-soak-live-evidence-workflow.sh
+
+  live-evidence:
+    name: 30m Soak Live Evidence Gate
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, oci-a1-staging]
+    timeout-minutes: 15
+    environment:
+      name: staging
+    env:
+      SOAK_30M_REPORT_NAME: ${{ inputs.report_name || format('transaction-read-30m-soak-live-evidence-{0}', github.run_id) }}
+      SOAK_30M_EVIDENCE_MANIFEST_TSV: ${{ inputs.evidence_manifest_tsv }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Run 30m soak live evidence gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! [[ "${SOAK_30M_REPORT_NAME}" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            echo "::error::SOAK_30M_REPORT_NAME must contain only letters, numbers, dot, underscore, or hyphen."
+            exit 1
+          fi
+          if [[ -z "${SOAK_30M_EVIDENCE_MANIFEST_TSV}" || ! -s "${SOAK_30M_EVIDENCE_MANIFEST_TSV}" ]]; then
+            echo "::error::evidence_manifest_tsv is required and must point to a non-empty TSV on the runner."
+            exit 1
+          fi
+
+          report_dir="build/reports/k6/${SOAK_30M_REPORT_NAME}"
+          SOAK_30M_LIVE_NAME="${SOAK_30M_REPORT_NAME}" \
+          SOAK_30M_LIVE_INPUT_TSV="${SOAK_30M_EVIDENCE_MANIFEST_TSV}" \
+          SOAK_30M_LIVE_OUTPUT_DIR="${report_dir}" \
+            tools/test/run-transaction-read-30m-soak-live-evidence-gate.sh
+
+          report_md="${report_dir}/${SOAK_30M_REPORT_NAME}-30m-soak-live-evidence.md"
+          {
+            echo "## Transaction Read 30m Soak Live Evidence"
+            echo
+            cat "${report_md}"
+          } >>"${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload 30m soak live evidence artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: transaction-read-30m-soak-live-evidence
+          path: build/reports/k6/${{ env.SOAK_30M_REPORT_NAME }}
+          if-no-files-found: error
