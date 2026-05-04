@@ -23,6 +23,9 @@ if [[ "${dispatch_input_count}" -gt 25 ]]; then
 fi
 grep -F "OCI k6 service auth token contract" "${workflow}" >/dev/null
 grep -F "tools/test/check-oci-k6-service-auth-token-workflow.sh" "${workflow}" >/dev/null
+grep -F "tools/test/check-transaction-read-promotion-pacing-contract.sh" "${workflow}" >/dev/null
+grep -F "tools/test/run-transaction-read-promotion-pacing-contract.sh" "${workflow}" >/dev/null
+grep -F "Validate promotion pacing contract" "${workflow}" >/dev/null
 grep -F "if: github.event_name == 'workflow_dispatch'" "${workflow}" >/dev/null
 grep -F "runs-on: [self-hosted, oci-a1-staging]" "${workflow}" >/dev/null
 grep -F "environment:" "${workflow}" >/dev/null
@@ -75,6 +78,9 @@ grep -F 'K6_PREEMPTIVE_PACING="${PREEMPTIVE_PACING_INPUT}"' "${workflow}" >/dev/
 grep -F 'K6_PREEMPTIVE_PACING_RPS="${K6_PREEMPTIVE_PACING_RPS:-16}"' "${workflow}" >/dev/null
 grep -F 'K6_PREEMPTIVE_PACING_MAX_SLEEP_MS="${K6_PREEMPTIVE_PACING_MAX_SLEEP_MS:-250}"' "${workflow}" >/dev/null
 grep -F 'K6_PREEMPTIVE_PACING_JITTER_MS="${K6_PREEMPTIVE_PACING_JITTER_MS:-25}"' "${workflow}" >/dev/null
+grep -F 'K6_CONSTANT_VUS_GATE_ROLE="not-selected"' "${workflow}" >/dev/null
+grep -F 'K6_CONSTANT_VUS_GATE_ROLE="paced-saturation-contract"' "${workflow}" >/dev/null
+grep -F 'K6_CONSTANT_VUS_GATE_ROLE="saturation-observation"' "${workflow}" >/dev/null
 grep -F 'K6_BURST_429_RATE_THRESHOLD="${BURST_429_RATE_THRESHOLD_INPUT}"' "${workflow}" >/dev/null
 grep -F 'K6_BACKEND_429_RATE_THRESHOLD="${BACKEND_429_RATE_THRESHOLD_INPUT}"' "${workflow}" >/dev/null
 grep -F 'K6_OVERLOAD_503_RATE_THRESHOLD="${OVERLOAD_503_RATE_THRESHOLD_INPUT}"' "${workflow}" >/dev/null
@@ -84,7 +90,8 @@ grep -F "k6-pacing-input.json" "${workflow}" >/dev/null
 grep -F "k6-pacing-summary.md" "${workflow}" >/dev/null
 grep -F "K6_PACING_INPUT_REF" "${workflow}" >/dev/null
 grep -F "K6_PACING_SUMMARY_REF" "${workflow}" >/dev/null
-grep -F '"gate_role": "saturation_probe"' "${workflow}" >/dev/null
+grep -F '"gate_role": "${K6_CONSTANT_VUS_GATE_ROLE}"' "${workflow}" >/dev/null
+grep -F "constant-vus gate role: \${K6_CONSTANT_VUS_GATE_ROLE}" "${workflow}" >/dev/null
 grep -F "Capture transaction read Nginx log window" "${workflow}" >/dev/null
 grep -F 'K6_NGINX_LOG_SINCE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"' "${workflow}" >/dev/null
 grep -F "Run auth preflight" "${workflow}" >/dev/null

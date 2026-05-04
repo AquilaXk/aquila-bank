@@ -127,6 +127,8 @@ on:
     paths:
       - ".github/workflows/oci-k6-service-auth-token.yml"
       - "tools/test/check-oci-k6-service-auth-token-workflow.sh"
+      - "tools/test/check-transaction-read-promotion-pacing-contract.sh"
+      - "tools/test/run-transaction-read-promotion-pacing-contract.sh"
       - "tools/test/run-k6-transaction-100m-loadtest.sh"
       - "tools/test/run-transaction-read-nginx-access-aggregate-artifact.sh"
       - "tools/test/check-transaction-read-nginx-access-aggregate-artifact.sh"
@@ -145,6 +147,9 @@ jobs:
 
       - name: Validate workflow contract
         run: bash tools/test/check-oci-k6-service-auth-token-workflow.sh
+
+      - name: Validate promotion pacing contract
+        run: bash tools/test/check-transaction-read-promotion-pacing-contract.sh
 
   authenticated-k6:
     name: Authenticated OCI k6 capacity
@@ -256,6 +261,12 @@ jobs:
           K6_PREEMPTIVE_PACING_RPS="${K6_PREEMPTIVE_PACING_RPS:-16}"
           K6_PREEMPTIVE_PACING_MAX_SLEEP_MS="${K6_PREEMPTIVE_PACING_MAX_SLEEP_MS:-250}"
           K6_PREEMPTIVE_PACING_JITTER_MS="${K6_PREEMPTIVE_PACING_JITTER_MS:-25}"
+          K6_CONSTANT_VUS_GATE_ROLE="not-selected"
+          if [[ "${K6_SCENARIO_MODE}" == "constant-vus" && "${K6_PREEMPTIVE_PACING}" == "true" ]]; then
+            K6_CONSTANT_VUS_GATE_ROLE="paced-saturation-contract"
+          elif [[ "${K6_SCENARIO_MODE}" == "constant-vus" ]]; then
+            K6_CONSTANT_VUS_GATE_ROLE="saturation-observation"
+          fi
           K6_BURST_429_RATE_THRESHOLD="${BURST_429_RATE_THRESHOLD_INPUT}"
           K6_BACKEND_429_RATE_THRESHOLD="${BACKEND_429_RATE_THRESHOLD_INPUT}"
           K6_OVERLOAD_503_RATE_THRESHOLD="${OVERLOAD_503_RATE_THRESHOLD_INPUT}"
@@ -318,6 +329,7 @@ jobs:
             K6_PREEMPTIVE_PACING_RPS
             K6_PREEMPTIVE_PACING_MAX_SLEEP_MS
             K6_PREEMPTIVE_PACING_JITTER_MS
+            K6_CONSTANT_VUS_GATE_ROLE
             K6_BURST_429_RATE_THRESHOLD
             K6_BACKEND_429_RATE_THRESHOLD
             K6_OVERLOAD_503_RATE_THRESHOLD
@@ -356,7 +368,7 @@ jobs:
             "constant_vus": {
               "vus": "${K6_VUS}",
               "duration": "${K6_DURATION}",
-              "gate_role": "saturation_probe"
+              "gate_role": "${K6_CONSTANT_VUS_GATE_ROLE}"
             },
             "burst": {
               "rate": "${K6_BURST_RATE}",
@@ -378,6 +390,7 @@ jobs:
           - k6_run_id=${K6_RUN_ID}
           - scenario_mode=${K6_SCENARIO_MODE}
           - arrival-rate gate: ${K6_RATE}/${K6_TIME_UNIT}
+          - constant-vus gate role: ${K6_CONSTANT_VUS_GATE_ROLE}
           - constant-vus saturation probe: vus=${K6_VUS}, duration=${K6_DURATION}
           - burst probe: rate=${K6_BURST_RATE}, preAllocatedVUs=${K6_PRE_ALLOCATED_VUS:-}, maxVUs=${K6_MAX_VUS:-}
           - preemptive pacing: enabled=${K6_PREEMPTIVE_PACING}, rps=${K6_PREEMPTIVE_PACING_RPS}, maxSleepMs=${K6_PREEMPTIVE_PACING_MAX_SLEEP_MS}, jitterMs=${K6_PREEMPTIVE_PACING_JITTER_MS}
