@@ -27,6 +27,8 @@ grep -F "tools/test/check-transaction-read-429-source-gate.sh" "${workflow}" >/d
 grep -F "tools/test/run-transaction-read-429-source-gate.sh" "${workflow}" >/dev/null
 grep -F "tools/test/check-transaction-read-promotion-pacing-contract.sh" "${workflow}" >/dev/null
 grep -F "tools/test/run-transaction-read-promotion-pacing-contract.sh" "${workflow}" >/dev/null
+grep -F "tools/ops/staging-fixture-principal-bootstrap.sh" "${workflow}" >/dev/null
+grep -F "tools/test/run-staging-fixture-principal-bootstrap-contract.sh" "${workflow}" >/dev/null
 grep -F "Validate promotion pacing contract" "${workflow}" >/dev/null
 grep -F "Validate transaction read 429 source gate" "${workflow}" >/dev/null
 grep -F "if: github.event_name == 'workflow_dispatch'" "${workflow}" >/dev/null
@@ -110,6 +112,11 @@ grep -F "multi-account hot ids: \${K6_HOT_ACCOUNT_IDS:-\${K6_HOT_ACCOUNT_ID}}" "
 grep -F "multi-account cold ids: \${K6_COLD_ACCOUNT_IDS:-\${K6_COLD_ACCOUNT_ID}}" "${workflow}" >/dev/null
 grep -F "Capture transaction read Nginx log window" "${workflow}" >/dev/null
 grep -F 'K6_NGINX_LOG_SINCE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"' "${workflow}" >/dev/null
+grep -F "Ensure service auth fixture principal" "${workflow}" >/dev/null
+grep -F 'STAGING_OCI_A1_DATABASE_URL' "${workflow}" >/dev/null
+grep -F 'HOT_ACCOUNT_IDS="${K6_HOT_ACCOUNT_IDS:-${K6_HOT_ACCOUNT_ID}}" \' "${workflow}" >/dev/null
+grep -F 'COLD_ACCOUNT_IDS="${K6_COLD_ACCOUNT_IDS:-${K6_COLD_ACCOUNT_ID}}" \' "${workflow}" >/dev/null
+grep -F "tools/ops/staging-fixture-principal-bootstrap.sh" "${workflow}" >/dev/null
 grep -F "Run auth preflight" "${workflow}" >/dev/null
 grep -F "run_account_auth_preflight()" "${workflow}" >/dev/null
 grep -F 'local account_group="$1"' "${workflow}" >/dev/null
@@ -165,9 +172,11 @@ grep -F "transaction-read-nginx-access-aggregate" "${workflow}" >/dev/null
 grep -F "actions/upload-artifact@" "${workflow}" >/dev/null
 grep -F "oci-k6-service-auth-token" "${workflow}" >/dev/null
 
+fixture_principal_line="$(grep -n "Ensure service auth fixture principal" "${workflow}" | head -1 | cut -d: -f1)"
 auth_preflight_line="$(grep -n -- "--auth-preflight-only" "${workflow}" | head -1 | cut -d: -f1)"
 k6_run_line="$(grep -n -- "--no-up --no-deps" "${workflow}" | head -1 | cut -d: -f1)"
-if [[ -z "${auth_preflight_line}" || -z "${k6_run_line}" || "${auth_preflight_line}" -ge "${k6_run_line}" ]]; then
+if [[ -z "${fixture_principal_line}" || -z "${auth_preflight_line}" || -z "${k6_run_line}" ||
+  "${fixture_principal_line}" -ge "${auth_preflight_line}" || "${auth_preflight_line}" -ge "${k6_run_line}" ]]; then
   echo "auth preflight must run before authenticated k6 capacity" >&2
   exit 1
 fi

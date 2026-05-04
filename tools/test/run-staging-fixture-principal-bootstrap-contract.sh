@@ -36,9 +36,39 @@ run_bootstrap() {
     "${script}"
 }
 
+run_bootstrap_with_csv_accounts() {
+  env \
+    PATH="${tmp_dir}:${PATH}" \
+    PSQL_STUB_LOG="${psql_log}" \
+    PSQL_STDIN_LOG="${psql_stdin_log}" \
+    STAGING_OCI_A1_DATABASE_URL="postgresql://fixture-db/aquila" \
+    STAGING_REPLAY_USER_ID="55" \
+    STAGING_REPLAY_LOGIN_ID="staging-fixture-user" \
+    STAGING_REPLAY_USER_PASSWORD_HASH="fixturePasswordHashWithLetters" \
+    STAGING_REPLAY_USER_DISPLAY_NAME="Staging Fixture User" \
+    HOT_ACCOUNT_ID="1001" \
+    COLD_ACCOUNT_ID="1002" \
+    HOT_ACCOUNT_IDS="1001,1003,1005" \
+    COLD_ACCOUNT_IDS="1002,1004" \
+    "${script}"
+}
+
 assert_valid_secret_like_values_do_not_enter_arithmetic() {
   run_bootstrap >/dev/null
   grep -q -- "fixture_password_hash=fixturePasswordHashWithLetters" "${psql_log}"
+}
+
+assert_csv_account_ids_feed_fixture_sql() {
+  : >"${psql_log}"
+  : >"${psql_stdin_log}"
+
+  run_bootstrap_with_csv_accounts >/dev/null
+
+  grep -q -- "hot_account_ids=1001,1003,1005" "${psql_log}"
+  grep -q -- "cold_account_ids=1002,1004" "${psql_log}"
+  grep -q -- "regexp_split_to_table(:'hot_account_ids', ',')" "${psql_stdin_log}"
+  grep -q -- "regexp_split_to_table(:'cold_account_ids', ',')" "${psql_stdin_log}"
+  grep -q -- "INSERT INTO user_account_membership" "${psql_stdin_log}"
 }
 
 assert_too_long_password_hash_fails_before_psql() {
@@ -71,6 +101,7 @@ assert_too_long_password_hash_fails_before_psql() {
 }
 
 assert_valid_secret_like_values_do_not_enter_arithmetic
+assert_csv_account_ids_feed_fixture_sql
 assert_too_long_password_hash_fails_before_psql
 
 echo "[staging-fixture-principal-contract] ok"
