@@ -57,6 +57,8 @@ on:
       - "tools/test/check-offhost-capacity-prerequisite-required-gate.sh"
       - "tools/test/run-oci-offhost-host-metrics-evidence.sh"
       - "tools/test/check-oci-offhost-host-metrics-evidence.sh"
+      - "tools/test/run-oci-offhost-host-metrics-timeline.sh"
+      - "tools/test/check-oci-offhost-host-metrics-timeline.sh"
       - "tools/test/run-oci-offhost-host-metrics-snapshot.sh"
       - "tools/test/check-oci-offhost-host-metrics-snapshot.sh"
       - "tools/test/run-transaction-100m-offhost-capacity-baseline-report.sh"
@@ -76,6 +78,9 @@ jobs:
 
       - name: Validate workflow contract
         run: tools/test/check-offhost-capacity-prerequisite-required-gate.sh
+
+      - name: Check off-host host metrics timeline
+        run: tools/test/check-oci-offhost-host-metrics-timeline.sh
 
   prerequisite:
     name: required off-host capacity env

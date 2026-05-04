@@ -14,6 +14,9 @@ grep -F "off-host capacity prerequisite contract" "${workflow}" >/dev/null
 grep -F "if: github.event_name == 'pull_request'" "${workflow}" >/dev/null
 grep -F "tools/test/check-offhost-capacity-prerequisite-required-gate.sh" "${workflow}" >/dev/null
 grep -F "tools/test/check-oci-offhost-host-metrics-snapshot.sh" "${workflow}" >/dev/null
+grep -F "tools/test/run-oci-offhost-host-metrics-timeline.sh" "${workflow}" >/dev/null
+grep -F "tools/test/check-oci-offhost-host-metrics-timeline.sh" "${workflow}" >/dev/null
+grep -F "Check off-host host metrics timeline" "${workflow}" >/dev/null
 grep -F "if: github.event_name == 'workflow_dispatch'" "${workflow}" >/dev/null
 grep -F "environment:" "${workflow}" >/dev/null
 grep -F "name: staging" "${workflow}" >/dev/null
@@ -68,6 +71,7 @@ grep -F 'OCI_OFFHOST_HOST_METRICS_RUN_ID="${CAPACITY_K6_HOST_METRICS_RUN_ID}"' "
 grep -F 'OCI_OFFHOST_GENERATOR_HOST_METRICS_TSV="${CAPACITY_K6_GENERATOR_HOST_METRICS_TSV}"' "${workflow}" >/dev/null
 grep -F 'OCI_OFFHOST_TARGET_HOST_METRICS_TSV="${CAPACITY_K6_TARGET_HOST_METRICS_TSV}"' "${workflow}" >/dev/null
 grep -F "tools/test/run-oci-offhost-host-metrics-evidence.sh" "${workflow}" >/dev/null
+grep -F "tools/test/check-oci-offhost-host-metrics-timeline.sh" "${workflow}" >/dev/null
 grep -F "tools/test/run-transaction-100m-capacity-gates.sh --print-plan" "${workflow}" >/dev/null
 grep -F "capacity-prerequisite-plan.log" "${workflow}" >/dev/null
 grep -F "actions/upload-artifact@" "${workflow}" >/dev/null
