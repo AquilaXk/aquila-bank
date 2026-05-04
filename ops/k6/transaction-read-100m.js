@@ -78,6 +78,10 @@ const overload429RateThreshold = nonNegativeNumberEnv(__ENV.K6_OVERLOAD_429_RATE
 const burst429RateThreshold = nonNegativeNumberEnv(__ENV.K6_BURST_429_RATE_THRESHOLD, 0.10);
 const backend429RateThreshold = nonNegativeNumberEnv(__ENV.K6_BACKEND_429_RATE_THRESHOLD, 0.005);
 const overload503RateThreshold = nonNegativeNumberEnv(__ENV.K6_OVERLOAD_503_RATE_THRESHOLD, 0);
+const constantVusGateRole = __ENV.K6_CONSTANT_VUS_GATE_ROLE || "not-selected";
+const saturationObservationMode =
+  !overloadMode && scenarioMode === "constant-vus" && constantVusGateRole === "saturation-observation";
+const rejectionObservationMode = overloadMode || saturationObservationMode;
 const maxRetryAfterSleepSeconds = nonNegativeNumberEnv(__ENV.K6_MAX_RETRY_AFTER_SLEEP_SECONDS, 1);
 const maxRetryAfterSleepMs = nonNegativeNumberEnv(
   __ENV.K6_MAX_RETRY_AFTER_SLEEP_MS,
@@ -217,14 +221,20 @@ function thresholds() {
       `max<${coldDeepMaxThresholdMs}`,
     ],
   };
-  if (!overloadMode) {
+  if (!overloadMode && !saturationObservationMode) {
     result.http_req_failed = [`rate<${failedRate}`];
-  } else {
+  } else if (overloadMode) {
     result.aquila_transaction_429_rate = [`rate<${effectiveOverload429RateThreshold}`];
     result.aquila_transaction_backend_429_rate = [`rate<=${backend429RateThreshold}`];
     result.aquila_transaction_502_rate = ["rate<=0"];
     result.aquila_transaction_502_count = ["count<1"];
     result.aquila_transaction_503_rate = [`rate<=${overload503RateThreshold}`];
+    result.aquila_transaction_503_count = ["count<1"];
+  } else {
+    result.aquila_transaction_backend_429_rate = [`rate<=${backend429RateThreshold}`];
+    result.aquila_transaction_502_rate = ["rate<=0"];
+    result.aquila_transaction_502_count = ["count<1"];
+    result.aquila_transaction_503_rate = ["rate<=0"];
     result.aquila_transaction_503_count = ["count<1"];
   }
   return result;
@@ -568,12 +578,14 @@ function requestPage(shape, path, accountId, from, to, cursor) {
   if (isEdgePassed && measured) {
     edgePassedCount.add(1);
   }
-  if (is429 && overloadMode) {
-    // 429는 admission guard의 정상 보호 신호라 overload mode에서만 예외 없이 집계합니다.
+  if (is429 && rejectionObservationMode) {
+    // saturation 관측은 edge 429를 기능 실패로 보지 않고 source budget만 남긴다.
     check(response, {
-      [`${shape} overload returned 429`]: (item) => item.status === 429,
+      [`${shape} ${overloadMode ? "overload" : "saturation"} returned 429`]: (item) => item.status === 429,
     });
-    sleepAfter429(response);
+    if (overloadMode) {
+      sleepAfter429(response);
+    }
     return null;
   }
   retryAfterRejectStreak = 0;
@@ -816,6 +828,8 @@ function markdownSummary(data) {
 - warmup arrival rate: ${warmupRate}/${warmupTimeUnit}
 - warmup VUs: preAllocated=${warmupPreAllocatedVUs} max=${warmupMaxVUs}
 - scenario mode: ${scenarioMode}
+- constant-vus gate role: ${constantVusGateRole}
+- saturation observation mode: ${saturationObservationMode}
 - arrival rate: ${rate}/${timeUnit}
 - burst rate: ${burstRate}/1s
 - burst duration: ${burstDuration}

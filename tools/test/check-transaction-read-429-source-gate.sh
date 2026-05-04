@@ -136,6 +136,13 @@ grep -F "aquila_transaction_accepted_200_count" "${runner}" >/dev/null
 grep -F "unknown 429 hard-zero" "${runner}" >/dev/null
 grep -F 'source === "backend"' ops/k6/transaction-read-100m.js >/dev/null
 grep -F 'reason === "saturation-guard"' ops/k6/transaction-read-100m.js >/dev/null
+grep -F 'const constantVusGateRole = __ENV.K6_CONSTANT_VUS_GATE_ROLE || "not-selected";' ops/k6/transaction-read-100m.js >/dev/null
+grep -F 'const saturationObservationMode =' ops/k6/transaction-read-100m.js >/dev/null
+grep -F 'const rejectionObservationMode = overloadMode || saturationObservationMode;' ops/k6/transaction-read-100m.js >/dev/null
+grep -F 'if (is429 && rejectionObservationMode)' ops/k6/transaction-read-100m.js >/dev/null
+grep -F 'K6_CONSTANT_VUS_GATE_ROLE="${K6_CONSTANT_VUS_GATE_ROLE:-not-selected}"' tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F 'K6_CONSTANT_VUS_GATE_ROLE=${K6_CONSTANT_VUS_GATE_ROLE}' tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F '-e K6_CONSTANT_VUS_GATE_ROLE="${K6_CONSTANT_VUS_GATE_ROLE}"' tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 
 echo "[transaction-read-429-source] invalid input fails"
 if SOURCE_429_FAIL_RATE=2 "${runner}" --print-plan >/dev/null 2>&1; then
