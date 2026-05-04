@@ -63,6 +63,8 @@ on:
       - "tools/test/check-oci-offhost-host-metrics-evidence.sh"
       - "tools/test/run-oci-offhost-host-metrics-timeline.sh"
       - "tools/test/check-oci-offhost-host-metrics-timeline.sh"
+      - "tools/test/run-oci-offhost-host-metrics-timeline-fallback.sh"
+      - "tools/test/check-oci-offhost-host-metrics-timeline-fallback.sh"
       - "tools/test/run-oci-offhost-host-metrics-snapshot.sh"
       - "tools/test/check-oci-offhost-host-metrics-snapshot.sh"
       - "tools/test/run-transaction-100m-offhost-capacity-baseline-report.sh"
@@ -85,6 +87,9 @@ jobs:
 
       - name: Check off-host host metrics timeline
         run: tools/test/check-oci-offhost-host-metrics-timeline.sh
+
+      - name: Check off-host host metrics timeline fallback
+        run: tools/test/check-oci-offhost-host-metrics-timeline-fallback.sh
 
   prerequisite:
     name: required off-host capacity env
@@ -171,6 +176,8 @@ jobs:
           host_metrics_snapshot_dir="${report_dir}/offhost-host-metrics-snapshot"
           snapshot_generator_tsv="${host_metrics_snapshot_dir}/${CAPACITY_NAME}-generator-host-metrics.tsv"
           snapshot_target_tsv="${host_metrics_snapshot_dir}/${CAPACITY_NAME}-target-host-metrics.tsv"
+          host_metrics_timeline_dir="${report_dir}/offhost-host-metrics-timeline"
+          generated_timeline_tsv="${host_metrics_timeline_dir}/${CAPACITY_NAME}-host-metrics-timeline.tsv"
           if [[ -z "${CAPACITY_K6_GENERATOR_HOST_METRICS_TSV}" || -z "${CAPACITY_K6_TARGET_HOST_METRICS_TSV}" ]]; then
             mkdir -p "${host_metrics_snapshot_dir}"
             OCI_OFFHOST_HOST_METRICS_SNAPSHOT_NAME="${CAPACITY_NAME}" \
@@ -185,6 +192,16 @@ jobs:
             if [[ -z "${CAPACITY_K6_TARGET_HOST_METRICS_TSV}" ]]; then
               CAPACITY_K6_TARGET_HOST_METRICS_TSV="${snapshot_target_tsv}"
             fi
+          fi
+          if [[ -z "${CAPACITY_K6_HOST_METRICS_TIMELINE_TSV}" ]]; then
+            mkdir -p "${host_metrics_timeline_dir}"
+            OCI_OFFHOST_HOST_METRICS_TIMELINE_FALLBACK_NAME="${CAPACITY_NAME}" \
+            OCI_OFFHOST_HOST_METRICS_RUN_ID="${CAPACITY_K6_HOST_METRICS_RUN_ID}" \
+            OCI_OFFHOST_GENERATOR_HOST_METRICS_TSV="${CAPACITY_K6_GENERATOR_HOST_METRICS_TSV}" \
+            OCI_OFFHOST_TARGET_HOST_METRICS_TSV="${CAPACITY_K6_TARGET_HOST_METRICS_TSV}" \
+            OCI_OFFHOST_HOST_METRICS_TIMELINE_OUTPUT_DIR="${host_metrics_timeline_dir}" \
+              tools/test/run-oci-offhost-host-metrics-timeline-fallback.sh >"${host_metrics_timeline_dir}/host-metrics-timeline-fallback.log" 2>&1
+            CAPACITY_K6_HOST_METRICS_TIMELINE_TSV="${generated_timeline_tsv}"
           fi
 
           missing=()
