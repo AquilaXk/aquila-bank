@@ -96,19 +96,19 @@ input_tsv="${temp_dir}/burst-reject-curve-input.tsv"
         write_aggregate "${rate}" "matrix-burst32" 0 0 0
         ;;
       48)
-        write_summary "${rate}" 0.03 0.028 0.002 1 0 5700 6.2 25 1
+        write_summary "${rate}" 0.03 0.030 0.000 0 0 5700 6.2 25 1
         write_aggregate "${rate}" "matrix-burst48" 168 0 0
         ;;
       64)
-        write_summary "${rate}" 0.06 0.055 0.003 2 0 5650 7.5 40 2
+        write_summary "${rate}" 0.06 0.060 0.000 0 0 5650 7.5 40 2
         write_aggregate "${rate}" "matrix-burst64" 465 0 0
         ;;
       80)
-        write_summary "${rate}" 0.08 0.076 0.004 3 0 5400 11.7 55 4
+        write_summary "${rate}" 0.08 0.080 0.000 0 0 5400 11.7 55 4
         write_aggregate "${rate}" "matrix-burst80" 610 0 0
         ;;
       96)
-        write_summary "${rate}" 0.35 0.346 0.004 4 0 5100 18.3 80 6
+        write_summary "${rate}" 0.35 0.350 0.000 0 0 5100 18.3 80 6
         write_aggregate "${rate}" "matrix-burst96" 1840 0 0
         ;;
     esac
@@ -134,7 +134,7 @@ plan="$(
 grep -F "name=burst-matrix-check" <<<"${plan}" >/dev/null
 grep -F "required_burst_rates=32,48,64,80,96" <<<"${plan}" >/dev/null
 grep -F "promotion_target_rate=80" <<<"${plan}" >/dev/null
-grep -F "gate=burst80 total/edge 429 <= 0.10, backend 429 <= 0.005, k6 503 = 0, nginx 5xx = 0, nginx 499 = 0, accepted p95 < 100ms" <<<"${plan}" >/dev/null
+grep -F "gate=burst80 total/edge 429 <= 0.10, backend 429 = 0, k6 503 = 0, nginx 5xx = 0, nginx 499 = 0, accepted p95 < 100ms" <<<"${plan}" >/dev/null
 grep -F "summary_tsv=${output_dir}/burst-matrix-check-burst-reject-curve.tsv" <<<"${plan}" >/dev/null
 
 echo "[oci-k6-burst-reject-curve-matrix] report"
@@ -149,16 +149,16 @@ summary_tsv="${output_dir}/burst-matrix-check-burst-reject-curve.tsv"
 summary_json="${output_dir}/burst-matrix-check-burst-reject-curve.json"
 test "${report_md}" = "${output_dir}/burst-matrix-check-burst-reject-curve.md"
 grep -F $'burst_rate\tstatus\tk6_run_id\ttotal_429_rate\tedge_429_rate\tbackend_429_rate\tbackend_429_count\tk6_503_count\tnginx_5xx_count\tnginx_499_count\taccepted_count\taccepted_p95_ms\tretry_after_p95_ms\treject_streak_max\tsummary_json\tnginx_aggregate_json\tnginx_aggregate_tsv\tnginx_aggregate_md' "${summary_tsv}" >/dev/null
-grep -F $'64\tpass\tmatrix-burst64\t0.060000\t0.055000\t0.003000\t2\t0\t0\t0\t5650\t7.500\t40.000\t2' "${summary_tsv}" >/dev/null
-grep -F $'80\tpass\tmatrix-burst80\t0.080000\t0.076000\t0.004000\t3\t0\t0\t0\t5400\t11.700\t55.000\t4' "${summary_tsv}" >/dev/null
-grep -F $'96\tobserve\tmatrix-burst96\t0.350000\t0.346000\t0.004000\t4\t0\t0\t0\t5100\t18.300\t80.000\t6' "${summary_tsv}" >/dev/null
+grep -F $'64\tpass\tmatrix-burst64\t0.060000\t0.060000\t0.000000\t0\t0\t0\t0\t5650\t7.500\t40.000\t2' "${summary_tsv}" >/dev/null
+grep -F $'80\tpass\tmatrix-burst80\t0.080000\t0.080000\t0.000000\t0\t0\t0\t0\t5400\t11.700\t55.000\t4' "${summary_tsv}" >/dev/null
+grep -F $'96\tobserve\tmatrix-burst96\t0.350000\t0.350000\t0.000000\t0\t0\t0\t0\t5100\t18.300\t80.000\t6' "${summary_tsv}" >/dev/null
 grep -F "burst80 gate: pass" "${report_md}" >/dev/null
 grep -F "promotion target rate: 80" "${report_md}" >/dev/null
 grep -F "rows above target: overload observation rows; 429 ceiling is not applied" "${report_md}" >/dev/null
 grep -F "matrix input TSV: ${input_tsv}" "${report_md}" >/dev/null
 jq -e '.items | length == 5' "${summary_json}" >/dev/null
 jq -e '.promotion_target_rate == 80' "${summary_json}" >/dev/null
-jq -e '.items[] | select(.burst_rate == 64 and .status == "pass" and .edge_429_rate == 0.055 and .nginx_499_count == 0)' "${summary_json}" >/dev/null
+jq -e '.items[] | select(.burst_rate == 64 and .status == "pass" and .edge_429_rate == 0.06 and .backend_429_count == 0 and .nginx_499_count == 0)' "${summary_json}" >/dev/null
 jq -e '.items[] | select(.burst_rate == 80 and .status == "pass" and .total_429_rate == 0.08)' "${summary_json}" >/dev/null
 jq -e '.items[] | select(.burst_rate == 96 and .status == "observe" and .total_429_rate == 0.35)' "${summary_json}" >/dev/null
 
@@ -194,6 +194,26 @@ if OCI_K6_BURST_MATRIX_NAME=burst-matrix-bad \
   exit 1
 fi
 grep -F "burst64 gate failed: total_429_rate=0.110000 > 0.100000" "${temp_dir}/bad.log" >/dev/null
+
+echo "[oci-k6-burst-reject-curve-matrix] burst64 backend hard-zero fails"
+backend_bad_summary="${temp_dir}/burst-64-summary-backend-bad.json"
+jq '.metrics.aquila_transaction_backend_429_rate.values.rate = 0.0002 | .metrics.aquila_transaction_backend_429_count.values.count = 1' \
+  "${temp_dir}/burst-64-summary.json" >"${backend_bad_summary}"
+backend_bad_input="${temp_dir}/backend-bad-input.tsv"
+awk -F '\t' -v bad_summary="${backend_bad_summary}" '
+  BEGIN { OFS = FS }
+  NR == 1 { print; next }
+  $1 == "64" { $3 = bad_summary }
+  { print }
+' "${input_tsv}" >"${backend_bad_input}"
+if OCI_K6_BURST_MATRIX_NAME=burst-matrix-backend-bad \
+  OCI_K6_BURST_MATRIX_INPUT_TSV="${backend_bad_input}" \
+  OCI_K6_BURST_MATRIX_OUTPUT_DIR="${temp_dir}/backend-bad-output" \
+    "${runner}" >"${temp_dir}/backend-bad.log" 2>&1; then
+  echo "burst matrix unexpectedly passed backend 429 hard-zero violation" >&2
+  exit 1
+fi
+grep -F "burst64 gate failed: backend_429_count=1 > 0" "${temp_dir}/backend-bad.log" >/dev/null
 
 echo "[oci-k6-burst-reject-curve-matrix] burst80 promotion target gate fails"
 target80_bad_summary="${temp_dir}/burst-80-summary-bad.json"

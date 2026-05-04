@@ -628,8 +628,8 @@ render_nginx_config() {
     burst80)
       transaction_read_profile_hot_rate_rps=128
       transaction_read_profile_archive_rate_rps=128
-      transaction_read_profile_hot_burst=64
-      transaction_read_profile_archive_burst=64
+      transaction_read_profile_hot_burst=128
+      transaction_read_profile_archive_burst=128
       transaction_read_profile_hot_delay=0
       transaction_read_profile_archive_delay=0
       ;;

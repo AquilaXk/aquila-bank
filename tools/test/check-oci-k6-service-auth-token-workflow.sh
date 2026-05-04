@@ -129,6 +129,12 @@ grep -F 'SOURCE_429_GATE_MODE="${K6_CONSTANT_VUS_GATE_ROLE}"' "${workflow}" >/de
 grep -F 'SOURCE_429_TOTAL_FAIL_RATE="${total_fail_rate}"' "${workflow}" >/dev/null
 grep -F 'SOURCE_429_EDGE_FAIL_RATE="${edge_fail_rate}"' "${workflow}" >/dev/null
 grep -F 'SOURCE_429_BACKEND_FAIL_RATE="${K6_BACKEND_429_RATE_THRESHOLD}"' "${workflow}" >/dev/null
+grep -F 'SOURCE_429_BACKEND_FAIL_COUNT="${backend_count_fail_threshold}"' "${workflow}" >/dev/null
+grep -F 'SOURCE_429_BACKEND_ADMISSION_FAIL_COUNT="${backend_admission_count_fail_threshold}"' "${workflow}" >/dev/null
+grep -F 'SOURCE_429_FAIRNESS_FAIL_COUNT="${fairness_count_fail_threshold}"' "${workflow}" >/dev/null
+grep -F 'backend_count_fail_threshold=25' "${workflow}" >/dev/null
+grep -F 'backend_admission_count_fail_threshold=10' "${workflow}" >/dev/null
+grep -F 'fairness_count_fail_threshold=20' "${workflow}" >/dev/null
 grep -F 'SOURCE_429_NGINX_AGGREGATE_TSV="${aggregate_tsv}"' "${workflow}" >/dev/null
 grep -F "transaction-read-429-source" "${workflow}" >/dev/null
 grep -F "transaction-read-nginx-access-aggregate" "${workflow}" >/dev/null

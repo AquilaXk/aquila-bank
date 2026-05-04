@@ -524,9 +524,15 @@ jobs:
 
           total_fail_rate="${K6_BURST_429_RATE_THRESHOLD}"
           edge_fail_rate="${K6_BURST_429_RATE_THRESHOLD}"
+          backend_count_fail_threshold=""
+          backend_admission_count_fail_threshold=""
+          fairness_count_fail_threshold=""
           if [[ "${K6_CONSTANT_VUS_GATE_ROLE}" == "saturation-observation" ]]; then
             total_fail_rate=1
             edge_fail_rate=1
+            backend_count_fail_threshold=25
+            backend_admission_count_fail_threshold=10
+            fairness_count_fail_threshold=20
           fi
 
           SOURCE_429_GATE_NAME="${K6_REPORT_NAME}" \
@@ -537,6 +543,9 @@ jobs:
           SOURCE_429_TOTAL_FAIL_RATE="${total_fail_rate}" \
           SOURCE_429_EDGE_FAIL_RATE="${edge_fail_rate}" \
           SOURCE_429_BACKEND_FAIL_RATE="${K6_BACKEND_429_RATE_THRESHOLD}" \
+          SOURCE_429_BACKEND_FAIL_COUNT="${backend_count_fail_threshold}" \
+          SOURCE_429_BACKEND_ADMISSION_FAIL_COUNT="${backend_admission_count_fail_threshold}" \
+          SOURCE_429_FAIRNESS_FAIL_COUNT="${fairness_count_fail_threshold}" \
           SOURCE_429_NGINX_AGGREGATE_TSV="${aggregate_tsv}" \
             tools/test/run-transaction-read-429-source-gate.sh
 

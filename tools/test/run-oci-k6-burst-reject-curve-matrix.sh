@@ -12,6 +12,7 @@ Environment:
   OCI_K6_BURST_MATRIX_OUTPUT_DIR      default build/reports/k6/<name>
   OCI_K6_BURST_MATRIX_PROMOTION_TARGET_RATE default 80
   OCI_K6_BURST_MATRIX_TARGET_429_THRESHOLD default 0.10
+  OCI_K6_BURST_MATRIX_BACKEND_429_THRESHOLD default 0
 USAGE
 }
 
@@ -41,11 +42,23 @@ summary_tsv="${output_dir}/${name}-burst-reject-curve.tsv"
 summary_json="${output_dir}/${name}-burst-reject-curve.json"
 report_md="${output_dir}/${name}-burst-reject-curve.md"
 target_429_threshold="${OCI_K6_BURST_MATRIX_TARGET_429_THRESHOLD:-${OCI_K6_BURST_MATRIX_BURST64_429_THRESHOLD:-0.10}}"
-backend_429_threshold="${OCI_K6_BURST_MATRIX_BACKEND_429_THRESHOLD:-0.005}"
+backend_429_threshold="${OCI_K6_BURST_MATRIX_BACKEND_429_THRESHOLD:-0}"
 accepted_p95_threshold_ms="${OCI_K6_BURST_MATRIX_ACCEPTED_P95_THRESHOLD_MS:-100}"
 promotion_target_rate="${OCI_K6_BURST_MATRIX_PROMOTION_TARGET_RATE:-80}"
 
 IFS=',' read -r -a required_rate_items <<<"${required_burst_rates}"
+
+is_zero() {
+  awk -v value="$1" 'BEGIN { exit !(value == 0) }'
+}
+
+backend_gate_label() {
+  if is_zero "${backend_429_threshold}"; then
+    echo "backend 429 = 0"
+    return
+  fi
+  echo "backend 429 <= ${backend_429_threshold}"
+}
 
 if ! [[ "${promotion_target_rate}" =~ ^[1-9][0-9]*$ ]]; then
   echo "OCI_K6_BURST_MATRIX_PROMOTION_TARGET_RATE must be a positive integer: ${promotion_target_rate}" >&2
@@ -58,7 +71,7 @@ print_plan() {
   echo "[oci-k6-burst-reject-curve-matrix] required_burst_rates=${required_burst_rates}"
   echo "[oci-k6-burst-reject-curve-matrix] promotion_target_rate=${promotion_target_rate}"
   echo "[oci-k6-burst-reject-curve-matrix] output_dir=${output_dir}"
-  echo "[oci-k6-burst-reject-curve-matrix] gate=burst${promotion_target_rate} total/edge 429 <= ${target_429_threshold}, backend 429 <= ${backend_429_threshold}, k6 503 = 0, nginx 5xx = 0, nginx 499 = 0, accepted p95 < ${accepted_p95_threshold_ms}ms"
+  echo "[oci-k6-burst-reject-curve-matrix] gate=burst${promotion_target_rate} total/edge 429 <= ${target_429_threshold}, $(backend_gate_label), k6 503 = 0, nginx 5xx = 0, nginx 499 = 0, accepted p95 < ${accepted_p95_threshold_ms}ms"
   echo "[oci-k6-burst-reject-curve-matrix] summary_tsv=${summary_tsv}"
   echo "[oci-k6-burst-reject-curve-matrix] summary_json=${summary_json}"
   echo "[oci-k6-burst-reject-curve-matrix] report_md=${report_md}"
@@ -211,6 +224,14 @@ record_failure() {
       status="fail"
       record_failure "burst${burst_rate} gate failed: nginx_499_count=${nginx_499_count} > 0"
     fi
+    if is_zero "${backend_429_threshold}" && gt "${backend_429_count}" "0"; then
+      status="fail"
+      record_failure "$(printf 'burst%s gate failed: backend_429_count=%.0f > 0' "${burst_rate}" "${backend_429_count}")"
+    fi
+    if gt "${backend_429_rate}" "${backend_429_threshold}"; then
+      status="fail"
+      record_failure "$(printf 'burst%s gate failed: backend_429_rate=%.6f > %.6f' "${burst_rate}" "${backend_429_rate}" "${backend_429_threshold}")"
+    fi
     if [[ "${burst_rate}" == "${promotion_target_rate}" ]]; then
       if gt "${total_429_rate}" "${target_429_threshold}"; then
         status="fail"
@@ -219,10 +240,6 @@ record_failure() {
       if gt "${edge_429_rate}" "${target_429_threshold}"; then
         status="fail"
         record_failure "$(printf 'burst%s gate failed: edge_429_rate=%.6f > %.6f' "${promotion_target_rate}" "${edge_429_rate}" "${target_429_threshold}")"
-      fi
-      if gt "${backend_429_rate}" "${backend_429_threshold}"; then
-        status="fail"
-        record_failure "$(printf 'burst%s gate failed: backend_429_rate=%.6f > %.6f' "${promotion_target_rate}" "${backend_429_rate}" "${backend_429_threshold}")"
       fi
       if gte "${accepted_p95_ms}" "${accepted_p95_threshold_ms}"; then
         status="fail"
@@ -329,8 +346,8 @@ ${matrix_table}
 
 ## Gate
 
-- burst${promotion_target_rate}: total/edge 429 <= ${target_429_threshold}, backend 429 <= ${backend_429_threshold}, k6 503 = 0, nginx 5xx = 0, nginx 499 = 0, accepted p95 < ${accepted_p95_threshold_ms}ms
-- all bursts: k6 503 = 0, nginx 5xx = 0, nginx 499 = 0
+- burst${promotion_target_rate}: total/edge 429 <= ${target_429_threshold}, $(backend_gate_label), k6 503 = 0, nginx 5xx = 0, nginx 499 = 0, accepted p95 < ${accepted_p95_threshold_ms}ms
+- all bursts: $(backend_gate_label), k6 503 = 0, nginx 5xx = 0, nginx 499 = 0
 - rows above target: reject curve observation only for 429 budget; still fails on 5xx/499
 
 ## Artifacts
