@@ -10,8 +10,10 @@ STAGING_REPLAY_USER_PASSWORD_HASH="${STAGING_REPLAY_USER_PASSWORD_HASH:-staging-
 STAGING_REPLAY_USER_DISPLAY_NAME="${STAGING_REPLAY_USER_DISPLAY_NAME:-Staging Fixture User}"
 HOT_ACCOUNT_ID="${HOT_ACCOUNT_ID:-${STAGING_REPLAY_HOT_ACCOUNT_ID:-}}"
 COLD_ACCOUNT_ID="${COLD_ACCOUNT_ID:-${STAGING_REPLAY_COLD_ACCOUNT_ID:-}}"
-STAGING_REPLAY_HOT_ACCOUNT_NUMBER="${STAGING_REPLAY_HOT_ACCOUNT_NUMBER:-STG-HOT-${HOT_ACCOUNT_ID}}"
-STAGING_REPLAY_COLD_ACCOUNT_NUMBER="${STAGING_REPLAY_COLD_ACCOUNT_NUMBER:-STG-COLD-${COLD_ACCOUNT_ID}}"
+HOT_ACCOUNT_IDS="${HOT_ACCOUNT_IDS:-${STAGING_REPLAY_HOT_ACCOUNT_IDS:-${HOT_ACCOUNT_ID}}}"
+COLD_ACCOUNT_IDS="${COLD_ACCOUNT_IDS:-${STAGING_REPLAY_COLD_ACCOUNT_IDS:-${COLD_ACCOUNT_ID}}}"
+STAGING_REPLAY_HOT_ACCOUNT_NUMBER="${STAGING_REPLAY_HOT_ACCOUNT_NUMBER:-}"
+STAGING_REPLAY_COLD_ACCOUNT_NUMBER="${STAGING_REPLAY_COLD_ACCOUNT_NUMBER:-}"
 
 fail() {
   echo "::error::$*" >&2
@@ -34,6 +36,28 @@ require_positive_integer() {
   [[ "$value" =~ ^[1-9][0-9]*$ ]] || fail "${name} must be a positive integer"
 }
 
+normalize_account_ids() {
+  local name="$1"
+  local raw="${!name:-}"
+  local normalized=""
+  local item
+  local -a items
+  raw="${raw//[[:space:]]/}"
+  [ -n "${raw}" ] || fail "Missing required environment variable: ${name}"
+
+  IFS="," read -r -a items <<<"${raw}"
+  for item in "${items[@]}"; do
+    [ -n "${item}" ] || fail "${name} must not contain empty account ids"
+    [[ "${item}" =~ ^[1-9][0-9]*$ ]] || fail "${name} must contain only positive integer account ids"
+    if [[ -n "${normalized}" ]]; then
+      normalized+=","
+    fi
+    normalized+="${item}"
+  done
+
+  printf -v "${name}" '%s' "${normalized}"
+}
+
 require_max_length() {
   local name="$1"
   local value="${!name:-}"
@@ -43,22 +67,51 @@ require_max_length() {
   fi
 }
 
+require_account_number_lengths() {
+  local group_name="$1"
+  local account_ids="$2"
+  local first_account_number="$3"
+  local fallback_prefix="$4"
+  local account_id account_number
+  local index=0
+  local -a account_items
+
+  IFS="," read -r -a account_items <<<"${account_ids}"
+  for account_id in "${account_items[@]}"; do
+    ((index += 1))
+    if ((index == 1)); then
+      account_number="${first_account_number}"
+    else
+      account_number="${fallback_prefix}${account_id}"
+    fi
+    if ((${#account_number} > 20)); then
+      fail "${group_name} account number for account_id=${account_id} must be 20 characters or less"
+    fi
+  done
+}
+
 validate_inputs() {
   require_command psql
   require_env STAGING_DATABASE_URL
   require_env STAGING_REPLAY_LOGIN_ID
   require_env STAGING_REPLAY_USER_PASSWORD_HASH
   require_env STAGING_REPLAY_USER_DISPLAY_NAME
-  require_env HOT_ACCOUNT_ID
-  require_env COLD_ACCOUNT_ID
+  require_env HOT_ACCOUNT_IDS
+  require_env COLD_ACCOUNT_IDS
+  normalize_account_ids HOT_ACCOUNT_IDS
+  normalize_account_ids COLD_ACCOUNT_IDS
+  HOT_ACCOUNT_ID="${HOT_ACCOUNT_IDS%%,*}"
+  COLD_ACCOUNT_ID="${COLD_ACCOUNT_IDS%%,*}"
+  STAGING_REPLAY_HOT_ACCOUNT_NUMBER="${STAGING_REPLAY_HOT_ACCOUNT_NUMBER:-STG-HOT-${HOT_ACCOUNT_ID}}"
+  STAGING_REPLAY_COLD_ACCOUNT_NUMBER="${STAGING_REPLAY_COLD_ACCOUNT_NUMBER:-STG-COLD-${COLD_ACCOUNT_ID}}"
   require_positive_integer STAGING_REPLAY_USER_ID
-  require_positive_integer HOT_ACCOUNT_ID
-  require_positive_integer COLD_ACCOUNT_ID
   require_max_length STAGING_REPLAY_LOGIN_ID 80
   require_max_length STAGING_REPLAY_USER_PASSWORD_HASH 120
   require_max_length STAGING_REPLAY_USER_DISPLAY_NAME 80
   require_max_length STAGING_REPLAY_HOT_ACCOUNT_NUMBER 20
   require_max_length STAGING_REPLAY_COLD_ACCOUNT_NUMBER 20
+  require_account_number_lengths "HOT_ACCOUNT_IDS" "${HOT_ACCOUNT_IDS}" "${STAGING_REPLAY_HOT_ACCOUNT_NUMBER}" "STG-HOT-"
+  require_account_number_lengths "COLD_ACCOUNT_IDS" "${COLD_ACCOUNT_IDS}" "${STAGING_REPLAY_COLD_ACCOUNT_NUMBER}" "STG-COLD-"
 }
 
 ensure_fixture_principal() {
@@ -71,10 +124,42 @@ ensure_fixture_principal() {
     -v fixture_display_name="${STAGING_REPLAY_USER_DISPLAY_NAME}" \
     -v hot_account_id="${HOT_ACCOUNT_ID}" \
     -v cold_account_id="${COLD_ACCOUNT_ID}" \
+    -v hot_account_ids="${HOT_ACCOUNT_IDS}" \
+    -v cold_account_ids="${COLD_ACCOUNT_IDS}" \
     -v hot_account_number="${STAGING_REPLAY_HOT_ACCOUNT_NUMBER}" \
     -v cold_account_number="${STAGING_REPLAY_COLD_ACCOUNT_NUMBER}" <<'SQL'
       -- psql 변수(:name)는 -c 경로에서 치환되지 않아 stdin으로 전달한다.
       BEGIN;
+
+      CREATE TEMP TABLE staging_fixture_accounts ON COMMIT DROP AS
+      WITH raw_fixture_accounts AS (
+          SELECT
+              'hot' AS account_group,
+              0 AS group_rank,
+              hot.ordinal,
+              hot.account_id_text::bigint AS account_id
+          FROM regexp_split_to_table(:'hot_account_ids', ',') WITH ORDINALITY AS hot(account_id_text, ordinal)
+          UNION ALL
+          SELECT
+              'cold' AS account_group,
+              1 AS group_rank,
+              cold.ordinal,
+              cold.account_id_text::bigint AS account_id
+          FROM regexp_split_to_table(:'cold_account_ids', ',') WITH ORDINALITY AS cold(account_id_text, ordinal)
+      )
+      SELECT DISTINCT ON (account_id)
+          account_id,
+          CASE
+              WHEN account_group = 'hot' AND ordinal = 1 THEN :'hot_account_number'
+              WHEN account_group = 'cold' AND ordinal = 1 THEN :'cold_account_number'
+              ELSE concat('STG-', upper(account_group), '-', account_id::text)
+          END AS account_number,
+          CASE
+              WHEN account_group = 'hot' THEN 'Staging hot fixture account'
+              ELSE 'Staging cold fixture account'
+          END AS display_name
+      FROM raw_fixture_accounts
+      ORDER BY account_id, group_rank, ordinal;
 
       INSERT INTO bank_account (
           id,
@@ -86,9 +171,15 @@ ensure_fixture_principal() {
           updated_at
       )
       OVERRIDING SYSTEM VALUE
-      VALUES
-          (:hot_account_id, :'hot_account_number', 'Staging hot fixture account', 'ACTIVE', 'KRW', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-          (:cold_account_id, :'cold_account_number', 'Staging cold fixture account', 'ACTIVE', 'KRW', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      SELECT
+          account_id,
+          account_number,
+          display_name,
+          'ACTIVE',
+          'KRW',
+          CURRENT_TIMESTAMP,
+          CURRENT_TIMESTAMP
+      FROM staging_fixture_accounts
       ON CONFLICT (id)
       DO UPDATE
       SET account_status = 'ACTIVE',
@@ -102,9 +193,14 @@ ensure_fixture_principal() {
           currency_code,
           updated_at
       )
-      VALUES
-          (:hot_account_id, 0, 0, 0, 'KRW', CURRENT_TIMESTAMP),
-          (:cold_account_id, 0, 0, 0, 'KRW', CURRENT_TIMESTAMP)
+      SELECT
+          account_id,
+          0,
+          0,
+          0,
+          'KRW',
+          CURRENT_TIMESTAMP
+      FROM staging_fixture_accounts
       ON CONFLICT (account_id)
       DO UPDATE
       SET currency_code = EXCLUDED.currency_code,
@@ -144,9 +240,14 @@ ensure_fixture_principal() {
           created_at,
           updated_at
       )
-      VALUES
-          (:fixture_user_id, :hot_account_id, 'OWNER', 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-          (:fixture_user_id, :cold_account_id, 'OWNER', 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      SELECT
+          :fixture_user_id,
+          account_id,
+          'OWNER',
+          'ACTIVE',
+          CURRENT_TIMESTAMP,
+          CURRENT_TIMESTAMP
+      FROM staging_fixture_accounts
       ON CONFLICT (user_id, account_id)
       DO UPDATE
       SET membership_role = EXCLUDED.membership_role,
@@ -166,4 +267,4 @@ SQL
 validate_inputs
 ensure_fixture_principal
 
-echo "[staging-fixture-principal] ensured user_id=${STAGING_REPLAY_USER_ID} hot_account_id=${HOT_ACCOUNT_ID} cold_account_id=${COLD_ACCOUNT_ID}"
+echo "[staging-fixture-principal] ensured user_id=${STAGING_REPLAY_USER_ID} hot_account_ids=${HOT_ACCOUNT_IDS} cold_account_ids=${COLD_ACCOUNT_IDS}"

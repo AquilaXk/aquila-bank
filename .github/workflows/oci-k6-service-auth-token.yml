@@ -134,6 +134,8 @@ on:
       - "tools/test/run-k6-transaction-100m-loadtest.sh"
       - "tools/test/run-transaction-read-nginx-access-aggregate-artifact.sh"
       - "tools/test/check-transaction-read-nginx-access-aggregate-artifact.sh"
+      - "tools/ops/staging-fixture-principal-bootstrap.sh"
+      - "tools/test/run-staging-fixture-principal-bootstrap-contract.sh"
 
 permissions:
   contents: read
@@ -155,6 +157,9 @@ jobs:
 
       - name: Validate transaction read 429 source gate
         run: bash tools/test/check-transaction-read-429-source-gate.sh
+
+      - name: Validate staging fixture principal bootstrap
+        run: bash tools/test/run-staging-fixture-principal-bootstrap-contract.sh
 
   authenticated-k6:
     name: Authenticated OCI k6 capacity
@@ -292,6 +297,9 @@ jobs:
 
           missing=()
           [[ -z "${STAGING_REPLAY_TOKEN:-}" ]] && missing+=("STAGING_REPLAY_TOKEN")
+          if [[ -z "${STAGING_OCI_A1_DATABASE_URL:-}" && -z "${STAGING_RDS_DATABASE_URL:-}" ]]; then
+            missing+=("STAGING_OCI_A1_DATABASE_URL")
+          fi
           [[ -z "${K6_DOCKER_CONTEXT}" ]] && missing+=("K6_DOCKER_CONTEXT")
           [[ -z "${K6_REMOTE_BASE_URL}" ]] && missing+=("K6_REMOTE_BASE_URL")
           [[ -z "${K6_REMOTE_PROMETHEUS_RW_SERVER_URL}" ]] && missing+=("K6_REMOTE_PROMETHEUS_RW_SERVER_URL")
@@ -308,6 +316,8 @@ jobs:
 
           env_names=(
             STAGING_REPLAY_TOKEN
+            STAGING_OCI_A1_DATABASE_URL
+            STAGING_RDS_DATABASE_URL
             K6_REPORT_NAME
             K6_RUN_ID
             K6_RUN_PURPOSE
@@ -427,6 +437,16 @@ jobs:
           set -euo pipefail
           K6_NGINX_LOG_SINCE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
           printf 'K6_NGINX_LOG_SINCE=%s\n' "${K6_NGINX_LOG_SINCE}" >>"${GITHUB_ENV}"
+
+      - name: Ensure service auth fixture principal
+        shell: bash
+        run: |
+          set -euo pipefail
+          HOT_ACCOUNT_ID="${K6_HOT_ACCOUNT_ID}" \
+          COLD_ACCOUNT_ID="${K6_COLD_ACCOUNT_ID}" \
+          HOT_ACCOUNT_IDS="${K6_HOT_ACCOUNT_IDS:-${K6_HOT_ACCOUNT_ID}}" \
+          COLD_ACCOUNT_IDS="${K6_COLD_ACCOUNT_IDS:-${K6_COLD_ACCOUNT_ID}}" \
+            tools/ops/staging-fixture-principal-bootstrap.sh
 
       - name: Run auth preflight
         shell: bash
