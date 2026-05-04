@@ -100,12 +100,12 @@ input_tsv="${temp_dir}/burst-reject-curve-input.tsv"
         write_aggregate "${rate}" "matrix-burst48" 168 0 0
         ;;
       64)
-        write_summary "${rate}" 0.08 0.075 0.003 2 0 5650 7.5 40 2
+        write_summary "${rate}" 0.06 0.055 0.003 2 0 5650 7.5 40 2
         write_aggregate "${rate}" "matrix-burst64" 465 0 0
         ;;
       80)
-        write_summary "${rate}" 0.22 0.216 0.004 3 0 5400 11.7 55 4
-        write_aggregate "${rate}" "matrix-burst80" 1120 0 0
+        write_summary "${rate}" 0.08 0.076 0.004 3 0 5400 11.7 55 4
+        write_aggregate "${rate}" "matrix-burst80" 610 0 0
         ;;
       96)
         write_summary "${rate}" 0.35 0.346 0.004 4 0 5100 18.3 80 6
@@ -133,8 +133,8 @@ plan="$(
 )"
 grep -F "name=burst-matrix-check" <<<"${plan}" >/dev/null
 grep -F "required_burst_rates=32,48,64,80,96" <<<"${plan}" >/dev/null
-grep -F "promotion_target_rate=64" <<<"${plan}" >/dev/null
-grep -F "gate=burst64 total/edge 429 <= 0.10, backend 429 <= 0.005, k6 503 = 0, nginx 5xx = 0, nginx 499 = 0, accepted p95 < 100ms" <<<"${plan}" >/dev/null
+grep -F "promotion_target_rate=80" <<<"${plan}" >/dev/null
+grep -F "gate=burst80 total/edge 429 <= 0.10, backend 429 <= 0.005, k6 503 = 0, nginx 5xx = 0, nginx 499 = 0, accepted p95 < 100ms" <<<"${plan}" >/dev/null
 grep -F "summary_tsv=${output_dir}/burst-matrix-check-burst-reject-curve.tsv" <<<"${plan}" >/dev/null
 
 echo "[oci-k6-burst-reject-curve-matrix] report"
@@ -149,16 +149,18 @@ summary_tsv="${output_dir}/burst-matrix-check-burst-reject-curve.tsv"
 summary_json="${output_dir}/burst-matrix-check-burst-reject-curve.json"
 test "${report_md}" = "${output_dir}/burst-matrix-check-burst-reject-curve.md"
 grep -F $'burst_rate\tstatus\tk6_run_id\ttotal_429_rate\tedge_429_rate\tbackend_429_rate\tbackend_429_count\tk6_503_count\tnginx_5xx_count\tnginx_499_count\taccepted_count\taccepted_p95_ms\tretry_after_p95_ms\treject_streak_max\tsummary_json\tnginx_aggregate_json\tnginx_aggregate_tsv\tnginx_aggregate_md' "${summary_tsv}" >/dev/null
-grep -F $'64\tpass\tmatrix-burst64\t0.080000\t0.075000\t0.003000\t2\t0\t0\t0\t5650\t7.500\t40.000\t2' "${summary_tsv}" >/dev/null
-grep -F $'80\tobserve\tmatrix-burst80\t0.220000\t0.216000\t0.004000\t3\t0\t0\t0\t5400\t11.700\t55.000\t4' "${summary_tsv}" >/dev/null
-grep -F "burst64 gate: pass" "${report_md}" >/dev/null
-grep -F "promotion target rate: 64" "${report_md}" >/dev/null
+grep -F $'64\tpass\tmatrix-burst64\t0.060000\t0.055000\t0.003000\t2\t0\t0\t0\t5650\t7.500\t40.000\t2' "${summary_tsv}" >/dev/null
+grep -F $'80\tpass\tmatrix-burst80\t0.080000\t0.076000\t0.004000\t3\t0\t0\t0\t5400\t11.700\t55.000\t4' "${summary_tsv}" >/dev/null
+grep -F $'96\tobserve\tmatrix-burst96\t0.350000\t0.346000\t0.004000\t4\t0\t0\t0\t5100\t18.300\t80.000\t6' "${summary_tsv}" >/dev/null
+grep -F "burst80 gate: pass" "${report_md}" >/dev/null
+grep -F "promotion target rate: 80" "${report_md}" >/dev/null
 grep -F "rows above target: overload observation rows; 429 ceiling is not applied" "${report_md}" >/dev/null
 grep -F "matrix input TSV: ${input_tsv}" "${report_md}" >/dev/null
 jq -e '.items | length == 5' "${summary_json}" >/dev/null
-jq -e '.promotion_target_rate == 64' "${summary_json}" >/dev/null
-jq -e '.items[] | select(.burst_rate == 64 and .status == "pass" and .edge_429_rate == 0.075 and .nginx_499_count == 0)' "${summary_json}" >/dev/null
-jq -e '.items[] | select(.burst_rate == 80 and .status == "observe" and .total_429_rate == 0.22)' "${summary_json}" >/dev/null
+jq -e '.promotion_target_rate == 80' "${summary_json}" >/dev/null
+jq -e '.items[] | select(.burst_rate == 64 and .status == "pass" and .edge_429_rate == 0.055 and .nginx_499_count == 0)' "${summary_json}" >/dev/null
+jq -e '.items[] | select(.burst_rate == 80 and .status == "pass" and .total_429_rate == 0.08)' "${summary_json}" >/dev/null
+jq -e '.items[] | select(.burst_rate == 96 and .status == "observe" and .total_429_rate == 0.35)' "${summary_json}" >/dev/null
 
 echo "[oci-k6-burst-reject-curve-matrix] missing required rate fails"
 missing_input="${temp_dir}/missing-input.tsv"
@@ -172,7 +174,7 @@ if OCI_K6_BURST_MATRIX_NAME=burst-matrix-missing \
 fi
 grep -F "missing burst rate evidence: 48" "${temp_dir}/missing.log" >/dev/null
 
-echo "[oci-k6-burst-reject-curve-matrix] burst64 gate fails"
+echo "[oci-k6-burst-reject-curve-matrix] custom burst64 promotion target gate fails"
 bad_summary="${temp_dir}/burst-64-summary-bad.json"
 jq '.metrics.aquila_transaction_429_rate.values.rate = 0.11' \
   "${temp_dir}/burst-64-summary.json" >"${bad_summary}"
@@ -186,6 +188,7 @@ awk -F '\t' -v bad_summary="${bad_summary}" '
 if OCI_K6_BURST_MATRIX_NAME=burst-matrix-bad \
   OCI_K6_BURST_MATRIX_INPUT_TSV="${bad_input}" \
   OCI_K6_BURST_MATRIX_OUTPUT_DIR="${temp_dir}/bad-output" \
+  OCI_K6_BURST_MATRIX_PROMOTION_TARGET_RATE=64 \
     "${runner}" >"${temp_dir}/bad.log" 2>&1; then
   echo "burst64 gate unexpectedly passed" >&2
   exit 1
@@ -193,10 +196,19 @@ fi
 grep -F "burst64 gate failed: total_429_rate=0.110000 > 0.100000" "${temp_dir}/bad.log" >/dev/null
 
 echo "[oci-k6-burst-reject-curve-matrix] burst80 promotion target gate fails"
+target80_bad_summary="${temp_dir}/burst-80-summary-bad.json"
+jq '.metrics.aquila_transaction_429_rate.values.rate = 0.22 | .metrics.aquila_transaction_edge_429_rate.values.rate = 0.216' \
+  "${temp_dir}/burst-80-summary.json" >"${target80_bad_summary}"
+target80_bad_input="${temp_dir}/target80-bad-input.tsv"
+awk -F '\t' -v bad_summary="${target80_bad_summary}" '
+  BEGIN { OFS = FS }
+  NR == 1 { print; next }
+  $1 == "80" { $3 = bad_summary }
+  { print }
+' "${input_tsv}" >"${target80_bad_input}"
 if OCI_K6_BURST_MATRIX_NAME=burst-matrix-target80 \
-  OCI_K6_BURST_MATRIX_INPUT_TSV="${input_tsv}" \
+  OCI_K6_BURST_MATRIX_INPUT_TSV="${target80_bad_input}" \
   OCI_K6_BURST_MATRIX_OUTPUT_DIR="${temp_dir}/target80-output" \
-  OCI_K6_BURST_MATRIX_PROMOTION_TARGET_RATE=80 \
     "${runner}" >"${temp_dir}/target80.log" 2>&1; then
   echo "burst80 promotion target unexpectedly passed" >&2
   exit 1

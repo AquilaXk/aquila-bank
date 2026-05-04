@@ -47,12 +47,12 @@ grep -F "burst_rates:" "${workflow}" >/dev/null
 grep -F 'default: "32,48,64,80,96"' "${workflow}" >/dev/null
 grep -F "promotion_target_rate:" "${workflow}" >/dev/null
 grep -F 'description: "Promotion target burst arrival rate per second"' "${workflow}" >/dev/null
-grep -F 'default: "64"' "${workflow}" >/dev/null
+grep -F 'default: "80"' "${workflow}" >/dev/null
 grep -F 'K6_MATRIX_REPORT_NAME: ${{ inputs.report_name || format(' "${workflow}" >/dev/null
 grep -F 'BURST_RATES_INPUT: ${{ inputs.burst_rates }}' "${workflow}" >/dev/null
 grep -F 'PROMOTION_TARGET_RATE_INPUT: ${{ inputs.promotion_target_rate }}' "${workflow}" >/dev/null
 grep -F 'K6_BURST_RATES="${BURST_RATES_INPUT:-32,48,64,80,96}"' "${workflow}" >/dev/null
-grep -F 'K6_BURST_MATRIX_PROMOTION_TARGET_RATE="${PROMOTION_TARGET_RATE_INPUT:-64}"' "${workflow}" >/dev/null
+grep -F 'K6_BURST_MATRIX_PROMOTION_TARGET_RATE="${PROMOTION_TARGET_RATE_INPUT:-80}"' "${workflow}" >/dev/null
 grep -F "Run authenticated k6 burst matrix" "${workflow}" >/dev/null
 grep -F 'IFS="," read -r -a burst_rates <<<"${K6_BURST_RATES}"' "${workflow}" >/dev/null
 grep -F 'matrix_input_tsv="${matrix_dir}/burst-reject-curve-input.tsv"' "${workflow}" >/dev/null
