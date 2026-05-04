@@ -807,7 +807,11 @@ jobs:
           fi
 
       - name: Mark staging deployment success
-        if: always() && needs.validate-latest-before-deploy.outputs.should_deploy == 'true' && needs.deploy-and-verify.result == 'success'
+        if: >-
+          always() &&
+          needs.validate-latest-before-deploy.outputs.should_deploy == 'true' &&
+          needs.deploy-and-verify.result == 'success' &&
+          needs.deploy-and-verify.outputs.transaction_replay_result != 'failure'
         shell: bash
         run: |
           set -euo pipefail
@@ -850,6 +854,7 @@ jobs:
           (
             needs.backend-image.result != 'success' ||
             needs.frontend-image.result != 'success' ||
+            needs.deploy-and-verify.outputs.transaction_replay_result == 'failure' ||
             (
               needs.validate-latest-before-deploy.outputs.should_deploy == 'true' &&
               needs.deploy-and-verify.result != 'success'
@@ -858,7 +863,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "::error::Staging deployment failed. backend_image=${BACKEND_IMAGE_RESULT} frontend_image=${FRONTEND_IMAGE_RESULT} latest_main=${LATEST_MAIN_RESULT}/${LATEST_MAIN_SHOULD_DEPLOY} deploy=${DEPLOY_RESULT}"
+          echo "::error::Staging deployment failed. backend_image=${BACKEND_IMAGE_RESULT} frontend_image=${FRONTEND_IMAGE_RESULT} latest_main=${LATEST_MAIN_RESULT}/${LATEST_MAIN_SHOULD_DEPLOY} deploy=${DEPLOY_RESULT} replay=${TRANSACTION_REPLAY_RESULT}"
           payload="$(
             jq -n \
               --arg log_url "${DEPLOY_LOG_URL}" \
