@@ -13,6 +13,7 @@ grep -F "pull_request:" "${workflow}" >/dev/null
 grep -F "off-host capacity prerequisite contract" "${workflow}" >/dev/null
 grep -F "if: github.event_name == 'pull_request'" "${workflow}" >/dev/null
 grep -F "tools/test/check-offhost-capacity-prerequisite-required-gate.sh" "${workflow}" >/dev/null
+grep -F "tools/test/check-oci-offhost-host-metrics-snapshot.sh" "${workflow}" >/dev/null
 grep -F "if: github.event_name == 'workflow_dispatch'" "${workflow}" >/dev/null
 grep -F "environment:" "${workflow}" >/dev/null
 grep -F "name: staging" "${workflow}" >/dev/null
@@ -52,6 +53,10 @@ grep -F 'CAPACITY_K6_SOURCE_EVIDENCE_TSV="${SOURCE_EVIDENCE_TSV_INPUT:-${CAPACIT
 grep -F 'CAPACITY_K6_HOST_METRICS_RUN_ID="${HOST_METRICS_RUN_ID_INPUT:-${CAPACITY_K6_HOST_METRICS_RUN_ID:-${CAPACITY_NAME}}}"' "${workflow}" >/dev/null
 grep -F 'CAPACITY_K6_GENERATOR_HOST_METRICS_TSV="${GENERATOR_HOST_METRICS_TSV_INPUT:-${CAPACITY_K6_GENERATOR_HOST_METRICS_TSV:-${CAPACITY_K6_GENERATOR_HOST_METRICS_TSV_VAR:-${CAPACITY_K6_HOST_METRICS_TSV}}}}"' "${workflow}" >/dev/null
 grep -F 'CAPACITY_K6_TARGET_HOST_METRICS_TSV="${TARGET_HOST_METRICS_TSV_INPUT:-${CAPACITY_K6_TARGET_HOST_METRICS_TSV:-${CAPACITY_K6_TARGET_HOST_METRICS_TSV_VAR:-}}}"' "${workflow}" >/dev/null
+grep -F 'host_metrics_snapshot_dir="${report_dir}/offhost-host-metrics-snapshot"' "${workflow}" >/dev/null
+grep -F "tools/test/run-oci-offhost-host-metrics-snapshot.sh" "${workflow}" >/dev/null
+grep -F 'CAPACITY_K6_GENERATOR_HOST_METRICS_TSV="${snapshot_generator_tsv}"' "${workflow}" >/dev/null
+grep -F 'CAPACITY_K6_TARGET_HOST_METRICS_TSV="${snapshot_target_tsv}"' "${workflow}" >/dev/null
 grep -F 'CAPACITY_REMOTE_PREFLIGHT="true"' "${workflow}" >/dev/null
 grep -F 'CAPACITY_REQUIRE_HOST_METRICS="true"' "${workflow}" >/dev/null
 grep -F "Run off-host remote preflight" "${workflow}" >/dev/null

@@ -57,6 +57,8 @@ on:
       - "tools/test/check-offhost-capacity-prerequisite-required-gate.sh"
       - "tools/test/run-oci-offhost-host-metrics-evidence.sh"
       - "tools/test/check-oci-offhost-host-metrics-evidence.sh"
+      - "tools/test/run-oci-offhost-host-metrics-snapshot.sh"
+      - "tools/test/check-oci-offhost-host-metrics-snapshot.sh"
       - "tools/test/run-transaction-100m-offhost-capacity-baseline-report.sh"
       - "tools/test/run-t3micro-defensive-gates-aggregate-report.sh"
 
@@ -154,6 +156,24 @@ jobs:
           CAPACITY_K6_HOST_METRICS_RUN_ID="${HOST_METRICS_RUN_ID_INPUT:-${CAPACITY_K6_HOST_METRICS_RUN_ID:-${CAPACITY_NAME}}}"
           CAPACITY_K6_GENERATOR_HOST_METRICS_TSV="${GENERATOR_HOST_METRICS_TSV_INPUT:-${CAPACITY_K6_GENERATOR_HOST_METRICS_TSV:-${CAPACITY_K6_GENERATOR_HOST_METRICS_TSV_VAR:-${CAPACITY_K6_HOST_METRICS_TSV}}}}"
           CAPACITY_K6_TARGET_HOST_METRICS_TSV="${TARGET_HOST_METRICS_TSV_INPUT:-${CAPACITY_K6_TARGET_HOST_METRICS_TSV:-${CAPACITY_K6_TARGET_HOST_METRICS_TSV_VAR:-}}}"
+          host_metrics_snapshot_dir="${report_dir}/offhost-host-metrics-snapshot"
+          snapshot_generator_tsv="${host_metrics_snapshot_dir}/${CAPACITY_NAME}-generator-host-metrics.tsv"
+          snapshot_target_tsv="${host_metrics_snapshot_dir}/${CAPACITY_NAME}-target-host-metrics.tsv"
+          if [[ -z "${CAPACITY_K6_GENERATOR_HOST_METRICS_TSV}" || -z "${CAPACITY_K6_TARGET_HOST_METRICS_TSV}" ]]; then
+            mkdir -p "${host_metrics_snapshot_dir}"
+            OCI_OFFHOST_HOST_METRICS_SNAPSHOT_NAME="${CAPACITY_NAME}" \
+            OCI_OFFHOST_HOST_METRICS_RUN_ID="${CAPACITY_K6_HOST_METRICS_RUN_ID}" \
+            OCI_OFFHOST_GENERATOR_DOCKER_CONTEXT="${CAPACITY_K6_DOCKER_CONTEXT}" \
+            OCI_OFFHOST_TARGET_DOCKER_CONTEXT="target" \
+            OCI_OFFHOST_HOST_METRICS_OUTPUT_DIR="${host_metrics_snapshot_dir}" \
+              tools/test/run-oci-offhost-host-metrics-snapshot.sh >"${host_metrics_snapshot_dir}/host-metrics-snapshot.log" 2>&1
+            if [[ -z "${CAPACITY_K6_GENERATOR_HOST_METRICS_TSV}" ]]; then
+              CAPACITY_K6_GENERATOR_HOST_METRICS_TSV="${snapshot_generator_tsv}"
+            fi
+            if [[ -z "${CAPACITY_K6_TARGET_HOST_METRICS_TSV}" ]]; then
+              CAPACITY_K6_TARGET_HOST_METRICS_TSV="${snapshot_target_tsv}"
+            fi
+          fi
 
           missing=()
           [[ -z "${CAPACITY_K6_DOCKER_CONTEXT}" ]] && missing+=("CAPACITY_K6_DOCKER_CONTEXT")
