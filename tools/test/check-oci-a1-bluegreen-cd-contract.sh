@@ -246,7 +246,7 @@ script_patterns=(
   'real_ip_recursive on;'
   'real_ip_trusted_proxies="${NGINX_REAL_IP_TRUSTED_PROXIES:-${OCI_A1_NGINX_REAL_IP_TRUSTED_PROXIES:-10.60.0.0/16}}"'
   'render_nginx_real_ip_trusted_proxy_lines "${real_ip_trusted_proxies}"'
-  'transaction_read_budget_profile="${OCI_A1_TRANSACTION_READ_BUDGET_PROFILE:-${NGINX_TRANSACTION_READ_BUDGET_PROFILE:-burst64}}"'
+  'transaction_read_budget_profile="${OCI_A1_TRANSACTION_READ_BUDGET_PROFILE:-${NGINX_TRANSACTION_READ_BUDGET_PROFILE:-burst80}}"'
   'transaction_read_hot_rate_rps="${OCI_A1_TRANSACTION_READ_HOT_RATE_RPS:-${transaction_read_profile_hot_rate_rps}}"'
   'transaction_read_archive_rate_rps="${OCI_A1_TRANSACTION_READ_ARCHIVE_RATE_RPS:-${transaction_read_profile_archive_rate_rps}}"'
   'transaction_read_hot_burst="${OCI_A1_TRANSACTION_READ_HOT_BURST:-${transaction_read_profile_hot_burst}}"'

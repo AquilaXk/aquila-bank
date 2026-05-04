@@ -18,14 +18,14 @@ plan="$(
     "${runner}" --print-plan
 )"
 grep -F "name=matrix-check" <<<"${plan}" >/dev/null
-grep -F "edge_transaction_budget_profile=burst64" <<<"${plan}" >/dev/null
-grep -F "edge_transaction_hot_rate_rps=160" <<<"${plan}" >/dev/null
-grep -F "edge_transaction_archive_rate_rps=160" <<<"${plan}" >/dev/null
-grep -F "edge_transaction_hot_burst=20" <<<"${plan}" >/dev/null
-grep -F "edge_transaction_archive_burst=20" <<<"${plan}" >/dev/null
+grep -F "edge_transaction_budget_profile=burst80" <<<"${plan}" >/dev/null
+grep -F "edge_transaction_hot_rate_rps=128" <<<"${plan}" >/dev/null
+grep -F "edge_transaction_archive_rate_rps=128" <<<"${plan}" >/dev/null
+grep -F "edge_transaction_hot_burst=64" <<<"${plan}" >/dev/null
+grep -F "edge_transaction_archive_burst=64" <<<"${plan}" >/dev/null
 grep -F "edge_transaction_hot_delay=0" <<<"${plan}" >/dev/null
 grep -F "edge_transaction_archive_delay=0" <<<"${plan}" >/dev/null
-grep -F "edge_transaction_read_policy=burst64-nodelay" <<<"${plan}" >/dev/null
+grep -F "edge_transaction_read_policy=burst80-nodelay" <<<"${plan}" >/dev/null
 grep -F "backend_admission_max=8" <<<"${plan}" >/dev/null
 grep -F "backend_admission_adaptive_max=12" <<<"${plan}" >/dev/null
 grep -F "backend_hot_admission_max=8" <<<"${plan}" >/dev/null
@@ -49,14 +49,14 @@ output="$(
 report_md="$(tail -1 <<<"${output}")"
 test "${report_md}" = "${output_dir}/matrix-check-budget-matrix.md"
 grep -F "gate_status=pass" "${report_md}" >/dev/null
-grep -F "| edge transaction budget profile | burst64 |" "${report_md}" >/dev/null
-grep -F "| edge transaction-hot rate | 160r/s |" "${report_md}" >/dev/null
-grep -F "| edge transaction-archive rate | 160r/s |" "${report_md}" >/dev/null
-grep -F "| edge transaction-hot burst | 20 |" "${report_md}" >/dev/null
-grep -F "| edge transaction-archive burst | 20 |" "${report_md}" >/dev/null
+grep -F "| edge transaction budget profile | burst80 |" "${report_md}" >/dev/null
+grep -F "| edge transaction-hot rate | 128r/s |" "${report_md}" >/dev/null
+grep -F "| edge transaction-archive rate | 128r/s |" "${report_md}" >/dev/null
+grep -F "| edge transaction-hot burst | 64 |" "${report_md}" >/dev/null
+grep -F "| edge transaction-archive burst | 64 |" "${report_md}" >/dev/null
 grep -F "| edge transaction-hot delay | 0 |" "${report_md}" >/dev/null
 grep -F "| edge transaction-archive delay | 0 |" "${report_md}" >/dev/null
-grep -F "| edge transaction-read policy | burst64-nodelay |" "${report_md}" >/dev/null
+grep -F "| edge transaction-read policy | burst80-nodelay |" "${report_md}" >/dev/null
 grep -F "| backend admission max | 8 |" "${report_md}" >/dev/null
 grep -F "| backend admission adaptive max | 12 |" "${report_md}" >/dev/null
 grep -F "| backend hot admission max | 8 |" "${report_md}" >/dev/null
@@ -81,10 +81,10 @@ grep -F 'transaction_read_profile_hot_rate_rps=160' ops/deploy/oci/bluegreen-dep
 grep -F 'transaction_read_profile_archive_rate_rps=160' ops/deploy/oci/bluegreen-deploy.sh >/dev/null
 grep -F 'transaction_read_profile_hot_burst=20' ops/deploy/oci/bluegreen-deploy.sh >/dev/null
 grep -F 'transaction_read_profile_archive_burst=20' ops/deploy/oci/bluegreen-deploy.sh >/dev/null
-grep -F 'NGINX_TRANSACTION_READ_HOT_RATE_RPS=160' ops/nginx/runtime.env.example >/dev/null
-grep -F 'NGINX_TRANSACTION_READ_ARCHIVE_RATE_RPS=160' ops/nginx/runtime.env.example >/dev/null
-grep -F 'NGINX_TRANSACTION_READ_HOT_BURST=20' ops/nginx/runtime.env.example >/dev/null
-grep -F 'NGINX_TRANSACTION_READ_ARCHIVE_BURST=20' ops/nginx/runtime.env.example >/dev/null
+grep -F 'NGINX_TRANSACTION_READ_HOT_RATE_RPS=128' ops/nginx/runtime.env.example >/dev/null
+grep -F 'NGINX_TRANSACTION_READ_ARCHIVE_RATE_RPS=128' ops/nginx/runtime.env.example >/dev/null
+grep -F 'NGINX_TRANSACTION_READ_HOT_BURST=64' ops/nginx/runtime.env.example >/dev/null
+grep -F 'NGINX_TRANSACTION_READ_ARCHIVE_BURST=64' ops/nginx/runtime.env.example >/dev/null
 grep -F 'limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_hot_per_ip:10m rate=${NGINX_TRANSACTION_READ_HOT_RATE_RPS}r/s;' ops/nginx/nginx.conf >/dev/null
 grep -F 'limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_archive_per_ip:10m rate=${NGINX_TRANSACTION_READ_ARCHIVE_RATE_RPS}r/s;' ops/nginx/nginx.conf >/dev/null
 grep -F 'limit_req zone=aquila_bank_transaction_hot_per_ip burst=${NGINX_TRANSACTION_READ_HOT_BURST} ${NGINX_TRANSACTION_READ_HOT_LIMIT_MODE};' ops/nginx/nginx.conf >/dev/null

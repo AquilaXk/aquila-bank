@@ -49,9 +49,17 @@ NGINX_EDGE_RETRY_JITTER_MILLIS="${NGINX_EDGE_RETRY_JITTER_MILLIS:-100}"
 NGINX_REAL_IP_HEADER="${NGINX_REAL_IP_HEADER:-X-Forwarded-For}"
 NGINX_REAL_IP_TRUSTED_PROXIES="${NGINX_REAL_IP_TRUSTED_PROXIES:-${OCI_A1_NGINX_REAL_IP_TRUSTED_PROXIES:-10.60.0.0/16}}"
 NGINX_BACKEND_API_KEEPALIVE_TIMEOUT_SECONDS="${NGINX_BACKEND_API_KEEPALIVE_TIMEOUT_SECONDS:-2}"
-NGINX_TRANSACTION_READ_BUDGET_PROFILE="${NGINX_TRANSACTION_READ_BUDGET_PROFILE:-${OCI_A1_TRANSACTION_READ_BUDGET_PROFILE:-burst64}}"
+NGINX_TRANSACTION_READ_BUDGET_PROFILE="${NGINX_TRANSACTION_READ_BUDGET_PROFILE:-${OCI_A1_TRANSACTION_READ_BUDGET_PROFILE:-burst80}}"
 
 case "${NGINX_TRANSACTION_READ_BUDGET_PROFILE}" in
+  burst80)
+    transaction_read_profile_hot_rate_rps=128
+    transaction_read_profile_archive_rate_rps=128
+    transaction_read_profile_hot_burst=64
+    transaction_read_profile_archive_burst=64
+    transaction_read_profile_hot_delay=0
+    transaction_read_profile_archive_delay=0
+    ;;
   burst64)
     transaction_read_profile_hot_rate_rps=160
     transaction_read_profile_archive_rate_rps=160
@@ -77,7 +85,7 @@ case "${NGINX_TRANSACTION_READ_BUDGET_PROFILE}" in
     transaction_read_profile_archive_delay=0
     ;;
   *)
-    echo "[nginx-render] NGINX_TRANSACTION_READ_BUDGET_PROFILE must be burst64, balanced, or fail-fast: ${NGINX_TRANSACTION_READ_BUDGET_PROFILE}" >&2
+    echo "[nginx-render] NGINX_TRANSACTION_READ_BUDGET_PROFILE must be burst80, burst64, balanced, or fail-fast: ${NGINX_TRANSACTION_READ_BUDGET_PROFILE}" >&2
     exit 1
     ;;
 esac

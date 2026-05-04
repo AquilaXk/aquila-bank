@@ -30,11 +30,11 @@
   - `NGINX_EDGE_RETRY_JITTER_MILLIS` 기본값 `100`
   - `NGINX_REAL_IP_HEADER` 기본값 `X-Forwarded-For`, 허용값 `X-Forwarded-For` 또는 `X-Real-IP`
   - `NGINX_REAL_IP_TRUSTED_PROXIES` 기본값 `10.60.0.0/16`, comma-separated trusted LB/CDN CIDR, `none`이면 TCP peer address
-  - `NGINX_TRANSACTION_READ_BUDGET_PROFILE` 기본값 `burst64`, 허용값 `burst64|balanced|fail-fast`
-  - `NGINX_TRANSACTION_READ_HOT_RATE_RPS` 기본값 `160`
-  - `NGINX_TRANSACTION_READ_ARCHIVE_RATE_RPS` 기본값 `160`
-  - `NGINX_TRANSACTION_READ_HOT_BURST` 기본값 `20`
-  - `NGINX_TRANSACTION_READ_ARCHIVE_BURST` 기본값 `20`
+  - `NGINX_TRANSACTION_READ_BUDGET_PROFILE` 기본값 `burst80`, 허용값 `burst80|burst64|balanced|fail-fast`
+  - `NGINX_TRANSACTION_READ_HOT_RATE_RPS` 기본값 `128`
+  - `NGINX_TRANSACTION_READ_ARCHIVE_RATE_RPS` 기본값 `128`
+  - `NGINX_TRANSACTION_READ_HOT_BURST` 기본값 `64`
+  - `NGINX_TRANSACTION_READ_ARCHIVE_BURST` 기본값 `64`
   - `NGINX_TRANSACTION_READ_HOT_DELAY` 기본값 `0`, `0`이면 `nodelay`
   - `NGINX_TRANSACTION_READ_ARCHIVE_DELAY` 기본값 `0`, `0`이면 `nodelay`
 - `NGINX_BACKEND_SSE_SERVERS`를 비우면 API upstream과 같은 backend pool을 재사용합니다.
@@ -60,12 +60,12 @@ bash tools/ops/render-nginx-runtime-config.sh /tmp/aquila-bank-nginx.conf ops/ng
 - OCI paid A1 기본값은 VCN CIDR `10.60.0.0/16`입니다. LB/CDN subnet을 더 좁게 알면 해당 CIDR로 줄이고, TCP peer 기준으로 되돌릴 때만 `none`을 사용합니다.
 - `limit_req_zone $binary_remote_addr zone=aquila_bank_api_per_ip:10m rate=30r/s;`
 - `limit_req_zone $binary_remote_addr zone=aquila_bank_auth_per_ip:10m rate=5r/s;`
-- `limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_hot_per_ip:10m rate=160r/s;`
-- `limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_archive_per_ip:10m rate=160r/s;`
+- `limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_hot_per_ip:10m rate=128r/s;`
+- `limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_archive_per_ip:10m rate=128r/s;`
 - `limit_req_zone $binary_remote_addr zone=aquila_bank_transfer_per_ip:10m rate=3r/s;`
 - `location = /api/v1/auth/login`, `location = /api/v1/auth/refresh`, `location = /api/v1/auth/password-recovery/request`에 `limit_req zone=aquila_bank_auth_per_ip burst=10 nodelay;`를 적용합니다.
-- `location = /api/v1/transactions`에는 `limit_req zone=aquila_bank_transaction_hot_per_ip burst=20 nodelay;`를 적용합니다.
-- `location = /api/v1/transactions/archive`에는 `limit_req zone=aquila_bank_transaction_archive_per_ip burst=20 nodelay;`를 적용합니다.
+- `location = /api/v1/transactions`에는 `limit_req zone=aquila_bank_transaction_hot_per_ip burst=64 nodelay;`를 적용합니다.
+- `location = /api/v1/transactions/archive`에는 `limit_req zone=aquila_bank_transaction_archive_per_ip burst=64 nodelay;`를 적용합니다.
 - `location = /api/v1/transfers`, `location ~ ^/api/v1/transfers/[^/]+/reversal$`에는 `limit_req zone=aquila_bank_transfer_per_ip burst=6 nodelay;`를 적용합니다.
 - exact/regex location은 generic `/api/`보다 먼저 매칭되므로 zone을 중첩 적용하지 않습니다.
 - `/api/`에는 `limit_req zone=aquila_bank_api_per_ip burst=20 delay=5;`를 유지합니다.
@@ -73,7 +73,8 @@ bash tools/ops/render-nginx-runtime-config.sh /tmp/aquila-bank-nginx.conf ops/ng
 - `429`는 Nginx에서 JSON body와 `X-Aquila-Reject-Source: nginx-edge`, `Retry-After`, `X-RateLimit-Retry-After-Millis`, `X-RateLimit-Retry-Jitter-Millis`를 내려 k6/client backoff가 edge rejection을 구분하게 합니다. OCI A1 기본값은 `150ms + jitter 100ms`로 retry 동기화를 짧게 분산합니다.
 - 정상 client/SDK는 `X-RateLimit-Retry-After-Millis`와 jitter를 반영하고, sustained read에서는 k6 `preemptive pacing`과 같은 요청 전 token pacing으로 edge reject 동기화를 피합니다.
 - backend에는 login/password recovery throttling이 이미 있으므로, Nginx auth zone은 edge 1차 차단으로 보고 backend는 계정/IP 단위 2차 가드로 둡니다.
-- transaction-read `burst64` profile은 delay queue 의존을 줄이기 위해 `160r/s`, `burst=20`, `nodelay`를 기본값으로 둡니다. run #24의 burst64 edge 429 `16.45%` 초과를 줄이기 위한 운영 후보이며, 이전 queue 기반 기준은 `balanced` profile로 되돌릴 수 있습니다.
+- transaction-read `burst80` profile은 delay queue 의존 없이 burst80 promotion target을 닫기 위해 `128r/s`, `burst=64`, `nodelay`를 기본값으로 둡니다. run #25302244031의 burst80 edge 429 `17.17%` 초과를 줄이기 위한 운영 후보이며, 이전 burst64 기준은 `burst64` profile로 되돌릴 수 있습니다.
+- `burst64` profile은 이전 운영 후보 기준이며 `160r/s`, `burst=20`, `nodelay`를 rollback 비교용으로 유지합니다.
 - `fail-fast` profile은 `96r/s`, `burst=12`, `nodelay`로 delayed ratio ceiling 검증이나 latency 우선 rollback에 사용합니다.
 - 실제 서비스 트래픽 특성에 따라 `rate`와 `burst`는 조정하되, 로그인/토큰 재발급/SSE 재연결 패턴과 shared IP 영향을 같이 확인합니다.
 
@@ -85,11 +86,12 @@ bash tools/ops/render-nginx-runtime-config.sh /tmp/aquila-bank-nginx.conf ops/ng
 | --- | --- | --- | --- | --- |
 | normal profile | 정상 client/paced traffic 확인 | arrival-rate `16/s` strict gate, preemptive pacing input/summary, Nginx aggregate TSV/JSON/MD | edge 429 `0`, backend 429 `<= 0.5%`, 5xx `0`, accepted p95 `< 100ms` | staging promotion 기본 조건 |
 | saturation profile | constant-vus가 어느 지점에서 보호되는지 관측 | VU16 constant-vus saturation probe, generator headroom, host CPU/network | observe-only. edge 429는 실패로 보지 않지만 backend 429 `<= 0.5%`, 5xx `0`, accepted p95 `< 100ms`, generator headroom pass | 단독 production promotion 근거로 사용하지 않음 |
-| overload profile | burst와 fail-fast 보호 확인 | burst64 gate, burst `32/48/64/80/96` reject curve, Retry-After p95, Nginx source split | burst64 edge 429 `<= 10%`, backend 429 `<= 0.5%`, 5xx `0`, accepted p95 `< 100ms`, Retry-After p95 `<= 250ms` | production 승격 전 보호 조건 |
+| overload profile | burst와 fail-fast 보호 확인 | burst80 gate, burst `32/48/64/80/96` reject curve, Retry-After p95, Nginx source split | burst80 edge 429 `<= 10%`, backend 429 `<= 0.5%`, 5xx `0`, accepted p95 `< 100ms`, Retry-After p95 `<= 250ms` | production 승격 전 보호 조건 |
 
 Runtime budget profile 선택 기준:
 
-- `burst64`: 기본 운영 후보. arrival-rate 16/s 정상 구간을 delay queue 없이 통과시키고 burst64에서 edge 429 `<= 10%`를 목표로 합니다.
+- `burst80`: 기본 운영 후보. arrival-rate 16/s 정상 구간을 delay queue 없이 통과시키고 burst80에서 edge 429 `<= 10%`를 목표로 합니다.
+- `burst64`: 이전 운영 후보. burst80 promotion이 흔들릴 때 rollback 비교 기준으로만 사용합니다.
 - `balanced`: single-source/shared-IP 환경에서 정상 traffic의 edge 429가 높고 accepted latency budget이 남을 때 임시 완화 후보입니다. delay queue를 쓰므로 p95/p99.9와 499를 같이 확인합니다.
 - `fail-fast`: latency queueing이나 deploy/drain 499 위험이 더 클 때 rollback 후보입니다. 429는 더 빠르게 반환될 수 있으나 5xx와 backend saturation을 숨기지 않아야 합니다.
 
@@ -97,12 +99,12 @@ Staging promotion 조건:
 
 - 같은 main SHA가 실제 staging image로 배포된 evidence가 있어야 합니다.
 - 100M replay와 normal profile gate가 통과해야 합니다.
-- burst64 overload profile은 edge 429 `<= 10%`, backend 429 `<= 0.5%`, 5xx `0`, accepted p95 `< 100ms`를 만족해야 합니다.
+- burst80 overload profile은 edge 429 `<= 10%`, backend 429 `<= 0.5%`, 5xx `0`, accepted p95 `< 100ms`를 만족해야 합니다.
 - k6 summary, Nginx aggregate TSV/JSON/MD, pacing input/summary가 같은 run id artifact에 있어야 합니다.
 
 Production promotion hold 조건:
 
-- burst64 edge 429가 `10%`를 초과하거나 backend 429가 `0.5%`를 초과하면 보류합니다.
+- burst80 edge 429가 `10%`를 초과하거나 backend 429가 `0.5%`를 초과하면 보류합니다.
 - 499 또는 5xx가 1건이라도 있으면 deploy/drain closure를 먼저 수행합니다.
 - Nginx aggregate, source split, host metrics 중 하나라도 빠지면 evidence incomplete로 보류합니다.
 - `default` Docker context만 사용한 결과는 off-host/multi-source 공정성 evidence로 보지 않습니다.

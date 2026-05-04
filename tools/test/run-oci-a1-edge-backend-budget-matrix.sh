@@ -39,14 +39,14 @@ arrival_gate="tools/test/run-oci-public-api-arrival-capacity-gate.sh"
 weighted_gate="tools/test/run-transaction-read-weighted-10m-soak-gate.sh"
 smoothing_gate="tools/test/run-transaction-read-short-burst-smoothing-matrix.sh"
 
-edge_transaction_budget_profile="burst64"
-edge_transaction_hot_rate_rps=160
-edge_transaction_archive_rate_rps=160
-edge_transaction_hot_burst=20
-edge_transaction_archive_burst=20
+edge_transaction_budget_profile="burst80"
+edge_transaction_hot_rate_rps=128
+edge_transaction_archive_rate_rps=128
+edge_transaction_hot_burst=64
+edge_transaction_archive_burst=64
 edge_transaction_hot_delay=0
 edge_transaction_archive_delay=0
-edge_transaction_read_policy="burst64-nodelay"
+edge_transaction_read_policy="burst80-nodelay"
 backend_admission_max=8
 backend_admission_adaptive_max=12
 backend_hot_admission_max=8
@@ -123,7 +123,7 @@ require_pattern 'proxy_next_upstream error timeout http_502;' "${nginx_config}"
 require_pattern 'proxy_next_upstream_tries 2;' "${nginx_config}"
 require_pattern 'proxy_next_upstream_timeout 2s;' "${nginx_config}"
 require_pattern 'backend_api_keepalive_timeout_seconds="${NGINX_BACKEND_API_KEEPALIVE_TIMEOUT_SECONDS:-2}"' "${deploy_script}"
-require_pattern 'transaction_read_budget_profile="${OCI_A1_TRANSACTION_READ_BUDGET_PROFILE:-${NGINX_TRANSACTION_READ_BUDGET_PROFILE:-burst64}}"' "${deploy_script}"
+require_pattern 'transaction_read_budget_profile="${OCI_A1_TRANSACTION_READ_BUDGET_PROFILE:-${NGINX_TRANSACTION_READ_BUDGET_PROFILE:-burst80}}"' "${deploy_script}"
 require_pattern 'transaction_read_hot_rate_rps="${OCI_A1_TRANSACTION_READ_HOT_RATE_RPS:-${transaction_read_profile_hot_rate_rps}}"' "${deploy_script}"
 require_pattern 'transaction_read_archive_rate_rps="${OCI_A1_TRANSACTION_READ_ARCHIVE_RATE_RPS:-${transaction_read_profile_archive_rate_rps}}"' "${deploy_script}"
 require_pattern 'transaction_read_hot_burst="${OCI_A1_TRANSACTION_READ_HOT_BURST:-${transaction_read_profile_hot_burst}}"' "${deploy_script}"
