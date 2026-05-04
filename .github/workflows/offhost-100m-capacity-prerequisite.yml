@@ -258,6 +258,7 @@ jobs:
               K6_ARCHIVE_RESULTS=false \
                 tools/test/run-k6-transaction-100m-loadtest.sh --no-up --no-deps
             '
+            # VU16 sampler는 promotion gate가 아니라 host timeline 수집용 observation phase다.
             vu16_command='
               K6_REPORT_NAME="${CAPACITY_NAME}-vu16" \
               K6_RUN_ID="${CAPACITY_NAME}-vu16" \
@@ -286,6 +287,7 @@ jobs:
               K6_MAX_VUS=16 \
               K6_DURATION="${CAPACITY_K6_TIMELINE_PHASE_DURATION}" \
               K6_OVERLOAD_MODE=true \
+              K6_OVERLOAD_429_RATE_THRESHOLD=1 \
               K6_ARCHIVE_RESULTS=false \
                 tools/test/run-k6-transaction-100m-loadtest.sh --no-up --no-deps
             '
