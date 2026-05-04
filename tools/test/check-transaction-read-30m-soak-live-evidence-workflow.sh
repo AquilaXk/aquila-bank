@@ -24,10 +24,13 @@ fi
 
 grep -F "evidence_manifest_tsv:" "${workflow}" >/dev/null
 grep -F 'description: "OCI evidence manifest TSV path on the self-hosted runner workspace"' "${workflow}" >/dev/null
+grep -F "required: false" "${workflow}" >/dev/null
 grep -F "report_name:" "${workflow}" >/dev/null
 grep -F "30m Soak Live Evidence Contract" "${workflow}" >/dev/null
 grep -F "tools/test/check-transaction-read-30m-soak-live-evidence-gate.sh" "${workflow}" >/dev/null
 grep -F "tools/test/check-transaction-read-30m-soak-live-evidence-workflow.sh" "${workflow}" >/dev/null
+grep -F "tools/test/run-transaction-read-30m-soak-live-evidence-manifest.sh" "${workflow}" >/dev/null
+grep -F "tools/test/check-transaction-read-30m-soak-live-evidence-manifest.sh" "${workflow}" >/dev/null
 grep -F "tools/test/run-transaction-read-oci-evidence-execution-gate.sh" "${workflow}" >/dev/null
 grep -F "if: github.event_name == 'workflow_dispatch'" "${workflow}" >/dev/null
 grep -F "runs-on: [self-hosted, oci-a1-staging]" "${workflow}" >/dev/null
@@ -35,6 +38,11 @@ grep -F "environment:" "${workflow}" >/dev/null
 grep -F "name: staging" "${workflow}" >/dev/null
 grep -F 'SOAK_30M_REPORT_NAME: ${{ inputs.report_name || format(' "${workflow}" >/dev/null
 grep -F 'SOAK_30M_EVIDENCE_MANIFEST_TSV: ${{ inputs.evidence_manifest_tsv }}' "${workflow}" >/dev/null
+grep -F "Build 30m soak live evidence manifest" "${workflow}" >/dev/null
+grep -F 'if [[ -z "${SOAK_30M_EVIDENCE_MANIFEST_TSV}" ]]; then' "${workflow}" >/dev/null
+grep -F 'SOAK_30M_MANIFEST_NAME="${SOAK_30M_REPORT_NAME}"' "${workflow}" >/dev/null
+grep -F 'tools/test/run-transaction-read-30m-soak-live-evidence-manifest.sh' "${workflow}" >/dev/null
+grep -F 'SOAK_30M_EVIDENCE_MANIFEST_TSV="${generated_manifest_tsv}"' "${workflow}" >/dev/null
 grep -F "Run 30m soak live evidence gate" "${workflow}" >/dev/null
 grep -F 'SOAK_30M_LIVE_NAME="${SOAK_30M_REPORT_NAME}"' "${workflow}" >/dev/null
 grep -F 'SOAK_30M_LIVE_INPUT_TSV="${SOAK_30M_EVIDENCE_MANIFEST_TSV}"' "${workflow}" >/dev/null
@@ -43,7 +51,8 @@ grep -F "tools/test/run-transaction-read-30m-soak-live-evidence-gate.sh" "${work
 grep -F 'cat "${report_md}"' "${workflow}" >/dev/null
 grep -F "actions/upload-artifact@v7" "${workflow}" >/dev/null
 grep -F "transaction-read-30m-soak-live-evidence" "${workflow}" >/dev/null
-grep -F "if-no-files-found: error" "${workflow}" >/dev/null
+grep -F "if: always()" "${workflow}" >/dev/null
+grep -F "if-no-files-found: ignore" "${workflow}" >/dev/null
 
 gate_line="$(grep -n "Run 30m soak live evidence gate" "${workflow}" | head -1 | cut -d: -f1)"
 upload_line="$(grep -n "Upload 30m soak live evidence artifact" "${workflow}" | head -1 | cut -d: -f1)"
@@ -58,5 +67,9 @@ if grep -F "fallback" "${workflow}" >/dev/null; then
 fi
 if grep -F "secrets." "${workflow}" >/dev/null; then
   echo "30m live evidence workflow must not require secrets; it validates artifact refs only" >&2
+  exit 1
+fi
+if grep -F "evidence_manifest_tsv is required" "${workflow}" >/dev/null; then
+  echo "30m live evidence workflow must auto-build manifest when input is omitted" >&2
   exit 1
 fi
