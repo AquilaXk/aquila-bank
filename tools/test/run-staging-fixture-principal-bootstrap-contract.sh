@@ -10,6 +10,19 @@ psql_stdin_log="${tmp_dir}/psql.stdin.sql"
 cat >"${tmp_dir}/psql" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
+count_file="${PSQL_CALL_COUNT_FILE:-}"
+if [[ -n "${count_file}" ]]; then
+  count=0
+  if [[ -f "${count_file}" ]]; then
+    count="$(cat "${count_file}")"
+  fi
+  count=$((count + 1))
+  echo "${count}" >"${count_file}"
+  if [[ "${PSQL_FAIL_FIRST:-false}" == "true" && "${count}" -eq 1 ]]; then
+    echo 'psql: error: connection to server at "146.56.149.120", port 5432 failed: Connection timed out' >&2
+    exit 2
+  fi
+fi
 printf '%s\n' "$*" >>"${PSQL_STUB_LOG}"
 for arg in "$@"; do
   if [[ "$arg" == "--command" || "$arg" == "-c" ]]; then
@@ -17,7 +30,7 @@ for arg in "$@"; do
     exit 64
   fi
 done
-cat >"${PSQL_STDIN_LOG}"
+cat >>"${PSQL_STDIN_LOG}"
 SH
 chmod +x "${tmp_dir}/psql"
 
@@ -71,6 +84,35 @@ assert_csv_account_ids_feed_fixture_sql() {
   grep -q -- "INSERT INTO user_account_membership" "${psql_stdin_log}"
 }
 
+assert_transient_psql_timeout_retries_fixture_sql() {
+  local output="${tmp_dir}/retry.log"
+  local count_file="${tmp_dir}/psql-count"
+  : >"${psql_log}"
+  : >"${psql_stdin_log}"
+
+  env \
+    PATH="${tmp_dir}:${PATH}" \
+    PSQL_STUB_LOG="${psql_log}" \
+    PSQL_STDIN_LOG="${psql_stdin_log}" \
+    PSQL_CALL_COUNT_FILE="${count_file}" \
+    PSQL_FAIL_FIRST="true" \
+    STAGING_FIXTURE_PRINCIPAL_DB_ATTEMPTS="2" \
+    STAGING_FIXTURE_PRINCIPAL_DB_RETRY_SLEEP_SECONDS="0" \
+    STAGING_OCI_A1_DATABASE_URL="postgresql://fixture-db/aquila" \
+    STAGING_REPLAY_USER_ID="55" \
+    STAGING_REPLAY_LOGIN_ID="staging-fixture-user" \
+    STAGING_REPLAY_USER_PASSWORD_HASH="fixturePasswordHashWithLetters" \
+    STAGING_REPLAY_USER_DISPLAY_NAME="Staging Fixture User" \
+    HOT_ACCOUNT_ID="1001" \
+    COLD_ACCOUNT_ID="1002" \
+    "${script}" >"${output}" 2>&1
+
+  grep -q -- "staging fixture principal psql attempt 1/2 failed; retrying in 0s" "${output}"
+  grep -qx -- "2" "${count_file}"
+  grep -q -- "INSERT INTO user_account_membership" "${psql_stdin_log}"
+  grep -q -- "ensured user_id=55 hot_account_ids=1001 cold_account_ids=1002" "${output}"
+}
+
 assert_too_long_password_hash_fails_before_psql() {
   local log="${tmp_dir}/too-long.log"
   local long_hash
@@ -102,6 +144,7 @@ assert_too_long_password_hash_fails_before_psql() {
 
 assert_valid_secret_like_values_do_not_enter_arithmetic
 assert_csv_account_ids_feed_fixture_sql
+assert_transient_psql_timeout_retries_fixture_sql
 assert_too_long_password_hash_fails_before_psql
 
 echo "[staging-fixture-principal-contract] ok"
