@@ -40,10 +40,10 @@ weighted_gate="tools/test/run-transaction-read-weighted-10m-soak-gate.sh"
 smoothing_gate="tools/test/run-transaction-read-short-burst-smoothing-matrix.sh"
 
 edge_transaction_budget_profile="burst80"
-edge_transaction_hot_rate_rps=128
-edge_transaction_archive_rate_rps=128
-edge_transaction_hot_burst=128
-edge_transaction_archive_burst=128
+edge_transaction_hot_rate_rps=256
+edge_transaction_archive_rate_rps=256
+edge_transaction_hot_burst=256
+edge_transaction_archive_burst=256
 edge_transaction_hot_delay=0
 edge_transaction_archive_delay=0
 edge_transaction_read_policy="burst80-nodelay"
