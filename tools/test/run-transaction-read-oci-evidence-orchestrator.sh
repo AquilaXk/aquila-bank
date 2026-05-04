@@ -129,7 +129,7 @@ NR == 1 {
   for (i = 1; i <= NF; i++) {
     col[$i] = i
   }
-  print "scenario\trun_id\texecuted_at_utc\tduration_min\tsource_ips\trun_script\tk6_summary_ref\tnginx_access_ref\tspring_metrics_ref\thikari_log_ref\tpostgres_wait_ref\tdeploy_event_ref\tcache_state_ref\ttimeline_ref\tedge_429_rate\tbackend_429_count\tunknown_429_count\tfive_xx_count\tnginx_499_count\thikari_validation_warnings\tdb_pool_pending_max\tp999_ms\tpostgres_checkpoint_ref\tpostgres_temp_file_ref\tnginx_upstream_latency_ref\tworkload_mix_ref\tworkload_component_ref\toutbox_lag_ref\toutbox_lag_max\tdeploy_retry_contract_ref\tdeploy_reconnect_success_count\tdeploy_499_budget_ref\tp95_ms\tp99_ms\tmax_ms\tpostgres_checkpoint_count\tpostgres_temp_file_count\tnginx_upstream_p95_ms\thikari_config_ref\thikari_max_lifetime_ms\thikari_keepalive_time_ms\tpostgres_idle_timeout_ms\toci_nat_idle_timeout_ms\thikari_zero_warning_soak_ref"
+  print "scenario\trun_id\texecuted_at_utc\tduration_min\tsource_ips\trun_script\tk6_summary_ref\tnginx_access_ref\tspring_metrics_ref\thikari_log_ref\tpostgres_wait_ref\tdeploy_event_ref\tcache_state_ref\ttimeline_ref\tedge_429_rate\tbackend_429_count\tunknown_429_count\tfive_xx_count\tnginx_499_count\thikari_validation_warnings\tdb_pool_pending_max\tp999_ms\tpostgres_checkpoint_ref\tpostgres_temp_file_ref\tnginx_upstream_latency_ref\tworkload_mix_ref\tworkload_component_ref\toutbox_lag_ref\toutbox_lag_max\tdeploy_retry_contract_ref\tdeploy_reconnect_success_count\tdeploy_499_budget_ref\tp95_ms\tp99_ms\tmax_ms\tpostgres_checkpoint_count\tpostgres_temp_file_count\tnginx_upstream_p95_ms\thikari_config_ref\thikari_max_lifetime_ms\thikari_keepalive_time_ms\tpostgres_idle_timeout_ms\toci_nat_idle_timeout_ms\thikari_zero_warning_soak_ref\tworkload_components\tread_p999_ms\tread_429_source_ref"
   next
 }
 {
@@ -139,7 +139,7 @@ NR == 1 {
     printf "unknown OCI evidence scenario: %s\n", scenario > "/dev/stderr"
     exit 1
   }
-  printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+  printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
     scenario,
     value("run_id", ""),
     executed_at,
@@ -183,7 +183,10 @@ NR == 1 {
     value("hikari_keepalive_time_ms", "0"),
     value("postgres_idle_timeout_ms", "0"),
     value("oci_nat_idle_timeout_ms", "0"),
-    value("hikari_zero_warning_soak_ref", "n/a")
+    value("hikari_zero_warning_soak_ref", "n/a"),
+    value("workload_components", "n/a"),
+    value("read_p999_ms", "0"),
+    value("read_429_source_ref", "n/a")
 }
 ' "${input_tsv}" >"${execution_tsv}"
 
