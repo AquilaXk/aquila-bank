@@ -23,9 +23,12 @@ if [[ "${dispatch_input_count}" -gt 25 ]]; then
 fi
 grep -F "OCI k6 service auth token contract" "${workflow}" >/dev/null
 grep -F "tools/test/check-oci-k6-service-auth-token-workflow.sh" "${workflow}" >/dev/null
+grep -F "tools/test/check-transaction-read-429-source-gate.sh" "${workflow}" >/dev/null
+grep -F "tools/test/run-transaction-read-429-source-gate.sh" "${workflow}" >/dev/null
 grep -F "tools/test/check-transaction-read-promotion-pacing-contract.sh" "${workflow}" >/dev/null
 grep -F "tools/test/run-transaction-read-promotion-pacing-contract.sh" "${workflow}" >/dev/null
 grep -F "Validate promotion pacing contract" "${workflow}" >/dev/null
+grep -F "Validate transaction read 429 source gate" "${workflow}" >/dev/null
 grep -F "if: github.event_name == 'workflow_dispatch'" "${workflow}" >/dev/null
 grep -F "runs-on: [self-hosted, oci-a1-staging]" "${workflow}" >/dev/null
 grep -F "environment:" "${workflow}" >/dev/null
@@ -114,6 +117,20 @@ grep -F 'echo "::error::K6_NGINX_ACCESS_LOG is missing or empty; transaction-rea
 grep -F 'NGINX_ACCESS_AGGREGATE_RUN_ID="${K6_RUN_ID}"' "${workflow}" >/dev/null
 grep -F "tools/test/run-transaction-read-nginx-access-aggregate-artifact.sh" "${workflow}" >/dev/null
 grep -F "tools/test/check-transaction-read-nginx-access-aggregate-artifact.sh" "${workflow}" >/dev/null
+grep -F "Build transaction read 429 source gate artifact" "${workflow}" >/dev/null
+grep -F 'summary_json="${report_dir}/${K6_REPORT_NAME}-summary.json"' "${workflow}" >/dev/null
+grep -F 'aggregate_tsv="${report_dir}/transaction-read-nginx-access-aggregate/${K6_REPORT_NAME}-nginx-access-aggregate.tsv"' "${workflow}" >/dev/null
+grep -F 'total_fail_rate="${K6_BURST_429_RATE_THRESHOLD}"' "${workflow}" >/dev/null
+grep -F 'edge_fail_rate="${K6_BURST_429_RATE_THRESHOLD}"' "${workflow}" >/dev/null
+grep -F 'if [[ "${K6_CONSTANT_VUS_GATE_ROLE}" == "saturation-observation" ]]; then' "${workflow}" >/dev/null
+grep -F 'total_fail_rate=1' "${workflow}" >/dev/null
+grep -F 'edge_fail_rate=1' "${workflow}" >/dev/null
+grep -F 'SOURCE_429_GATE_MODE="${K6_CONSTANT_VUS_GATE_ROLE}"' "${workflow}" >/dev/null
+grep -F 'SOURCE_429_TOTAL_FAIL_RATE="${total_fail_rate}"' "${workflow}" >/dev/null
+grep -F 'SOURCE_429_EDGE_FAIL_RATE="${edge_fail_rate}"' "${workflow}" >/dev/null
+grep -F 'SOURCE_429_BACKEND_FAIL_RATE="${K6_BACKEND_429_RATE_THRESHOLD}"' "${workflow}" >/dev/null
+grep -F 'SOURCE_429_NGINX_AGGREGATE_TSV="${aggregate_tsv}"' "${workflow}" >/dev/null
+grep -F "transaction-read-429-source" "${workflow}" >/dev/null
 grep -F "transaction-read-nginx-access-aggregate" "${workflow}" >/dev/null
 grep -F "actions/upload-artifact@" "${workflow}" >/dev/null
 grep -F "oci-k6-service-auth-token" "${workflow}" >/dev/null
@@ -122,6 +139,15 @@ auth_preflight_line="$(grep -n -- "--auth-preflight-only" "${workflow}" | head -
 k6_run_line="$(grep -n -- "--no-up --no-deps" "${workflow}" | head -1 | cut -d: -f1)"
 if [[ -z "${auth_preflight_line}" || -z "${k6_run_line}" || "${auth_preflight_line}" -ge "${k6_run_line}" ]]; then
   echo "auth preflight must run before authenticated k6 capacity" >&2
+  exit 1
+fi
+
+nginx_aggregate_line="$(grep -n "Build transaction read Nginx aggregate artifact" "${workflow}" | head -1 | cut -d: -f1)"
+source_gate_line="$(grep -n "Build transaction read 429 source gate artifact" "${workflow}" | head -1 | cut -d: -f1)"
+upload_line="$(grep -n "Upload OCI k6 auth artifact" "${workflow}" | head -1 | cut -d: -f1)"
+if [[ -z "${nginx_aggregate_line}" || -z "${source_gate_line}" || -z "${upload_line}" ||
+  "${nginx_aggregate_line}" -ge "${source_gate_line}" || "${source_gate_line}" -ge "${upload_line}" ]]; then
+  echo "429 source gate artifact must run after Nginx aggregate and before upload" >&2
   exit 1
 fi
 
