@@ -103,7 +103,7 @@ awk -F '\t' \
     return row[col[name]]
   }
   BEGIN {
-    print "run_id", "phase", "host_role", "host_name", "host_id", "vm_id", "network_id", "docker_context", "sample_started_at_utc", "sample_ended_at_utc", "sample_count", "cpu_pct_avg", "cpu_pct_max", "rx_mbps_avg", "rx_mbps_max", "tx_mbps_avg", "tx_mbps_max", "artifact_uri", "summary_ref", "artifact_pack_uri"
+    print "run_id", "phase", "host_role", "host_name", "host_id", "vm_id", "network_id", "docker_context", "sample_started_at_utc", "sample_ended_at_utc", "sample_count", "sample_source", "sample_interval_seconds", "cpu_pct_avg", "cpu_pct_max", "rx_mbps_avg", "rx_mbps_max", "tx_mbps_avg", "tx_mbps_max", "artifact_uri", "summary_ref", "artifact_pack_uri"
     split(required_phases, phase_items, ",")
   }
   FNR == 1 {
@@ -141,7 +141,7 @@ awk -F '\t' \
     for (i in phase_items) {
       phase = phase_items[i]
       summary_ref = artifact_pack_uri "/" phase "/summary"
-      print expected_run_id, phase, role, host_name, host_id, vm_id, network_id, docker_context, sample_started_at, sample_ended_at, sample_count, cpu_pct, cpu_pct_max, rx_mbps, rx_mbps_max, tx_mbps, tx_mbps_max, artifact_uri "#" phase, summary_ref, artifact_pack_uri
+      print expected_run_id, phase, role, host_name, host_id, vm_id, network_id, docker_context, sample_started_at, sample_ended_at, sample_count, "fallback-snapshot", "0", cpu_pct, cpu_pct_max, rx_mbps, rx_mbps_max, tx_mbps, tx_mbps_max, artifact_uri "#" phase, summary_ref, artifact_pack_uri
     }
   }
 ' "${generator_tsv}" "${target_tsv}" >"${fallback_input_tsv}"

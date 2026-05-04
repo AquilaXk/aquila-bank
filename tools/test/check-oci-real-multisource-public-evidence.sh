@@ -68,13 +68,13 @@ oci-source-evidence-20260503	target	oci-a1-staging	ocid1.instance.oc1..target	vm
 TSV
 
 cat >"${timeline_tsv}" <<'TSV'
-run_id	phase	host_role	host_name	host_id	vm_id	network_id	docker_context	sample_started_at_utc	sample_ended_at_utc	sample_count	cpu_pct_avg	cpu_pct_max	rx_mbps_avg	rx_mbps_max	tx_mbps_avg	tx_mbps_max	artifact_uri	summary_ref	artifact_pack_uri
-oci-source-evidence-20260503	arrival16	generator	k6-a	ocid1.instance.oc1..generatora	vm-k6-a	subnet-generator-a	oci-k6-a	2026-05-03T01:00:00Z	2026-05-03T01:01:00Z	60	31.2	44.1	10.5	18.2	12.1	19.7	oci://aquila-evidence/transaction-read/oci-source-evidence-20260503/arrival16/generator.tsv	build/reports/k6/oci-source-evidence-20260503/arrival16-summary.json	oci://aquila-evidence/transaction-read/oci-source-evidence-20260503
-oci-source-evidence-20260503	arrival16	target	oci-a1-staging	ocid1.instance.oc1..target	vm-target	subnet-target	target	2026-05-03T01:00:00Z	2026-05-03T01:01:00Z	60	52.4	66.8	21.1	30.4	25.6	34.2	oci://aquila-evidence/transaction-read/oci-source-evidence-20260503/arrival16/target.tsv	build/reports/k6/oci-source-evidence-20260503/arrival16-summary.json	oci://aquila-evidence/transaction-read/oci-source-evidence-20260503
-oci-source-evidence-20260503	vu16	generator	k6-a	ocid1.instance.oc1..generatora	vm-k6-a	subnet-generator-a	oci-k6-a	2026-05-03T01:05:00Z	2026-05-03T01:06:00Z	60	34.8	49.0	12.0	20.0	15.1	23.4	oci://aquila-evidence/transaction-read/oci-source-evidence-20260503/vu16/generator.tsv	build/reports/k6/oci-source-evidence-20260503/vu16-summary.json	oci://aquila-evidence/transaction-read/oci-source-evidence-20260503
-oci-source-evidence-20260503	vu16	target	oci-a1-staging	ocid1.instance.oc1..target	vm-target	subnet-target	target	2026-05-03T01:05:00Z	2026-05-03T01:06:00Z	60	58.2	70.3	24.2	34.0	28.0	38.2	oci://aquila-evidence/transaction-read/oci-source-evidence-20260503/vu16/target.tsv	build/reports/k6/oci-source-evidence-20260503/vu16-summary.json	oci://aquila-evidence/transaction-read/oci-source-evidence-20260503
-oci-source-evidence-20260503	burst-matrix	generator	k6-a	ocid1.instance.oc1..generatora	vm-k6-a	subnet-generator-a	oci-k6-a	2026-05-03T01:10:00Z	2026-05-03T01:15:00Z	300	43.1	59.3	18.7	31.2	22.4	36.8	oci://aquila-evidence/transaction-read/oci-source-evidence-20260503/burst-matrix/generator.tsv	build/reports/k6/oci-source-evidence-20260503/burst-matrix.tsv	oci://aquila-evidence/transaction-read/oci-source-evidence-20260503
-oci-source-evidence-20260503	burst-matrix	target	oci-a1-staging	ocid1.instance.oc1..target	vm-target	subnet-target	target	2026-05-03T01:10:00Z	2026-05-03T01:15:00Z	300	63.7	76.2	35.4	51.8	40.0	59.0	oci://aquila-evidence/transaction-read/oci-source-evidence-20260503/burst-matrix/target.tsv	build/reports/k6/oci-source-evidence-20260503/burst-matrix.tsv	oci://aquila-evidence/transaction-read/oci-source-evidence-20260503
+run_id	phase	host_role	host_name	host_id	vm_id	network_id	docker_context	sample_started_at_utc	sample_ended_at_utc	sample_count	sample_source	sample_interval_seconds	cpu_pct_avg	cpu_pct_max	rx_mbps_avg	rx_mbps_max	tx_mbps_avg	tx_mbps_max	artifact_uri	summary_ref	artifact_pack_uri
+oci-source-evidence-20260503	arrival16	generator	k6-a	ocid1.instance.oc1..generatora	vm-k6-a	subnet-generator-a	oci-k6-a	2026-05-03T01:00:00Z	2026-05-03T01:01:00Z	12	load-coupled	5	31.2	44.1	10.5	18.2	12.1	19.7	oci://aquila-evidence/transaction-read/oci-source-evidence-20260503/arrival16/generator.tsv	build/reports/k6/oci-source-evidence-20260503/arrival16-summary.json	oci://aquila-evidence/transaction-read/oci-source-evidence-20260503
+oci-source-evidence-20260503	arrival16	target	oci-a1-staging	ocid1.instance.oc1..target	vm-target	subnet-target	target	2026-05-03T01:00:00Z	2026-05-03T01:01:00Z	12	load-coupled	5	52.4	66.8	21.1	30.4	25.6	34.2	oci://aquila-evidence/transaction-read/oci-source-evidence-20260503/arrival16/target.tsv	build/reports/k6/oci-source-evidence-20260503/arrival16-summary.json	oci://aquila-evidence/transaction-read/oci-source-evidence-20260503
+oci-source-evidence-20260503	vu16	generator	k6-a	ocid1.instance.oc1..generatora	vm-k6-a	subnet-generator-a	oci-k6-a	2026-05-03T01:05:00Z	2026-05-03T01:06:00Z	12	load-coupled	5	34.8	49.0	12.0	20.0	15.1	23.4	oci://aquila-evidence/transaction-read/oci-source-evidence-20260503/vu16/generator.tsv	build/reports/k6/oci-source-evidence-20260503/vu16-summary.json	oci://aquila-evidence/transaction-read/oci-source-evidence-20260503
+oci-source-evidence-20260503	vu16	target	oci-a1-staging	ocid1.instance.oc1..target	vm-target	subnet-target	target	2026-05-03T01:05:00Z	2026-05-03T01:06:00Z	12	load-coupled	5	58.2	70.3	24.2	34.0	28.0	38.2	oci://aquila-evidence/transaction-read/oci-source-evidence-20260503/vu16/target.tsv	build/reports/k6/oci-source-evidence-20260503/vu16-summary.json	oci://aquila-evidence/transaction-read/oci-source-evidence-20260503
+oci-source-evidence-20260503	burst-matrix	generator	k6-a	ocid1.instance.oc1..generatora	vm-k6-a	subnet-generator-a	oci-k6-a	2026-05-03T01:10:00Z	2026-05-03T01:15:00Z	60	load-coupled	5	43.1	59.3	18.7	31.2	22.4	36.8	oci://aquila-evidence/transaction-read/oci-source-evidence-20260503/burst-matrix/generator.tsv	build/reports/k6/oci-source-evidence-20260503/burst-matrix.tsv	oci://aquila-evidence/transaction-read/oci-source-evidence-20260503
+oci-source-evidence-20260503	burst-matrix	target	oci-a1-staging	ocid1.instance.oc1..target	vm-target	subnet-target	target	2026-05-03T01:10:00Z	2026-05-03T01:15:00Z	60	load-coupled	5	63.7	76.2	35.4	51.8	40.0	59.0	oci://aquila-evidence/transaction-read/oci-source-evidence-20260503/burst-matrix/target.tsv	build/reports/k6/oci-source-evidence-20260503/burst-matrix.tsv	oci://aquila-evidence/transaction-read/oci-source-evidence-20260503
 TSV
 
 echo "[oci-real-multisource-public-evidence] print plan"
@@ -98,6 +98,10 @@ grep -F "docker_context_count=2" <<<"${plan}" >/dev/null
 grep -F "true_multi_source_required=true" <<<"${plan}" >/dev/null
 grep -F "source_fairness_required=true" <<<"${plan}" >/dev/null
 grep -F "fairness_ratio_range=0.80..1.25" <<<"${plan}" >/dev/null
+grep -F "max_edge_429_rate=0.10" <<<"${plan}" >/dev/null
+grep -F "max_backend_429_rate=0.005" <<<"${plan}" >/dev/null
+grep -F "max_accepted_p95_ms=200" <<<"${plan}" >/dev/null
+grep -F "load_coupled_timeline_required=true" <<<"${plan}" >/dev/null
 grep -F "minimum_remote_docker_contexts=2" <<<"${plan}" >/dev/null
 grep -F "source_evidence_tsv=${source_evidence_tsv}" <<<"${plan}" >/dev/null
 grep -F "host_metrics_tsv=${host_metrics_tsv}" <<<"${plan}" >/dev/null
@@ -133,6 +137,8 @@ grep -F "host metrics timeline: verified" "${report_md}" >/dev/null
 grep -F "single-source vs multi-source comparison: fixed" "${report_md}" >/dev/null
 grep -F "source-level real IP/429/latency/fairness split: verified" "${report_md}" >/dev/null
 grep -F "host-level CPU/network split: verified" "${report_md}" >/dev/null
+grep -F "source edge/backend 429 budget: verified" "${report_md}" >/dev/null
+grep -F "load-coupled host metrics timeline: verified" "${report_md}" >/dev/null
 grep -F "true multi-source public traffic evidence: fixed" "${report_md}" >/dev/null
 grep -F $'index\tdocker_context' "${contexts_tsv}" >/dev/null
 grep -F $'1\toci-k6-a' "${contexts_tsv}" >/dev/null
@@ -196,6 +202,46 @@ if OCI_REAL_MULTISOURCE_NAME=real-multi-bad-fairness \
   exit 1
 fi
 grep -F "source evidence metric out of contract" "${temp_dir}/bad-fairness.log" >/dev/null
+
+echo "[oci-real-multisource-public-evidence] backend 429 budget fails"
+awk -F '\t' 'BEGIN { OFS = FS } NR == 1 { print; next } $1 == "source-b" { $6 = "0.020" } { print }' \
+  "${source_evidence_tsv}" >"${source_evidence_tsv}.bad-backend"
+if OCI_REAL_MULTISOURCE_NAME=real-multi-bad-backend \
+  OCI_REAL_MULTISOURCE_RUN_ID=oci-source-evidence-20260503 \
+  OCI_REAL_MULTISOURCE_CONTEXTS=oci-k6-a,oci-k6-b \
+  OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON="${single_summary}" \
+  OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON="${multi_summary}" \
+  OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV="${status_tsv}" \
+  OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV="${source_evidence_tsv}.bad-backend" \
+  OCI_REAL_MULTISOURCE_HOST_METRICS_TSV="${host_metrics_tsv}" \
+  OCI_REAL_MULTISOURCE_HOST_METRICS_TIMELINE_TSV="${timeline_tsv}" \
+  OCI_REAL_MULTISOURCE_ARTIFACT_URI=oci://aquila-evidence/transaction-read/oci-source-evidence-20260503 \
+  OCI_REAL_MULTISOURCE_OUTPUT_DIR="${output_dir}" \
+    "${runner}" >"${temp_dir}/bad-backend.log" 2>&1; then
+  echo "real multi-source public evidence unexpectedly passed backend 429 over budget" >&2
+  exit 1
+fi
+grep -F "source evidence metric out of contract" "${temp_dir}/bad-backend.log" >/dev/null
+
+echo "[oci-real-multisource-public-evidence] fallback timeline fails"
+awk -F '\t' 'BEGIN { OFS = FS } NR == 1 { print; next } { $12 = "fallback-snapshot"; $13 = "0" } { print }' \
+  "${timeline_tsv}" >"${timeline_tsv}.fallback"
+if OCI_REAL_MULTISOURCE_NAME=real-multi-fallback-timeline \
+  OCI_REAL_MULTISOURCE_RUN_ID=oci-source-evidence-20260503 \
+  OCI_REAL_MULTISOURCE_CONTEXTS=oci-k6-a,oci-k6-b \
+  OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON="${single_summary}" \
+  OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON="${multi_summary}" \
+  OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV="${status_tsv}" \
+  OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV="${source_evidence_tsv}" \
+  OCI_REAL_MULTISOURCE_HOST_METRICS_TSV="${host_metrics_tsv}" \
+  OCI_REAL_MULTISOURCE_HOST_METRICS_TIMELINE_TSV="${timeline_tsv}.fallback" \
+  OCI_REAL_MULTISOURCE_ARTIFACT_URI=oci://aquila-evidence/transaction-read/oci-source-evidence-20260503 \
+  OCI_REAL_MULTISOURCE_OUTPUT_DIR="${output_dir}" \
+    "${runner}" >"${temp_dir}/fallback-timeline.log" 2>&1; then
+  echo "real multi-source public evidence unexpectedly accepted fallback timeline" >&2
+  exit 1
+fi
+grep -F "load-coupled sampler source required" "${temp_dir}/fallback-timeline.log" >/dev/null
 
 echo "[oci-real-multisource-public-evidence] blank source artifact fails"
 awk -F '\t' 'BEGIN { OFS = "\t" } NR == 1 { print; next } { if ($1 == "source-b") $11 = ""; print }' "${source_evidence_tsv}" >"${source_evidence_tsv}.blank-artifact"
