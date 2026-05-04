@@ -16,9 +16,12 @@ grep -F "tools/test/check-offhost-capacity-prerequisite-required-gate.sh" "${wor
 grep -F "tools/test/check-oci-offhost-host-metrics-snapshot.sh" "${workflow}" >/dev/null
 grep -F "tools/test/run-oci-offhost-host-metrics-timeline.sh" "${workflow}" >/dev/null
 grep -F "tools/test/check-oci-offhost-host-metrics-timeline.sh" "${workflow}" >/dev/null
+grep -F "tools/test/run-oci-offhost-host-metrics-load-coupled-timeline.sh" "${workflow}" >/dev/null
+grep -F "tools/test/check-oci-offhost-host-metrics-load-coupled-timeline.sh" "${workflow}" >/dev/null
 grep -F "tools/test/run-oci-offhost-host-metrics-timeline-fallback.sh" "${workflow}" >/dev/null
 grep -F "tools/test/check-oci-offhost-host-metrics-timeline-fallback.sh" "${workflow}" >/dev/null
 grep -F "Check off-host host metrics timeline" "${workflow}" >/dev/null
+grep -F "Check off-host host metrics load-coupled timeline" "${workflow}" >/dev/null
 grep -F "Check off-host host metrics timeline fallback" "${workflow}" >/dev/null
 grep -F "if: github.event_name == 'workflow_dispatch'" "${workflow}" >/dev/null
 grep -F "environment:" "${workflow}" >/dev/null
@@ -72,7 +75,12 @@ grep -F 'CAPACITY_K6_TARGET_HOST_METRICS_TSV="${snapshot_target_tsv}"' "${workfl
 grep -F 'host_metrics_timeline_dir="${report_dir}/offhost-host-metrics-timeline"' "${workflow}" >/dev/null
 grep -F 'generated_timeline_tsv="${host_metrics_timeline_dir}/${CAPACITY_NAME}-host-metrics-timeline.tsv"' "${workflow}" >/dev/null
 grep -F 'if [[ -z "${CAPACITY_K6_HOST_METRICS_TIMELINE_TSV}" && "${CAPACITY_REQUIRE_LOAD_COUPLED_TIMELINE}" == "true" ]]; then' "${workflow}" >/dev/null
-grep -F "CAPACITY_PREREQUISITE_FAILURE_REASON=missing-load-coupled-host-metrics-timeline" "${workflow}" >/dev/null
+grep -F 'OCI_OFFHOST_LOAD_COUPLED_TIMELINE_NAME="${CAPACITY_NAME}"' "${workflow}" >/dev/null
+grep -F 'OCI_OFFHOST_LOAD_COUPLED_TIMELINE_RUN_ID="${CAPACITY_K6_HOST_METRICS_RUN_ID}"' "${workflow}" >/dev/null
+grep -F 'OCI_OFFHOST_LOAD_COUPLED_SAMPLE_INTERVAL_SECONDS="${CAPACITY_K6_HOST_METRICS_TIMELINE_SAMPLE_INTERVAL_SECONDS}"' "${workflow}" >/dev/null
+grep -F 'OCI_OFFHOST_LOAD_COUPLED_GENERATOR_SAMPLE_CONTEXT="${CAPACITY_K6_DOCKER_CONTEXT}"' "${workflow}" >/dev/null
+grep -F "tools/test/run-oci-offhost-host-metrics-load-coupled-timeline.sh" "${workflow}" >/dev/null
+grep -F 'CAPACITY_K6_HOST_METRICS_TIMELINE_TSV="${generated_timeline_tsv}"' "${workflow}" >/dev/null
 grep -F 'if [[ -z "${CAPACITY_K6_HOST_METRICS_TIMELINE_TSV}" && "${CAPACITY_REQUIRE_LOAD_COUPLED_TIMELINE}" == "false" ]]; then' "${workflow}" >/dev/null
 grep -F 'OCI_OFFHOST_HOST_METRICS_TIMELINE_FALLBACK_NAME="${CAPACITY_NAME}"' "${workflow}" >/dev/null
 grep -F 'OCI_OFFHOST_GENERATOR_HOST_METRICS_TSV="${CAPACITY_K6_GENERATOR_HOST_METRICS_TSV}"' "${workflow}" >/dev/null
@@ -107,6 +115,10 @@ if grep -F 'CAPACITY_K6_DOCKER_CONTEXT: ${{ inputs.docker_context || vars.CAPACI
 fi
 if grep -F 'default: "/srv/aquila-bank"' "${workflow}" >/dev/null; then
   echo "off-host workflow must not default remote workdir to a stale path" >&2
+  exit 1
+fi
+if grep -F "missing-load-coupled-host-metrics-timeline" "${workflow}" >/dev/null; then
+  echo "strict off-host workflow must generate load-coupled timeline instead of failing on missing input" >&2
   exit 1
 fi
 
