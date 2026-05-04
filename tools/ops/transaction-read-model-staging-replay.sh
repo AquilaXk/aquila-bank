@@ -11,6 +11,7 @@ STAGING_OCI_A1_DATABASE_URL="${STAGING_OCI_A1_DATABASE_URL:-}"
 STAGING_RDS_DATABASE_URL="${STAGING_RDS_DATABASE_URL:-}"
 STAGING_DATABASE_URL="${STAGING_OCI_A1_DATABASE_URL:-${STAGING_RDS_DATABASE_URL}}"
 EXPECTED_TOTAL_ROWS="${EXPECTED_TOTAL_ROWS:-100000000}"
+EXPECTED_TOTAL_ROWS_TOLERANCE="${EXPECTED_TOTAL_ROWS_TOLERANCE:-10000}"
 ITERATIONS="${ITERATIONS:-40}"
 PAGE_LIMIT="${PAGE_LIMIT:-50}"
 REQUEST_TIMEOUT_SECONDS="${REQUEST_TIMEOUT_SECONDS:-5}"
@@ -41,11 +42,17 @@ fixture_restore_guidance() {
   printf '%s' "Restore OCI A1 100m fixture before replay: tools/test/run-transaction-100m-fresh-volume-restore-k6.sh --dry-run, then tools/ops/transaction-read-model-chunk-lifecycle.sh --action analyze --target both."
 }
 
+minimum_expected_total_rows() {
+  printf '%s\n' "$((EXPECTED_TOTAL_ROWS - EXPECTED_TOTAL_ROWS_TOLERANCE))"
+}
+
 write_distribution_failure_report() {
   local status="$1"
   local estimated_total="$2"
   local detail="$3"
   local guidance="$4"
+  local minimum_total_rows
+  minimum_total_rows="$(minimum_expected_total_rows)"
 
   echo "$estimated_total" >"${REPORT_DIR}/estimated-total-rows.txt"
   jq -n \
@@ -56,6 +63,8 @@ write_distribution_failure_report() {
     --arg detail "$detail" \
     --arg guidance "$guidance" \
     --argjson expectedTotalRows "$EXPECTED_TOTAL_ROWS" \
+    --argjson expectedTotalRowsTolerance "$EXPECTED_TOTAL_ROWS_TOLERANCE" \
+    --argjson minimumExpectedTotalRows "$minimum_total_rows" \
     --argjson estimatedTotalRows "$estimated_total" \
     '{
       generatedAt: $generatedAt,
@@ -65,6 +74,8 @@ write_distribution_failure_report() {
       detail: $detail,
       guidance: $guidance,
       expectedTotalRows: $expectedTotalRows,
+      expectedTotalRowsTolerance: $expectedTotalRowsTolerance,
+      minimumExpectedTotalRows: $minimumExpectedTotalRows,
       estimatedTotalRows: $estimatedTotalRows,
       failed: true
     }' >"$SUMMARY_JSON"
@@ -77,6 +88,8 @@ write_distribution_failure_report() {
     echo "- failure: ${status}"
     echo "- estimated total rows: ${estimated_total}"
     echo "- expected total rows: ${EXPECTED_TOTAL_ROWS}"
+    echo "- expected total rows tolerance: ${EXPECTED_TOTAL_ROWS_TOLERANCE}"
+    echo "- minimum expected total rows: ${minimum_total_rows}"
     echo "- detail: ${detail}"
     echo "- guidance: ${guidance}"
   } >"$SUMMARY_MD"
@@ -131,6 +144,12 @@ require_positive_integer() {
   [[ "$value" =~ ^[1-9][0-9]*$ ]] || fail "${name} must be a positive integer"
 }
 
+require_non_negative_integer() {
+  local name="$1"
+  local value="${!name:-}"
+  [[ "$value" =~ ^[0-9]+$ ]] || fail "${name} must be a non-negative integer"
+}
+
 require_ratio_between_zero_and_one() {
   local name="$1"
   local value="${!name:-}"
@@ -172,6 +191,7 @@ validate_inputs() {
   require_env COLD_TO
 
   require_positive_integer EXPECTED_TOTAL_ROWS
+  require_non_negative_integer EXPECTED_TOTAL_ROWS_TOLERANCE
   require_positive_integer ITERATIONS
   require_positive_integer PAGE_LIMIT
   require_positive_integer REQUEST_TIMEOUT_SECONDS
@@ -185,6 +205,9 @@ validate_inputs() {
 
   if [ "$PAGE_LIMIT" -gt 100 ]; then
     fail "PAGE_LIMIT must be 100 or less"
+  fi
+  if [ "$EXPECTED_TOTAL_ROWS_TOLERANCE" -ge "$EXPECTED_TOTAL_ROWS" ]; then
+    fail "EXPECTED_TOTAL_ROWS_TOLERANCE must be less than EXPECTED_TOTAL_ROWS"
   fi
 
   [ -x "$PLANNER_STATS_GUARD_SCRIPT" ] || fail "Planner stats guard script is not executable: ${PLANNER_STATS_GUARD_SCRIPT}"
@@ -227,7 +250,8 @@ run_planner_stats_guard() {
 
 verify_staging_distribution() {
   # 1억 건 검증에서 full count는 OCI A1 PostgreSQL에 부담이 커서 planner 통계 estimate로 gate를 둡니다.
-  local estimated_total
+  local estimated_total minimum_total_rows
+  minimum_total_rows="$(minimum_expected_total_rows)"
   estimated_total="$(
     psql_scalar \
       "WITH target_parent(table_name) AS (
@@ -248,13 +272,13 @@ verify_staging_distribution() {
   )"
 
   [[ "$estimated_total" =~ ^[0-9]+$ ]] || fail "OCI A1 row estimate is not numeric: ${estimated_total}"
-  if [ "$estimated_total" -lt "$EXPECTED_TOTAL_ROWS" ]; then
+  if [ "$estimated_total" -lt "$minimum_total_rows" ]; then
     local status detail guidance
     status="estimate_below_expected"
     if [ "$estimated_total" -eq 0 ]; then
       status="fixture_missing"
     fi
-    detail="OCI A1 read model estimate ${estimated_total} is below expected ${EXPECTED_TOTAL_ROWS}"
+    detail="OCI A1 read model estimate ${estimated_total} is below minimum ${minimum_total_rows} (expected ${EXPECTED_TOTAL_ROWS}, tolerance ${EXPECTED_TOTAL_ROWS_TOLERANCE})"
     guidance="$(fixture_restore_guidance)"
     write_distribution_failure_report "$status" "$estimated_total" "$detail" "$guidance"
     fail "${status}: ${detail}. ${guidance}"
@@ -296,7 +320,7 @@ verify_staging_distribution() {
     fail "cold_account_missing: ${detail}. ${guidance}"
   fi
 
-  notice "OCI A1 read model estimate ${estimated_total} rows"
+  notice "OCI A1 read model estimate ${estimated_total} rows (expected=${EXPECTED_TOTAL_ROWS}, tolerance=${EXPECTED_TOTAL_ROWS_TOLERANCE}, minimum=${minimum_total_rows})"
   echo "$estimated_total" >"${REPORT_DIR}/estimated-total-rows.txt"
 }
 
@@ -392,8 +416,9 @@ p95_ms() {
 }
 
 write_summary() {
-  local estimated_total hot_first hot_cursor cold_first cold_cursor failed
+  local estimated_total minimum_total_rows hot_first hot_cursor cold_first cold_cursor failed
   estimated_total="$(cat "${REPORT_DIR}/estimated-total-rows.txt")"
+  minimum_total_rows="$(minimum_expected_total_rows)"
   hot_first="$(p95_ms "${REPORT_DIR}/hot_first.ms")"
   hot_cursor="$(p95_ms "${REPORT_DIR}/hot_cursor.ms")"
   cold_first="$(p95_ms "${REPORT_DIR}/cold_first.ms")"
@@ -411,6 +436,8 @@ write_summary() {
     --arg generatedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     --arg baseUrl "$STAGING_BASE_URL" \
     --argjson expectedTotalRows "$EXPECTED_TOTAL_ROWS" \
+    --argjson expectedTotalRowsTolerance "$EXPECTED_TOTAL_ROWS_TOLERANCE" \
+    --argjson minimumExpectedTotalRows "$minimum_total_rows" \
     --argjson estimatedTotalRows "$estimated_total" \
     --argjson iterations "$ITERATIONS" \
     --argjson pageLimit "$PAGE_LIMIT" \
@@ -425,6 +452,8 @@ write_summary() {
       generatedAt: $generatedAt,
       baseUrl: $baseUrl,
       expectedTotalRows: $expectedTotalRows,
+      expectedTotalRowsTolerance: $expectedTotalRowsTolerance,
+      minimumExpectedTotalRows: $minimumExpectedTotalRows,
       estimatedTotalRows: $estimatedTotalRows,
       iterations: $iterations,
       pageLimit: $pageLimit,
@@ -445,6 +474,9 @@ write_summary() {
     echo "# Transaction Read Model Staging Replay"
     echo
     echo "- estimated total rows: ${estimated_total}"
+    echo "- expected total rows: ${EXPECTED_TOTAL_ROWS}"
+    echo "- expected total rows tolerance: ${EXPECTED_TOTAL_ROWS_TOLERANCE}"
+    echo "- minimum expected total rows: ${minimum_total_rows}"
     echo "- iterations: ${ITERATIONS}"
     echo "- page limit: ${PAGE_LIMIT}"
     echo "- hot first p95: ${hot_first}ms / threshold ${HOT_P95_THRESHOLD_MS}ms"
