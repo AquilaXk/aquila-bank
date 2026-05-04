@@ -21,8 +21,8 @@ grep -F "name=matrix-check" <<<"${plan}" >/dev/null
 grep -F "edge_transaction_budget_profile=burst80" <<<"${plan}" >/dev/null
 grep -F "edge_transaction_hot_rate_rps=128" <<<"${plan}" >/dev/null
 grep -F "edge_transaction_archive_rate_rps=128" <<<"${plan}" >/dev/null
-grep -F "edge_transaction_hot_burst=64" <<<"${plan}" >/dev/null
-grep -F "edge_transaction_archive_burst=64" <<<"${plan}" >/dev/null
+grep -F "edge_transaction_hot_burst=128" <<<"${plan}" >/dev/null
+grep -F "edge_transaction_archive_burst=128" <<<"${plan}" >/dev/null
 grep -F "edge_transaction_hot_delay=0" <<<"${plan}" >/dev/null
 grep -F "edge_transaction_archive_delay=0" <<<"${plan}" >/dev/null
 grep -F "edge_transaction_read_policy=burst80-nodelay" <<<"${plan}" >/dev/null
@@ -52,8 +52,8 @@ grep -F "gate_status=pass" "${report_md}" >/dev/null
 grep -F "| edge transaction budget profile | burst80 |" "${report_md}" >/dev/null
 grep -F "| edge transaction-hot rate | 128r/s |" "${report_md}" >/dev/null
 grep -F "| edge transaction-archive rate | 128r/s |" "${report_md}" >/dev/null
-grep -F "| edge transaction-hot burst | 64 |" "${report_md}" >/dev/null
-grep -F "| edge transaction-archive burst | 64 |" "${report_md}" >/dev/null
+grep -F "| edge transaction-hot burst | 128 |" "${report_md}" >/dev/null
+grep -F "| edge transaction-archive burst | 128 |" "${report_md}" >/dev/null
 grep -F "| edge transaction-hot delay | 0 |" "${report_md}" >/dev/null
 grep -F "| edge transaction-archive delay | 0 |" "${report_md}" >/dev/null
 grep -F "| edge transaction-read policy | burst80-nodelay |" "${report_md}" >/dev/null
@@ -73,18 +73,22 @@ grep -F "| expected 429 source | edge-or-backend-admission |" "${report_md}" >/d
 grep -F "accepted request p95 <= 200ms, p99 <= 300ms" "${report_md}" >/dev/null
 
 echo "[oci-a1-budget-matrix] source contract"
+grep -F 'transaction_read_profile_hot_burst=128' tools/ops/render-nginx-runtime-config.sh >/dev/null
+grep -F 'transaction_read_profile_archive_burst=128' tools/ops/render-nginx-runtime-config.sh >/dev/null
 grep -F 'transaction_read_profile_hot_rate_rps=160' tools/ops/render-nginx-runtime-config.sh >/dev/null
 grep -F 'transaction_read_profile_archive_rate_rps=160' tools/ops/render-nginx-runtime-config.sh >/dev/null
 grep -F 'transaction_read_profile_hot_burst=20' tools/ops/render-nginx-runtime-config.sh >/dev/null
 grep -F 'transaction_read_profile_archive_burst=20' tools/ops/render-nginx-runtime-config.sh >/dev/null
+grep -F 'transaction_read_profile_hot_burst=128' ops/deploy/oci/bluegreen-deploy.sh >/dev/null
+grep -F 'transaction_read_profile_archive_burst=128' ops/deploy/oci/bluegreen-deploy.sh >/dev/null
 grep -F 'transaction_read_profile_hot_rate_rps=160' ops/deploy/oci/bluegreen-deploy.sh >/dev/null
 grep -F 'transaction_read_profile_archive_rate_rps=160' ops/deploy/oci/bluegreen-deploy.sh >/dev/null
 grep -F 'transaction_read_profile_hot_burst=20' ops/deploy/oci/bluegreen-deploy.sh >/dev/null
 grep -F 'transaction_read_profile_archive_burst=20' ops/deploy/oci/bluegreen-deploy.sh >/dev/null
 grep -F 'NGINX_TRANSACTION_READ_HOT_RATE_RPS=128' ops/nginx/runtime.env.example >/dev/null
 grep -F 'NGINX_TRANSACTION_READ_ARCHIVE_RATE_RPS=128' ops/nginx/runtime.env.example >/dev/null
-grep -F 'NGINX_TRANSACTION_READ_HOT_BURST=64' ops/nginx/runtime.env.example >/dev/null
-grep -F 'NGINX_TRANSACTION_READ_ARCHIVE_BURST=64' ops/nginx/runtime.env.example >/dev/null
+grep -F 'NGINX_TRANSACTION_READ_HOT_BURST=128' ops/nginx/runtime.env.example >/dev/null
+grep -F 'NGINX_TRANSACTION_READ_ARCHIVE_BURST=128' ops/nginx/runtime.env.example >/dev/null
 grep -F 'limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_hot_per_ip:10m rate=${NGINX_TRANSACTION_READ_HOT_RATE_RPS}r/s;' ops/nginx/nginx.conf >/dev/null
 grep -F 'limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_archive_per_ip:10m rate=${NGINX_TRANSACTION_READ_ARCHIVE_RATE_RPS}r/s;' ops/nginx/nginx.conf >/dev/null
 grep -F 'limit_req zone=aquila_bank_transaction_hot_per_ip burst=${NGINX_TRANSACTION_READ_HOT_BURST} ${NGINX_TRANSACTION_READ_HOT_LIMIT_MODE};' ops/nginx/nginx.conf >/dev/null

@@ -76,7 +76,7 @@ on:
       backend_429_rate_threshold:
         description: "Max backend 429 rate for promotion target matrix gate"
         required: false
-        default: "0.005"
+        default: "0"
         type: string
       overload_503_rate_threshold:
         description: "Max 503 rate for k6 overload mode"
@@ -366,7 +366,7 @@ jobs:
             K6_MAX_VUS="$((burst_rate * 2))"
             K6_OVERLOAD_MODE="true"
             K6_BURST_429_RATE_THRESHOLD="${BURST_429_RATE_THRESHOLD_INPUT:-0.10}"
-            K6_BACKEND_429_RATE_THRESHOLD="${BACKEND_429_RATE_THRESHOLD_INPUT:-0.005}"
+            K6_BACKEND_429_RATE_THRESHOLD="${BACKEND_429_RATE_THRESHOLD_INPUT:-0}"
             K6_OVERLOAD_503_RATE_THRESHOLD="${OVERLOAD_503_RATE_THRESHOLD_INPUT:-0}"
             export K6_REPORT_NAME K6_RUN_ID K6_SCENARIO_MODE K6_BURST_RATE K6_PRE_ALLOCATED_VUS K6_MAX_VUS
             export K6_OVERLOAD_MODE K6_BURST_429_RATE_THRESHOLD K6_BACKEND_429_RATE_THRESHOLD K6_OVERLOAD_503_RATE_THRESHOLD
@@ -409,7 +409,7 @@ jobs:
           OCI_K6_BURST_MATRIX_OUTPUT_DIR="${matrix_dir}/burst-reject-curve-matrix" \
           OCI_K6_BURST_MATRIX_PROMOTION_TARGET_RATE="${K6_BURST_MATRIX_PROMOTION_TARGET_RATE}" \
           OCI_K6_BURST_MATRIX_TARGET_429_THRESHOLD="${BURST_429_RATE_THRESHOLD_INPUT:-0.10}" \
-          OCI_K6_BURST_MATRIX_BACKEND_429_THRESHOLD="${BACKEND_429_RATE_THRESHOLD_INPUT:-0.005}" \
+          OCI_K6_BURST_MATRIX_BACKEND_429_THRESHOLD="${BACKEND_429_RATE_THRESHOLD_INPUT:-0}" \
             tools/test/run-oci-k6-burst-reject-curve-matrix.sh
 
           if [[ "${k6_failure_count}" != "0" ]]; then

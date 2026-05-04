@@ -66,7 +66,8 @@ grep -F 'K6_PRE_ALLOCATED_VUS="${burst_rate}"' "${workflow}" >/dev/null
 grep -F 'K6_MAX_VUS="$((burst_rate * 2))"' "${workflow}" >/dev/null
 grep -F 'K6_OVERLOAD_MODE="true"' "${workflow}" >/dev/null
 grep -F 'K6_BURST_429_RATE_THRESHOLD="${BURST_429_RATE_THRESHOLD_INPUT:-0.10}"' "${workflow}" >/dev/null
-grep -F 'K6_BACKEND_429_RATE_THRESHOLD="${BACKEND_429_RATE_THRESHOLD_INPUT:-0.005}"' "${workflow}" >/dev/null
+grep -F 'K6_BACKEND_429_RATE_THRESHOLD="${BACKEND_429_RATE_THRESHOLD_INPUT:-0}"' "${workflow}" >/dev/null
+grep -F 'OCI_K6_BURST_MATRIX_BACKEND_429_THRESHOLD="${BACKEND_429_RATE_THRESHOLD_INPUT:-0}"' "${workflow}" >/dev/null
 grep -F 'K6_OVERLOAD_503_RATE_THRESHOLD="${OVERLOAD_503_RATE_THRESHOLD_INPUT:-0}"' "${workflow}" >/dev/null
 grep -F 'K6_BURST_MATRIX_PROMOTION_TARGET_RATE' "${workflow}" >/dev/null
 grep -F 'K6_NGINX_LOG_SINCE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"' "${workflow}" >/dev/null
