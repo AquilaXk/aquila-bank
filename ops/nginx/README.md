@@ -31,10 +31,10 @@
   - `NGINX_REAL_IP_HEADER` 기본값 `X-Forwarded-For`, 허용값 `X-Forwarded-For` 또는 `X-Real-IP`
   - `NGINX_REAL_IP_TRUSTED_PROXIES` 기본값 `10.60.0.0/16`, comma-separated trusted LB/CDN CIDR, `none`이면 TCP peer address
   - `NGINX_TRANSACTION_READ_BUDGET_PROFILE` 기본값 `burst80`, 허용값 `burst80|burst64|balanced|fail-fast`
-  - `NGINX_TRANSACTION_READ_HOT_RATE_RPS` 기본값 `128`
-  - `NGINX_TRANSACTION_READ_ARCHIVE_RATE_RPS` 기본값 `128`
-  - `NGINX_TRANSACTION_READ_HOT_BURST` 기본값 `128`
-  - `NGINX_TRANSACTION_READ_ARCHIVE_BURST` 기본값 `128`
+  - `NGINX_TRANSACTION_READ_HOT_RATE_RPS` 기본값 `256`
+  - `NGINX_TRANSACTION_READ_ARCHIVE_RATE_RPS` 기본값 `256`
+  - `NGINX_TRANSACTION_READ_HOT_BURST` 기본값 `256`
+  - `NGINX_TRANSACTION_READ_ARCHIVE_BURST` 기본값 `256`
   - `NGINX_TRANSACTION_READ_HOT_DELAY` 기본값 `0`, `0`이면 `nodelay`
   - `NGINX_TRANSACTION_READ_ARCHIVE_DELAY` 기본값 `0`, `0`이면 `nodelay`
 - `NGINX_BACKEND_SSE_SERVERS`를 비우면 API upstream과 같은 backend pool을 재사용합니다.
@@ -60,12 +60,12 @@ bash tools/ops/render-nginx-runtime-config.sh /tmp/aquila-bank-nginx.conf ops/ng
 - OCI paid A1 기본값은 VCN CIDR `10.60.0.0/16`입니다. LB/CDN subnet을 더 좁게 알면 해당 CIDR로 줄이고, TCP peer 기준으로 되돌릴 때만 `none`을 사용합니다.
 - `limit_req_zone $binary_remote_addr zone=aquila_bank_api_per_ip:10m rate=30r/s;`
 - `limit_req_zone $binary_remote_addr zone=aquila_bank_auth_per_ip:10m rate=5r/s;`
-- `limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_hot_per_ip:10m rate=128r/s;`
-- `limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_archive_per_ip:10m rate=128r/s;`
+- `limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_hot_per_ip:10m rate=256r/s;`
+- `limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_archive_per_ip:10m rate=256r/s;`
 - `limit_req_zone $binary_remote_addr zone=aquila_bank_transfer_per_ip:10m rate=3r/s;`
 - `location = /api/v1/auth/login`, `location = /api/v1/auth/refresh`, `location = /api/v1/auth/password-recovery/request`에 `limit_req zone=aquila_bank_auth_per_ip burst=10 nodelay;`를 적용합니다.
-- `location = /api/v1/transactions`에는 `limit_req zone=aquila_bank_transaction_hot_per_ip burst=128 nodelay;`를 적용합니다.
-- `location = /api/v1/transactions/archive`에는 `limit_req zone=aquila_bank_transaction_archive_per_ip burst=128 nodelay;`를 적용합니다.
+- `location = /api/v1/transactions`에는 `limit_req zone=aquila_bank_transaction_hot_per_ip burst=256 nodelay;`를 적용합니다.
+- `location = /api/v1/transactions/archive`에는 `limit_req zone=aquila_bank_transaction_archive_per_ip burst=256 nodelay;`를 적용합니다.
 - `location = /api/v1/transfers`, `location ~ ^/api/v1/transfers/[^/]+/reversal$`에는 `limit_req zone=aquila_bank_transfer_per_ip burst=6 nodelay;`를 적용합니다.
 - exact/regex location은 generic `/api/`보다 먼저 매칭되므로 zone을 중첩 적용하지 않습니다.
 - `/api/`에는 `limit_req zone=aquila_bank_api_per_ip burst=20 delay=5;`를 유지합니다.
@@ -73,7 +73,7 @@ bash tools/ops/render-nginx-runtime-config.sh /tmp/aquila-bank-nginx.conf ops/ng
 - `429`는 Nginx에서 JSON body와 `X-Aquila-Reject-Source: nginx-edge`, `Retry-After`, `X-RateLimit-Retry-After-Millis`, `X-RateLimit-Retry-Jitter-Millis`를 내려 k6/client backoff가 edge rejection을 구분하게 합니다. OCI A1 기본값은 `150ms + jitter 100ms`로 retry 동기화를 짧게 분산합니다.
 - 정상 client/SDK는 `X-RateLimit-Retry-After-Millis`와 jitter를 반영하고, sustained read에서는 k6 `preemptive pacing`과 같은 요청 전 token pacing으로 edge reject 동기화를 피합니다.
 - backend에는 login/password recovery throttling이 이미 있으므로, Nginx auth zone은 edge 1차 차단으로 보고 backend는 계정/IP 단위 2차 가드로 둡니다.
-- transaction-read `burst80` profile은 delay queue 의존 없이 burst80 promotion target을 닫기 위해 `128r/s`, `burst=128`, `nodelay`를 기본값으로 둡니다. run #25302244031의 burst80 edge 429 `17.17%` 초과를 edge bucket headroom으로 낮추는 운영 후보이며, backend 429 hard-zero gate와 함께만 승격합니다.
+- transaction-read `burst80` profile은 delay queue 의존 없이 burst80 promotion target을 닫기 위해 `256r/s`, `burst=256`, `nodelay`를 기본값으로 둡니다. run #25319314917의 burst80 edge 429 `22.8838%` 초과를 edge bucket headroom으로 낮추는 운영 후보이며, backend 429 hard-zero gate와 함께만 승격합니다.
 - `burst64` profile은 이전 운영 후보 기준이며 `160r/s`, `burst=20`, `nodelay`를 rollback 비교용으로 유지합니다.
 - `fail-fast` profile은 `96r/s`, `burst=12`, `nodelay`로 delayed ratio ceiling 검증이나 latency 우선 rollback에 사용합니다.
 - 실제 서비스 트래픽 특성에 따라 `rate`와 `burst`는 조정하되, 로그인/토큰 재발급/SSE 재연결 패턴과 shared IP 영향을 같이 확인합니다.

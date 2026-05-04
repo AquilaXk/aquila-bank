@@ -626,10 +626,10 @@ render_nginx_config() {
   transaction_read_budget_profile="${OCI_A1_TRANSACTION_READ_BUDGET_PROFILE:-${NGINX_TRANSACTION_READ_BUDGET_PROFILE:-burst80}}"
   case "${transaction_read_budget_profile}" in
     burst80)
-      transaction_read_profile_hot_rate_rps=128
-      transaction_read_profile_archive_rate_rps=128
-      transaction_read_profile_hot_burst=128
-      transaction_read_profile_archive_burst=128
+      transaction_read_profile_hot_rate_rps=256
+      transaction_read_profile_archive_rate_rps=256
+      transaction_read_profile_hot_burst=256
+      transaction_read_profile_archive_burst=256
       transaction_read_profile_hot_delay=0
       transaction_read_profile_archive_delay=0
       ;;
