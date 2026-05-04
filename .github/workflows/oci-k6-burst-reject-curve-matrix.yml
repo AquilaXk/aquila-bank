@@ -43,6 +43,11 @@ on:
         required: false
         default: "32,48,64,80,96"
         type: string
+      promotion_target_rate:
+        description: "Promotion target burst arrival rate per second"
+        required: false
+        default: "64"
+        type: string
       docker_context:
         description: "Remote Docker context name for off-host k6"
         required: false
@@ -132,6 +137,7 @@ jobs:
           COLD_TO_INPUT: ${{ inputs.cold_to }}
           DURATION_INPUT: ${{ inputs.duration }}
           BURST_RATES_INPUT: ${{ inputs.burst_rates }}
+          PROMOTION_TARGET_RATE_INPUT: ${{ inputs.promotion_target_rate }}
           BURST_429_RATE_THRESHOLD_INPUT: ${{ inputs.burst_429_rate_threshold }}
           BACKEND_429_RATE_THRESHOLD_INPUT: ${{ inputs.backend_429_rate_threshold }}
           OVERLOAD_503_RATE_THRESHOLD_INPUT: ${{ inputs.overload_503_rate_threshold }}
@@ -163,6 +169,7 @@ jobs:
           set +a
 
           K6_BURST_RATES="${BURST_RATES_INPUT:-32,48,64,80,96}"
+          K6_BURST_MATRIX_PROMOTION_TARGET_RATE="${PROMOTION_TARGET_RATE_INPUT:-64}"
           K6_RUN_PURPOSE="capacity"
           K6_OBSERVABILITY_MODE="prometheus"
           K6_GENERATOR_MODE="docker-context"
@@ -250,6 +257,7 @@ jobs:
             K6_TIME_UNIT
             K6_PREEMPTIVE_PACING
             K6_NGINX_ACCESS_LOG
+            K6_BURST_MATRIX_PROMOTION_TARGET_RATE
             BURST_429_RATE_THRESHOLD_INPUT
             BACKEND_429_RATE_THRESHOLD_INPUT
             OVERLOAD_503_RATE_THRESHOLD_INPUT
@@ -399,6 +407,7 @@ jobs:
           OCI_K6_BURST_MATRIX_NAME="${K6_MATRIX_REPORT_NAME}" \
           OCI_K6_BURST_MATRIX_INPUT_TSV="${matrix_input_tsv}" \
           OCI_K6_BURST_MATRIX_OUTPUT_DIR="${matrix_dir}/burst-reject-curve-matrix" \
+          OCI_K6_BURST_MATRIX_PROMOTION_TARGET_RATE="${K6_BURST_MATRIX_PROMOTION_TARGET_RATE}" \
           OCI_K6_BURST_MATRIX_BURST64_429_THRESHOLD="${BURST_429_RATE_THRESHOLD_INPUT:-0.10}" \
           OCI_K6_BURST_MATRIX_BACKEND_429_THRESHOLD="${BACKEND_429_RATE_THRESHOLD_INPUT:-0.005}" \
             tools/test/run-oci-k6-burst-reject-curve-matrix.sh
@@ -457,7 +466,7 @@ jobs:
           status_payload="$(
             jq -n \
               --arg log_url "${EVIDENCE_LOG_URL}" \
-              --arg description "transaction read burst matrix passed" \
+              --arg description "transaction read burst matrix target ${K6_BURST_MATRIX_PROMOTION_TARGET_RATE} passed" \
               '{
                 "state": "success",
                 "log_url": $log_url,
