@@ -10,6 +10,7 @@ Environment:
   OCI_K6_BURST_MATRIX_INPUT_TSV       required TSV: burst_rate/k6_run_id/summary_json/nginx_aggregate_json/nginx_aggregate_tsv/nginx_aggregate_md
   OCI_K6_BURST_MATRIX_REQUIRED_RATES  default 32,48,64,80,96
   OCI_K6_BURST_MATRIX_OUTPUT_DIR      default build/reports/k6/<name>
+  OCI_K6_BURST_MATRIX_PROMOTION_TARGET_RATE default 64
 USAGE
 }
 
@@ -41,15 +42,22 @@ report_md="${output_dir}/${name}-burst-reject-curve.md"
 burst64_429_threshold="${OCI_K6_BURST_MATRIX_BURST64_429_THRESHOLD:-0.10}"
 backend_429_threshold="${OCI_K6_BURST_MATRIX_BACKEND_429_THRESHOLD:-0.005}"
 accepted_p95_threshold_ms="${OCI_K6_BURST_MATRIX_ACCEPTED_P95_THRESHOLD_MS:-100}"
+promotion_target_rate="${OCI_K6_BURST_MATRIX_PROMOTION_TARGET_RATE:-64}"
 
 IFS=',' read -r -a required_rate_items <<<"${required_burst_rates}"
+
+if ! [[ "${promotion_target_rate}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "OCI_K6_BURST_MATRIX_PROMOTION_TARGET_RATE must be a positive integer: ${promotion_target_rate}" >&2
+  exit 1
+fi
 
 print_plan() {
   echo "[oci-k6-burst-reject-curve-matrix] name=${name}"
   echo "[oci-k6-burst-reject-curve-matrix] input_tsv=${input_tsv:-missing}"
   echo "[oci-k6-burst-reject-curve-matrix] required_burst_rates=${required_burst_rates}"
+  echo "[oci-k6-burst-reject-curve-matrix] promotion_target_rate=${promotion_target_rate}"
   echo "[oci-k6-burst-reject-curve-matrix] output_dir=${output_dir}"
-  echo "[oci-k6-burst-reject-curve-matrix] gate=burst64 total/edge 429 <= ${burst64_429_threshold}, backend 429 <= ${backend_429_threshold}, k6 503 = 0, nginx 5xx = 0, nginx 499 = 0, accepted p95 < ${accepted_p95_threshold_ms}ms"
+  echo "[oci-k6-burst-reject-curve-matrix] gate=burst${promotion_target_rate} total/edge 429 <= ${burst64_429_threshold}, backend 429 <= ${backend_429_threshold}, k6 503 = 0, nginx 5xx = 0, nginx 499 = 0, accepted p95 < ${accepted_p95_threshold_ms}ms"
   echo "[oci-k6-burst-reject-curve-matrix] summary_tsv=${summary_tsv}"
   echo "[oci-k6-burst-reject-curve-matrix] summary_json=${summary_json}"
   echo "[oci-k6-burst-reject-curve-matrix] report_md=${report_md}"
@@ -187,7 +195,7 @@ record_failure() {
     nginx_5xx_count="$(nginx_status_count "${aggregate_json}" "${k6_run_id}" "^5")"
 
     status="pass"
-    if gt "${burst_rate}" "64"; then
+    if gt "${burst_rate}" "${promotion_target_rate}"; then
       status="observe"
     fi
     if gt "${k6_503_count}" "0"; then
@@ -202,22 +210,22 @@ record_failure() {
       status="fail"
       record_failure "burst${burst_rate} gate failed: nginx_499_count=${nginx_499_count} > 0"
     fi
-    if [[ "${burst_rate}" == "64" ]]; then
+    if [[ "${burst_rate}" == "${promotion_target_rate}" ]]; then
       if gt "${total_429_rate}" "${burst64_429_threshold}"; then
         status="fail"
-        record_failure "$(printf 'burst64 gate failed: total_429_rate=%.6f > %.6f' "${total_429_rate}" "${burst64_429_threshold}")"
+        record_failure "$(printf 'burst%s gate failed: total_429_rate=%.6f > %.6f' "${promotion_target_rate}" "${total_429_rate}" "${burst64_429_threshold}")"
       fi
       if gt "${edge_429_rate}" "${burst64_429_threshold}"; then
         status="fail"
-        record_failure "$(printf 'burst64 gate failed: edge_429_rate=%.6f > %.6f' "${edge_429_rate}" "${burst64_429_threshold}")"
+        record_failure "$(printf 'burst%s gate failed: edge_429_rate=%.6f > %.6f' "${promotion_target_rate}" "${edge_429_rate}" "${burst64_429_threshold}")"
       fi
       if gt "${backend_429_rate}" "${backend_429_threshold}"; then
         status="fail"
-        record_failure "$(printf 'burst64 gate failed: backend_429_rate=%.6f > %.6f' "${backend_429_rate}" "${backend_429_threshold}")"
+        record_failure "$(printf 'burst%s gate failed: backend_429_rate=%.6f > %.6f' "${promotion_target_rate}" "${backend_429_rate}" "${backend_429_threshold}")"
       fi
       if gte "${accepted_p95_ms}" "${accepted_p95_threshold_ms}"; then
         status="fail"
-        record_failure "$(printf 'burst64 gate failed: accepted_p95_ms=%.3f >= %.3f' "${accepted_p95_ms}" "${accepted_p95_threshold_ms}")"
+        record_failure "$(printf 'burst%s gate failed: accepted_p95_ms=%.3f >= %.3f' "${promotion_target_rate}" "${accepted_p95_ms}" "${accepted_p95_threshold_ms}")"
       fi
     fi
 
@@ -259,7 +267,13 @@ record_failure() {
   done
 } >"${summary_tsv}"
 
-jq -Rn --arg name "${name}" --arg input_tsv "${input_tsv}" --arg required_burst_rates "${required_burst_rates}" '
+promotion_target_row_count="$(awk -F '\t' -v rate="${promotion_target_rate}" 'NR > 1 && $1 == rate { count += 1 } END { print count + 0 }' "${summary_tsv}")"
+if [[ "${promotion_target_row_count}" == "0" ]]; then
+  echo "missing promotion target burst rate evidence: ${promotion_target_rate}" >&2
+  exit 1
+fi
+
+jq -Rn --arg name "${name}" --arg input_tsv "${input_tsv}" --arg required_burst_rates "${required_burst_rates}" --arg promotion_target_rate "${promotion_target_rate}" '
   def number_or_string:
     if test("^-?[0-9]+([.][0-9]+)?$") then tonumber else . end;
   (input | split("\t")) as $headers
@@ -275,15 +289,16 @@ jq -Rn --arg name "${name}" --arg input_tsv "${input_tsv}" --arg required_burst_
       name: $name,
       input_tsv: $input_tsv,
       required_burst_rates: ($required_burst_rates | split(",") | map(tonumber)),
+      promotion_target_rate: ($promotion_target_rate | tonumber),
       items: $items
     }
 ' <"${summary_tsv}" >"${summary_json}"
 
-burst64_status="$(awk -F '\t' 'NR > 1 && $1 == "64" { print $2 }' "${summary_tsv}")"
+promotion_target_status="$(awk -F '\t' -v rate="${promotion_target_rate}" 'NR > 1 && $1 == rate { print $2 }' "${summary_tsv}")"
 if [[ -s "${failures_file}" ]]; then
-  burst64_gate="fail"
+  promotion_target_gate="fail"
 else
-  burst64_gate="${burst64_status:-missing}"
+  promotion_target_gate="${promotion_target_status:-missing}"
 fi
 
 matrix_table="$(awk -F '\t' '
@@ -303,8 +318,9 @@ cat >"${report_md}" <<REPORT
 
 - matrix input TSV: ${input_tsv}
 - required burst rates: ${required_burst_rates}
-- burst64 gate: ${burst64_gate}
-- burst80/96: overload observation rows; 429 ceiling is not applied
+- promotion target rate: ${promotion_target_rate}
+- burst${promotion_target_rate} gate: ${promotion_target_gate}
+- rows above target: overload observation rows; 429 ceiling is not applied
 
 ## Matrix
 
@@ -312,9 +328,9 @@ ${matrix_table}
 
 ## Gate
 
-- burst64: total/edge 429 <= ${burst64_429_threshold}, backend 429 <= ${backend_429_threshold}, k6 503 = 0, nginx 5xx = 0, nginx 499 = 0, accepted p95 < ${accepted_p95_threshold_ms}ms
+- burst${promotion_target_rate}: total/edge 429 <= ${burst64_429_threshold}, backend 429 <= ${backend_429_threshold}, k6 503 = 0, nginx 5xx = 0, nginx 499 = 0, accepted p95 < ${accepted_p95_threshold_ms}ms
 - all bursts: k6 503 = 0, nginx 5xx = 0, nginx 499 = 0
-- burst80/96: reject curve observation only for 429 budget; still fails on 5xx/499
+- rows above target: reject curve observation only for 429 budget; still fails on 5xx/499
 
 ## Artifacts
 
