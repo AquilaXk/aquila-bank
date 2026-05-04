@@ -623,8 +623,16 @@ render_nginx_config() {
   real_ip_trusted_proxies="${NGINX_REAL_IP_TRUSTED_PROXIES:-${OCI_A1_NGINX_REAL_IP_TRUSTED_PROXIES:-10.60.0.0/16}}"
   validate_nginx_real_ip_header "${real_ip_header}"
   real_ip_trusted_proxy_lines="$(render_nginx_real_ip_trusted_proxy_lines "${real_ip_trusted_proxies}")"
-  transaction_read_budget_profile="${OCI_A1_TRANSACTION_READ_BUDGET_PROFILE:-${NGINX_TRANSACTION_READ_BUDGET_PROFILE:-burst64}}"
+  transaction_read_budget_profile="${OCI_A1_TRANSACTION_READ_BUDGET_PROFILE:-${NGINX_TRANSACTION_READ_BUDGET_PROFILE:-burst80}}"
   case "${transaction_read_budget_profile}" in
+    burst80)
+      transaction_read_profile_hot_rate_rps=128
+      transaction_read_profile_archive_rate_rps=128
+      transaction_read_profile_hot_burst=64
+      transaction_read_profile_archive_burst=64
+      transaction_read_profile_hot_delay=0
+      transaction_read_profile_archive_delay=0
+      ;;
     burst64)
       transaction_read_profile_hot_rate_rps=160
       transaction_read_profile_archive_rate_rps=160
@@ -650,7 +658,7 @@ render_nginx_config() {
       transaction_read_profile_archive_delay=0
       ;;
     *)
-      log "transaction read Nginx budget profile must be burst64, balanced, or fail-fast: ${transaction_read_budget_profile}"
+      log "transaction read Nginx budget profile must be burst80, burst64, balanced, or fail-fast: ${transaction_read_budget_profile}"
       exit 1
       ;;
   esac

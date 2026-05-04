@@ -127,6 +127,8 @@ on:
     paths:
       - ".github/workflows/oci-k6-service-auth-token.yml"
       - "tools/test/check-oci-k6-service-auth-token-workflow.sh"
+      - "tools/test/check-transaction-read-429-source-gate.sh"
+      - "tools/test/run-transaction-read-429-source-gate.sh"
       - "tools/test/check-transaction-read-promotion-pacing-contract.sh"
       - "tools/test/run-transaction-read-promotion-pacing-contract.sh"
       - "tools/test/run-k6-transaction-100m-loadtest.sh"
@@ -150,6 +152,9 @@ jobs:
 
       - name: Validate promotion pacing contract
         run: bash tools/test/check-transaction-read-promotion-pacing-contract.sh
+
+      - name: Validate transaction read 429 source gate
+        run: bash tools/test/check-transaction-read-429-source-gate.sh
 
   authenticated-k6:
     name: Authenticated OCI k6 capacity
@@ -502,6 +507,38 @@ jobs:
           NGINX_ACCESS_AGGREGATE_RUN_ID="${K6_RUN_ID}" \
           NGINX_ACCESS_AGGREGATE_OUTPUT_DIR="${report_dir}/transaction-read-nginx-access-aggregate" \
             tools/test/run-transaction-read-nginx-access-aggregate-artifact.sh
+
+      - name: Build transaction read 429 source gate artifact
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          report_dir="build/reports/k6/${K6_REPORT_NAME}"
+          mkdir -p "${report_dir}"
+          summary_json="${report_dir}/${K6_REPORT_NAME}-summary.json"
+          aggregate_tsv="${report_dir}/transaction-read-nginx-access-aggregate/${K6_REPORT_NAME}-nginx-access-aggregate.tsv"
+          if [[ -z "${summary_json}" || ! -s "${summary_json}" ]]; then
+            echo "::error::k6 summary JSON is missing or empty; transaction-read-429-source artifact required."
+            exit 1
+          fi
+
+          total_fail_rate="${K6_BURST_429_RATE_THRESHOLD}"
+          edge_fail_rate="${K6_BURST_429_RATE_THRESHOLD}"
+          if [[ "${K6_CONSTANT_VUS_GATE_ROLE}" == "saturation-observation" ]]; then
+            total_fail_rate=1
+            edge_fail_rate=1
+          fi
+
+          SOURCE_429_GATE_NAME="${K6_REPORT_NAME}" \
+          SOURCE_429_SUMMARY_JSON="${summary_json}" \
+          SOURCE_429_OUTPUT_DIR="${report_dir}/transaction-read-429-source" \
+          SOURCE_429_RUN_ID="${K6_RUN_ID}" \
+          SOURCE_429_GATE_MODE="${K6_CONSTANT_VUS_GATE_ROLE}" \
+          SOURCE_429_TOTAL_FAIL_RATE="${total_fail_rate}" \
+          SOURCE_429_EDGE_FAIL_RATE="${edge_fail_rate}" \
+          SOURCE_429_BACKEND_FAIL_RATE="${K6_BACKEND_429_RATE_THRESHOLD}" \
+          SOURCE_429_NGINX_AGGREGATE_TSV="${aggregate_tsv}" \
+            tools/test/run-transaction-read-429-source-gate.sh
 
       - name: Upload OCI k6 auth artifact
         if: always()

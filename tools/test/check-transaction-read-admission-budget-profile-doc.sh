@@ -13,6 +13,7 @@ grep -F "saturation profile" "${doc}" >/dev/null
 grep -F "overload profile" "${doc}" >/dev/null
 grep -F 'NGINX_TRANSACTION_READ_BUDGET_PROFILE' "${doc}" >/dev/null
 grep -F 'OCI_A1_TRANSACTION_READ_BUDGET_PROFILE' "${doc}" >/dev/null
+grep -F '`burst80`' "${doc}" >/dev/null
 grep -F '`burst64`' "${doc}" >/dev/null
 grep -F '`balanced`' "${doc}" >/dev/null
 grep -F '`fail-fast`' "${doc}" >/dev/null
@@ -20,7 +21,7 @@ grep -F '`fail-fast`' "${doc}" >/dev/null
 echo "[transaction-read-admission-budget-profile-doc] thresholds"
 grep -F 'arrival-rate `16/s` strict gate' "${doc}" >/dev/null
 grep -F 'edge 429 `0`' "${doc}" >/dev/null
-grep -F 'burst64 edge 429 `<= 10%`' "${doc}" >/dev/null
+grep -F 'burst80 edge 429 `<= 10%`' "${doc}" >/dev/null
 grep -F 'backend 429 `<= 0.5%`' "${doc}" >/dev/null
 grep -F '5xx `0`' "${doc}" >/dev/null
 grep -F 'accepted p95 `< 100ms`' "${doc}" >/dev/null
