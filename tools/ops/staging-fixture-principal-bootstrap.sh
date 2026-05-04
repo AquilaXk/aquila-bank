@@ -14,6 +14,8 @@ HOT_ACCOUNT_IDS="${HOT_ACCOUNT_IDS:-${STAGING_REPLAY_HOT_ACCOUNT_IDS:-${HOT_ACCO
 COLD_ACCOUNT_IDS="${COLD_ACCOUNT_IDS:-${STAGING_REPLAY_COLD_ACCOUNT_IDS:-${COLD_ACCOUNT_ID}}}"
 STAGING_REPLAY_HOT_ACCOUNT_NUMBER="${STAGING_REPLAY_HOT_ACCOUNT_NUMBER:-}"
 STAGING_REPLAY_COLD_ACCOUNT_NUMBER="${STAGING_REPLAY_COLD_ACCOUNT_NUMBER:-}"
+STAGING_FIXTURE_PRINCIPAL_DB_ATTEMPTS="${STAGING_FIXTURE_PRINCIPAL_DB_ATTEMPTS:-3}"
+STAGING_FIXTURE_PRINCIPAL_DB_RETRY_SLEEP_SECONDS="${STAGING_FIXTURE_PRINCIPAL_DB_RETRY_SLEEP_SECONDS:-5}"
 
 fail() {
   echo "::error::$*" >&2
@@ -34,6 +36,12 @@ require_positive_integer() {
   local name="$1"
   local value="${!name:-}"
   [[ "$value" =~ ^[1-9][0-9]*$ ]] || fail "${name} must be a positive integer"
+}
+
+require_non_negative_integer() {
+  local name="$1"
+  local value="${!name:-}"
+  [[ "$value" =~ ^[0-9]+$ ]] || fail "${name} must be a non-negative integer"
 }
 
 normalize_account_ids() {
@@ -112,11 +120,15 @@ validate_inputs() {
   require_max_length STAGING_REPLAY_COLD_ACCOUNT_NUMBER 20
   require_account_number_lengths "HOT_ACCOUNT_IDS" "${HOT_ACCOUNT_IDS}" "${STAGING_REPLAY_HOT_ACCOUNT_NUMBER}" "STG-HOT-"
   require_account_number_lengths "COLD_ACCOUNT_IDS" "${COLD_ACCOUNT_IDS}" "${STAGING_REPLAY_COLD_ACCOUNT_NUMBER}" "STG-COLD-"
+  require_positive_integer STAGING_FIXTURE_PRINCIPAL_DB_ATTEMPTS
+  require_non_negative_integer STAGING_FIXTURE_PRINCIPAL_DB_RETRY_SLEEP_SECONDS
 }
 
 ensure_fixture_principal() {
   # replay JWT는 user_id claim을 고정하므로, smoke/replay 전에 권한 row도 같은 id로 고정합니다.
-  psql "${STAGING_DATABASE_URL}" \
+  local attempt=1
+  while true; do
+    if psql "${STAGING_DATABASE_URL}" \
     -v ON_ERROR_STOP=1 \
     -v fixture_user_id="${STAGING_REPLAY_USER_ID}" \
     -v fixture_login_id="${STAGING_REPLAY_LOGIN_ID}" \
@@ -262,6 +274,18 @@ ensure_fixture_principal() {
 
       COMMIT;
 SQL
+    then
+      return 0
+    fi
+
+    if ((attempt >= STAGING_FIXTURE_PRINCIPAL_DB_ATTEMPTS)); then
+      fail "staging fixture principal psql failed after ${attempt} attempts"
+    fi
+
+    echo "::warning::staging fixture principal psql attempt ${attempt}/${STAGING_FIXTURE_PRINCIPAL_DB_ATTEMPTS} failed; retrying in ${STAGING_FIXTURE_PRINCIPAL_DB_RETRY_SLEEP_SECONDS}s" >&2
+    sleep "${STAGING_FIXTURE_PRINCIPAL_DB_RETRY_SLEEP_SECONDS}"
+    ((attempt += 1))
+  done
 }
 
 validate_inputs
