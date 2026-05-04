@@ -111,6 +111,13 @@ grep -F "multi-account cold ids: \${K6_COLD_ACCOUNT_IDS:-\${K6_COLD_ACCOUNT_ID}}
 grep -F "Capture transaction read Nginx log window" "${workflow}" >/dev/null
 grep -F 'K6_NGINX_LOG_SINCE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"' "${workflow}" >/dev/null
 grep -F "Run auth preflight" "${workflow}" >/dev/null
+grep -F "run_account_auth_preflight()" "${workflow}" >/dev/null
+grep -F 'local account_group="$1"' "${workflow}" >/dev/null
+grep -F 'local account_ids="$2"' "${workflow}" >/dev/null
+grep -F 'IFS="," read -r -a accounts <<<"${account_ids}"' "${workflow}" >/dev/null
+grep -F 'K6_AUTH_PREFLIGHT_PATH="api/v1/transactions?accountId=${account_id}&from=${from}&to=${to}&limit=1" \' "${workflow}" >/dev/null
+grep -F 'run_account_auth_preflight hot "${K6_HOT_ACCOUNT_IDS:-${K6_HOT_ACCOUNT_ID}}" "${K6_HOT_FROM}" "${K6_HOT_TO}"' "${workflow}" >/dev/null
+grep -F 'run_account_auth_preflight cold "${K6_COLD_ACCOUNT_IDS:-${K6_COLD_ACCOUNT_ID}}" "${K6_COLD_FROM}" "${K6_COLD_TO}"' "${workflow}" >/dev/null
 grep -F "tools/test/run-k6-transaction-100m-loadtest.sh --auth-preflight-only" "${workflow}" >/dev/null
 grep -F "Run authenticated k6 capacity" "${workflow}" >/dev/null
 grep -F "tools/test/run-k6-transaction-100m-loadtest.sh --no-up --no-deps" "${workflow}" >/dev/null

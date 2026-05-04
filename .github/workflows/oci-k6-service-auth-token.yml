@@ -434,7 +434,33 @@ jobs:
           set -euo pipefail
           report_dir="build/reports/k6/${K6_REPORT_NAME}"
           mkdir -p "${report_dir}"
-          tools/test/run-k6-transaction-100m-loadtest.sh --auth-preflight-only >"${report_dir}/auth-preflight.log" 2>&1
+          auth_preflight_log="${report_dir}/auth-preflight.log"
+          : >"${auth_preflight_log}"
+
+          run_account_auth_preflight() {
+            local account_group="$1"
+            local account_ids="$2"
+            local from="$3"
+            local to="$4"
+            local account_id raw_account_id
+            IFS="," read -r -a accounts <<<"${account_ids}"
+            for raw_account_id in "${accounts[@]}"; do
+              account_id="${raw_account_id//[[:space:]]/}"
+              if [[ -z "${account_id}" ]]; then
+                continue
+              fi
+              if ! [[ "${account_id}" =~ ^[1-9][0-9]*$ ]]; then
+                echo "::error::Invalid ${account_group} account id for auth preflight: ${account_id}"
+                exit 1
+              fi
+              echo "[oci-k6-service-auth] auth preflight ${account_group} account=${account_id}" >>"${auth_preflight_log}"
+              K6_AUTH_PREFLIGHT_PATH="api/v1/transactions?accountId=${account_id}&from=${from}&to=${to}&limit=1" \
+                tools/test/run-k6-transaction-100m-loadtest.sh --auth-preflight-only >>"${auth_preflight_log}" 2>&1
+            done
+          }
+
+          run_account_auth_preflight hot "${K6_HOT_ACCOUNT_IDS:-${K6_HOT_ACCOUNT_ID}}" "${K6_HOT_FROM}" "${K6_HOT_TO}"
+          run_account_auth_preflight cold "${K6_COLD_ACCOUNT_IDS:-${K6_COLD_ACCOUNT_ID}}" "${K6_COLD_FROM}" "${K6_COLD_TO}"
 
       - name: Run authenticated k6 capacity
         shell: bash
