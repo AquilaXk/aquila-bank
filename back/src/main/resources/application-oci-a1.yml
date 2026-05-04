@@ -28,6 +28,10 @@ server:
 transaction:
   read-replica:
     maximum-pool-size: ${OCI_A1_TRANSACTION_READ_REPLICA_POOL_MAX_SIZE:6}
+  read:
+    per-account:
+      # hot account의 first/cursor/deep cursor shape가 burst 중 서로 밀어내지 않도록 account 단위 여유만 둔다.
+      max-concurrency: ${OCI_A1_TRANSACTION_READ_PER_ACCOUNT_MAX_CONCURRENCY:3}
 
 oci-a1:
   transaction-read:

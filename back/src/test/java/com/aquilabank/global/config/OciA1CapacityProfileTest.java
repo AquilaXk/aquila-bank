@@ -44,6 +44,10 @@ class OciA1CapacityProfileTest {
                   environment.getProperty(
                       "transaction.read-replica.maximum-pool-size", Integer.class))
               .isEqualTo(6);
+          assertThat(
+                  environment.getProperty(
+                      "transaction.read.per-account.max-concurrency", Integer.class))
+              .isEqualTo(3);
           assertThat(environment.getProperty("server.tomcat.threads.max", Integer.class))
               .isEqualTo(32);
           assertThat(environment.getProperty("server.tomcat.threads.min-spare", Integer.class))
@@ -143,6 +147,7 @@ class OciA1CapacityProfileTest {
                                 entry("OCI_A1_DB_MAX_LIFETIME_MS", "480000"),
                                 entry("OCI_A1_DB_KEEPALIVE_TIME_MS", "45000"),
                                 entry("OCI_A1_TRANSACTION_READ_REPLICA_POOL_MAX_SIZE", "5"),
+                                entry("OCI_A1_TRANSACTION_READ_PER_ACCOUNT_MAX_CONCURRENCY", "4"),
                                 entry("OCI_A1_SERVER_THREADS_MAX", "28"),
                                 entry("OCI_A1_SERVER_THREADS_MIN_SPARE", "3"),
                                 entry("OCI_A1_SERVER_ACCEPT_COUNT", "48"),
@@ -185,6 +190,10 @@ class OciA1CapacityProfileTest {
                       environment.getProperty(
                           "transaction.read-replica.maximum-pool-size", Integer.class))
                   .isEqualTo(5);
+              assertThat(
+                      environment.getProperty(
+                          "transaction.read.per-account.max-concurrency", Integer.class))
+                  .isEqualTo(4);
               assertThat(environment.getProperty("server.tomcat.threads.max", Integer.class))
                   .isEqualTo(28);
               assertThat(environment.getProperty("server.tomcat.threads.min-spare", Integer.class))
