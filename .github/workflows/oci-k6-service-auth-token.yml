@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       hot_account_id:
-        description: "Hot account id for authenticated transaction read"
+        description: "Hot account id, or comma-separated hot account ids for fairness replay"
         required: true
         default: "910000001"
         type: string
@@ -19,7 +19,7 @@ on:
         default: "2026-04-30T00:00:00Z"
         type: string
       cold_account_id:
-        description: "Cold account id for authenticated transaction read"
+        description: "Cold account id, or comma-separated cold account ids for fairness replay"
         required: true
         default: "910000002"
         type: string
@@ -241,12 +241,20 @@ jobs:
           K6_AUTH_TOKEN_ENV_NAME="STAGING_REPLAY_TOKEN"
           K6_AUTH_TOKEN_REQUIRED="true"
           K6_AUTH_PREFLIGHT="true"
-          K6_AUTH_PREFLIGHT_PATH="api/v1/transactions?accountId=${HOT_ACCOUNT_ID_INPUT}&from=${HOT_FROM_INPUT}&to=${HOT_TO_INPUT}&limit=1"
+          K6_HOT_ACCOUNT_ID="${HOT_ACCOUNT_ID_INPUT%%,*}"
+          K6_HOT_ACCOUNT_IDS="${K6_HOT_ACCOUNT_IDS:-}"
+          if [[ "${HOT_ACCOUNT_ID_INPUT}" == *,* ]]; then
+            K6_HOT_ACCOUNT_IDS="${HOT_ACCOUNT_ID_INPUT}"
+          fi
+          K6_COLD_ACCOUNT_ID="${COLD_ACCOUNT_ID_INPUT%%,*}"
+          K6_COLD_ACCOUNT_IDS="${K6_COLD_ACCOUNT_IDS:-}"
+          if [[ "${COLD_ACCOUNT_ID_INPUT}" == *,* ]]; then
+            K6_COLD_ACCOUNT_IDS="${COLD_ACCOUNT_ID_INPUT}"
+          fi
+          K6_AUTH_PREFLIGHT_PATH="api/v1/transactions?accountId=${K6_HOT_ACCOUNT_ID}&from=${HOT_FROM_INPUT}&to=${HOT_TO_INPUT}&limit=1"
           K6_AUTH_PREFLIGHT_EXPECTED_STATUS="200"
-          K6_HOT_ACCOUNT_ID="${HOT_ACCOUNT_ID_INPUT}"
           K6_HOT_FROM="${HOT_FROM_INPUT}"
           K6_HOT_TO="${HOT_TO_INPUT}"
-          K6_COLD_ACCOUNT_ID="${COLD_ACCOUNT_ID_INPUT}"
           K6_COLD_FROM="${COLD_FROM_INPUT}"
           K6_COLD_TO="${COLD_TO_INPUT}"
           K6_VUS="${VUS_INPUT}"
@@ -316,9 +324,11 @@ jobs:
             K6_AUTH_PREFLIGHT_PATH
             K6_AUTH_PREFLIGHT_EXPECTED_STATUS
             K6_HOT_ACCOUNT_ID
+            K6_HOT_ACCOUNT_IDS
             K6_HOT_FROM
             K6_HOT_TO
             K6_COLD_ACCOUNT_ID
+            K6_COLD_ACCOUNT_IDS
             K6_COLD_FROM
             K6_COLD_TO
             K6_VUS
@@ -365,6 +375,12 @@ jobs:
           {
             "k6_run_id": "${K6_RUN_ID}",
             "scenario_mode": "${K6_SCENARIO_MODE}",
+            "accounts": {
+              "hot_account_id": "${K6_HOT_ACCOUNT_ID}",
+              "hot_account_ids": "${K6_HOT_ACCOUNT_IDS:-${K6_HOT_ACCOUNT_ID}}",
+              "cold_account_id": "${K6_COLD_ACCOUNT_ID}",
+              "cold_account_ids": "${K6_COLD_ACCOUNT_IDS:-${K6_COLD_ACCOUNT_ID}}"
+            },
             "constant_arrival_rate": {
               "rate": "${K6_RATE}",
               "time_unit": "${K6_TIME_UNIT}",
@@ -397,6 +413,8 @@ jobs:
           - arrival-rate gate: ${K6_RATE}/${K6_TIME_UNIT}
           - constant-vus gate role: ${K6_CONSTANT_VUS_GATE_ROLE}
           - constant-vus saturation probe: vus=${K6_VUS}, duration=${K6_DURATION}
+          - multi-account hot ids: ${K6_HOT_ACCOUNT_IDS:-${K6_HOT_ACCOUNT_ID}}
+          - multi-account cold ids: ${K6_COLD_ACCOUNT_IDS:-${K6_COLD_ACCOUNT_ID}}
           - burst probe: rate=${K6_BURST_RATE}, preAllocatedVUs=${K6_PRE_ALLOCATED_VUS:-}, maxVUs=${K6_MAX_VUS:-}
           - preemptive pacing: enabled=${K6_PREEMPTIVE_PACING}, rps=${K6_PREEMPTIVE_PACING_RPS}, maxSleepMs=${K6_PREEMPTIVE_PACING_MAX_SLEEP_MS}, jitterMs=${K6_PREEMPTIVE_PACING_JITTER_MS}
           SUMMARY

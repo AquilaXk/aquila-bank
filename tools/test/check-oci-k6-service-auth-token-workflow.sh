@@ -51,6 +51,8 @@ grep -F 'K6_AUTH_TOKEN_ENV_NAME="STAGING_REPLAY_TOKEN"' "${workflow}" >/dev/null
 grep -F 'K6_AUTH_PREFLIGHT="true"' "${workflow}" >/dev/null
 grep -F "K6_AUTH_PREFLIGHT_PATH" "${workflow}" >/dev/null
 grep -F "burst_rate:" "${workflow}" >/dev/null
+grep -F 'description: "Hot account id, or comma-separated hot account ids for fairness replay"' "${workflow}" >/dev/null
+grep -F 'description: "Cold account id, or comma-separated cold account ids for fairness replay"' "${workflow}" >/dev/null
 grep -F "arrival_rate:" "${workflow}" >/dev/null
 grep -F "time_unit:" "${workflow}" >/dev/null
 grep -F "pre_allocated_vus:" "${workflow}" >/dev/null
@@ -70,6 +72,13 @@ grep -F "OVERLOAD_MODE_INPUT" "${workflow}" >/dev/null
 grep -F 'DEFAULT_K6_NGINX_ACCESS_LOG="/var/log/nginx/access.log"' "${workflow}" >/dev/null
 grep -F 'K6_RATE="${ARRIVAL_RATE_INPUT}"' "${workflow}" >/dev/null
 grep -F 'K6_TIME_UNIT="${TIME_UNIT_INPUT}"' "${workflow}" >/dev/null
+grep -F 'K6_HOT_ACCOUNT_ID="${HOT_ACCOUNT_ID_INPUT%%,*}"' "${workflow}" >/dev/null
+grep -F 'if [[ "${HOT_ACCOUNT_ID_INPUT}" == *,* ]]; then' "${workflow}" >/dev/null
+grep -F 'K6_HOT_ACCOUNT_IDS="${HOT_ACCOUNT_ID_INPUT}"' "${workflow}" >/dev/null
+grep -F 'K6_COLD_ACCOUNT_ID="${COLD_ACCOUNT_ID_INPUT%%,*}"' "${workflow}" >/dev/null
+grep -F 'if [[ "${COLD_ACCOUNT_ID_INPUT}" == *,* ]]; then' "${workflow}" >/dev/null
+grep -F 'K6_COLD_ACCOUNT_IDS="${COLD_ACCOUNT_ID_INPUT}"' "${workflow}" >/dev/null
+grep -F 'K6_AUTH_PREFLIGHT_PATH="api/v1/transactions?accountId=${K6_HOT_ACCOUNT_ID}&from=${HOT_FROM_INPUT}&to=${HOT_TO_INPUT}&limit=1"' "${workflow}" >/dev/null
 grep -F 'K6_OVERLOAD_MODE="${OVERLOAD_MODE_INPUT}"' "${workflow}" >/dev/null
 grep -F 'if [[ -z "${K6_OVERLOAD_MODE}" && "${K6_SCENARIO_MODE}" == "burst" ]]; then' "${workflow}" >/dev/null
 grep -F 'K6_OVERLOAD_MODE="true"' "${workflow}" >/dev/null
@@ -94,7 +103,11 @@ grep -F "k6-pacing-summary.md" "${workflow}" >/dev/null
 grep -F "K6_PACING_INPUT_REF" "${workflow}" >/dev/null
 grep -F "K6_PACING_SUMMARY_REF" "${workflow}" >/dev/null
 grep -F '"gate_role": "${K6_CONSTANT_VUS_GATE_ROLE}"' "${workflow}" >/dev/null
+grep -F '"hot_account_ids": "${K6_HOT_ACCOUNT_IDS:-${K6_HOT_ACCOUNT_ID}}"' "${workflow}" >/dev/null
+grep -F '"cold_account_ids": "${K6_COLD_ACCOUNT_IDS:-${K6_COLD_ACCOUNT_ID}}"' "${workflow}" >/dev/null
 grep -F "constant-vus gate role: \${K6_CONSTANT_VUS_GATE_ROLE}" "${workflow}" >/dev/null
+grep -F "multi-account hot ids: \${K6_HOT_ACCOUNT_IDS:-\${K6_HOT_ACCOUNT_ID}}" "${workflow}" >/dev/null
+grep -F "multi-account cold ids: \${K6_COLD_ACCOUNT_IDS:-\${K6_COLD_ACCOUNT_ID}}" "${workflow}" >/dev/null
 grep -F "Capture transaction read Nginx log window" "${workflow}" >/dev/null
 grep -F 'K6_NGINX_LOG_SINCE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"' "${workflow}" >/dev/null
 grep -F "Run auth preflight" "${workflow}" >/dev/null
