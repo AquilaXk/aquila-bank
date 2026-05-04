@@ -98,6 +98,10 @@ grep -F "docker_context_count=2" <<<"${plan}" >/dev/null
 grep -F "true_multi_source_required=true" <<<"${plan}" >/dev/null
 grep -F "source_fairness_required=true" <<<"${plan}" >/dev/null
 grep -F "fairness_ratio_range=0.80..1.25" <<<"${plan}" >/dev/null
+grep -F "max_edge_429_rate=0.10" <<<"${plan}" >/dev/null
+grep -F "max_backend_429_rate=0.005" <<<"${plan}" >/dev/null
+grep -F "max_accepted_p95_ms=200" <<<"${plan}" >/dev/null
+grep -F "load_coupled_timeline_required=true" <<<"${plan}" >/dev/null
 grep -F "minimum_remote_docker_contexts=2" <<<"${plan}" >/dev/null
 grep -F "source_evidence_tsv=${source_evidence_tsv}" <<<"${plan}" >/dev/null
 grep -F "host_metrics_tsv=${host_metrics_tsv}" <<<"${plan}" >/dev/null
@@ -133,6 +137,8 @@ grep -F "host metrics timeline: verified" "${report_md}" >/dev/null
 grep -F "single-source vs multi-source comparison: fixed" "${report_md}" >/dev/null
 grep -F "source-level real IP/429/latency/fairness split: verified" "${report_md}" >/dev/null
 grep -F "host-level CPU/network split: verified" "${report_md}" >/dev/null
+grep -F "source edge/backend 429 budget: verified" "${report_md}" >/dev/null
+grep -F "load-coupled host metrics timeline: verified" "${report_md}" >/dev/null
 grep -F "true multi-source public traffic evidence: fixed" "${report_md}" >/dev/null
 grep -F $'index\tdocker_context' "${contexts_tsv}" >/dev/null
 grep -F $'1\toci-k6-a' "${contexts_tsv}" >/dev/null
@@ -196,6 +202,46 @@ if OCI_REAL_MULTISOURCE_NAME=real-multi-bad-fairness \
   exit 1
 fi
 grep -F "source evidence metric out of contract" "${temp_dir}/bad-fairness.log" >/dev/null
+
+echo "[oci-real-multisource-public-evidence] backend 429 budget fails"
+awk -F '\t' 'BEGIN { OFS = FS } NR == 1 { print; next } $1 == "source-b" { $6 = "0.020" } { print }' \
+  "${source_evidence_tsv}" >"${source_evidence_tsv}.bad-backend"
+if OCI_REAL_MULTISOURCE_NAME=real-multi-bad-backend \
+  OCI_REAL_MULTISOURCE_RUN_ID=oci-source-evidence-20260503 \
+  OCI_REAL_MULTISOURCE_CONTEXTS=oci-k6-a,oci-k6-b \
+  OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON="${single_summary}" \
+  OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON="${multi_summary}" \
+  OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV="${status_tsv}" \
+  OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV="${source_evidence_tsv}.bad-backend" \
+  OCI_REAL_MULTISOURCE_HOST_METRICS_TSV="${host_metrics_tsv}" \
+  OCI_REAL_MULTISOURCE_HOST_METRICS_TIMELINE_TSV="${timeline_tsv}" \
+  OCI_REAL_MULTISOURCE_ARTIFACT_URI=oci://aquila-evidence/transaction-read/oci-source-evidence-20260503 \
+  OCI_REAL_MULTISOURCE_OUTPUT_DIR="${output_dir}" \
+    "${runner}" >"${temp_dir}/bad-backend.log" 2>&1; then
+  echo "real multi-source public evidence unexpectedly passed backend 429 over budget" >&2
+  exit 1
+fi
+grep -F "source evidence metric out of contract" "${temp_dir}/bad-backend.log" >/dev/null
+
+echo "[oci-real-multisource-public-evidence] fallback timeline fails"
+awk -F '\t' 'BEGIN { OFS = FS } NR == 1 { print; next } { $12 = "fallback-snapshot"; $13 = "0" } { print }' \
+  "${timeline_tsv}" >"${timeline_tsv}.fallback"
+if OCI_REAL_MULTISOURCE_NAME=real-multi-fallback-timeline \
+  OCI_REAL_MULTISOURCE_RUN_ID=oci-source-evidence-20260503 \
+  OCI_REAL_MULTISOURCE_CONTEXTS=oci-k6-a,oci-k6-b \
+  OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON="${single_summary}" \
+  OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON="${multi_summary}" \
+  OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV="${status_tsv}" \
+  OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV="${source_evidence_tsv}" \
+  OCI_REAL_MULTISOURCE_HOST_METRICS_TSV="${host_metrics_tsv}" \
+  OCI_REAL_MULTISOURCE_HOST_METRICS_TIMELINE_TSV="${timeline_tsv}.fallback" \
+  OCI_REAL_MULTISOURCE_ARTIFACT_URI=oci://aquila-evidence/transaction-read/oci-source-evidence-20260503 \
+  OCI_REAL_MULTISOURCE_OUTPUT_DIR="${output_dir}" \
+    "${runner}" >"${temp_dir}/fallback-timeline.log" 2>&1; then
+  echo "real multi-source public evidence unexpectedly accepted fallback timeline" >&2
+  exit 1
+fi
+grep -F "load-coupled sampler source required" "${temp_dir}/fallback-timeline.log" >/dev/null
 
 echo "[oci-real-multisource-public-evidence] blank source artifact fails"
 awk -F '\t' 'BEGIN { OFS = "\t" } NR == 1 { print; next } { if ($1 == "source-b") $11 = ""; print }' "${source_evidence_tsv}" >"${source_evidence_tsv}.blank-artifact"

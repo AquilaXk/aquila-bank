@@ -16,6 +16,9 @@ Environment:
   OCI_REAL_MULTISOURCE_HOST_METRICS_TSV           required TSV: run_id,host_role,host_name,host_id,vm_id,network_id,docker_context,cpu_pct,rx_mbps,tx_mbps,artifact_uri
   OCI_REAL_MULTISOURCE_HOST_METRICS_TIMELINE_TSV  required host metrics timeline TSV
   OCI_REAL_MULTISOURCE_ARTIFACT_URI               required evidence artifact reference
+  OCI_REAL_MULTISOURCE_MAX_EDGE_429_RATE          default 0.10
+  OCI_REAL_MULTISOURCE_MAX_BACKEND_429_RATE       default 0.005
+  OCI_REAL_MULTISOURCE_MAX_ACCEPTED_P95_MS        default 200
   OCI_REAL_MULTISOURCE_MIN_FAIRNESS_RATIO         default 0.80
   OCI_REAL_MULTISOURCE_MAX_FAIRNESS_RATIO         default 1.25
   OCI_REAL_MULTISOURCE_OUTPUT_DIR                 default build/reports/k6/<name>
@@ -50,6 +53,9 @@ source_evidence_tsv="${OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV:-}"
 host_metrics_tsv="${OCI_REAL_MULTISOURCE_HOST_METRICS_TSV:-}"
 host_metrics_timeline_tsv="${OCI_REAL_MULTISOURCE_HOST_METRICS_TIMELINE_TSV:-}"
 artifact_uri="${OCI_REAL_MULTISOURCE_ARTIFACT_URI:-}"
+max_edge_429_rate="${OCI_REAL_MULTISOURCE_MAX_EDGE_429_RATE:-0.10}"
+max_backend_429_rate="${OCI_REAL_MULTISOURCE_MAX_BACKEND_429_RATE:-0.005}"
+max_accepted_p95_ms="${OCI_REAL_MULTISOURCE_MAX_ACCEPTED_P95_MS:-200}"
 min_fairness_ratio="${OCI_REAL_MULTISOURCE_MIN_FAIRNESS_RATIO:-0.80}"
 max_fairness_ratio="${OCI_REAL_MULTISOURCE_MAX_FAIRNESS_RATIO:-1.25}"
 output_dir="${OCI_REAL_MULTISOURCE_OUTPUT_DIR:-build/reports/k6/${name}}"
@@ -81,6 +87,32 @@ require_non_empty() {
   fi
 }
 
+require_rate_value() {
+  local key="$1"
+  local value="$2"
+  if ! [[ "${value}" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+    echo "${key} must be a rate between 0 and 1: ${value}" >&2
+    exit 1
+  fi
+  awk -v value="${value}" 'BEGIN { exit !(value >= 0 && value <= 1) }' || {
+    echo "${key} must be a rate between 0 and 1: ${value}" >&2
+    exit 1
+  }
+}
+
+require_positive_number_value() {
+  local key="$1"
+  local value="$2"
+  if ! [[ "${value}" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+    echo "${key} must be a positive number: ${value}" >&2
+    exit 1
+  fi
+  awk -v value="${value}" 'BEGIN { exit !(value > 0) }' || {
+    echo "${key} must be a positive number: ${value}" >&2
+    exit 1
+  }
+}
+
 parse_contexts() {
   local item
   if [[ -z "${contexts_csv}" ]]; then
@@ -103,7 +135,9 @@ parse_contexts() {
 validate_source_evidence() {
   require_file "OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV" "${source_evidence_tsv}"
   awk -F '\t' -v min_sources="${#contexts[@]}" -v expected_run_id="${run_id}" \
-    -v min_fairness_ratio="${min_fairness_ratio}" -v max_fairness_ratio="${max_fairness_ratio}" '
+    -v min_fairness_ratio="${min_fairness_ratio}" -v max_fairness_ratio="${max_fairness_ratio}" \
+    -v max_edge_429_rate="${max_edge_429_rate}" -v max_backend_429_rate="${max_backend_429_rate}" \
+    -v max_accepted_p95_ms="${max_accepted_p95_ms}" '
     NR == 1 {
       for (i = 1; i <= NF; i++) col[$i] = i
       split("source_name run_id docker_context realip_remote_addr edge_429_rate backend_429_rate accepted_p95_ms accepted_count fairness_ratio five_xx_count artifact_uri", required, " ")
@@ -136,7 +170,7 @@ validate_source_evidence() {
         printf "source evidence run id mismatch: source=%s run_id=%s expected=%s\n", source_name, source_run_id, expected_run_id > "/dev/stderr"
         exit 7
       }
-      if (edge_429 < 0 || edge_429 > 1 || backend_429 < 0 || backend_429 > 1 || p95 <= 0 || accepted_count <= 0 || fairness_ratio < min_fairness_ratio || fairness_ratio > max_fairness_ratio || five_xx != 0) {
+      if (edge_429 < 0 || edge_429 > max_edge_429_rate || backend_429 < 0 || backend_429 > max_backend_429_rate || p95 <= 0 || p95 > max_accepted_p95_ms || accepted_count <= 0 || fairness_ratio < min_fairness_ratio || fairness_ratio > max_fairness_ratio || five_xx != 0) {
         printf "source evidence metric out of contract: source=%s edge429=%s backend429=%s p95=%s accepted=%s fairness=%s five_xx=%s\n", source_name, edge_429, backend_429, p95, accepted_count, fairness_ratio, five_xx > "/dev/stderr"
         exit 4
       }
@@ -279,6 +313,9 @@ validate_host_metrics() {
 
 print_plan() {
   parse_contexts
+  require_rate_value "OCI_REAL_MULTISOURCE_MAX_EDGE_429_RATE" "${max_edge_429_rate}"
+  require_rate_value "OCI_REAL_MULTISOURCE_MAX_BACKEND_429_RATE" "${max_backend_429_rate}"
+  require_positive_number_value "OCI_REAL_MULTISOURCE_MAX_ACCEPTED_P95_MS" "${max_accepted_p95_ms}"
   echo "[oci-real-multisource-public-evidence] name=${name}"
   echo "[oci-real-multisource-public-evidence] run_id=${run_id}"
   echo "[oci-real-multisource-public-evidence] docker_contexts=${contexts_csv}"
@@ -286,6 +323,10 @@ print_plan() {
   echo "[oci-real-multisource-public-evidence] true_multi_source_required=true"
   echo "[oci-real-multisource-public-evidence] source_fairness_required=true"
   echo "[oci-real-multisource-public-evidence] fairness_ratio_range=${min_fairness_ratio}..${max_fairness_ratio}"
+  echo "[oci-real-multisource-public-evidence] max_edge_429_rate=${max_edge_429_rate}"
+  echo "[oci-real-multisource-public-evidence] max_backend_429_rate=${max_backend_429_rate}"
+  echo "[oci-real-multisource-public-evidence] max_accepted_p95_ms=${max_accepted_p95_ms}"
+  echo "[oci-real-multisource-public-evidence] load_coupled_timeline_required=true"
   echo "[oci-real-multisource-public-evidence] minimum_remote_docker_contexts=2"
   echo "[oci-real-multisource-public-evidence] single_source_summary=${single_summary:-missing}"
   echo "[oci-real-multisource-public-evidence] multi_source_summary=${multi_summary:-missing}"
@@ -335,6 +376,7 @@ timeline_output="$(
   OCI_OFFHOST_HOST_METRICS_TIMELINE_NAME="${name}" \
   OCI_OFFHOST_HOST_METRICS_TIMELINE_RUN_ID="${run_id}" \
   OCI_OFFHOST_HOST_METRICS_TIMELINE_INPUT_TSV="${host_metrics_timeline_tsv}" \
+  OCI_OFFHOST_HOST_METRICS_TIMELINE_REQUIRE_LOAD_COUPLED=true \
   OCI_OFFHOST_HOST_METRICS_TIMELINE_OUTPUT_DIR="${output_dir}" \
     "${timeline_gate}"
 )"
@@ -362,11 +404,13 @@ cat >"${report_md}" <<REPORT
 - docker context count: ${#contexts[@]}
 - true multi-source public traffic evidence: fixed
 - source fairness: verified
+- source edge/backend 429 budget: verified
 - single-source vs multi-source comparison: fixed
 - real IP bucket split: verified
 - source-level real IP/429/latency/fairness split: verified
 - host-level CPU/network split: verified
 - host metrics timeline: verified
+- load-coupled host metrics timeline: verified
 - multi-source runner: ${multi_source_runner}
 - replay gate report: ${replay_report}
 - timeline gate report: ${timeline_report}
@@ -377,6 +421,8 @@ cat >"${report_md}" <<REPORT
 - single-source run은 NAT/shared-client diagnostic baseline으로만 비교한다.
 - Nginx real IP bucket 분리는 replay gate의 realip_remote_addr 집계로 검증한다.
 - source fairness는 source별 accepted count와 fairness ratio를 함께 남겨 shared per-IP edge limit 착시를 배제한다.
+- source별 edge 429, backend 429, accepted p95, 5xx budget을 같은 run id TSV에서 검증한다.
+- host metrics timeline은 load-coupled sampler source만 허용한다.
 
 ## Artifacts
 
