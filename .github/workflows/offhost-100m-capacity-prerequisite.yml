@@ -23,6 +23,10 @@ on:
         description: "Combined host CPU/network TSV evidence ref"
         required: false
         type: string
+      host_metrics_timeline_tsv:
+        description: "Load-coupled generator/target host CPU/network timeline TSV evidence ref"
+        required: false
+        type: string
       vu16_summary_json:
         description: "VU16 saturation summary JSON evidence ref"
         required: false
@@ -101,6 +105,7 @@ jobs:
           REMOTE_PROMETHEUS_RW_URL_INPUT: ${{ inputs.remote_prometheus_rw_url }}
           REMOTE_WORKDIR_INPUT: ${{ inputs.remote_workdir }}
           HOST_METRICS_TSV_INPUT: ${{ inputs.host_metrics_tsv }}
+          HOST_METRICS_TIMELINE_TSV_INPUT: ${{ inputs.host_metrics_timeline_tsv }}
           VU16_SUMMARY_JSON_INPUT: ${{ inputs.vu16_summary_json }}
           BURST_MATRIX_TSV_INPUT: ${{ inputs.burst_matrix_tsv }}
           SOURCE_EVIDENCE_TSV_INPUT: ${{ inputs.source_evidence_tsv }}
@@ -112,6 +117,7 @@ jobs:
           CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL_VAR: ${{ vars.CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL }}
           CAPACITY_K6_REMOTE_WORKDIR_VAR: ${{ vars.CAPACITY_K6_REMOTE_WORKDIR }}
           CAPACITY_K6_HOST_METRICS_TSV_VAR: ${{ vars.CAPACITY_K6_HOST_METRICS_TSV }}
+          CAPACITY_K6_HOST_METRICS_TIMELINE_TSV_VAR: ${{ vars.CAPACITY_K6_HOST_METRICS_TIMELINE_TSV }}
           CAPACITY_K6_VU16_SUMMARY_JSON_VAR: ${{ vars.CAPACITY_K6_VU16_SUMMARY_JSON }}
           CAPACITY_K6_BURST_MATRIX_TSV_VAR: ${{ vars.CAPACITY_K6_BURST_MATRIX_TSV }}
           CAPACITY_K6_SOURCE_EVIDENCE_TSV_VAR: ${{ vars.CAPACITY_K6_SOURCE_EVIDENCE_TSV }}
@@ -155,6 +161,7 @@ jobs:
             fi
           fi
           CAPACITY_K6_HOST_METRICS_TSV="${HOST_METRICS_TSV_INPUT:-${CAPACITY_K6_HOST_METRICS_TSV:-${CAPACITY_K6_HOST_METRICS_TSV_VAR:-}}}"
+          CAPACITY_K6_HOST_METRICS_TIMELINE_TSV="${HOST_METRICS_TIMELINE_TSV_INPUT:-${CAPACITY_K6_HOST_METRICS_TIMELINE_TSV:-${CAPACITY_K6_HOST_METRICS_TIMELINE_TSV_VAR:-}}}"
           CAPACITY_K6_VU16_SUMMARY_JSON="${VU16_SUMMARY_JSON_INPUT:-${CAPACITY_K6_VU16_SUMMARY_JSON:-${CAPACITY_K6_VU16_SUMMARY_JSON_VAR:-}}}"
           CAPACITY_K6_BURST_MATRIX_TSV="${BURST_MATRIX_TSV_INPUT:-${CAPACITY_K6_BURST_MATRIX_TSV:-${CAPACITY_K6_BURST_MATRIX_TSV_VAR:-}}}"
           CAPACITY_K6_SOURCE_EVIDENCE_TSV="${SOURCE_EVIDENCE_TSV_INPUT:-${CAPACITY_K6_SOURCE_EVIDENCE_TSV:-${CAPACITY_K6_SOURCE_EVIDENCE_TSV_VAR:-}}}"
@@ -186,6 +193,7 @@ jobs:
           [[ -z "${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL}" ]] && missing+=("CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL")
           [[ -z "${CAPACITY_K6_GENERATOR_HOST_METRICS_TSV}" ]] && missing+=("CAPACITY_K6_GENERATOR_HOST_METRICS_TSV")
           [[ -z "${CAPACITY_K6_TARGET_HOST_METRICS_TSV}" ]] && missing+=("CAPACITY_K6_TARGET_HOST_METRICS_TSV")
+          [[ -z "${CAPACITY_K6_HOST_METRICS_TIMELINE_TSV}" ]] && missing+=("CAPACITY_K6_HOST_METRICS_TIMELINE_TSV")
           if (( ${#missing[@]} > 0 )); then
             {
               echo "CAPACITY_PREREQUISITE_STATUS=failed"
@@ -207,6 +215,7 @@ jobs:
             CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL
             CAPACITY_K6_REMOTE_WORKDIR
             CAPACITY_K6_HOST_METRICS_TSV
+            CAPACITY_K6_HOST_METRICS_TIMELINE_TSV
             CAPACITY_K6_VU16_SUMMARY_JSON
             CAPACITY_K6_BURST_MATRIX_TSV
             CAPACITY_K6_SOURCE_EVIDENCE_TSV

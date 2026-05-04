@@ -13,6 +13,7 @@ Environment:
   CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL required
   CAPACITY_K6_REMOTE_WORKDIR default current working directory
   CAPACITY_K6_HOST_METRICS_TSV optional TSV artifact for generator/target CPU and network metrics
+  CAPACITY_K6_HOST_METRICS_TIMELINE_TSV optional load-coupled generator/target CPU and network timeline TSV ref
   CAPACITY_K6_VU16_SUMMARY_JSON optional VU16 saturation summary JSON ref
   CAPACITY_K6_BURST_MATRIX_TSV optional burst 32/48/64/80/96 matrix TSV ref
   CAPACITY_K6_SOURCE_EVIDENCE_TSV optional source-level edge/backend 429 and latency TSV ref
@@ -82,6 +83,7 @@ remote_base_url="${CAPACITY_K6_REMOTE_BASE_URL:-${K6_REMOTE_BASE_URL:-}}"
 remote_prometheus_rw_url="${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL:-${K6_REMOTE_PROMETHEUS_RW_SERVER_URL:-}}"
 remote_workdir="${CAPACITY_K6_REMOTE_WORKDIR:-${K6_REMOTE_WORKDIR:-$(pwd)}}"
 host_metrics_tsv="${CAPACITY_K6_HOST_METRICS_TSV:-${K6_HOST_METRICS_TSV:-}}"
+host_metrics_timeline_tsv="${CAPACITY_K6_HOST_METRICS_TIMELINE_TSV:-${K6_HOST_METRICS_TIMELINE_TSV:-}}"
 vu16_summary_json="${CAPACITY_K6_VU16_SUMMARY_JSON:-${K6_VU16_SUMMARY_JSON:-}}"
 burst_matrix_tsv="${CAPACITY_K6_BURST_MATRIX_TSV:-${K6_BURST_MATRIX_TSV:-}}"
 source_evidence_tsv="${CAPACITY_K6_SOURCE_EVIDENCE_TSV:-${K6_SOURCE_EVIDENCE_TSV:-}}"
@@ -148,6 +150,7 @@ fi
 if [[ "${require_host_metrics}" == "true" ]]; then
   require_env_value "CAPACITY_K6_GENERATOR_HOST_METRICS_TSV is required when CAPACITY_REQUIRE_HOST_METRICS=true" "${generator_host_metrics_tsv}"
   require_env_value "CAPACITY_K6_TARGET_HOST_METRICS_TSV is required when CAPACITY_REQUIRE_HOST_METRICS=true" "${target_host_metrics_tsv}"
+  require_env_value "CAPACITY_K6_HOST_METRICS_TIMELINE_TSV is required when CAPACITY_REQUIRE_HOST_METRICS=true" "${host_metrics_timeline_tsv}"
 fi
 
 print_plan() {
@@ -158,6 +161,7 @@ print_plan() {
   echo "[offhost-capacity-env-doctor] remote_prometheus_rw_url=${remote_prometheus_rw_url}"
   echo "[offhost-capacity-env-doctor] remote_workdir=${remote_workdir}"
   echo "[offhost-capacity-env-doctor] host_metrics_tsv=${host_metrics_tsv:-missing}"
+  echo "[offhost-capacity-env-doctor] host_metrics_timeline_tsv=${host_metrics_timeline_tsv:-missing}"
   echo "[offhost-capacity-env-doctor] vu16_summary_json=${vu16_summary_json:-missing}"
   echo "[offhost-capacity-env-doctor] burst_matrix_tsv=${burst_matrix_tsv:-missing}"
   echo "[offhost-capacity-env-doctor] source_evidence_tsv=${source_evidence_tsv:-missing}"

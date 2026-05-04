@@ -24,6 +24,7 @@ grep -F 'OCI_A1_STAGING_ENV: ${{ secrets.OCI_A1_STAGING_ENV }}' "${workflow}" >/
 grep -F "Load off-host capacity env" "${workflow}" >/dev/null
 grep -F "CAPACITY_K6_DOCKER_CONTEXT_VAR" "${workflow}" >/dev/null
 grep -F "host_metrics_tsv:" "${workflow}" >/dev/null
+grep -F "host_metrics_timeline_tsv:" "${workflow}" >/dev/null
 grep -F "vu16_summary_json:" "${workflow}" >/dev/null
 grep -F "burst_matrix_tsv:" "${workflow}" >/dev/null
 grep -F "source_evidence_tsv:" "${workflow}" >/dev/null
@@ -31,6 +32,7 @@ grep -F "host_metrics_run_id:" "${workflow}" >/dev/null
 grep -F "generator_host_metrics_tsv:" "${workflow}" >/dev/null
 grep -F "target_host_metrics_tsv:" "${workflow}" >/dev/null
 grep -F "HOST_METRICS_TSV_INPUT" "${workflow}" >/dev/null
+grep -F "HOST_METRICS_TIMELINE_TSV_INPUT" "${workflow}" >/dev/null
 grep -F "VU16_SUMMARY_JSON_INPUT" "${workflow}" >/dev/null
 grep -F "BURST_MATRIX_TSV_INPUT" "${workflow}" >/dev/null
 grep -F "SOURCE_EVIDENCE_TSV_INPUT" "${workflow}" >/dev/null
@@ -50,6 +52,7 @@ grep -F 'if [[ "${CAPACITY_K6_DOCKER_CONTEXT}" == "default" ]]; then' "${workflo
 grep -F 'CAPACITY_K6_REMOTE_WORKDIR="${GITHUB_WORKSPACE}"' "${workflow}" >/dev/null
 grep -F 'CAPACITY_K6_REMOTE_WORKDIR="${CAPACITY_K6_REMOTE_WORKDIR_ENV:-${GITHUB_WORKSPACE}}"' "${workflow}" >/dev/null
 grep -F 'CAPACITY_K6_HOST_METRICS_TSV="${HOST_METRICS_TSV_INPUT:-${CAPACITY_K6_HOST_METRICS_TSV:-${CAPACITY_K6_HOST_METRICS_TSV_VAR:-}}}"' "${workflow}" >/dev/null
+grep -F 'CAPACITY_K6_HOST_METRICS_TIMELINE_TSV="${HOST_METRICS_TIMELINE_TSV_INPUT:-${CAPACITY_K6_HOST_METRICS_TIMELINE_TSV:-${CAPACITY_K6_HOST_METRICS_TIMELINE_TSV_VAR:-}}}"' "${workflow}" >/dev/null
 grep -F 'CAPACITY_K6_VU16_SUMMARY_JSON="${VU16_SUMMARY_JSON_INPUT:-${CAPACITY_K6_VU16_SUMMARY_JSON:-${CAPACITY_K6_VU16_SUMMARY_JSON_VAR:-}}}"' "${workflow}" >/dev/null
 grep -F 'CAPACITY_K6_BURST_MATRIX_TSV="${BURST_MATRIX_TSV_INPUT:-${CAPACITY_K6_BURST_MATRIX_TSV:-${CAPACITY_K6_BURST_MATRIX_TSV_VAR:-}}}"' "${workflow}" >/dev/null
 grep -F 'CAPACITY_K6_SOURCE_EVIDENCE_TSV="${SOURCE_EVIDENCE_TSV_INPUT:-${CAPACITY_K6_SOURCE_EVIDENCE_TSV:-${CAPACITY_K6_SOURCE_EVIDENCE_TSV_VAR:-}}}"' "${workflow}" >/dev/null
