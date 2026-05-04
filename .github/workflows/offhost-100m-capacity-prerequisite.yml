@@ -27,6 +27,14 @@ on:
         description: "Load-coupled generator/target host CPU/network timeline TSV evidence ref"
         required: false
         type: string
+      require_load_coupled_timeline:
+        description: "Require load-coupled host metrics timeline instead of fallback snapshot"
+        required: false
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
       vu16_summary_json:
         description: "VU16 saturation summary JSON evidence ref"
         required: false
@@ -111,6 +119,7 @@ jobs:
           REMOTE_WORKDIR_INPUT: ${{ inputs.remote_workdir }}
           HOST_METRICS_TSV_INPUT: ${{ inputs.host_metrics_tsv }}
           HOST_METRICS_TIMELINE_TSV_INPUT: ${{ inputs.host_metrics_timeline_tsv }}
+          REQUIRE_LOAD_COUPLED_TIMELINE_INPUT: ${{ inputs.require_load_coupled_timeline }}
           VU16_SUMMARY_JSON_INPUT: ${{ inputs.vu16_summary_json }}
           BURST_MATRIX_TSV_INPUT: ${{ inputs.burst_matrix_tsv }}
           SOURCE_EVIDENCE_TSV_INPUT: ${{ inputs.source_evidence_tsv }}
@@ -167,6 +176,7 @@ jobs:
           fi
           CAPACITY_K6_HOST_METRICS_TSV="${HOST_METRICS_TSV_INPUT:-${CAPACITY_K6_HOST_METRICS_TSV:-${CAPACITY_K6_HOST_METRICS_TSV_VAR:-}}}"
           CAPACITY_K6_HOST_METRICS_TIMELINE_TSV="${HOST_METRICS_TIMELINE_TSV_INPUT:-${CAPACITY_K6_HOST_METRICS_TIMELINE_TSV:-${CAPACITY_K6_HOST_METRICS_TIMELINE_TSV_VAR:-}}}"
+          CAPACITY_REQUIRE_LOAD_COUPLED_TIMELINE="${REQUIRE_LOAD_COUPLED_TIMELINE_INPUT:-${CAPACITY_REQUIRE_LOAD_COUPLED_TIMELINE:-true}}"
           CAPACITY_K6_VU16_SUMMARY_JSON="${VU16_SUMMARY_JSON_INPUT:-${CAPACITY_K6_VU16_SUMMARY_JSON:-${CAPACITY_K6_VU16_SUMMARY_JSON_VAR:-}}}"
           CAPACITY_K6_BURST_MATRIX_TSV="${BURST_MATRIX_TSV_INPUT:-${CAPACITY_K6_BURST_MATRIX_TSV:-${CAPACITY_K6_BURST_MATRIX_TSV_VAR:-}}}"
           CAPACITY_K6_SOURCE_EVIDENCE_TSV="${SOURCE_EVIDENCE_TSV_INPUT:-${CAPACITY_K6_SOURCE_EVIDENCE_TSV:-${CAPACITY_K6_SOURCE_EVIDENCE_TSV_VAR:-}}}"
@@ -193,7 +203,23 @@ jobs:
               CAPACITY_K6_TARGET_HOST_METRICS_TSV="${snapshot_target_tsv}"
             fi
           fi
-          if [[ -z "${CAPACITY_K6_HOST_METRICS_TIMELINE_TSV}" ]]; then
+          case "${CAPACITY_REQUIRE_LOAD_COUPLED_TIMELINE}" in
+            true|false) ;;
+            *)
+              echo "::error::CAPACITY_REQUIRE_LOAD_COUPLED_TIMELINE must be true or false."
+              exit 1
+              ;;
+          esac
+          if [[ -z "${CAPACITY_K6_HOST_METRICS_TIMELINE_TSV}" && "${CAPACITY_REQUIRE_LOAD_COUPLED_TIMELINE}" == "true" ]]; then
+            {
+              echo "CAPACITY_PREREQUISITE_STATUS=failed"
+              echo "CAPACITY_PREREQUISITE_FAILURE_REASON=missing-load-coupled-host-metrics-timeline"
+              echo "CAPACITY_PREREQUISITE_MISSING=CAPACITY_K6_HOST_METRICS_TIMELINE_TSV"
+            } >"${CAPACITY_PREREQUISITE_FAILURE_REPORT_PATH}"
+            echo "::error::CAPACITY_K6_HOST_METRICS_TIMELINE_TSV is required when load-coupled timeline evidence is required."
+            exit 1
+          fi
+          if [[ -z "${CAPACITY_K6_HOST_METRICS_TIMELINE_TSV}" && "${CAPACITY_REQUIRE_LOAD_COUPLED_TIMELINE}" == "false" ]]; then
             mkdir -p "${host_metrics_timeline_dir}"
             OCI_OFFHOST_HOST_METRICS_TIMELINE_FALLBACK_NAME="${CAPACITY_NAME}" \
             OCI_OFFHOST_HOST_METRICS_RUN_ID="${CAPACITY_K6_HOST_METRICS_RUN_ID}" \
@@ -203,6 +229,14 @@ jobs:
               tools/test/run-oci-offhost-host-metrics-timeline-fallback.sh >"${host_metrics_timeline_dir}/host-metrics-timeline-fallback.log" 2>&1
             CAPACITY_K6_HOST_METRICS_TIMELINE_TSV="${generated_timeline_tsv}"
           fi
+          echo "Validate off-host host metrics timeline artifact"
+          mkdir -p "${report_dir}/offhost-host-metrics-timeline-verified"
+          OCI_OFFHOST_HOST_METRICS_TIMELINE_NAME="${CAPACITY_NAME}" \
+          OCI_OFFHOST_HOST_METRICS_TIMELINE_RUN_ID="${CAPACITY_K6_HOST_METRICS_RUN_ID}" \
+          OCI_OFFHOST_HOST_METRICS_TIMELINE_INPUT_TSV="${CAPACITY_K6_HOST_METRICS_TIMELINE_TSV}" \
+          OCI_OFFHOST_HOST_METRICS_TIMELINE_REQUIRE_LOAD_COUPLED="${CAPACITY_REQUIRE_LOAD_COUPLED_TIMELINE}" \
+          OCI_OFFHOST_HOST_METRICS_TIMELINE_OUTPUT_DIR="${report_dir}/offhost-host-metrics-timeline-verified" \
+            tools/test/run-oci-offhost-host-metrics-timeline.sh >"${report_dir}/offhost-host-metrics-timeline-verified/host-metrics-timeline.log" 2>&1
 
           missing=()
           [[ -z "${CAPACITY_K6_DOCKER_CONTEXT}" ]] && missing+=("CAPACITY_K6_DOCKER_CONTEXT")
@@ -236,6 +270,7 @@ jobs:
             CAPACITY_K6_VU16_SUMMARY_JSON
             CAPACITY_K6_BURST_MATRIX_TSV
             CAPACITY_K6_SOURCE_EVIDENCE_TSV
+            CAPACITY_REQUIRE_LOAD_COUPLED_TIMELINE
             CAPACITY_K6_HOST_METRICS_RUN_ID
             CAPACITY_K6_GENERATOR_HOST_METRICS_TSV
             CAPACITY_K6_TARGET_HOST_METRICS_TSV

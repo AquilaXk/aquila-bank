@@ -28,6 +28,7 @@ grep -F "Load off-host capacity env" "${workflow}" >/dev/null
 grep -F "CAPACITY_K6_DOCKER_CONTEXT_VAR" "${workflow}" >/dev/null
 grep -F "host_metrics_tsv:" "${workflow}" >/dev/null
 grep -F "host_metrics_timeline_tsv:" "${workflow}" >/dev/null
+grep -F "require_load_coupled_timeline:" "${workflow}" >/dev/null
 grep -F "vu16_summary_json:" "${workflow}" >/dev/null
 grep -F "burst_matrix_tsv:" "${workflow}" >/dev/null
 grep -F "source_evidence_tsv:" "${workflow}" >/dev/null
@@ -36,6 +37,7 @@ grep -F "generator_host_metrics_tsv:" "${workflow}" >/dev/null
 grep -F "target_host_metrics_tsv:" "${workflow}" >/dev/null
 grep -F "HOST_METRICS_TSV_INPUT" "${workflow}" >/dev/null
 grep -F "HOST_METRICS_TIMELINE_TSV_INPUT" "${workflow}" >/dev/null
+grep -F "REQUIRE_LOAD_COUPLED_TIMELINE_INPUT" "${workflow}" >/dev/null
 grep -F "VU16_SUMMARY_JSON_INPUT" "${workflow}" >/dev/null
 grep -F "BURST_MATRIX_TSV_INPUT" "${workflow}" >/dev/null
 grep -F "SOURCE_EVIDENCE_TSV_INPUT" "${workflow}" >/dev/null
@@ -56,6 +58,7 @@ grep -F 'CAPACITY_K6_REMOTE_WORKDIR="${GITHUB_WORKSPACE}"' "${workflow}" >/dev/n
 grep -F 'CAPACITY_K6_REMOTE_WORKDIR="${CAPACITY_K6_REMOTE_WORKDIR_ENV:-${GITHUB_WORKSPACE}}"' "${workflow}" >/dev/null
 grep -F 'CAPACITY_K6_HOST_METRICS_TSV="${HOST_METRICS_TSV_INPUT:-${CAPACITY_K6_HOST_METRICS_TSV:-${CAPACITY_K6_HOST_METRICS_TSV_VAR:-}}}"' "${workflow}" >/dev/null
 grep -F 'CAPACITY_K6_HOST_METRICS_TIMELINE_TSV="${HOST_METRICS_TIMELINE_TSV_INPUT:-${CAPACITY_K6_HOST_METRICS_TIMELINE_TSV:-${CAPACITY_K6_HOST_METRICS_TIMELINE_TSV_VAR:-}}}"' "${workflow}" >/dev/null
+grep -F 'CAPACITY_REQUIRE_LOAD_COUPLED_TIMELINE="${REQUIRE_LOAD_COUPLED_TIMELINE_INPUT:-${CAPACITY_REQUIRE_LOAD_COUPLED_TIMELINE:-true}}"' "${workflow}" >/dev/null
 grep -F 'CAPACITY_K6_VU16_SUMMARY_JSON="${VU16_SUMMARY_JSON_INPUT:-${CAPACITY_K6_VU16_SUMMARY_JSON:-${CAPACITY_K6_VU16_SUMMARY_JSON_VAR:-}}}"' "${workflow}" >/dev/null
 grep -F 'CAPACITY_K6_BURST_MATRIX_TSV="${BURST_MATRIX_TSV_INPUT:-${CAPACITY_K6_BURST_MATRIX_TSV:-${CAPACITY_K6_BURST_MATRIX_TSV_VAR:-}}}"' "${workflow}" >/dev/null
 grep -F 'CAPACITY_K6_SOURCE_EVIDENCE_TSV="${SOURCE_EVIDENCE_TSV_INPUT:-${CAPACITY_K6_SOURCE_EVIDENCE_TSV:-${CAPACITY_K6_SOURCE_EVIDENCE_TSV_VAR:-}}}"' "${workflow}" >/dev/null
@@ -68,12 +71,19 @@ grep -F 'CAPACITY_K6_GENERATOR_HOST_METRICS_TSV="${snapshot_generator_tsv}"' "${
 grep -F 'CAPACITY_K6_TARGET_HOST_METRICS_TSV="${snapshot_target_tsv}"' "${workflow}" >/dev/null
 grep -F 'host_metrics_timeline_dir="${report_dir}/offhost-host-metrics-timeline"' "${workflow}" >/dev/null
 grep -F 'generated_timeline_tsv="${host_metrics_timeline_dir}/${CAPACITY_NAME}-host-metrics-timeline.tsv"' "${workflow}" >/dev/null
-grep -F 'if [[ -z "${CAPACITY_K6_HOST_METRICS_TIMELINE_TSV}" ]]; then' "${workflow}" >/dev/null
+grep -F 'if [[ -z "${CAPACITY_K6_HOST_METRICS_TIMELINE_TSV}" && "${CAPACITY_REQUIRE_LOAD_COUPLED_TIMELINE}" == "true" ]]; then' "${workflow}" >/dev/null
+grep -F "CAPACITY_PREREQUISITE_FAILURE_REASON=missing-load-coupled-host-metrics-timeline" "${workflow}" >/dev/null
+grep -F 'if [[ -z "${CAPACITY_K6_HOST_METRICS_TIMELINE_TSV}" && "${CAPACITY_REQUIRE_LOAD_COUPLED_TIMELINE}" == "false" ]]; then' "${workflow}" >/dev/null
 grep -F 'OCI_OFFHOST_HOST_METRICS_TIMELINE_FALLBACK_NAME="${CAPACITY_NAME}"' "${workflow}" >/dev/null
 grep -F 'OCI_OFFHOST_GENERATOR_HOST_METRICS_TSV="${CAPACITY_K6_GENERATOR_HOST_METRICS_TSV}"' "${workflow}" >/dev/null
 grep -F 'OCI_OFFHOST_TARGET_HOST_METRICS_TSV="${CAPACITY_K6_TARGET_HOST_METRICS_TSV}"' "${workflow}" >/dev/null
 grep -F "tools/test/run-oci-offhost-host-metrics-timeline-fallback.sh" "${workflow}" >/dev/null
 grep -F 'CAPACITY_K6_HOST_METRICS_TIMELINE_TSV="${generated_timeline_tsv}"' "${workflow}" >/dev/null
+grep -F "Validate off-host host metrics timeline artifact" "${workflow}" >/dev/null
+grep -F 'OCI_OFFHOST_HOST_METRICS_TIMELINE_NAME="${CAPACITY_NAME}"' "${workflow}" >/dev/null
+grep -F 'OCI_OFFHOST_HOST_METRICS_TIMELINE_INPUT_TSV="${CAPACITY_K6_HOST_METRICS_TIMELINE_TSV}"' "${workflow}" >/dev/null
+grep -F 'OCI_OFFHOST_HOST_METRICS_TIMELINE_REQUIRE_LOAD_COUPLED="${CAPACITY_REQUIRE_LOAD_COUPLED_TIMELINE}"' "${workflow}" >/dev/null
+grep -F 'OCI_OFFHOST_HOST_METRICS_TIMELINE_OUTPUT_DIR="${report_dir}/offhost-host-metrics-timeline-verified"' "${workflow}" >/dev/null
 grep -F 'CAPACITY_REMOTE_PREFLIGHT="true"' "${workflow}" >/dev/null
 grep -F 'CAPACITY_REQUIRE_HOST_METRICS="true"' "${workflow}" >/dev/null
 grep -F "Run off-host remote preflight" "${workflow}" >/dev/null
