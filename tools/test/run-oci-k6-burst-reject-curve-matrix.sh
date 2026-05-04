@@ -10,7 +10,8 @@ Environment:
   OCI_K6_BURST_MATRIX_INPUT_TSV       required TSV: burst_rate/k6_run_id/summary_json/nginx_aggregate_json/nginx_aggregate_tsv/nginx_aggregate_md
   OCI_K6_BURST_MATRIX_REQUIRED_RATES  default 32,48,64,80,96
   OCI_K6_BURST_MATRIX_OUTPUT_DIR      default build/reports/k6/<name>
-  OCI_K6_BURST_MATRIX_PROMOTION_TARGET_RATE default 64
+  OCI_K6_BURST_MATRIX_PROMOTION_TARGET_RATE default 80
+  OCI_K6_BURST_MATRIX_TARGET_429_THRESHOLD default 0.10
 USAGE
 }
 
@@ -39,10 +40,10 @@ output_dir="${OCI_K6_BURST_MATRIX_OUTPUT_DIR:-build/reports/k6/${name}}"
 summary_tsv="${output_dir}/${name}-burst-reject-curve.tsv"
 summary_json="${output_dir}/${name}-burst-reject-curve.json"
 report_md="${output_dir}/${name}-burst-reject-curve.md"
-burst64_429_threshold="${OCI_K6_BURST_MATRIX_BURST64_429_THRESHOLD:-0.10}"
+target_429_threshold="${OCI_K6_BURST_MATRIX_TARGET_429_THRESHOLD:-${OCI_K6_BURST_MATRIX_BURST64_429_THRESHOLD:-0.10}}"
 backend_429_threshold="${OCI_K6_BURST_MATRIX_BACKEND_429_THRESHOLD:-0.005}"
 accepted_p95_threshold_ms="${OCI_K6_BURST_MATRIX_ACCEPTED_P95_THRESHOLD_MS:-100}"
-promotion_target_rate="${OCI_K6_BURST_MATRIX_PROMOTION_TARGET_RATE:-64}"
+promotion_target_rate="${OCI_K6_BURST_MATRIX_PROMOTION_TARGET_RATE:-80}"
 
 IFS=',' read -r -a required_rate_items <<<"${required_burst_rates}"
 
@@ -57,7 +58,7 @@ print_plan() {
   echo "[oci-k6-burst-reject-curve-matrix] required_burst_rates=${required_burst_rates}"
   echo "[oci-k6-burst-reject-curve-matrix] promotion_target_rate=${promotion_target_rate}"
   echo "[oci-k6-burst-reject-curve-matrix] output_dir=${output_dir}"
-  echo "[oci-k6-burst-reject-curve-matrix] gate=burst${promotion_target_rate} total/edge 429 <= ${burst64_429_threshold}, backend 429 <= ${backend_429_threshold}, k6 503 = 0, nginx 5xx = 0, nginx 499 = 0, accepted p95 < ${accepted_p95_threshold_ms}ms"
+  echo "[oci-k6-burst-reject-curve-matrix] gate=burst${promotion_target_rate} total/edge 429 <= ${target_429_threshold}, backend 429 <= ${backend_429_threshold}, k6 503 = 0, nginx 5xx = 0, nginx 499 = 0, accepted p95 < ${accepted_p95_threshold_ms}ms"
   echo "[oci-k6-burst-reject-curve-matrix] summary_tsv=${summary_tsv}"
   echo "[oci-k6-burst-reject-curve-matrix] summary_json=${summary_json}"
   echo "[oci-k6-burst-reject-curve-matrix] report_md=${report_md}"
@@ -211,13 +212,13 @@ record_failure() {
       record_failure "burst${burst_rate} gate failed: nginx_499_count=${nginx_499_count} > 0"
     fi
     if [[ "${burst_rate}" == "${promotion_target_rate}" ]]; then
-      if gt "${total_429_rate}" "${burst64_429_threshold}"; then
+      if gt "${total_429_rate}" "${target_429_threshold}"; then
         status="fail"
-        record_failure "$(printf 'burst%s gate failed: total_429_rate=%.6f > %.6f' "${promotion_target_rate}" "${total_429_rate}" "${burst64_429_threshold}")"
+        record_failure "$(printf 'burst%s gate failed: total_429_rate=%.6f > %.6f' "${promotion_target_rate}" "${total_429_rate}" "${target_429_threshold}")"
       fi
-      if gt "${edge_429_rate}" "${burst64_429_threshold}"; then
+      if gt "${edge_429_rate}" "${target_429_threshold}"; then
         status="fail"
-        record_failure "$(printf 'burst%s gate failed: edge_429_rate=%.6f > %.6f' "${promotion_target_rate}" "${edge_429_rate}" "${burst64_429_threshold}")"
+        record_failure "$(printf 'burst%s gate failed: edge_429_rate=%.6f > %.6f' "${promotion_target_rate}" "${edge_429_rate}" "${target_429_threshold}")"
       fi
       if gt "${backend_429_rate}" "${backend_429_threshold}"; then
         status="fail"
@@ -328,7 +329,7 @@ ${matrix_table}
 
 ## Gate
 
-- burst${promotion_target_rate}: total/edge 429 <= ${burst64_429_threshold}, backend 429 <= ${backend_429_threshold}, k6 503 = 0, nginx 5xx = 0, nginx 499 = 0, accepted p95 < ${accepted_p95_threshold_ms}ms
+- burst${promotion_target_rate}: total/edge 429 <= ${target_429_threshold}, backend 429 <= ${backend_429_threshold}, k6 503 = 0, nginx 5xx = 0, nginx 499 = 0, accepted p95 < ${accepted_p95_threshold_ms}ms
 - all bursts: k6 503 = 0, nginx 5xx = 0, nginx 499 = 0
 - rows above target: reject curve observation only for 429 budget; still fails on 5xx/499
 

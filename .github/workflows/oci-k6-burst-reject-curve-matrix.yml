@@ -46,7 +46,7 @@ on:
       promotion_target_rate:
         description: "Promotion target burst arrival rate per second"
         required: false
-        default: "64"
+        default: "80"
         type: string
       docker_context:
         description: "Remote Docker context name for off-host k6"
@@ -69,12 +69,12 @@ on:
         required: false
         type: string
       burst_429_rate_threshold:
-        description: "Max total/edge 429 rate for burst64 matrix gate"
+        description: "Max total/edge 429 rate for promotion target matrix gate"
         required: false
         default: "0.10"
         type: string
       backend_429_rate_threshold:
-        description: "Max backend 429 rate for burst64 matrix gate"
+        description: "Max backend 429 rate for promotion target matrix gate"
         required: false
         default: "0.005"
         type: string
@@ -169,7 +169,7 @@ jobs:
           set +a
 
           K6_BURST_RATES="${BURST_RATES_INPUT:-32,48,64,80,96}"
-          K6_BURST_MATRIX_PROMOTION_TARGET_RATE="${PROMOTION_TARGET_RATE_INPUT:-64}"
+          K6_BURST_MATRIX_PROMOTION_TARGET_RATE="${PROMOTION_TARGET_RATE_INPUT:-80}"
           K6_RUN_PURPOSE="capacity"
           K6_OBSERVABILITY_MODE="prometheus"
           K6_GENERATOR_MODE="docker-context"
@@ -408,7 +408,7 @@ jobs:
           OCI_K6_BURST_MATRIX_INPUT_TSV="${matrix_input_tsv}" \
           OCI_K6_BURST_MATRIX_OUTPUT_DIR="${matrix_dir}/burst-reject-curve-matrix" \
           OCI_K6_BURST_MATRIX_PROMOTION_TARGET_RATE="${K6_BURST_MATRIX_PROMOTION_TARGET_RATE}" \
-          OCI_K6_BURST_MATRIX_BURST64_429_THRESHOLD="${BURST_429_RATE_THRESHOLD_INPUT:-0.10}" \
+          OCI_K6_BURST_MATRIX_TARGET_429_THRESHOLD="${BURST_429_RATE_THRESHOLD_INPUT:-0.10}" \
           OCI_K6_BURST_MATRIX_BACKEND_429_THRESHOLD="${BACKEND_429_RATE_THRESHOLD_INPUT:-0.005}" \
             tools/test/run-oci-k6-burst-reject-curve-matrix.sh
 
