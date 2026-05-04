@@ -40,7 +40,7 @@ output_dir="${OCI_OFFHOST_HOST_METRICS_OUTPUT_DIR:-build/reports/k6/${name}}"
 combined_tsv="${output_dir}/${name}-host-metrics.tsv"
 combined_json="${output_dir}/${name}-host-metrics.json"
 report_md="${output_dir}/${name}-host-metrics.md"
-required_columns="run_id,host_role,host_name,docker_context,cpu_pct,rx_mbps,tx_mbps,artifact_uri"
+required_columns="run_id,host_role,host_name,host_id,vm_id,network_id,docker_context,cpu_pct,rx_mbps,tx_mbps,artifact_uri"
 
 print_plan() {
   echo "[oci-offhost-host-metrics-evidence] name=${name}"
@@ -94,7 +94,7 @@ awk -F '\t' -v OFS='\t' -v expected_run_id="${run_id}" '
         for (i = 1; i <= length(row); i++) {
           columns[file, row[i]] = i
         }
-        split("run_id host_role host_name docker_context cpu_pct rx_mbps tx_mbps artifact_uri", required, " ")
+        split("run_id host_role host_name host_id vm_id network_id docker_context cpu_pct rx_mbps tx_mbps artifact_uri", required, " ")
         for (i in required) {
           if (!((file, required[i]) in columns)) {
             printf "missing required host metric column: %s\n", required[i] > "/dev/stderr"
@@ -108,6 +108,9 @@ awk -F '\t' -v OFS='\t' -v expected_run_id="${run_id}" '
       run = row[columns[file, "run_id"]]
       role = row[columns[file, "host_role"]]
       host = row[columns[file, "host_name"]]
+      host_id = row[columns[file, "host_id"]]
+      vm_id = row[columns[file, "vm_id"]]
+      network_id = row[columns[file, "network_id"]]
       context = row[columns[file, "docker_context"]]
       cpu = row[columns[file, "cpu_pct"]]
       rx = row[columns[file, "rx_mbps"]]
@@ -125,22 +128,37 @@ awk -F '\t' -v OFS='\t' -v expected_run_id="${run_id}" '
         printf "host metric role mismatch for %s: host=%s role=%s\n", expected_role, host, role > "/dev/stderr"
         exit 5
       }
-      if (host == "" || context == "" || artifact == "") {
-        print "host metric contains blank host/context/artifact" > "/dev/stderr"
+      if (host == "" || host_id == "" || vm_id == "" || network_id == "" || context == "" || artifact == "") {
+        print "host metric contains blank host/identity/context/artifact" > "/dev/stderr"
         exit 6
       }
       if (!is_number(cpu) || !is_number(rx) || !is_number(tx)) {
         printf "host metric cpu/network values must be non-negative numbers: host=%s cpu=%s rx=%s tx=%s\n", host, cpu, rx, tx > "/dev/stderr"
         exit 7
       }
-      if (role == "generator") generator_count++
-      if (role == "target") target_count++
-      print run, role, host, context, cpu, rx, tx, artifact, file
+      identity = host "|" host_id "|" vm_id "|" network_id "|" context
+      if (role == "generator") {
+        generator_count++
+        generator_host_names[host] = 1
+        generator_host_ids[host_id] = 1
+        generator_vm_ids[vm_id] = 1
+        generator_network_ids[network_id] = 1
+        generator_identities[identity] = 1
+      }
+      if (role == "target") {
+        target_count++
+        target_host_names[host] = 1
+        target_host_ids[host_id] = 1
+        target_vm_ids[vm_id] = 1
+        target_network_ids[network_id] = 1
+        target_identities[identity] = 1
+      }
+      print run, role, host, host_id, vm_id, network_id, context, cpu, rx, tx, artifact, file
     }
     close(file)
   }
   BEGIN {
-    print "run_id", "host_role", "host_name", "docker_context", "cpu_pct", "rx_mbps", "tx_mbps", "artifact_uri", "source_file"
+    print "run_id", "host_role", "host_name", "host_id", "vm_id", "network_id", "docker_context", "cpu_pct", "rx_mbps", "tx_mbps", "artifact_uri", "source_file"
     read_source(ARGV[1], "generator")
     read_source(ARGV[2], "target")
     if (generator_count < 1) {
@@ -150,6 +168,36 @@ awk -F '\t' -v OFS='\t' -v expected_run_id="${run_id}" '
     if (target_count < 1) {
       print "target host metrics row is required" > "/dev/stderr"
       exit 9
+    }
+    for (item in generator_host_names) {
+      if (item in target_host_names) {
+        print "generator and target host/VM/network identity must differ: host_name=" item > "/dev/stderr"
+        exit 10
+      }
+    }
+    for (item in generator_host_ids) {
+      if (item in target_host_ids) {
+        print "generator and target host/VM/network identity must differ: host_id=" item > "/dev/stderr"
+        exit 11
+      }
+    }
+    for (item in generator_vm_ids) {
+      if (item in target_vm_ids) {
+        print "generator and target host/VM/network identity must differ: vm_id=" item > "/dev/stderr"
+        exit 12
+      }
+    }
+    for (item in generator_network_ids) {
+      if (item in target_network_ids) {
+        print "generator and target host/VM/network identity must differ: network_id=" item > "/dev/stderr"
+        exit 13
+      }
+    }
+    for (item in generator_identities) {
+      if (item in target_identities) {
+        print "generator and target host/VM/network identity must differ: identity=" item > "/dev/stderr"
+        exit 14
+      }
     }
   }
 ' "${generator_host_metrics_tsv}" "${target_host_metrics_tsv}" >"${raw_tsv}"
@@ -186,11 +234,11 @@ target_count="$(awk -F '\t' 'NR > 1 && $2 == "target" { count++ } END { print co
 
 host_table="$(awk -F '\t' '
   BEGIN {
-    print "| Role | Host | Docker context | CPU % | RX Mbps | TX Mbps | Artifact |"
-    print "| --- | --- | --- | ---: | ---: | ---: | --- |"
+    print "| Role | Host | Host id | VM id | Network id | Docker context | CPU % | RX Mbps | TX Mbps | Artifact |"
+    print "| --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | --- |"
   }
   NR > 1 {
-    printf "| %s | %s | %s | %s | %s | %s | %s |\n", $2, $3, $4, $5, $6, $7, $8
+    printf "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n", $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
   }
 ' "${combined_tsv}")"
 
@@ -203,6 +251,8 @@ cat >"${report_md}" <<REPORT
 - run_id=${run_id}
 - generator host metrics: verified
 - target host metrics: verified
+- host identity separation: verified
+- VM/network separation: verified
 - generator host count: ${generator_count}
 - target host count: ${target_count}
 
@@ -220,6 +270,7 @@ ${host_table}
 ## Contract Notes
 
 - off-host generator와 app/DB target host CPU/network evidence를 같은 run id로 묶는다.
+- generator/target host, VM, network 식별자가 같으면 같은 장비 또는 같은 network path일 수 있어 운영 후보 evidence로 인정하지 않는다.
 - host metrics가 비어 있거나 generator/target role 중 하나라도 없으면 prerequisite가 실패해야 한다.
 REPORT
 
