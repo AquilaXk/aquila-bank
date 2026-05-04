@@ -71,6 +71,8 @@ on:
       - "tools/test/check-oci-offhost-host-metrics-evidence.sh"
       - "tools/test/run-oci-offhost-host-metrics-timeline.sh"
       - "tools/test/check-oci-offhost-host-metrics-timeline.sh"
+      - "tools/test/run-oci-offhost-host-metrics-load-coupled-timeline.sh"
+      - "tools/test/check-oci-offhost-host-metrics-load-coupled-timeline.sh"
       - "tools/test/run-oci-offhost-host-metrics-timeline-fallback.sh"
       - "tools/test/check-oci-offhost-host-metrics-timeline-fallback.sh"
       - "tools/test/run-oci-offhost-host-metrics-snapshot.sh"
@@ -96,6 +98,9 @@ jobs:
       - name: Check off-host host metrics timeline
         run: tools/test/check-oci-offhost-host-metrics-timeline.sh
 
+      - name: Check off-host host metrics load-coupled timeline
+        run: tools/test/check-oci-offhost-host-metrics-load-coupled-timeline.sh
+
       - name: Check off-host host metrics timeline fallback
         run: tools/test/check-oci-offhost-host-metrics-timeline-fallback.sh
 
@@ -103,7 +108,7 @@ jobs:
     name: required off-host capacity env
     if: github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, oci-a1-staging]
-    timeout-minutes: 10
+    timeout-minutes: 120
     environment:
       name: staging
     steps:
@@ -183,6 +188,15 @@ jobs:
           CAPACITY_K6_HOST_METRICS_RUN_ID="${HOST_METRICS_RUN_ID_INPUT:-${CAPACITY_K6_HOST_METRICS_RUN_ID:-${CAPACITY_NAME}}}"
           CAPACITY_K6_GENERATOR_HOST_METRICS_TSV="${GENERATOR_HOST_METRICS_TSV_INPUT:-${CAPACITY_K6_GENERATOR_HOST_METRICS_TSV:-${CAPACITY_K6_GENERATOR_HOST_METRICS_TSV_VAR:-${CAPACITY_K6_HOST_METRICS_TSV}}}}"
           CAPACITY_K6_TARGET_HOST_METRICS_TSV="${TARGET_HOST_METRICS_TSV_INPUT:-${CAPACITY_K6_TARGET_HOST_METRICS_TSV:-${CAPACITY_K6_TARGET_HOST_METRICS_TSV_VAR:-}}}"
+          CAPACITY_K6_HOST_METRICS_TIMELINE_SAMPLE_INTERVAL_SECONDS="${CAPACITY_K6_HOST_METRICS_TIMELINE_SAMPLE_INTERVAL_SECONDS:-5}"
+          CAPACITY_K6_TIMELINE_PHASE_DURATION="${CAPACITY_K6_TIMELINE_PHASE_DURATION:-1m}"
+          CAPACITY_K6_TIMELINE_BURST_RATES="${CAPACITY_K6_TIMELINE_BURST_RATES:-32,48,64,80,96}"
+          CAPACITY_K6_HOT_ACCOUNT_ID="${CAPACITY_K6_HOT_ACCOUNT_ID:-${K6_HOT_ACCOUNT_ID:-910000001}}"
+          CAPACITY_K6_HOT_FROM="${CAPACITY_K6_HOT_FROM:-${K6_HOT_FROM:-2026-04-01T00:00:00Z}}"
+          CAPACITY_K6_HOT_TO="${CAPACITY_K6_HOT_TO:-${K6_HOT_TO:-2026-04-30T00:00:00Z}}"
+          CAPACITY_K6_COLD_ACCOUNT_ID="${CAPACITY_K6_COLD_ACCOUNT_ID:-${K6_COLD_ACCOUNT_ID:-910000002}}"
+          CAPACITY_K6_COLD_FROM="${CAPACITY_K6_COLD_FROM:-${K6_COLD_FROM:-2026-01-01T00:00:00Z}}"
+          CAPACITY_K6_COLD_TO="${CAPACITY_K6_COLD_TO:-${K6_COLD_TO:-2026-01-31T00:00:00Z}}"
           host_metrics_snapshot_dir="${report_dir}/offhost-host-metrics-snapshot"
           snapshot_generator_tsv="${host_metrics_snapshot_dir}/${CAPACITY_NAME}-generator-host-metrics.tsv"
           snapshot_target_tsv="${host_metrics_snapshot_dir}/${CAPACITY_NAME}-target-host-metrics.tsv"
@@ -211,13 +225,140 @@ jobs:
               ;;
           esac
           if [[ -z "${CAPACITY_K6_HOST_METRICS_TIMELINE_TSV}" && "${CAPACITY_REQUIRE_LOAD_COUPLED_TIMELINE}" == "true" ]]; then
-            {
-              echo "CAPACITY_PREREQUISITE_STATUS=failed"
-              echo "CAPACITY_PREREQUISITE_FAILURE_REASON=missing-load-coupled-host-metrics-timeline"
-              echo "CAPACITY_PREREQUISITE_MISSING=CAPACITY_K6_HOST_METRICS_TIMELINE_TSV"
-            } >"${CAPACITY_PREREQUISITE_FAILURE_REPORT_PATH}"
-            echo "::error::CAPACITY_K6_HOST_METRICS_TIMELINE_TSV is required when load-coupled timeline evidence is required."
-            exit 1
+            mkdir -p "${host_metrics_timeline_dir}"
+            arrival16_command='
+              K6_REPORT_NAME="${CAPACITY_NAME}-arrival16" \
+              K6_RUN_ID="${CAPACITY_NAME}-arrival16" \
+              K6_RUN_PURPOSE=capacity \
+              K6_OBSERVABILITY_MODE=prometheus \
+              K6_GENERATOR_MODE=docker-context \
+              K6_DOCKER_CONTEXT="${CAPACITY_K6_DOCKER_CONTEXT}" \
+              K6_REMOTE_BASE_URL="${CAPACITY_K6_REMOTE_BASE_URL}" \
+              K6_REMOTE_PROMETHEUS_RW_SERVER_URL="${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL}" \
+              K6_REMOTE_WORKDIR="${CAPACITY_K6_REMOTE_WORKDIR}" \
+              K6_REMOTE_PREFLIGHT=true \
+              K6_AUTH_TOKEN_ENV_NAME=STAGING_REPLAY_TOKEN \
+              K6_AUTH_TOKEN_REQUIRED=true \
+              K6_AUTH_PREFLIGHT=true \
+              K6_AUTH_PREFLIGHT_PATH="api/v1/transactions?accountId=${CAPACITY_K6_HOT_ACCOUNT_ID}&from=${CAPACITY_K6_HOT_FROM}&to=${CAPACITY_K6_HOT_TO}&limit=1" \
+              K6_AUTH_PREFLIGHT_EXPECTED_STATUS=200 \
+              K6_HOT_ACCOUNT_ID="${CAPACITY_K6_HOT_ACCOUNT_ID}" \
+              K6_HOT_FROM="${CAPACITY_K6_HOT_FROM}" \
+              K6_HOT_TO="${CAPACITY_K6_HOT_TO}" \
+              K6_COLD_ACCOUNT_ID="${CAPACITY_K6_COLD_ACCOUNT_ID}" \
+              K6_COLD_FROM="${CAPACITY_K6_COLD_FROM}" \
+              K6_COLD_TO="${CAPACITY_K6_COLD_TO}" \
+              K6_SCENARIO_MODE=constant-arrival-rate \
+              K6_RATE=16 \
+              K6_TIME_UNIT=1s \
+              K6_VUS=8 \
+              K6_PRE_ALLOCATED_VUS=16 \
+              K6_MAX_VUS=32 \
+              K6_DURATION="${CAPACITY_K6_TIMELINE_PHASE_DURATION}" \
+              K6_ARCHIVE_RESULTS=false \
+                tools/test/run-k6-transaction-100m-loadtest.sh --no-up --no-deps
+            '
+            vu16_command='
+              K6_REPORT_NAME="${CAPACITY_NAME}-vu16" \
+              K6_RUN_ID="${CAPACITY_NAME}-vu16" \
+              K6_RUN_PURPOSE=capacity \
+              K6_OBSERVABILITY_MODE=prometheus \
+              K6_GENERATOR_MODE=docker-context \
+              K6_DOCKER_CONTEXT="${CAPACITY_K6_DOCKER_CONTEXT}" \
+              K6_REMOTE_BASE_URL="${CAPACITY_K6_REMOTE_BASE_URL}" \
+              K6_REMOTE_PROMETHEUS_RW_SERVER_URL="${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL}" \
+              K6_REMOTE_WORKDIR="${CAPACITY_K6_REMOTE_WORKDIR}" \
+              K6_REMOTE_PREFLIGHT=true \
+              K6_AUTH_TOKEN_ENV_NAME=STAGING_REPLAY_TOKEN \
+              K6_AUTH_TOKEN_REQUIRED=true \
+              K6_AUTH_PREFLIGHT=true \
+              K6_AUTH_PREFLIGHT_PATH="api/v1/transactions?accountId=${CAPACITY_K6_HOT_ACCOUNT_ID}&from=${CAPACITY_K6_HOT_FROM}&to=${CAPACITY_K6_HOT_TO}&limit=1" \
+              K6_AUTH_PREFLIGHT_EXPECTED_STATUS=200 \
+              K6_HOT_ACCOUNT_ID="${CAPACITY_K6_HOT_ACCOUNT_ID}" \
+              K6_HOT_FROM="${CAPACITY_K6_HOT_FROM}" \
+              K6_HOT_TO="${CAPACITY_K6_HOT_TO}" \
+              K6_COLD_ACCOUNT_ID="${CAPACITY_K6_COLD_ACCOUNT_ID}" \
+              K6_COLD_FROM="${CAPACITY_K6_COLD_FROM}" \
+              K6_COLD_TO="${CAPACITY_K6_COLD_TO}" \
+              K6_SCENARIO_MODE=constant-vus \
+              K6_VUS=16 \
+              K6_PRE_ALLOCATED_VUS=16 \
+              K6_MAX_VUS=16 \
+              K6_DURATION="${CAPACITY_K6_TIMELINE_PHASE_DURATION}" \
+              K6_OVERLOAD_MODE=true \
+              K6_ARCHIVE_RESULTS=false \
+                tools/test/run-k6-transaction-100m-loadtest.sh --no-up --no-deps
+            '
+            burst_matrix_command='
+              matrix_ref="${OCI_OFFHOST_LOAD_COUPLED_OUTPUT_DIR}/${CAPACITY_NAME}-burst-matrix-runs.tsv"
+              printf "burst_rate\tk6_run_id\tsummary_json\n" >"${matrix_ref}"
+              IFS="," read -r -a burst_rates <<<"${CAPACITY_K6_TIMELINE_BURST_RATES}"
+              status=0
+              for burst_rate in "${burst_rates[@]}"; do
+                burst_rate="${burst_rate//[[:space:]]/}"
+                [[ -z "${burst_rate}" ]] && continue
+                report_name="${CAPACITY_NAME}-burst${burst_rate}"
+                K6_REPORT_NAME="${report_name}" \
+                K6_RUN_ID="${report_name}" \
+                K6_RUN_PURPOSE=capacity \
+                K6_OBSERVABILITY_MODE=prometheus \
+                K6_GENERATOR_MODE=docker-context \
+                K6_DOCKER_CONTEXT="${CAPACITY_K6_DOCKER_CONTEXT}" \
+                K6_REMOTE_BASE_URL="${CAPACITY_K6_REMOTE_BASE_URL}" \
+                K6_REMOTE_PROMETHEUS_RW_SERVER_URL="${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL}" \
+                K6_REMOTE_WORKDIR="${CAPACITY_K6_REMOTE_WORKDIR}" \
+                K6_REMOTE_PREFLIGHT=true \
+                K6_AUTH_TOKEN_ENV_NAME=STAGING_REPLAY_TOKEN \
+                K6_AUTH_TOKEN_REQUIRED=true \
+                K6_AUTH_PREFLIGHT=true \
+                K6_AUTH_PREFLIGHT_PATH="api/v1/transactions?accountId=${CAPACITY_K6_HOT_ACCOUNT_ID}&from=${CAPACITY_K6_HOT_FROM}&to=${CAPACITY_K6_HOT_TO}&limit=1" \
+                K6_AUTH_PREFLIGHT_EXPECTED_STATUS=200 \
+                K6_HOT_ACCOUNT_ID="${CAPACITY_K6_HOT_ACCOUNT_ID}" \
+                K6_HOT_FROM="${CAPACITY_K6_HOT_FROM}" \
+                K6_HOT_TO="${CAPACITY_K6_HOT_TO}" \
+                K6_COLD_ACCOUNT_ID="${CAPACITY_K6_COLD_ACCOUNT_ID}" \
+                K6_COLD_FROM="${CAPACITY_K6_COLD_FROM}" \
+                K6_COLD_TO="${CAPACITY_K6_COLD_TO}" \
+                K6_SCENARIO_MODE=burst \
+                K6_BURST_RATE="${burst_rate}" \
+                K6_PRE_ALLOCATED_VUS="${burst_rate}" \
+                K6_MAX_VUS="$((burst_rate * 2))" \
+                K6_DURATION="${CAPACITY_K6_TIMELINE_PHASE_DURATION}" \
+                K6_OVERLOAD_MODE=true \
+                K6_BURST_429_RATE_THRESHOLD=1 \
+                K6_ARCHIVE_RESULTS=false \
+                  tools/test/run-k6-transaction-100m-loadtest.sh --no-up --no-deps || status=1
+                printf "%s\t%s\tbuild/reports/k6/%s-summary.json\n" "${burst_rate}" "${report_name}" "${report_name}" >>"${matrix_ref}"
+              done
+              exit "${status}"
+            '
+            CAPACITY_NAME="${CAPACITY_NAME}" \
+            CAPACITY_K6_DOCKER_CONTEXT="${CAPACITY_K6_DOCKER_CONTEXT}" \
+            CAPACITY_K6_REMOTE_BASE_URL="${CAPACITY_K6_REMOTE_BASE_URL}" \
+            CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL="${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL}" \
+            CAPACITY_K6_REMOTE_WORKDIR="${CAPACITY_K6_REMOTE_WORKDIR}" \
+            CAPACITY_K6_TIMELINE_PHASE_DURATION="${CAPACITY_K6_TIMELINE_PHASE_DURATION}" \
+            CAPACITY_K6_TIMELINE_BURST_RATES="${CAPACITY_K6_TIMELINE_BURST_RATES}" \
+            CAPACITY_K6_HOT_ACCOUNT_ID="${CAPACITY_K6_HOT_ACCOUNT_ID}" \
+            CAPACITY_K6_HOT_FROM="${CAPACITY_K6_HOT_FROM}" \
+            CAPACITY_K6_HOT_TO="${CAPACITY_K6_HOT_TO}" \
+            CAPACITY_K6_COLD_ACCOUNT_ID="${CAPACITY_K6_COLD_ACCOUNT_ID}" \
+            CAPACITY_K6_COLD_FROM="${CAPACITY_K6_COLD_FROM}" \
+            CAPACITY_K6_COLD_TO="${CAPACITY_K6_COLD_TO}" \
+            OCI_OFFHOST_LOAD_COUPLED_TIMELINE_NAME="${CAPACITY_NAME}" \
+            OCI_OFFHOST_LOAD_COUPLED_TIMELINE_RUN_ID="${CAPACITY_K6_HOST_METRICS_RUN_ID}" \
+            OCI_OFFHOST_LOAD_COUPLED_SAMPLE_INTERVAL_SECONDS="${CAPACITY_K6_HOST_METRICS_TIMELINE_SAMPLE_INTERVAL_SECONDS}" \
+            OCI_OFFHOST_LOAD_COUPLED_GENERATOR_DOCKER_CONTEXT="${CAPACITY_K6_DOCKER_CONTEXT}" \
+            OCI_OFFHOST_LOAD_COUPLED_GENERATOR_SAMPLE_CONTEXT="${CAPACITY_K6_DOCKER_CONTEXT}" \
+            OCI_OFFHOST_LOAD_COUPLED_TARGET_DOCKER_CONTEXT="target" \
+            OCI_OFFHOST_LOAD_COUPLED_TARGET_SAMPLE_CONTEXT="local" \
+            OCI_OFFHOST_LOAD_COUPLED_ARTIFACT_PACK_URI="artifact://offhost-capacity-prerequisite/${CAPACITY_NAME}" \
+            OCI_OFFHOST_LOAD_COUPLED_OUTPUT_DIR="${host_metrics_timeline_dir}" \
+            OCI_OFFHOST_LOAD_COUPLED_ARRIVAL16_COMMAND="${arrival16_command}" \
+            OCI_OFFHOST_LOAD_COUPLED_VU16_COMMAND="${vu16_command}" \
+            OCI_OFFHOST_LOAD_COUPLED_BURST_MATRIX_COMMAND="${burst_matrix_command}" \
+              tools/test/run-oci-offhost-host-metrics-load-coupled-timeline.sh >"${host_metrics_timeline_dir}/host-metrics-load-coupled-timeline.log" 2>&1
+            CAPACITY_K6_HOST_METRICS_TIMELINE_TSV="${generated_timeline_tsv}"
           fi
           if [[ -z "${CAPACITY_K6_HOST_METRICS_TIMELINE_TSV}" && "${CAPACITY_REQUIRE_LOAD_COUPLED_TIMELINE}" == "false" ]]; then
             mkdir -p "${host_metrics_timeline_dir}"
