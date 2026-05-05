@@ -9,6 +9,7 @@ Environment:
   SOAK_30M_LIVE_NAME        default transaction-read-30m-soak-live-evidence-<timestamp>
   SOAK_30M_LIVE_INPUT_TSV   required OCI evidence manifest with hikari-lifetime and p999-long-correlation rows
   SOAK_30M_LIVE_OUTPUT_DIR  default build/reports/k6/<name>
+  SOAK_30M_LIVE_MAX_POSTGRES_TEMP_FILE_DELTA default 0
 USAGE
 }
 
@@ -33,6 +34,7 @@ done
 name="${SOAK_30M_LIVE_NAME:-transaction-read-30m-soak-live-evidence-$(date +%Y-%m-%d-%H%M%S)}"
 input_tsv="${SOAK_30M_LIVE_INPUT_TSV:-}"
 output_dir="${SOAK_30M_LIVE_OUTPUT_DIR:-build/reports/k6/${name}}"
+max_postgres_temp_file_delta="${SOAK_30M_LIVE_MAX_POSTGRES_TEMP_FILE_DELTA:-0}"
 execution_gate="tools/test/run-transaction-read-oci-evidence-execution-gate.sh"
 execution_summary_tsv="${output_dir}/${name}-oci-evidence-execution.tsv"
 summary_tsv="${output_dir}/${name}-30m-soak-live-evidence.tsv"
@@ -47,6 +49,15 @@ require_file() {
   fi
 }
 
+require_non_negative_integer() {
+  local key="$1"
+  local value="$2"
+  if ! [[ "${value}" =~ ^[0-9]+$ ]]; then
+    echo "${key} must be a non-negative integer: ${value}" >&2
+    exit 1
+  fi
+}
+
 print_plan() {
   echo "[transaction-read-30m-soak-live-evidence] name=${name}"
   echo "[transaction-read-30m-soak-live-evidence] input_tsv=${input_tsv:-missing}"
@@ -56,10 +67,12 @@ print_plan() {
   echo "[transaction-read-30m-soak-live-evidence] require_shared_run_id=true"
   echo "[transaction-read-30m-soak-live-evidence] latency_percentiles=p95,p99,p99.9,max"
   echo "[transaction-read-30m-soak-live-evidence] required_artifacts=hikari_log,postgres_wait,postgres_checkpoint,postgres_temp_file,nginx_upstream_latency,hikari_config,hikari_zero_warning_soak"
+  echo "[transaction-read-30m-soak-live-evidence] postgres_temp_file_delta_budget=${max_postgres_temp_file_delta}"
   echo "[transaction-read-30m-soak-live-evidence] execution_gate=${execution_gate}"
   echo "[transaction-read-30m-soak-live-evidence] report_md=${report_md}"
 }
 
+require_non_negative_integer "SOAK_30M_LIVE_MAX_POSTGRES_TEMP_FILE_DELTA" "${max_postgres_temp_file_delta}"
 print_plan
 if [[ "${mode}" == "print-plan" ]]; then
   require_file "SOAK_30M_LIVE_INPUT_TSV" "${input_tsv}"
@@ -77,6 +90,7 @@ gate_output="$(
   OCI_EVIDENCE_EXECUTION_HIKARI_MIN_DURATION_MIN=30 \
   OCI_EVIDENCE_EXECUTION_P999_MIN_DURATION_MIN=30 \
   OCI_EVIDENCE_EXECUTION_MAX_POOL_PENDING=0 \
+  OCI_EVIDENCE_EXECUTION_MAX_POSTGRES_TEMP_FILE_DELTA="${max_postgres_temp_file_delta}" \
     "${execution_gate}"
 )"
 execution_report="$(tail -1 <<<"${gate_output}")"
@@ -145,6 +159,7 @@ hikari_max_lifetime="$(awk -F '\t' 'NR == 2 { print $17 }' "${summary_tsv}")"
 hikari_keepalive="$(awk -F '\t' 'NR == 2 { print $18 }' "${summary_tsv}")"
 postgres_idle="$(awk -F '\t' 'NR == 2 { print $19 }' "${summary_tsv}")"
 oci_nat="$(awk -F '\t' 'NR == 2 { print $20 }' "${summary_tsv}")"
+postgres_temp_file_delta="$(awk -F '\t' 'NR == 2 { print $14 }' "${summary_tsv}")"
 
 cat >"${report_md}" <<REPORT
 # Transaction Read 30m Soak Live Evidence Gate
@@ -158,6 +173,7 @@ cat >"${report_md}" <<REPORT
 - Hikari pending: ${hikari_pending}
 - Hikari validation warnings: ${hikari_warnings}
 - PostgreSQL wait/checkpoint/temp file artifacts: verified
+- PostgreSQL temp file delta: ${postgres_temp_file_delta} (budget <= ${max_postgres_temp_file_delta})
 - Nginx upstream latency artifact: verified
 - Hikari lifetime alignment: verified
 - Hikari maxLifetime/keepaliveTime: ${hikari_max_lifetime}ms/${hikari_keepalive}ms
@@ -167,7 +183,7 @@ cat >"${report_md}" <<REPORT
 ## Contract Notes
 
 - 30m soak live evidence는 Hikari lifetime row와 p99.9 long correlation row가 같은 run id일 때만 인정한다.
-- p99.9 long correlation은 p95, p99, p99.9, max와 PostgreSQL checkpoint/temp file, Nginx upstream latency를 요구한다.
+- p99.9 long correlation은 p95, p99, p99.9, max와 PostgreSQL checkpoint/temp file delta, Nginx upstream latency를 요구한다.
 - Hikari lifetime은 config ref, zero-warning soak ref, PostgreSQL/NAT timeout basis를 요구한다.
 - Hikari pending, Hikari validation warning, 5xx, 499, unknown 429는 execution gate에서 hard-zero로 검증한다.
 

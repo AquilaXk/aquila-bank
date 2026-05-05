@@ -46,6 +46,7 @@ grep -F "min_duration_min=30" <<<"${plan}" >/dev/null
 grep -F "require_shared_run_id=true" <<<"${plan}" >/dev/null
 grep -F "latency_percentiles=p95,p99,p99.9,max" <<<"${plan}" >/dev/null
 grep -F "required_artifacts=hikari_log,postgres_wait,postgres_checkpoint,postgres_temp_file,nginx_upstream_latency,hikari_config,hikari_zero_warning_soak" <<<"${plan}" >/dev/null
+grep -F "postgres_temp_file_delta_budget=0" <<<"${plan}" >/dev/null
 
 echo "[transaction-read-30m-soak-live-evidence] pass report"
 output="$(
@@ -63,6 +64,7 @@ grep -F "latency percentiles: p95/p99/p99.9/max" "${report_md}" >/dev/null
 grep -F "Hikari pending: 0" "${report_md}" >/dev/null
 grep -F "Hikari validation warnings: 0" "${report_md}" >/dev/null
 grep -F "PostgreSQL wait/checkpoint/temp file artifacts: verified" "${report_md}" >/dev/null
+grep -F "PostgreSQL temp file delta: 0 (budget <= 0)" "${report_md}" >/dev/null
 grep -F "Nginx upstream latency artifact: verified" "${report_md}" >/dev/null
 grep -F "Hikari lifetime alignment: verified" "${report_md}" >/dev/null
 grep -F $'run-soak-live-001\tpass\tok\t30\t30\t95\t220\t490\t650\t0\t0' "${summary_tsv}" >/dev/null
@@ -86,6 +88,17 @@ if SOAK_30M_LIVE_NAME=soak-live-temp-fail \
   SOAK_30M_LIVE_OUTPUT_DIR="${output_dir}" \
     "${runner}" >/dev/null 2>&1; then
   echo "30m soak live evidence unexpectedly passed missing temp file artifact" >&2
+  exit 1
+fi
+
+echo "[transaction-read-30m-soak-live-evidence] temp file delta budget fails"
+awk -F '\t' 'BEGIN { OFS = FS } NR == 1 { print; next } $1 == "p999-long-correlation" { $37 = 1 } { print }' \
+  "${input_tsv}" >"${input_tsv}.temp-file-delta-fail"
+if SOAK_30M_LIVE_NAME=soak-live-temp-delta-fail \
+  SOAK_30M_LIVE_INPUT_TSV="${input_tsv}.temp-file-delta-fail" \
+  SOAK_30M_LIVE_OUTPUT_DIR="${output_dir}" \
+    "${runner}" >/dev/null 2>&1; then
+  echo "30m soak live evidence unexpectedly passed temp file delta budget violation" >&2
   exit 1
 fi
 

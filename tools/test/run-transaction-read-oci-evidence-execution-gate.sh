@@ -13,6 +13,7 @@ Environment:
   OCI_EVIDENCE_EXECUTION_MAX_EDGE_429_RATE       default 0.10
   OCI_EVIDENCE_EXECUTION_MAX_P999_MS             default 500
   OCI_EVIDENCE_EXECUTION_MAX_POOL_PENDING        default 0
+  OCI_EVIDENCE_EXECUTION_MAX_POSTGRES_TEMP_FILE_DELTA default 0
   OCI_EVIDENCE_EXECUTION_MIXED_MIN_DURATION_MIN  default 30
   OCI_EVIDENCE_EXECUTION_P999_MIN_DURATION_MIN   default 30
   OCI_EVIDENCE_EXECUTION_HIKARI_MIN_DURATION_MIN default 30
@@ -46,6 +47,7 @@ required_scenarios="${OCI_EVIDENCE_EXECUTION_REQUIRED_SCENARIOS:-hikari-lifetime
 max_edge_429_rate="${OCI_EVIDENCE_EXECUTION_MAX_EDGE_429_RATE:-0.10}"
 max_p999_ms="${OCI_EVIDENCE_EXECUTION_MAX_P999_MS:-500}"
 max_pool_pending="${OCI_EVIDENCE_EXECUTION_MAX_POOL_PENDING:-0}"
+max_postgres_temp_file_delta="${OCI_EVIDENCE_EXECUTION_MAX_POSTGRES_TEMP_FILE_DELTA:-0}"
 mixed_min_duration_min="${OCI_EVIDENCE_EXECUTION_MIXED_MIN_DURATION_MIN:-30}"
 p999_min_duration_min="${OCI_EVIDENCE_EXECUTION_P999_MIN_DURATION_MIN:-30}"
 hikari_min_duration_min="${OCI_EVIDENCE_EXECUTION_HIKARI_MIN_DURATION_MIN:-30}"
@@ -123,6 +125,7 @@ print_plan() {
   echo "[transaction-read-oci-evidence-execution] max_edge_429_rate=${max_edge_429_rate}"
   echo "[transaction-read-oci-evidence-execution] max_p999_ms=${max_p999_ms}"
   echo "[transaction-read-oci-evidence-execution] max_pool_pending=${max_pool_pending}"
+  echo "[transaction-read-oci-evidence-execution] max_postgres_temp_file_delta=${max_postgres_temp_file_delta}"
   echo "[transaction-read-oci-evidence-execution] mixed_min_duration_min=${mixed_min_duration_min}"
   echo "[transaction-read-oci-evidence-execution] p999_min_duration_min=${p999_min_duration_min}"
   echo "[transaction-read-oci-evidence-execution] hikari_min_duration_min=${hikari_min_duration_min}"
@@ -135,6 +138,7 @@ print_plan() {
 require_rate "OCI_EVIDENCE_EXECUTION_MAX_EDGE_429_RATE" "${max_edge_429_rate}"
 require_non_negative_number "OCI_EVIDENCE_EXECUTION_MAX_P999_MS" "${max_p999_ms}"
 require_non_negative_integer "OCI_EVIDENCE_EXECUTION_MAX_POOL_PENDING" "${max_pool_pending}"
+require_non_negative_integer "OCI_EVIDENCE_EXECUTION_MAX_POSTGRES_TEMP_FILE_DELTA" "${max_postgres_temp_file_delta}"
 require_non_negative_integer "OCI_EVIDENCE_EXECUTION_MIXED_MIN_DURATION_MIN" "${mixed_min_duration_min}"
 require_non_negative_integer "OCI_EVIDENCE_EXECUTION_P999_MIN_DURATION_MIN" "${p999_min_duration_min}"
 require_non_negative_integer "OCI_EVIDENCE_EXECUTION_HIKARI_MIN_DURATION_MIN" "${hikari_min_duration_min}"
@@ -155,6 +159,7 @@ awk -F '\t' \
   -v max_edge_429_rate="${max_edge_429_rate}" \
   -v max_p999_ms="${max_p999_ms}" \
   -v max_pool_pending="${max_pool_pending}" \
+  -v max_postgres_temp_file_delta="${max_postgres_temp_file_delta}" \
   -v mixed_min_duration_min="${mixed_min_duration_min}" \
   -v p999_min_duration_min="${p999_min_duration_min}" \
   -v hikari_min_duration_min="${hikari_min_duration_min}" \
@@ -277,6 +282,7 @@ NR == 1 {
     postgres_checkpoint_count = require_number("postgres_checkpoint_count", "postgres-checkpoint-count-missing")
     postgres_temp_file_count = require_number("postgres_temp_file_count", "postgres-temp-file-count-missing")
     nginx_upstream_p95_ms = require_number("nginx_upstream_p95_ms", "nginx-upstream-p95-missing")
+    if (postgres_temp_file_count > max_postgres_temp_file_delta) add_reason("postgres-temp-file-delta>" max_postgres_temp_file_delta)
   }
   if (scenario == "hikari-lifetime" && duration_min < hikari_min_duration_min) add_reason("hikari-duration<" hikari_min_duration_min)
   if (scenario == "hikari-lifetime") {
@@ -365,11 +371,12 @@ cat >"${report_md}" <<REPORT
 - deploy drain min duration: ${deploy_min_duration_min}m
 - edge 429 max rate: ${max_edge_429_rate}
 - p99.9 max: ${max_p999_ms}ms
+- PostgreSQL temp file delta max: ${max_postgres_temp_file_delta}
 - backend 429/unknown 429/499/5xx/Hikari warning/pool pending target: 0
 - unknown 429 hard-zero
 - p99.9 closure artifacts: PostgreSQL checkpoint, temp file, Nginx upstream latency
 - latency percentiles: p95, p99, p99.9, max
-- p999 long correlation metrics: PostgreSQL checkpoint count, temp file count, Nginx upstream p95
+- p999 long correlation metrics: PostgreSQL checkpoint delta, temp file delta, Nginx upstream p95
 - Hikari lifetime alignment artifacts: config ref, zero-warning soak ref, timeout basis
 - mixed workload closure artifacts: workload mix, component split, outbox lag
 - mixed workload required components: read,write,auth,notification,sse
@@ -383,7 +390,7 @@ ${result_table}
 ## Evidence Contract
 
 - OCI evidence는 run id, 실행 시각, 실행 script, k6 summary, Nginx access, Spring metrics, Hikari log, PostgreSQL wait, timeline을 같은 row에 남긴다.
-- p99.9 long correlation은 PostgreSQL checkpoint, temp file, Nginx upstream latency artifact를 같은 run id로 묶는다.
+- p99.9 long correlation은 PostgreSQL checkpoint, temp file, Nginx upstream latency artifact를 같은 run id로 묶고 temp file delta budget을 검증한다.
 - Hikari lifetime은 maxLifetime/keepaliveTime/PostgreSQL idle/NAT idle 기준과 30m zero-warning artifact를 같은 run id로 묶는다.
 - mixed workload는 workload mix, component split, outbox lag artifact를 같은 run id로 묶고 outbox lag max 0을 요구한다.
 - mixed workload는 read/write/auth/notification/SSE component와 read p99.9, 429 source artifact를 분리 기록한다.

@@ -293,6 +293,7 @@ jobs:
             K6_BACKEND_429_RATE_THRESHOLD
             K6_OVERLOAD_503_RATE_THRESHOLD
             K6_NGINX_ACCESS_LOG
+            SOAK_30M_POSTGRES_TEMP_FILE_DELTA_MAX
           )
 
           for name in "${env_names[@]}"; do
@@ -377,6 +378,57 @@ jobs:
           started_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
           printf 'SOAK_30M_STARTED_AT_UTC=%s\n' "${started_at}" >>"${GITHUB_ENV}"
           printf 'K6_NGINX_LOG_SINCE=%s\n' "${started_at}" >>"${GITHUB_ENV}"
+
+      - name: Capture PostgreSQL baseline counters
+        if: env.SOAK_30M_USE_EXISTING_MANIFEST != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          report_dir="${SOAK_30M_REPORT_DIR}"
+          checkpoint_start_ref="${report_dir}/postgres-checkpoint-start.tsv"
+          temp_file_start_ref="${report_dir}/postgres-temp-file-start.tsv"
+
+          query_checkpoint_count() {
+            if psql "${STAGING_OCI_A1_DATABASE_URL}" --no-align --tuples-only --command "
+              SELECT (checkpoints_timed + checkpoints_req)::bigint
+              FROM pg_stat_bgwriter;
+            " 2>/dev/null; then
+              return 0
+            fi
+            psql "${STAGING_OCI_A1_DATABASE_URL}" --no-align --tuples-only --command "
+              SELECT (num_timed + num_requested)::bigint
+              FROM pg_stat_checkpointer;
+            "
+          }
+
+          query_temp_file_count() {
+            psql "${STAGING_OCI_A1_DATABASE_URL}" --no-align --tuples-only --command "
+              SELECT temp_files::bigint
+              FROM pg_stat_database
+              WHERE datname = current_database();
+            "
+          }
+
+          checkpoint_start="$(query_checkpoint_count | tr -d '[:space:]')"
+          temp_file_start="$(query_temp_file_count | tr -d '[:space:]')"
+          if ! [[ "${checkpoint_start}" =~ ^[0-9]+$ && "${temp_file_start}" =~ ^[0-9]+$ ]]; then
+            echo "::error::PostgreSQL baseline counters must be non-negative integers."
+            exit 1
+          fi
+
+          {
+            printf "metric\tvalue\n"
+            printf "postgres_checkpoint_count\t%s\n" "${checkpoint_start}"
+          } >"${checkpoint_start_ref}"
+          {
+            printf "metric\tvalue\n"
+            printf "postgres_temp_file_count\t%s\n" "${temp_file_start}"
+          } >"${temp_file_start_ref}"
+
+          printf 'SOAK_30M_POSTGRES_CHECKPOINT_START_COUNT=%s\n' "${checkpoint_start}" >>"${GITHUB_ENV}"
+          printf 'SOAK_30M_POSTGRES_TEMP_FILE_START_COUNT=%s\n' "${temp_file_start}" >>"${GITHUB_ENV}"
+          printf 'SOAK_30M_POSTGRES_CHECKPOINT_START_REF=%s\n' "${checkpoint_start_ref}" >>"${GITHUB_ENV}"
+          printf 'SOAK_30M_POSTGRES_TEMP_FILE_START_REF=%s\n' "${temp_file_start_ref}" >>"${GITHUB_ENV}"
 
       - name: Run auth preflight
         if: env.SOAK_30M_USE_EXISTING_MANIFEST != 'true'
@@ -611,23 +663,50 @@ jobs:
             ORDER BY 1, 2, 3;
           " >>"${postgres_wait_ref}"
 
-          printf "metric\tvalue\n" >"${postgres_checkpoint_ref}"
-          if ! psql "${STAGING_OCI_A1_DATABASE_URL}" --no-align --tuples-only --field-separator=$'\t' --command "
-            SELECT 'postgres_checkpoint_count', (checkpoints_timed + checkpoints_req)::bigint
-            FROM pg_stat_bgwriter;
-          " >>"${postgres_checkpoint_ref}" 2>/dev/null; then
-            psql "${STAGING_OCI_A1_DATABASE_URL}" --no-align --tuples-only --field-separator=$'\t' --command "
-              SELECT 'postgres_checkpoint_count', (num_timed + num_requested)::bigint
+          query_checkpoint_count() {
+            if psql "${STAGING_OCI_A1_DATABASE_URL}" --no-align --tuples-only --command "
+              SELECT (checkpoints_timed + checkpoints_req)::bigint
+              FROM pg_stat_bgwriter;
+            " 2>/dev/null; then
+              return 0
+            fi
+            psql "${STAGING_OCI_A1_DATABASE_URL}" --no-align --tuples-only --command "
+              SELECT (num_timed + num_requested)::bigint
               FROM pg_stat_checkpointer;
-            " >>"${postgres_checkpoint_ref}"
-          fi
+            "
+          }
 
-          printf "metric\tvalue\n" >"${postgres_temp_file_ref}"
-          psql "${STAGING_OCI_A1_DATABASE_URL}" --no-align --tuples-only --field-separator=$'\t' --command "
-            SELECT 'postgres_temp_file_count', temp_files::bigint
-            FROM pg_stat_database
-            WHERE datname = current_database();
-          " >>"${postgres_temp_file_ref}"
+          query_temp_file_count() {
+            psql "${STAGING_OCI_A1_DATABASE_URL}" --no-align --tuples-only --command "
+              SELECT temp_files::bigint
+              FROM pg_stat_database
+              WHERE datname = current_database();
+            "
+          }
+
+          checkpoint_start="${SOAK_30M_POSTGRES_CHECKPOINT_START_COUNT:-0}"
+          temp_file_start="${SOAK_30M_POSTGRES_TEMP_FILE_START_COUNT:-0}"
+          checkpoint_end="$(query_checkpoint_count | tr -d '[:space:]')"
+          temp_file_end="$(query_temp_file_count | tr -d '[:space:]')"
+          if ! [[ "${checkpoint_start}" =~ ^[0-9]+$ && "${checkpoint_end}" =~ ^[0-9]+$ && "${temp_file_start}" =~ ^[0-9]+$ && "${temp_file_end}" =~ ^[0-9]+$ ]]; then
+            echo "::error::PostgreSQL end counters must be non-negative integers."
+            exit 1
+          fi
+          if (( checkpoint_end < checkpoint_start || temp_file_end < temp_file_start )); then
+            echo "::error::PostgreSQL counters decreased during 30m soak; stats reset invalidates delta evidence."
+            exit 1
+          fi
+          checkpoint_delta=$(( checkpoint_end - checkpoint_start ))
+          temp_file_delta=$(( temp_file_end - temp_file_start ))
+
+          {
+            printf "metric\tstart_value\tend_value\tdelta\n"
+            printf "postgres_checkpoint_count\t%s\t%s\t%s\n" "${checkpoint_start}" "${checkpoint_end}" "${checkpoint_delta}"
+          } >"${postgres_checkpoint_ref}"
+          {
+            printf "metric\tstart_value\tend_value\tdelta\n"
+            printf "postgres_temp_file_count\t%s\t%s\t%s\n" "${temp_file_start}" "${temp_file_end}" "${temp_file_delta}"
+          } >"${postgres_temp_file_ref}"
 
           {
             printf "key\tvalue\n"
@@ -665,6 +744,7 @@ jobs:
             SOAK_30M_ARTIFACTS_POSTGRES_CHECKPOINT_REF="${SOAK_30M_POSTGRES_CHECKPOINT_REF}" \
             SOAK_30M_ARTIFACTS_POSTGRES_TEMP_FILE_REF="${SOAK_30M_POSTGRES_TEMP_FILE_REF}" \
             SOAK_30M_ARTIFACTS_HIKARI_CONFIG_REF="${SOAK_30M_HIKARI_CONFIG_REF}" \
+            SOAK_30M_ARTIFACTS_POSTGRES_TEMP_FILE_DELTA_MAX="${SOAK_30M_POSTGRES_TEMP_FILE_DELTA_MAX:-0}" \
               tools/test/run-transaction-read-30m-soak-live-evidence-artifacts.sh
           )"
           echo "${manifest_output}"
@@ -683,6 +763,7 @@ jobs:
           SOAK_30M_LIVE_NAME="${SOAK_30M_REPORT_NAME}" \
           SOAK_30M_LIVE_INPUT_TSV="${SOAK_30M_EVIDENCE_MANIFEST_TSV}" \
           SOAK_30M_LIVE_OUTPUT_DIR="${report_dir}" \
+          SOAK_30M_LIVE_MAX_POSTGRES_TEMP_FILE_DELTA="${SOAK_30M_POSTGRES_TEMP_FILE_DELTA_MAX:-0}" \
             tools/test/run-transaction-read-30m-soak-live-evidence-gate.sh
 
           report_md="${report_dir}/${SOAK_30M_REPORT_NAME}-30m-soak-live-evidence.md"

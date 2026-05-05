@@ -62,8 +62,13 @@ output="$(
   SOAK_30M_MANIFEST_P99_MS=220 \
   SOAK_30M_MANIFEST_P999_MS=490 \
   SOAK_30M_MANIFEST_MAX_MS=650 \
+  SOAK_30M_MANIFEST_POSTGRES_CHECKPOINT_START_COUNT=10 \
+  SOAK_30M_MANIFEST_POSTGRES_CHECKPOINT_END_COUNT=13 \
   SOAK_30M_MANIFEST_POSTGRES_CHECKPOINT_COUNT=3 \
+  SOAK_30M_MANIFEST_POSTGRES_TEMP_FILE_START_COUNT=20 \
+  SOAK_30M_MANIFEST_POSTGRES_TEMP_FILE_END_COUNT=20 \
   SOAK_30M_MANIFEST_POSTGRES_TEMP_FILE_COUNT=0 \
+  SOAK_30M_MANIFEST_POSTGRES_TEMP_FILE_DELTA_MAX=0 \
   SOAK_30M_MANIFEST_NGINX_UPSTREAM_P95_MS=18.5 \
   SOAK_30M_MANIFEST_HIKARI_MAX_LIFETIME_MS=45000 \
   SOAK_30M_MANIFEST_HIKARI_KEEPALIVE_TIME_MS=30000 \
@@ -79,6 +84,9 @@ test -s "${report_md}"
 grep -F "gate_status=pass" "${report_md}" >/dev/null
 grep -F "failure_reason=ok" "${report_md}" >/dev/null
 grep -F "manifest rows: 2" "${report_md}" >/dev/null
+grep -F "PostgreSQL checkpoint start/end/delta: 10/13/3" "${report_md}" >/dev/null
+grep -F "PostgreSQL temp file start/end/delta: 20/20/0" "${report_md}" >/dev/null
+grep -F "PostgreSQL temp file delta budget: <=0" "${report_md}" >/dev/null
 grep -F $'hikari-lifetime\trun-soak-manifest-001\t2026-05-04T08:00:00Z\t30' "${manifest_tsv}" >/dev/null
 grep -F $'p999-long-correlation\trun-soak-manifest-001\t2026-05-04T08:00:00Z\t30' "${manifest_tsv}" >/dev/null
 
@@ -91,6 +99,27 @@ gate_output="$(
 )"
 gate_report="$(tail -1 <<<"${gate_output}")"
 grep -F "gate_status=pass" "${gate_report}" >/dev/null
+
+echo "[transaction-read-30m-soak-live-evidence-manifest] temp file delta budget marks failure"
+SOAK_30M_MANIFEST_NAME=soak-manifest-temp-delta \
+SOAK_30M_MANIFEST_RUN_ID=run-soak-manifest-001 \
+SOAK_30M_MANIFEST_OUTPUT_DIR="${temp_dir}/temp-delta-output" \
+SOAK_30M_MANIFEST_POSTGRES_TEMP_FILE_COUNT=1 \
+SOAK_30M_MANIFEST_POSTGRES_TEMP_FILE_DELTA_MAX=0 \
+SOAK_30M_MANIFEST_K6_SUMMARY_REF="${artifact_dir}/k6-summary.json" \
+SOAK_30M_MANIFEST_NGINX_AGGREGATE_REF="${artifact_dir}/nginx-aggregate.tsv" \
+SOAK_30M_MANIFEST_SPRING_METRICS_REF="${artifact_dir}/spring-metrics.json" \
+SOAK_30M_MANIFEST_HIKARI_LOG_REF="${artifact_dir}/hikari.log" \
+SOAK_30M_MANIFEST_POSTGRES_WAIT_REF="${artifact_dir}/postgres-wait.tsv" \
+SOAK_30M_MANIFEST_TIMELINE_REF="${artifact_dir}/timeline.tsv" \
+SOAK_30M_MANIFEST_POSTGRES_CHECKPOINT_REF="${artifact_dir}/postgres-checkpoint.tsv" \
+SOAK_30M_MANIFEST_POSTGRES_TEMP_FILE_REF="${artifact_dir}/postgres-temp-file.tsv" \
+SOAK_30M_MANIFEST_NGINX_UPSTREAM_LATENCY_REF="${artifact_dir}/nginx-upstream.tsv" \
+SOAK_30M_MANIFEST_HIKARI_CONFIG_REF="${artifact_dir}/hikari-config.tsv" \
+SOAK_30M_MANIFEST_HIKARI_ZERO_WARNING_SOAK_REF="${artifact_dir}/hikari-zero-warning.md" \
+  "${runner}" >/dev/null
+grep -F "gate_status=fail" "${temp_dir}/temp-delta-output/soak-manifest-temp-delta-30m-soak-live-evidence-manifest.md" >/dev/null
+grep -F "failure_reason=postgres-temp-file-delta-budget" "${temp_dir}/temp-delta-output/soak-manifest-temp-delta-30m-soak-live-evidence-manifest.md" >/dev/null
 
 echo "[transaction-read-30m-soak-live-evidence-manifest] missing artifact fails"
 if SOAK_30M_MANIFEST_NAME=soak-manifest-missing \

@@ -71,6 +71,9 @@ grep -F 'falling back to default self-hosted runner Docker context' "${workflow}
 grep -F "K6_DOCKER_CONTEXT=default" "${workflow}" >/dev/null
 grep -F 'printf '\''K6_REMOTE_WORKDIR=%s\n'\'' "${GITHUB_WORKSPACE}"' "${workflow}" >/dev/null
 grep -F "Capture 30m soak evidence window" "${workflow}" >/dev/null
+grep -F "Capture PostgreSQL baseline counters" "${workflow}" >/dev/null
+grep -F 'SOAK_30M_POSTGRES_CHECKPOINT_START_COUNT=%s' "${workflow}" >/dev/null
+grep -F 'SOAK_30M_POSTGRES_TEMP_FILE_START_COUNT=%s' "${workflow}" >/dev/null
 grep -F "Run 30m authenticated k6 soak" "${workflow}" >/dev/null
 grep -F 'local endpoint="$5"' "${workflow}" >/dev/null
 grep -F 'if [[ "${K6_WORKLOAD_WEIGHTS}" == *cold_* ]]; then' "${workflow}" >/dev/null
@@ -79,13 +82,17 @@ grep -F 'K6_DURATION="${SOAK_30M_DURATION}"' "${workflow}" >/dev/null
 grep -F "tools/test/run-k6-transaction-100m-loadtest.sh --no-up --no-deps" "${workflow}" >/dev/null
 grep -F "Collect 30m soak live evidence artifacts" "${workflow}" >/dev/null
 grep -F 'docker exec "${container}" sh -c' "${workflow}" >/dev/null
+grep -F 'printf "metric\tstart_value\tend_value\tdelta\n"' "${workflow}" >/dev/null
+grep -F 'stats reset invalidates delta evidence' "${workflow}" >/dev/null
 grep -F "Build 30m soak live evidence artifact pack" "${workflow}" >/dev/null
 grep -F 'SOAK_30M_ARTIFACTS_DURATION_MIN="${SOAK_30M_DURATION_MIN}"' "${workflow}" >/dev/null
+grep -F 'SOAK_30M_ARTIFACTS_POSTGRES_TEMP_FILE_DELTA_MAX="${SOAK_30M_POSTGRES_TEMP_FILE_DELTA_MAX:-0}"' "${workflow}" >/dev/null
 grep -F 'tools/test/run-transaction-read-30m-soak-live-evidence-artifacts.sh' "${workflow}" >/dev/null
 grep -F "Run 30m soak live evidence gate" "${workflow}" >/dev/null
 grep -F 'SOAK_30M_LIVE_NAME="${SOAK_30M_REPORT_NAME}"' "${workflow}" >/dev/null
 grep -F 'SOAK_30M_LIVE_INPUT_TSV="${SOAK_30M_EVIDENCE_MANIFEST_TSV}"' "${workflow}" >/dev/null
 grep -F 'SOAK_30M_LIVE_OUTPUT_DIR="${report_dir}"' "${workflow}" >/dev/null
+grep -F 'SOAK_30M_LIVE_MAX_POSTGRES_TEMP_FILE_DELTA="${SOAK_30M_POSTGRES_TEMP_FILE_DELTA_MAX:-0}"' "${workflow}" >/dev/null
 grep -F "tools/test/run-transaction-read-30m-soak-live-evidence-gate.sh" "${workflow}" >/dev/null
 grep -F 'cat "${report_md}"' "${workflow}" >/dev/null
 grep -F "actions/upload-artifact@v7" "${workflow}" >/dev/null

@@ -66,6 +66,11 @@ p999_ms="${SOAK_30M_MANIFEST_P999_MS:-0}"
 max_ms="${SOAK_30M_MANIFEST_MAX_MS:-0}"
 postgres_checkpoint_count="${SOAK_30M_MANIFEST_POSTGRES_CHECKPOINT_COUNT:-0}"
 postgres_temp_file_count="${SOAK_30M_MANIFEST_POSTGRES_TEMP_FILE_COUNT:-0}"
+postgres_checkpoint_start_count="${SOAK_30M_MANIFEST_POSTGRES_CHECKPOINT_START_COUNT:-${postgres_checkpoint_count}}"
+postgres_checkpoint_end_count="${SOAK_30M_MANIFEST_POSTGRES_CHECKPOINT_END_COUNT:-${postgres_checkpoint_count}}"
+postgres_temp_file_start_count="${SOAK_30M_MANIFEST_POSTGRES_TEMP_FILE_START_COUNT:-${postgres_temp_file_count}}"
+postgres_temp_file_end_count="${SOAK_30M_MANIFEST_POSTGRES_TEMP_FILE_END_COUNT:-${postgres_temp_file_count}}"
+postgres_temp_file_delta_max="${SOAK_30M_MANIFEST_POSTGRES_TEMP_FILE_DELTA_MAX:-0}"
 nginx_upstream_p95_ms="${SOAK_30M_MANIFEST_NGINX_UPSTREAM_P95_MS:-0}"
 hikari_max_lifetime_ms="${SOAK_30M_MANIFEST_HIKARI_MAX_LIFETIME_MS:-45000}"
 hikari_keepalive_time_ms="${SOAK_30M_MANIFEST_HIKARI_KEEPALIVE_TIME_MS:-30000}"
@@ -150,6 +155,11 @@ require_non_negative_number "SOAK_30M_MANIFEST_P999_MS" "${p999_ms}"
 require_non_negative_number "SOAK_30M_MANIFEST_MAX_MS" "${max_ms}"
 require_non_negative_integer "SOAK_30M_MANIFEST_POSTGRES_CHECKPOINT_COUNT" "${postgres_checkpoint_count}"
 require_non_negative_integer "SOAK_30M_MANIFEST_POSTGRES_TEMP_FILE_COUNT" "${postgres_temp_file_count}"
+require_non_negative_integer "SOAK_30M_MANIFEST_POSTGRES_CHECKPOINT_START_COUNT" "${postgres_checkpoint_start_count}"
+require_non_negative_integer "SOAK_30M_MANIFEST_POSTGRES_CHECKPOINT_END_COUNT" "${postgres_checkpoint_end_count}"
+require_non_negative_integer "SOAK_30M_MANIFEST_POSTGRES_TEMP_FILE_START_COUNT" "${postgres_temp_file_start_count}"
+require_non_negative_integer "SOAK_30M_MANIFEST_POSTGRES_TEMP_FILE_END_COUNT" "${postgres_temp_file_end_count}"
+require_non_negative_integer "SOAK_30M_MANIFEST_POSTGRES_TEMP_FILE_DELTA_MAX" "${postgres_temp_file_delta_max}"
 require_non_negative_number "SOAK_30M_MANIFEST_NGINX_UPSTREAM_P95_MS" "${nginx_upstream_p95_ms}"
 require_non_negative_integer "SOAK_30M_MANIFEST_HIKARI_MAX_LIFETIME_MS" "${hikari_max_lifetime_ms}"
 require_non_negative_integer "SOAK_30M_MANIFEST_HIKARI_KEEPALIVE_TIME_MS" "${hikari_keepalive_time_ms}"
@@ -186,6 +196,10 @@ fi
 if [[ "${backend_429_count}" != "0" || "${unknown_429_count}" != "0" || "${five_xx_count}" != "0" || "${nginx_499_count}" != "0" ]]; then
   manifest_status="fail"
   manifest_reasons+=("hard-zero-budget")
+fi
+if (( postgres_temp_file_count > postgres_temp_file_delta_max )); then
+  manifest_status="fail"
+  manifest_reasons+=("postgres-temp-file-delta-budget")
 fi
 if (( ${#manifest_reasons[@]} == 0 )); then
   manifest_reason="ok"
@@ -231,6 +245,9 @@ cat >"${report_md}" <<REPORT
 - k6 summary: ${k6_summary_ref}
 - Hikari log: ${hikari_log_ref}
 - PostgreSQL wait/checkpoint/temp file: ${postgres_wait_ref} / ${postgres_checkpoint_ref} / ${postgres_temp_file_ref}
+- PostgreSQL checkpoint start/end/delta: ${postgres_checkpoint_start_count}/${postgres_checkpoint_end_count}/${postgres_checkpoint_count}
+- PostgreSQL temp file start/end/delta: ${postgres_temp_file_start_count}/${postgres_temp_file_end_count}/${postgres_temp_file_count}
+- PostgreSQL temp file delta budget: <=${postgres_temp_file_delta_max}
 - Nginx upstream latency: ${nginx_upstream_latency_ref}
 - p95/p99/p99.9/max: ${p95_ms}/${p99_ms}/${p999_ms}/${max_ms}
 

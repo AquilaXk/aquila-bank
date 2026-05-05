@@ -56,6 +56,7 @@ grep -F "mixed_min_duration_min=30" <<<"${plan}" >/dev/null
 grep -F "p999_min_duration_min=30" <<<"${plan}" >/dev/null
 grep -F "hikari_min_duration_min=30" <<<"${plan}" >/dev/null
 grep -F "min_real_source_ips=2" <<<"${plan}" >/dev/null
+grep -F "max_postgres_temp_file_delta=0" <<<"${plan}" >/dev/null
 
 echo "[transaction-read-oci-evidence-execution] pass report"
 output="$(
@@ -72,7 +73,8 @@ grep -F "execution artifacts: k6, nginx access, Spring metrics, Hikari log, Post
 grep -F "unknown 429 hard-zero" "${report_md}" >/dev/null
 grep -F "p99.9 closure artifacts: PostgreSQL checkpoint, temp file, Nginx upstream latency" "${report_md}" >/dev/null
 grep -F "latency percentiles: p95, p99, p99.9, max" "${report_md}" >/dev/null
-grep -F "p999 long correlation metrics: PostgreSQL checkpoint count, temp file count, Nginx upstream p95" "${report_md}" >/dev/null
+grep -F "PostgreSQL temp file delta max: 0" "${report_md}" >/dev/null
+grep -F "p999 long correlation metrics: PostgreSQL checkpoint delta, temp file delta, Nginx upstream p95" "${report_md}" >/dev/null
 grep -F "Hikari lifetime alignment artifacts: config ref, zero-warning soak ref, timeout basis" "${report_md}" >/dev/null
 grep -F "mixed workload closure artifacts: workload mix, component split, outbox lag" "${report_md}" >/dev/null
 grep -F "mixed workload required components: read,write,auth,notification,sse" "${report_md}" >/dev/null
@@ -111,6 +113,22 @@ grep -F "499>0" "${output_dir}/oci-exec-fail-oci-evidence-execution.tsv" >/dev/n
 grep -F "hikari-warning>0" "${output_dir}/oci-exec-fail-oci-evidence-execution.tsv" >/dev/null
 grep -F "pool-pending>0" "${output_dir}/oci-exec-fail-oci-evidence-execution.tsv" >/dev/null
 grep -F "p999>500" "${output_dir}/oci-exec-fail-oci-evidence-execution.tsv" >/dev/null
+
+echo "[transaction-read-oci-evidence-execution] temp file delta budget fail"
+awk -F '\t' 'BEGIN { OFS = FS } NR == 1 { print; next } $1 == "p999-long-correlation" { $37 = 1 } { print }' \
+  "${input_tsv}" >"${input_tsv}.temp-delta-fail"
+if OCI_EVIDENCE_EXECUTION_NAME=oci-exec-temp-delta-fail \
+  OCI_EVIDENCE_EXECUTION_INPUT_TSV="${input_tsv}.temp-delta-fail" \
+  OCI_EVIDENCE_EXECUTION_OUTPUT_DIR="${output_dir}" \
+    "${runner}" >/dev/null 2>&1; then
+  echo "OCI execution gate unexpectedly passed temp file delta budget violation" >&2
+  exit 1
+fi
+OCI_EVIDENCE_EXECUTION_NAME=oci-exec-temp-delta-fail \
+OCI_EVIDENCE_EXECUTION_INPUT_TSV="${input_tsv}.temp-delta-fail" \
+OCI_EVIDENCE_EXECUTION_OUTPUT_DIR="${output_dir}" \
+  "${runner}" >/dev/null 2>&1 || true
+grep -F "postgres-temp-file-delta>0" "${output_dir}/oci-exec-temp-delta-fail-oci-evidence-execution.tsv" >/dev/null
 
 echo "[transaction-read-oci-evidence-execution] missing scenario fails"
 awk -F '\t' '$1 != "deploy-drain"' "${input_tsv}" >"${input_tsv}.missing"

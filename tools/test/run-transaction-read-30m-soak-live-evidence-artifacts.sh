@@ -19,6 +19,7 @@ Environment:
   SOAK_30M_ARTIFACTS_POSTGRES_CHECKPOINT_REF  required PostgreSQL checkpoint TSV
   SOAK_30M_ARTIFACTS_POSTGRES_TEMP_FILE_REF   required PostgreSQL temp file TSV
   SOAK_30M_ARTIFACTS_HIKARI_CONFIG_REF        required Hikari/PostgreSQL/NAT timeout TSV
+  SOAK_30M_ARTIFACTS_POSTGRES_TEMP_FILE_DELTA_MAX default 0
 USAGE
 }
 
@@ -56,6 +57,7 @@ timeline_ref="${SOAK_30M_ARTIFACTS_TIMELINE_REF:-}"
 postgres_checkpoint_ref="${SOAK_30M_ARTIFACTS_POSTGRES_CHECKPOINT_REF:-}"
 postgres_temp_file_ref="${SOAK_30M_ARTIFACTS_POSTGRES_TEMP_FILE_REF:-}"
 hikari_config_ref="${SOAK_30M_ARTIFACTS_HIKARI_CONFIG_REF:-}"
+postgres_temp_file_delta_max="${SOAK_30M_ARTIFACTS_POSTGRES_TEMP_FILE_DELTA_MAX:-0}"
 
 nginx_aggregate_dir="${output_dir}/nginx-access-aggregate"
 nginx_aggregate_tsv="${nginx_aggregate_dir}/${name}-nginx-access-aggregate.tsv"
@@ -117,13 +119,39 @@ latency_percentile() {
     "$(metric_value aquila_transaction_cold_deep_cursor_ms "${field}")"
 }
 
+tsv_metric_field() {
+  local file="$1"
+  local key="$2"
+  local field="$3"
+  local fallback_field="${4:-value}"
+  awk -F '\t' -v key="${key}" -v field="${field}" -v fallback_field="${fallback_field}" '
+    NR == 1 {
+      for (i = 1; i <= NF; i++) {
+        if ($i == "metric") metric_col = i
+        if ($i == field) field_col = i
+        if ($i == fallback_field) fallback_col = i
+      }
+      next
+    }
+    (!metric_col && $1 == key) || (metric_col && $metric_col == key) {
+      if (field_col && $field_col != "") {
+        print $field_col
+      } else if (fallback_col && $fallback_col != "") {
+        print $fallback_col
+      } else {
+        print $2
+      }
+      found = 1
+      exit
+    }
+    END { if (!found) print "0" }
+  ' "${file}"
+}
+
 tsv_value() {
   local file="$1"
   local key="$2"
-  awk -F '\t' -v key="${key}" '
-    NR > 1 && $1 == key { print $2; found = 1; exit }
-    END { if (!found) print "0" }
-  ' "${file}"
+  tsv_metric_field "${file}" "${key}" "delta" "value"
 }
 
 hikari_config_value() {
@@ -206,6 +234,13 @@ write_failure_report() {
     printf "timeline_ref=%s\n" "${timeline_ref}"
     printf "postgres_checkpoint_ref=%s\n" "${postgres_checkpoint_ref}"
     printf "postgres_temp_file_ref=%s\n" "${postgres_temp_file_ref}"
+    printf "postgres_checkpoint_start_count=%s\n" "${postgres_checkpoint_start_count:-0}"
+    printf "postgres_checkpoint_end_count=%s\n" "${postgres_checkpoint_end_count:-0}"
+    printf "postgres_checkpoint_delta=%s\n" "${postgres_checkpoint_count:-0}"
+    printf "postgres_temp_file_start_count=%s\n" "${postgres_temp_file_start_count:-0}"
+    printf "postgres_temp_file_end_count=%s\n" "${postgres_temp_file_end_count:-0}"
+    printf "postgres_temp_file_delta=%s\n" "${postgres_temp_file_count:-0}"
+    printf "postgres_temp_file_delta_max=%s\n" "${postgres_temp_file_delta_max}"
   } >"${failure_reason_ref}"
 
   cat >"${failure_report_ref}" <<REPORT
@@ -221,6 +256,9 @@ write_failure_report() {
 - Hikari log: ${hikari_log}
 - p999 timeline: ${timeline_ref}
 - PostgreSQL wait/checkpoint/temp: ${postgres_wait_ref} / ${postgres_checkpoint_ref} / ${postgres_temp_file_ref}
+- PostgreSQL checkpoint start/end/delta: ${postgres_checkpoint_start_count:-0}/${postgres_checkpoint_end_count:-0}/${postgres_checkpoint_count:-0}
+- PostgreSQL temp file start/end/delta: ${postgres_temp_file_start_count:-0}/${postgres_temp_file_end_count:-0}/${postgres_temp_file_count:-0}
+- PostgreSQL temp file delta budget: <=${postgres_temp_file_delta_max}
 
 ## Operator Notes
 
@@ -244,6 +282,7 @@ print_plan() {
 
 require_non_negative_integer "SOAK_30M_ARTIFACTS_DURATION_MIN" "${duration_min}"
 require_non_negative_integer "SOAK_30M_ARTIFACTS_SOURCE_IPS" "${source_ips}"
+require_non_negative_integer "SOAK_30M_ARTIFACTS_POSTGRES_TEMP_FILE_DELTA_MAX" "${postgres_temp_file_delta_max}"
 if (( duration_min < 30 )); then
   echo "SOAK_30M_ARTIFACTS_DURATION_MIN must be at least 30: ${duration_min}" >&2
   exit 1
@@ -298,6 +337,16 @@ nginx_499_count="$(nginx_499_count)"
 nginx_upstream_p95_ms="$(nginx_upstream_p95)"
 postgres_checkpoint_count="$(tsv_value "${postgres_checkpoint_ref}" "postgres_checkpoint_count")"
 postgres_temp_file_count="$(tsv_value "${postgres_temp_file_ref}" "postgres_temp_file_count")"
+postgres_checkpoint_start_count="$(tsv_metric_field "${postgres_checkpoint_ref}" "postgres_checkpoint_count" "start_value" "value")"
+postgres_checkpoint_end_count="$(tsv_metric_field "${postgres_checkpoint_ref}" "postgres_checkpoint_count" "end_value" "value")"
+postgres_temp_file_start_count="$(tsv_metric_field "${postgres_temp_file_ref}" "postgres_temp_file_count" "start_value" "value")"
+postgres_temp_file_end_count="$(tsv_metric_field "${postgres_temp_file_ref}" "postgres_temp_file_count" "end_value" "value")"
+require_non_negative_integer "postgres_checkpoint_count" "${postgres_checkpoint_count}"
+require_non_negative_integer "postgres_temp_file_count" "${postgres_temp_file_count}"
+require_non_negative_integer "postgres_checkpoint_start_count" "${postgres_checkpoint_start_count}"
+require_non_negative_integer "postgres_checkpoint_end_count" "${postgres_checkpoint_end_count}"
+require_non_negative_integer "postgres_temp_file_start_count" "${postgres_temp_file_start_count}"
+require_non_negative_integer "postgres_temp_file_end_count" "${postgres_temp_file_end_count}"
 hikari_max_lifetime_ms="$(hikari_config_value "hikari_max_lifetime_ms")"
 hikari_keepalive_time_ms="$(hikari_config_value "hikari_keepalive_time_ms")"
 postgres_idle_timeout_ms="$(hikari_config_value "postgres_idle_timeout_ms")"
@@ -333,8 +382,13 @@ SOAK_30M_MANIFEST_P95_MS="${p95_ms}" \
 SOAK_30M_MANIFEST_P99_MS="${p99_ms}" \
 SOAK_30M_MANIFEST_P999_MS="${p999_ms}" \
 SOAK_30M_MANIFEST_MAX_MS="${max_ms}" \
+SOAK_30M_MANIFEST_POSTGRES_CHECKPOINT_START_COUNT="${postgres_checkpoint_start_count}" \
+SOAK_30M_MANIFEST_POSTGRES_CHECKPOINT_END_COUNT="${postgres_checkpoint_end_count}" \
 SOAK_30M_MANIFEST_POSTGRES_CHECKPOINT_COUNT="${postgres_checkpoint_count}" \
+SOAK_30M_MANIFEST_POSTGRES_TEMP_FILE_START_COUNT="${postgres_temp_file_start_count}" \
+SOAK_30M_MANIFEST_POSTGRES_TEMP_FILE_END_COUNT="${postgres_temp_file_end_count}" \
 SOAK_30M_MANIFEST_POSTGRES_TEMP_FILE_COUNT="${postgres_temp_file_count}" \
+SOAK_30M_MANIFEST_POSTGRES_TEMP_FILE_DELTA_MAX="${postgres_temp_file_delta_max}" \
 SOAK_30M_MANIFEST_NGINX_UPSTREAM_P95_MS="${nginx_upstream_p95_ms}" \
 SOAK_30M_MANIFEST_HIKARI_MAX_LIFETIME_MS="${hikari_max_lifetime_ms}" \
 SOAK_30M_MANIFEST_HIKARI_KEEPALIVE_TIME_MS="${hikari_keepalive_time_ms}" \
@@ -343,8 +397,25 @@ SOAK_30M_MANIFEST_OCI_NAT_IDLE_TIMEOUT_MS="${oci_nat_idle_timeout_ms}" \
 SOAK_30M_MANIFEST_OUTPUT_DIR="${manifest_dir}" \
   tools/test/run-transaction-read-30m-soak-live-evidence-manifest.sh | tail -1
 
+failure_reasons=()
+failure_details=()
 if [[ "${hikari_validation_warnings}" != "0" ]]; then
-  write_failure_report "hikari-validation-warning" "hikari_validation_warnings=${hikari_validation_warnings}"
-  echo "hikari validation warnings must be zero: ${hikari_validation_warnings}" >&2
+  failure_reasons+=("hikari-validation-warning")
+  failure_details+=("hikari_validation_warnings=${hikari_validation_warnings}")
+fi
+if (( postgres_temp_file_count > postgres_temp_file_delta_max )); then
+  failure_reasons+=("postgres-temp-file-delta-budget")
+  failure_details+=("postgres_temp_file_delta=${postgres_temp_file_count},max=${postgres_temp_file_delta_max}")
+fi
+if (( ${#failure_reasons[@]} > 0 )); then
+  failure_reason="$(IFS=,; echo "${failure_reasons[*]}")"
+  failure_detail="$(IFS=';'; echo "${failure_details[*]}")"
+  write_failure_report "${failure_reason}" "${failure_detail}"
+  if [[ "${failure_reason}" == *"hikari-validation-warning"* ]]; then
+    echo "hikari validation warnings must be zero: ${hikari_validation_warnings}" >&2
+  fi
+  if [[ "${failure_reason}" == *"postgres-temp-file-delta-budget"* ]]; then
+    echo "postgres temp file delta exceeds budget: ${postgres_temp_file_count} > ${postgres_temp_file_delta_max}" >&2
+  fi
   exit 1
 fi
