@@ -64,8 +64,8 @@ reject_pattern 'boot_volume_size_in_gbs = 200' "${module_dir}/terraform.tfvars.e
 
 echo "[oci-always-free-a1-flex] block volume contract"
 require_pattern 'resource "oci_core_volume" "data"' "${module_dir}/storage.tf"
-require_pattern 'size_in_gbs = var.data_volume_size_in_gbs' "${module_dir}/storage.tf"
-require_pattern 'vpus_per_gb = var.data_volume_vpus_per_gb' "${module_dir}/storage.tf"
+require_pattern 'size_in_gbs         = var.data_volume_size_in_gbs' "${module_dir}/storage.tf"
+require_pattern 'vpus_per_gb         = var.data_volume_vpus_per_gb' "${module_dir}/storage.tf"
 require_pattern 'resource "oci_core_volume_attachment" "data"' "${module_dir}/storage.tf"
 require_pattern 'attachment_type = "paravirtualized"' "${module_dir}/storage.tf"
 

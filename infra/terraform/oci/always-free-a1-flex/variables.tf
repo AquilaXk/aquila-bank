@@ -245,14 +245,62 @@ variable "instance_memory_in_gbs" {
 }
 
 variable "boot_volume_size_in_gbs" {
-  description = "Boot volume size in GB. This stack caps it at the requested 150GB."
+  description = "Boot volume size in GB. Keep this at 50GB so the remaining Always Free storage can be a 0 VPU data Block Volume."
+  type        = number
+  default     = 50
+  nullable    = false
+
+  validation {
+    condition     = var.boot_volume_size_in_gbs == 50
+    error_message = "boot_volume_size_in_gbs must be 50 for the Always Free 50GB boot + 150GB data volume layout."
+  }
+}
+
+variable "data_volume_size_in_gbs" {
+  description = "Always Free data Block Volume size in GB. Combined with the 50GB boot volume this must stay within the 200GB free storage limit."
   type        = number
   default     = 150
   nullable    = false
 
   validation {
-    condition     = var.boot_volume_size_in_gbs >= 50 && var.boot_volume_size_in_gbs <= 150
-    error_message = "boot_volume_size_in_gbs must be between 50 and 150."
+    condition     = var.data_volume_size_in_gbs == 150
+    error_message = "data_volume_size_in_gbs must be 150 so boot and data volumes stay within the 200GB Always Free limit."
+  }
+}
+
+variable "data_volume_vpus_per_gb" {
+  description = "Data Block Volume VPUs per GB. 0 is Lower Cost and avoids additional VPU charges; 0 is only valid for block volumes, not boot volumes."
+  type        = number
+  default     = 0
+  nullable    = false
+
+  validation {
+    condition     = var.data_volume_vpus_per_gb == 0
+    error_message = "data_volume_vpus_per_gb must be 0 for the Always Free Lower Cost data volume."
+  }
+}
+
+variable "data_volume_device" {
+  description = "Expected paravirtualized Linux device path for the attached data volume."
+  type        = string
+  default     = "/dev/oracleoci/oraclevdb"
+  nullable    = false
+
+  validation {
+    condition     = startswith(var.data_volume_device, "/dev/")
+    error_message = "data_volume_device must be an absolute /dev path."
+  }
+}
+
+variable "data_volume_mount_path" {
+  description = "Mount path for the 0 VPU data volume. Docker data-root is placed under this path."
+  type        = string
+  default     = "/var/lib/aquila-data"
+  nullable    = false
+
+  validation {
+    condition     = startswith(var.data_volume_mount_path, "/") && !endswith(var.data_volume_mount_path, "/")
+    error_message = "data_volume_mount_path must be an absolute path without trailing slash."
   }
 }
 

@@ -19,6 +19,10 @@ resource "oci_core_instance" "this" {
 
   metadata = {
     ssh_authorized_keys = trimspace(var.ssh_public_key)
+    user_data = base64encode(templatefile("${path.module}/cloud-init.yaml", {
+      data_volume_device     = var.data_volume_device
+      data_volume_mount_path = var.data_volume_mount_path
+    }))
   }
 
   shape_config {
