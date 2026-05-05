@@ -78,7 +78,7 @@ TSV
 hikari_config="${artifact_dir}/hikari-config.tsv"
 cat >"${hikari_config}" <<'TSV'
 key	value
-hikari_max_lifetime_ms	120000
+hikari_max_lifetime_ms	45000
 hikari_keepalive_time_ms	30000
 postgres_idle_timeout_ms	300000
 oci_nat_idle_timeout_ms	350000

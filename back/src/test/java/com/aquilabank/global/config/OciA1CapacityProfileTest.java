@@ -37,7 +37,7 @@ class OciA1CapacityProfileTest {
                   environment.getProperty("spring.datasource.hikari.minimum-idle", Integer.class))
               .isEqualTo(1);
           assertThat(environment.getProperty("spring.datasource.hikari.max-lifetime", Long.class))
-              .isEqualTo(120_000L);
+              .isEqualTo(45_000L);
           assertThat(environment.getProperty("spring.datasource.hikari.keepalive-time", Long.class))
               .isEqualTo(30_000L);
           assertThat(
