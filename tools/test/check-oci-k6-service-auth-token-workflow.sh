@@ -51,6 +51,10 @@ grep -F 'K6_REMOTE_WORKDIR="${CAPACITY_K6_REMOTE_WORKDIR:-${GITHUB_WORKSPACE}}"'
 grep -F "STAGING_REPLAY_TOKEN" "${workflow}" >/dev/null
 grep -F 'K6_AUTH_TOKEN_ENV_NAME="STAGING_REPLAY_TOKEN"' "${workflow}" >/dev/null
 grep -F 'K6_AUTH_PREFLIGHT="true"' "${workflow}" >/dev/null
+grep -F "OCI_A1_BACKEND_ENV_B64" "${workflow}" >/dev/null
+grep -F "POSTGRES_CONTAINER_NAME" "${workflow}" >/dev/null
+grep -F "POSTGRES_NETWORK_ALIAS" "${workflow}" >/dev/null
+grep -F "POSTGRES_HOST_BIND" "${workflow}" >/dev/null
 grep -F "K6_AUTH_PREFLIGHT_PATH" "${workflow}" >/dev/null
 grep -F "burst_rate:" "${workflow}" >/dev/null
 grep -F 'description: "Hot account id, or comma-separated hot account ids for fairness replay"' "${workflow}" >/dev/null

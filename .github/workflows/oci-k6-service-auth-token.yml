@@ -315,6 +315,10 @@ jobs:
           fi
 
           env_names=(
+            OCI_A1_BACKEND_ENV_B64
+            POSTGRES_CONTAINER_NAME
+            POSTGRES_NETWORK_ALIAS
+            POSTGRES_HOST_BIND
             STAGING_REPLAY_TOKEN
             STAGING_OCI_A1_DATABASE_URL
             STAGING_RDS_DATABASE_URL
