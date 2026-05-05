@@ -56,8 +56,8 @@ backend_archive_admission_adaptive_max=10
 weighted_vu16_max_429_rate=0.05
 short_burst64_max_429_rate=0.10
 hikari_max=8
-hikari_max_lifetime_ms=240000
-hikari_keepalive_time_ms=60000
+hikari_max_lifetime_ms=120000
+hikari_keepalive_time_ms=30000
 backend_api_keepalive_timeout_seconds=2
 expected_429_source="edge-or-backend-admission"
 
@@ -141,8 +141,8 @@ require_pattern 'OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_HOT_ADAPTIVE_MAX=${O
 require_pattern 'OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_ARCHIVE_MAX=${OCI_A1_TRANSACTION_READ_ARCHIVE_ADMISSION_MAX:-6}' "${deploy_script}"
 require_pattern 'OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_ARCHIVE_ADAPTIVE_MAX=${OCI_A1_TRANSACTION_READ_ARCHIVE_ADMISSION_ADAPTIVE_MAX:-10}' "${deploy_script}"
 require_pattern 'maximum-pool-size: ${OCI_A1_DB_POOL_MAX_SIZE:8}' "${oci_profile}"
-require_pattern 'max-lifetime: ${OCI_A1_DB_MAX_LIFETIME_MS:240000}' "${oci_profile}"
-require_pattern 'keepalive-time: ${OCI_A1_DB_KEEPALIVE_TIME_MS:60000}' "${oci_profile}"
+require_pattern 'max-lifetime: ${OCI_A1_DB_MAX_LIFETIME_MS:120000}' "${oci_profile}"
+require_pattern 'keepalive-time: ${OCI_A1_DB_KEEPALIVE_TIME_MS:30000}' "${oci_profile}"
 require_pattern 'max: ${OCI_A1_TRANSACTION_READ_ADMISSION_MAX:8}' "${oci_profile}"
 require_pattern 'adaptive-max: ${OCI_A1_TRANSACTION_READ_ADMISSION_ADAPTIVE_MAX:12}' "${oci_profile}"
 require_pattern 'low-saturation-increase-every-successes: ${OCI_A1_TRANSACTION_READ_ADMISSION_LOW_SATURATION_INCREASE_EVERY_SUCCESSES:16}' "${oci_profile}"

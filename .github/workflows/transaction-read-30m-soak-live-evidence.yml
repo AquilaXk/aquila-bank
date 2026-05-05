@@ -631,8 +631,8 @@ jobs:
 
           {
             printf "key\tvalue\n"
-            printf "hikari_max_lifetime_ms\t%s\n" "${OCI_A1_DB_MAX_LIFETIME_MS:-240000}"
-            printf "hikari_keepalive_time_ms\t%s\n" "${OCI_A1_DB_KEEPALIVE_TIME_MS:-60000}"
+            printf "hikari_max_lifetime_ms\t%s\n" "${OCI_A1_DB_MAX_LIFETIME_MS:-120000}"
+            printf "hikari_keepalive_time_ms\t%s\n" "${OCI_A1_DB_KEEPALIVE_TIME_MS:-30000}"
             printf "postgres_idle_timeout_ms\t%s\n" "${POSTGRES_IDLE_IN_TRANSACTION_TIMEOUT_MS:-300000}"
             printf "oci_nat_idle_timeout_ms\t%s\n" "${OCI_NAT_IDLE_TIMEOUT_MS:-350000}"
           } >"${hikari_config_ref}"

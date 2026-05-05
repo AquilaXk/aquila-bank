@@ -35,8 +35,8 @@ grep -F "backend_archive_admission_adaptive_max=10" <<<"${plan}" >/dev/null
 grep -F "weighted_vu16_max_429_rate=0.05" <<<"${plan}" >/dev/null
 grep -F "short_burst64_max_429_rate=0.10" <<<"${plan}" >/dev/null
 grep -F "hikari_max=8" <<<"${plan}" >/dev/null
-grep -F "hikari_max_lifetime_ms=240000" <<<"${plan}" >/dev/null
-grep -F "hikari_keepalive_time_ms=60000" <<<"${plan}" >/dev/null
+grep -F "hikari_max_lifetime_ms=120000" <<<"${plan}" >/dev/null
+grep -F "hikari_keepalive_time_ms=30000" <<<"${plan}" >/dev/null
 grep -F "backend_api_keepalive_timeout_seconds=2" <<<"${plan}" >/dev/null
 grep -F "expected_429_source=edge-or-backend-admission" <<<"${plan}" >/dev/null
 
@@ -66,8 +66,8 @@ grep -F "| backend archive admission adaptive max | 10 |" "${report_md}" >/dev/n
 grep -F "| paced-weighted-vu16 max 429 rate | 0.05 |" "${report_md}" >/dev/null
 grep -F "| short-burst-64 max 429 rate | 0.10 |" "${report_md}" >/dev/null
 grep -F "| Hikari max pool | 8 |" "${report_md}" >/dev/null
-grep -F "| Hikari max lifetime ms | 240000 |" "${report_md}" >/dev/null
-grep -F "| Hikari keepalive time ms | 60000 |" "${report_md}" >/dev/null
+grep -F "| Hikari max lifetime ms | 120000 |" "${report_md}" >/dev/null
+grep -F "| Hikari keepalive time ms | 30000 |" "${report_md}" >/dev/null
 grep -F "| Backend API keepalive timeout seconds | 2 |" "${report_md}" >/dev/null
 grep -F "| expected 429 source | edge-or-backend-admission |" "${report_md}" >/dev/null
 grep -F "accepted request p95 <= 200ms, p99 <= 300ms" "${report_md}" >/dev/null
@@ -100,8 +100,8 @@ grep -F 'limit_req zone=aquila_bank_transaction_archive_per_ip burst=${NGINX_TRA
 grep -F 'keepalive_timeout ${NGINX_BACKEND_API_KEEPALIVE_TIMEOUT_SECONDS}s;' ops/nginx/nginx.conf >/dev/null
 grep -F 'proxy_next_upstream error timeout http_502;' ops/nginx/nginx.conf >/dev/null
 grep -F 'maximum-pool-size: ${OCI_A1_DB_POOL_MAX_SIZE:8}' back/src/main/resources/application-oci-a1.yml >/dev/null
-grep -F 'max-lifetime: ${OCI_A1_DB_MAX_LIFETIME_MS:240000}' back/src/main/resources/application-oci-a1.yml >/dev/null
-grep -F 'keepalive-time: ${OCI_A1_DB_KEEPALIVE_TIME_MS:60000}' back/src/main/resources/application-oci-a1.yml >/dev/null
+grep -F 'max-lifetime: ${OCI_A1_DB_MAX_LIFETIME_MS:120000}' back/src/main/resources/application-oci-a1.yml >/dev/null
+grep -F 'keepalive-time: ${OCI_A1_DB_KEEPALIVE_TIME_MS:30000}' back/src/main/resources/application-oci-a1.yml >/dev/null
 grep -F 'max: ${OCI_A1_TRANSACTION_READ_ADMISSION_MAX:8}' back/src/main/resources/application-oci-a1.yml >/dev/null
 grep -F 'adaptive-max: ${OCI_A1_TRANSACTION_READ_ADMISSION_ADAPTIVE_MAX:12}' back/src/main/resources/application-oci-a1.yml >/dev/null
 grep -F 'low-saturation-increase-every-successes: ${OCI_A1_TRANSACTION_READ_ADMISSION_LOW_SATURATION_INCREASE_EVERY_SUCCESSES:16}' back/src/main/resources/application-oci-a1.yml >/dev/null
