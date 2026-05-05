@@ -482,6 +482,7 @@ jobs:
             local account_ids="$2"
             local from="$3"
             local to="$4"
+            local endpoint="$5"
             local account_id raw_account_id
             IFS="," read -r -a accounts <<<"${account_ids}"
             for raw_account_id in "${accounts[@]}"; do
@@ -494,9 +495,9 @@ jobs:
                 exit 1
               fi
               echo "[oci-k6-service-auth] auth preflight ${account_group} account=${account_id}" >>"${auth_preflight_log}"
-              K6_AUTH_PREFLIGHT_PATH="api/v1/transactions?accountId=${account_id}&from=${from}&to=${to}&limit=1" \
+              K6_AUTH_PREFLIGHT_PATH="${endpoint}?accountId=${account_id}&from=${from}&to=${to}&limit=1" \
                 tools/test/run-k6-transaction-100m-loadtest.sh --auth-preflight-only >>"${auth_preflight_log}" 2>&1
-              preflight_url="${K6_REMOTE_BASE_URL%/}/api/v1/transactions?accountId=${account_id}&from=${from}&to=${to}&limit=1"
+              preflight_url="${K6_REMOTE_BASE_URL%/}/${endpoint}?accountId=${account_id}&from=${from}&to=${to}&limit=1"
               preflight_body="${report_dir}/auth-preflight-${account_group}-${account_id}.json"
               status="$(
                 curl -sS -o "${preflight_body}" -w "%{http_code}" \
@@ -522,8 +523,8 @@ jobs:
             done
           }
 
-          run_account_auth_preflight hot "${K6_HOT_ACCOUNT_IDS:-${K6_HOT_ACCOUNT_ID}}" "${K6_HOT_FROM}" "${K6_HOT_TO}"
-          run_account_auth_preflight cold "${K6_COLD_ACCOUNT_IDS:-${K6_COLD_ACCOUNT_ID}}" "${K6_COLD_FROM}" "${K6_COLD_TO}"
+          run_account_auth_preflight hot "${K6_HOT_ACCOUNT_IDS:-${K6_HOT_ACCOUNT_ID}}" "${K6_HOT_FROM}" "${K6_HOT_TO}" "api/v1/transactions"
+          run_account_auth_preflight cold "${K6_COLD_ACCOUNT_IDS:-${K6_COLD_ACCOUNT_ID}}" "${K6_COLD_FROM}" "${K6_COLD_TO}" "api/v1/transactions/archive"
 
       - name: Run authenticated k6 capacity
         shell: bash
