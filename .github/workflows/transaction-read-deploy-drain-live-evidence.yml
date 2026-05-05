@@ -1,0 +1,142 @@
+name: Transaction Read Deploy Drain Live Evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      evidence_manifest_tsv:
+        description: "OCI deploy-drain evidence manifest TSV path on the self-hosted runner"
+        required: false
+        type: string
+      deploy_499_budget_count:
+        description: "Allowed Nginx 499 budget count during deploy/drain"
+        required: false
+        default: "0"
+        type: string
+      report_name:
+        description: "Optional deploy drain evidence report name"
+        required: false
+        type: string
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/transaction-read-deploy-drain-live-evidence.yml"
+      - "tools/test/check-transaction-read-deploy-drain-live-evidence-workflow.sh"
+      - "tools/test/run-transaction-read-deploy-drain-under-load-gate.sh"
+      - "tools/test/check-transaction-read-deploy-drain-under-load-gate.sh"
+      - "tools/test/run-transaction-read-oci-evidence-execution-gate.sh"
+      - "tools/test/check-transaction-read-oci-evidence-execution-gate.sh"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: transaction-read-deploy-drain-live-evidence-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    name: deploy drain live evidence contract
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Check deploy drain live evidence workflow
+        run: bash tools/test/check-transaction-read-deploy-drain-live-evidence-workflow.sh
+
+      - name: Check deploy drain under-load contract
+        run: bash tools/test/check-transaction-read-deploy-drain-under-load-gate.sh
+
+      - name: Check OCI evidence execution gate contract
+        run: bash tools/test/check-transaction-read-oci-evidence-execution-gate.sh
+
+  live-evidence:
+    name: Deploy Drain Live Evidence Gate
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, oci-a1-staging]
+    timeout-minutes: 15
+    environment:
+      name: staging
+    env:
+      OCI_A1_STAGING_ENV: ${{ secrets.OCI_A1_STAGING_ENV }}
+      DEPLOY_DRAIN_LIVE_NAME: ${{ inputs.report_name || format('transaction-read-deploy-drain-live-evidence-{0}', github.run_id) }}
+      DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV_INPUT: ${{ inputs.evidence_manifest_tsv }}
+      DEPLOY_DRAIN_499_BUDGET_COUNT_INPUT: ${{ inputs.deploy_499_budget_count }}
+      DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV_VAR: ${{ vars.OCI_DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV }}
+      DEPLOY_DRAIN_499_BUDGET_COUNT_VAR: ${{ vars.OCI_DEPLOY_DRAIN_499_BUDGET_COUNT }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Resolve deploy drain evidence manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! [[ "${DEPLOY_DRAIN_LIVE_NAME}" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            echo "::error::DEPLOY_DRAIN_LIVE_NAME must contain only letters, numbers, dot, underscore, or hyphen."
+            exit 1
+          fi
+
+          report_dir="build/reports/k6/${DEPLOY_DRAIN_LIVE_NAME}"
+          mkdir -p "${report_dir}"
+
+          if [[ -n "${OCI_A1_STAGING_ENV}" ]]; then
+            staging_env_path="${RUNNER_TEMP}/oci-deploy-drain-live-evidence.env"
+            printf '%s\n' "${OCI_A1_STAGING_ENV}" >"${staging_env_path}"
+            chmod 600 "${staging_env_path}"
+
+            set -a
+            # staging env는 runner-local manifest 경로만 공급하고 secret 값은 artifact에 남기지 않는다.
+            source "${staging_env_path}"
+            set +a
+          fi
+
+          DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV="${DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV_INPUT:-${DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV:-${DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV_VAR:-}}}"
+          DEPLOY_DRAIN_499_BUDGET_COUNT="${DEPLOY_DRAIN_499_BUDGET_COUNT_INPUT:-${DEPLOY_DRAIN_499_BUDGET_COUNT:-${DEPLOY_DRAIN_499_BUDGET_COUNT_VAR:-0}}}"
+          if [[ -z "${DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV}" ]]; then
+            echo "::error::Missing deploy drain evidence manifest. Dispatch with evidence_manifest_tsv or configure OCI_DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV."
+            exit 1
+          fi
+          if [[ ! -s "${DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV}" ]]; then
+            echo "::error::Deploy drain evidence manifest must be a non-empty runner-local TSV: ${DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV}"
+            exit 1
+          fi
+          if ! [[ "${DEPLOY_DRAIN_499_BUDGET_COUNT}" =~ ^[0-9]+$ ]]; then
+            echo "::error::DEPLOY_DRAIN_499_BUDGET_COUNT must be a non-negative integer: ${DEPLOY_DRAIN_499_BUDGET_COUNT}"
+            exit 1
+          fi
+
+          printf 'DEPLOY_DRAIN_LIVE_OUTPUT_DIR=%s\n' "${report_dir}" >>"${GITHUB_ENV}"
+          printf 'DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV=%s\n' "${DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV}" >>"${GITHUB_ENV}"
+          printf 'DEPLOY_DRAIN_499_BUDGET_COUNT=%s\n' "${DEPLOY_DRAIN_499_BUDGET_COUNT}" >>"${GITHUB_ENV}"
+
+      - name: Run deploy drain live evidence gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          gate_output="$(
+            DEPLOY_DRAIN_GATE_NAME="${DEPLOY_DRAIN_LIVE_NAME}" \
+            DEPLOY_DRAIN_GATE_INPUT_TSV="${DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV}" \
+            DEPLOY_DRAIN_GATE_OUTPUT_DIR="${DEPLOY_DRAIN_LIVE_OUTPUT_DIR}" \
+            DEPLOY_DRAIN_GATE_499_BUDGET_COUNT="${DEPLOY_DRAIN_499_BUDGET_COUNT}" \
+              tools/test/run-transaction-read-deploy-drain-under-load-gate.sh
+          )"
+          echo "${gate_output}"
+
+          report_md="$(tail -1 <<<"${gate_output}")"
+          {
+            echo "## Transaction Read Deploy Drain Live Evidence"
+            echo
+            cat "${report_md}"
+          } >>"${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload deploy drain live evidence artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: transaction-read-deploy-drain-live-evidence-${{ github.run_id }}
+          path: build/reports/k6/${{ env.DEPLOY_DRAIN_LIVE_NAME }}/
+          if-no-files-found: ignore
