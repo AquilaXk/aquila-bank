@@ -6,8 +6,8 @@ usage() {
 usage: tools/ops/validate-oci-a1-storage-baseline.sh [--print-plan]
 
 Environment:
-  OCI_A1_STORAGE_MOUNT_PATH      default /
-  OCI_A1_STORAGE_MIN_USABLE_GIB  default 190
+  OCI_A1_STORAGE_MOUNT_PATH      default /var/lib/aquila-data
+  OCI_A1_STORAGE_MIN_USABLE_GIB  default 140
   OCI_A1_STORAGE_DF_OUTPUT       optional fixture file with `df -BG -P` output
 USAGE
 }
@@ -30,8 +30,8 @@ while [[ "$#" -gt 0 ]]; do
   shift
 done
 
-mount_path="${OCI_A1_STORAGE_MOUNT_PATH:-/}"
-min_usable_gib="${OCI_A1_STORAGE_MIN_USABLE_GIB:-190}"
+mount_path="${OCI_A1_STORAGE_MOUNT_PATH:-/var/lib/aquila-data}"
+min_usable_gib="${OCI_A1_STORAGE_MIN_USABLE_GIB:-140}"
 df_output="${OCI_A1_STORAGE_DF_OUTPUT:-}"
 
 if ! [[ "${min_usable_gib}" =~ ^[1-9][0-9]*$ ]]; then

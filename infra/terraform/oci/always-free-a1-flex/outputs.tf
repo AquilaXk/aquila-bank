@@ -13,6 +13,21 @@ output "instance_private_ip" {
   value       = oci_core_instance.this.private_ip
 }
 
+output "data_volume_id" {
+  description = "0 VPU data Block Volume OCID."
+  value       = oci_core_volume.data.id
+}
+
+output "data_volume_attachment_id" {
+  description = "Data Block Volume attachment OCID."
+  value       = oci_core_volume_attachment.data.id
+}
+
+output "data_volume_mount_path" {
+  description = "Guest OS mount path for the 0 VPU data volume."
+  value       = var.data_volume_mount_path
+}
+
 output "vcn_id" {
   description = "Created VCN OCID."
   value       = oci_core_vcn.this.id
