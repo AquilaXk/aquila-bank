@@ -6,6 +6,9 @@ workflow=".github/workflows/oci-k6-service-auth-token.yml"
 echo "[oci-k6-service-auth] workflow exists"
 test -f "${workflow}"
 
+echo "[oci-k6-service-auth] yaml syntax"
+ruby -e 'require "yaml"; YAML.load_file(ARGV.fetch(0)); puts "ok"' "${workflow}" >/dev/null
+
 echo "[oci-k6-service-auth] workflow contract"
 grep -F "name: OCI k6 service auth token" "${workflow}" >/dev/null
 grep -F "workflow_dispatch:" "${workflow}" >/dev/null
