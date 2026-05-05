@@ -1,0 +1,175 @@
+name: Transaction Read Real Multi-Source Public Evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      real_multisource_run_id:
+        description: "Run id shared by all real multi-source public evidence artifacts"
+        required: true
+        type: string
+      real_multisource_contexts:
+        description: "Comma-separated remote Docker contexts, at least 2"
+        required: false
+        type: string
+      single_source_summary_json:
+        description: "Single-source diagnostic k6 summary JSON path"
+        required: false
+        type: string
+      multi_source_summary_json:
+        description: "Real multi-source k6 summary JSON path"
+        required: false
+        type: string
+      nginx_status_tsv:
+        description: "Nginx realip_remote_addr status TSV path"
+        required: false
+        type: string
+      source_evidence_tsv:
+        description: "Source-level edge/backend 429, latency, 5xx, fairness TSV path"
+        required: false
+        type: string
+      host_metrics_tsv:
+        description: "Generator/target host metrics TSV path"
+        required: false
+        type: string
+      host_metrics_timeline_tsv:
+        description: "Load-coupled host metrics timeline TSV path"
+        required: false
+        type: string
+      artifact_uri:
+        description: "Evidence artifact pack URI shared by source and host metrics"
+        required: false
+        type: string
+  pull_request:
+    paths:
+      - ".github/workflows/transaction-read-real-multisource-public-evidence.yml"
+      - "tools/test/check-transaction-read-real-multisource-public-evidence-workflow.sh"
+      - "tools/test/run-oci-real-multisource-public-evidence.sh"
+      - "tools/test/check-oci-real-multisource-public-evidence.sh"
+      - "tools/test/run-oci-real-ip-multisource-capacity-replay.sh"
+      - "tools/test/check-oci-real-ip-multisource-capacity-replay.sh"
+      - "tools/test/run-oci-offhost-host-metrics-timeline.sh"
+      - "tools/test/check-oci-offhost-host-metrics-timeline.sh"
+      - "tools/test/run-k6-transaction-100m-multisource.sh"
+      - "tools/test/check-k6-transaction-100m-multisource.sh"
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: real multi-source public evidence contract
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Validate workflow contract
+        run: bash tools/test/check-transaction-read-real-multisource-public-evidence-workflow.sh
+
+      - name: Validate real multisource evidence contract
+        run: bash tools/test/check-oci-real-multisource-public-evidence.sh
+
+  live-evidence:
+    name: Real multi-source public evidence live gate
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, oci-a1-staging]
+    timeout-minutes: 30
+    environment:
+      name: staging
+    env:
+      OCI_REAL_MULTISOURCE_NAME: transaction-read-real-multisource-public-evidence-${{ github.run_id }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Load real multisource evidence env
+        env:
+          OCI_A1_STAGING_ENV: ${{ secrets.OCI_A1_STAGING_ENV }}
+          REAL_MULTISOURCE_RUN_ID_INPUT: ${{ inputs.real_multisource_run_id }}
+          REAL_MULTISOURCE_CONTEXTS_INPUT: ${{ inputs.real_multisource_contexts }}
+          SINGLE_SOURCE_SUMMARY_JSON_INPUT: ${{ inputs.single_source_summary_json }}
+          MULTI_SOURCE_SUMMARY_JSON_INPUT: ${{ inputs.multi_source_summary_json }}
+          NGINX_STATUS_TSV_INPUT: ${{ inputs.nginx_status_tsv }}
+          SOURCE_EVIDENCE_TSV_INPUT: ${{ inputs.source_evidence_tsv }}
+          HOST_METRICS_TSV_INPUT: ${{ inputs.host_metrics_tsv }}
+          HOST_METRICS_TIMELINE_TSV_INPUT: ${{ inputs.host_metrics_timeline_tsv }}
+          ARTIFACT_URI_INPUT: ${{ inputs.artifact_uri }}
+          OCI_REAL_MULTISOURCE_CONTEXTS_VAR: ${{ vars.OCI_REAL_MULTISOURCE_CONTEXTS }}
+          OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON_VAR: ${{ vars.OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON }}
+          OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON_VAR: ${{ vars.OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON }}
+          OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV_VAR: ${{ vars.OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV }}
+          OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV_VAR: ${{ vars.OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV }}
+          OCI_REAL_MULTISOURCE_HOST_METRICS_TSV_VAR: ${{ vars.OCI_REAL_MULTISOURCE_HOST_METRICS_TSV }}
+          OCI_REAL_MULTISOURCE_HOST_METRICS_TIMELINE_TSV_VAR: ${{ vars.OCI_REAL_MULTISOURCE_HOST_METRICS_TIMELINE_TSV }}
+          OCI_REAL_MULTISOURCE_ARTIFACT_URI_VAR: ${{ vars.OCI_REAL_MULTISOURCE_ARTIFACT_URI }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${OCI_A1_STAGING_ENV}" ]]; then
+            staging_env_path="${RUNNER_TEMP}/oci-real-multisource-public-evidence.env"
+            printf '%s\n' "${OCI_A1_STAGING_ENV}" >"${staging_env_path}"
+            chmod 600 "${staging_env_path}"
+
+            set -a
+            # live evidence도 staging-deploy와 같은 unified staging secret contract를 사용한다.
+            source "${staging_env_path}"
+            set +a
+          fi
+
+          OCI_REAL_MULTISOURCE_RUN_ID="${REAL_MULTISOURCE_RUN_ID_INPUT}"
+          OCI_REAL_MULTISOURCE_CONTEXTS="${REAL_MULTISOURCE_CONTEXTS_INPUT:-${OCI_REAL_MULTISOURCE_CONTEXTS_VAR:-}}"
+          OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON="${SINGLE_SOURCE_SUMMARY_JSON_INPUT:-${OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON_VAR:-}}"
+          OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON="${MULTI_SOURCE_SUMMARY_JSON_INPUT:-${OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON_VAR:-}}"
+          OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV="${NGINX_STATUS_TSV_INPUT:-${OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV_VAR:-}}"
+          OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV="${SOURCE_EVIDENCE_TSV_INPUT:-${OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV_VAR:-}}"
+          OCI_REAL_MULTISOURCE_HOST_METRICS_TSV="${HOST_METRICS_TSV_INPUT:-${OCI_REAL_MULTISOURCE_HOST_METRICS_TSV_VAR:-}}"
+          OCI_REAL_MULTISOURCE_HOST_METRICS_TIMELINE_TSV="${HOST_METRICS_TIMELINE_TSV_INPUT:-${OCI_REAL_MULTISOURCE_HOST_METRICS_TIMELINE_TSV_VAR:-}}"
+          OCI_REAL_MULTISOURCE_ARTIFACT_URI="${ARTIFACT_URI_INPUT:-${OCI_REAL_MULTISOURCE_ARTIFACT_URI_VAR:-}}"
+          OCI_REAL_MULTISOURCE_OUTPUT_DIR="build/reports/k6/${OCI_REAL_MULTISOURCE_NAME}"
+
+          missing=()
+          [[ -z "${OCI_REAL_MULTISOURCE_RUN_ID}" ]] && missing+=("OCI_REAL_MULTISOURCE_RUN_ID")
+          [[ -z "${OCI_REAL_MULTISOURCE_CONTEXTS}" ]] && missing+=("OCI_REAL_MULTISOURCE_CONTEXTS")
+          [[ -z "${OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON}" ]] && missing+=("OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON")
+          [[ -z "${OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON}" ]] && missing+=("OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON")
+          [[ -z "${OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV}" ]] && missing+=("OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV")
+          [[ -z "${OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV}" ]] && missing+=("OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV")
+          [[ -z "${OCI_REAL_MULTISOURCE_HOST_METRICS_TSV}" ]] && missing+=("OCI_REAL_MULTISOURCE_HOST_METRICS_TSV")
+          [[ -z "${OCI_REAL_MULTISOURCE_HOST_METRICS_TIMELINE_TSV}" ]] && missing+=("OCI_REAL_MULTISOURCE_HOST_METRICS_TIMELINE_TSV")
+          [[ -z "${OCI_REAL_MULTISOURCE_ARTIFACT_URI}" ]] && missing+=("OCI_REAL_MULTISOURCE_ARTIFACT_URI")
+          if (( ${#missing[@]} > 0 )); then
+            printf '::error::Missing real multisource evidence inputs: %s\n' "${missing[*]}"
+            exit 1
+          fi
+
+          for name in \
+            OCI_REAL_MULTISOURCE_RUN_ID \
+            OCI_REAL_MULTISOURCE_CONTEXTS \
+            OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON \
+            OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON \
+            OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV \
+            OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV \
+            OCI_REAL_MULTISOURCE_HOST_METRICS_TSV \
+            OCI_REAL_MULTISOURCE_HOST_METRICS_TIMELINE_TSV \
+            OCI_REAL_MULTISOURCE_ARTIFACT_URI \
+            OCI_REAL_MULTISOURCE_OUTPUT_DIR; do
+            value="${!name:-}"
+            if [[ -n "${value}" ]]; then
+              printf '%s=%s\n' "${name}" "${value}" >>"${GITHUB_ENV}"
+            fi
+          done
+
+      - name: Run real multisource public evidence gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          tools/test/run-oci-real-multisource-public-evidence.sh
+
+      - name: Upload real multisource evidence artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: transaction-read-real-multisource-public-evidence-${{ github.run_id }}
+          path: build/reports/k6/${{ env.OCI_REAL_MULTISOURCE_NAME }}/
+          if-no-files-found: ignore
