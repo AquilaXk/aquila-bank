@@ -684,6 +684,23 @@ jobs:
             "
           }
 
+          backend_env_value() {
+            local key="$1"
+            local default_value="$2"
+            local container value
+            for container in "${backend_candidates[@]}"; do
+              [[ -z "${container}" ]] && continue
+              value="$(docker exec "${container}" printenv "${key}" 2>/dev/null || true)"
+              value="${value//$'\r'/}"
+              value="${value//$'\n'/}"
+              if [[ -n "${value}" ]]; then
+                printf "%s\t%s\n" "${container}" "${value}"
+                return 0
+              fi
+            done
+            printf "workflow-default\t%s\n" "${default_value}"
+          }
+
           checkpoint_start="${SOAK_30M_POSTGRES_CHECKPOINT_START_COUNT:-0}"
           temp_file_start="${SOAK_30M_POSTGRES_TEMP_FILE_START_COUNT:-0}"
           checkpoint_end="$(query_checkpoint_count | tr -d '[:space:]')"
@@ -708,10 +725,16 @@ jobs:
             printf "postgres_temp_file_count\t%s\t%s\t%s\n" "${temp_file_start}" "${temp_file_end}" "${temp_file_delta}"
           } >"${postgres_temp_file_ref}"
 
+          IFS=$'\t' read -r hikari_config_source hikari_max_lifetime_ms < <(backend_env_value "OCI_A1_DB_MAX_LIFETIME_MS" "${OCI_A1_DB_MAX_LIFETIME_MS:-45000}")
+          IFS=$'\t' read -r hikari_keepalive_source hikari_keepalive_time_ms < <(backend_env_value "OCI_A1_DB_KEEPALIVE_TIME_MS" "${OCI_A1_DB_KEEPALIVE_TIME_MS:-30000}")
           {
             printf "key\tvalue\n"
-            printf "hikari_max_lifetime_ms\t%s\n" "${OCI_A1_DB_MAX_LIFETIME_MS:-45000}"
-            printf "hikari_keepalive_time_ms\t%s\n" "${OCI_A1_DB_KEEPALIVE_TIME_MS:-30000}"
+            printf "hikari_config_source\t%s\n" "${hikari_config_source}"
+            printf "hikari_keepalive_source\t%s\n" "${hikari_keepalive_source}"
+            printf "hikari_max_lifetime_ms\t%s\n" "${hikari_max_lifetime_ms}"
+            printf "hikari_keepalive_time_ms\t%s\n" "${hikari_keepalive_time_ms}"
+            printf "expected_hikari_max_lifetime_ms\t%s\n" "${OCI_A1_DB_MAX_LIFETIME_MS:-45000}"
+            printf "expected_hikari_keepalive_time_ms\t%s\n" "${OCI_A1_DB_KEEPALIVE_TIME_MS:-30000}"
             printf "postgres_idle_timeout_ms\t%s\n" "${POSTGRES_IDLE_IN_TRANSACTION_TIMEOUT_MS:-300000}"
             printf "oci_nat_idle_timeout_ms\t%s\n" "${OCI_NAT_IDLE_TIMEOUT_MS:-350000}"
           } >"${hikari_config_ref}"

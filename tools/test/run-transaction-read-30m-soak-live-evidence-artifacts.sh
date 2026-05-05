@@ -195,6 +195,9 @@ write_nginx_upstream_latency() {
 write_hikari_zero_warning_report() {
   local warnings="$1"
   local pending="$2"
+  local config_source="$3"
+  local max_lifetime="$4"
+  local expected_max_lifetime="$5"
   local status="pass"
   if [[ "${warnings}" != "0" || "${pending}" != "0" ]]; then
     status="fail"
@@ -208,6 +211,9 @@ write_hikari_zero_warning_report() {
 - duration_min=${duration_min}
 - hikari_validation_warnings=${warnings}
 - db_pool_pending_max=${pending}
+- hikari_config_source=${config_source}
+- hikari_max_lifetime_ms=${max_lifetime}
+- expected_hikari_max_lifetime_ms=${expected_max_lifetime}
 - gate_status=${status}
 
 ## Artifacts
@@ -241,6 +247,9 @@ write_failure_report() {
     printf "postgres_temp_file_end_count=%s\n" "${postgres_temp_file_end_count:-0}"
     printf "postgres_temp_file_delta=%s\n" "${postgres_temp_file_count:-0}"
     printf "postgres_temp_file_delta_max=%s\n" "${postgres_temp_file_delta_max}"
+    printf "hikari_config_source=%s\n" "${hikari_config_source:-n/a}"
+    printf "hikari_max_lifetime_ms=%s\n" "${hikari_max_lifetime_ms:-0}"
+    printf "expected_hikari_max_lifetime_ms=%s\n" "${expected_hikari_max_lifetime_ms:-0}"
   } >"${failure_reason_ref}"
 
   cat >"${failure_report_ref}" <<REPORT
@@ -259,6 +268,7 @@ write_failure_report() {
 - PostgreSQL checkpoint start/end/delta: ${postgres_checkpoint_start_count:-0}/${postgres_checkpoint_end_count:-0}/${postgres_checkpoint_count:-0}
 - PostgreSQL temp file start/end/delta: ${postgres_temp_file_start_count:-0}/${postgres_temp_file_end_count:-0}/${postgres_temp_file_count:-0}
 - PostgreSQL temp file delta budget: <=${postgres_temp_file_delta_max}
+- Hikari config source/maxLifetime/expected: ${hikari_config_source:-n/a}/${hikari_max_lifetime_ms:-0}/${expected_hikari_max_lifetime_ms:-0}
 
 ## Operator Notes
 
@@ -349,11 +359,13 @@ require_non_negative_integer "postgres_temp_file_start_count" "${postgres_temp_f
 require_non_negative_integer "postgres_temp_file_end_count" "${postgres_temp_file_end_count}"
 hikari_max_lifetime_ms="$(hikari_config_value "hikari_max_lifetime_ms")"
 hikari_keepalive_time_ms="$(hikari_config_value "hikari_keepalive_time_ms")"
+expected_hikari_max_lifetime_ms="$(hikari_config_value "expected_hikari_max_lifetime_ms")"
+hikari_config_source="$(hikari_config_value "hikari_config_source")"
 postgres_idle_timeout_ms="$(hikari_config_value "postgres_idle_timeout_ms")"
 oci_nat_idle_timeout_ms="$(hikari_config_value "oci_nat_idle_timeout_ms")"
 
 write_nginx_upstream_latency "${nginx_upstream_p95_ms}"
-write_hikari_zero_warning_report "${hikari_validation_warnings}" "${db_pool_pending_max}"
+write_hikari_zero_warning_report "${hikari_validation_warnings}" "${db_pool_pending_max}" "${hikari_config_source}" "${hikari_max_lifetime_ms}" "${expected_hikari_max_lifetime_ms}"
 
 SOAK_30M_MANIFEST_NAME="${name}" \
 SOAK_30M_MANIFEST_RUN_ID="${run_id}" \

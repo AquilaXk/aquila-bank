@@ -78,8 +78,12 @@ TSV
 hikari_config="${artifact_dir}/hikari-config.tsv"
 cat >"${hikari_config}" <<'TSV'
 key	value
+hikari_config_source	aquila-bank-backend
+hikari_keepalive_source	aquila-bank-backend
 hikari_max_lifetime_ms	45000
 hikari_keepalive_time_ms	30000
+expected_hikari_max_lifetime_ms	45000
+expected_hikari_keepalive_time_ms	30000
 postgres_idle_timeout_ms	300000
 oci_nat_idle_timeout_ms	350000
 TSV
@@ -130,6 +134,8 @@ test -s "${output_dir}/nginx-upstream-latency.tsv"
 test -s "${output_dir}/hikari-zero-warning-soak.md"
 grep -F $'hikari-lifetime\trun-soak-artifacts-001\t2026-05-05T00:00:00Z\t30' "${manifest_tsv}" >/dev/null
 grep -F $'p999-long-correlation\trun-soak-artifacts-001\t2026-05-05T00:00:00Z\t30' "${manifest_tsv}" >/dev/null
+grep -F "hikari_config_source=aquila-bank-backend" "${output_dir}/hikari-zero-warning-soak.md" >/dev/null
+grep -F "expected_hikari_max_lifetime_ms=45000" "${output_dir}/hikari-zero-warning-soak.md" >/dev/null
 grep -F "p95/p99/p99.9/max: 95/220/490/650" "${output_dir}/manifest/soak-artifacts-check-30m-soak-live-evidence-manifest.md" >/dev/null
 grep -F "PostgreSQL checkpoint start/end/delta: 10/13/3" "${output_dir}/manifest/soak-artifacts-check-30m-soak-live-evidence-manifest.md" >/dev/null
 grep -F "PostgreSQL temp file start/end/delta: 20/20/0" "${output_dir}/manifest/soak-artifacts-check-30m-soak-live-evidence-manifest.md" >/dev/null

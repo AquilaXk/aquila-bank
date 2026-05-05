@@ -84,6 +84,9 @@ grep -F "Collect 30m soak live evidence artifacts" "${workflow}" >/dev/null
 grep -F 'docker exec "${container}" sh -c' "${workflow}" >/dev/null
 grep -F 'printf "metric\tstart_value\tend_value\tdelta\n"' "${workflow}" >/dev/null
 grep -F 'stats reset invalidates delta evidence' "${workflow}" >/dev/null
+grep -F 'backend_env_value()' "${workflow}" >/dev/null
+grep -F 'hikari_config_source' "${workflow}" >/dev/null
+grep -F 'expected_hikari_max_lifetime_ms' "${workflow}" >/dev/null
 grep -F "Build 30m soak live evidence artifact pack" "${workflow}" >/dev/null
 grep -F 'SOAK_30M_ARTIFACTS_DURATION_MIN="${SOAK_30M_DURATION_MIN}"' "${workflow}" >/dev/null
 grep -F 'SOAK_30M_ARTIFACTS_POSTGRES_TEMP_FILE_DELTA_MAX="${SOAK_30M_POSTGRES_TEMP_FILE_DELTA_MAX:-0}"' "${workflow}" >/dev/null
