@@ -468,6 +468,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          command -v python3 >/dev/null || {
+            echo "::error::python3 is required for service-auth item preflight."
+            exit 1
+          }
           report_dir="build/reports/k6/${K6_REPORT_NAME}"
           mkdir -p "${report_dir}"
           auth_preflight_log="${report_dir}/auth-preflight.log"
@@ -492,6 +496,29 @@ jobs:
               echo "[oci-k6-service-auth] auth preflight ${account_group} account=${account_id}" >>"${auth_preflight_log}"
               K6_AUTH_PREFLIGHT_PATH="api/v1/transactions?accountId=${account_id}&from=${from}&to=${to}&limit=1" \
                 tools/test/run-k6-transaction-100m-loadtest.sh --auth-preflight-only >>"${auth_preflight_log}" 2>&1
+              preflight_url="${K6_REMOTE_BASE_URL%/}/api/v1/transactions?accountId=${account_id}&from=${from}&to=${to}&limit=1"
+              preflight_body="${report_dir}/auth-preflight-${account_group}-${account_id}.json"
+              status="$(
+                curl -sS -o "${preflight_body}" -w "%{http_code}" \
+                  --max-time 5 \
+                  -H "Authorization: Bearer ${STAGING_REPLAY_TOKEN}" \
+                  "${preflight_url}" 2>>"${auth_preflight_log}" || true
+              )"
+              status="${status:0:3}"
+              if [[ ! "${status}" =~ ^2 ]]; then
+                echo "::error::auth item preflight failed: ${account_group} account=${account_id} expected 2xx actual=${status:-000}"
+                exit 1
+              fi
+              item_count="$(
+                python3 -c 'import json, sys; data = json.load(open(sys.argv[1], encoding="utf-8")); items = data.get("items"); print(len(items) if isinstance(items, list) else 0)' \
+                  "${preflight_body}"
+              )"
+              if (( item_count < 1 )); then
+                echo "::error::auth item preflight failed: ${account_group} account=${account_id} returned no items"
+                echo "[oci-k6-service-auth] auth item preflight failed ${account_group} account=${account_id} items=${item_count}" >>"${auth_preflight_log}"
+                exit 1
+              fi
+              echo "[oci-k6-service-auth] auth item preflight ${account_group} account=${account_id} items=${item_count}" >>"${auth_preflight_log}"
             done
           }
 
