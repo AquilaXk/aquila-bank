@@ -438,6 +438,18 @@ jobs:
           K6_NGINX_LOG_SINCE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
           printf 'K6_NGINX_LOG_SINCE=%s\n' "${K6_NGINX_LOG_SINCE}" >>"${GITHUB_ENV}"
 
+      - name: Resolve OCI A1 staging database URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          # backend env가 Docker alias DB를 쓰면 service-auth host psql용 URL도 staging deploy와 같은 방식으로 재산출한다.
+          if ! resolved_database_url="$(tools/ops/resolve-oci-a1-staging-database-url.sh)"; then
+            echo "::error::Failed to resolve service-auth staging database URL."
+            exit 1
+          fi
+          echo "::add-mask::${resolved_database_url}"
+          printf 'STAGING_OCI_A1_DATABASE_URL=%s\n' "${resolved_database_url}" >>"${GITHUB_ENV}"
+
       - name: Ensure service auth fixture principal
         shell: bash
         run: |
