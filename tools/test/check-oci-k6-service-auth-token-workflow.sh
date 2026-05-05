@@ -112,6 +112,9 @@ grep -F "multi-account hot ids: \${K6_HOT_ACCOUNT_IDS:-\${K6_HOT_ACCOUNT_ID}}" "
 grep -F "multi-account cold ids: \${K6_COLD_ACCOUNT_IDS:-\${K6_COLD_ACCOUNT_ID}}" "${workflow}" >/dev/null
 grep -F "Capture transaction read Nginx log window" "${workflow}" >/dev/null
 grep -F 'K6_NGINX_LOG_SINCE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"' "${workflow}" >/dev/null
+grep -F "Resolve OCI A1 staging database URL" "${workflow}" >/dev/null
+grep -F 'resolved_database_url="$(tools/ops/resolve-oci-a1-staging-database-url.sh)"' "${workflow}" >/dev/null
+grep -F 'printf '\''STAGING_OCI_A1_DATABASE_URL=%s\n'\'' "${resolved_database_url}" >>"${GITHUB_ENV}"' "${workflow}" >/dev/null
 grep -F "Ensure service auth fixture principal" "${workflow}" >/dev/null
 grep -F 'STAGING_OCI_A1_DATABASE_URL' "${workflow}" >/dev/null
 grep -F 'HOT_ACCOUNT_IDS="${K6_HOT_ACCOUNT_IDS:-${K6_HOT_ACCOUNT_ID}}" \' "${workflow}" >/dev/null
@@ -173,10 +176,11 @@ grep -F "actions/upload-artifact@" "${workflow}" >/dev/null
 grep -F "oci-k6-service-auth-token" "${workflow}" >/dev/null
 
 fixture_principal_line="$(grep -n "Ensure service auth fixture principal" "${workflow}" | head -1 | cut -d: -f1)"
+resolver_line="$(grep -n "Resolve OCI A1 staging database URL" "${workflow}" | head -1 | cut -d: -f1)"
 auth_preflight_line="$(grep -n -- "--auth-preflight-only" "${workflow}" | head -1 | cut -d: -f1)"
 k6_run_line="$(grep -n -- "--no-up --no-deps" "${workflow}" | head -1 | cut -d: -f1)"
-if [[ -z "${fixture_principal_line}" || -z "${auth_preflight_line}" || -z "${k6_run_line}" ||
-  "${fixture_principal_line}" -ge "${auth_preflight_line}" || "${auth_preflight_line}" -ge "${k6_run_line}" ]]; then
+if [[ -z "${resolver_line}" || -z "${fixture_principal_line}" || -z "${auth_preflight_line}" || -z "${k6_run_line}" ||
+  "${resolver_line}" -ge "${fixture_principal_line}" || "${fixture_principal_line}" -ge "${auth_preflight_line}" || "${auth_preflight_line}" -ge "${k6_run_line}" ]]; then
   echo "auth preflight must run before authenticated k6 capacity" >&2
   exit 1
 fi
