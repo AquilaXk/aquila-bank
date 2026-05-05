@@ -400,6 +400,7 @@ jobs:
       FRONTEND_IMAGE: ${{ needs.frontend-image.outputs.frontend_image }}
     outputs:
       transaction_replay_result: ${{ steps.resolve-transaction-replay-result.outputs.result }}
+      transaction_replay_required: ${{ steps.load-oci-a1-staging-env.outputs.transaction_replay_required }}
     steps:
       - name: Checkout deploy SHA
         uses: actions/checkout@v5
@@ -408,6 +409,7 @@ jobs:
           fetch-depth: 0
 
       - name: Load OCI A1 staging env
+        id: load-oci-a1-staging-env
         env:
           OCI_A1_STAGING_ENV: ${{ secrets.OCI_A1_STAGING_ENV }}
         shell: bash
@@ -460,6 +462,7 @@ jobs:
             true|false) ;;
             *) echo "::error::STAGING_REPLAY_REQUIRED must be true or false."; exit 1 ;;
           esac
+          printf 'transaction_replay_required=%s\n' "${STAGING_REPLAY_REQUIRED}" >>"${GITHUB_OUTPUT}"
 
           replay_missing=()
           [[ -z "${STAGING_REPLAY_TOKEN:-}" ]] && replay_missing+=("STAGING_REPLAY_TOKEN")
@@ -712,6 +715,7 @@ jobs:
       DEPLOYMENT_ID: ${{ needs.create-deployment.outputs.deployment_id }}
       DEPLOY_RESULT: ${{ needs.deploy-and-verify.result }}
       TRANSACTION_REPLAY_RESULT: ${{ needs.deploy-and-verify.outputs.transaction_replay_result }}
+      TRANSACTION_REPLAY_REQUIRED: ${{ needs.deploy-and-verify.outputs.transaction_replay_required }}
       BACKEND_IMAGE_RESULT: ${{ needs.backend-image.result }}
       FRONTEND_IMAGE_RESULT: ${{ needs.frontend-image.result }}
       LATEST_MAIN_RESULT: ${{ needs.validate-latest-before-deploy.result }}
@@ -811,7 +815,10 @@ jobs:
           always() &&
           needs.validate-latest-before-deploy.outputs.should_deploy == 'true' &&
           needs.deploy-and-verify.result == 'success' &&
-          needs.deploy-and-verify.outputs.transaction_replay_result != 'failure'
+          (
+            needs.deploy-and-verify.outputs.transaction_replay_result != 'failure' ||
+            needs.deploy-and-verify.outputs.transaction_replay_required != 'true'
+          )
         shell: bash
         run: |
           set -euo pipefail
@@ -854,7 +861,10 @@ jobs:
           (
             needs.backend-image.result != 'success' ||
             needs.frontend-image.result != 'success' ||
-            needs.deploy-and-verify.outputs.transaction_replay_result == 'failure' ||
+            (
+              needs.deploy-and-verify.outputs.transaction_replay_required == 'true' &&
+              needs.deploy-and-verify.outputs.transaction_replay_result == 'failure'
+            ) ||
             (
               needs.validate-latest-before-deploy.outputs.should_deploy == 'true' &&
               needs.deploy-and-verify.result != 'success'
@@ -863,7 +873,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "::error::Staging deployment failed. backend_image=${BACKEND_IMAGE_RESULT} frontend_image=${FRONTEND_IMAGE_RESULT} latest_main=${LATEST_MAIN_RESULT}/${LATEST_MAIN_SHOULD_DEPLOY} deploy=${DEPLOY_RESULT} replay=${TRANSACTION_REPLAY_RESULT}"
+          echo "::error::Staging deployment failed. backend_image=${BACKEND_IMAGE_RESULT} frontend_image=${FRONTEND_IMAGE_RESULT} latest_main=${LATEST_MAIN_RESULT}/${LATEST_MAIN_SHOULD_DEPLOY} deploy=${DEPLOY_RESULT} replay=${TRANSACTION_REPLAY_RESULT} replay_required=${TRANSACTION_REPLAY_REQUIRED}"
           payload="$(
             jq -n \
               --arg log_url "${DEPLOY_LOG_URL}" \
