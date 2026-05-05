@@ -102,6 +102,10 @@ grep -F 'proxy_next_upstream error timeout http_502;' ops/nginx/nginx.conf >/dev
 grep -F 'maximum-pool-size: ${OCI_A1_DB_POOL_MAX_SIZE:8}' back/src/main/resources/application-oci-a1.yml >/dev/null
 grep -F 'max-lifetime: ${OCI_A1_DB_MAX_LIFETIME_MS:45000}' back/src/main/resources/application-oci-a1.yml >/dev/null
 grep -F 'keepalive-time: ${OCI_A1_DB_KEEPALIVE_TIME_MS:30000}' back/src/main/resources/application-oci-a1.yml >/dev/null
+grep -F "idle_in_transaction_session_timeout TO '\${OCI_A1_DB_IDLE_IN_TX_TIMEOUT_MS:\${DB_IDLE_IN_TX_TIMEOUT_MS:300000}}ms'" back/src/main/resources/application-oci-a1.yml >/dev/null
+grep -F 'OCI_A1_DB_MAX_LIFETIME_MS=${OCI_A1_DB_MAX_LIFETIME_MS:-45000}' ops/deploy/oci/bluegreen-deploy.sh >/dev/null
+grep -F 'OCI_A1_DB_KEEPALIVE_TIME_MS=${OCI_A1_DB_KEEPALIVE_TIME_MS:-30000}' ops/deploy/oci/bluegreen-deploy.sh >/dev/null
+grep -F 'OCI_A1_DB_IDLE_IN_TX_TIMEOUT_MS=${OCI_A1_DB_IDLE_IN_TX_TIMEOUT_MS:-300000}' ops/deploy/oci/bluegreen-deploy.sh >/dev/null
 grep -F 'max: ${OCI_A1_TRANSACTION_READ_ADMISSION_MAX:8}' back/src/main/resources/application-oci-a1.yml >/dev/null
 grep -F 'adaptive-max: ${OCI_A1_TRANSACTION_READ_ADMISSION_ADAPTIVE_MAX:12}' back/src/main/resources/application-oci-a1.yml >/dev/null
 grep -F 'low-saturation-increase-every-successes: ${OCI_A1_TRANSACTION_READ_ADMISSION_LOW_SATURATION_INCREASE_EVERY_SUCCESSES:16}' back/src/main/resources/application-oci-a1.yml >/dev/null

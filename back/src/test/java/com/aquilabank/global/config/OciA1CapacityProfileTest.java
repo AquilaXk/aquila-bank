@@ -40,6 +40,8 @@ class OciA1CapacityProfileTest {
               .isEqualTo(45_000L);
           assertThat(environment.getProperty("spring.datasource.hikari.keepalive-time", Long.class))
               .isEqualTo(30_000L);
+          assertThat(environment.getProperty("spring.datasource.hikari.connection-init-sql"))
+              .contains("idle_in_transaction_session_timeout TO '300000ms'");
           assertThat(
                   environment.getProperty(
                       "transaction.read-replica.maximum-pool-size", Integer.class))
@@ -146,6 +148,7 @@ class OciA1CapacityProfileTest {
                                 entry("OCI_A1_DB_POOL_MIN_IDLE", "2"),
                                 entry("OCI_A1_DB_MAX_LIFETIME_MS", "480000"),
                                 entry("OCI_A1_DB_KEEPALIVE_TIME_MS", "45000"),
+                                entry("OCI_A1_DB_IDLE_IN_TX_TIMEOUT_MS", "240000"),
                                 entry("OCI_A1_TRANSACTION_READ_REPLICA_POOL_MAX_SIZE", "5"),
                                 entry("OCI_A1_TRANSACTION_READ_PER_ACCOUNT_MAX_CONCURRENCY", "4"),
                                 entry("OCI_A1_SERVER_THREADS_MAX", "28"),
@@ -186,6 +189,8 @@ class OciA1CapacityProfileTest {
                       environment.getProperty(
                           "spring.datasource.hikari.keepalive-time", Long.class))
                   .isEqualTo(45_000L);
+              assertThat(environment.getProperty("spring.datasource.hikari.connection-init-sql"))
+                  .contains("idle_in_transaction_session_timeout TO '240000ms'");
               assertThat(
                       environment.getProperty(
                           "transaction.read-replica.maximum-pool-size", Integer.class))

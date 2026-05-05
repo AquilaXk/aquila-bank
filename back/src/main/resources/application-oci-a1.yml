@@ -11,6 +11,8 @@ spring:
       max-lifetime: ${OCI_A1_DB_MAX_LIFETIME_MS:45000}
       keepalive-time: ${OCI_A1_DB_KEEPALIVE_TIME_MS:30000}
       validation-timeout: ${OCI_A1_DB_VALIDATION_TIMEOUT_MS:1000}
+      # 기본 5초 idle-in-tx timeout은 pooled connection을 부하 중 닫아 Hikari validation warning을 만든다.
+      connection-init-sql: SET statement_timeout TO '${OCI_A1_DB_STATEMENT_TIMEOUT_MS:${DB_STATEMENT_TIMEOUT_MS:3000}}ms'; SET lock_timeout TO '${OCI_A1_DB_LOCK_TIMEOUT_MS:${DB_LOCK_TIMEOUT_MS:1000}}ms'; SET idle_in_transaction_session_timeout TO '${OCI_A1_DB_IDLE_IN_TX_TIMEOUT_MS:${DB_IDLE_IN_TX_TIMEOUT_MS:300000}}ms'
   task:
     execution:
       pool:
