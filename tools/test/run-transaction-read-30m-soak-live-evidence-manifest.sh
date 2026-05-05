@@ -71,6 +71,8 @@ hikari_max_lifetime_ms="${SOAK_30M_MANIFEST_HIKARI_MAX_LIFETIME_MS:-45000}"
 hikari_keepalive_time_ms="${SOAK_30M_MANIFEST_HIKARI_KEEPALIVE_TIME_MS:-30000}"
 postgres_idle_timeout_ms="${SOAK_30M_MANIFEST_POSTGRES_IDLE_TIMEOUT_MS:-300000}"
 oci_nat_idle_timeout_ms="${SOAK_30M_MANIFEST_OCI_NAT_IDLE_TIMEOUT_MS:-350000}"
+manifest_status="pass"
+manifest_reasons=()
 
 require_non_negative_number() {
   local key="$1"
@@ -173,6 +175,24 @@ require_artifact_ref "SOAK_30M_MANIFEST_HIKARI_ZERO_WARNING_SOAK_REF" "${hikari_
 
 mkdir -p "${output_dir}"
 
+if [[ "${hikari_validation_warnings}" != "0" ]]; then
+  manifest_status="fail"
+  manifest_reasons+=("hikari-validation-warning")
+fi
+if [[ "${db_pool_pending_max}" != "0" ]]; then
+  manifest_status="fail"
+  manifest_reasons+=("db-pool-pending")
+fi
+if [[ "${backend_429_count}" != "0" || "${unknown_429_count}" != "0" || "${five_xx_count}" != "0" || "${nginx_499_count}" != "0" ]]; then
+  manifest_status="fail"
+  manifest_reasons+=("hard-zero-budget")
+fi
+if (( ${#manifest_reasons[@]} == 0 )); then
+  manifest_reason="ok"
+else
+  manifest_reason="$(IFS=,; echo "${manifest_reasons[*]}")"
+fi
+
 header=$'scenario\trun_id\texecuted_at_utc\tduration_min\tsource_ips\trun_script\tk6_summary_ref\tnginx_access_ref\tspring_metrics_ref\thikari_log_ref\tpostgres_wait_ref\tdeploy_event_ref\tcache_state_ref\ttimeline_ref\tedge_429_rate\tbackend_429_count\tunknown_429_count\tfive_xx_count\tnginx_499_count\thikari_validation_warnings\tdb_pool_pending_max\tp999_ms\tpostgres_checkpoint_ref\tpostgres_temp_file_ref\tnginx_upstream_latency_ref\tworkload_mix_ref\tworkload_component_ref\toutbox_lag_ref\toutbox_lag_max\tdeploy_retry_contract_ref\tdeploy_reconnect_success_count\tdeploy_499_budget_ref\tp95_ms\tp99_ms\tmax_ms\tpostgres_checkpoint_count\tpostgres_temp_file_count\tnginx_upstream_p95_ms\thikari_config_ref\thikari_max_lifetime_ms\thikari_keepalive_time_ms\tpostgres_idle_timeout_ms\toci_nat_idle_timeout_ms\thikari_zero_warning_soak_ref\tworkload_components\tread_p999_ms\tread_429_source_ref'
 printf "%s\n" "${header}" >"${manifest_tsv}"
 
@@ -202,7 +222,8 @@ cat >"${report_md}" <<REPORT
 
 ## Summary
 
-- gate_status=pass
+- gate_status=${manifest_status}
+- failure_reason=${manifest_reason}
 - run_id=${run_id}
 - duration_min=${duration_min}
 - manifest rows: 2

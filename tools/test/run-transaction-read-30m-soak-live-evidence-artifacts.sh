@@ -61,6 +61,8 @@ nginx_aggregate_dir="${output_dir}/nginx-access-aggregate"
 nginx_aggregate_tsv="${nginx_aggregate_dir}/${name}-nginx-access-aggregate.tsv"
 nginx_upstream_latency_ref="${output_dir}/nginx-upstream-latency.tsv"
 hikari_zero_warning_soak_ref="${output_dir}/hikari-zero-warning-soak.md"
+failure_reason_ref="${output_dir}/failure-reason.env"
+failure_report_ref="${output_dir}/${name}-30m-soak-live-evidence-failure.md"
 manifest_dir="${output_dir}/manifest"
 manifest_tsv="${manifest_dir}/${name}-30m-soak-live-evidence-manifest.tsv"
 
@@ -165,6 +167,10 @@ write_nginx_upstream_latency() {
 write_hikari_zero_warning_report() {
   local warnings="$1"
   local pending="$2"
+  local status="pass"
+  if [[ "${warnings}" != "0" || "${pending}" != "0" ]]; then
+    status="fail"
+  fi
   cat >"${hikari_zero_warning_soak_ref}" <<REPORT
 # Hikari 30m Zero-warning Soak
 
@@ -174,13 +180,52 @@ write_hikari_zero_warning_report() {
 - duration_min=${duration_min}
 - hikari_validation_warnings=${warnings}
 - db_pool_pending_max=${pending}
-- gate_status=pass
+- gate_status=${status}
 
 ## Artifacts
 
 - hikari log: ${hikari_log}
 - timeline: ${timeline_ref}
 - config: ${hikari_config_ref}
+REPORT
+}
+
+write_failure_report() {
+  local reason="$1"
+  local detail="$2"
+  {
+    printf "run_id=%s\n" "${run_id}"
+    printf "failure_reason=%s\n" "${reason}"
+    printf "failure_detail=%s\n" "${detail}"
+    printf "manifest_tsv=%s\n" "${manifest_tsv}"
+    printf "manifest_report=%s\n" "${manifest_dir}/${name}-30m-soak-live-evidence-manifest.md"
+    printf "k6_summary_json=%s\n" "${k6_summary_json}"
+    printf "nginx_aggregate_tsv=%s\n" "${nginx_aggregate_tsv}"
+    printf "hikari_log=%s\n" "${hikari_log}"
+    printf "postgres_wait_ref=%s\n" "${postgres_wait_ref}"
+    printf "timeline_ref=%s\n" "${timeline_ref}"
+    printf "postgres_checkpoint_ref=%s\n" "${postgres_checkpoint_ref}"
+    printf "postgres_temp_file_ref=%s\n" "${postgres_temp_file_ref}"
+  } >"${failure_reason_ref}"
+
+  cat >"${failure_report_ref}" <<REPORT
+# Transaction Read 30m Soak Failure
+
+## Summary
+
+- run_id=${run_id}
+- failure_reason=${reason}
+- failure_detail=${detail}
+- manifest: ${manifest_tsv}
+- Nginx aggregate: ${nginx_aggregate_tsv}
+- Hikari log: ${hikari_log}
+- p999 timeline: ${timeline_ref}
+- PostgreSQL wait/checkpoint/temp: ${postgres_wait_ref} / ${postgres_checkpoint_ref} / ${postgres_temp_file_ref}
+
+## Operator Notes
+
+- failure-reason env: ${failure_reason_ref}
+- artifact directory: ${output_dir}
 REPORT
 }
 
@@ -193,6 +238,7 @@ print_plan() {
   echo "[transaction-read-30m-soak-live-evidence-artifacts] k6_summary_json=${k6_summary_json:-missing}"
   echo "[transaction-read-30m-soak-live-evidence-artifacts] nginx_access_log=${nginx_access_log:-missing}"
   echo "[transaction-read-30m-soak-live-evidence-artifacts] artifact_pack_refs=k6_summary,nginx_aggregate,spring_metrics,hikari_log,postgres_wait,timeline,postgres_checkpoint,postgres_temp_file,nginx_upstream_latency,hikari_config,hikari_zero_warning_soak"
+  echo "[transaction-read-30m-soak-live-evidence-artifacts] failure_reason_ref=${failure_reason_ref}"
   echo "[transaction-read-30m-soak-live-evidence-artifacts] manifest_tsv=${manifest_tsv}"
 }
 
@@ -257,11 +303,6 @@ hikari_keepalive_time_ms="$(hikari_config_value "hikari_keepalive_time_ms")"
 postgres_idle_timeout_ms="$(hikari_config_value "postgres_idle_timeout_ms")"
 oci_nat_idle_timeout_ms="$(hikari_config_value "oci_nat_idle_timeout_ms")"
 
-if [[ "${hikari_validation_warnings}" != "0" ]]; then
-  echo "hikari validation warnings must be zero: ${hikari_validation_warnings}" >&2
-  exit 1
-fi
-
 write_nginx_upstream_latency "${nginx_upstream_p95_ms}"
 write_hikari_zero_warning_report "${hikari_validation_warnings}" "${db_pool_pending_max}"
 
@@ -301,3 +342,9 @@ SOAK_30M_MANIFEST_POSTGRES_IDLE_TIMEOUT_MS="${postgres_idle_timeout_ms}" \
 SOAK_30M_MANIFEST_OCI_NAT_IDLE_TIMEOUT_MS="${oci_nat_idle_timeout_ms}" \
 SOAK_30M_MANIFEST_OUTPUT_DIR="${manifest_dir}" \
   tools/test/run-transaction-read-30m-soak-live-evidence-manifest.sh | tail -1
+
+if [[ "${hikari_validation_warnings}" != "0" ]]; then
+  write_failure_report "hikari-validation-warning" "hikari_validation_warnings=${hikari_validation_warnings}"
+  echo "hikari validation warnings must be zero: ${hikari_validation_warnings}" >&2
+  exit 1
+fi

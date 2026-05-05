@@ -104,6 +104,7 @@ grep -F "name=soak-artifacts-check" <<<"${plan}" >/dev/null
 grep -F "run_id=run-soak-artifacts-001" <<<"${plan}" >/dev/null
 grep -F "duration_min=30" <<<"${plan}" >/dev/null
 grep -F "artifact_pack_refs=k6_summary,nginx_aggregate,spring_metrics,hikari_log,postgres_wait,timeline,postgres_checkpoint,postgres_temp_file,nginx_upstream_latency,hikari_config,hikari_zero_warning_soak" <<<"${plan}" >/dev/null
+grep -F "failure_reason_ref=${output_dir}/failure-reason.env" <<<"${plan}" >/dev/null
 
 echo "[transaction-read-30m-soak-live-evidence-artifacts] pass report"
 output="$(
@@ -160,3 +161,10 @@ if SOAK_30M_ARTIFACTS_NAME=soak-artifacts-warning \
   exit 1
 fi
 grep -F "hikari validation warnings must be zero" "${temp_dir}/warning.log" >/dev/null
+test -s "${temp_dir}/warning-output/manifest/soak-artifacts-warning-30m-soak-live-evidence-manifest.tsv"
+test -s "${temp_dir}/warning-output/manifest/soak-artifacts-warning-30m-soak-live-evidence-manifest.md"
+test -s "${temp_dir}/warning-output/failure-reason.env"
+test -s "${temp_dir}/warning-output/soak-artifacts-warning-30m-soak-live-evidence-failure.md"
+grep -F "failure_reason=hikari-validation-warning" "${temp_dir}/warning-output/failure-reason.env" >/dev/null
+grep -F "gate_status=fail" "${temp_dir}/warning-output/manifest/soak-artifacts-warning-30m-soak-live-evidence-manifest.md" >/dev/null
+grep -F "failure_reason=hikari-validation-warning" "${temp_dir}/warning-output/manifest/soak-artifacts-warning-30m-soak-live-evidence-manifest.md" >/dev/null

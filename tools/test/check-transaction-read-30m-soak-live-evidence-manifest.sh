@@ -77,6 +77,7 @@ report_md="${output_dir}/soak-manifest-check-30m-soak-live-evidence-manifest.md"
 test "${manifest_tsv}" = "${output_dir}/soak-manifest-check-30m-soak-live-evidence-manifest.tsv"
 test -s "${report_md}"
 grep -F "gate_status=pass" "${report_md}" >/dev/null
+grep -F "failure_reason=ok" "${report_md}" >/dev/null
 grep -F "manifest rows: 2" "${report_md}" >/dev/null
 grep -F $'hikari-lifetime\trun-soak-manifest-001\t2026-05-04T08:00:00Z\t30' "${manifest_tsv}" >/dev/null
 grep -F $'p999-long-correlation\trun-soak-manifest-001\t2026-05-04T08:00:00Z\t30' "${manifest_tsv}" >/dev/null
