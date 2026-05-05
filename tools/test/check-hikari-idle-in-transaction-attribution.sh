@@ -45,8 +45,8 @@ cat >"${config_tsv}" <<'TSV'
 key	value
 postgres_idle_in_transaction_timeout_ms	300000
 oci_nat_idle_timeout_ms	350000
-hikari_max_lifetime_ms	240000
-hikari_keepalive_time_ms	60000
+hikari_max_lifetime_ms	120000
+hikari_keepalive_time_ms	30000
 scheduled_worker_max_interval_ms	120000
 TSV
 

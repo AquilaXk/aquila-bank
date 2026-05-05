@@ -11,6 +11,59 @@ on:
         description: "Optional evidence report name"
         required: false
         type: string
+      duration:
+        description: "Live soak duration; must be 30m or longer"
+        required: false
+        default: "30m"
+        type: string
+      vus:
+        description: "Constant VUs for the authenticated soak"
+        required: false
+        default: "16"
+        type: string
+      hot_account_id:
+        description: "Hot account id for transaction read k6"
+        required: false
+        default: "910000001"
+        type: string
+      cold_account_id:
+        description: "Cold-labeled account id for k6; default must have fixture rows"
+        required: false
+        default: "910000001"
+        type: string
+      hot_from:
+        description: "Hot range start"
+        required: false
+        default: "2026-04-01T00:00:00Z"
+        type: string
+      hot_to:
+        description: "Hot range end"
+        required: false
+        default: "2026-04-30T00:00:00Z"
+        type: string
+      cold_from:
+        description: "Cold-labeled range start for k6; default matches the fixture-backed range"
+        required: false
+        default: "2026-04-01T00:00:00Z"
+        type: string
+      cold_to:
+        description: "Cold-labeled range end for k6; default matches the fixture-backed range"
+        required: false
+        default: "2026-04-30T00:00:00Z"
+        type: string
+      nginx_access_log:
+        description: "Optional Nginx access log path on the self-hosted runner"
+        required: false
+        type: string
+      docker_context:
+        description: "Optional k6 Docker context; no-input run falls back to default when env context is stale"
+        required: false
+        type: string
+      workload_weights:
+        description: "Weighted-random k6 workload weights; default uses fixture-backed hot read paths"
+        required: false
+        default: "hot_first:40,hot_cursor:40,hot_deep_cursor:20"
+        type: string
   pull_request:
     branches:
       - main
@@ -20,6 +73,8 @@ on:
       - "tools/test/check-transaction-read-30m-soak-live-evidence-gate.sh"
       - "tools/test/run-transaction-read-30m-soak-live-evidence-manifest.sh"
       - "tools/test/check-transaction-read-30m-soak-live-evidence-manifest.sh"
+      - "tools/test/run-transaction-read-30m-soak-live-evidence-artifacts.sh"
+      - "tools/test/check-transaction-read-30m-soak-live-evidence-artifacts.sh"
       - "tools/test/check-transaction-read-30m-soak-live-evidence-workflow.sh"
       - "tools/test/run-transaction-read-oci-evidence-execution-gate.sh"
       - "tools/test/check-transaction-read-oci-evidence-execution-gate.sh"
@@ -54,17 +109,29 @@ jobs:
     name: 30m Soak Live Evidence Gate
     if: github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, oci-a1-staging]
-    timeout-minutes: 20
+    timeout-minutes: 50
     environment:
       name: staging
     env:
+      OCI_A1_STAGING_ENV: ${{ secrets.OCI_A1_STAGING_ENV }}
       SOAK_30M_REPORT_NAME: ${{ inputs.report_name || format('transaction-read-30m-soak-live-evidence-{0}', github.run_id) }}
       SOAK_30M_EVIDENCE_MANIFEST_TSV: ${{ inputs.evidence_manifest_tsv }}
+      SOAK_30M_DURATION_INPUT: ${{ inputs.duration }}
+      SOAK_30M_VUS_INPUT: ${{ inputs.vus }}
+      SOAK_30M_HOT_ACCOUNT_ID_INPUT: ${{ inputs.hot_account_id }}
+      SOAK_30M_COLD_ACCOUNT_ID_INPUT: ${{ inputs.cold_account_id }}
+      SOAK_30M_HOT_FROM_INPUT: ${{ inputs.hot_from }}
+      SOAK_30M_HOT_TO_INPUT: ${{ inputs.hot_to }}
+      SOAK_30M_COLD_FROM_INPUT: ${{ inputs.cold_from }}
+      SOAK_30M_COLD_TO_INPUT: ${{ inputs.cold_to }}
+      SOAK_30M_NGINX_ACCESS_LOG_INPUT: ${{ inputs.nginx_access_log }}
+      SOAK_30M_DOCKER_CONTEXT_INPUT: ${{ inputs.docker_context }}
+      SOAK_30M_WORKLOAD_WEIGHTS_INPUT: ${{ inputs.workload_weights }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Build 30m soak live evidence manifest
+      - name: Prepare 30m soak evidence mode
         shell: bash
         run: |
           set -euo pipefail
@@ -74,14 +141,534 @@ jobs:
           fi
 
           report_dir="build/reports/k6/${SOAK_30M_REPORT_NAME}"
-          generated_manifest_tsv="${report_dir}/manifest/${SOAK_30M_REPORT_NAME}-30m-soak-live-evidence-manifest.tsv"
-          if [[ -z "${SOAK_30M_EVIDENCE_MANIFEST_TSV}" ]]; then
-            SOAK_30M_MANIFEST_NAME="${SOAK_30M_REPORT_NAME}" \
-            SOAK_30M_MANIFEST_RUN_ID="${SOAK_30M_REPORT_NAME}" \
-            SOAK_30M_MANIFEST_OUTPUT_DIR="${report_dir}/manifest" \
-              tools/test/run-transaction-read-30m-soak-live-evidence-manifest.sh
-            SOAK_30M_EVIDENCE_MANIFEST_TSV="${generated_manifest_tsv}"
+          mkdir -p "${report_dir}"
+          printf 'SOAK_30M_REPORT_DIR=%s\n' "${report_dir}" >>"${GITHUB_ENV}"
+
+          if [[ -n "${SOAK_30M_EVIDENCE_MANIFEST_TSV}" ]]; then
+            printf 'SOAK_30M_USE_EXISTING_MANIFEST=true\n' >>"${GITHUB_ENV}"
+            printf 'SOAK_30M_EVIDENCE_MANIFEST_TSV=%s\n' "${SOAK_30M_EVIDENCE_MANIFEST_TSV}" >>"${GITHUB_ENV}"
+            exit 0
           fi
+
+          duration="${SOAK_30M_DURATION_INPUT:-30m}"
+          if ! [[ "${duration}" =~ ^[1-9][0-9]*m$ ]]; then
+            echo "::error::duration must use minutes, for example 30m: ${duration}"
+            exit 1
+          fi
+          duration_min="${duration%m}"
+          if (( duration_min < 30 )); then
+            echo "::error::duration must be at least 30m: ${duration}"
+            exit 1
+          fi
+
+          printf 'SOAK_30M_USE_EXISTING_MANIFEST=false\n' >>"${GITHUB_ENV}"
+          printf 'SOAK_30M_DURATION=%s\n' "${duration}" >>"${GITHUB_ENV}"
+          printf 'SOAK_30M_DURATION_MIN=%s\n' "${duration_min}" >>"${GITHUB_ENV}"
+
+      - name: Load OCI A1 staging env
+        if: env.SOAK_30M_USE_EXISTING_MANIFEST != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${OCI_A1_STAGING_ENV}" ]]; then
+            echo "::error::Missing OCI_A1_STAGING_ENV environment secret."
+            exit 1
+          fi
+
+          staging_env_path="${RUNNER_TEMP}/oci-a1-staging-30m-soak.env"
+          printf '%s\n' "${OCI_A1_STAGING_ENV}" >"${staging_env_path}"
+          chmod 600 "${staging_env_path}"
+
+          set -a
+          source "${staging_env_path}"
+          set +a
+
+          K6_REPORT_NAME="${SOAK_30M_REPORT_NAME}"
+          K6_RUN_ID="${SOAK_30M_REPORT_NAME}"
+          K6_RUN_PURPOSE="capacity"
+          K6_OBSERVABILITY_MODE="prometheus"
+          K6_GENERATOR_MODE="docker-context"
+          DEFAULT_K6_DOCKER_CONTEXT="default"
+          if [[ -n "${SOAK_30M_DOCKER_CONTEXT_INPUT}" ]]; then
+            K6_DOCKER_CONTEXT="${SOAK_30M_DOCKER_CONTEXT_INPUT}"
+            K6_DOCKER_CONTEXT_SOURCE="input"
+          elif [[ -n "${CAPACITY_K6_DOCKER_CONTEXT:-}" ]]; then
+            K6_DOCKER_CONTEXT="${CAPACITY_K6_DOCKER_CONTEXT}"
+            K6_DOCKER_CONTEXT_SOURCE="env"
+          else
+            K6_DOCKER_CONTEXT="${DEFAULT_K6_DOCKER_CONTEXT}"
+            K6_DOCKER_CONTEXT_SOURCE="default"
+          fi
+          K6_REMOTE_BASE_URL="${CAPACITY_K6_REMOTE_BASE_URL:-${STAGING_BASE_URL:-}}"
+          K6_REMOTE_PROMETHEUS_RW_SERVER_URL="${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL:-http://172.17.0.2:9090/api/v1/write}"
+          K6_REMOTE_WORKDIR="${CAPACITY_K6_REMOTE_WORKDIR:-${GITHUB_WORKSPACE}}"
+          K6_REMOTE_PREFLIGHT="true"
+          K6_AUTH_TOKEN_ENV_NAME="STAGING_REPLAY_TOKEN"
+          K6_AUTH_TOKEN_REQUIRED="true"
+          K6_AUTH_PREFLIGHT="true"
+          K6_AUTH_PREFLIGHT_EXPECTED_STATUS="200"
+          K6_HOT_ACCOUNT_ID="${SOAK_30M_HOT_ACCOUNT_ID_INPUT%%,*}"
+          K6_COLD_ACCOUNT_ID="${SOAK_30M_COLD_ACCOUNT_ID_INPUT%%,*}"
+          K6_HOT_FROM="${SOAK_30M_HOT_FROM_INPUT}"
+          K6_HOT_TO="${SOAK_30M_HOT_TO_INPUT}"
+          K6_COLD_FROM="${SOAK_30M_COLD_FROM_INPUT}"
+          K6_COLD_TO="${SOAK_30M_COLD_TO_INPUT}"
+          K6_AUTH_PREFLIGHT_PATH="api/v1/transactions?accountId=${K6_HOT_ACCOUNT_ID}&from=${K6_HOT_FROM}&to=${K6_HOT_TO}&limit=1"
+          K6_VUS="${SOAK_30M_VUS_INPUT:-16}"
+          K6_DURATION="${SOAK_30M_DURATION}"
+          K6_SCENARIO_MODE="constant-vus"
+          K6_RATE="${K6_VUS}"
+          K6_TIME_UNIT="1s"
+          K6_OVERLOAD_MODE="false"
+          K6_BURST_RATE="${K6_VUS}"
+          K6_WORKLOAD_SHAPE="weighted-random"
+          K6_WORKLOAD_WEIGHTS="${SOAK_30M_WORKLOAD_WEIGHTS_INPUT:-hot_first:40,hot_cursor:40,hot_deep_cursor:20}"
+          K6_PREEMPTIVE_PACING="true"
+          K6_PREEMPTIVE_PACING_RPS="${K6_VUS}"
+          K6_PREEMPTIVE_PACING_MAX_SLEEP_MS="250"
+          K6_PREEMPTIVE_PACING_JITTER_MS="25"
+          K6_CONSTANT_VUS_GATE_ROLE="paced-saturation-contract"
+          K6_BURST_429_RATE_THRESHOLD="0.10"
+          K6_BACKEND_429_RATE_THRESHOLD="0.005"
+          K6_OVERLOAD_503_RATE_THRESHOLD="0"
+          K6_NGINX_ACCESS_LOG="${SOAK_30M_NGINX_ACCESS_LOG_INPUT:-${CAPACITY_K6_NGINX_ACCESS_LOG:-/var/log/nginx/access.log}}"
+
+          missing=()
+          [[ -z "${STAGING_REPLAY_TOKEN:-}" ]] && missing+=("STAGING_REPLAY_TOKEN")
+          if [[ -z "${STAGING_OCI_A1_DATABASE_URL:-}" && -z "${STAGING_RDS_DATABASE_URL:-}" ]]; then
+            missing+=("STAGING_OCI_A1_DATABASE_URL")
+          fi
+          [[ -z "${K6_REMOTE_BASE_URL}" ]] && missing+=("K6_REMOTE_BASE_URL")
+          [[ -z "${K6_REMOTE_PROMETHEUS_RW_SERVER_URL}" ]] && missing+=("K6_REMOTE_PROMETHEUS_RW_SERVER_URL")
+          if (( ${#missing[@]} > 0 )); then
+            printf '::error::Missing OCI 30m soak env keys: %s\n' "${missing[*]}"
+            exit 1
+          fi
+
+          env_names=(
+            OCI_A1_BACKEND_ENV_B64
+            POSTGRES_CONTAINER_NAME
+            POSTGRES_NETWORK_ALIAS
+            POSTGRES_HOST_BIND
+            STAGING_REPLAY_TOKEN
+            STAGING_OCI_A1_DATABASE_URL
+            STAGING_RDS_DATABASE_URL
+            K6_REPORT_NAME
+            K6_RUN_ID
+            K6_RUN_PURPOSE
+            K6_OBSERVABILITY_MODE
+            K6_GENERATOR_MODE
+            K6_DOCKER_CONTEXT
+            K6_DOCKER_CONTEXT_SOURCE
+            K6_REMOTE_BASE_URL
+            K6_REMOTE_PROMETHEUS_RW_SERVER_URL
+            K6_REMOTE_WORKDIR
+            K6_REMOTE_PREFLIGHT
+            K6_AUTH_TOKEN_ENV_NAME
+            K6_AUTH_TOKEN_REQUIRED
+            K6_AUTH_PREFLIGHT
+            K6_AUTH_PREFLIGHT_PATH
+            K6_AUTH_PREFLIGHT_EXPECTED_STATUS
+            K6_HOT_ACCOUNT_ID
+            K6_HOT_FROM
+            K6_HOT_TO
+            K6_COLD_ACCOUNT_ID
+            K6_COLD_FROM
+            K6_COLD_TO
+            K6_VUS
+            K6_DURATION
+            K6_SCENARIO_MODE
+            K6_RATE
+            K6_TIME_UNIT
+            K6_OVERLOAD_MODE
+            K6_BURST_RATE
+            K6_WORKLOAD_SHAPE
+            K6_WORKLOAD_WEIGHTS
+            K6_PREEMPTIVE_PACING
+            K6_PREEMPTIVE_PACING_RPS
+            K6_PREEMPTIVE_PACING_MAX_SLEEP_MS
+            K6_PREEMPTIVE_PACING_JITTER_MS
+            K6_CONSTANT_VUS_GATE_ROLE
+            K6_BURST_429_RATE_THRESHOLD
+            K6_BACKEND_429_RATE_THRESHOLD
+            K6_OVERLOAD_503_RATE_THRESHOLD
+            K6_NGINX_ACCESS_LOG
+          )
+
+          for name in "${env_names[@]}"; do
+            value="${!name:-}"
+            if [[ -n "${value}" ]]; then
+              case "${name}" in
+                STAGING_REPLAY_TOKEN|K6_REMOTE_*|*TOKEN*|*DATABASE_URL|*_ENV_B64)
+                  echo "::add-mask::${value}"
+                  ;;
+              esac
+              printf '%s=%s\n' "${name}" "${value}" >>"${GITHUB_ENV}"
+            fi
+          done
+
+      - name: Prepare OCI k6 Docker context access
+        if: env.SOAK_30M_USE_EXISTING_MANIFEST != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${K6_DOCKER_CONTEXT:-}" || "${K6_DOCKER_CONTEXT}" == "default" ]]; then
+            docker info >/dev/null
+            printf 'K6_DOCKER_CONTEXT=default\n' >>"${GITHUB_ENV}"
+            printf 'K6_REMOTE_WORKDIR=%s\n' "${GITHUB_WORKSPACE}" >>"${GITHUB_ENV}"
+            exit 0
+          fi
+
+          docker_config_home="${DOCKER_CONFIG:-${HOME}/.docker}"
+          if docker --context "${K6_DOCKER_CONTEXT}" info >/dev/null 2>&1; then
+            exit 0
+          fi
+
+          if [[ -d "${docker_config_home}" ]]; then
+            # self-hosted runner .docker 소유권 drift 시 remote context meta를 읽지 못한다.
+            if (( EUID == 0 )); then
+              chown -R "$(id -u):$(id -g)" "${docker_config_home}" 2>/dev/null || true
+            elif sudo -n true 2>/dev/null; then
+              sudo chown -R "$(id -u):$(id -g)" "${docker_config_home}" 2>/dev/null || true
+            fi
+            chmod -R u+rwX "${docker_config_home}" 2>/dev/null || true
+          fi
+
+          if docker --context "${K6_DOCKER_CONTEXT}" info >/dev/null 2>&1; then
+            exit 0
+          fi
+
+          if [[ "${K6_DOCKER_CONTEXT_SOURCE:-}" != "input" ]] && docker info >/dev/null 2>&1; then
+            echo "::notice::K6_DOCKER_CONTEXT=${K6_DOCKER_CONTEXT} is unavailable; falling back to default self-hosted runner Docker context."
+            printf 'K6_DOCKER_CONTEXT=default\n' >>"${GITHUB_ENV}"
+            printf 'K6_REMOTE_WORKDIR=%s\n' "${GITHUB_WORKSPACE}" >>"${GITHUB_ENV}"
+            exit 0
+          fi
+
+          echo "::error::K6_DOCKER_CONTEXT=${K6_DOCKER_CONTEXT} is unavailable. Fix the Docker context or dispatch with docker_context=default."
+          docker --context "${K6_DOCKER_CONTEXT}" info >/dev/null
+
+      - name: Resolve OCI A1 staging database URL
+        if: env.SOAK_30M_USE_EXISTING_MANIFEST != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! resolved_database_url="$(tools/ops/resolve-oci-a1-staging-database-url.sh)"; then
+            echo "::error::Failed to resolve 30m soak staging database URL."
+            exit 1
+          fi
+          echo "::add-mask::${resolved_database_url}"
+          printf 'STAGING_OCI_A1_DATABASE_URL=%s\n' "${resolved_database_url}" >>"${GITHUB_ENV}"
+
+      - name: Ensure service auth fixture principal
+        if: env.SOAK_30M_USE_EXISTING_MANIFEST != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          HOT_ACCOUNT_ID="${K6_HOT_ACCOUNT_ID}" \
+          COLD_ACCOUNT_ID="${K6_COLD_ACCOUNT_ID}" \
+            tools/ops/staging-fixture-principal-bootstrap.sh
+
+      - name: Capture 30m soak evidence window
+        if: env.SOAK_30M_USE_EXISTING_MANIFEST != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          started_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          printf 'SOAK_30M_STARTED_AT_UTC=%s\n' "${started_at}" >>"${GITHUB_ENV}"
+          printf 'K6_NGINX_LOG_SINCE=%s\n' "${started_at}" >>"${GITHUB_ENV}"
+
+      - name: Run auth preflight
+        if: env.SOAK_30M_USE_EXISTING_MANIFEST != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v python3 >/dev/null || {
+            echo "::error::python3 is required for 30m soak auth item preflight."
+            exit 1
+          }
+          report_dir="${SOAK_30M_REPORT_DIR}"
+          auth_preflight_log="${report_dir}/auth-preflight.log"
+          : >"${auth_preflight_log}"
+
+          run_account_auth_preflight() {
+            local account_group="$1"
+            local account_id="$2"
+            local from="$3"
+            local to="$4"
+            local endpoint="$5"
+            echo "[transaction-read-30m-soak] auth preflight ${account_group} account=${account_id}" >>"${auth_preflight_log}"
+            K6_AUTH_PREFLIGHT_PATH="${endpoint}?accountId=${account_id}&from=${from}&to=${to}&limit=1" \
+              tools/test/run-k6-transaction-100m-loadtest.sh --auth-preflight-only >>"${auth_preflight_log}" 2>&1
+            preflight_url="${K6_REMOTE_BASE_URL%/}/${endpoint}?accountId=${account_id}&from=${from}&to=${to}&limit=1"
+            preflight_body="${report_dir}/auth-preflight-${account_group}-${account_id}.json"
+            status="$(
+              curl -sS -o "${preflight_body}" -w "%{http_code}" \
+                --max-time 5 \
+                -H "Authorization: Bearer ${STAGING_REPLAY_TOKEN}" \
+                "${preflight_url}" 2>>"${auth_preflight_log}" || true
+            )"
+            status="${status:0:3}"
+            if [[ ! "${status}" =~ ^2 ]]; then
+              echo "::error::auth item preflight failed: ${account_group} account=${account_id} expected 2xx actual=${status:-000}"
+              exit 1
+            fi
+            item_count="$(
+              python3 -c 'import json, sys; data = json.load(open(sys.argv[1], encoding="utf-8")); items = data.get("items"); print(len(items) if isinstance(items, list) else 0)' \
+                "${preflight_body}"
+            )"
+            if (( item_count < 1 )); then
+              echo "::error::auth item preflight failed: ${account_group} account=${account_id} returned no items"
+              exit 1
+            fi
+          }
+
+          run_account_auth_preflight hot "${K6_HOT_ACCOUNT_ID}" "${K6_HOT_FROM}" "${K6_HOT_TO}" "api/v1/transactions"
+          if [[ "${K6_WORKLOAD_WEIGHTS}" == *cold_* ]]; then
+            run_account_auth_preflight cold "${K6_COLD_ACCOUNT_ID}" "${K6_COLD_FROM}" "${K6_COLD_TO}" "api/v1/transactions/archive"
+          fi
+
+      - name: Run 30m authenticated k6 soak
+        if: env.SOAK_30M_USE_EXISTING_MANIFEST != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          report_dir="${SOAK_30M_REPORT_DIR}"
+          timeline_ref="${report_dir}/p999-timeline.tsv"
+          sampler_log="${report_dir}/p999-timeline-sampler.log"
+          printf "sample_time_utc\thikari_pending\tpg_wait_count\tgc_pause_count\tnote\n" >"${timeline_ref}"
+
+          sample_once() {
+            local sample_time prometheus_body hikari_pending gc_pause_count pg_wait_count
+            sample_time="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+            prometheus_body="$(curl -fsS --max-time 5 "${K6_REMOTE_BASE_URL%/}/actuator/prometheus" 2>/dev/null || true)"
+            hikari_pending="$(awk '/^hikaricp_connections_pending/ { if ($NF + 0 > max) max = $NF + 0 } END { print max + 0 }' <<<"${prometheus_body}")"
+            gc_pause_count="$(awk '/^jvm_gc_pause_seconds_count/ { if ($NF + 0 > max) max = $NF + 0 } END { print max + 0 }' <<<"${prometheus_body}")"
+            pg_wait_count="$(psql "${STAGING_OCI_A1_DATABASE_URL}" --no-align --tuples-only --command "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type IS NOT NULL;" 2>/dev/null || echo 0)"
+            pg_wait_count="${pg_wait_count//[[:space:]]/}"
+            printf "%s\t%s\t%s\t%s\tload-coupled\n" "${sample_time}" "${hikari_pending:-0}" "${pg_wait_count:-0}" "${gc_pause_count:-0}"
+          }
+
+          stop_sampler() {
+            if [[ -n "${sampler_pid:-}" ]] && kill -0 "${sampler_pid}" 2>/dev/null; then
+              kill "${sampler_pid}" 2>/dev/null || true
+              wait "${sampler_pid}" 2>/dev/null || true
+            fi
+          }
+
+          (
+            while true; do
+              sample_once >>"${timeline_ref}" 2>>"${sampler_log}" || true
+              sleep 5
+            done
+          ) &
+          sampler_pid="$!"
+          trap stop_sampler EXIT
+
+          K6_DURATION="${SOAK_30M_DURATION}" tools/test/run-k6-transaction-100m-loadtest.sh --no-up --no-deps >"${report_dir}/k6-capacity.log" 2>&1
+          stop_sampler
+          trap - EXIT
+          printf 'SOAK_30M_TIMELINE_REF=%s\n' "${timeline_ref}" >>"${GITHUB_ENV}"
+
+      - name: Resolve transaction read Nginx access log
+        if: env.SOAK_30M_USE_EXISTING_MANIFEST != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${K6_NGINX_ACCESS_LOG:-}" && -s "${K6_NGINX_ACCESS_LOG}" ]]; then
+            original_log="${K6_NGINX_ACCESS_LOG}"
+          else
+            original_log=""
+          fi
+
+          candidate_raw_log="${RUNNER_TEMP}/${K6_RUN_ID}-nginx-access.raw.jsonl"
+          candidate_run_log="${RUNNER_TEMP}/${K6_RUN_ID}-nginx-access.jsonl"
+
+          select_current_run_log() {
+            if [[ ! -s "${candidate_raw_log}" ]]; then
+              return 1
+            fi
+            grep -F "\"k6_run_id\":\"${K6_RUN_ID}\"" "${candidate_raw_log}" >"${candidate_run_log}" || true
+            if [[ -s "${candidate_run_log}" ]]; then
+              printf 'K6_NGINX_ACCESS_LOG=%s\n' "${candidate_run_log}" >>"${GITHUB_ENV}"
+              return 0
+            fi
+            return 1
+          }
+
+          if [[ -n "${original_log}" ]]; then
+            cp "${original_log}" "${candidate_raw_log}"
+            if select_current_run_log; then
+              exit 0
+            fi
+          fi
+
+          container_candidates=(
+            "${K6_NGINX_CONTAINER:-}"
+            "${NGINX_CONTAINER:-}"
+            "aquila-bank-nginx"
+            "aquila-nginx"
+            "nginx"
+          )
+
+          if command -v docker >/dev/null 2>&1; then
+            while IFS= read -r container; do
+              container_candidates+=("${container}")
+            done < <(docker ps --format '{{.Names}}' 2>/dev/null | grep -E 'nginx|proxy' || true)
+          fi
+
+          for container in "${container_candidates[@]}"; do
+            [[ -z "${container}" ]] && continue
+            if docker exec "${container}" test -s /var/log/nginx/access.log 2>/dev/null; then
+              if docker cp "${container}:/var/log/nginx/access.log" "${candidate_raw_log}" 2>/dev/null; then
+                if select_current_run_log; then
+                  exit 0
+                fi
+              fi
+            fi
+            if docker logs --since "${K6_NGINX_LOG_SINCE:-1h}" "${container}" >"${candidate_raw_log}" 2>/dev/null; then
+              if select_current_run_log; then
+                exit 0
+              fi
+            fi
+          done
+
+          echo "::notice::K6_NGINX_ACCESS_LOG is missing or empty and no Nginx container access log was found."
+
+      - name: Collect 30m soak live evidence artifacts
+        if: env.SOAK_30M_USE_EXISTING_MANIFEST != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          report_dir="${SOAK_30M_REPORT_DIR}"
+          spring_metrics_ref="${report_dir}/spring-metrics.prom"
+          hikari_log_ref="${report_dir}/hikari.log"
+          postgres_wait_ref="${report_dir}/postgres-wait.tsv"
+          postgres_checkpoint_ref="${report_dir}/postgres-checkpoint.tsv"
+          postgres_temp_file_ref="${report_dir}/postgres-temp-file.tsv"
+          hikari_config_ref="${report_dir}/hikari-config.tsv"
+
+          backend_candidates=(
+            "${K6_BACKEND_CONTAINER:-}"
+            "${BACKEND_CONTAINER:-}"
+            "aquila-bank-backend"
+            "aquila-bank-backend-a"
+            "aquila-bank-backend-b"
+            "aquila-bank-backend-loadtest"
+          )
+          if command -v docker >/dev/null 2>&1; then
+            while IFS= read -r container; do
+              backend_candidates+=("${container}")
+            done < <(docker ps --format '{{.Names}}' 2>/dev/null | grep -E 'backend|aquila-bank' || true)
+          fi
+
+          collect_spring_metrics() {
+            if curl -fsS --max-time 10 "${K6_REMOTE_BASE_URL%/}/actuator/prometheus" >"${spring_metrics_ref}" 2>/dev/null; then
+              return 0
+            fi
+            local container
+            for container in "${backend_candidates[@]}"; do
+              [[ -z "${container}" ]] && continue
+              if docker exec "${container}" sh -c 'curl -fsS --max-time 10 http://127.0.0.1:8080/actuator/prometheus || wget -qO- http://127.0.0.1:8080/actuator/prometheus' >"${spring_metrics_ref}" 2>/dev/null; then
+                return 0
+              fi
+            done
+            return 1
+          }
+
+          if ! collect_spring_metrics; then
+            echo "::error::Spring Prometheus metrics capture failed."
+            exit 1
+          fi
+
+          captured_backend_log="false"
+          : >"${hikari_log_ref}"
+          for container in "${backend_candidates[@]}"; do
+            [[ -z "${container}" ]] && continue
+            if docker logs --since "${SOAK_30M_STARTED_AT_UTC:-1h}" "${container}" >"${hikari_log_ref}" 2>/dev/null; then
+              captured_backend_log="true"
+              break
+            fi
+          done
+          if [[ "${captured_backend_log}" != "true" ]]; then
+            echo "::error::backend/Hikari log capture failed."
+            exit 1
+          fi
+          if [[ ! -s "${hikari_log_ref}" ]]; then
+            printf '%s INFO no backend log lines captured in 30m soak window\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" >"${hikari_log_ref}"
+          fi
+
+          printf "sample_time_utc\twait_event_type\twait_event\tcount\n" >"${postgres_wait_ref}"
+          psql "${STAGING_OCI_A1_DATABASE_URL}" --no-align --tuples-only --field-separator=$'\t' --command "
+            SELECT
+              to_char(statement_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"'),
+              COALESCE(wait_event_type, 'none'),
+              COALESCE(wait_event, 'none'),
+              count(*)
+            FROM pg_stat_activity
+            WHERE datname = current_database()
+            GROUP BY 1, 2, 3
+            ORDER BY 1, 2, 3;
+          " >>"${postgres_wait_ref}"
+
+          printf "metric\tvalue\n" >"${postgres_checkpoint_ref}"
+          if ! psql "${STAGING_OCI_A1_DATABASE_URL}" --no-align --tuples-only --field-separator=$'\t' --command "
+            SELECT 'postgres_checkpoint_count', (checkpoints_timed + checkpoints_req)::bigint
+            FROM pg_stat_bgwriter;
+          " >>"${postgres_checkpoint_ref}" 2>/dev/null; then
+            psql "${STAGING_OCI_A1_DATABASE_URL}" --no-align --tuples-only --field-separator=$'\t' --command "
+              SELECT 'postgres_checkpoint_count', (num_timed + num_requested)::bigint
+              FROM pg_stat_checkpointer;
+            " >>"${postgres_checkpoint_ref}"
+          fi
+
+          printf "metric\tvalue\n" >"${postgres_temp_file_ref}"
+          psql "${STAGING_OCI_A1_DATABASE_URL}" --no-align --tuples-only --field-separator=$'\t' --command "
+            SELECT 'postgres_temp_file_count', temp_files::bigint
+            FROM pg_stat_database
+            WHERE datname = current_database();
+          " >>"${postgres_temp_file_ref}"
+
+          {
+            printf "key\tvalue\n"
+            printf "hikari_max_lifetime_ms\t%s\n" "${OCI_A1_DB_MAX_LIFETIME_MS:-120000}"
+            printf "hikari_keepalive_time_ms\t%s\n" "${OCI_A1_DB_KEEPALIVE_TIME_MS:-30000}"
+            printf "postgres_idle_timeout_ms\t%s\n" "${POSTGRES_IDLE_IN_TRANSACTION_TIMEOUT_MS:-300000}"
+            printf "oci_nat_idle_timeout_ms\t%s\n" "${OCI_NAT_IDLE_TIMEOUT_MS:-350000}"
+          } >"${hikari_config_ref}"
+
+          printf 'SOAK_30M_SPRING_METRICS_REF=%s\n' "${spring_metrics_ref}" >>"${GITHUB_ENV}"
+          printf 'SOAK_30M_HIKARI_LOG_REF=%s\n' "${hikari_log_ref}" >>"${GITHUB_ENV}"
+          printf 'SOAK_30M_POSTGRES_WAIT_REF=%s\n' "${postgres_wait_ref}" >>"${GITHUB_ENV}"
+          printf 'SOAK_30M_POSTGRES_CHECKPOINT_REF=%s\n' "${postgres_checkpoint_ref}" >>"${GITHUB_ENV}"
+          printf 'SOAK_30M_POSTGRES_TEMP_FILE_REF=%s\n' "${postgres_temp_file_ref}" >>"${GITHUB_ENV}"
+          printf 'SOAK_30M_HIKARI_CONFIG_REF=%s\n' "${hikari_config_ref}" >>"${GITHUB_ENV}"
+
+      - name: Build 30m soak live evidence artifact pack
+        if: env.SOAK_30M_USE_EXISTING_MANIFEST != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          summary_json="build/reports/k6/${K6_REPORT_NAME}-summary.json"
+          manifest_output="$(
+            SOAK_30M_ARTIFACTS_NAME="${SOAK_30M_REPORT_NAME}" \
+            SOAK_30M_ARTIFACTS_RUN_ID="${K6_RUN_ID}" \
+            SOAK_30M_ARTIFACTS_EXECUTED_AT_UTC="${SOAK_30M_STARTED_AT_UTC}" \
+            SOAK_30M_ARTIFACTS_DURATION_MIN="${SOAK_30M_DURATION_MIN}" \
+            SOAK_30M_ARTIFACTS_OUTPUT_DIR="${SOAK_30M_REPORT_DIR}" \
+            SOAK_30M_ARTIFACTS_K6_SUMMARY_JSON="${summary_json}" \
+            SOAK_30M_ARTIFACTS_NGINX_ACCESS_LOG="${K6_NGINX_ACCESS_LOG}" \
+            SOAK_30M_ARTIFACTS_SPRING_METRICS_REF="${SOAK_30M_SPRING_METRICS_REF}" \
+            SOAK_30M_ARTIFACTS_HIKARI_LOG="${SOAK_30M_HIKARI_LOG_REF}" \
+            SOAK_30M_ARTIFACTS_POSTGRES_WAIT_REF="${SOAK_30M_POSTGRES_WAIT_REF}" \
+            SOAK_30M_ARTIFACTS_TIMELINE_REF="${SOAK_30M_TIMELINE_REF}" \
+            SOAK_30M_ARTIFACTS_POSTGRES_CHECKPOINT_REF="${SOAK_30M_POSTGRES_CHECKPOINT_REF}" \
+            SOAK_30M_ARTIFACTS_POSTGRES_TEMP_FILE_REF="${SOAK_30M_POSTGRES_TEMP_FILE_REF}" \
+            SOAK_30M_ARTIFACTS_HIKARI_CONFIG_REF="${SOAK_30M_HIKARI_CONFIG_REF}" \
+              tools/test/run-transaction-read-30m-soak-live-evidence-artifacts.sh
+          )"
+          echo "${manifest_output}"
+          SOAK_30M_EVIDENCE_MANIFEST_TSV="$(tail -1 <<<"${manifest_output}")"
           printf 'SOAK_30M_EVIDENCE_MANIFEST_TSV=%s\n' "${SOAK_30M_EVIDENCE_MANIFEST_TSV}" >>"${GITHUB_ENV}"
 
       - name: Run 30m soak live evidence gate
