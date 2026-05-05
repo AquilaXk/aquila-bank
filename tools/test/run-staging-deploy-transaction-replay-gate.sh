@@ -72,6 +72,7 @@ abort('replay report upload must run after replay gate') unless replay_index < u
 
 deploy_outputs = deploy_job.fetch('outputs')
 abort('deploy job must expose transaction replay result') unless deploy_outputs.fetch('transaction_replay_result').include?('resolve-transaction-replay-result')
+abort('deploy job must expose transaction replay required flag') unless deploy_outputs.fetch('transaction_replay_required').include?('load-oci-a1-staging-env')
 
 finalize_needs = Array(finalize_job.fetch('needs'))
 abort('finalize job must depend on deploy-and-verify') unless finalize_needs.include?('deploy-and-verify')
@@ -80,18 +81,21 @@ finalize_step_names = finalize_steps.map { |step| step['name'] }
 record_replay_evidence_index = finalize_step_names.index(record_replay_evidence_name) or abort("missing step: #{record_replay_evidence_name}")
 success_step = finalize_steps.find { |step| step['name'] == 'Mark staging deployment success' } or abort('missing finalize success step')
 abort('success status must require deploy-and-verify success') unless success_step.fetch('if').include?("needs.deploy-and-verify.result == 'success'")
-abort('success status must not run when transaction replay failed') unless success_step.fetch('if').include?("needs.deploy-and-verify.outputs.transaction_replay_result != 'failure'")
+abort('success status must allow optional transaction replay failure') unless success_step.fetch('if').include?("needs.deploy-and-verify.outputs.transaction_replay_required != 'true'")
+abort('success status must block required transaction replay failure') unless success_step.fetch('if').include?("needs.deploy-and-verify.outputs.transaction_replay_result != 'failure'")
 record_replay_evidence_step = finalize_steps.fetch(record_replay_evidence_index)
 record_replay_evidence_run = record_replay_evidence_step.fetch('run')
 abort('replay evidence must use separate deployment environment') unless record_replay_evidence_run.include?('staging-100m-replay')
 abort('replay evidence must not fail staging CD on replay failure') if record_replay_evidence_run.include?('exit 1')
 failure_step = finalize_steps.find { |step| step['name'] == 'Mark staging deployment failure' } or abort('missing finalize failure step')
 failure_if = failure_step.fetch('if')
-abort('failure status must include transaction replay failure') unless failure_if.include?("needs.deploy-and-verify.outputs.transaction_replay_result == 'failure'")
+abort('failure status must include required transaction replay failure') unless failure_if.include?("needs.deploy-and-verify.outputs.transaction_replay_required == 'true'") && failure_if.include?("needs.deploy-and-verify.outputs.transaction_replay_result == 'failure'")
 failure_run = failure_step.fetch('run')
 abort('failure log must include transaction replay result') unless failure_run.include?('replay=${TRANSACTION_REPLAY_RESULT}')
+abort('failure log must include transaction replay required flag') unless failure_run.include?('replay_required=${TRANSACTION_REPLAY_REQUIRED}')
 
 load_env_step = steps.fetch(load_env_index)
+abort('load env step must have a stable id for deploy outputs') unless load_env_step.fetch('id') == 'load-oci-a1-staging-env'
 load_env = load_env_step.fetch('env')
 load_run = load_env_step.fetch('run')
 replay_step = steps.fetch(replay_index)
@@ -129,6 +133,7 @@ end
 abort('load step must read only the unified staging env secret') unless load_env.fetch('OCI_A1_STAGING_ENV').include?('secrets.OCI_A1_STAGING_ENV')
 abort('load step must source the staging env file') unless load_run.include?('source "${staging_env_path}"')
 abort('load step must default replay required to false') unless load_run.include?('STAGING_REPLAY_REQUIRED="${STAGING_REPLAY_REQUIRED:-false}"')
+abort('load step must write replay required flag to job output') unless load_run.include?('transaction_replay_required=%s')
 abort('load step must derive replay enabled from replay keys') unless load_run.include?('STAGING_REPLAY_ENABLED')
 abort('replay step should not scatter staging env mappings') if replay_step.key?('env')
 abort('replay step must be soft-fail for staging CD') unless replay_step['continue-on-error'] == true
