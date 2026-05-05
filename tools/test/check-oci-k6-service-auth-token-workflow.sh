@@ -56,6 +56,8 @@ grep -F "POSTGRES_CONTAINER_NAME" "${workflow}" >/dev/null
 grep -F "POSTGRES_NETWORK_ALIAS" "${workflow}" >/dev/null
 grep -F "POSTGRES_HOST_BIND" "${workflow}" >/dev/null
 grep -F "K6_AUTH_PREFLIGHT_PATH" "${workflow}" >/dev/null
+grep -F "K6_COLD_DEEP_CURSOR_BOOKED_AT" "${workflow}" >/dev/null
+grep -F "K6_COLD_DEEP_CURSOR_ID" "${workflow}" >/dev/null
 grep -F "burst_rate:" "${workflow}" >/dev/null
 grep -F 'description: "Hot account id, or comma-separated hot account ids for fairness replay"' "${workflow}" >/dev/null
 grep -F 'description: "Cold account id, or comma-separated cold account ids for fairness replay"' "${workflow}" >/dev/null
@@ -84,6 +86,9 @@ grep -F 'K6_HOT_ACCOUNT_IDS="${HOT_ACCOUNT_ID_INPUT}"' "${workflow}" >/dev/null
 grep -F 'K6_COLD_ACCOUNT_ID="${COLD_ACCOUNT_ID_INPUT%%,*}"' "${workflow}" >/dev/null
 grep -F 'if [[ "${COLD_ACCOUNT_ID_INPUT}" == *,* ]]; then' "${workflow}" >/dev/null
 grep -F 'K6_COLD_ACCOUNT_IDS="${COLD_ACCOUNT_ID_INPUT}"' "${workflow}" >/dev/null
+grep -F 'derive_midpoint_cursor()' "${workflow}" >/dev/null
+grep -F 'K6_COLD_DEEP_CURSOR_BOOKED_AT="${K6_COLD_DEEP_CURSOR_BOOKED_AT:-$(derive_midpoint_cursor "${K6_COLD_FROM}" "${K6_COLD_TO}")}"' "${workflow}" >/dev/null
+grep -F 'K6_COLD_DEEP_CURSOR_ID="${K6_COLD_DEEP_CURSOR_ID:-9223372036854775807}"' "${workflow}" >/dev/null
 grep -F 'K6_AUTH_PREFLIGHT_PATH="api/v1/transactions?accountId=${K6_HOT_ACCOUNT_ID}&from=${HOT_FROM_INPUT}&to=${HOT_TO_INPUT}&limit=1"' "${workflow}" >/dev/null
 grep -F 'K6_OVERLOAD_MODE="${OVERLOAD_MODE_INPUT}"' "${workflow}" >/dev/null
 grep -F 'if [[ -z "${K6_OVERLOAD_MODE}" && "${K6_SCENARIO_MODE}" == "burst" ]]; then' "${workflow}" >/dev/null
@@ -128,12 +133,13 @@ grep -F "Run auth preflight" "${workflow}" >/dev/null
 grep -F "run_account_auth_preflight()" "${workflow}" >/dev/null
 grep -F 'local account_group="$1"' "${workflow}" >/dev/null
 grep -F 'local account_ids="$2"' "${workflow}" >/dev/null
+grep -F 'local endpoint="$5"' "${workflow}" >/dev/null
 grep -F 'IFS="," read -r -a accounts <<<"${account_ids}"' "${workflow}" >/dev/null
-grep -F 'K6_AUTH_PREFLIGHT_PATH="api/v1/transactions?accountId=${account_id}&from=${from}&to=${to}&limit=1" \' "${workflow}" >/dev/null
-grep -F 'run_account_auth_preflight hot "${K6_HOT_ACCOUNT_IDS:-${K6_HOT_ACCOUNT_ID}}" "${K6_HOT_FROM}" "${K6_HOT_TO}"' "${workflow}" >/dev/null
-grep -F 'run_account_auth_preflight cold "${K6_COLD_ACCOUNT_IDS:-${K6_COLD_ACCOUNT_ID}}" "${K6_COLD_FROM}" "${K6_COLD_TO}"' "${workflow}" >/dev/null
+grep -F 'K6_AUTH_PREFLIGHT_PATH="${endpoint}?accountId=${account_id}&from=${from}&to=${to}&limit=1" \' "${workflow}" >/dev/null
+grep -F 'run_account_auth_preflight hot "${K6_HOT_ACCOUNT_IDS:-${K6_HOT_ACCOUNT_ID}}" "${K6_HOT_FROM}" "${K6_HOT_TO}" "api/v1/transactions"' "${workflow}" >/dev/null
+grep -F 'run_account_auth_preflight cold "${K6_COLD_ACCOUNT_IDS:-${K6_COLD_ACCOUNT_ID}}" "${K6_COLD_FROM}" "${K6_COLD_TO}" "api/v1/transactions/archive"' "${workflow}" >/dev/null
 grep -F "tools/test/run-k6-transaction-100m-loadtest.sh --auth-preflight-only" "${workflow}" >/dev/null
-grep -F 'preflight_url="${K6_REMOTE_BASE_URL%/}/api/v1/transactions?accountId=${account_id}&from=${from}&to=${to}&limit=1"' "${workflow}" >/dev/null
+grep -F 'preflight_url="${K6_REMOTE_BASE_URL%/}/${endpoint}?accountId=${account_id}&from=${from}&to=${to}&limit=1"' "${workflow}" >/dev/null
 grep -F 'preflight_body="${report_dir}/auth-preflight-${account_group}-${account_id}.json"' "${workflow}" >/dev/null
 grep -F 'curl -sS -o "${preflight_body}" -w "%{http_code}"' "${workflow}" >/dev/null
 grep -F -- '-H "Authorization: Bearer ${STAGING_REPLAY_TOKEN}"' "${workflow}" >/dev/null

@@ -262,6 +262,25 @@ jobs:
           K6_HOT_TO="${HOT_TO_INPUT}"
           K6_COLD_FROM="${COLD_FROM_INPUT}"
           K6_COLD_TO="${COLD_TO_INPUT}"
+          derive_midpoint_cursor() {
+            python3 - "$1" "$2" <<'PY'
+from datetime import datetime, timezone
+import sys
+
+def parse(value):
+    return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
+
+start = parse(sys.argv[1])
+end = parse(sys.argv[2])
+if end <= start:
+    print(sys.argv[1])
+else:
+    midpoint = start + (end - start) / 2
+    print(midpoint.strftime("%Y-%m-%dT%H:%M:%SZ"))
+PY
+          }
+          K6_COLD_DEEP_CURSOR_BOOKED_AT="${K6_COLD_DEEP_CURSOR_BOOKED_AT:-$(derive_midpoint_cursor "${K6_COLD_FROM}" "${K6_COLD_TO}")}"
+          K6_COLD_DEEP_CURSOR_ID="${K6_COLD_DEEP_CURSOR_ID:-9223372036854775807}"
           K6_VUS="${VUS_INPUT}"
           K6_DURATION="${DURATION_INPUT}"
           K6_SCENARIO_MODE="${SCENARIO_MODE_INPUT}"
@@ -345,6 +364,8 @@ jobs:
             K6_COLD_ACCOUNT_IDS
             K6_COLD_FROM
             K6_COLD_TO
+            K6_COLD_DEEP_CURSOR_BOOKED_AT
+            K6_COLD_DEEP_CURSOR_ID
             K6_VUS
             K6_DURATION
             K6_SCENARIO_MODE
@@ -482,6 +503,7 @@ jobs:
             local account_ids="$2"
             local from="$3"
             local to="$4"
+            local endpoint="$5"
             local account_id raw_account_id
             IFS="," read -r -a accounts <<<"${account_ids}"
             for raw_account_id in "${accounts[@]}"; do
@@ -494,9 +516,9 @@ jobs:
                 exit 1
               fi
               echo "[oci-k6-service-auth] auth preflight ${account_group} account=${account_id}" >>"${auth_preflight_log}"
-              K6_AUTH_PREFLIGHT_PATH="api/v1/transactions?accountId=${account_id}&from=${from}&to=${to}&limit=1" \
+              K6_AUTH_PREFLIGHT_PATH="${endpoint}?accountId=${account_id}&from=${from}&to=${to}&limit=1" \
                 tools/test/run-k6-transaction-100m-loadtest.sh --auth-preflight-only >>"${auth_preflight_log}" 2>&1
-              preflight_url="${K6_REMOTE_BASE_URL%/}/api/v1/transactions?accountId=${account_id}&from=${from}&to=${to}&limit=1"
+              preflight_url="${K6_REMOTE_BASE_URL%/}/${endpoint}?accountId=${account_id}&from=${from}&to=${to}&limit=1"
               preflight_body="${report_dir}/auth-preflight-${account_group}-${account_id}.json"
               status="$(
                 curl -sS -o "${preflight_body}" -w "%{http_code}" \
@@ -522,8 +544,8 @@ jobs:
             done
           }
 
-          run_account_auth_preflight hot "${K6_HOT_ACCOUNT_IDS:-${K6_HOT_ACCOUNT_ID}}" "${K6_HOT_FROM}" "${K6_HOT_TO}"
-          run_account_auth_preflight cold "${K6_COLD_ACCOUNT_IDS:-${K6_COLD_ACCOUNT_ID}}" "${K6_COLD_FROM}" "${K6_COLD_TO}"
+          run_account_auth_preflight hot "${K6_HOT_ACCOUNT_IDS:-${K6_HOT_ACCOUNT_ID}}" "${K6_HOT_FROM}" "${K6_HOT_TO}" "api/v1/transactions"
+          run_account_auth_preflight cold "${K6_COLD_ACCOUNT_IDS:-${K6_COLD_ACCOUNT_ID}}" "${K6_COLD_FROM}" "${K6_COLD_TO}" "api/v1/transactions/archive"
 
       - name: Run authenticated k6 capacity
         shell: bash
