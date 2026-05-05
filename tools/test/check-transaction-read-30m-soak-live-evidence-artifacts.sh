@@ -65,21 +65,25 @@ TSV
 
 checkpoint="${artifact_dir}/postgres-checkpoint.tsv"
 cat >"${checkpoint}" <<'TSV'
-metric	value
-postgres_checkpoint_count	3
+metric	start_value	end_value	delta
+postgres_checkpoint_count	10	13	3
 TSV
 
 temp_file="${artifact_dir}/postgres-temp-file.tsv"
 cat >"${temp_file}" <<'TSV'
-metric	value
-postgres_temp_file_count	0
+metric	start_value	end_value	delta
+postgres_temp_file_count	20	20	0
 TSV
 
 hikari_config="${artifact_dir}/hikari-config.tsv"
 cat >"${hikari_config}" <<'TSV'
 key	value
-hikari_max_lifetime_ms	120000
+hikari_config_source	aquila-bank-backend
+hikari_keepalive_source	aquila-bank-backend
+hikari_max_lifetime_ms	45000
 hikari_keepalive_time_ms	30000
+expected_hikari_max_lifetime_ms	45000
+expected_hikari_keepalive_time_ms	30000
 postgres_idle_timeout_ms	300000
 oci_nat_idle_timeout_ms	350000
 TSV
@@ -104,6 +108,7 @@ grep -F "name=soak-artifacts-check" <<<"${plan}" >/dev/null
 grep -F "run_id=run-soak-artifacts-001" <<<"${plan}" >/dev/null
 grep -F "duration_min=30" <<<"${plan}" >/dev/null
 grep -F "artifact_pack_refs=k6_summary,nginx_aggregate,spring_metrics,hikari_log,postgres_wait,timeline,postgres_checkpoint,postgres_temp_file,nginx_upstream_latency,hikari_config,hikari_zero_warning_soak" <<<"${plan}" >/dev/null
+grep -F "failure_reason_ref=${output_dir}/failure-reason.env" <<<"${plan}" >/dev/null
 
 echo "[transaction-read-30m-soak-live-evidence-artifacts] pass report"
 output="$(
@@ -129,7 +134,12 @@ test -s "${output_dir}/nginx-upstream-latency.tsv"
 test -s "${output_dir}/hikari-zero-warning-soak.md"
 grep -F $'hikari-lifetime\trun-soak-artifacts-001\t2026-05-05T00:00:00Z\t30' "${manifest_tsv}" >/dev/null
 grep -F $'p999-long-correlation\trun-soak-artifacts-001\t2026-05-05T00:00:00Z\t30' "${manifest_tsv}" >/dev/null
+grep -F "hikari_config_source=aquila-bank-backend" "${output_dir}/hikari-zero-warning-soak.md" >/dev/null
+grep -F "expected_hikari_max_lifetime_ms=45000" "${output_dir}/hikari-zero-warning-soak.md" >/dev/null
 grep -F "p95/p99/p99.9/max: 95/220/490/650" "${output_dir}/manifest/soak-artifacts-check-30m-soak-live-evidence-manifest.md" >/dev/null
+grep -F "PostgreSQL checkpoint start/end/delta: 10/13/3" "${output_dir}/manifest/soak-artifacts-check-30m-soak-live-evidence-manifest.md" >/dev/null
+grep -F "PostgreSQL temp file start/end/delta: 20/20/0" "${output_dir}/manifest/soak-artifacts-check-30m-soak-live-evidence-manifest.md" >/dev/null
+grep -F "PostgreSQL temp file delta budget: <=0" "${output_dir}/manifest/soak-artifacts-check-30m-soak-live-evidence-manifest.md" >/dev/null
 
 gate_output="$(
   SOAK_30M_LIVE_NAME=soak-artifacts-live-check \
@@ -160,3 +170,38 @@ if SOAK_30M_ARTIFACTS_NAME=soak-artifacts-warning \
   exit 1
 fi
 grep -F "hikari validation warnings must be zero" "${temp_dir}/warning.log" >/dev/null
+test -s "${temp_dir}/warning-output/manifest/soak-artifacts-warning-30m-soak-live-evidence-manifest.tsv"
+test -s "${temp_dir}/warning-output/manifest/soak-artifacts-warning-30m-soak-live-evidence-manifest.md"
+test -s "${temp_dir}/warning-output/failure-reason.env"
+test -s "${temp_dir}/warning-output/soak-artifacts-warning-30m-soak-live-evidence-failure.md"
+grep -F "failure_reason=hikari-validation-warning" "${temp_dir}/warning-output/failure-reason.env" >/dev/null
+grep -F "gate_status=fail" "${temp_dir}/warning-output/manifest/soak-artifacts-warning-30m-soak-live-evidence-manifest.md" >/dev/null
+grep -F "failure_reason=hikari-validation-warning" "${temp_dir}/warning-output/manifest/soak-artifacts-warning-30m-soak-live-evidence-manifest.md" >/dev/null
+
+echo "[transaction-read-30m-soak-live-evidence-artifacts] temp file delta budget fails"
+temp_file_delta="${artifact_dir}/postgres-temp-file-delta.tsv"
+cat >"${temp_file_delta}" <<'TSV'
+metric	start_value	end_value	delta
+postgres_temp_file_count	20	21	1
+TSV
+if SOAK_30M_ARTIFACTS_NAME=soak-artifacts-temp-delta \
+  SOAK_30M_ARTIFACTS_RUN_ID=run-soak-artifacts-001 \
+  SOAK_30M_ARTIFACTS_OUTPUT_DIR="${temp_dir}/temp-delta-output" \
+  SOAK_30M_ARTIFACTS_K6_SUMMARY_JSON="${summary_json}" \
+  SOAK_30M_ARTIFACTS_NGINX_ACCESS_LOG="${access_log}" \
+  SOAK_30M_ARTIFACTS_SPRING_METRICS_REF="${spring_metrics}" \
+  SOAK_30M_ARTIFACTS_HIKARI_LOG="${hikari_log}" \
+  SOAK_30M_ARTIFACTS_POSTGRES_WAIT_REF="${postgres_wait}" \
+  SOAK_30M_ARTIFACTS_TIMELINE_REF="${timeline}" \
+  SOAK_30M_ARTIFACTS_POSTGRES_CHECKPOINT_REF="${checkpoint}" \
+  SOAK_30M_ARTIFACTS_POSTGRES_TEMP_FILE_REF="${temp_file_delta}" \
+  SOAK_30M_ARTIFACTS_HIKARI_CONFIG_REF="${hikari_config}" \
+    "${runner}" >"${temp_dir}/temp-delta.log" 2>&1; then
+  echo "30m soak artifact pack unexpectedly passed temp file delta budget" >&2
+  exit 1
+fi
+grep -F "postgres temp file delta exceeds budget" "${temp_dir}/temp-delta.log" >/dev/null
+test -s "${temp_dir}/temp-delta-output/failure-reason.env"
+grep -F "failure_reason=postgres-temp-file-delta-budget" "${temp_dir}/temp-delta-output/failure-reason.env" >/dev/null
+grep -F "postgres_temp_file_delta=1" "${temp_dir}/temp-delta-output/failure-reason.env" >/dev/null
+grep -F "failure_reason=postgres-temp-file-delta-budget" "${temp_dir}/temp-delta-output/manifest/soak-artifacts-temp-delta-30m-soak-live-evidence-manifest.md" >/dev/null

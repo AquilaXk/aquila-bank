@@ -7,8 +7,8 @@ spring:
       # OCI A1 4 OCPU / 24GB 기준: DB connection은 admission floor보다 조금 크게 둔다.
       maximum-pool-size: ${OCI_A1_DB_POOL_MAX_SIZE:8}
       minimum-idle: ${OCI_A1_DB_POOL_MIN_IDLE:1}
-      # OCI NAT/PostgreSQL idle close 전 connection 선순환. 30m soak warning 0 기준.
-      max-lifetime: ${OCI_A1_DB_MAX_LIFETIME_MS:120000}
+      # OCI A1 live soak에서 60초 안쪽 stale close가 관측되어 pool이 먼저 교체하도록 둔다.
+      max-lifetime: ${OCI_A1_DB_MAX_LIFETIME_MS:45000}
       keepalive-time: ${OCI_A1_DB_KEEPALIVE_TIME_MS:30000}
       validation-timeout: ${OCI_A1_DB_VALIDATION_TIMEOUT_MS:1000}
   task:
