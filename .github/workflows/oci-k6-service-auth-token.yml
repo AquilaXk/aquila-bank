@@ -262,6 +262,25 @@ jobs:
           K6_HOT_TO="${HOT_TO_INPUT}"
           K6_COLD_FROM="${COLD_FROM_INPUT}"
           K6_COLD_TO="${COLD_TO_INPUT}"
+          derive_midpoint_cursor() {
+            python3 - "$1" "$2" <<'PY'
+from datetime import datetime, timezone
+import sys
+
+def parse(value):
+    return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
+
+start = parse(sys.argv[1])
+end = parse(sys.argv[2])
+if end <= start:
+    print(sys.argv[1])
+else:
+    midpoint = start + (end - start) / 2
+    print(midpoint.strftime("%Y-%m-%dT%H:%M:%SZ"))
+PY
+          }
+          K6_COLD_DEEP_CURSOR_BOOKED_AT="${K6_COLD_DEEP_CURSOR_BOOKED_AT:-$(derive_midpoint_cursor "${K6_COLD_FROM}" "${K6_COLD_TO}")}"
+          K6_COLD_DEEP_CURSOR_ID="${K6_COLD_DEEP_CURSOR_ID:-9223372036854775807}"
           K6_VUS="${VUS_INPUT}"
           K6_DURATION="${DURATION_INPUT}"
           K6_SCENARIO_MODE="${SCENARIO_MODE_INPUT}"
@@ -345,6 +364,8 @@ jobs:
             K6_COLD_ACCOUNT_IDS
             K6_COLD_FROM
             K6_COLD_TO
+            K6_COLD_DEEP_CURSOR_BOOKED_AT
+            K6_COLD_DEEP_CURSOR_ID
             K6_VUS
             K6_DURATION
             K6_SCENARIO_MODE
