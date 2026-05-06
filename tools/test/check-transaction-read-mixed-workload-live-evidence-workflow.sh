@@ -18,6 +18,7 @@ grep -F "report_name:" "${workflow}" >/dev/null
 grep -F "mixed workload live evidence contract" "${workflow}" >/dev/null
 grep -F "if: github.event_name == 'pull_request'" "${workflow}" >/dev/null
 grep -F "bash tools/test/check-transaction-read-mixed-workload-live-evidence-workflow.sh" "${workflow}" >/dev/null
+grep -F "bash tools/test/check-transaction-read-mixed-workload-live-evidence-autogen.sh" "${workflow}" >/dev/null
 grep -F "bash tools/test/check-transaction-read-mixed-workload-30m-timeline.sh" "${workflow}" >/dev/null
 grep -F "bash tools/test/check-transaction-read-oci-evidence-execution-gate.sh" "${workflow}" >/dev/null
 grep -F "bash tools/test/check-transaction-read-evidence-completeness-gate.sh" "${workflow}" >/dev/null
@@ -25,11 +26,22 @@ grep -F "if: github.event_name == 'workflow_dispatch'" "${workflow}" >/dev/null
 grep -F "runs-on: [self-hosted, oci-a1-staging]" "${workflow}" >/dev/null
 grep -F "environment:" "${workflow}" >/dev/null
 grep -F "name: staging" "${workflow}" >/dev/null
+grep -F "uses: actions/setup-java@v4" "${workflow}" >/dev/null
+grep -F "distribution: temurin" "${workflow}" >/dev/null
+grep -F 'java-version: "21"' "${workflow}" >/dev/null
 grep -F 'OCI_A1_STAGING_ENV: ${{ secrets.OCI_A1_STAGING_ENV }}' "${workflow}" >/dev/null
 grep -F 'MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV_INPUT: ${{ inputs.evidence_manifest_tsv }}' "${workflow}" >/dev/null
 grep -F 'MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV_VAR: ${{ vars.OCI_MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV }}' "${workflow}" >/dev/null
 grep -F 'MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV="${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV_INPUT:-${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV:-${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV_VAR:-}}}"' "${workflow}" >/dev/null
-grep -F "Generate mixed workload evidence manifest" "${workflow}" >/dev/null
+grep -F 'MIXED_WORKLOAD_EVIDENCE_READY=false' "${workflow}" >/dev/null
+grep -F "name: Generate mixed workload live evidence manifest artifacts" "${workflow}" >/dev/null
+grep -F "if: env.MIXED_WORKLOAD_EVIDENCE_READY != 'true'" "${workflow}" >/dev/null
+grep -F "MIXED_WORKLOAD_AUTOGEN_MODE: live" "${workflow}" >/dev/null
+grep -F 'generated_env="${MIXED_WORKLOAD_LIVE_OUTPUT_DIR}/${MIXED_WORKLOAD_LIVE_NAME}-generated-evidence.env"' "${workflow}" >/dev/null
+grep -F "bash tools/test/run-transaction-read-mixed-workload-live-evidence-autogen.sh" "${workflow}" >/dev/null
+grep -F 'source "${generated_env}"' "${workflow}" >/dev/null
+grep -F "Generated mixed workload evidence manifest" "${workflow}" >/dev/null
+grep -F "name: Validate mixed workload evidence manifest" "${workflow}" >/dev/null
 grep -F "mixed-workload-30m" "${workflow}" >/dev/null
 grep -F 'MIXED_30M_TIMELINE_INPUT_TSV="${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}"' "${workflow}" >/dev/null
 grep -F "tools/test/run-transaction-read-mixed-workload-30m-timeline.sh" "${workflow}" >/dev/null
