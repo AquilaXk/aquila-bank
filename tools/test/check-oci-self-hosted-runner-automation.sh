@@ -3,6 +3,7 @@ set -euo pipefail
 
 bootstrap_script="ops/deploy/oci/bootstrap-self-hosted-runner.sh"
 doctor_script="ops/deploy/oci/check-self-hosted-runner.sh"
+observability_script="tools/ops/collect-oci-a1-direct-observability.sh"
 doctor_workflow=".github/workflows/oci-a1-runner-doctor.yml"
 staging_workflow=".github/workflows/staging-deploy.yml"
 delivery_doc="docs/delivery-flow.md"
@@ -47,6 +48,7 @@ reject_pattern() {
 echo "[oci-runner-automation] required files"
 require_file "$bootstrap_script"
 require_file "$doctor_script"
+require_file "$observability_script"
 require_file "$doctor_workflow"
 require_file "$staging_workflow"
 require_file "$delivery_doc"
@@ -55,6 +57,7 @@ require_file "$deploy_doc"
 echo "[oci-runner-automation] shell syntax"
 bash -n "$bootstrap_script"
 bash -n "$doctor_script"
+bash -n "$observability_script"
 bash -n "$0"
 
 echo "[oci-runner-automation] yaml syntax"
@@ -96,6 +99,22 @@ for pattern in "${doctor_patterns[@]}"; do
   require_pattern "$pattern" "$doctor_script"
 done
 
+echo "[oci-runner-automation] direct observability contract"
+observability_patterns=(
+  "OCI_A1_OBSERVABILITY_DOCKER_CONTEXTS"
+  "OCI_A1_OBSERVABILITY_TIMEOUT_SECONDS"
+  "OCI_A1_OBSERVABILITY_LOG_TAIL_LINES"
+  "docker context inspect"
+  "docker ps"
+  "docker stats --no-stream"
+  "docker logs"
+  "sanitize_log"
+  "no observable Docker contexts"
+)
+for pattern in "${observability_patterns[@]}"; do
+  require_pattern "$pattern" "$observability_script"
+done
+
 OCI_A1_RUNNER_CHECK_NETWORK=false \
 OCI_A1_RUNNER_CHECK_GHCR=false \
   "$doctor_script" --dry-run >/dev/null
@@ -106,6 +125,9 @@ workflow_patterns=(
   "workflow_dispatch:"
   "runs-on: [self-hosted, oci-a1-staging]"
   "ops/deploy/oci/check-self-hosted-runner.sh"
+  "tools/ops/collect-oci-a1-direct-observability.sh"
+  "Upload OCI A1 direct observability artifact"
+  "build/reports/oci-a1-direct-observability/"
 )
 for pattern in "${workflow_patterns[@]}"; do
   require_pattern "$pattern" "$doctor_workflow"
