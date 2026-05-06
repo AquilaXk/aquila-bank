@@ -28,12 +28,15 @@ grep -F "OCI k6 service auth token contract" "${workflow}" >/dev/null
 grep -F "tools/test/check-oci-k6-service-auth-token-workflow.sh" "${workflow}" >/dev/null
 grep -F "tools/test/check-transaction-read-429-source-gate.sh" "${workflow}" >/dev/null
 grep -F "tools/test/run-transaction-read-429-source-gate.sh" "${workflow}" >/dev/null
+grep -F "tools/test/check-oci-k6-service-auth-arrival16-evidence-gate.sh" "${workflow}" >/dev/null
+grep -F "tools/test/run-oci-k6-service-auth-arrival16-evidence-gate.sh" "${workflow}" >/dev/null
 grep -F "tools/test/check-transaction-read-promotion-pacing-contract.sh" "${workflow}" >/dev/null
 grep -F "tools/test/run-transaction-read-promotion-pacing-contract.sh" "${workflow}" >/dev/null
 grep -F "tools/ops/staging-fixture-principal-bootstrap.sh" "${workflow}" >/dev/null
 grep -F "tools/test/run-staging-fixture-principal-bootstrap-contract.sh" "${workflow}" >/dev/null
 grep -F "Validate promotion pacing contract" "${workflow}" >/dev/null
 grep -F "Validate transaction read 429 source gate" "${workflow}" >/dev/null
+grep -F "Validate service auth arrival16 evidence gate" "${workflow}" >/dev/null
 grep -F "if: github.event_name == 'workflow_dispatch'" "${workflow}" >/dev/null
 grep -F "runs-on: [self-hosted, oci-a1-staging]" "${workflow}" >/dev/null
 grep -F "environment:" "${workflow}" >/dev/null
@@ -46,6 +49,7 @@ grep -F 'DEFAULT_K6_REMOTE_PROMETHEUS_RW_SERVER_URL="http://172.17.0.2:9090/api/
 grep -F 'K6_DOCKER_CONTEXT="${DOCKER_CONTEXT_INPUT:-${CAPACITY_K6_DOCKER_CONTEXT_VAR:-${DEFAULT_K6_DOCKER_CONTEXT}}}"' "${workflow}" >/dev/null
 grep -F 'K6_REMOTE_BASE_URL="${REMOTE_BASE_URL_INPUT:-${CAPACITY_K6_REMOTE_BASE_URL:-${CAPACITY_K6_REMOTE_BASE_URL_VAR:-${DEFAULT_K6_REMOTE_BASE_URL}}}}"' "${workflow}" >/dev/null
 grep -F 'K6_REMOTE_PROMETHEUS_RW_SERVER_URL="${REMOTE_PROMETHEUS_RW_URL_INPUT:-${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL:-${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL_VAR:-${DEFAULT_K6_REMOTE_PROMETHEUS_RW_SERVER_URL}}}}"' "${workflow}" >/dev/null
+grep -F 'K6_REMOTE_PROMETHEUS_RW_REQUIRED="false"' "${workflow}" >/dev/null
 grep -F 'K6_REMOTE_WORKDIR="${REMOTE_WORKDIR_INPUT:-${CAPACITY_K6_REMOTE_WORKDIR_VAR:-}}"' "${workflow}" >/dev/null
 grep -F 'if [[ -z "${K6_REMOTE_WORKDIR}" ]]; then' "${workflow}" >/dev/null
 grep -F 'if [[ "${K6_DOCKER_CONTEXT}" == "default" ]]; then' "${workflow}" >/dev/null
@@ -191,6 +195,15 @@ grep -F 'fairness_count_fail_threshold=20' "${workflow}" >/dev/null
 grep -F 'SOURCE_429_NGINX_AGGREGATE_TSV="${aggregate_tsv}"' "${workflow}" >/dev/null
 grep -F "transaction-read-429-source" "${workflow}" >/dev/null
 grep -F "transaction-read-nginx-access-aggregate" "${workflow}" >/dev/null
+grep -F "Build service auth arrival16 evidence gate artifact" "${workflow}" >/dev/null
+grep -F 'SERVICE_AUTH_EVIDENCE_K6_SUMMARY_JSON="build/reports/k6/${K6_REPORT_NAME}-summary.json"' "${workflow}" >/dev/null
+grep -F 'SERVICE_AUTH_EVIDENCE_NGINX_AGGREGATE_TSV="${report_dir}/transaction-read-nginx-access-aggregate/${K6_REPORT_NAME}-nginx-access-aggregate.tsv"' "${workflow}" >/dev/null
+grep -F 'SERVICE_AUTH_EVIDENCE_429_SOURCE_TSV="${report_dir}/transaction-read-429-source/${K6_REPORT_NAME}-429-source.tsv"' "${workflow}" >/dev/null
+grep -F 'SERVICE_AUTH_EVIDENCE_PACING_SUMMARY="${K6_PACING_SUMMARY_REF}"' "${workflow}" >/dev/null
+grep -F 'SERVICE_AUTH_EVIDENCE_AUTH_PREFLIGHT_LOG="${report_dir}/auth-preflight.log"' "${workflow}" >/dev/null
+grep -F 'SERVICE_AUTH_EVIDENCE_EXPECTED_RATE="${K6_RATE}"' "${workflow}" >/dev/null
+grep -F 'SERVICE_AUTH_EVIDENCE_EXPECTED_TIME_UNIT="${K6_TIME_UNIT}"' "${workflow}" >/dev/null
+grep -F "tools/test/run-oci-k6-service-auth-arrival16-evidence-gate.sh" "${workflow}" >/dev/null
 grep -F "actions/upload-artifact@" "${workflow}" >/dev/null
 grep -F "oci-k6-service-auth-token" "${workflow}" >/dev/null
 
@@ -206,10 +219,13 @@ fi
 
 nginx_aggregate_line="$(grep -n "Build transaction read Nginx aggregate artifact" "${workflow}" | head -1 | cut -d: -f1)"
 source_gate_line="$(grep -n "Build transaction read 429 source gate artifact" "${workflow}" | head -1 | cut -d: -f1)"
+service_auth_evidence_line="$(grep -n "Build service auth arrival16 evidence gate artifact" "${workflow}" | head -1 | cut -d: -f1)"
 upload_line="$(grep -n "Upload OCI k6 auth artifact" "${workflow}" | head -1 | cut -d: -f1)"
-if [[ -z "${nginx_aggregate_line}" || -z "${source_gate_line}" || -z "${upload_line}" ||
-  "${nginx_aggregate_line}" -ge "${source_gate_line}" || "${source_gate_line}" -ge "${upload_line}" ]]; then
-  echo "429 source gate artifact must run after Nginx aggregate and before upload" >&2
+if [[ -z "${nginx_aggregate_line}" || -z "${source_gate_line}" || -z "${service_auth_evidence_line}" || -z "${upload_line}" ||
+  "${nginx_aggregate_line}" -ge "${source_gate_line}" ||
+  "${source_gate_line}" -ge "${service_auth_evidence_line}" ||
+  "${service_auth_evidence_line}" -ge "${upload_line}" ]]; then
+  echo "service auth evidence gate must run after 429 source gate and before upload" >&2
   exit 1
 fi
 
