@@ -520,10 +520,13 @@ grep -F "K6_REMOTE_BASE_URL" tools/test/run-k6-transaction-100m-loadtest.sh >/de
 grep -F "K6_REMOTE_PROMETHEUS_RW_SERVER_URL" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_REMOTE_PREFLIGHT" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "K6_REMOTE_PREFLIGHT_FAILURE_REPORT" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_REMOTE_READINESS_PATH" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "PERFORMANCE_RESULT_STATUS" tools/test/archive-k6-transaction-100m-result.sh >/dev/null
 grep -F "PERFORMANCE_RESULT_ARTIFACT_DIR" tools/test/archive-k6-transaction-100m-result.sh >/dev/null
 grep -F "assert_remote_k6_preflight" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "write_remote_preflight_failure" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "remote_prometheus_remote_write_preflight" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "docker --context \"\${K6_DOCKER_CONTEXT}\" info" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "remote prometheus remote-write preflight" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "prepare_remote_report_dir_permissions" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null

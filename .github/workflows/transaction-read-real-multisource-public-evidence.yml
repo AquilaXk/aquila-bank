@@ -5,7 +5,7 @@ on:
     inputs:
       real_multisource_run_id:
         description: "Run id shared by all real multi-source public evidence artifacts"
-        required: true
+        required: false
         type: string
       real_multisource_contexts:
         description: "Comma-separated remote Docker contexts, at least 2"
@@ -45,6 +45,8 @@ on:
       - "tools/test/check-transaction-read-real-multisource-public-evidence-workflow.sh"
       - "tools/test/run-oci-real-multisource-public-evidence.sh"
       - "tools/test/check-oci-real-multisource-public-evidence.sh"
+      - "tools/test/run-transaction-read-evidence-completeness-gate.sh"
+      - "tools/test/check-transaction-read-evidence-completeness-gate.sh"
       - "tools/test/run-oci-real-ip-multisource-capacity-replay.sh"
       - "tools/test/check-oci-real-ip-multisource-capacity-replay.sh"
       - "tools/test/run-oci-offhost-host-metrics-timeline.sh"
@@ -69,6 +71,9 @@ jobs:
 
       - name: Validate real multisource evidence contract
         run: bash tools/test/check-oci-real-multisource-public-evidence.sh
+
+      - name: Validate evidence completeness gate
+        run: bash tools/test/check-transaction-read-evidence-completeness-gate.sh
 
   live-evidence:
     name: Real multi-source public evidence live gate
@@ -117,15 +122,15 @@ jobs:
             set +a
           fi
 
-          OCI_REAL_MULTISOURCE_RUN_ID="${REAL_MULTISOURCE_RUN_ID_INPUT}"
-          OCI_REAL_MULTISOURCE_CONTEXTS="${REAL_MULTISOURCE_CONTEXTS_INPUT:-${OCI_REAL_MULTISOURCE_CONTEXTS_VAR:-}}"
-          OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON="${SINGLE_SOURCE_SUMMARY_JSON_INPUT:-${OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON_VAR:-}}"
-          OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON="${MULTI_SOURCE_SUMMARY_JSON_INPUT:-${OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON_VAR:-}}"
-          OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV="${NGINX_STATUS_TSV_INPUT:-${OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV_VAR:-}}"
-          OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV="${SOURCE_EVIDENCE_TSV_INPUT:-${OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV_VAR:-}}"
-          OCI_REAL_MULTISOURCE_HOST_METRICS_TSV="${HOST_METRICS_TSV_INPUT:-${OCI_REAL_MULTISOURCE_HOST_METRICS_TSV_VAR:-}}"
-          OCI_REAL_MULTISOURCE_HOST_METRICS_TIMELINE_TSV="${HOST_METRICS_TIMELINE_TSV_INPUT:-${OCI_REAL_MULTISOURCE_HOST_METRICS_TIMELINE_TSV_VAR:-}}"
-          OCI_REAL_MULTISOURCE_ARTIFACT_URI="${ARTIFACT_URI_INPUT:-${OCI_REAL_MULTISOURCE_ARTIFACT_URI_VAR:-}}"
+          OCI_REAL_MULTISOURCE_RUN_ID="${REAL_MULTISOURCE_RUN_ID_INPUT:-${OCI_REAL_MULTISOURCE_RUN_ID:-${OCI_REAL_MULTISOURCE_NAME}}}"
+          OCI_REAL_MULTISOURCE_CONTEXTS="${REAL_MULTISOURCE_CONTEXTS_INPUT:-${OCI_REAL_MULTISOURCE_CONTEXTS:-${OCI_REAL_MULTISOURCE_CONTEXTS_VAR:-}}}"
+          OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON="${SINGLE_SOURCE_SUMMARY_JSON_INPUT:-${OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON:-${OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON_VAR:-}}}"
+          OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON="${MULTI_SOURCE_SUMMARY_JSON_INPUT:-${OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON:-${OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON_VAR:-}}}"
+          OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV="${NGINX_STATUS_TSV_INPUT:-${OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV:-${OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV_VAR:-}}}"
+          OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV="${SOURCE_EVIDENCE_TSV_INPUT:-${OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV:-${OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV_VAR:-}}}"
+          OCI_REAL_MULTISOURCE_HOST_METRICS_TSV="${HOST_METRICS_TSV_INPUT:-${OCI_REAL_MULTISOURCE_HOST_METRICS_TSV:-${OCI_REAL_MULTISOURCE_HOST_METRICS_TSV_VAR:-}}}"
+          OCI_REAL_MULTISOURCE_HOST_METRICS_TIMELINE_TSV="${HOST_METRICS_TIMELINE_TSV_INPUT:-${OCI_REAL_MULTISOURCE_HOST_METRICS_TIMELINE_TSV:-${OCI_REAL_MULTISOURCE_HOST_METRICS_TIMELINE_TSV_VAR:-}}}"
+          OCI_REAL_MULTISOURCE_ARTIFACT_URI="${ARTIFACT_URI_INPUT:-${OCI_REAL_MULTISOURCE_ARTIFACT_URI:-${OCI_REAL_MULTISOURCE_ARTIFACT_URI_VAR:-}}}"
           OCI_REAL_MULTISOURCE_OUTPUT_DIR="build/reports/k6/${OCI_REAL_MULTISOURCE_NAME}"
 
           missing=()
@@ -139,6 +144,23 @@ jobs:
           [[ -z "${OCI_REAL_MULTISOURCE_HOST_METRICS_TIMELINE_TSV}" ]] && missing+=("OCI_REAL_MULTISOURCE_HOST_METRICS_TIMELINE_TSV")
           [[ -z "${OCI_REAL_MULTISOURCE_ARTIFACT_URI}" ]] && missing+=("OCI_REAL_MULTISOURCE_ARTIFACT_URI")
           if (( ${#missing[@]} > 0 )); then
+            mkdir -p "${OCI_REAL_MULTISOURCE_OUTPUT_DIR}"
+            failure_env="${OCI_REAL_MULTISOURCE_OUTPUT_DIR}/${OCI_REAL_MULTISOURCE_NAME}-missing-evidence.env"
+            failure_md="${OCI_REAL_MULTISOURCE_OUTPUT_DIR}/${OCI_REAL_MULTISOURCE_NAME}-missing-evidence.md"
+            # Write real multisource missing evidence artifact.
+            {
+              printf "run_id=%s\n" "${OCI_REAL_MULTISOURCE_RUN_ID}"
+              printf "failure_reason=missing-required-evidence-inputs\n"
+              printf "missing_inputs=%s\n" "${missing[*]}"
+              printf "output_dir=%s\n" "${OCI_REAL_MULTISOURCE_OUTPUT_DIR}"
+            } >"${failure_env}"
+            {
+              echo "# Real Multi-source Evidence Missing Inputs"
+              echo
+              echo "- run_id=${OCI_REAL_MULTISOURCE_RUN_ID}"
+              echo "- failure_reason=missing-required-evidence-inputs"
+              echo "- missing_inputs=${missing[*]}"
+            } >"${failure_md}"
             printf '::error::Missing real multisource evidence inputs: %s\n' "${missing[*]}"
             exit 1
           fi
