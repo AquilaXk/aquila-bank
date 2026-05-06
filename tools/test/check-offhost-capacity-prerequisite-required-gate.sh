@@ -115,6 +115,7 @@ grep -F 'OCI_OFFHOST_HOST_METRICS_TIMELINE_INPUT_TSV="${CAPACITY_K6_HOST_METRICS
 grep -F 'OCI_OFFHOST_HOST_METRICS_TIMELINE_REQUIRE_LOAD_COUPLED="${CAPACITY_REQUIRE_LOAD_COUPLED_TIMELINE}"' "${workflow}" >/dev/null
 grep -F 'OCI_OFFHOST_HOST_METRICS_TIMELINE_OUTPUT_DIR="${report_dir}/offhost-host-metrics-timeline-verified"' "${workflow}" >/dev/null
 grep -F 'CAPACITY_REMOTE_PREFLIGHT="true"' "${workflow}" >/dev/null
+grep -F 'CAPACITY_REMOTE_PROMETHEUS_RW_REQUIRED="false"' "${workflow}" >/dev/null
 grep -F 'CAPACITY_REQUIRE_HOST_METRICS="true"' "${workflow}" >/dev/null
 grep -F "Run off-host remote preflight" "${workflow}" >/dev/null
 grep -F "tools/test/run-offhost-capacity-env-doctor.sh" "${workflow}" >/dev/null
@@ -126,6 +127,7 @@ grep -F 'OCI_OFFHOST_GENERATOR_HOST_METRICS_TSV="${CAPACITY_K6_GENERATOR_HOST_ME
 grep -F 'OCI_OFFHOST_TARGET_HOST_METRICS_TSV="${CAPACITY_K6_TARGET_HOST_METRICS_TSV}"' "${workflow}" >/dev/null
 grep -F "tools/test/run-oci-offhost-host-metrics-evidence.sh" "${workflow}" >/dev/null
 grep -F "tools/test/check-oci-offhost-host-metrics-timeline.sh" "${workflow}" >/dev/null
+grep -F "CAPACITY_REMOTE_PROMETHEUS_RW_REQUIRED" "${workflow}" >/dev/null
 grep -F "tools/test/run-transaction-100m-capacity-gates.sh --print-plan" "${workflow}" >/dev/null
 grep -F "capacity-prerequisite-plan.log" "${workflow}" >/dev/null
 grep -F "actions/upload-artifact@" "${workflow}" >/dev/null

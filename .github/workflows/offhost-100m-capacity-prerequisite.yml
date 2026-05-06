@@ -162,6 +162,7 @@ jobs:
           CAPACITY_NAME="ci-offhost-100m-capacity-prerequisite"
           CAPACITY_K6_GENERATOR_MODE="docker-context"
           CAPACITY_REMOTE_PREFLIGHT="true"
+          CAPACITY_REMOTE_PROMETHEUS_RW_REQUIRED="false"
           CAPACITY_REQUIRE_HOST_METRICS="true"
           CAPACITY_PREREQUISITE_FAILURE_REPORT_PATH="${report_dir}/capacity-prerequisite-failure.env"
           DEFAULT_CAPACITY_K6_DOCKER_CONTEXT="default"
@@ -458,6 +459,7 @@ jobs:
             CAPACITY_NAME
             CAPACITY_K6_GENERATOR_MODE
             CAPACITY_REMOTE_PREFLIGHT
+            CAPACITY_REMOTE_PROMETHEUS_RW_REQUIRED
             CAPACITY_REQUIRE_HOST_METRICS
             CAPACITY_PREREQUISITE_FAILURE_REPORT_PATH
             CAPACITY_K6_DOCKER_CONTEXT

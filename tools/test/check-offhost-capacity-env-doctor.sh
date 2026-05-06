@@ -36,6 +36,7 @@ cat >"${env_file}" <<'ENV'
 CAPACITY_K6_DOCKER_CONTEXT=capacity-k6-remote
 CAPACITY_K6_REMOTE_BASE_URL=http://192.0.2.20:18080
 CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL=http://192.0.2.20:9090/api/v1/write
+CAPACITY_REMOTE_PROMETHEUS_RW_REQUIRED=false
 CAPACITY_K6_REMOTE_WORKDIR=/srv/aquila-bank
 CAPACITY_REMOTE_PREFLIGHT_TIMEOUT_SECONDS=15
 CAPACITY_REMOTE_PREFLIGHT_IMAGE=curlimages/curl:8.11.1
@@ -60,6 +61,7 @@ grep -F "env_file=${env_file}" <<<"${plan}" >/dev/null
 grep -F "docker_context=capacity-k6-remote" <<<"${plan}" >/dev/null
 grep -F "remote_base_url=http://192.0.2.20:18080" <<<"${plan}" >/dev/null
 grep -F "remote_prometheus_rw_url=http://192.0.2.20:9090/api/v1/write" <<<"${plan}" >/dev/null
+grep -F "remote_prometheus_rw_required=false" <<<"${plan}" >/dev/null
 grep -F "remote_workdir=/srv/aquila-bank" <<<"${plan}" >/dev/null
 grep -F "readiness_url=http://192.0.2.20:18080/actuator/health/readiness" <<<"${plan}" >/dev/null
 grep -F "host_metrics_tsv=build/reports/k6/offhost-check/host-metrics.tsv" <<<"${plan}" >/dev/null
@@ -99,6 +101,21 @@ if OFFHOST_CAPACITY_ENV_FILE="${bad_env_file}" "${script}" --print-plan >/dev/nu
   exit 1
 fi
 
+bad_required_env_file="${temp_dir}/bad-required.env"
+cat >"${bad_required_env_file}" <<'ENV'
+CAPACITY_K6_DOCKER_CONTEXT=capacity-k6-remote
+CAPACITY_K6_REMOTE_BASE_URL=http://192.0.2.20:18080
+CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL=http://192.0.2.20:9090/api/v1/write
+CAPACITY_REMOTE_PROMETHEUS_RW_REQUIRED=maybe
+CAPACITY_K6_HOST_METRICS_TIMELINE_TSV=build/reports/k6/offhost-check/host-metrics-timeline.tsv
+CAPACITY_K6_GENERATOR_HOST_METRICS_TSV=build/reports/k6/offhost-check/generator-host-metrics.tsv
+CAPACITY_K6_TARGET_HOST_METRICS_TSV=build/reports/k6/offhost-check/target-host-metrics.tsv
+ENV
+if OFFHOST_CAPACITY_ENV_FILE="${bad_required_env_file}" OFFHOST_CAPACITY_CHECK_CONNECTIVITY=false "${script}" --print-plan >/dev/null 2>&1; then
+  echo "bad remote prometheus required flag unexpectedly passed" >&2
+  exit 1
+fi
+
 missing_metrics_env_file="${temp_dir}/missing-metrics.env"
 cat >"${missing_metrics_env_file}" <<'ENV'
 CAPACITY_K6_DOCKER_CONTEXT=capacity-k6-remote
@@ -123,7 +140,9 @@ grep -F "CAPACITY_K6_BURST_MATRIX_TSV" "${script}" >/dev/null
 grep -F "CAPACITY_K6_SOURCE_EVIDENCE_TSV" "${script}" >/dev/null
 grep -F "CAPACITY_K6_GENERATOR_HOST_METRICS_TSV" "${script}" >/dev/null
 grep -F "CAPACITY_K6_TARGET_HOST_METRICS_TSV" "${script}" >/dev/null
+grep -F "CAPACITY_REMOTE_PROMETHEUS_RW_REQUIRED" "${script}" >/dev/null
 grep -F "docker context inspect" "${script}" >/dev/null
 grep -F "docker --context \"\${docker_context}\" info" "${script}" >/dev/null
 grep -F "docker --context \"\${docker_context}\" run --rm \"\${preflight_image}\"" "${script}" >/dev/null
 grep -F "remote prometheus remote-write preflight failed" "${script}" >/dev/null
+grep -F "remote prometheus remote-write optional; continuing" "${script}" >/dev/null
