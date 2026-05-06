@@ -17,6 +17,8 @@ on:
     paths:
       - ".github/workflows/transaction-read-mixed-workload-live-evidence.yml"
       - "tools/test/check-transaction-read-mixed-workload-live-evidence-workflow.sh"
+      - "tools/test/run-transaction-read-mixed-workload-live-evidence-autogen.sh"
+      - "tools/test/check-transaction-read-mixed-workload-live-evidence-autogen.sh"
       - "tools/test/run-transaction-read-mixed-workload-30m-timeline.sh"
       - "tools/test/check-transaction-read-mixed-workload-30m-timeline.sh"
       - "tools/test/run-transaction-read-oci-evidence-execution-gate.sh"
@@ -44,6 +46,9 @@ jobs:
       - name: Check mixed workload live evidence workflow
         run: bash tools/test/check-transaction-read-mixed-workload-live-evidence-workflow.sh
 
+      - name: Check mixed workload live evidence autogen contract
+        run: bash tools/test/check-transaction-read-mixed-workload-live-evidence-autogen.sh
+
       - name: Check mixed workload 30m timeline contract
         run: bash tools/test/check-transaction-read-mixed-workload-30m-timeline.sh
 
@@ -57,7 +62,7 @@ jobs:
     name: Mixed Workload Live Evidence Gate
     if: github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, oci-a1-staging]
-    timeout-minutes: 15
+    timeout-minutes: 45
     environment:
       name: staging
     env:
@@ -93,22 +98,57 @@ jobs:
           fi
 
           MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV="${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV_INPUT:-${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV:-${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV_VAR:-}}}"
+          MIXED_WORKLOAD_EVIDENCE_READY=true
           if [[ -z "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" ]]; then
-            generated_manifest="${report_dir}/${MIXED_WORKLOAD_LIVE_NAME}-generated-missing-evidence-manifest.tsv"
-            # Generate mixed workload evidence manifest so downstream gate reports concrete missing evidence.
-            cat >"${generated_manifest}" <<TSV
-          scenario	run_id	executed_at_utc	duration_min	source_ips	run_script	k6_summary_ref	nginx_access_ref	spring_metrics_ref	hikari_log_ref	postgres_wait_ref	deploy_event_ref	cache_state_ref	timeline_ref	edge_429_rate	backend_429_count	unknown_429_count	five_xx_count	nginx_499_count	hikari_validation_warnings	db_pool_pending_max	p999_ms	postgres_checkpoint_ref	postgres_temp_file_ref	nginx_upstream_latency_ref	workload_mix_ref	workload_component_ref	outbox_lag_ref	outbox_lag_max	deploy_retry_contract_ref	deploy_reconnect_success_count	deploy_499_budget_ref	p95_ms	p99_ms	max_ms	postgres_checkpoint_count	postgres_temp_file_count	nginx_upstream_p95_ms	hikari_config_ref	hikari_max_lifetime_ms	hikari_keepalive_time_ms	postgres_idle_timeout_ms	oci_nat_idle_timeout_ms	hikari_zero_warning_soak_ref	workload_components	read_p999_ms	read_429_source_ref
-          mixed-workload-30m	${MIXED_WORKLOAD_LIVE_NAME}	$(date -u +%Y-%m-%dT%H:%M:%SZ)	0	0	n/a	n/a	n/a	n/a	n/a	n/a	n/a	n/a	n/a	1	1	1	1	1	1	999999	999999	n/a	n/a	n/a	n/a	n/a	n/a	999999	n/a	0	n/a	0	0	0	0	999999	0	n/a	0	0	0	0	n/a	n/a	999999	n/a
-          TSV
-            MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV="${generated_manifest}"
-          fi
-          if [[ ! -s "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" ]]; then
-            echo "::error::Mixed workload evidence manifest must be a non-empty runner-local TSV: ${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}"
-            exit 1
+            MIXED_WORKLOAD_EVIDENCE_READY=false
           fi
 
           printf 'MIXED_WORKLOAD_LIVE_OUTPUT_DIR=%s\n' "${report_dir}" >>"${GITHUB_ENV}"
           printf 'MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV=%s\n' "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >>"${GITHUB_ENV}"
+          printf 'MIXED_WORKLOAD_EVIDENCE_READY=%s\n' "${MIXED_WORKLOAD_EVIDENCE_READY}" >>"${GITHUB_ENV}"
+
+      - name: Generate mixed workload live evidence manifest artifacts
+        if: env.MIXED_WORKLOAD_EVIDENCE_READY != 'true'
+        env:
+          MIXED_WORKLOAD_AUTOGEN_MODE: live
+        shell: bash
+        run: |
+          set -euo pipefail
+          generated_env="${MIXED_WORKLOAD_LIVE_OUTPUT_DIR}/${MIXED_WORKLOAD_LIVE_NAME}-generated-evidence.env"
+          bash tools/test/run-transaction-read-mixed-workload-live-evidence-autogen.sh
+          test -f "${generated_env}"
+          # Generated mixed workload evidence manifest.
+          source "${generated_env}"
+          for name in \
+            MIXED_WORKLOAD_LIVE_OUTPUT_DIR \
+            MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV; do
+            value="${!name:-}"
+            printf '%s=%s\n' "${name}" "${value}" >>"${GITHUB_ENV}"
+          done
+
+      - name: Validate mixed workload evidence manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -s "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" ]]; then
+            mkdir -p "${MIXED_WORKLOAD_LIVE_OUTPUT_DIR}"
+            failure_env="${MIXED_WORKLOAD_LIVE_OUTPUT_DIR}/${MIXED_WORKLOAD_LIVE_NAME}-missing-evidence.env"
+            failure_md="${MIXED_WORKLOAD_LIVE_OUTPUT_DIR}/${MIXED_WORKLOAD_LIVE_NAME}-missing-evidence.md"
+            {
+              printf "run_id=%s\n" "${MIXED_WORKLOAD_LIVE_NAME}"
+              printf "failure_reason=missing-mixed-workload-evidence-manifest\n"
+              printf "manifest_tsv=%s\n" "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV:-missing}"
+            } >"${failure_env}"
+            {
+              echo "# Mixed Workload Evidence Missing Manifest"
+              echo
+              echo "- run_id=${MIXED_WORKLOAD_LIVE_NAME}"
+              echo "- failure_reason=missing-mixed-workload-evidence-manifest"
+              echo "- manifest_tsv=${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV:-missing}"
+            } >"${failure_md}"
+            echo "::error::Mixed workload evidence manifest must be a non-empty runner-local TSV: ${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV:-missing}"
+            exit 1
+          fi
 
       - name: Run mixed workload live evidence gate
         shell: bash
