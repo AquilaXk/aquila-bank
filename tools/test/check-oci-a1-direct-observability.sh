@@ -145,6 +145,14 @@ if grep -E "super-secret|abc123|raw-token|raw-pass" "${log_file}" >/dev/null; th
   echo "sanitized log still contains secret-like value" >&2
   exit 1
 fi
+if find "${temp_dir}/output" -type f -name '*.raw.log' | grep -q .; then
+  echo "raw log leaked into artifact output directory" >&2
+  exit 1
+fi
+if grep -R -E "super-secret|abc123|raw-token|raw-pass" "${temp_dir}/output" >/dev/null; then
+  echo "artifact output still contains secret-like value" >&2
+  exit 1
+fi
 
 echo "[oci-a1-direct-observability] empty observable context passes without logs"
 empty_output="$(

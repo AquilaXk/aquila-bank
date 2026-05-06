@@ -55,7 +55,16 @@ stats_tsv="${output_dir}/${name}-stats.tsv"
 summary_json="${output_dir}/${name}-summary.json"
 report_md="${output_dir}/${name}.md"
 sanitized_logs_dir="${output_dir}/logs"
-tmp_dir="${output_dir}/tmp"
+diagnostics_dir="${output_dir}/diagnostics"
+tmp_dir="${diagnostics_dir}"
+raw_logs_dir=""
+
+cleanup() {
+  if [[ -n "${raw_logs_dir}" ]]; then
+    rm -rf "${raw_logs_dir}"
+  fi
+}
+trap cleanup EXIT
 
 require_positive_integer() {
   local key="$1"
@@ -197,6 +206,8 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
+raw_logs_parent="${TMPDIR:-/tmp}"
+raw_logs_dir="$(mktemp -d "${raw_logs_parent%/}/oci-a1-direct-observability.XXXXXX")"
 mkdir -p "${output_dir}" "${sanitized_logs_dir}" "${tmp_dir}"
 printf "context\tcommand\tstatus\texit_code\treason\tartifact_ref\n" >"${context_status_tsv}"
 printf "context\tname\timage\tstatus\tstate\tports\n" >"${containers_tsv}"
@@ -289,7 +300,7 @@ for context in "${contexts[@]}"; do
       log_success_count=0
       for container in "${container_names[@]}"; do
         container_safe="$(safe_name "${container}")"
-        log_raw="${tmp_dir}/${context_safe}-${container_safe}.raw.log"
+        log_raw="${raw_logs_dir}/${context_safe}-${container_safe}.raw.log"
         log_err="${tmp_dir}/${context_safe}-${container_safe}.log.err"
         log_sanitized="${sanitized_logs_dir}/${context_safe}-${container_safe}.log"
         if run_docker "${context}" "${log_raw}" "${log_err}" logs --tail="${log_tail_lines}" "${container}"; then
@@ -339,6 +350,7 @@ jq -s \
   --arg containers_tsv "${containers_tsv}" \
   --arg stats_tsv "${stats_tsv}" \
   --arg logs_dir "${sanitized_logs_dir}" \
+  --arg diagnostics_dir "${diagnostics_dir}" \
   --argjson observable_contexts "${observable_contexts}" \
   --argjson failed_contexts "${failed_contexts}" \
   --argjson no_container_contexts "${no_container_contexts}" \
@@ -352,6 +364,7 @@ jq -s \
     containers_tsv: $containers_tsv,
     stats_tsv: $stats_tsv,
     logs_dir: $logs_dir,
+    diagnostics_dir: $diagnostics_dir,
     contexts: .
   }' "${context_jsonl}" >"${summary_json}"
 
@@ -366,6 +379,7 @@ jq -s \
   echo "- containers_tsv=${containers_tsv}"
   echo "- stats_tsv=${stats_tsv}"
   echo "- sanitized_logs_dir=${sanitized_logs_dir}"
+  echo "- diagnostics_dir=${diagnostics_dir}"
   echo
   echo "## Context Status"
   echo
