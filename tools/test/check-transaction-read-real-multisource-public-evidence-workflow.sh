@@ -26,6 +26,7 @@ grep -F "real multi-source public evidence contract" "${workflow}" >/dev/null
 grep -F "if: github.event_name == 'pull_request'" "${workflow}" >/dev/null
 grep -F "bash tools/test/check-transaction-read-real-multisource-public-evidence-workflow.sh" "${workflow}" >/dev/null
 grep -F "bash tools/test/check-oci-real-multisource-public-evidence.sh" "${workflow}" >/dev/null
+grep -F "bash tools/test/check-transaction-read-evidence-completeness-gate.sh" "${workflow}" >/dev/null
 grep -F "if: github.event_name == 'workflow_dispatch'" "${workflow}" >/dev/null
 grep -F "runs-on: [self-hosted, oci-a1-staging]" "${workflow}" >/dev/null
 grep -F "environment:" "${workflow}" >/dev/null

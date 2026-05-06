@@ -21,6 +21,7 @@ grep -F "if: github.event_name == 'pull_request'" "${workflow}" >/dev/null
 grep -F "bash tools/test/check-transaction-read-deploy-drain-live-evidence-workflow.sh" "${workflow}" >/dev/null
 grep -F "bash tools/test/check-transaction-read-deploy-drain-under-load-gate.sh" "${workflow}" >/dev/null
 grep -F "bash tools/test/check-transaction-read-oci-evidence-execution-gate.sh" "${workflow}" >/dev/null
+grep -F "bash tools/test/check-transaction-read-evidence-completeness-gate.sh" "${workflow}" >/dev/null
 grep -F "if: github.event_name == 'workflow_dispatch'" "${workflow}" >/dev/null
 grep -F "runs-on: [self-hosted, oci-a1-staging]" "${workflow}" >/dev/null
 grep -F "environment:" "${workflow}" >/dev/null

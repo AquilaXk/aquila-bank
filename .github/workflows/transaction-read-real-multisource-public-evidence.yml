@@ -45,6 +45,8 @@ on:
       - "tools/test/check-transaction-read-real-multisource-public-evidence-workflow.sh"
       - "tools/test/run-oci-real-multisource-public-evidence.sh"
       - "tools/test/check-oci-real-multisource-public-evidence.sh"
+      - "tools/test/run-transaction-read-evidence-completeness-gate.sh"
+      - "tools/test/check-transaction-read-evidence-completeness-gate.sh"
       - "tools/test/run-oci-real-ip-multisource-capacity-replay.sh"
       - "tools/test/check-oci-real-ip-multisource-capacity-replay.sh"
       - "tools/test/run-oci-offhost-host-metrics-timeline.sh"
@@ -69,6 +71,9 @@ jobs:
 
       - name: Validate real multisource evidence contract
         run: bash tools/test/check-oci-real-multisource-public-evidence.sh
+
+      - name: Validate evidence completeness gate
+        run: bash tools/test/check-transaction-read-evidence-completeness-gate.sh
 
   live-evidence:
     name: Real multi-source public evidence live gate

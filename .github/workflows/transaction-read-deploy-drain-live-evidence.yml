@@ -26,6 +26,8 @@ on:
       - "tools/test/check-transaction-read-deploy-drain-under-load-gate.sh"
       - "tools/test/run-transaction-read-oci-evidence-execution-gate.sh"
       - "tools/test/check-transaction-read-oci-evidence-execution-gate.sh"
+      - "tools/test/run-transaction-read-evidence-completeness-gate.sh"
+      - "tools/test/check-transaction-read-evidence-completeness-gate.sh"
 
 permissions:
   contents: read
@@ -52,6 +54,9 @@ jobs:
 
       - name: Check OCI evidence execution gate contract
         run: bash tools/test/check-transaction-read-oci-evidence-execution-gate.sh
+
+      - name: Check evidence completeness gate contract
+        run: bash tools/test/check-transaction-read-evidence-completeness-gate.sh
 
   live-evidence:
     name: Deploy Drain Live Evidence Gate
