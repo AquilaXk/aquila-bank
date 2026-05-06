@@ -16,6 +16,9 @@ on:
       - main
     paths:
       - ".github/workflows/transaction-read-mixed-workload-live-evidence.yml"
+      - "ops/k6/transaction-read-mixed-workload-100m.js"
+      - "tools/test/run-transaction-read-mixed-workload-oci-k6.sh"
+      - "tools/test/check-transaction-read-mixed-workload-oci-k6.sh"
       - "tools/test/check-transaction-read-mixed-workload-live-evidence-workflow.sh"
       - "tools/test/run-transaction-read-mixed-workload-live-evidence-autogen.sh"
       - "tools/test/check-transaction-read-mixed-workload-live-evidence-autogen.sh"
@@ -45,6 +48,9 @@ jobs:
 
       - name: Check mixed workload live evidence workflow
         run: bash tools/test/check-transaction-read-mixed-workload-live-evidence-workflow.sh
+
+      - name: Check OCI mixed workload k6 runner contract
+        run: bash tools/test/check-transaction-read-mixed-workload-oci-k6.sh
 
       - name: Check mixed workload live evidence autogen contract
         run: bash tools/test/check-transaction-read-mixed-workload-live-evidence-autogen.sh
@@ -108,10 +114,22 @@ jobs:
           if [[ -z "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" ]]; then
             MIXED_WORKLOAD_EVIDENCE_READY=false
           fi
+          MIXED_WORKLOAD_OCI_DOCKER_CONTEXT="${MIXED_WORKLOAD_OCI_DOCKER_CONTEXT:-${K6_DOCKER_CONTEXT:-${CAPACITY_K6_DOCKER_CONTEXT:-}}}"
+          MIXED_WORKLOAD_OCI_BASE_URL="${MIXED_WORKLOAD_OCI_BASE_URL:-${K6_REMOTE_BASE_URL:-${CAPACITY_K6_REMOTE_BASE_URL:-${STAGING_BASE_URL:-}}}}"
+          MIXED_WORKLOAD_OCI_REMOTE_WORKDIR="${MIXED_WORKLOAD_OCI_REMOTE_WORKDIR:-${K6_REMOTE_WORKDIR:-${CAPACITY_K6_REMOTE_WORKDIR:-${GITHUB_WORKSPACE}}}}"
+          MIXED_WORKLOAD_OCI_AUTH_TOKEN_ENV_NAME="${MIXED_WORKLOAD_OCI_AUTH_TOKEN_ENV_NAME:-STAGING_REPLAY_TOKEN}"
 
           printf 'MIXED_WORKLOAD_LIVE_OUTPUT_DIR=%s\n' "${report_dir}" >>"${GITHUB_ENV}"
           printf 'MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV=%s\n' "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >>"${GITHUB_ENV}"
           printf 'MIXED_WORKLOAD_EVIDENCE_READY=%s\n' "${MIXED_WORKLOAD_EVIDENCE_READY}" >>"${GITHUB_ENV}"
+          printf 'MIXED_WORKLOAD_OCI_NAME=%s\n' "${MIXED_WORKLOAD_LIVE_NAME}" >>"${GITHUB_ENV}"
+          printf 'MIXED_WORKLOAD_OCI_RUN_ID=%s\n' "${MIXED_WORKLOAD_LIVE_NAME}" >>"${GITHUB_ENV}"
+          printf 'MIXED_WORKLOAD_OCI_OUTPUT_DIR=%s\n' "${report_dir}" >>"${GITHUB_ENV}"
+          printf 'MIXED_WORKLOAD_OCI_DURATION=30m\n' >>"${GITHUB_ENV}"
+          printf 'MIXED_WORKLOAD_OCI_DOCKER_CONTEXT=%s\n' "${MIXED_WORKLOAD_OCI_DOCKER_CONTEXT}" >>"${GITHUB_ENV}"
+          printf 'MIXED_WORKLOAD_OCI_BASE_URL=%s\n' "${MIXED_WORKLOAD_OCI_BASE_URL}" >>"${GITHUB_ENV}"
+          printf 'MIXED_WORKLOAD_OCI_REMOTE_WORKDIR=%s\n' "${MIXED_WORKLOAD_OCI_REMOTE_WORKDIR}" >>"${GITHUB_ENV}"
+          printf 'MIXED_WORKLOAD_OCI_AUTH_TOKEN_ENV_NAME=%s\n' "${MIXED_WORKLOAD_OCI_AUTH_TOKEN_ENV_NAME}" >>"${GITHUB_ENV}"
 
       - name: Generate mixed workload live evidence manifest artifacts
         if: env.MIXED_WORKLOAD_EVIDENCE_READY != 'true'

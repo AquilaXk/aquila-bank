@@ -18,6 +18,7 @@ grep -F "report_name:" "${workflow}" >/dev/null
 grep -F "mixed workload live evidence contract" "${workflow}" >/dev/null
 grep -F "if: github.event_name == 'pull_request'" "${workflow}" >/dev/null
 grep -F "bash tools/test/check-transaction-read-mixed-workload-live-evidence-workflow.sh" "${workflow}" >/dev/null
+grep -F "bash tools/test/check-transaction-read-mixed-workload-oci-k6.sh" "${workflow}" >/dev/null
 grep -F "bash tools/test/check-transaction-read-mixed-workload-live-evidence-autogen.sh" "${workflow}" >/dev/null
 grep -F "bash tools/test/check-transaction-read-mixed-workload-30m-timeline.sh" "${workflow}" >/dev/null
 grep -F "bash tools/test/check-transaction-read-oci-evidence-execution-gate.sh" "${workflow}" >/dev/null
@@ -39,6 +40,8 @@ grep -F "if: env.MIXED_WORKLOAD_EVIDENCE_READY != 'true'" "${workflow}" >/dev/nu
 grep -F "MIXED_WORKLOAD_AUTOGEN_MODE: live" "${workflow}" >/dev/null
 grep -F 'generated_env="${MIXED_WORKLOAD_LIVE_OUTPUT_DIR}/${MIXED_WORKLOAD_LIVE_NAME}-generated-evidence.env"' "${workflow}" >/dev/null
 grep -F "bash tools/test/run-transaction-read-mixed-workload-live-evidence-autogen.sh" "${workflow}" >/dev/null
+grep -F "tools/test/run-transaction-read-mixed-workload-oci-k6.sh" "${workflow}" >/dev/null
+grep -F "ops/k6/transaction-read-mixed-workload-100m.js" "${workflow}" >/dev/null
 grep -F 'source "${generated_env}"' "${workflow}" >/dev/null
 grep -F "Generated mixed workload evidence manifest" "${workflow}" >/dev/null
 grep -F "name: Validate mixed workload evidence manifest" "${workflow}" >/dev/null
