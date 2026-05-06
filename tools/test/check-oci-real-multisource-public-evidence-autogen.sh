@@ -191,3 +191,25 @@ if grep -R -E "/home/github-runner|raw-token|http://internal\\.example\\.test" "
   echo "context readiness artifact contains unsanitized failure reason" >&2
   exit 1
 fi
+
+echo "[oci-real-multisource-public-evidence-autogen] blank expected context is not emitted"
+if PATH="${stub_bin}:${PATH}" \
+  OCI_REAL_MULTISOURCE_AUTOGEN_MODE=live \
+  OCI_REAL_MULTISOURCE_NAME="${name}-blank-expected-context" \
+  OCI_REAL_MULTISOURCE_RUN_ID="${run_id}" \
+  OCI_REAL_MULTISOURCE_BASE_URL="https://staging.example.test" \
+  OCI_REAL_MULTISOURCE_OUTPUT_DIR="${temp_dir}/blank-expected-context" \
+  OCI_REAL_MULTISOURCE_ARTIFACT_URI="${artifact_uri}" \
+    bash "${runner}" >"${temp_dir}/blank-expected-context.log" 2>&1; then
+  echo "real multisource autogen unexpectedly passed without remote contexts" >&2
+  exit 1
+fi
+blank_readiness_tsv="${temp_dir}/blank-expected-context/${name}-blank-expected-context-context-readiness.tsv"
+blank_readiness_json="${temp_dir}/blank-expected-context/${name}-blank-expected-context-context-readiness.json"
+test -s "${blank_readiness_tsv}"
+test -s "${blank_readiness_json}"
+if awk -F '\t' 'NR > 1 && $1 == "" { found = 1 } END { exit !found }' "${blank_readiness_tsv}"; then
+  echo "context readiness emitted a blank context row" >&2
+  exit 1
+fi
+jq -e 'all(.contexts[]; .context != "")' "${blank_readiness_json}" >/dev/null
