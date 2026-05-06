@@ -149,9 +149,9 @@ sanitize_text() {
 
 context_source_for() {
   local context="$1"
-  if contains_value "${context}" "${expected_contexts[@]:-}"; then
+  if [[ "${#expected_contexts[@]}" -gt 0 ]] && contains_value "${context}" "${expected_contexts[@]}"; then
     echo "expected"
-  elif contains_value "${context}" "${discovered_contexts[@]:-}"; then
+  elif [[ "${#discovered_contexts[@]}" -gt 0 ]] && contains_value "${context}" "${discovered_contexts[@]}"; then
     echo "discovered"
   else
     echo "explicit"
@@ -264,39 +264,47 @@ discover_live_contexts() {
   while IFS= read -r context; do
     [[ -n "${context}" ]] || continue
     discovered_contexts+=("${context}")
-    if ! contains_value "${context}" "${context_candidates[@]:-}"; then
+    if [[ "${#context_candidates[@]}" -eq 0 ]] || ! contains_value "${context}" "${context_candidates[@]}"; then
       context_candidates+=("${context}")
     fi
   done < <(docker context ls --format '{{.Name}}')
-  for context in "${expected_contexts[@]:-}"; do
-    if ! contains_value "${context}" "${context_candidates[@]:-}"; then
-      context_candidates+=("${context}")
-    fi
-  done
+  if [[ "${#expected_contexts[@]}" -gt 0 ]]; then
+    for context in "${expected_contexts[@]}"; do
+      if [[ "${#context_candidates[@]}" -eq 0 ]] || ! contains_value "${context}" "${context_candidates[@]}"; then
+        context_candidates+=("${context}")
+      fi
+    done
+  fi
 
   mkdir -p "${output_dir}"
   printf "context\tsource\tstatus\treason\n" >"${context_readiness_tsv}"
-  for candidate in "${context_candidates[@]:-}"; do
-    source="$(context_source_for "${candidate}")"
-    case "${candidate}" in
-      default|desktop-linux)
-        append_context_readiness "${candidate}" "${source}" "ignored" "local Docker context is not an independent public source"
-        continue
-        ;;
-    esac
-    inspect_err="${output_dir}/.${candidate}-context-inspect.err"
-    if docker context inspect "${candidate}" >/dev/null 2>"${inspect_err}"; then
-      append_context_readiness "${candidate}" "${source}" "ready" "ok"
-      ready_contexts+=("${candidate}")
-    else
-      reason="$(head -1 "${inspect_err}" | tr '\t' ' ' | cut -c1-180 | sanitize_text)"
-      [[ -n "${reason}" ]] || reason="docker context inspect failed"
-      append_context_readiness "${candidate}" "${source}" "fail" "${reason}"
-    fi
-    rm -f "${inspect_err}"
-  done
+  if [[ "${#context_candidates[@]}" -gt 0 ]]; then
+    for candidate in "${context_candidates[@]}"; do
+      source="$(context_source_for "${candidate}")"
+      case "${candidate}" in
+        default|desktop-linux)
+          append_context_readiness "${candidate}" "${source}" "ignored" "local Docker context is not an independent public source"
+          continue
+          ;;
+      esac
+      inspect_err="${output_dir}/.${candidate}-context-inspect.err"
+      if docker context inspect "${candidate}" >/dev/null 2>"${inspect_err}"; then
+        append_context_readiness "${candidate}" "${source}" "ready" "ok"
+        ready_contexts+=("${candidate}")
+      else
+        reason="$(head -1 "${inspect_err}" | tr '\t' ' ' | cut -c1-180 | sanitize_text)"
+        [[ -n "${reason}" ]] || reason="docker context inspect failed"
+        append_context_readiness "${candidate}" "${source}" "fail" "${reason}"
+      fi
+      rm -f "${inspect_err}"
+    done
+  fi
   write_context_readiness_artifacts "${#ready_contexts[@]}"
-  contexts_csv="$(join_by_comma "${ready_contexts[@]:-}")"
+  if [[ "${#ready_contexts[@]}" -gt 0 ]]; then
+    contexts_csv="$(join_by_comma "${ready_contexts[@]}")"
+  else
+    contexts_csv=""
+  fi
 }
 
 prepare_contexts() {
@@ -327,7 +335,11 @@ print_plan() {
   echo "[oci-real-multisource-public-evidence-autogen] run_id=${run_id}"
   echo "[oci-real-multisource-public-evidence-autogen] contexts=${contexts_csv}"
   echo "[oci-real-multisource-public-evidence-autogen] context_count=${#contexts[@]}"
-  echo "[oci-real-multisource-public-evidence-autogen] expected_contexts=$(join_by_comma "${expected_contexts[@]:-}")"
+  if [[ "${#expected_contexts[@]}" -gt 0 ]]; then
+    echo "[oci-real-multisource-public-evidence-autogen] expected_contexts=$(join_by_comma "${expected_contexts[@]}")"
+  else
+    echo "[oci-real-multisource-public-evidence-autogen] expected_contexts="
+  fi
   echo "[oci-real-multisource-public-evidence-autogen] base_url=${base_url:-missing}"
   echo "[oci-real-multisource-public-evidence-autogen] artifact_uri=${artifact_uri}"
   echo "[oci-real-multisource-public-evidence-autogen] context_readiness_tsv=${context_readiness_tsv}"
