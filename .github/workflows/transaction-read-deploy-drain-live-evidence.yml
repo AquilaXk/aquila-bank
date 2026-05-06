@@ -22,6 +22,8 @@ on:
     paths:
       - ".github/workflows/transaction-read-deploy-drain-live-evidence.yml"
       - "tools/test/check-transaction-read-deploy-drain-live-evidence-workflow.sh"
+      - "tools/test/check-transaction-read-deploy-drain-live-evidence-autogen.sh"
+      - "tools/test/run-transaction-read-deploy-drain-live-evidence-autogen.sh"
       - "tools/test/run-transaction-read-deploy-drain-under-load-gate.sh"
       - "tools/test/check-transaction-read-deploy-drain-under-load-gate.sh"
       - "tools/test/run-transaction-read-oci-evidence-execution-gate.sh"
@@ -49,6 +51,9 @@ jobs:
       - name: Check deploy drain live evidence workflow
         run: bash tools/test/check-transaction-read-deploy-drain-live-evidence-workflow.sh
 
+      - name: Check deploy drain live evidence autogen
+        run: bash tools/test/check-transaction-read-deploy-drain-live-evidence-autogen.sh
+
       - name: Check deploy drain under-load contract
         run: bash tools/test/check-transaction-read-deploy-drain-under-load-gate.sh
 
@@ -62,7 +67,7 @@ jobs:
     name: Deploy Drain Live Evidence Gate
     if: github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, oci-a1-staging]
-    timeout-minutes: 15
+    timeout-minutes: 30
     environment:
       name: staging
     env:
@@ -75,6 +80,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
 
       - name: Resolve deploy drain evidence manifest
         shell: bash
@@ -101,18 +112,9 @@ jobs:
 
           DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV="${DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV_INPUT:-${DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV:-${DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV_VAR:-}}}"
           DEPLOY_DRAIN_499_BUDGET_COUNT="${DEPLOY_DRAIN_499_BUDGET_COUNT_INPUT:-${DEPLOY_DRAIN_499_BUDGET_COUNT:-${DEPLOY_DRAIN_499_BUDGET_COUNT_VAR:-0}}}"
+          DEPLOY_DRAIN_EVIDENCE_READY=true
           if [[ -z "${DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV}" ]]; then
-            generated_manifest="${report_dir}/${DEPLOY_DRAIN_LIVE_NAME}-generated-missing-evidence-manifest.tsv"
-            # Generate deploy drain evidence manifest so downstream gate reports concrete missing evidence.
-            cat >"${generated_manifest}" <<TSV
-          scenario	run_id	executed_at_utc	duration_min	source_ips	run_script	k6_summary_ref	nginx_access_ref	spring_metrics_ref	hikari_log_ref	postgres_wait_ref	deploy_event_ref	cache_state_ref	timeline_ref	edge_429_rate	backend_429_count	unknown_429_count	five_xx_count	nginx_499_count	hikari_validation_warnings	db_pool_pending_max	p999_ms	postgres_checkpoint_ref	postgres_temp_file_ref	nginx_upstream_latency_ref	workload_mix_ref	workload_component_ref	outbox_lag_ref	outbox_lag_max	deploy_retry_contract_ref	deploy_reconnect_success_count	deploy_499_budget_ref	p95_ms	p99_ms	max_ms	postgres_checkpoint_count	postgres_temp_file_count	nginx_upstream_p95_ms	hikari_config_ref	hikari_max_lifetime_ms	hikari_keepalive_time_ms	postgres_idle_timeout_ms	oci_nat_idle_timeout_ms	hikari_zero_warning_soak_ref	workload_components	read_p999_ms	read_429_source_ref	deploy_actions	deploy_499_budget_count	client_retry_success_count	deploy_reconnect_success_count
-          deploy-drain	${DEPLOY_DRAIN_LIVE_NAME}	$(date -u +%Y-%m-%dT%H:%M:%SZ)	0	0	n/a	n/a	n/a	n/a	n/a	n/a	n/a	n/a	n/a	1	1	1	1	1	1	999999	999999	n/a	n/a	n/a	n/a	n/a	n/a	0	n/a	0	n/a	0	0	0	0	999999	0	n/a	0	0	0	0	n/a	n/a	0	n/a	n/a	0	0	0
-          TSV
-            DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV="${generated_manifest}"
-          fi
-          if [[ ! -s "${DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV}" ]]; then
-            echo "::error::Deploy drain evidence manifest must be a non-empty runner-local TSV: ${DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV}"
-            exit 1
+            DEPLOY_DRAIN_EVIDENCE_READY=false
           fi
           if ! [[ "${DEPLOY_DRAIN_499_BUDGET_COUNT}" =~ ^[0-9]+$ ]]; then
             echo "::error::DEPLOY_DRAIN_499_BUDGET_COUNT must be a non-negative integer: ${DEPLOY_DRAIN_499_BUDGET_COUNT}"
@@ -122,6 +124,59 @@ jobs:
           printf 'DEPLOY_DRAIN_LIVE_OUTPUT_DIR=%s\n' "${report_dir}" >>"${GITHUB_ENV}"
           printf 'DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV=%s\n' "${DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV}" >>"${GITHUB_ENV}"
           printf 'DEPLOY_DRAIN_499_BUDGET_COUNT=%s\n' "${DEPLOY_DRAIN_499_BUDGET_COUNT}" >>"${GITHUB_ENV}"
+          printf 'DEPLOY_DRAIN_EVIDENCE_READY=%s\n' "${DEPLOY_DRAIN_EVIDENCE_READY}" >>"${GITHUB_ENV}"
+
+      - name: Generate deploy drain live evidence manifest artifacts
+        if: env.DEPLOY_DRAIN_EVIDENCE_READY != 'true'
+        shell: bash
+        env:
+          DEPLOY_DRAIN_AUTOGEN_MODE: live
+        run: |
+          set -euo pipefail
+          generated_env="${DEPLOY_DRAIN_LIVE_OUTPUT_DIR}/${DEPLOY_DRAIN_LIVE_NAME}-generated-evidence.env"
+          DEPLOY_DRAIN_GENERATED_ENV="${generated_env}" \
+            bash tools/test/run-transaction-read-deploy-drain-live-evidence-autogen.sh
+
+          if [[ ! -s "${generated_env}" ]]; then
+            echo "::error::Generated deploy drain evidence env is missing: ${generated_env}"
+            exit 1
+          fi
+
+          # shellcheck disable=SC1090
+          source "${generated_env}"
+          if [[ ! -s "${DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV}" ]]; then
+            echo "::error::Generated deploy drain evidence manifest is missing: ${DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV}"
+            exit 1
+          fi
+
+          echo "::notice::Generated deploy drain evidence manifest: ${DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV}"
+          printf 'DEPLOY_DRAIN_LIVE_OUTPUT_DIR=%s\n' "${DEPLOY_DRAIN_LIVE_OUTPUT_DIR}" >>"${GITHUB_ENV}"
+          printf 'DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV=%s\n' "${DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV}" >>"${GITHUB_ENV}"
+          printf 'DEPLOY_DRAIN_499_BUDGET_COUNT=%s\n' "${DEPLOY_DRAIN_499_BUDGET_COUNT}" >>"${GITHUB_ENV}"
+
+      - name: Validate deploy drain evidence manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV:-}" && -s "${DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV}" ]]; then
+            exit 0
+          fi
+
+          {
+            printf "run_id=%s\n" "${DEPLOY_DRAIN_LIVE_NAME}"
+            printf "failure_reason=missing-deploy-drain-evidence-manifest\n"
+            printf "manifest=%s\n" "${DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV:-missing}"
+          } >"${DEPLOY_DRAIN_LIVE_OUTPUT_DIR}/${DEPLOY_DRAIN_LIVE_NAME}-missing-evidence.env"
+          {
+            echo "# Deploy Drain Live Evidence Missing Manifest"
+            echo
+            echo "- run_id=${DEPLOY_DRAIN_LIVE_NAME}"
+            echo "- failure_reason=missing-deploy-drain-evidence-manifest"
+            echo "- manifest=${DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV:-missing}"
+          } >"${DEPLOY_DRAIN_LIVE_OUTPUT_DIR}/${DEPLOY_DRAIN_LIVE_NAME}-missing-evidence.md"
+
+          echo "::error::Deploy drain evidence manifest must be a non-empty runner-local TSV: ${DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV:-missing}"
+          exit 1
 
       - name: Run deploy drain live evidence gate
         shell: bash
