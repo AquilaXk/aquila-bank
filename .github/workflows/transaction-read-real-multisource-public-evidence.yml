@@ -39,10 +39,16 @@ on:
         description: "Evidence artifact pack URI shared by source and host metrics"
         required: false
         type: string
+      base_url:
+        description: "Staging backend base URL reachable from source Docker contexts"
+        required: false
+        type: string
   pull_request:
     paths:
       - ".github/workflows/transaction-read-real-multisource-public-evidence.yml"
       - "tools/test/check-transaction-read-real-multisource-public-evidence-workflow.sh"
+      - "tools/test/run-oci-real-multisource-public-evidence-autogen.sh"
+      - "tools/test/check-oci-real-multisource-public-evidence-autogen.sh"
       - "tools/test/run-oci-real-multisource-public-evidence.sh"
       - "tools/test/check-oci-real-multisource-public-evidence.sh"
       - "tools/test/run-transaction-read-evidence-completeness-gate.sh"
@@ -68,6 +74,9 @@ jobs:
 
       - name: Validate workflow contract
         run: bash tools/test/check-transaction-read-real-multisource-public-evidence-workflow.sh
+
+      - name: Validate real multisource evidence autogen contract
+        run: bash tools/test/check-oci-real-multisource-public-evidence-autogen.sh
 
       - name: Validate real multisource evidence contract
         run: bash tools/test/check-oci-real-multisource-public-evidence.sh
@@ -100,6 +109,7 @@ jobs:
           HOST_METRICS_TSV_INPUT: ${{ inputs.host_metrics_tsv }}
           HOST_METRICS_TIMELINE_TSV_INPUT: ${{ inputs.host_metrics_timeline_tsv }}
           ARTIFACT_URI_INPUT: ${{ inputs.artifact_uri }}
+          BASE_URL_INPUT: ${{ inputs.base_url }}
           OCI_REAL_MULTISOURCE_CONTEXTS_VAR: ${{ vars.OCI_REAL_MULTISOURCE_CONTEXTS }}
           OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON_VAR: ${{ vars.OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON }}
           OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON_VAR: ${{ vars.OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON }}
@@ -108,6 +118,7 @@ jobs:
           OCI_REAL_MULTISOURCE_HOST_METRICS_TSV_VAR: ${{ vars.OCI_REAL_MULTISOURCE_HOST_METRICS_TSV }}
           OCI_REAL_MULTISOURCE_HOST_METRICS_TIMELINE_TSV_VAR: ${{ vars.OCI_REAL_MULTISOURCE_HOST_METRICS_TIMELINE_TSV }}
           OCI_REAL_MULTISOURCE_ARTIFACT_URI_VAR: ${{ vars.OCI_REAL_MULTISOURCE_ARTIFACT_URI }}
+          OCI_REAL_MULTISOURCE_BASE_URL_VAR: ${{ vars.OCI_REAL_MULTISOURCE_BASE_URL }}
         shell: bash
         run: |
           set -euo pipefail
@@ -131,8 +142,71 @@ jobs:
           OCI_REAL_MULTISOURCE_HOST_METRICS_TSV="${HOST_METRICS_TSV_INPUT:-${OCI_REAL_MULTISOURCE_HOST_METRICS_TSV:-${OCI_REAL_MULTISOURCE_HOST_METRICS_TSV_VAR:-}}}"
           OCI_REAL_MULTISOURCE_HOST_METRICS_TIMELINE_TSV="${HOST_METRICS_TIMELINE_TSV_INPUT:-${OCI_REAL_MULTISOURCE_HOST_METRICS_TIMELINE_TSV:-${OCI_REAL_MULTISOURCE_HOST_METRICS_TIMELINE_TSV_VAR:-}}}"
           OCI_REAL_MULTISOURCE_ARTIFACT_URI="${ARTIFACT_URI_INPUT:-${OCI_REAL_MULTISOURCE_ARTIFACT_URI:-${OCI_REAL_MULTISOURCE_ARTIFACT_URI_VAR:-}}}"
+          OCI_REAL_MULTISOURCE_BASE_URL="${BASE_URL_INPUT:-${OCI_REAL_MULTISOURCE_BASE_URL:-${STAGING_BASE_URL:-${K6_BASE_URL:-${OCI_REAL_MULTISOURCE_BASE_URL_VAR:-}}}}}"
           OCI_REAL_MULTISOURCE_OUTPUT_DIR="build/reports/k6/${OCI_REAL_MULTISOURCE_NAME}"
 
+          evidence_missing=()
+          [[ -z "${OCI_REAL_MULTISOURCE_CONTEXTS}" ]] && evidence_missing+=("OCI_REAL_MULTISOURCE_CONTEXTS")
+          [[ -z "${OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON}" ]] && evidence_missing+=("OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON")
+          [[ -z "${OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON}" ]] && evidence_missing+=("OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON")
+          [[ -z "${OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV}" ]] && evidence_missing+=("OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV")
+          [[ -z "${OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV}" ]] && evidence_missing+=("OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV")
+          [[ -z "${OCI_REAL_MULTISOURCE_HOST_METRICS_TSV}" ]] && evidence_missing+=("OCI_REAL_MULTISOURCE_HOST_METRICS_TSV")
+          [[ -z "${OCI_REAL_MULTISOURCE_HOST_METRICS_TIMELINE_TSV}" ]] && evidence_missing+=("OCI_REAL_MULTISOURCE_HOST_METRICS_TIMELINE_TSV")
+          [[ -z "${OCI_REAL_MULTISOURCE_ARTIFACT_URI}" ]] && evidence_missing+=("OCI_REAL_MULTISOURCE_ARTIFACT_URI")
+          OCI_REAL_MULTISOURCE_EVIDENCE_READY=true
+          if (( ${#evidence_missing[@]} > 0 )); then
+            OCI_REAL_MULTISOURCE_EVIDENCE_READY=false
+          fi
+
+          for name in \
+            OCI_REAL_MULTISOURCE_RUN_ID \
+            OCI_REAL_MULTISOURCE_CONTEXTS \
+            OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON \
+            OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON \
+            OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV \
+            OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV \
+            OCI_REAL_MULTISOURCE_HOST_METRICS_TSV \
+            OCI_REAL_MULTISOURCE_HOST_METRICS_TIMELINE_TSV \
+            OCI_REAL_MULTISOURCE_ARTIFACT_URI \
+            OCI_REAL_MULTISOURCE_BASE_URL \
+            OCI_REAL_MULTISOURCE_OUTPUT_DIR \
+            OCI_REAL_MULTISOURCE_EVIDENCE_READY; do
+            value="${!name:-}"
+            printf '%s=%s\n' "${name}" "${value}" >>"${GITHUB_ENV}"
+          done
+
+      - name: Generate real multisource public evidence artifacts
+        if: env.OCI_REAL_MULTISOURCE_EVIDENCE_READY != 'true'
+        env:
+          OCI_REAL_MULTISOURCE_AUTOGEN_MODE: live
+        shell: bash
+        run: |
+          set -euo pipefail
+          generated_env="${OCI_REAL_MULTISOURCE_OUTPUT_DIR}/${OCI_REAL_MULTISOURCE_NAME}-generated-evidence.env"
+          bash tools/test/run-oci-real-multisource-public-evidence-autogen.sh
+          test -f "${generated_env}"
+          # Generated real multisource evidence artifact.
+          source "${generated_env}"
+          for name in \
+            OCI_REAL_MULTISOURCE_RUN_ID \
+            OCI_REAL_MULTISOURCE_CONTEXTS \
+            OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON \
+            OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON \
+            OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV \
+            OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV \
+            OCI_REAL_MULTISOURCE_HOST_METRICS_TSV \
+            OCI_REAL_MULTISOURCE_HOST_METRICS_TIMELINE_TSV \
+            OCI_REAL_MULTISOURCE_ARTIFACT_URI \
+            OCI_REAL_MULTISOURCE_OUTPUT_DIR; do
+            value="${!name:-}"
+            printf '%s=%s\n' "${name}" "${value}" >>"${GITHUB_ENV}"
+          done
+
+      - name: Validate real multisource evidence env
+        shell: bash
+        run: |
+          set -euo pipefail
           missing=()
           [[ -z "${OCI_REAL_MULTISOURCE_RUN_ID}" ]] && missing+=("OCI_REAL_MULTISOURCE_RUN_ID")
           [[ -z "${OCI_REAL_MULTISOURCE_CONTEXTS}" ]] && missing+=("OCI_REAL_MULTISOURCE_CONTEXTS")
@@ -164,23 +238,6 @@ jobs:
             printf '::error::Missing real multisource evidence inputs: %s\n' "${missing[*]}"
             exit 1
           fi
-
-          for name in \
-            OCI_REAL_MULTISOURCE_RUN_ID \
-            OCI_REAL_MULTISOURCE_CONTEXTS \
-            OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON \
-            OCI_REAL_MULTISOURCE_MULTI_SOURCE_SUMMARY_JSON \
-            OCI_REAL_MULTISOURCE_NGINX_STATUS_TSV \
-            OCI_REAL_MULTISOURCE_SOURCE_EVIDENCE_TSV \
-            OCI_REAL_MULTISOURCE_HOST_METRICS_TSV \
-            OCI_REAL_MULTISOURCE_HOST_METRICS_TIMELINE_TSV \
-            OCI_REAL_MULTISOURCE_ARTIFACT_URI \
-            OCI_REAL_MULTISOURCE_OUTPUT_DIR; do
-            value="${!name:-}"
-            if [[ -n "${value}" ]]; then
-              printf '%s=%s\n' "${name}" "${value}" >>"${GITHUB_ENV}"
-            fi
-          done
 
       - name: Run real multisource public evidence gate
         shell: bash
