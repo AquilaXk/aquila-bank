@@ -20,3 +20,18 @@ jobs:
         run: |
           set -euo pipefail
           ops/deploy/oci/check-self-hosted-runner.sh
+
+      - name: Collect OCI A1 direct observability
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          tools/ops/collect-oci-a1-direct-observability.sh
+
+      - name: Upload OCI A1 direct observability artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: oci-a1-direct-observability-${{ github.run_id }}
+          path: build/reports/oci-a1-direct-observability/
+          if-no-files-found: ignore

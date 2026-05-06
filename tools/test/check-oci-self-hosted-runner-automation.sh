@@ -51,7 +51,6 @@ require_file "$doctor_script"
 require_file "$observability_script"
 require_file "$doctor_workflow"
 require_file "$staging_workflow"
-require_file "$delivery_doc"
 require_file "$deploy_doc"
 
 echo "[oci-runner-automation] shell syntax"
@@ -143,8 +142,13 @@ doc_patterns=(
   "oci-a1-staging"
 )
 for pattern in "${doc_patterns[@]}"; do
-  require_pattern "$pattern" "$delivery_doc"
   require_pattern "$pattern" "$deploy_doc"
+  if [[ -f "$delivery_doc" ]]; then
+    require_pattern "$pattern" "$delivery_doc"
+  fi
 done
+if [[ ! -f "$delivery_doc" ]]; then
+  echo "[oci-runner-automation] skip local-only doc contract: $delivery_doc"
+fi
 
 echo "[oci-runner-automation] contract check passed"
