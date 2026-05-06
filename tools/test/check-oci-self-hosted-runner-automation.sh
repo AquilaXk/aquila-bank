@@ -124,7 +124,7 @@ workflow_patterns=(
   "workflow_dispatch:"
   "runs-on: [self-hosted, oci-a1-staging]"
   "ops/deploy/oci/check-self-hosted-runner.sh"
-  "tools/ops/collect-oci-a1-direct-observability.sh"
+  "bash tools/ops/collect-oci-a1-direct-observability.sh"
   "Upload OCI A1 direct observability artifact"
   "build/reports/oci-a1-direct-observability/"
 )
