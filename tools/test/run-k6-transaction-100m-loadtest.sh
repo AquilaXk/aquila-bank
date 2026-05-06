@@ -116,6 +116,7 @@ Optional environment:
   K6_REMOTE_PREFLIGHT validate remote context/backend/prometheus reachability, default true
   K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS default 30
   K6_REMOTE_PREFLIGHT_IMAGE default curlimages/curl:8.11.1
+  K6_REMOTE_PREFLIGHT_FAILURE_REPORT default build/reports/k6/<name>-remote-preflight-failure.env
   K6_REMOTE_READINESS_PATH default /actuator/health/readiness
   K6_REMOTE_ARTIFACT_IMAGE default busybox:1.36
   K6_REMOTE_COLLECT_ARTIFACTS copy remote summary md/json to local report dir, default true
@@ -685,6 +686,7 @@ summary_md="${report_dir}/${K6_REPORT_NAME}-summary.md"
 summary_json="${report_dir}/${K6_REPORT_NAME}-summary.json"
 k6_runner_log="${report_dir}/${K6_REPORT_NAME}-runner.log"
 run_context_env="${report_dir}/${K6_REPORT_NAME}-run-context.env"
+K6_REMOTE_PREFLIGHT_FAILURE_REPORT="${K6_REMOTE_PREFLIGHT_FAILURE_REPORT:-${report_dir}/${K6_REPORT_NAME}-remote-preflight-failure.env}"
 archive_output_dir="${K6_ARCHIVE_OUTPUT_ROOT%/}/k6-${K6_RUN_PURPOSE}"
 psql_base=(docker compose "${compose_files[@]}" exec -T postgres psql -v ON_ERROR_STOP=1 -U "${DB_USERNAME:-postgres}" -d "${DB_NAME:-aquila_bank}")
 
@@ -845,6 +847,7 @@ print_plan() {
     echo "[k6-transaction-100m] remote workdir=${K6_REMOTE_WORKDIR}"
     echo "[k6-transaction-100m] remote preflight=${K6_REMOTE_PREFLIGHT} timeout=${K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS} readiness_path=${K6_REMOTE_READINESS_PATH}"
     echo "[k6-transaction-100m] remote preflight image=${K6_REMOTE_PREFLIGHT_IMAGE}"
+    echo "[k6-transaction-100m] remote preflight failure report=${K6_REMOTE_PREFLIGHT_FAILURE_REPORT}"
     echo "[k6-transaction-100m] remote artifact image=${K6_REMOTE_ARTIFACT_IMAGE}"
     echo "[k6-transaction-100m] remote artifact collect=${K6_REMOTE_COLLECT_ARTIFACTS}"
     echo "[k6-transaction-100m] remote summary local=${summary_md%summary.md}summary.{md,json}"
@@ -1143,18 +1146,87 @@ assert_remote_k6_preflight() {
     return 0
   fi
 
-  local readiness_url="${K6_REMOTE_BASE_URL%/}${K6_REMOTE_READINESS_PATH}"
+  local readiness_url="${K6_REMOTE_BASE_URL%/}${K6_REMOTE_READINESS_PATH}" status
   echo "[k6-transaction-100m] remote docker context preflight: ${K6_DOCKER_CONTEXT}"
-  docker --context "${K6_DOCKER_CONTEXT}" info >/dev/null
+  if ! docker --context "${K6_DOCKER_CONTEXT}" info >/dev/null; then
+    write_remote_preflight_failure "docker-context" "docker-info-failed" "000" "docker-context"
+    echo "remote docker context preflight failed: context=${K6_DOCKER_CONTEXT}" >&2
+    exit 1
+  fi
   echo "[k6-transaction-100m] remote backend readiness preflight: ${readiness_url}"
-  docker --context "${K6_DOCKER_CONTEXT}" run --rm "${K6_REMOTE_PREFLIGHT_IMAGE}" \
-    -fsS --max-time "${K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS}" "${readiness_url}" >/dev/null
+  status="$(remote_preflight_http_status GET "${readiness_url}")"
+  if ! remote_preflight_status_ok "${status}"; then
+    write_remote_preflight_failure "backend-readiness" "unexpected-status" "${status}" "backend-readiness"
+    echo "remote backend readiness preflight failed: status=${status}" >&2
+    exit 1
+  fi
 
   if [[ "${K6_OBSERVABILITY_MODE}" == "prometheus" ]]; then
-    echo "[k6-transaction-100m] remote prometheus remote-write preflight: ${K6_REMOTE_PROMETHEUS_RW_SERVER_URL}"
+    remote_prometheus_remote_write_preflight
+  fi
+}
+
+write_remote_preflight_failure() {
+  local component="$1"
+  local reason="$2"
+  local status="$3"
+  local endpoint_kind="$4"
+  mkdir -p "$(dirname "${K6_REMOTE_PREFLIGHT_FAILURE_REPORT}")"
+  {
+    printf "run_id=%s\n" "${K6_RUN_ID}"
+    printf "component=%s\n" "${component}"
+    printf "reason=%s\n" "${reason}"
+    printf "status=%s\n" "${status}"
+    printf "endpoint_kind=%s\n" "${endpoint_kind}"
+    printf "docker_context=%s\n" "${K6_DOCKER_CONTEXT}"
+    printf "report=%s\n" "${K6_REMOTE_PREFLIGHT_FAILURE_REPORT}"
+  } >"${K6_REMOTE_PREFLIGHT_FAILURE_REPORT}"
+}
+
+remote_preflight_status_ok() {
+  case "$1" in
+    2*|3*|4*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+remote_preflight_http_status() {
+  local method="$1"
+  local url="$2"
+  local status
+  if ! status="$(
     docker --context "${K6_DOCKER_CONTEXT}" run --rm --entrypoint sh "${K6_REMOTE_PREFLIGHT_IMAGE}" \
-      -c 'status="$(curl -sS -o /dev/null -w "%{http_code}" --max-time "$1" -X POST "$2" || echo 000)"; case "${status}" in 2*|3*|4*) exit 0 ;; *) echo "remote prometheus remote-write preflight failed: status=${status}" >&2; exit 1 ;; esac' \
-      sh "${K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS}" "${K6_REMOTE_PROMETHEUS_RW_SERVER_URL}"
+      -c '
+        method="$1"
+        timeout="$2"
+        url="$3"
+        if [ "${method}" = "POST" ]; then
+          status="$(curl -sS -o /dev/null -w "%{http_code}" --max-time "${timeout}" -X POST "${url}" 2>/dev/null || true)"
+        else
+          status="$(curl -sS -o /dev/null -w "%{http_code}" --max-time "${timeout}" "${url}" 2>/dev/null || true)"
+        fi
+        [ -n "${status}" ] || status=000
+        printf "%s\n" "${status}"
+      ' sh "${method}" "${K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS}" "${url}"
+  )"; then
+    status="000"
+  fi
+  status="${status//$'\r'/}"
+  status="${status//$'\n'/}"
+  if [[ -z "${status}" ]]; then
+    status="000"
+  fi
+  printf "%s\n" "${status}"
+}
+
+remote_prometheus_remote_write_preflight() {
+  local status
+  echo "[k6-transaction-100m] remote prometheus remote-write preflight: ${K6_REMOTE_PROMETHEUS_RW_SERVER_URL}"
+  status="$(remote_preflight_http_status POST "${K6_REMOTE_PROMETHEUS_RW_SERVER_URL}")"
+  if ! remote_preflight_status_ok "${status}"; then
+    write_remote_preflight_failure "prometheus-remote-write" "unexpected-status" "${status}" "prometheus-remote-write"
+    echo "remote prometheus remote-write preflight failed: status=${status}" >&2
+    exit 1
   fi
 }
 
