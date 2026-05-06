@@ -10,6 +10,7 @@ Environment:
   OCI_REAL_MULTISOURCE_NAME            default transaction-read-real-multisource-public-evidence-<timestamp>
   OCI_REAL_MULTISOURCE_RUN_ID          default same as name
   OCI_REAL_MULTISOURCE_CONTEXTS        comma-separated Docker contexts, required or auto-discovered in live mode
+  OCI_REAL_MULTISOURCE_EXPECTED_CONTEXTS optional comma-separated context names checked during live auto-discovery
   OCI_REAL_MULTISOURCE_SOURCE_NAMES    optional comma-separated source names
   OCI_REAL_MULTISOURCE_SOURCE_IPS      optional comma-separated public source IPs
   OCI_REAL_MULTISOURCE_BASE_URL        live target base URL; STAGING_BASE_URL/K6_BASE_URL fallback
@@ -41,6 +42,7 @@ autogen_mode="${OCI_REAL_MULTISOURCE_AUTOGEN_MODE:-live}"
 name="${OCI_REAL_MULTISOURCE_NAME:-transaction-read-real-multisource-public-evidence-$(date +%Y-%m-%d-%H%M%S)}"
 run_id="${OCI_REAL_MULTISOURCE_RUN_ID:-${name}}"
 contexts_csv="${OCI_REAL_MULTISOURCE_CONTEXTS:-}"
+expected_contexts_csv="${OCI_REAL_MULTISOURCE_EXPECTED_CONTEXTS:-}"
 source_names_csv="${OCI_REAL_MULTISOURCE_SOURCE_NAMES:-}"
 source_ips_csv="${OCI_REAL_MULTISOURCE_SOURCE_IPS:-}"
 base_url="${OCI_REAL_MULTISOURCE_BASE_URL:-${STAGING_BASE_URL:-${K6_BASE_URL:-}}}"
@@ -55,9 +57,14 @@ nginx_status_tsv="${generated_dir}/${name}-nginx-status.tsv"
 source_evidence_tsv="${generated_dir}/${name}-source-evidence.tsv"
 host_metrics_tsv="${generated_dir}/${name}-host-metrics.tsv"
 host_metrics_timeline_tsv="${generated_dir}/${name}-host-metrics-timeline.tsv"
+context_readiness_tsv="${output_dir}/${name}-context-readiness.tsv"
+context_readiness_json="${output_dir}/${name}-context-readiness.json"
+context_readiness_md="${output_dir}/${name}-context-readiness.md"
 multi_source_output_dir="${generated_dir}/multi-source"
 
 contexts=()
+expected_contexts=()
+discovered_contexts=()
 source_names=()
 source_ips=()
 
@@ -97,6 +104,9 @@ split_csv() {
     contexts)
       if [[ "${#items[@]}" -eq 0 ]]; then contexts=(); else contexts=("${items[@]}"); fi
       ;;
+    expected_contexts)
+      if [[ "${#items[@]}" -eq 0 ]]; then expected_contexts=(); else expected_contexts=("${items[@]}"); fi
+      ;;
     source_names)
       if [[ "${#items[@]}" -eq 0 ]]; then source_names=(); else source_names=("${items[@]}"); fi
       ;;
@@ -113,6 +123,87 @@ split_csv() {
 join_by_comma() {
   local IFS=,
   echo "$*"
+}
+
+contains_value() {
+  local needle="$1"
+  shift
+  local item
+  for item in "$@"; do
+    if [[ "${item}" == "${needle}" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+sanitize_text() {
+  perl -pe '
+    s#https?://[^[:space:]]+#[REDACTED_URL]#ig;
+    s#/(home|Users|opt|private|var|tmp)/[^[:space:]]+#[REDACTED_PATH]#g;
+    s/\b(password|passwd|pwd)=\S+/$1=[REDACTED]/ig;
+    s/\b(token|access_token|refresh_token)=\S+/$1=[REDACTED]/ig;
+    s/Authorization:\s*Bearer\s+\S+/Authorization: Bearer [REDACTED]/ig;
+  '
+}
+
+context_source_for() {
+  local context="$1"
+  if [[ "${#expected_contexts[@]}" -gt 0 ]] && contains_value "${context}" "${expected_contexts[@]}"; then
+    echo "expected"
+  elif [[ "${#discovered_contexts[@]}" -gt 0 ]] && contains_value "${context}" "${discovered_contexts[@]}"; then
+    echo "discovered"
+  else
+    echo "explicit"
+  fi
+}
+
+append_context_readiness() {
+  local context="$1"
+  local source="$2"
+  local status="$3"
+  local reason="$4"
+  printf "%s\t%s\t%s\t%s\n" "${context}" "${source}" "${status}" "${reason}" >>"${context_readiness_tsv}"
+}
+
+write_context_readiness_artifacts() {
+  local ready_context_count="$1"
+  local required_context_count="2"
+  mkdir -p "${output_dir}"
+  jq -R -s \
+    --arg name "${name}" \
+    --arg run_id "${run_id}" \
+    --argjson ready_context_count "${ready_context_count}" \
+    --argjson required_context_count "${required_context_count}" '
+      split("\n")
+      | map(select(length > 0))
+      | .[1:]
+      | map(split("\t") | {
+          context: .[0],
+          source: .[1],
+          status: .[2],
+          reason: .[3]
+        })
+      | {
+          name: $name,
+          run_id: $run_id,
+          required_context_count: $required_context_count,
+          ready_context_count: $ready_context_count,
+          contexts: .
+        }
+    ' "${context_readiness_tsv}" >"${context_readiness_json}"
+  {
+    echo "# Real Multi-source Context Readiness"
+    echo
+    echo "- name=${name}"
+    echo "- run_id=${run_id}"
+    echo "- required_context_count=${required_context_count}"
+    echo "- ready_context_count=${ready_context_count}"
+    echo
+    echo "## Contexts"
+    echo
+    awk -F '\t' 'NR > 1 { printf "- %s %s %s: %s\n", $1, $2, $3, $4 }' "${context_readiness_tsv}"
+  } >"${context_readiness_md}"
 }
 
 source_suffix_for_index() {
@@ -160,6 +251,9 @@ write_failure_artifact() {
 }
 
 discover_live_contexts() {
+  local context candidate source inspect_err reason
+  local context_candidates=()
+  local ready_contexts=()
   if [[ -n "${contexts_csv}" || "${autogen_mode}" != "live" || "${mode}" == "print-plan" ]]; then
     return
   fi
@@ -167,14 +261,54 @@ discover_live_contexts() {
     write_failure_artifact "missing-docker-cli" "docker CLI is required to auto-discover real multisource contexts"
     exit 1
   fi
-  contexts_csv="$(
-    docker context ls --format '{{.Name}}' \
-      | awk '$0 != "" && $0 != "default" && $0 != "desktop-linux" { print }' \
-      | paste -sd, -
-  )"
+  while IFS= read -r context; do
+    [[ -n "${context}" ]] || continue
+    discovered_contexts+=("${context}")
+    if [[ "${#context_candidates[@]}" -eq 0 ]] || ! contains_value "${context}" "${context_candidates[@]}"; then
+      context_candidates+=("${context}")
+    fi
+  done < <(docker context ls --format '{{.Name}}')
+  if [[ "${#expected_contexts[@]}" -gt 0 ]]; then
+    for context in "${expected_contexts[@]}"; do
+      if [[ "${#context_candidates[@]}" -eq 0 ]] || ! contains_value "${context}" "${context_candidates[@]}"; then
+        context_candidates+=("${context}")
+      fi
+    done
+  fi
+
+  mkdir -p "${output_dir}"
+  printf "context\tsource\tstatus\treason\n" >"${context_readiness_tsv}"
+  if [[ "${#context_candidates[@]}" -gt 0 ]]; then
+    for candidate in "${context_candidates[@]}"; do
+      source="$(context_source_for "${candidate}")"
+      case "${candidate}" in
+        default|desktop-linux)
+          append_context_readiness "${candidate}" "${source}" "ignored" "local Docker context is not an independent public source"
+          continue
+          ;;
+      esac
+      inspect_err="${output_dir}/.${candidate}-context-inspect.err"
+      if docker context inspect "${candidate}" >/dev/null 2>"${inspect_err}"; then
+        append_context_readiness "${candidate}" "${source}" "ready" "ok"
+        ready_contexts+=("${candidate}")
+      else
+        reason="$(head -1 "${inspect_err}" | tr '\t' ' ' | cut -c1-180 | sanitize_text)"
+        [[ -n "${reason}" ]] || reason="docker context inspect failed"
+        append_context_readiness "${candidate}" "${source}" "fail" "${reason}"
+      fi
+      rm -f "${inspect_err}"
+    done
+  fi
+  write_context_readiness_artifacts "${#ready_contexts[@]}"
+  if [[ "${#ready_contexts[@]}" -gt 0 ]]; then
+    contexts_csv="$(join_by_comma "${ready_contexts[@]}")"
+  else
+    contexts_csv=""
+  fi
 }
 
 prepare_contexts() {
+  split_csv "${expected_contexts_csv}" expected_contexts
   discover_live_contexts
   split_csv "${contexts_csv}" contexts
   split_csv "${source_names_csv}" source_names
@@ -201,8 +335,16 @@ print_plan() {
   echo "[oci-real-multisource-public-evidence-autogen] run_id=${run_id}"
   echo "[oci-real-multisource-public-evidence-autogen] contexts=${contexts_csv}"
   echo "[oci-real-multisource-public-evidence-autogen] context_count=${#contexts[@]}"
+  if [[ "${#expected_contexts[@]}" -gt 0 ]]; then
+    echo "[oci-real-multisource-public-evidence-autogen] expected_contexts=$(join_by_comma "${expected_contexts[@]}")"
+  else
+    echo "[oci-real-multisource-public-evidence-autogen] expected_contexts="
+  fi
   echo "[oci-real-multisource-public-evidence-autogen] base_url=${base_url:-missing}"
   echo "[oci-real-multisource-public-evidence-autogen] artifact_uri=${artifact_uri}"
+  echo "[oci-real-multisource-public-evidence-autogen] context_readiness_tsv=${context_readiness_tsv}"
+  echo "[oci-real-multisource-public-evidence-autogen] context_readiness_json=${context_readiness_json}"
+  echo "[oci-real-multisource-public-evidence-autogen] context_readiness_md=${context_readiness_md}"
   echo "[oci-real-multisource-public-evidence-autogen] generated_dir=${generated_dir}"
   echo "[oci-real-multisource-public-evidence-autogen] generated_env=${generated_env}"
   echo "[oci-real-multisource-public-evidence-autogen] generated_single_source_summary_json=${single_summary}"

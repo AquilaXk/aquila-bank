@@ -45,10 +45,13 @@ grep -F 'HOST_METRICS_TIMELINE_TSV_INPUT: ${{ inputs.host_metrics_timeline_tsv }
 grep -F 'ARTIFACT_URI_INPUT: ${{ inputs.artifact_uri }}' "${workflow}" >/dev/null
 grep -F 'BASE_URL_INPUT: ${{ inputs.base_url }}' "${workflow}" >/dev/null
 grep -F 'OCI_REAL_MULTISOURCE_CONTEXTS_VAR: ${{ vars.OCI_REAL_MULTISOURCE_CONTEXTS }}' "${workflow}" >/dev/null
+grep -F 'OCI_REAL_MULTISOURCE_EXPECTED_CONTEXTS_VAR: ${{ vars.OCI_REAL_MULTISOURCE_EXPECTED_CONTEXTS }}' "${workflow}" >/dev/null
 grep -F 'OCI_REAL_MULTISOURCE_ARTIFACT_URI_VAR: ${{ vars.OCI_REAL_MULTISOURCE_ARTIFACT_URI }}' "${workflow}" >/dev/null
 grep -F 'OCI_REAL_MULTISOURCE_BASE_URL_VAR: ${{ vars.OCI_REAL_MULTISOURCE_BASE_URL }}' "${workflow}" >/dev/null
 grep -F 'OCI_REAL_MULTISOURCE_CONTEXTS="${REAL_MULTISOURCE_CONTEXTS_INPUT:-${OCI_REAL_MULTISOURCE_CONTEXTS:-${OCI_REAL_MULTISOURCE_CONTEXTS_VAR:-}}}"' "${workflow}" >/dev/null
+grep -F 'OCI_REAL_MULTISOURCE_EXPECTED_CONTEXTS="${OCI_REAL_MULTISOURCE_EXPECTED_CONTEXTS:-${OCI_REAL_MULTISOURCE_EXPECTED_CONTEXTS_VAR:-${OCI_REAL_MULTISOURCE_CONTEXTS}}}"' "${workflow}" >/dev/null
 grep -F 'OCI_REAL_MULTISOURCE_RUN_ID="${REAL_MULTISOURCE_RUN_ID_INPUT:-${OCI_REAL_MULTISOURCE_RUN_ID:-${OCI_REAL_MULTISOURCE_NAME}}}"' "${workflow}" >/dev/null
+grep -F 'OCI_REAL_MULTISOURCE_EXPECTED_CONTEXTS \' "${workflow}" >/dev/null
 grep -F "Write real multisource missing evidence artifact" "${workflow}" >/dev/null
 grep -F "Generated real multisource evidence artifact" "${workflow}" >/dev/null
 grep -F 'OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON="${SINGLE_SOURCE_SUMMARY_JSON_INPUT:-${OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON:-${OCI_REAL_MULTISOURCE_SINGLE_SOURCE_SUMMARY_JSON_VAR:-}}}"' "${workflow}" >/dev/null

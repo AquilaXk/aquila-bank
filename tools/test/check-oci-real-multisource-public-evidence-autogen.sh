@@ -123,3 +123,93 @@ if OCI_REAL_MULTISOURCE_AUTOGEN_MODE=live \
 fi
 grep -F "OCI_REAL_MULTISOURCE_BASE_URL is required for live autogen" "${temp_dir}/live-missing-base-url.log" >/dev/null
 grep -F "failure_reason=missing-base-url" "${temp_dir}/live-missing-base-url/${name}-live-missing-base-url-missing-evidence.env" >/dev/null
+
+echo "[oci-real-multisource-public-evidence-autogen] expected context readiness artifact"
+stub_bin="${temp_dir}/bin"
+mkdir -p "${stub_bin}"
+cat >"${stub_bin}/docker" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+case "${1:-}" in
+  context)
+    case "${2:-}" in
+      ls)
+        echo "default"
+        echo "desktop-linux"
+        ;;
+      inspect)
+        case "${3:-}" in
+          default|desktop-linux)
+            echo "[]"
+            ;;
+          *)
+            echo "context inspect failed: ${3:-missing} /home/github-runner/.docker token=raw-token http://internal.example.test/context" >&2
+            exit 42
+            ;;
+        esac
+        ;;
+      *)
+        echo "unsupported docker context command: $*" >&2
+        exit 2
+        ;;
+    esac
+    ;;
+  *)
+    echo "unsupported docker command: $*" >&2
+    exit 2
+    ;;
+esac
+SH
+chmod +x "${stub_bin}/docker"
+if PATH="${stub_bin}:${PATH}" \
+  OCI_REAL_MULTISOURCE_AUTOGEN_MODE=live \
+  OCI_REAL_MULTISOURCE_NAME="${name}-expected-contexts" \
+  OCI_REAL_MULTISOURCE_RUN_ID="${run_id}" \
+  OCI_REAL_MULTISOURCE_EXPECTED_CONTEXTS=oci-k6-a,oci-k6-b \
+  OCI_REAL_MULTISOURCE_BASE_URL="https://staging.example.test" \
+  OCI_REAL_MULTISOURCE_OUTPUT_DIR="${temp_dir}/expected-contexts" \
+  OCI_REAL_MULTISOURCE_ARTIFACT_URI="${artifact_uri}" \
+    bash "${runner}" >"${temp_dir}/expected-contexts.log" 2>&1; then
+  echo "real multisource autogen unexpectedly passed without expected contexts" >&2
+  exit 1
+fi
+grep -F "minimum remote Docker contexts required: 2" "${temp_dir}/expected-contexts.log" >/dev/null
+expected_readiness_tsv="${temp_dir}/expected-contexts/${name}-expected-contexts-context-readiness.tsv"
+expected_readiness_json="${temp_dir}/expected-contexts/${name}-expected-contexts-context-readiness.json"
+expected_readiness_md="${temp_dir}/expected-contexts/${name}-expected-contexts-context-readiness.md"
+test -s "${expected_readiness_tsv}"
+test -s "${expected_readiness_json}"
+test -s "${expected_readiness_md}"
+grep -F $'context\tsource\tstatus\treason' "${expected_readiness_tsv}" >/dev/null
+grep -F $'oci-k6-a\texpected\tfail\tcontext inspect failed' "${expected_readiness_tsv}" >/dev/null
+grep -F $'oci-k6-b\texpected\tfail\tcontext inspect failed' "${expected_readiness_tsv}" >/dev/null
+jq -e '.ready_context_count == 0 and .required_context_count == 2 and (.contexts | length >= 4)' "${expected_readiness_json}" >/dev/null
+grep -F "ready_context_count=0" "${expected_readiness_md}" >/dev/null
+grep -F "required_context_count=2" "${expected_readiness_md}" >/dev/null
+if grep -R -E "/home/github-runner|raw-token|http://internal\\.example\\.test" "${temp_dir}/expected-contexts" >/dev/null; then
+  echo "context readiness artifact contains unsanitized failure reason" >&2
+  exit 1
+fi
+
+echo "[oci-real-multisource-public-evidence-autogen] blank expected context is not emitted"
+if PATH="${stub_bin}:${PATH}" \
+  OCI_REAL_MULTISOURCE_AUTOGEN_MODE=live \
+  OCI_REAL_MULTISOURCE_NAME="${name}-blank-expected-context" \
+  OCI_REAL_MULTISOURCE_RUN_ID="${run_id}" \
+  OCI_REAL_MULTISOURCE_BASE_URL="https://staging.example.test" \
+  OCI_REAL_MULTISOURCE_OUTPUT_DIR="${temp_dir}/blank-expected-context" \
+  OCI_REAL_MULTISOURCE_ARTIFACT_URI="${artifact_uri}" \
+    bash "${runner}" >"${temp_dir}/blank-expected-context.log" 2>&1; then
+  echo "real multisource autogen unexpectedly passed without remote contexts" >&2
+  exit 1
+fi
+blank_readiness_tsv="${temp_dir}/blank-expected-context/${name}-blank-expected-context-context-readiness.tsv"
+blank_readiness_json="${temp_dir}/blank-expected-context/${name}-blank-expected-context-context-readiness.json"
+test -s "${blank_readiness_tsv}"
+test -s "${blank_readiness_json}"
+if awk -F '\t' 'NR > 1 && $1 == "" { found = 1 } END { exit !found }' "${blank_readiness_tsv}"; then
+  echo "context readiness emitted a blank context row" >&2
+  exit 1
+fi
+jq -e 'all(.contexts[]; .context != "")' "${blank_readiness_json}" >/dev/null
