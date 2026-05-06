@@ -80,6 +80,12 @@ grep -F 'OCI_OFFHOST_LOAD_COUPLED_TIMELINE_RUN_ID="${CAPACITY_K6_HOST_METRICS_RU
 grep -F 'OCI_OFFHOST_LOAD_COUPLED_SAMPLE_INTERVAL_SECONDS="${CAPACITY_K6_HOST_METRICS_TIMELINE_SAMPLE_INTERVAL_SECONDS}"' "${workflow}" >/dev/null
 grep -F 'OCI_OFFHOST_LOAD_COUPLED_GENERATOR_SAMPLE_CONTEXT="${CAPACITY_K6_DOCKER_CONTEXT}"' "${workflow}" >/dev/null
 grep -F 'K6_OVERLOAD_429_RATE_THRESHOLD=1 \' "${workflow}" >/dev/null
+grep -F 'K6_REMOTE_PROMETHEUS_RW_REQUIRED=false \' "${workflow}" >/dev/null
+remote_write_optional_count="$(grep -F 'K6_REMOTE_PROMETHEUS_RW_REQUIRED=false \' "${workflow}" | wc -l | tr -d '[:space:]')"
+if [[ "${remote_write_optional_count}" -lt 3 ]]; then
+  echo "off-host load phases must downgrade remote-write instead of blocking k6 execution" >&2
+  exit 1
+fi
 grep -F "tools/test/run-oci-offhost-host-metrics-load-coupled-timeline.sh" "${workflow}" >/dev/null
 grep -F 'CAPACITY_K6_HOST_METRICS_TIMELINE_TSV="${generated_timeline_tsv}"' "${workflow}" >/dev/null
 grep -F 'if [[ -z "${CAPACITY_K6_HOST_METRICS_TIMELINE_TSV}" && "${CAPACITY_REQUIRE_LOAD_COUPLED_TIMELINE}" == "false" ]]; then' "${workflow}" >/dev/null
