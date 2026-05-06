@@ -116,6 +116,23 @@ remote_prometheus_plan="$(
 grep -F "k6 report name: transaction-100m-remote-prometheus-check" <<<"${remote_prometheus_plan}" >/dev/null
 grep -F "remote prometheus rw=http://192.0.2.10:9090/api/v1/write" <<<"${remote_prometheus_plan}" >/dev/null
 grep -F "remote prometheus preflight=enabled" <<<"${remote_prometheus_plan}" >/dev/null
+grep -F "remote prometheus required=true" <<<"${remote_prometheus_plan}" >/dev/null
+
+remote_optional_prometheus_plan="$(
+  K6_REPORT_NAME=transaction-100m-remote-prometheus-optional-check \
+  K6_OBSERVABILITY_MODE=prometheus \
+  K6_GENERATOR_MODE=docker-context \
+  K6_DOCKER_CONTEXT=transaction-k6-remote \
+  K6_REMOTE_BASE_URL=http://192.0.2.10:8080 \
+  K6_REMOTE_PROMETHEUS_RW_SERVER_URL=http://192.0.2.10:9090/api/v1/write \
+  K6_REMOTE_PROMETHEUS_RW_REQUIRED=false \
+  K6_REMOTE_WORKDIR=/srv/aquila-bank \
+    tools/test/run-k6-transaction-100m-loadtest.sh --print-plan
+)"
+grep -F "k6 report name: transaction-100m-remote-prometheus-optional-check" <<<"${remote_optional_prometheus_plan}" >/dev/null
+grep -F "remote prometheus rw=http://192.0.2.10:9090/api/v1/write" <<<"${remote_optional_prometheus_plan}" >/dev/null
+grep -F "remote prometheus preflight=enabled" <<<"${remote_optional_prometheus_plan}" >/dev/null
+grep -F "remote prometheus required=false" <<<"${remote_optional_prometheus_plan}" >/dev/null
 
 remote_staging_plan="$(
   K6_REPORT_NAME=transaction-100m-remote-staging-check \
@@ -521,6 +538,8 @@ grep -F "K6_REMOTE_PROMETHEUS_RW_SERVER_URL" tools/test/run-k6-transaction-100m-
 grep -F "K6_REMOTE_PREFLIGHT" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_REMOTE_PREFLIGHT_FAILURE_REPORT" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "K6_REMOTE_PROMETHEUS_RW_REQUIRED" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
+grep -F "remote prometheus remote-write optional; downgrading observability to summary-only" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "K6_REMOTE_READINESS_PATH" tools/test/run-k6-transaction-100m-loadtest.sh >/dev/null
 grep -F "PERFORMANCE_RESULT_STATUS" tools/test/archive-k6-transaction-100m-result.sh >/dev/null
 grep -F "PERFORMANCE_RESULT_ARTIFACT_DIR" tools/test/archive-k6-transaction-100m-result.sh >/dev/null
@@ -690,6 +709,10 @@ if K6_REMOTE_PREFLIGHT=bad tools/test/run-k6-transaction-100m-loadtest.sh --prin
 fi
 if K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS=0 tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
   echo "K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS=0 unexpectedly succeeded" >&2
+  exit 1
+fi
+if K6_REMOTE_PROMETHEUS_RW_REQUIRED=bad tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
+  echo "K6_REMOTE_PROMETHEUS_RW_REQUIRED=bad unexpectedly succeeded" >&2
   exit 1
 fi
 if K6_RUN_PURPOSE=unknown tools/test/run-k6-transaction-100m-loadtest.sh --print-plan >/dev/null 2>&1; then
