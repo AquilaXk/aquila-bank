@@ -100,7 +100,12 @@ grep -F 'OCI_A1_DB_IDLE_IN_TX_TIMEOUT_MS' "${workflow}" >/dev/null
 grep -F 'DB_IDLE_IN_TX_TIMEOUT_MS' "${workflow}" >/dev/null
 grep -F 'expected_hikari_max_lifetime_ms' "${workflow}" >/dev/null
 grep -F "Build 30m soak live evidence artifact pack" "${workflow}" >/dev/null
+grep -F 'summary_artifact_json="${SOAK_30M_REPORT_DIR}/${K6_REPORT_NAME}-summary.json"' "${workflow}" >/dev/null
+grep -F 'summary_artifact_md="${SOAK_30M_REPORT_DIR}/${K6_REPORT_NAME}-summary.md"' "${workflow}" >/dev/null
+grep -F 'cp "${summary_json}" "${summary_artifact_json}"' "${workflow}" >/dev/null
+grep -F 'cp "${summary_md}" "${summary_artifact_md}"' "${workflow}" >/dev/null
 grep -F 'SOAK_30M_ARTIFACTS_DURATION_MIN="${SOAK_30M_DURATION_MIN}"' "${workflow}" >/dev/null
+grep -F 'SOAK_30M_ARTIFACTS_K6_SUMMARY_JSON="${summary_artifact_json}"' "${workflow}" >/dev/null
 grep -F 'SOAK_30M_ARTIFACTS_POSTGRES_TEMP_FILE_DELTA_MAX="${SOAK_30M_POSTGRES_TEMP_FILE_DELTA_MAX:-0}"' "${workflow}" >/dev/null
 grep -F 'tools/test/run-transaction-read-30m-soak-live-evidence-artifacts.sh' "${workflow}" >/dev/null
 grep -F "Run 30m soak live evidence gate" "${workflow}" >/dev/null
