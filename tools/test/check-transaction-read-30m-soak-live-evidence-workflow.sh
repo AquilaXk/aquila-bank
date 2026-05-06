@@ -41,6 +41,12 @@ grep -F "tools/test/check-transaction-read-30m-soak-live-evidence-manifest.sh" "
 grep -F "tools/test/run-transaction-read-30m-soak-live-evidence-artifacts.sh" "${workflow}" >/dev/null
 grep -F "tools/test/check-transaction-read-30m-soak-live-evidence-artifacts.sh" "${workflow}" >/dev/null
 grep -F "tools/test/run-transaction-read-oci-evidence-execution-gate.sh" "${workflow}" >/dev/null
+env_names_block="$(awk '
+  /env_names=\(/ { in_block = 1 }
+  in_block { print }
+  in_block && /^\s*\)/ { exit }
+' "${workflow}")"
+grep -F "K6_REMOTE_PROMETHEUS_RW_REQUIRED" <<<"${env_names_block}" >/dev/null
 grep -F "if: github.event_name == 'workflow_dispatch'" "${workflow}" >/dev/null
 grep -F "runs-on: [self-hosted, oci-a1-staging]" "${workflow}" >/dev/null
 grep -F "timeout-minutes: 50" "${workflow}" >/dev/null
@@ -54,6 +60,8 @@ grep -F "Prepare 30m soak evidence mode" "${workflow}" >/dev/null
 grep -F 'SOAK_30M_USE_EXISTING_MANIFEST=true' "${workflow}" >/dev/null
 grep -F "Load OCI A1 staging env" "${workflow}" >/dev/null
 grep -F 'K6_RUN_PURPOSE="capacity"' "${workflow}" >/dev/null
+grep -F 'K6_REMOTE_PROMETHEUS_RW_REQUIRED="false"' "${workflow}" >/dev/null
+grep -F 'remote-write optional' "${workflow}" >/dev/null
 grep -F 'K6_DOCKER_CONTEXT_SOURCE="input"' "${workflow}" >/dev/null
 grep -F 'K6_DOCKER_CONTEXT_SOURCE="env"' "${workflow}" >/dev/null
 grep -F 'K6_DOCKER_CONTEXT_SOURCE="default"' "${workflow}" >/dev/null

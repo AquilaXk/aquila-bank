@@ -201,6 +201,8 @@ jobs:
           fi
           K6_REMOTE_BASE_URL="${CAPACITY_K6_REMOTE_BASE_URL:-${STAGING_BASE_URL:-}}"
           K6_REMOTE_PROMETHEUS_RW_SERVER_URL="${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL:-http://172.17.0.2:9090/api/v1/write}"
+          # remote-write optional: 30m closure는 local timeline/summary artifact로 판정.
+          K6_REMOTE_PROMETHEUS_RW_REQUIRED="false"
           K6_REMOTE_WORKDIR="${CAPACITY_K6_REMOTE_WORKDIR:-${GITHUB_WORKSPACE}}"
           K6_REMOTE_PREFLIGHT="true"
           K6_AUTH_TOKEN_ENV_NAME="STAGING_REPLAY_TOKEN"
@@ -262,6 +264,7 @@ jobs:
             K6_DOCKER_CONTEXT_SOURCE
             K6_REMOTE_BASE_URL
             K6_REMOTE_PROMETHEUS_RW_SERVER_URL
+            K6_REMOTE_PROMETHEUS_RW_REQUIRED
             K6_REMOTE_WORKDIR
             K6_REMOTE_PREFLIGHT
             K6_AUTH_TOKEN_ENV_NAME
