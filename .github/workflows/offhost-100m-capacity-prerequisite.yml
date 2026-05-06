@@ -162,6 +162,7 @@ jobs:
           CAPACITY_NAME="ci-offhost-100m-capacity-prerequisite"
           CAPACITY_K6_GENERATOR_MODE="docker-context"
           CAPACITY_REMOTE_PREFLIGHT="true"
+          CAPACITY_REMOTE_PROMETHEUS_RW_REQUIRED="false"
           CAPACITY_REQUIRE_HOST_METRICS="true"
           CAPACITY_PREREQUISITE_FAILURE_REPORT_PATH="${report_dir}/capacity-prerequisite-failure.env"
           DEFAULT_CAPACITY_K6_DOCKER_CONTEXT="default"
@@ -227,6 +228,7 @@ jobs:
           if [[ -z "${CAPACITY_K6_HOST_METRICS_TIMELINE_TSV}" && "${CAPACITY_REQUIRE_LOAD_COUPLED_TIMELINE}" == "true" ]]; then
             mkdir -p "${host_metrics_timeline_dir}"
             arrival16_command='
+              arrival16_status=0
               K6_REPORT_NAME="${CAPACITY_NAME}-arrival16" \
               K6_RUN_ID="${CAPACITY_NAME}-arrival16" \
               K6_RUN_PURPOSE=capacity \
@@ -235,6 +237,7 @@ jobs:
               K6_DOCKER_CONTEXT="${CAPACITY_K6_DOCKER_CONTEXT}" \
               K6_REMOTE_BASE_URL="${CAPACITY_K6_REMOTE_BASE_URL}" \
               K6_REMOTE_PROMETHEUS_RW_SERVER_URL="${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL}" \
+              K6_REMOTE_PROMETHEUS_RW_REQUIRED=false \
               K6_REMOTE_WORKDIR="${CAPACITY_K6_REMOTE_WORKDIR}" \
               K6_REMOTE_PREFLIGHT=true \
               K6_AUTH_TOKEN_ENV_NAME=STAGING_REPLAY_TOKEN \
@@ -256,10 +259,26 @@ jobs:
               K6_MAX_VUS=32 \
               K6_DURATION="${CAPACITY_K6_TIMELINE_PHASE_DURATION}" \
               K6_ARCHIVE_RESULTS=false \
-                tools/test/run-k6-transaction-100m-loadtest.sh --no-up --no-deps
+                tools/test/run-k6-transaction-100m-loadtest.sh --no-up --no-deps || arrival16_status="$?"
+              arrival16_summary_dir="${OCI_OFFHOST_LOAD_COUPLED_OUTPUT_DIR}/arrival16"
+              mkdir -p "${arrival16_summary_dir}"
+              if [[ -s "build/reports/k6/${CAPACITY_NAME}-arrival16-summary.json" ]]; then
+                cp "build/reports/k6/${CAPACITY_NAME}-arrival16-summary.json" "${arrival16_summary_dir}/${CAPACITY_NAME}-arrival16-summary.json"
+              else
+                echo "missing arrival16 k6 summary JSON" >&2
+                arrival16_status=1
+              fi
+              if [[ -s "build/reports/k6/${CAPACITY_NAME}-arrival16-summary.md" ]]; then
+                cp "build/reports/k6/${CAPACITY_NAME}-arrival16-summary.md" "${arrival16_summary_dir}/${CAPACITY_NAME}-arrival16-summary.md"
+              else
+                echo "missing arrival16 k6 summary markdown" >&2
+                arrival16_status=1
+              fi
+              exit "${arrival16_status}"
             '
             # VU16 sampler는 promotion gate가 아니라 host timeline 수집용 observation phase다.
             vu16_command='
+              vu16_status=0
               K6_REPORT_NAME="${CAPACITY_NAME}-vu16" \
               K6_RUN_ID="${CAPACITY_NAME}-vu16" \
               K6_RUN_PURPOSE=capacity \
@@ -268,6 +287,7 @@ jobs:
               K6_DOCKER_CONTEXT="${CAPACITY_K6_DOCKER_CONTEXT}" \
               K6_REMOTE_BASE_URL="${CAPACITY_K6_REMOTE_BASE_URL}" \
               K6_REMOTE_PROMETHEUS_RW_SERVER_URL="${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL}" \
+              K6_REMOTE_PROMETHEUS_RW_REQUIRED=false \
               K6_REMOTE_WORKDIR="${CAPACITY_K6_REMOTE_WORKDIR}" \
               K6_REMOTE_PREFLIGHT=true \
               K6_AUTH_TOKEN_ENV_NAME=STAGING_REPLAY_TOKEN \
@@ -289,10 +309,27 @@ jobs:
               K6_OVERLOAD_MODE=true \
               K6_OVERLOAD_429_RATE_THRESHOLD=1 \
               K6_ARCHIVE_RESULTS=false \
-                tools/test/run-k6-transaction-100m-loadtest.sh --no-up --no-deps
+                tools/test/run-k6-transaction-100m-loadtest.sh --no-up --no-deps || vu16_status="$?"
+              vu16_summary_dir="${OCI_OFFHOST_LOAD_COUPLED_OUTPUT_DIR}/vu16"
+              mkdir -p "${vu16_summary_dir}"
+              if [[ -s "build/reports/k6/${CAPACITY_NAME}-vu16-summary.json" ]]; then
+                cp "build/reports/k6/${CAPACITY_NAME}-vu16-summary.json" "${vu16_summary_dir}/${CAPACITY_NAME}-vu16-summary.json"
+              else
+                echo "missing VU16 k6 summary JSON" >&2
+                vu16_status=1
+              fi
+              if [[ -s "build/reports/k6/${CAPACITY_NAME}-vu16-summary.md" ]]; then
+                cp "build/reports/k6/${CAPACITY_NAME}-vu16-summary.md" "${vu16_summary_dir}/${CAPACITY_NAME}-vu16-summary.md"
+              else
+                echo "missing VU16 k6 summary markdown" >&2
+                vu16_status=1
+              fi
+              exit "${vu16_status}"
             '
             burst_matrix_command='
               matrix_ref="${OCI_OFFHOST_LOAD_COUPLED_OUTPUT_DIR}/${CAPACITY_NAME}-burst-matrix-runs.tsv"
+              burst_matrix_summary_dir="${OCI_OFFHOST_LOAD_COUPLED_OUTPUT_DIR}/burst-matrix"
+              mkdir -p "${burst_matrix_summary_dir}"
               printf "burst_rate\tk6_run_id\tsummary_json\n" >"${matrix_ref}"
               IFS="," read -r -a burst_rates <<<"${CAPACITY_K6_TIMELINE_BURST_RATES}"
               status=0
@@ -308,6 +345,7 @@ jobs:
                 K6_DOCKER_CONTEXT="${CAPACITY_K6_DOCKER_CONTEXT}" \
                 K6_REMOTE_BASE_URL="${CAPACITY_K6_REMOTE_BASE_URL}" \
                 K6_REMOTE_PROMETHEUS_RW_SERVER_URL="${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL}" \
+                K6_REMOTE_PROMETHEUS_RW_REQUIRED=false \
                 K6_REMOTE_WORKDIR="${CAPACITY_K6_REMOTE_WORKDIR}" \
                 K6_REMOTE_PREFLIGHT=true \
                 K6_AUTH_TOKEN_ENV_NAME=STAGING_REPLAY_TOKEN \
@@ -330,7 +368,21 @@ jobs:
                 K6_BURST_429_RATE_THRESHOLD=1 \
                 K6_ARCHIVE_RESULTS=false \
                   tools/test/run-k6-transaction-100m-loadtest.sh --no-up --no-deps || status=1
-                printf "%s\t%s\tbuild/reports/k6/%s-summary.json\n" "${burst_rate}" "${report_name}" "${report_name}" >>"${matrix_ref}"
+                summary_json="build/reports/k6/${report_name}-summary.json"
+                summary_md="build/reports/k6/${report_name}-summary.md"
+                if [[ -s "${summary_json}" ]]; then
+                  cp "build/reports/k6/${report_name}-summary.json" "${burst_matrix_summary_dir}/${report_name}-summary.json"
+                else
+                  echo "missing burst matrix k6 summary JSON: ${summary_json}" >&2
+                  status=1
+                fi
+                if [[ -s "${summary_md}" ]]; then
+                  cp "build/reports/k6/${report_name}-summary.md" "${burst_matrix_summary_dir}/${report_name}-summary.md"
+                else
+                  echo "missing burst matrix k6 summary markdown: ${summary_md}" >&2
+                  status=1
+                fi
+                printf "%s\t%s\t%s\n" "${burst_rate}" "${report_name}" "${burst_matrix_summary_dir}/${report_name}-summary.json" >>"${matrix_ref}"
               done
               exit "${status}"
             '
@@ -356,11 +408,16 @@ jobs:
             OCI_OFFHOST_LOAD_COUPLED_TARGET_SAMPLE_CONTEXT="local" \
             OCI_OFFHOST_LOAD_COUPLED_ARTIFACT_PACK_URI="artifact://offhost-capacity-prerequisite/${CAPACITY_NAME}" \
             OCI_OFFHOST_LOAD_COUPLED_OUTPUT_DIR="${host_metrics_timeline_dir}" \
+            OCI_OFFHOST_LOAD_COUPLED_ARRIVAL16_SUMMARY_REF="${host_metrics_timeline_dir}/arrival16/${CAPACITY_NAME}-arrival16-summary.json" \
+            OCI_OFFHOST_LOAD_COUPLED_VU16_SUMMARY_REF="${host_metrics_timeline_dir}/vu16/${CAPACITY_NAME}-vu16-summary.json" \
+            OCI_OFFHOST_LOAD_COUPLED_BURST_MATRIX_SUMMARY_REF="${host_metrics_timeline_dir}/${CAPACITY_NAME}-burst-matrix-runs.tsv" \
             OCI_OFFHOST_LOAD_COUPLED_ARRIVAL16_COMMAND="${arrival16_command}" \
             OCI_OFFHOST_LOAD_COUPLED_VU16_COMMAND="${vu16_command}" \
             OCI_OFFHOST_LOAD_COUPLED_BURST_MATRIX_COMMAND="${burst_matrix_command}" \
               tools/test/run-oci-offhost-host-metrics-load-coupled-timeline.sh >"${host_metrics_timeline_dir}/host-metrics-load-coupled-timeline.log" 2>&1
             CAPACITY_K6_HOST_METRICS_TIMELINE_TSV="${generated_timeline_tsv}"
+            CAPACITY_K6_VU16_SUMMARY_JSON="${host_metrics_timeline_dir}/vu16/${CAPACITY_NAME}-vu16-summary.json"
+            CAPACITY_K6_BURST_MATRIX_TSV="${host_metrics_timeline_dir}/${CAPACITY_NAME}-burst-matrix-runs.tsv"
           fi
           if [[ -z "${CAPACITY_K6_HOST_METRICS_TIMELINE_TSV}" && "${CAPACITY_REQUIRE_LOAD_COUPLED_TIMELINE}" == "false" ]]; then
             mkdir -p "${host_metrics_timeline_dir}"
@@ -402,6 +459,7 @@ jobs:
             CAPACITY_NAME
             CAPACITY_K6_GENERATOR_MODE
             CAPACITY_REMOTE_PREFLIGHT
+            CAPACITY_REMOTE_PROMETHEUS_RW_REQUIRED
             CAPACITY_REQUIRE_HOST_METRICS
             CAPACITY_PREREQUISITE_FAILURE_REPORT_PATH
             CAPACITY_K6_DOCKER_CONTEXT

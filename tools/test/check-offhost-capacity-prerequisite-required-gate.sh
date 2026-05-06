@@ -80,6 +80,27 @@ grep -F 'OCI_OFFHOST_LOAD_COUPLED_TIMELINE_RUN_ID="${CAPACITY_K6_HOST_METRICS_RU
 grep -F 'OCI_OFFHOST_LOAD_COUPLED_SAMPLE_INTERVAL_SECONDS="${CAPACITY_K6_HOST_METRICS_TIMELINE_SAMPLE_INTERVAL_SECONDS}"' "${workflow}" >/dev/null
 grep -F 'OCI_OFFHOST_LOAD_COUPLED_GENERATOR_SAMPLE_CONTEXT="${CAPACITY_K6_DOCKER_CONTEXT}"' "${workflow}" >/dev/null
 grep -F 'K6_OVERLOAD_429_RATE_THRESHOLD=1 \' "${workflow}" >/dev/null
+grep -F 'K6_REMOTE_PROMETHEUS_RW_REQUIRED=false \' "${workflow}" >/dev/null
+remote_write_optional_count="$(grep -F 'K6_REMOTE_PROMETHEUS_RW_REQUIRED=false \' "${workflow}" | wc -l | tr -d '[:space:]')"
+if [[ "${remote_write_optional_count}" -lt 3 ]]; then
+  echo "off-host load phases must downgrade remote-write instead of blocking k6 execution" >&2
+  exit 1
+fi
+grep -F 'arrival16_summary_dir="${OCI_OFFHOST_LOAD_COUPLED_OUTPUT_DIR}/arrival16"' "${workflow}" >/dev/null
+grep -F 'cp "build/reports/k6/${CAPACITY_NAME}-arrival16-summary.json" "${arrival16_summary_dir}/${CAPACITY_NAME}-arrival16-summary.json"' "${workflow}" >/dev/null
+grep -F 'cp "build/reports/k6/${CAPACITY_NAME}-arrival16-summary.md" "${arrival16_summary_dir}/${CAPACITY_NAME}-arrival16-summary.md"' "${workflow}" >/dev/null
+grep -F 'vu16_summary_dir="${OCI_OFFHOST_LOAD_COUPLED_OUTPUT_DIR}/vu16"' "${workflow}" >/dev/null
+grep -F 'cp "build/reports/k6/${CAPACITY_NAME}-vu16-summary.json" "${vu16_summary_dir}/${CAPACITY_NAME}-vu16-summary.json"' "${workflow}" >/dev/null
+grep -F 'cp "build/reports/k6/${CAPACITY_NAME}-vu16-summary.md" "${vu16_summary_dir}/${CAPACITY_NAME}-vu16-summary.md"' "${workflow}" >/dev/null
+grep -F 'burst_matrix_summary_dir="${OCI_OFFHOST_LOAD_COUPLED_OUTPUT_DIR}/burst-matrix"' "${workflow}" >/dev/null
+grep -F 'cp "build/reports/k6/${report_name}-summary.json" "${burst_matrix_summary_dir}/${report_name}-summary.json"' "${workflow}" >/dev/null
+grep -F 'cp "build/reports/k6/${report_name}-summary.md" "${burst_matrix_summary_dir}/${report_name}-summary.md"' "${workflow}" >/dev/null
+grep -F 'printf "%s\t%s\t%s\n" "${burst_rate}" "${report_name}" "${burst_matrix_summary_dir}/${report_name}-summary.json" >>"${matrix_ref}"' "${workflow}" >/dev/null
+grep -F 'OCI_OFFHOST_LOAD_COUPLED_ARRIVAL16_SUMMARY_REF="${host_metrics_timeline_dir}/arrival16/${CAPACITY_NAME}-arrival16-summary.json"' "${workflow}" >/dev/null
+grep -F 'OCI_OFFHOST_LOAD_COUPLED_VU16_SUMMARY_REF="${host_metrics_timeline_dir}/vu16/${CAPACITY_NAME}-vu16-summary.json"' "${workflow}" >/dev/null
+grep -F 'OCI_OFFHOST_LOAD_COUPLED_BURST_MATRIX_SUMMARY_REF="${host_metrics_timeline_dir}/${CAPACITY_NAME}-burst-matrix-runs.tsv"' "${workflow}" >/dev/null
+grep -F 'CAPACITY_K6_VU16_SUMMARY_JSON="${host_metrics_timeline_dir}/vu16/${CAPACITY_NAME}-vu16-summary.json"' "${workflow}" >/dev/null
+grep -F 'CAPACITY_K6_BURST_MATRIX_TSV="${host_metrics_timeline_dir}/${CAPACITY_NAME}-burst-matrix-runs.tsv"' "${workflow}" >/dev/null
 grep -F "tools/test/run-oci-offhost-host-metrics-load-coupled-timeline.sh" "${workflow}" >/dev/null
 grep -F 'CAPACITY_K6_HOST_METRICS_TIMELINE_TSV="${generated_timeline_tsv}"' "${workflow}" >/dev/null
 grep -F 'if [[ -z "${CAPACITY_K6_HOST_METRICS_TIMELINE_TSV}" && "${CAPACITY_REQUIRE_LOAD_COUPLED_TIMELINE}" == "false" ]]; then' "${workflow}" >/dev/null
@@ -94,6 +115,7 @@ grep -F 'OCI_OFFHOST_HOST_METRICS_TIMELINE_INPUT_TSV="${CAPACITY_K6_HOST_METRICS
 grep -F 'OCI_OFFHOST_HOST_METRICS_TIMELINE_REQUIRE_LOAD_COUPLED="${CAPACITY_REQUIRE_LOAD_COUPLED_TIMELINE}"' "${workflow}" >/dev/null
 grep -F 'OCI_OFFHOST_HOST_METRICS_TIMELINE_OUTPUT_DIR="${report_dir}/offhost-host-metrics-timeline-verified"' "${workflow}" >/dev/null
 grep -F 'CAPACITY_REMOTE_PREFLIGHT="true"' "${workflow}" >/dev/null
+grep -F 'CAPACITY_REMOTE_PROMETHEUS_RW_REQUIRED="false"' "${workflow}" >/dev/null
 grep -F 'CAPACITY_REQUIRE_HOST_METRICS="true"' "${workflow}" >/dev/null
 grep -F "Run off-host remote preflight" "${workflow}" >/dev/null
 grep -F "tools/test/run-offhost-capacity-env-doctor.sh" "${workflow}" >/dev/null
@@ -105,6 +127,7 @@ grep -F 'OCI_OFFHOST_GENERATOR_HOST_METRICS_TSV="${CAPACITY_K6_GENERATOR_HOST_ME
 grep -F 'OCI_OFFHOST_TARGET_HOST_METRICS_TSV="${CAPACITY_K6_TARGET_HOST_METRICS_TSV}"' "${workflow}" >/dev/null
 grep -F "tools/test/run-oci-offhost-host-metrics-evidence.sh" "${workflow}" >/dev/null
 grep -F "tools/test/check-oci-offhost-host-metrics-timeline.sh" "${workflow}" >/dev/null
+grep -F "CAPACITY_REMOTE_PROMETHEUS_RW_REQUIRED" "${workflow}" >/dev/null
 grep -F "tools/test/run-transaction-100m-capacity-gates.sh --print-plan" "${workflow}" >/dev/null
 grep -F "capacity-prerequisite-plan.log" "${workflow}" >/dev/null
 grep -F "actions/upload-artifact@" "${workflow}" >/dev/null

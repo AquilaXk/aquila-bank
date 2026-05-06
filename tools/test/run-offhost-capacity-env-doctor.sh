@@ -11,6 +11,7 @@ Environment:
   CAPACITY_K6_DOCKER_CONTEXT required
   CAPACITY_K6_REMOTE_BASE_URL required
   CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL required
+  CAPACITY_REMOTE_PROMETHEUS_RW_REQUIRED default true
   CAPACITY_K6_REMOTE_WORKDIR default current working directory
   CAPACITY_K6_HOST_METRICS_TSV optional TSV artifact for generator/target CPU and network metrics
   CAPACITY_K6_HOST_METRICS_TIMELINE_TSV optional load-coupled generator/target CPU and network timeline TSV ref
@@ -81,6 +82,7 @@ fi
 docker_context="${CAPACITY_K6_DOCKER_CONTEXT:-${K6_DOCKER_CONTEXT:-}}"
 remote_base_url="${CAPACITY_K6_REMOTE_BASE_URL:-${K6_REMOTE_BASE_URL:-}}"
 remote_prometheus_rw_url="${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL:-${K6_REMOTE_PROMETHEUS_RW_SERVER_URL:-}}"
+remote_prometheus_rw_required="${CAPACITY_REMOTE_PROMETHEUS_RW_REQUIRED:-${K6_REMOTE_PROMETHEUS_RW_REQUIRED:-true}}"
 remote_workdir="${CAPACITY_K6_REMOTE_WORKDIR:-${K6_REMOTE_WORKDIR:-$(pwd)}}"
 host_metrics_tsv="${CAPACITY_K6_HOST_METRICS_TSV:-${K6_HOST_METRICS_TSV:-}}"
 host_metrics_timeline_tsv="${CAPACITY_K6_HOST_METRICS_TIMELINE_TSV:-${K6_HOST_METRICS_TIMELINE_TSV:-}}"
@@ -138,6 +140,7 @@ require_url() {
 require_bool "OFFHOST_CAPACITY_CHECK_CONNECTIVITY" "${check_connectivity}"
 require_bool "CAPACITY_K6_AUTH_TOKEN_REQUIRED" "${auth_token_required}"
 require_bool "CAPACITY_REQUIRE_HOST_METRICS" "${require_host_metrics}"
+require_bool "CAPACITY_REMOTE_PROMETHEUS_RW_REQUIRED" "${remote_prometheus_rw_required}"
 require_positive_integer "CAPACITY_REMOTE_PREFLIGHT_TIMEOUT_SECONDS" "${timeout_seconds}"
 require_env_value "CAPACITY_K6_DOCKER_CONTEXT" "${docker_context}"
 require_env_value "CAPACITY_K6_REMOTE_BASE_URL" "${remote_base_url}"
@@ -159,6 +162,7 @@ print_plan() {
   echo "[offhost-capacity-env-doctor] docker_context=${docker_context}"
   echo "[offhost-capacity-env-doctor] remote_base_url=${remote_base_url}"
   echo "[offhost-capacity-env-doctor] remote_prometheus_rw_url=${remote_prometheus_rw_url}"
+  echo "[offhost-capacity-env-doctor] remote_prometheus_rw_required=${remote_prometheus_rw_required}"
   echo "[offhost-capacity-env-doctor] remote_workdir=${remote_workdir}"
   echo "[offhost-capacity-env-doctor] host_metrics_tsv=${host_metrics_tsv:-missing}"
   echo "[offhost-capacity-env-doctor] host_metrics_timeline_tsv=${host_metrics_timeline_tsv:-missing}"
@@ -200,7 +204,7 @@ docker --context "${docker_context}" info >/dev/null
 docker --context "${docker_context}" run --rm "${preflight_image}" \
   -fsS --max-time "${timeout_seconds}" "${readiness_url}" >/dev/null
 docker --context "${docker_context}" run --rm --entrypoint sh "${preflight_image}" \
-  -c 'status="$(curl -sS -o /dev/null -w "%{http_code}" --max-time "$1" -X POST "$2" || echo 000)"; case "${status}" in 2*|3*|4*) exit 0 ;; *) echo "remote prometheus remote-write preflight failed: status=${status}" >&2; exit 1 ;; esac' \
-  sh "${timeout_seconds}" "${remote_prometheus_rw_url}"
+  -c 'status="$(curl -sS -o /dev/null -w "%{http_code}" --max-time "$1" -X POST "$2" || echo 000)"; case "${status}" in 2*|3*|4*) exit 0 ;; *) if [ "$3" = "false" ]; then echo "remote prometheus remote-write optional; continuing status=${status}" >&2; exit 0; fi; echo "remote prometheus remote-write preflight failed: status=${status}" >&2; exit 1 ;; esac' \
+  sh "${timeout_seconds}" "${remote_prometheus_rw_url}" "${remote_prometheus_rw_required}"
 
 echo "[offhost-capacity-env-doctor] connectivity passed"
