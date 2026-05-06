@@ -86,6 +86,21 @@ if [[ "${remote_write_optional_count}" -lt 3 ]]; then
   echo "off-host load phases must downgrade remote-write instead of blocking k6 execution" >&2
   exit 1
 fi
+grep -F 'arrival16_summary_dir="${OCI_OFFHOST_LOAD_COUPLED_OUTPUT_DIR}/arrival16"' "${workflow}" >/dev/null
+grep -F 'cp "build/reports/k6/${CAPACITY_NAME}-arrival16-summary.json" "${arrival16_summary_dir}/${CAPACITY_NAME}-arrival16-summary.json"' "${workflow}" >/dev/null
+grep -F 'cp "build/reports/k6/${CAPACITY_NAME}-arrival16-summary.md" "${arrival16_summary_dir}/${CAPACITY_NAME}-arrival16-summary.md"' "${workflow}" >/dev/null
+grep -F 'vu16_summary_dir="${OCI_OFFHOST_LOAD_COUPLED_OUTPUT_DIR}/vu16"' "${workflow}" >/dev/null
+grep -F 'cp "build/reports/k6/${CAPACITY_NAME}-vu16-summary.json" "${vu16_summary_dir}/${CAPACITY_NAME}-vu16-summary.json"' "${workflow}" >/dev/null
+grep -F 'cp "build/reports/k6/${CAPACITY_NAME}-vu16-summary.md" "${vu16_summary_dir}/${CAPACITY_NAME}-vu16-summary.md"' "${workflow}" >/dev/null
+grep -F 'burst_matrix_summary_dir="${OCI_OFFHOST_LOAD_COUPLED_OUTPUT_DIR}/burst-matrix"' "${workflow}" >/dev/null
+grep -F 'cp "build/reports/k6/${report_name}-summary.json" "${burst_matrix_summary_dir}/${report_name}-summary.json"' "${workflow}" >/dev/null
+grep -F 'cp "build/reports/k6/${report_name}-summary.md" "${burst_matrix_summary_dir}/${report_name}-summary.md"' "${workflow}" >/dev/null
+grep -F 'printf "%s\t%s\t%s\n" "${burst_rate}" "${report_name}" "${burst_matrix_summary_dir}/${report_name}-summary.json" >>"${matrix_ref}"' "${workflow}" >/dev/null
+grep -F 'OCI_OFFHOST_LOAD_COUPLED_ARRIVAL16_SUMMARY_REF="${host_metrics_timeline_dir}/arrival16/${CAPACITY_NAME}-arrival16-summary.json"' "${workflow}" >/dev/null
+grep -F 'OCI_OFFHOST_LOAD_COUPLED_VU16_SUMMARY_REF="${host_metrics_timeline_dir}/vu16/${CAPACITY_NAME}-vu16-summary.json"' "${workflow}" >/dev/null
+grep -F 'OCI_OFFHOST_LOAD_COUPLED_BURST_MATRIX_SUMMARY_REF="${host_metrics_timeline_dir}/${CAPACITY_NAME}-burst-matrix-runs.tsv"' "${workflow}" >/dev/null
+grep -F 'CAPACITY_K6_VU16_SUMMARY_JSON="${host_metrics_timeline_dir}/vu16/${CAPACITY_NAME}-vu16-summary.json"' "${workflow}" >/dev/null
+grep -F 'CAPACITY_K6_BURST_MATRIX_TSV="${host_metrics_timeline_dir}/${CAPACITY_NAME}-burst-matrix-runs.tsv"' "${workflow}" >/dev/null
 grep -F "tools/test/run-oci-offhost-host-metrics-load-coupled-timeline.sh" "${workflow}" >/dev/null
 grep -F 'CAPACITY_K6_HOST_METRICS_TIMELINE_TSV="${generated_timeline_tsv}"' "${workflow}" >/dev/null
 grep -F 'if [[ -z "${CAPACITY_K6_HOST_METRICS_TIMELINE_TSV}" && "${CAPACITY_REQUIRE_LOAD_COUPLED_TIMELINE}" == "false" ]]; then' "${workflow}" >/dev/null
