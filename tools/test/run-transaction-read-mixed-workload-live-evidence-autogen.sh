@@ -10,7 +10,7 @@ Environment:
   MIXED_WORKLOAD_LIVE_NAME            default transaction-read-mixed-workload-live-evidence-<timestamp>
   MIXED_WORKLOAD_LIVE_RUN_ID          default same as name
   MIXED_WORKLOAD_LIVE_OUTPUT_DIR      default build/reports/k6/<name>
-  MIXED_WORKLOAD_AUTOGEN_RUNNER       default tools/test/run-t3micro-mixed-workload-soak.sh
+  MIXED_WORKLOAD_AUTOGEN_RUNNER       default tools/test/run-transaction-read-mixed-workload-oci-k6.sh
   MIXED_WORKLOAD_AUTOGEN_SOAK_REPEAT  default 1
   MIXED_WORKLOAD_AUTOGEN_DURATION_MIN default 30
   MIXED_WORKLOAD_ARTIFACT_URI         default GitHub Actions run URL or local artifact URI
@@ -42,12 +42,31 @@ output_dir="${MIXED_WORKLOAD_LIVE_OUTPUT_DIR:-build/reports/k6/${name}}"
 generated_dir="${output_dir}/generated"
 generated_env="${MIXED_WORKLOAD_GENERATED_ENV:-${output_dir}/${name}-generated-evidence.env}"
 manifest_tsv="${generated_dir}/${name}-mixed-workload-evidence-manifest.tsv"
-runner="${MIXED_WORKLOAD_AUTOGEN_RUNNER:-tools/test/run-t3micro-mixed-workload-soak.sh}"
-manifest_runner_ref="${MIXED_WORKLOAD_AUTOGEN_MANIFEST_RUNNER_REF:-tools/test/run-t3micro-mixed-workload-soak.sh}"
+runner="${MIXED_WORKLOAD_AUTOGEN_RUNNER:-tools/test/run-transaction-read-mixed-workload-oci-k6.sh}"
+manifest_runner_ref="${MIXED_WORKLOAD_AUTOGEN_MANIFEST_RUNNER_REF:-tools/test/run-transaction-read-mixed-workload-oci-k6.sh}"
 soak_repeat="${MIXED_WORKLOAD_AUTOGEN_SOAK_REPEAT:-1}"
 duration_min="${MIXED_WORKLOAD_AUTOGEN_DURATION_MIN:-30}"
 artifact_uri="${MIXED_WORKLOAD_ARTIFACT_URI:-}"
 executed_at_utc="${MIXED_WORKLOAD_EXECUTED_AT_UTC:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
+source_ips="1"
+edge_429_rate="0.08"
+backend_429_count="0"
+unknown_429_count="0"
+five_xx_count="0"
+nginx_499_count="0"
+hikari_validation_warnings="0"
+db_pool_pending_max="0"
+p95_ms="85"
+p99_ms="225"
+p999_ms="450"
+max_ms="630"
+postgres_checkpoint_count="1"
+postgres_temp_file_count="0"
+nginx_upstream_p95_ms="16.3"
+outbox_lag_max="0"
+workload_components="read,write,auth,notification,sse"
+read_p999_ms="440"
+runner_evidence_applied="false"
 
 k6_summary_ref="${generated_dir}/${name}-k6-summary.json"
 nginx_access_ref="${generated_dir}/${name}-nginx-access.jsonl"
@@ -135,6 +154,54 @@ run_live_runner() {
     write_failure_artifact "live-runner-failed" "mixed workload live runner failed: ${runner}"
     exit 1
   fi
+  local runner_evidence_env
+  runner_evidence_env="$(awk 'NF { line = $0 } END { print line }' "${runner_log_ref}")"
+  if [[ -z "${runner_evidence_env}" || ! -s "${runner_evidence_env}" ]]; then
+    write_failure_artifact "runner-evidence-env-missing" "mixed workload live runner did not return a non-empty evidence env: ${runner}"
+    exit 1
+  fi
+  apply_runner_evidence_env "${runner_evidence_env}"
+}
+
+apply_runner_evidence_env() {
+  local runner_evidence_env="$1"
+  # shellcheck disable=SC1090
+  source "${runner_evidence_env}"
+  if [[ "${MIXED_WORKLOAD_RUNNER_ENV_FORMAT:-}" != "oci-mixed-v1" ]]; then
+    write_failure_artifact "runner-evidence-env-invalid" "mixed workload runner evidence env has invalid format"
+    exit 1
+  fi
+  manifest_runner_ref="${MIXED_WORKLOAD_RUNNER_RUN_SCRIPT:-${manifest_runner_ref}}"
+  executed_at_utc="${MIXED_WORKLOAD_RUNNER_EXECUTED_AT_UTC:-${executed_at_utc}}"
+  source_ips="${MIXED_WORKLOAD_RUNNER_SOURCE_IPS:-${source_ips}}"
+  k6_summary_ref="${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF:-${k6_summary_ref}}"
+  nginx_access_ref="${MIXED_WORKLOAD_RUNNER_NGINX_ACCESS_REF:-${nginx_access_ref}}"
+  spring_metrics_ref="${MIXED_WORKLOAD_RUNNER_SPRING_METRICS_REF:-${spring_metrics_ref}}"
+  hikari_log_ref="${MIXED_WORKLOAD_RUNNER_HIKARI_LOG_REF:-${hikari_log_ref}}"
+  postgres_wait_ref="${MIXED_WORKLOAD_RUNNER_POSTGRES_WAIT_REF:-${postgres_wait_ref}}"
+  timeline_ref="${MIXED_WORKLOAD_RUNNER_TIMELINE_REF:-${timeline_ref}}"
+  workload_mix_ref="${MIXED_WORKLOAD_RUNNER_WORKLOAD_MIX_REF:-${workload_mix_ref}}"
+  workload_component_ref="${MIXED_WORKLOAD_RUNNER_WORKLOAD_COMPONENT_REF:-${workload_component_ref}}"
+  outbox_lag_ref="${MIXED_WORKLOAD_RUNNER_OUTBOX_LAG_REF:-${outbox_lag_ref}}"
+  read_429_source_ref="${MIXED_WORKLOAD_RUNNER_READ_429_SOURCE_REF:-${read_429_source_ref}}"
+  edge_429_rate="${MIXED_WORKLOAD_RUNNER_EDGE_429_RATE:-${edge_429_rate}}"
+  backend_429_count="${MIXED_WORKLOAD_RUNNER_BACKEND_429_COUNT:-${backend_429_count}}"
+  unknown_429_count="${MIXED_WORKLOAD_RUNNER_UNKNOWN_429_COUNT:-${unknown_429_count}}"
+  five_xx_count="${MIXED_WORKLOAD_RUNNER_FIVE_XX_COUNT:-${five_xx_count}}"
+  nginx_499_count="${MIXED_WORKLOAD_RUNNER_NGINX_499_COUNT:-${nginx_499_count}}"
+  hikari_validation_warnings="${MIXED_WORKLOAD_RUNNER_HIKARI_VALIDATION_WARNINGS:-${hikari_validation_warnings}}"
+  db_pool_pending_max="${MIXED_WORKLOAD_RUNNER_DB_POOL_PENDING_MAX:-${db_pool_pending_max}}"
+  p95_ms="${MIXED_WORKLOAD_RUNNER_P95_MS:-${p95_ms}}"
+  p99_ms="${MIXED_WORKLOAD_RUNNER_P99_MS:-${p99_ms}}"
+  p999_ms="${MIXED_WORKLOAD_RUNNER_P999_MS:-${p999_ms}}"
+  max_ms="${MIXED_WORKLOAD_RUNNER_MAX_MS:-${max_ms}}"
+  postgres_checkpoint_count="${MIXED_WORKLOAD_RUNNER_POSTGRES_CHECKPOINT_COUNT:-${postgres_checkpoint_count}}"
+  postgres_temp_file_count="${MIXED_WORKLOAD_RUNNER_POSTGRES_TEMP_FILE_COUNT:-${postgres_temp_file_count}}"
+  nginx_upstream_p95_ms="${MIXED_WORKLOAD_RUNNER_NGINX_UPSTREAM_P95_MS:-${nginx_upstream_p95_ms}}"
+  workload_components="${MIXED_WORKLOAD_RUNNER_WORKLOAD_COMPONENTS:-${workload_components}}"
+  read_p999_ms="${MIXED_WORKLOAD_RUNNER_READ_P999_MS:-${read_p999_ms}}"
+  outbox_lag_max="${MIXED_WORKLOAD_RUNNER_OUTBOX_LAG_MAX:-${outbox_lag_max}}"
+  runner_evidence_applied="true"
 }
 
 write_artifacts() {
@@ -144,14 +211,14 @@ write_artifacts() {
   "run_id": "${run_id}",
   "scenario": "mixed-workload-30m",
   "duration_min": ${duration_min},
-  "p95_ms": 85,
-  "p99_ms": 225,
-  "p999_ms": 450,
-  "max_ms": 630,
-  "edge_429_rate": 0.08,
-  "backend_429_count": 0,
-  "unknown_429_count": 0,
-  "five_xx_count": 0
+  "p95_ms": ${p95_ms},
+  "p99_ms": ${p99_ms},
+  "p999_ms": ${p999_ms},
+  "max_ms": ${max_ms},
+  "edge_429_rate": ${edge_429_rate},
+  "backend_429_count": ${backend_429_count},
+  "unknown_429_count": ${unknown_429_count},
+  "five_xx_count": ${five_xx_count}
 }
 JSON
   cat >"${nginx_access_ref}" <<JSONL
@@ -203,11 +270,11 @@ TSV
   cat >"${outbox_lag_ref}" <<'TSV'
 run_id	outbox_lag_max
 TSV
-  printf "%s\t0\n" "${run_id}" >>"${outbox_lag_ref}"
+  printf "%s\t%s\n" "${run_id}" "${outbox_lag_max}" >>"${outbox_lag_ref}"
   cat >"${read_429_source_ref}" <<'TSV'
 run_id	source	edge_429_rate	backend_429_count	unknown_429_count
 TSV
-  printf "%s\tnginx-edge\t0.08\t0\t0\n" "${run_id}" >>"${read_429_source_ref}"
+  printf "%s\tnginx-edge\t%s\t%s\t%s\n" "${run_id}" "${edge_429_rate}" "${backend_429_count}" "${unknown_429_count}" >>"${read_429_source_ref}"
   if [[ ! -f "${runner_log_ref}" ]]; then
     printf "runner=%s\nmode=%s\n" "${runner}" "${autogen_mode}" >"${runner_log_ref}"
   fi
@@ -216,7 +283,7 @@ TSV
 write_manifest() {
   cat >"${manifest_tsv}" <<TSV
 scenario	run_id	executed_at_utc	duration_min	source_ips	run_script	k6_summary_ref	nginx_access_ref	spring_metrics_ref	hikari_log_ref	postgres_wait_ref	deploy_event_ref	cache_state_ref	timeline_ref	edge_429_rate	backend_429_count	unknown_429_count	five_xx_count	nginx_499_count	hikari_validation_warnings	db_pool_pending_max	p999_ms	postgres_checkpoint_ref	postgres_temp_file_ref	nginx_upstream_latency_ref	workload_mix_ref	workload_component_ref	outbox_lag_ref	outbox_lag_max	deploy_retry_contract_ref	deploy_reconnect_success_count	deploy_499_budget_ref	p95_ms	p99_ms	max_ms	postgres_checkpoint_count	postgres_temp_file_count	nginx_upstream_p95_ms	hikari_config_ref	hikari_max_lifetime_ms	hikari_keepalive_time_ms	postgres_idle_timeout_ms	oci_nat_idle_timeout_ms	hikari_zero_warning_soak_ref	workload_components	read_p999_ms	read_429_source_ref
-mixed-workload-30m	${run_id}	${executed_at_utc}	${duration_min}	1	${manifest_runner_ref}	${k6_summary_ref}	${nginx_access_ref}	${spring_metrics_ref}	${hikari_log_ref}	${postgres_wait_ref}	n/a	n/a	${timeline_ref}	0.08	0	0	0	0	0	0	450	n/a	n/a	n/a	${workload_mix_ref}	${workload_component_ref}	${outbox_lag_ref}	0	n/a	0	n/a	85	225	630	1	0	16.3	n/a	0	0	0	0	n/a	read,write,auth,notification,sse	440	${read_429_source_ref}
+mixed-workload-30m	${run_id}	${executed_at_utc}	${duration_min}	${source_ips}	${manifest_runner_ref}	${k6_summary_ref}	${nginx_access_ref}	${spring_metrics_ref}	${hikari_log_ref}	${postgres_wait_ref}	n/a	n/a	${timeline_ref}	${edge_429_rate}	${backend_429_count}	${unknown_429_count}	${five_xx_count}	${nginx_499_count}	${hikari_validation_warnings}	${db_pool_pending_max}	${p999_ms}	n/a	n/a	n/a	${workload_mix_ref}	${workload_component_ref}	${outbox_lag_ref}	${outbox_lag_max}	n/a	0	n/a	${p95_ms}	${p99_ms}	${max_ms}	${postgres_checkpoint_count}	${postgres_temp_file_count}	${nginx_upstream_p95_ms}	n/a	0	0	0	0	n/a	${workload_components}	${read_p999_ms}	${read_429_source_ref}
 TSV
 }
 
@@ -240,7 +307,9 @@ case "${autogen_mode}" in
     ;;
   live)
     run_live_runner
-    write_artifacts
+    if [[ "${runner_evidence_applied}" != "true" ]]; then
+      write_artifacts
+    fi
     ;;
 esac
 
