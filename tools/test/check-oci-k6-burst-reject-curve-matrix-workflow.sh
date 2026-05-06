@@ -42,6 +42,7 @@ grep -F 'K6_AUTH_TOKEN_ENV_NAME="STAGING_REPLAY_TOKEN"' "${workflow}" >/dev/null
 grep -F 'K6_AUTH_PREFLIGHT="true"' "${workflow}" >/dev/null
 grep -F 'K6_RUN_PURPOSE="capacity"' "${workflow}" >/dev/null
 grep -F 'K6_OBSERVABILITY_MODE="prometheus"' "${workflow}" >/dev/null
+grep -F 'K6_REMOTE_PROMETHEUS_RW_REQUIRED="false"' "${workflow}" >/dev/null
 grep -F 'K6_GENERATOR_MODE="docker-context"' "${workflow}" >/dev/null
 grep -F "burst_rates:" "${workflow}" >/dev/null
 grep -F 'default: "32,48,64,80,96"' "${workflow}" >/dev/null
@@ -69,12 +70,15 @@ grep -F 'K6_BURST_429_RATE_THRESHOLD="${BURST_429_RATE_THRESHOLD_INPUT:-0.10}"' 
 grep -F 'K6_BACKEND_429_RATE_THRESHOLD="${BACKEND_429_RATE_THRESHOLD_INPUT:-0}"' "${workflow}" >/dev/null
 grep -F 'OCI_K6_BURST_MATRIX_BACKEND_429_THRESHOLD="${BACKEND_429_RATE_THRESHOLD_INPUT:-0}"' "${workflow}" >/dev/null
 grep -F 'K6_OVERLOAD_503_RATE_THRESHOLD="${OVERLOAD_503_RATE_THRESHOLD_INPUT:-0}"' "${workflow}" >/dev/null
+grep -F 'K6_REMOTE_PROMETHEUS_RW_REQUIRED' "${workflow}" >/dev/null
 grep -F 'K6_BURST_MATRIX_PROMOTION_TARGET_RATE' "${workflow}" >/dev/null
 grep -F 'K6_NGINX_LOG_SINCE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"' "${workflow}" >/dev/null
 grep -F "tools/test/run-k6-transaction-100m-loadtest.sh --auth-preflight-only" "${workflow}" >/dev/null
 grep -F "tools/test/run-k6-transaction-100m-loadtest.sh --no-up --no-deps" "${workflow}" >/dev/null
 grep -F 'candidate_raw_log="${RUNNER_TEMP}/${K6_RUN_ID}-nginx-access.raw.jsonl"' "${workflow}" >/dev/null
 grep -F 'candidate_run_log="${RUNNER_TEMP}/${K6_RUN_ID}-nginx-access.jsonl"' "${workflow}" >/dev/null
+grep -F 'nginx_observability_status="missing"' "${workflow}" >/dev/null
+grep -F 'nginx-observability-missing.json' "${workflow}" >/dev/null
 grep -F 'grep -F "\"k6_run_id\":\"${K6_RUN_ID}\"" "${candidate_raw_log}" >"${candidate_run_log}"' "${workflow}" >/dev/null
 grep -F 'container_candidates=(' "${workflow}" >/dev/null
 grep -F 'docker exec "${container}" test -s /var/log/nginx/access.log' "${workflow}" >/dev/null

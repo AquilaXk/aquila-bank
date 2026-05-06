@@ -28,7 +28,7 @@ case "${1:-}" in
         ;;
       inspect)
         if [[ "${3:-}" == "bad" ]]; then
-          echo "context inspect failed: ${3}" >&2
+          echo "context inspect failed: ${3} /home/github-runner/.docker token=raw-token http://internal.example.test/context" >&2
           exit 42
         fi
         echo "[]"
@@ -177,3 +177,26 @@ if OCI_A1_OBSERVABILITY_DOCKER_BIN="${stub_docker}" \
 fi
 grep -F "no observable Docker contexts" "${temp_dir}/fail.log" >/dev/null
 grep -F "observable_contexts=0" "${temp_dir}/fail/direct-observability-fail.md" >/dev/null
+
+echo "[oci-a1-direct-observability] expected context fail policy"
+if OCI_A1_OBSERVABILITY_DOCKER_BIN="${stub_docker}" \
+  OCI_A1_OBSERVABILITY_NAME=direct-observability-expected \
+  OCI_A1_OBSERVABILITY_DOCKER_CONTEXTS=default,bad \
+  OCI_A1_OBSERVABILITY_EXPECTED_CONTEXTS=default,bad \
+  OCI_A1_OBSERVABILITY_EXPECTED_CONTEXT_POLICY=fail \
+  OCI_A1_OBSERVABILITY_OUTPUT_DIR="${temp_dir}/expected" \
+    bash "${collector}" >"${temp_dir}/expected.log" 2>&1; then
+  echo "direct observability unexpectedly passed with expected context failure" >&2
+  exit 1
+fi
+expected_summary="${temp_dir}/expected/direct-observability-expected-summary.json"
+expected_report="${temp_dir}/expected/direct-observability-expected.md"
+test -s "${expected_summary}"
+test -s "${expected_report}"
+jq -e '.summary_status == "fail" and .expected_context_failures == 1 and (.expected_contexts | length == 2)' "${expected_summary}" >/dev/null
+grep -F "summary_status=fail" "${expected_report}" >/dev/null
+grep -F "expected_context_failures=1" "${expected_report}" >/dev/null
+if grep -R -E "/home/github-runner|raw-token|http://internal\\.example\\.test" "${temp_dir}/expected" >/dev/null; then
+  echo "expected context artifact contains unsanitized failure reason" >&2
+  exit 1
+fi

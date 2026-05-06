@@ -24,6 +24,9 @@ jobs:
       - name: Collect OCI A1 direct observability
         if: always()
         shell: bash
+        env:
+          OCI_A1_OBSERVABILITY_EXPECTED_CONTEXTS: ${{ vars.OCI_A1_OBSERVABILITY_EXPECTED_CONTEXTS || 'desktop-linux,oci-a1-staging' }}
+          OCI_A1_OBSERVABILITY_EXPECTED_CONTEXT_POLICY: fail
         run: |
           set -euo pipefail
           bash tools/ops/collect-oci-a1-direct-observability.sh

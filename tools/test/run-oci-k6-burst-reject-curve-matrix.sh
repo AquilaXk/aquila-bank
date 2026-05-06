@@ -105,7 +105,9 @@ fi
 mkdir -p "${output_dir}"
 raw_tsv="${output_dir}/${name}-burst-reject-curve.raw.tsv"
 failures_file="${output_dir}/${name}-burst-reject-curve.failures"
+warnings_file="${output_dir}/${name}-burst-reject-curve.warnings"
 : >"${failures_file}"
+: >"${warnings_file}"
 
 gt() {
   awk -v left="$1" -v right="$2" 'BEGIN { exit !(left > right) }'
@@ -167,8 +169,13 @@ record_failure() {
   echo "${message}" | tee -a "${failures_file}" >&2
 }
 
+record_warning() {
+  local message="$1"
+  echo "${message}" | tee -a "${warnings_file}" >&2
+}
+
 {
-  printf "burst_rate\tstatus\tk6_run_id\ttotal_429_rate\tedge_429_rate\tbackend_429_rate\tbackend_429_count\tk6_503_count\tnginx_5xx_count\tnginx_499_count\taccepted_count\taccepted_p95_ms\tretry_after_p95_ms\treject_streak_max\tsummary_json\tnginx_aggregate_json\tnginx_aggregate_tsv\tnginx_aggregate_md\n"
+  printf "burst_rate\tstatus\tk6_run_id\ttotal_429_rate\tedge_429_rate\tbackend_429_rate\tbackend_429_count\tk6_503_count\tnginx_5xx_count\tnginx_499_count\tnginx_observability_status\taccepted_count\taccepted_p95_ms\tretry_after_p95_ms\treject_streak_max\tsummary_json\tnginx_aggregate_json\tnginx_aggregate_tsv\tnginx_aggregate_md\n"
 
   while IFS=$'\t' read -r burst_rate k6_run_id summary_file aggregate_json aggregate_tsv aggregate_md extra; do
     if [[ -z "${burst_rate}" && -z "${k6_run_id}" ]]; then
@@ -182,17 +189,8 @@ record_failure() {
       echo "invalid burst rate: ${burst_rate}" >&2
       exit 1
     fi
-    for file in "${summary_file}" "${aggregate_json}" "${aggregate_tsv}" "${aggregate_md}"; do
-      if [[ -z "${file}" || ! -s "${file}" ]]; then
-        echo "missing burst ${burst_rate} evidence file: ${file:-empty}" >&2
-        exit 1
-      fi
-    done
-    if ! jq -e --arg run_id "${k6_run_id}" '
-      type == "array"
-      and any(.[]; ((.k6_run_id // "unknown") | tostring) == $run_id)
-    ' "${aggregate_json}" >/dev/null; then
-      echo "Nginx aggregate has no row for k6_run_id=${k6_run_id}" >&2
+    if [[ -z "${summary_file}" || ! -s "${summary_file}" ]]; then
+      echo "missing burst ${burst_rate} evidence file: ${summary_file:-empty}" >&2
       exit 1
     fi
 
@@ -205,8 +203,23 @@ record_failure() {
     accepted_p95_ms="$(accepted_p95_metric "${summary_file}")"
     retry_after_p95_ms="$(metric_optional "${summary_file}" "aquila_transaction_retry_after_sleep_ms" "p(95)" "0")"
     reject_streak_max="$(metric_optional "${summary_file}" "aquila_transaction_retry_after_reject_streak" "max" "0")"
-    nginx_499_count="$(nginx_status_count "${aggregate_json}" "${k6_run_id}" "^499$")"
-    nginx_5xx_count="$(nginx_status_count "${aggregate_json}" "${k6_run_id}" "^5")"
+    nginx_observability_status="present"
+    if [[ -s "${aggregate_json}" && -s "${aggregate_tsv}" && -s "${aggregate_md}" ]]; then
+      if ! jq -e --arg run_id "${k6_run_id}" '
+        type == "array"
+        and any(.[]; ((.k6_run_id // "unknown") | tostring) == $run_id)
+      ' "${aggregate_json}" >/dev/null; then
+        echo "Nginx aggregate has no row for k6_run_id=${k6_run_id}" >&2
+        exit 1
+      fi
+      nginx_499_count="$(nginx_status_count "${aggregate_json}" "${k6_run_id}" "^499$")"
+      nginx_5xx_count="$(nginx_status_count "${aggregate_json}" "${k6_run_id}" "^5")"
+    else
+      nginx_observability_status="missing"
+      nginx_499_count="0"
+      nginx_5xx_count="0"
+      record_warning "burst${burst_rate}: nginx aggregate missing; summary-only gate used"
+    fi
 
     status="pass"
     if gt "${burst_rate}" "${promotion_target_rate}"; then
@@ -247,7 +260,7 @@ record_failure() {
       fi
     fi
 
-    printf "%s\t%s\t%s\t%.6f\t%.6f\t%.6f\t%.0f\t%.0f\t%.0f\t%.0f\t%.0f\t%.3f\t%.3f\t%.0f\t%s\t%s\t%s\t%s\n" \
+    printf "%s\t%s\t%s\t%.6f\t%.6f\t%.6f\t%.0f\t%.0f\t%.0f\t%.0f\t%s\t%.0f\t%.3f\t%.3f\t%.0f\t%s\t%s\t%s\t%s\n" \
       "${burst_rate}" \
       "${status}" \
       "${k6_run_id}" \
@@ -258,6 +271,7 @@ record_failure() {
       "${k6_503_count}" \
       "${nginx_5xx_count}" \
       "${nginx_499_count}" \
+      "${nginx_observability_status}" \
       "${accepted_count}" \
       "${accepted_p95_ms}" \
       "${retry_after_p95_ms}" \
@@ -321,11 +335,11 @@ fi
 
 matrix_table="$(awk -F '\t' '
   BEGIN {
-    print "| Burst | Status | Total 429 | Edge 429 | Backend 429 | k6 503 | Nginx 5xx | Nginx 499 | Accepted p95 ms | Retry-after p95 ms | Reject streak max |"
-    print "| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
+    print "| Burst | Status | Total 429 | Edge 429 | Backend 429 | k6 503 | Nginx 5xx | Nginx 499 | Nginx obs | Accepted p95 ms | Retry-after p95 ms | Reject streak max |"
+    print "| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: |"
   }
   NR > 1 {
-    printf "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n", $1, $2, $4, $5, $6, $8, $9, $10, $12, $13, $14
+    printf "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n", $1, $2, $4, $5, $6, $8, $9, $10, $11, $13, $14, $15
   }
 ' "${summary_tsv}")"
 
@@ -348,13 +362,24 @@ ${matrix_table}
 
 - burst${promotion_target_rate}: total/edge 429 <= ${target_429_threshold}, $(backend_gate_label), k6 503 = 0, nginx 5xx = 0, nginx 499 = 0, accepted p95 < ${accepted_p95_threshold_ms}ms
 - all bursts: $(backend_gate_label), k6 503 = 0, nginx 5xx = 0, nginx 499 = 0
-- rows above target: reject curve observation only for 429 budget; still fails on 5xx/499
+- Nginx 5xx/499 gates apply when Nginx aggregate is present.
+- nginx aggregate missing; summary-only gate used when current-run Nginx log cannot be resolved
+- rows above target: reject curve observation only for 429 budget; still fails on 5xx/499 when Nginx aggregate is present
 
 ## Artifacts
 
 - summary TSV: ${summary_tsv}
 - summary JSON: ${summary_json}
 REPORT
+
+if [[ -s "${warnings_file}" ]]; then
+  {
+    echo
+    echo "## Observability Warnings"
+    echo
+    sed 's/^/- /' "${warnings_file}"
+  } >>"${report_md}"
+fi
 
 echo "${report_md}"
 if [[ -s "${failures_file}" ]]; then
