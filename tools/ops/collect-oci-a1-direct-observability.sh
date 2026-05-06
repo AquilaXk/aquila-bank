@@ -9,6 +9,8 @@ Environment:
   OCI_A1_OBSERVABILITY_NAME                  default oci-a1-direct-observability-<timestamp>
   OCI_A1_OBSERVABILITY_OUTPUT_DIR            default build/reports/oci-a1-direct-observability/<name>
   OCI_A1_OBSERVABILITY_DOCKER_CONTEXTS       comma-separated Docker contexts; default current,default,desktop-linux,oci-a1-staging
+  OCI_A1_OBSERVABILITY_EXPECTED_CONTEXTS     optional comma-separated contexts that must be observable
+  OCI_A1_OBSERVABILITY_EXPECTED_CONTEXT_POLICY report|fail, default report
   OCI_A1_OBSERVABILITY_TIMEOUT_SECONDS       per Docker command timeout, default 8
   OCI_A1_OBSERVABILITY_LOG_TAIL_LINES        docker logs tail lines, default 80
   OCI_A1_OBSERVABILITY_CONTAINER_NAME_REGEX  default aquila|nginx|postgres|backend|frontend
@@ -48,6 +50,8 @@ timeout_seconds="${OCI_A1_OBSERVABILITY_TIMEOUT_SECONDS:-8}"
 log_tail_lines="${OCI_A1_OBSERVABILITY_LOG_TAIL_LINES:-80}"
 container_name_regex="${OCI_A1_OBSERVABILITY_CONTAINER_NAME_REGEX:-aquila|nginx|postgres|backend|frontend}"
 context_csv="${OCI_A1_OBSERVABILITY_DOCKER_CONTEXTS:-}"
+expected_context_csv="${OCI_A1_OBSERVABILITY_EXPECTED_CONTEXTS:-}"
+expected_context_policy="${OCI_A1_OBSERVABILITY_EXPECTED_CONTEXT_POLICY:-report}"
 
 context_status_tsv="${output_dir}/${name}-context-status.tsv"
 containers_tsv="${output_dir}/${name}-containers.tsv"
@@ -77,6 +81,14 @@ require_positive_integer() {
 
 require_positive_integer "OCI_A1_OBSERVABILITY_TIMEOUT_SECONDS" "${timeout_seconds}"
 require_positive_integer "OCI_A1_OBSERVABILITY_LOG_TAIL_LINES" "${log_tail_lines}"
+case "${expected_context_policy}" in
+  report|fail)
+    ;;
+  *)
+    echo "OCI_A1_OBSERVABILITY_EXPECTED_CONTEXT_POLICY must be report or fail: ${expected_context_policy}" >&2
+    exit 1
+    ;;
+esac
 
 if [[ -z "${context_csv}" ]]; then
   current_context="$("${docker_bin}" context show 2>/dev/null || true)"
@@ -97,6 +109,31 @@ for context in "${raw_contexts[@]}"; do
   done
   [[ "${duplicate}" == "true" ]] || contexts+=("${context}")
 done
+expected_contexts=()
+if [[ -n "${expected_context_csv}" ]]; then
+  IFS=',' read -r -a raw_expected_contexts <<<"${expected_context_csv}"
+  for context in "${raw_expected_contexts[@]}"; do
+    context="$(printf '%s' "${context}" | xargs)"
+    [[ -n "${context}" ]] || continue
+    duplicate=false
+    for existing in "${expected_contexts[@]:-}"; do
+      if [[ "${existing}" == "${context}" ]]; then
+        duplicate=true
+        break
+      fi
+    done
+    [[ "${duplicate}" == "true" ]] || expected_contexts+=("${context}")
+
+    duplicate=false
+    for existing in "${contexts[@]:-}"; do
+      if [[ "${existing}" == "${context}" ]]; then
+        duplicate=true
+        break
+      fi
+    done
+    [[ "${duplicate}" == "true" ]] || contexts+=("${context}")
+  done
+fi
 if [[ "${#contexts[@]}" -eq 0 ]]; then
   echo "OCI_A1_OBSERVABILITY_DOCKER_CONTEXTS resolved to no contexts" >&2
   exit 1
@@ -111,22 +148,36 @@ safe_name() {
   printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '-'
 }
 
+sanitize_text() {
+  perl -pe '
+    s#https?://[^[:space:]]+#[REDACTED_URL]#ig;
+    s#/(home|Users|opt|private|var|tmp)/[^[:space:]]+#[REDACTED_PATH]#g;
+    s/\b(password|passwd|pwd)=\S+/$1=[REDACTED]/ig;
+    s/\b(token|access_token|refresh_token)=\S+/$1=[REDACTED]/ig;
+    s/Authorization:\s*Bearer\s+\S+/Authorization: Bearer [REDACTED]/ig;
+    s#(jdbc:postgresql://[^:/@\s]+:)[^@\s]+@#$1[REDACTED]@#ig;
+  '
+}
+
+sanitize_file_in_place() {
+  local file="$1"
+  local sanitized_file="${file}.sanitized"
+  [[ -f "${file}" ]] || return 0
+  sanitize_text <"${file}" >"${sanitized_file}"
+  mv "${sanitized_file}" "${file}"
+}
+
 first_error_line() {
   local file="$1"
   if [[ -s "${file}" ]]; then
-    head -1 "${file}" | tr '\t' ' ' | cut -c1-180
+    head -1 "${file}" | tr '\t' ' ' | cut -c1-180 | sanitize_text
   else
     echo "ok"
   fi
 }
 
 sanitize_log() {
-  perl -pe '
-    s/\b(password|passwd|pwd)=\S+/$1=[REDACTED]/ig;
-    s/\b(token|access_token|refresh_token)=\S+/$1=[REDACTED]/ig;
-    s/Authorization:\s*Bearer\s+\S+/Authorization: Bearer [REDACTED]/ig;
-    s#(jdbc:postgresql://[^:/@\s]+:)[^@\s]+@#$1[REDACTED]@#ig;
-  '
+  sanitize_text
 }
 
 run_bounded() {
@@ -179,6 +230,8 @@ print_plan() {
   echo "[oci-a1-direct-observability] name=${name}"
   echo "[oci-a1-direct-observability] docker_bin=${docker_bin}"
   echo "[oci-a1-direct-observability] docker_contexts=$(join_by_comma "${contexts[@]}")"
+  echo "[oci-a1-direct-observability] expected_contexts=$(join_by_comma "${expected_contexts[@]:-}")"
+  echo "[oci-a1-direct-observability] expected_context_policy=${expected_context_policy}"
   echo "[oci-a1-direct-observability] timeout_seconds=${timeout_seconds}"
   echo "[oci-a1-direct-observability] log_tail_lines=${log_tail_lines}"
   echo "[oci-a1-direct-observability] container_name_regex=${container_name_regex}"
@@ -198,6 +251,8 @@ fi
 
 echo "[oci-a1-direct-observability] name=${name}"
 echo "[oci-a1-direct-observability] docker_contexts=$(join_by_comma "${contexts[@]}")"
+echo "[oci-a1-direct-observability] expected_contexts=$(join_by_comma "${expected_contexts[@]:-}")"
+echo "[oci-a1-direct-observability] expected_context_policy=${expected_context_policy}"
 echo "[oci-a1-direct-observability] timeout_seconds=${timeout_seconds}"
 echo "[oci-a1-direct-observability] output_dir=${output_dir}"
 
@@ -213,11 +268,14 @@ printf "context\tcommand\tstatus\texit_code\treason\tartifact_ref\n" >"${context
 printf "context\tname\timage\tstatus\tstate\tports\n" >"${containers_tsv}"
 printf "context\tname\tcpu_percent\tmemory_usage\tmemory_percent\tpids\tstatus\n" >"${stats_tsv}"
 context_jsonl="${tmp_dir}/contexts.jsonl"
+expected_context_jsonl="${tmp_dir}/expected-contexts.jsonl"
 : >"${context_jsonl}"
+: >"${expected_context_jsonl}"
 
 observable_contexts=0
 failed_contexts=0
 no_container_contexts=0
+expected_context_failures=0
 
 for context in "${contexts[@]}"; do
   context_safe="$(safe_name "${context}")"
@@ -232,6 +290,7 @@ for context in "${contexts[@]}"; do
     append_status "${context}" "context-inspect" "pass" "0" "ok" "${inspect_out}"
   else
     code="$?"
+    sanitize_file_in_place "${inspect_err}"
     reason="$(first_error_line "${inspect_err}")"
     append_status "${context}" "context-inspect" "fail" "${code}" "${reason}" "${inspect_err}"
     context_ok=false
@@ -248,6 +307,7 @@ for context in "${contexts[@]}"; do
     append_status "${context}" "info" "pass" "0" "ok" "${info_out}"
   else
     code="$?"
+    sanitize_file_in_place "${info_err}"
     reason="$(first_error_line "${info_err}")"
     append_status "${context}" "info" "fail" "${code}" "${reason}" "${info_err}"
     context_ok=false
@@ -291,6 +351,7 @@ for context in "${contexts[@]}"; do
         }' "${stats_out}" >>"${stats_tsv}"
       else
         code="$?"
+        sanitize_file_in_place "${stats_err}"
         reason="$(first_error_line "${stats_err}")"
         append_status "${context}" "stats" "fail" "${code}" "${reason}" "${stats_err}"
         context_ok=false
@@ -309,6 +370,7 @@ for context in "${contexts[@]}"; do
           log_success_count=$((log_success_count + 1))
         else
           code="$?"
+          sanitize_file_in_place "${log_err}"
           reason="$(first_error_line "${log_err}")"
           append_status "${context}" "logs:${container}" "fail" "${code}" "${reason}" "${log_err}"
         fi
@@ -321,6 +383,7 @@ for context in "${contexts[@]}"; do
     fi
   else
     code="$?"
+    sanitize_file_in_place "${ps_err}"
     reason="$(first_error_line "${ps_err}")"
     append_status "${context}" "ps" "fail" "${code}" "${reason}" "${ps_err}"
     context_ok=false
@@ -343,28 +406,70 @@ for context in "${contexts[@]}"; do
     '{name: $name, status: $status, reason: $reason, container_count: $container_count, log_count: $log_count}' >>"${context_jsonl}"
 done
 
+for expected_context in "${expected_contexts[@]:-}"; do
+  expected_status="$(
+    jq -sr --arg name "${expected_context}" '
+      [.[] | select(.name == $name)][-1].status // "missing"
+    ' "${context_jsonl}"
+  )"
+  expected_reason="$(
+    jq -sr --arg name "${expected_context}" '
+      [.[] | select(.name == $name)][-1].reason // "expected context not observed"
+    ' "${context_jsonl}"
+  )"
+  if [[ "${expected_status}" != "pass" ]]; then
+    expected_context_failures=$((expected_context_failures + 1))
+  fi
+  jq -n \
+    --arg name "${expected_context}" \
+    --arg status "${expected_status}" \
+    --arg reason "${expected_reason}" \
+    '{name: $name, status: $status, reason: $reason}' >>"${expected_context_jsonl}"
+done
+
+summary_status="pass"
+if [[ "${observable_contexts}" -eq 0 ]]; then
+  summary_status="fail"
+elif [[ "${expected_context_failures}" -gt 0 ]]; then
+  if [[ "${expected_context_policy}" == "fail" ]]; then
+    summary_status="fail"
+  else
+    summary_status="degraded"
+  fi
+elif [[ "${failed_contexts}" -gt 0 ]]; then
+  summary_status="degraded"
+fi
+
 jq -s \
   --arg name "${name}" \
+  --arg summary_status "${summary_status}" \
   --arg generated_at_utc "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --arg context_status_tsv "${context_status_tsv}" \
   --arg containers_tsv "${containers_tsv}" \
   --arg stats_tsv "${stats_tsv}" \
   --arg logs_dir "${sanitized_logs_dir}" \
   --arg diagnostics_dir "${diagnostics_dir}" \
+  --arg expected_context_policy "${expected_context_policy}" \
   --argjson observable_contexts "${observable_contexts}" \
   --argjson failed_contexts "${failed_contexts}" \
   --argjson no_container_contexts "${no_container_contexts}" \
+  --argjson expected_context_failures "${expected_context_failures}" \
+  --slurpfile expected_contexts "${expected_context_jsonl}" \
   '{
     name: $name,
+    summary_status: $summary_status,
     generated_at_utc: $generated_at_utc,
     observable_contexts: $observable_contexts,
     failed_contexts: $failed_contexts,
     no_container_contexts: $no_container_contexts,
+    expected_context_policy: $expected_context_policy,
+    expected_context_failures: $expected_context_failures,
     context_status_tsv: $context_status_tsv,
     containers_tsv: $containers_tsv,
     stats_tsv: $stats_tsv,
     logs_dir: $logs_dir,
     diagnostics_dir: $diagnostics_dir,
+    expected_contexts: $expected_contexts,
     contexts: .
   }' "${context_jsonl}" >"${summary_json}"
 
@@ -372,9 +477,12 @@ jq -s \
   echo "# OCI A1 Direct Observability"
   echo
   echo "- name=${name}"
+  echo "- summary_status=${summary_status}"
   echo "- observable_contexts=${observable_contexts}"
   echo "- failed_contexts=${failed_contexts}"
   echo "- no_container_contexts=${no_container_contexts}"
+  echo "- expected_context_policy=${expected_context_policy}"
+  echo "- expected_context_failures=${expected_context_failures}"
   echo "- context_status_tsv=${context_status_tsv}"
   echo "- containers_tsv=${containers_tsv}"
   echo "- stats_tsv=${stats_tsv}"
@@ -384,6 +492,12 @@ jq -s \
   echo "## Context Status"
   echo
   awk -F '\t' 'NR > 1 { printf "- %s %s %s: %s\n", $1, $2, $3, $5 }' "${context_status_tsv}"
+  if [[ "${#expected_contexts[@]}" -gt 0 ]]; then
+    echo
+    echo "## Expected Contexts"
+    echo
+    jq -r '. | "- \(.name) \(.status): \(.reason)"' "${expected_context_jsonl}"
+  fi
 } >"${report_md}"
 
 echo "context_status_tsv=${context_status_tsv}"
@@ -396,4 +510,8 @@ echo "sanitized_logs_dir=${sanitized_logs_dir}"
 if [[ "${observable_contexts}" -eq 0 ]]; then
   echo "no observable Docker contexts" >&2
   exit 1
+fi
+if [[ "${expected_context_policy}" == "fail" && "${expected_context_failures}" -gt 0 ]]; then
+  echo "expected Docker contexts failed: ${expected_context_failures}" >&2
+  exit 2
 fi
