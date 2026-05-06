@@ -26,6 +26,9 @@ grep -F "if: github.event_name == 'workflow_dispatch'" "${workflow}" >/dev/null
 grep -F "runs-on: [self-hosted, oci-a1-staging]" "${workflow}" >/dev/null
 grep -F "environment:" "${workflow}" >/dev/null
 grep -F "name: staging" "${workflow}" >/dev/null
+grep -F "uses: actions/setup-java@v4" "${workflow}" >/dev/null
+grep -F "distribution: temurin" "${workflow}" >/dev/null
+grep -F 'java-version: "21"' "${workflow}" >/dev/null
 grep -F 'OCI_A1_STAGING_ENV: ${{ secrets.OCI_A1_STAGING_ENV }}' "${workflow}" >/dev/null
 grep -F 'MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV_INPUT: ${{ inputs.evidence_manifest_tsv }}' "${workflow}" >/dev/null
 grep -F 'MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV_VAR: ${{ vars.OCI_MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV }}' "${workflow}" >/dev/null
