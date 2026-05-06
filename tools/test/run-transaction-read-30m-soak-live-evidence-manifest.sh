@@ -250,6 +250,9 @@ cat >"${report_md}" <<REPORT
 - PostgreSQL temp file delta budget: <=${postgres_temp_file_delta_max}
 - Nginx upstream latency: ${nginx_upstream_latency_ref}
 - p95/p99/p99.9/max: ${p95_ms}/${p99_ms}/${p999_ms}/${max_ms}
+- Hikari warning/pending: ${hikari_validation_warnings}/${db_pool_pending_max}
+- 429 hard-zero: backend=${backend_429_count} unknown=${unknown_429_count} edge_rate=${edge_429_rate}
+- Nginx 499/5xx: ${nginx_499_count}/${five_xx_count}
 
 ## Artifacts
 

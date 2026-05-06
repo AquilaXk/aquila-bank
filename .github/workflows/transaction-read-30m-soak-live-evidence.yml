@@ -201,6 +201,8 @@ jobs:
           fi
           K6_REMOTE_BASE_URL="${CAPACITY_K6_REMOTE_BASE_URL:-${STAGING_BASE_URL:-}}"
           K6_REMOTE_PROMETHEUS_RW_SERVER_URL="${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL:-http://172.17.0.2:9090/api/v1/write}"
+          # remote-write optional: 30m closure는 local timeline/summary artifact로 판정.
+          K6_REMOTE_PROMETHEUS_RW_REQUIRED="false"
           K6_REMOTE_WORKDIR="${CAPACITY_K6_REMOTE_WORKDIR:-${GITHUB_WORKSPACE}}"
           K6_REMOTE_PREFLIGHT="true"
           K6_AUTH_TOKEN_ENV_NAME="STAGING_REPLAY_TOKEN"
@@ -262,6 +264,7 @@ jobs:
             K6_DOCKER_CONTEXT_SOURCE
             K6_REMOTE_BASE_URL
             K6_REMOTE_PROMETHEUS_RW_SERVER_URL
+            K6_REMOTE_PROMETHEUS_RW_REQUIRED
             K6_REMOTE_WORKDIR
             K6_REMOTE_PREFLIGHT
             K6_AUTH_TOKEN_ENV_NAME
@@ -773,13 +776,18 @@ jobs:
         run: |
           set -euo pipefail
           summary_json="build/reports/k6/${K6_REPORT_NAME}-summary.json"
+          summary_md="build/reports/k6/${K6_REPORT_NAME}-summary.md"
+          summary_artifact_json="${SOAK_30M_REPORT_DIR}/${K6_REPORT_NAME}-summary.json"
+          summary_artifact_md="${SOAK_30M_REPORT_DIR}/${K6_REPORT_NAME}-summary.md"
+          cp "${summary_json}" "${summary_artifact_json}"
+          cp "${summary_md}" "${summary_artifact_md}"
           manifest_output="$(
             SOAK_30M_ARTIFACTS_NAME="${SOAK_30M_REPORT_NAME}" \
             SOAK_30M_ARTIFACTS_RUN_ID="${K6_RUN_ID}" \
             SOAK_30M_ARTIFACTS_EXECUTED_AT_UTC="${SOAK_30M_STARTED_AT_UTC}" \
             SOAK_30M_ARTIFACTS_DURATION_MIN="${SOAK_30M_DURATION_MIN}" \
             SOAK_30M_ARTIFACTS_OUTPUT_DIR="${SOAK_30M_REPORT_DIR}" \
-            SOAK_30M_ARTIFACTS_K6_SUMMARY_JSON="${summary_json}" \
+            SOAK_30M_ARTIFACTS_K6_SUMMARY_JSON="${summary_artifact_json}" \
             SOAK_30M_ARTIFACTS_NGINX_ACCESS_LOG="${K6_NGINX_ACCESS_LOG}" \
             SOAK_30M_ARTIFACTS_SPRING_METRICS_REF="${SOAK_30M_SPRING_METRICS_REF}" \
             SOAK_30M_ARTIFACTS_HIKARI_LOG="${SOAK_30M_HIKARI_LOG_REF}" \

@@ -66,6 +66,7 @@ grep -F "Hikari validation warnings: 0" "${report_md}" >/dev/null
 grep -F "PostgreSQL wait/checkpoint/temp file artifacts: verified" "${report_md}" >/dev/null
 grep -F "PostgreSQL temp file delta: 0 (budget <= 0)" "${report_md}" >/dev/null
 grep -F "Nginx upstream latency artifact: verified" "${report_md}" >/dev/null
+grep -F "429/5xx/499 hard-zero: backend=0 unknown=0 5xx=0 499=0" "${report_md}" >/dev/null
 grep -F "Hikari lifetime alignment: verified" "${report_md}" >/dev/null
 grep -F $'run-soak-live-001\tpass\tok\t30\t30\t95\t220\t490\t650\t0\t0' "${summary_tsv}" >/dev/null
 
