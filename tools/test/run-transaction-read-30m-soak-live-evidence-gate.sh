@@ -97,7 +97,7 @@ execution_report="$(tail -1 <<<"${gate_output}")"
 
 awk -F '\t' '
 BEGIN {
-  print "run_id\tstatus\treason\thikari_duration_min\tp999_duration_min\tp95_ms\tp99_ms\tp999_ms\tmax_ms\thikari_pending_max\thikari_validation_warnings\tpostgres_wait_ref\tpostgres_checkpoint_count\tpostgres_temp_file_count\tnginx_upstream_p95_ms\thikari_config_ref\thikari_max_lifetime_ms\thikari_keepalive_time_ms\tpostgres_idle_timeout_ms\toci_nat_idle_timeout_ms\thikari_zero_warning_soak_ref"
+  print "run_id\tstatus\treason\thikari_duration_min\tp999_duration_min\tp95_ms\tp99_ms\tp999_ms\tmax_ms\thikari_pending_max\thikari_validation_warnings\tbackend_429_count\tunknown_429_count\tfive_xx_count\tnginx_499_count\tpostgres_wait_ref\tpostgres_checkpoint_count\tpostgres_temp_file_count\tnginx_upstream_p95_ms\thikari_config_ref\thikari_max_lifetime_ms\thikari_keepalive_time_ms\tpostgres_idle_timeout_ms\toci_nat_idle_timeout_ms\thikari_zero_warning_soak_ref"
 }
 NR == 1 { next }
 $1 == "hikari-lifetime" {
@@ -106,6 +106,10 @@ $1 == "hikari-lifetime" {
   hikari_duration = $5
   hikari_pending = $22
   hikari_warnings = $21
+  hikari_backend_429 = $17
+  hikari_unknown_429 = $18
+  hikari_five_xx = $19
+  hikari_nginx_499 = $20
   hikari_postgres_wait_ref = $12
   hikari_config_ref = $30
   hikari_max_lifetime = $31
@@ -124,6 +128,10 @@ $1 == "p999-long-correlation" {
   max = $26
   p999_pending = $22
   p999_warnings = $21
+  p999_backend_429 = $17
+  p999_unknown_429 = $18
+  p999_five_xx = $19
+  p999_nginx_499 = $20
   p999_postgres_wait_ref = $12
   checkpoint_count = $27
   temp_file_count = $28
@@ -142,10 +150,18 @@ END {
   if (p999_pending > pending) pending = p999_pending
   warnings = hikari_warnings
   if (p999_warnings > warnings) warnings = p999_warnings
+  backend_429 = hikari_backend_429
+  if (p999_backend_429 > backend_429) backend_429 = p999_backend_429
+  unknown_429 = hikari_unknown_429
+  if (p999_unknown_429 > unknown_429) unknown_429 = p999_unknown_429
+  five_xx = hikari_five_xx
+  if (p999_five_xx > five_xx) five_xx = p999_five_xx
+  nginx_499 = hikari_nginx_499
+  if (p999_nginx_499 > nginx_499) nginx_499 = p999_nginx_499
   postgres_wait_ref = (hikari_postgres_wait_ref != "" ? hikari_postgres_wait_ref : p999_postgres_wait_ref)
-  printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+  printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
     hikari_run_id, status, reason, hikari_duration, p999_duration, p95, p99, p999, max,
-    pending, warnings, postgres_wait_ref, checkpoint_count, temp_file_count, upstream_p95,
+    pending, warnings, backend_429, unknown_429, five_xx, nginx_499, postgres_wait_ref, checkpoint_count, temp_file_count, upstream_p95,
     hikari_config_ref, hikari_max_lifetime, hikari_keepalive, postgres_idle, oci_nat, hikari_zero_warning
   if (status == "fail") exit 2
 }
@@ -155,11 +171,15 @@ gate_status="$(awk -F '\t' 'NR == 2 { print $2 }' "${summary_tsv}")"
 run_id="$(awk -F '\t' 'NR == 2 { print $1 }' "${summary_tsv}")"
 hikari_pending="$(awk -F '\t' 'NR == 2 { print $10 }' "${summary_tsv}")"
 hikari_warnings="$(awk -F '\t' 'NR == 2 { print $11 }' "${summary_tsv}")"
-hikari_max_lifetime="$(awk -F '\t' 'NR == 2 { print $17 }' "${summary_tsv}")"
-hikari_keepalive="$(awk -F '\t' 'NR == 2 { print $18 }' "${summary_tsv}")"
-postgres_idle="$(awk -F '\t' 'NR == 2 { print $19 }' "${summary_tsv}")"
-oci_nat="$(awk -F '\t' 'NR == 2 { print $20 }' "${summary_tsv}")"
-postgres_temp_file_delta="$(awk -F '\t' 'NR == 2 { print $14 }' "${summary_tsv}")"
+backend_429_count="$(awk -F '\t' 'NR == 2 { print $12 }' "${summary_tsv}")"
+unknown_429_count="$(awk -F '\t' 'NR == 2 { print $13 }' "${summary_tsv}")"
+five_xx_count="$(awk -F '\t' 'NR == 2 { print $14 }' "${summary_tsv}")"
+nginx_499_count="$(awk -F '\t' 'NR == 2 { print $15 }' "${summary_tsv}")"
+hikari_max_lifetime="$(awk -F '\t' 'NR == 2 { print $21 }' "${summary_tsv}")"
+hikari_keepalive="$(awk -F '\t' 'NR == 2 { print $22 }' "${summary_tsv}")"
+postgres_idle="$(awk -F '\t' 'NR == 2 { print $23 }' "${summary_tsv}")"
+oci_nat="$(awk -F '\t' 'NR == 2 { print $24 }' "${summary_tsv}")"
+postgres_temp_file_delta="$(awk -F '\t' 'NR == 2 { print $18 }' "${summary_tsv}")"
 
 cat >"${report_md}" <<REPORT
 # Transaction Read 30m Soak Live Evidence Gate
@@ -175,6 +195,7 @@ cat >"${report_md}" <<REPORT
 - PostgreSQL wait/checkpoint/temp file artifacts: verified
 - PostgreSQL temp file delta: ${postgres_temp_file_delta} (budget <= ${max_postgres_temp_file_delta})
 - Nginx upstream latency artifact: verified
+- 429/5xx/499 hard-zero: backend=${backend_429_count} unknown=${unknown_429_count} 5xx=${five_xx_count} 499=${nginx_499_count}
 - Hikari lifetime alignment: verified
 - Hikari maxLifetime/keepaliveTime: ${hikari_max_lifetime}ms/${hikari_keepalive}ms
 - PostgreSQL/NAT idle basis: ${postgres_idle}ms/${oci_nat}ms
