@@ -180,6 +180,7 @@ jobs:
           K6_DOCKER_CONTEXT="${DOCKER_CONTEXT_INPUT:-${CAPACITY_K6_DOCKER_CONTEXT_VAR:-${DEFAULT_K6_DOCKER_CONTEXT}}}"
           K6_REMOTE_BASE_URL="${REMOTE_BASE_URL_INPUT:-${CAPACITY_K6_REMOTE_BASE_URL:-${CAPACITY_K6_REMOTE_BASE_URL_VAR:-${DEFAULT_K6_REMOTE_BASE_URL}}}}"
           K6_REMOTE_PROMETHEUS_RW_SERVER_URL="${REMOTE_PROMETHEUS_RW_URL_INPUT:-${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL:-${CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL_VAR:-${DEFAULT_K6_REMOTE_PROMETHEUS_RW_SERVER_URL}}}}"
+          K6_REMOTE_PROMETHEUS_RW_REQUIRED="false"
           K6_REMOTE_WORKDIR="${REMOTE_WORKDIR_INPUT:-${CAPACITY_K6_REMOTE_WORKDIR_VAR:-}}"
           if [[ -z "${K6_REMOTE_WORKDIR}" ]]; then
             if [[ "${K6_DOCKER_CONTEXT}" == "default" ]]; then
@@ -238,6 +239,7 @@ jobs:
             K6_DOCKER_CONTEXT
             K6_REMOTE_BASE_URL
             K6_REMOTE_PROMETHEUS_RW_SERVER_URL
+            K6_REMOTE_PROMETHEUS_RW_REQUIRED
             K6_REMOTE_WORKDIR
             K6_REMOTE_PREFLIGHT
             K6_AUTH_TOKEN_ENV_NAME
@@ -351,6 +353,28 @@ jobs:
             return 1
           }
 
+          write_missing_nginx_observability_artifacts() {
+            local reason="$1"
+            local aggregate_dir="${report_dir}/transaction-read-nginx-access-aggregate"
+            mkdir -p "${aggregate_dir}"
+            jq -n \
+              --arg k6_run_id "${K6_RUN_ID}" \
+              --arg status "missing" \
+              --arg reason "${reason}" \
+              '{k6_run_id: $k6_run_id, nginx_observability_status: $status, reason: $reason}' \
+              >"${aggregate_dir}/${K6_REPORT_NAME}-nginx-observability-missing.json"
+            printf "k6_run_id\tnginx_observability_status\treason\n%s\tmissing\t%s\n" \
+              "${K6_RUN_ID}" "${reason}" \
+              >"${aggregate_dir}/${K6_REPORT_NAME}-nginx-observability-missing.tsv"
+            {
+              echo "# Nginx Observability Missing"
+              echo
+              echo "- k6_run_id=${K6_RUN_ID}"
+              echo "- nginx_observability_status=missing"
+              echo "- reason=${reason}"
+            } >"${aggregate_dir}/${K6_REPORT_NAME}-nginx-observability-missing.md"
+          }
+
           for burst_rate in "${burst_rates[@]}"; do
             burst_rate="${burst_rate//[[:space:]]/}"
             if ! [[ "${burst_rate}" =~ ^[0-9]+$ ]]; then
@@ -389,18 +413,29 @@ jobs:
               echo "::warning::Burst ${burst_rate} k6 run exited ${k6_exit}; matrix evidence will still be packed when summaries exist."
             fi
 
-            resolve_current_run_nginx_log
-
-            NGINX_ACCESS_AGGREGATE_NAME="${K6_REPORT_NAME}" \
-            NGINX_ACCESS_AGGREGATE_LOG="${K6_NGINX_ACCESS_LOG}" \
-            NGINX_ACCESS_AGGREGATE_RUN_ID="${K6_RUN_ID}" \
-            NGINX_ACCESS_AGGREGATE_OUTPUT_DIR="${report_dir}/transaction-read-nginx-access-aggregate" \
-              tools/test/run-transaction-read-nginx-access-aggregate-artifact.sh
-
             summary_json="build/reports/k6/${K6_REPORT_NAME}-summary.json"
             aggregate_json="${report_dir}/transaction-read-nginx-access-aggregate/${K6_REPORT_NAME}-nginx-access-aggregate.json"
             aggregate_tsv="${report_dir}/transaction-read-nginx-access-aggregate/${K6_REPORT_NAME}-nginx-access-aggregate.tsv"
             aggregate_md="${report_dir}/transaction-read-nginx-access-aggregate/${K6_REPORT_NAME}-nginx-access-aggregate.md"
+
+            nginx_observability_status="present"
+            if ! resolve_current_run_nginx_log; then
+              nginx_observability_status="missing"
+              write_missing_nginx_observability_artifacts "current-run nginx access log not resolved"
+              aggregate_json=""
+              aggregate_tsv=""
+              aggregate_md=""
+            elif ! NGINX_ACCESS_AGGREGATE_NAME="${K6_REPORT_NAME}" \
+              NGINX_ACCESS_AGGREGATE_LOG="${K6_NGINX_ACCESS_LOG}" \
+              NGINX_ACCESS_AGGREGATE_RUN_ID="${K6_RUN_ID}" \
+              NGINX_ACCESS_AGGREGATE_OUTPUT_DIR="${report_dir}/transaction-read-nginx-access-aggregate" \
+                tools/test/run-transaction-read-nginx-access-aggregate-artifact.sh; then
+              nginx_observability_status="missing"
+              write_missing_nginx_observability_artifacts "current-run nginx aggregate build failed"
+              aggregate_json=""
+              aggregate_tsv=""
+              aggregate_md=""
+            fi
             printf "%s\t%s\t%s\t%s\t%s\t%s\n" "${burst_rate}" "${K6_RUN_ID}" "${summary_json}" "${aggregate_json}" "${aggregate_tsv}" "${aggregate_md}" >>"${matrix_input_tsv}"
           done
 
