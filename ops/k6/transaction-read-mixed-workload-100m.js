@@ -89,6 +89,7 @@ export const options = {
     aquila_mixed_auth_count: ["count>0"],
     aquila_mixed_notification_count: ["count>0"],
     aquila_mixed_sse_connect_count: ["count>0"],
+    checks: ["rate==1"],
     aquila_mixed_5xx_count: ["count==0"],
   },
 };
