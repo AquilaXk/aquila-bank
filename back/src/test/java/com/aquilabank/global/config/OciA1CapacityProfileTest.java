@@ -71,7 +71,7 @@ class OciA1CapacityProfileTest {
           assertThat(
                   environment.getProperty(
                       "ops.api-admission-control.endpoints[0].max-concurrency", Integer.class))
-              .isEqualTo(10);
+              .isEqualTo(16);
           assertThat(
                   environment.getProperty(
                       "ops.api-admission-control.endpoints[0].retry-after-seconds", Integer.class))
@@ -85,7 +85,7 @@ class OciA1CapacityProfileTest {
                   environment.getProperty(
                       "ops.api-admission-control.endpoints[0].adaptive.max-concurrency",
                       Integer.class))
-              .isEqualTo(12);
+              .isEqualTo(16);
           assertThat(
                   environment.getProperty(
                       "ops.api-admission-control.endpoints[0].adaptive.increase-every-successes",
@@ -128,7 +128,7 @@ class OciA1CapacityProfileTest {
           assertThat(
                   environment.getProperty(
                       "ops.api-admission-control.endpoints[1].max-concurrency", Integer.class))
-              .isEqualTo(10);
+              .isEqualTo(16);
         });
   }
 
@@ -295,10 +295,10 @@ class OciA1CapacityProfileTest {
 
               assertThat(archiveEndpoint.maxConcurrency()).isEqualTo(4);
               assertThat(archiveEndpoint.adaptive().minConcurrency()).isEqualTo(4);
-              assertThat(archiveEndpoint.adaptive().maxConcurrency()).isEqualTo(12);
+              assertThat(archiveEndpoint.adaptive().maxConcurrency()).isEqualTo(16);
               assertThat(hotEndpoint.maxConcurrency()).isEqualTo(4);
               assertThat(hotEndpoint.adaptive().minConcurrency()).isEqualTo(4);
-              assertThat(hotEndpoint.adaptive().maxConcurrency()).isEqualTo(12);
+              assertThat(hotEndpoint.adaptive().maxConcurrency()).isEqualTo(16);
             });
   }
 

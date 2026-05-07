@@ -38,11 +38,11 @@ transaction:
 oci-a1:
   transaction-read:
     admission:
-      # deploy-drain live에서 DB pending 없이 backend 429가 먼저 떠서 기본 headroom만 소폭 올린다.
-      max: ${OCI_A1_TRANSACTION_READ_ADMISSION_MAX:10}
+      # deploy-drain VU16 재연결 fan-in은 DB pending 없이 짧게 몰리므로 시작 cap으로 흡수한다.
+      max: ${OCI_A1_TRANSACTION_READ_ADMISSION_MAX:16}
       retry-after-seconds: ${OCI_A1_TRANSACTION_READ_ADMISSION_RETRY_AFTER_SECONDS:0}
       min: ${OCI_A1_TRANSACTION_READ_ADMISSION_MIN:6}
-      adaptive-max: ${OCI_A1_TRANSACTION_READ_ADMISSION_ADAPTIVE_MAX:12}
+      adaptive-max: ${OCI_A1_TRANSACTION_READ_ADMISSION_ADAPTIVE_MAX:16}
       increase-every-successes: ${OCI_A1_TRANSACTION_READ_ADMISSION_INCREASE_EVERY_SUCCESSES:32}
       decrease-on-rejections: ${OCI_A1_TRANSACTION_READ_ADMISSION_DECREASE_ON_REJECTIONS:1}
       rejection-window-size: ${OCI_A1_TRANSACTION_READ_ADMISSION_REJECTION_WINDOW_SIZE:32}
