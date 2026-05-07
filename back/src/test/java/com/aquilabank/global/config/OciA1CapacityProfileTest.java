@@ -71,7 +71,7 @@ class OciA1CapacityProfileTest {
           assertThat(
                   environment.getProperty(
                       "ops.api-admission-control.endpoints[0].max-concurrency", Integer.class))
-              .isEqualTo(8);
+              .isEqualTo(10);
           assertThat(
                   environment.getProperty(
                       "ops.api-admission-control.endpoints[0].retry-after-seconds", Integer.class))
@@ -128,7 +128,7 @@ class OciA1CapacityProfileTest {
           assertThat(
                   environment.getProperty(
                       "ops.api-admission-control.endpoints[1].max-concurrency", Integer.class))
-              .isEqualTo(8);
+              .isEqualTo(10);
         });
   }
 
