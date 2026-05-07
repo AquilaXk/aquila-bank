@@ -78,6 +78,7 @@ timeline_ref="${generated_dir}/${name}-timeline.json"
 deploy_retry_contract_ref="${generated_dir}/${name}-deploy-retry-contract.json"
 deploy_499_budget_ref="${generated_dir}/${name}-deploy-499-budget.tsv"
 runner_log_ref="${generated_dir}/${name}-runner.log"
+runner_artifacts_dir="${generated_dir}/runner-artifacts"
 
 case "${autogen_mode}" in
   live|fixture) ;;
@@ -199,7 +200,42 @@ apply_runner_evidence_env() {
   deploy_actions="${DEPLOY_DRAIN_RUNNER_DEPLOY_ACTIONS:-${deploy_actions}}"
   client_retry_success_count="${DEPLOY_DRAIN_RUNNER_CLIENT_RETRY_SUCCESS_COUNT:-${client_retry_success_count}}"
   deploy_reconnect_success_count="${DEPLOY_DRAIN_RUNNER_DEPLOY_RECONNECT_SUCCESS_COUNT:-${deploy_reconnect_success_count}}"
+  preserve_runner_evidence_artifacts
   runner_evidence_applied="true"
+}
+
+preserve_runner_artifact_ref() {
+  local var_name="$1"
+  local label="$2"
+  local source_path="${!var_name:-}"
+  local target_path
+
+  if [[ -z "${source_path}" || "${source_path}" == "n/a" ]]; then
+    return 0
+  fi
+  if [[ ! -s "${source_path}" ]]; then
+    write_failure_artifact "runner-artifact-missing" "deploy drain runner artifact is missing: ${label}"
+    exit 1
+  fi
+
+  mkdir -p "${runner_artifacts_dir}"
+  target_path="${runner_artifacts_dir}/$(basename "${source_path}")"
+  if [[ "${source_path}" != "${target_path}" ]]; then
+    cp "${source_path}" "${target_path}"
+  fi
+  printf -v "${var_name}" "%s" "${target_path}"
+}
+
+preserve_runner_evidence_artifacts() {
+  preserve_runner_artifact_ref k6_summary_ref "k6_summary_ref"
+  preserve_runner_artifact_ref nginx_access_ref "nginx_access_ref"
+  preserve_runner_artifact_ref spring_metrics_ref "spring_metrics_ref"
+  preserve_runner_artifact_ref hikari_log_ref "hikari_log_ref"
+  preserve_runner_artifact_ref postgres_wait_ref "postgres_wait_ref"
+  preserve_runner_artifact_ref deploy_event_ref "deploy_event_ref"
+  preserve_runner_artifact_ref timeline_ref "timeline_ref"
+  preserve_runner_artifact_ref deploy_retry_contract_ref "deploy_retry_contract_ref"
+  preserve_runner_artifact_ref deploy_499_budget_ref "deploy_499_budget_ref"
 }
 
 write_artifacts() {

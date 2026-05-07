@@ -149,8 +149,30 @@ grep -F "run_id=${run_id}-live" "${temp_dir}/stub.log" >/dev/null
 
 # shellcheck disable=SC1090
 source "${stub_env}"
-grep -F "runner-k6-summary.json" "${DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV}" >/dev/null
-grep -F "runner-deploy-event.json" "${DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV}" >/dev/null
+runner_artifacts_dir="${stub_output_dir}/generated/runner-artifacts"
+test -f "${runner_artifacts_dir}/runner-k6-summary.json"
+test -f "${runner_artifacts_dir}/runner-nginx.jsonl"
+test -f "${runner_artifacts_dir}/runner-spring.json"
+test -f "${runner_artifacts_dir}/runner-hikari.log"
+test -f "${runner_artifacts_dir}/runner-postgres-wait.tsv"
+test -f "${runner_artifacts_dir}/runner-deploy-event.json"
+test -f "${runner_artifacts_dir}/runner-timeline.json"
+test -f "${runner_artifacts_dir}/runner-deploy-retry-contract.json"
+test -f "${runner_artifacts_dir}/runner-deploy-499-budget.tsv"
+grep -F "stub" "${runner_artifacts_dir}/runner-k6-summary.json" >/dev/null
+grep -F "${runner_artifacts_dir}/runner-k6-summary.json" "${DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV}" >/dev/null
+grep -F "${runner_artifacts_dir}/runner-nginx.jsonl" "${DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV}" >/dev/null
+grep -F "${runner_artifacts_dir}/runner-spring.json" "${DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV}" >/dev/null
+grep -F "${runner_artifacts_dir}/runner-hikari.log" "${DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV}" >/dev/null
+grep -F "${runner_artifacts_dir}/runner-postgres-wait.tsv" "${DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV}" >/dev/null
+grep -F "${runner_artifacts_dir}/runner-deploy-event.json" "${DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV}" >/dev/null
+grep -F "${runner_artifacts_dir}/runner-timeline.json" "${DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV}" >/dev/null
+grep -F "${runner_artifacts_dir}/runner-deploy-retry-contract.json" "${DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV}" >/dev/null
+grep -F "${runner_artifacts_dir}/runner-deploy-499-budget.tsv" "${DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV}" >/dev/null
+if grep -F "${temp_dir}/runner-env" "${DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV}" >/dev/null; then
+  echo "deploy drain live manifest must not point at runner-local artifact paths outside the upload root" >&2
+  exit 1
+fi
 grep -F $'\t0.02\t0\t0\t0\t0\t0\t0\t333\t' "${DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV}" >/dev/null
 grep -F $'\t101\t222\t444\t1\t0\t12.5\t' "${DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV}" >/dev/null
 grep -F $'\tbackend-restart,blue-green-drain\t0\t3\t2' "${DEPLOY_DRAIN_EVIDENCE_MANIFEST_TSV}" >/dev/null
