@@ -26,9 +26,9 @@ grep -F "edge_transaction_archive_burst=256" <<<"${plan}" >/dev/null
 grep -F "edge_transaction_hot_delay=0" <<<"${plan}" >/dev/null
 grep -F "edge_transaction_archive_delay=0" <<<"${plan}" >/dev/null
 grep -F "edge_transaction_read_policy=burst80-nodelay" <<<"${plan}" >/dev/null
-grep -F "backend_admission_max=8" <<<"${plan}" >/dev/null
+grep -F "backend_admission_max=10" <<<"${plan}" >/dev/null
 grep -F "backend_admission_adaptive_max=12" <<<"${plan}" >/dev/null
-grep -F "backend_hot_admission_max=8" <<<"${plan}" >/dev/null
+grep -F "backend_hot_admission_max=10" <<<"${plan}" >/dev/null
 grep -F "backend_hot_admission_adaptive_max=12" <<<"${plan}" >/dev/null
 grep -F "backend_archive_admission_max=6" <<<"${plan}" >/dev/null
 grep -F "backend_archive_admission_adaptive_max=10" <<<"${plan}" >/dev/null
@@ -57,9 +57,9 @@ grep -F "| edge transaction-archive burst | 256 |" "${report_md}" >/dev/null
 grep -F "| edge transaction-hot delay | 0 |" "${report_md}" >/dev/null
 grep -F "| edge transaction-archive delay | 0 |" "${report_md}" >/dev/null
 grep -F "| edge transaction-read policy | burst80-nodelay |" "${report_md}" >/dev/null
-grep -F "| backend admission max | 8 |" "${report_md}" >/dev/null
+grep -F "| backend admission max | 10 |" "${report_md}" >/dev/null
 grep -F "| backend admission adaptive max | 12 |" "${report_md}" >/dev/null
-grep -F "| backend hot admission max | 8 |" "${report_md}" >/dev/null
+grep -F "| backend hot admission max | 10 |" "${report_md}" >/dev/null
 grep -F "| backend hot admission adaptive max | 12 |" "${report_md}" >/dev/null
 grep -F "| backend archive admission max | 6 |" "${report_md}" >/dev/null
 grep -F "| backend archive admission adaptive max | 10 |" "${report_md}" >/dev/null
@@ -106,7 +106,7 @@ grep -F "idle_in_transaction_session_timeout TO '\${OCI_A1_DB_IDLE_IN_TX_TIMEOUT
 grep -F 'OCI_A1_DB_MAX_LIFETIME_MS=${OCI_A1_DB_MAX_LIFETIME_MS:-45000}' ops/deploy/oci/bluegreen-deploy.sh >/dev/null
 grep -F 'OCI_A1_DB_KEEPALIVE_TIME_MS=${OCI_A1_DB_KEEPALIVE_TIME_MS:-30000}' ops/deploy/oci/bluegreen-deploy.sh >/dev/null
 grep -F 'OCI_A1_DB_IDLE_IN_TX_TIMEOUT_MS=${OCI_A1_DB_IDLE_IN_TX_TIMEOUT_MS:-300000}' ops/deploy/oci/bluegreen-deploy.sh >/dev/null
-grep -F 'max: ${OCI_A1_TRANSACTION_READ_ADMISSION_MAX:8}' back/src/main/resources/application-oci-a1.yml >/dev/null
+grep -F 'max: ${OCI_A1_TRANSACTION_READ_ADMISSION_MAX:10}' back/src/main/resources/application-oci-a1.yml >/dev/null
 grep -F 'adaptive-max: ${OCI_A1_TRANSACTION_READ_ADMISSION_ADAPTIVE_MAX:12}' back/src/main/resources/application-oci-a1.yml >/dev/null
 grep -F 'low-saturation-increase-every-successes: ${OCI_A1_TRANSACTION_READ_ADMISSION_LOW_SATURATION_INCREASE_EVERY_SUCCESSES:16}' back/src/main/resources/application-oci-a1.yml >/dev/null
 grep -F 'group: transaction-read-hot' back/src/main/resources/application.yml >/dev/null
