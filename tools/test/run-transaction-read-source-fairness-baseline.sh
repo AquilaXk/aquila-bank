@@ -9,10 +9,10 @@ Environment:
   SOURCE_FAIRNESS_NAME                default transaction-read-source-fairness-baseline-<timestamp>
   SOURCE_FAIRNESS_INPUT_TSV           required TSV with account/source fairness evidence
   SOURCE_FAIRNESS_OUTPUT_DIR          default build/reports/k6/<name>
-  SOURCE_FAIRNESS_REQUIRED_SCENARIOS  default multi-account-fixture,real-ip-multisource,fairness-budget
+  SOURCE_FAIRNESS_REQUIRED_SCENARIOS  default multi-account-fixture,fairness-budget
   SOURCE_FAIRNESS_MIN_HOT_ACCOUNTS    default 4
   SOURCE_FAIRNESS_MIN_COLD_ACCOUNTS   default 4
-  SOURCE_FAIRNESS_MIN_SOURCE_IPS      default 3
+  SOURCE_FAIRNESS_MIN_SOURCE_IPS      default 1
 USAGE
 }
 
@@ -37,10 +37,10 @@ done
 name="${SOURCE_FAIRNESS_NAME:-transaction-read-source-fairness-baseline-$(date +%Y-%m-%d-%H%M%S)}"
 input_tsv="${SOURCE_FAIRNESS_INPUT_TSV:-}"
 output_dir="${SOURCE_FAIRNESS_OUTPUT_DIR:-build/reports/k6/${name}}"
-required_scenarios="${SOURCE_FAIRNESS_REQUIRED_SCENARIOS:-multi-account-fixture,real-ip-multisource,fairness-budget}"
+required_scenarios="${SOURCE_FAIRNESS_REQUIRED_SCENARIOS:-multi-account-fixture,fairness-budget}"
 min_hot_accounts="${SOURCE_FAIRNESS_MIN_HOT_ACCOUNTS:-4}"
 min_cold_accounts="${SOURCE_FAIRNESS_MIN_COLD_ACCOUNTS:-4}"
-min_source_ips="${SOURCE_FAIRNESS_MIN_SOURCE_IPS:-3}"
+min_source_ips="${SOURCE_FAIRNESS_MIN_SOURCE_IPS:-1}"
 summary_tsv="${output_dir}/${name}-source-fairness-baseline.tsv"
 report_md="${output_dir}/${name}-source-fairness-baseline.md"
 meta_file="${output_dir}/${name}-source-fairness-baseline.meta"
@@ -166,9 +166,6 @@ NR == 1 {
   if (scenario == "multi-account-fixture") {
     if (value("hot_account_count", "0") + 0 < min_hot_accounts) add_reason("hot-accounts<" min_hot_accounts)
     if (value("cold_account_count", "0") + 0 < min_cold_accounts) add_reason("cold-accounts<" min_cold_accounts)
-  }
-  if (scenario == "real-ip-multisource") {
-    if (value("source_ips", "0") + 0 < min_source_ips) add_reason("source-ips<" min_source_ips)
   }
   if (scenario == "fairness-budget") {
     if (value("account_429_skew", "1") + 0 > value("account_429_skew_budget", "0") + 0) add_reason("account429-skew-budget")

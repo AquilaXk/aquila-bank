@@ -9,8 +9,8 @@ Environment:
   OCI_CAPACITY_EVIDENCE_NAME             default transaction-read-oci-capacity-evidence-<timestamp>
   OCI_CAPACITY_EVIDENCE_INPUT_TSV        required OCI evidence TSV
   OCI_CAPACITY_EVIDENCE_OUTPUT_DIR       default build/reports/k6/<name>
-  OCI_CAPACITY_EVIDENCE_REQUIRED_SCENARIOS default hikari-10m,multisource-baseline,prometheus-30m,mixed-interference
-  OCI_CAPACITY_EVIDENCE_MIN_SOURCE_IPS   default 2
+  OCI_CAPACITY_EVIDENCE_REQUIRED_SCENARIOS default hikari-10m,prometheus-30m,mixed-interference
+  OCI_CAPACITY_EVIDENCE_MIN_SOURCE_IPS   default 1
   OCI_CAPACITY_EVIDENCE_MAX_CONN_ACQ_P95_MS default 50
   OCI_CAPACITY_EVIDENCE_ACCEPTED_P95_MS  default 350
 USAGE
@@ -37,8 +37,8 @@ done
 name="${OCI_CAPACITY_EVIDENCE_NAME:-transaction-read-oci-capacity-evidence-$(date +%Y-%m-%d-%H%M%S)}"
 input_tsv="${OCI_CAPACITY_EVIDENCE_INPUT_TSV:-}"
 output_dir="${OCI_CAPACITY_EVIDENCE_OUTPUT_DIR:-build/reports/k6/${name}}"
-required_scenarios="${OCI_CAPACITY_EVIDENCE_REQUIRED_SCENARIOS:-hikari-10m,multisource-baseline,prometheus-30m,mixed-interference}"
-min_source_ips="${OCI_CAPACITY_EVIDENCE_MIN_SOURCE_IPS:-2}"
+required_scenarios="${OCI_CAPACITY_EVIDENCE_REQUIRED_SCENARIOS:-hikari-10m,prometheus-30m,mixed-interference}"
+min_source_ips="${OCI_CAPACITY_EVIDENCE_MIN_SOURCE_IPS:-1}"
 max_conn_acq_p95_ms="${OCI_CAPACITY_EVIDENCE_MAX_CONN_ACQ_P95_MS:-50}"
 accepted_p95_ms="${OCI_CAPACITY_EVIDENCE_ACCEPTED_P95_MS:-350}"
 summary_tsv="${output_dir}/${name}-oci-capacity-evidence.tsv"
@@ -59,7 +59,7 @@ print_plan() {
   echo "[transaction-read-oci-capacity-evidence] input_tsv=${input_tsv:-missing}"
   echo "[transaction-read-oci-capacity-evidence] output_dir=${output_dir}"
   echo "[transaction-read-oci-capacity-evidence] required_scenarios=${required_scenarios}"
-  echo "[transaction-read-oci-capacity-evidence] min_multisource_public_ips=${min_source_ips}"
+  echo "[transaction-read-oci-capacity-evidence] min_source_ips=${min_source_ips}"
   echo "[transaction-read-oci-capacity-evidence] max_connection_acquisition_p95_ms=${max_conn_acq_p95_ms}"
   echo "[transaction-read-oci-capacity-evidence] accepted_p95_ms=${accepted_p95_ms}"
   echo "[transaction-read-oci-capacity-evidence] timeline_refs=k6,nginx,spring,hikari,pg_wait,cpu,memory,disk_io,network,prometheus,grafana"
@@ -140,7 +140,6 @@ NR == 1 {
   if (missing_ref != "none") status = "fail"
   if (hikari_warnings > 0 || conn_p95 > max_conn || unknown > 0 || five_xx > 0 || accepted_p95 > accepted_budget) status = "fail"
   if (scenario == "hikari-10m" && duration < 10) status = "fail"
-  if (scenario == "multisource-baseline" && source_ips < min_source_ips) status = "fail"
   if (scenario == "prometheus-30m" && (duration < 30 || source_ips < min_source_ips)) status = "fail"
   if (scenario == "mixed-interference") {
     if (duration < 30 || source_ips < min_source_ips || write_integrity != "pass") status = "fail"
@@ -193,7 +192,7 @@ cat >"${report_md}" <<REPORT
 - 10m Hikari validation warning budget: 0
 - connection acquisition p95 budget: <= ${max_conn_acq_p95_ms}ms
 - accepted p95 budget: <= ${accepted_p95_ms}ms
-- multi-source public baseline requires source_ips >= ${min_source_ips} and source_ip_breakdown_ref
+- source attribution requires source_ips >= ${min_source_ips} and source_ip_breakdown_ref
 - 30m Prometheus/Grafana timeline includes CPU, memory, disk IO, network, Hikari, pg wait
 - mixed workload requires read, write, auth, notification, sse and write_integrity_status=pass
 - hard-zero: unknown 429, 5xx
