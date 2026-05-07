@@ -35,6 +35,15 @@ grep -F 'MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV_INPUT: ${{ inputs.evidence_manifes
 grep -F 'MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV_VAR: ${{ vars.OCI_MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV }}' "${workflow}" >/dev/null
 grep -F 'MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV="${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV_INPUT:-${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV:-${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV_VAR:-}}}"' "${workflow}" >/dev/null
 grep -F 'MIXED_WORKLOAD_EVIDENCE_READY=false' "${workflow}" >/dev/null
+grep -F 'mixed_workload_auth_token_file="${RUNNER_TEMP}/mixed-workload-live-auth-token"' "${workflow}" >/dev/null
+grep -F 'printf '\''::add-mask::%s\n'\'' "${STAGING_REPLAY_TOKEN}"' "${workflow}" >/dev/null
+grep -F 'printf '\''%s'\'' "${STAGING_REPLAY_TOKEN}" >"${mixed_workload_auth_token_file}"' "${workflow}" >/dev/null
+grep -F 'chmod 600 "${mixed_workload_auth_token_file}"' "${workflow}" >/dev/null
+grep -F 'printf '\''MIXED_WORKLOAD_OCI_AUTH_TOKEN_FILE=%s\n'\'' "${mixed_workload_auth_token_file}" >>"${GITHUB_ENV}"' "${workflow}" >/dev/null
+if grep -F 'MIXED_WORKLOAD_OCI_AUTH_TOKEN_ENV_NAME=%s' "${workflow}" >/dev/null; then
+  echo "mixed workload workflow must use token file propagation instead of env-name handoff" >&2
+  exit 1
+fi
 grep -F "name: Generate mixed workload live evidence manifest artifacts" "${workflow}" >/dev/null
 grep -F "if: env.MIXED_WORKLOAD_EVIDENCE_READY != 'true'" "${workflow}" >/dev/null
 grep -F "MIXED_WORKLOAD_AUTOGEN_MODE: live" "${workflow}" >/dev/null
