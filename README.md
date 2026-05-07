@@ -23,6 +23,8 @@
 
 ## Project Architecture Structure
 
+![Aquila Bank architecture](docs/assets/readme-architecture.png)
+
 ```text
 .
 ├── front
