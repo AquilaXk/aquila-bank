@@ -38,8 +38,8 @@ transaction:
 oci-a1:
   transaction-read:
     admission:
-      # paced-weighted-vu16에서 Hikari pending이 낮아 admission 회복 여지를 둔다.
-      max: ${OCI_A1_TRANSACTION_READ_ADMISSION_MAX:8}
+      # deploy-drain live에서 DB pending 없이 backend 429가 먼저 떠서 기본 headroom만 소폭 올린다.
+      max: ${OCI_A1_TRANSACTION_READ_ADMISSION_MAX:10}
       retry-after-seconds: ${OCI_A1_TRANSACTION_READ_ADMISSION_RETRY_AFTER_SECONDS:0}
       min: ${OCI_A1_TRANSACTION_READ_ADMISSION_MIN:6}
       adaptive-max: ${OCI_A1_TRANSACTION_READ_ADMISSION_ADAPTIVE_MAX:12}
