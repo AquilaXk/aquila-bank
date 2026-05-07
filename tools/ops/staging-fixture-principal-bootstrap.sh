@@ -14,6 +14,12 @@ HOT_ACCOUNT_IDS="${HOT_ACCOUNT_IDS:-${STAGING_REPLAY_HOT_ACCOUNT_IDS:-${HOT_ACCO
 COLD_ACCOUNT_IDS="${COLD_ACCOUNT_IDS:-${STAGING_REPLAY_COLD_ACCOUNT_IDS:-${COLD_ACCOUNT_ID}}}"
 STAGING_REPLAY_HOT_ACCOUNT_NUMBER="${STAGING_REPLAY_HOT_ACCOUNT_NUMBER:-}"
 STAGING_REPLAY_COLD_ACCOUNT_NUMBER="${STAGING_REPLAY_COLD_ACCOUNT_NUMBER:-}"
+STAGING_MIXED_WORKLOAD_WRITE_SOURCE_ACCOUNT_ID="${STAGING_MIXED_WORKLOAD_WRITE_SOURCE_ACCOUNT_ID:-${MIXED_WORKLOAD_OCI_WRITE_SOURCE_ACCOUNT_ID:-${K6_WRITE_SOURCE_ACCOUNT_ID:-}}}"
+STAGING_MIXED_WORKLOAD_WRITE_TARGET_ACCOUNT_ID="${STAGING_MIXED_WORKLOAD_WRITE_TARGET_ACCOUNT_ID:-${MIXED_WORKLOAD_OCI_WRITE_TARGET_ACCOUNT_ID:-${K6_WRITE_TARGET_ACCOUNT_ID:-}}}"
+STAGING_MIXED_WORKLOAD_WRITE_SOURCE_ACCOUNT_NUMBER="${STAGING_MIXED_WORKLOAD_WRITE_SOURCE_ACCOUNT_NUMBER:-}"
+STAGING_MIXED_WORKLOAD_WRITE_TARGET_ACCOUNT_NUMBER="${STAGING_MIXED_WORKLOAD_WRITE_TARGET_ACCOUNT_NUMBER:-}"
+STAGING_MIXED_WORKLOAD_WRITE_SOURCE_BALANCE_MINOR="${STAGING_MIXED_WORKLOAD_WRITE_SOURCE_BALANCE_MINOR:-50000000}"
+STAGING_MIXED_WORKLOAD_WRITE_TARGET_BALANCE_MINOR="${STAGING_MIXED_WORKLOAD_WRITE_TARGET_BALANCE_MINOR:-0}"
 STAGING_FIXTURE_PRINCIPAL_DB_ATTEMPTS="${STAGING_FIXTURE_PRINCIPAL_DB_ATTEMPTS:-3}"
 STAGING_FIXTURE_PRINCIPAL_DB_RETRY_SLEEP_SECONDS="${STAGING_FIXTURE_PRINCIPAL_DB_RETRY_SLEEP_SECONDS:-5}"
 
@@ -98,6 +104,29 @@ require_account_number_lengths() {
   done
 }
 
+validate_optional_write_accounts() {
+  local has_source=false
+  local has_target=false
+  [[ -n "${STAGING_MIXED_WORKLOAD_WRITE_SOURCE_ACCOUNT_ID}" ]] && has_source=true
+  [[ -n "${STAGING_MIXED_WORKLOAD_WRITE_TARGET_ACCOUNT_ID}" ]] && has_target=true
+  if [[ "${has_source}" == "false" && "${has_target}" == "false" ]]; then
+    return
+  fi
+  [[ "${has_source}" == "true" ]] || fail "STAGING_MIXED_WORKLOAD_WRITE_SOURCE_ACCOUNT_ID is required when write target is set"
+  [[ "${has_target}" == "true" ]] || fail "STAGING_MIXED_WORKLOAD_WRITE_TARGET_ACCOUNT_ID is required when write source is set"
+  require_positive_integer STAGING_MIXED_WORKLOAD_WRITE_SOURCE_ACCOUNT_ID
+  require_positive_integer STAGING_MIXED_WORKLOAD_WRITE_TARGET_ACCOUNT_ID
+  if [[ "${STAGING_MIXED_WORKLOAD_WRITE_SOURCE_ACCOUNT_ID}" == "${STAGING_MIXED_WORKLOAD_WRITE_TARGET_ACCOUNT_ID}" ]]; then
+    fail "STAGING_MIXED_WORKLOAD_WRITE_SOURCE_ACCOUNT_ID and STAGING_MIXED_WORKLOAD_WRITE_TARGET_ACCOUNT_ID must differ"
+  fi
+  require_positive_integer STAGING_MIXED_WORKLOAD_WRITE_SOURCE_BALANCE_MINOR
+  require_non_negative_integer STAGING_MIXED_WORKLOAD_WRITE_TARGET_BALANCE_MINOR
+  STAGING_MIXED_WORKLOAD_WRITE_SOURCE_ACCOUNT_NUMBER="${STAGING_MIXED_WORKLOAD_WRITE_SOURCE_ACCOUNT_NUMBER:-STG-WR-SRC-${STAGING_MIXED_WORKLOAD_WRITE_SOURCE_ACCOUNT_ID}}"
+  STAGING_MIXED_WORKLOAD_WRITE_TARGET_ACCOUNT_NUMBER="${STAGING_MIXED_WORKLOAD_WRITE_TARGET_ACCOUNT_NUMBER:-STG-WR-TGT-${STAGING_MIXED_WORKLOAD_WRITE_TARGET_ACCOUNT_ID}}"
+  require_max_length STAGING_MIXED_WORKLOAD_WRITE_SOURCE_ACCOUNT_NUMBER 20
+  require_max_length STAGING_MIXED_WORKLOAD_WRITE_TARGET_ACCOUNT_NUMBER 20
+}
+
 validate_inputs() {
   require_command psql
   require_env STAGING_DATABASE_URL
@@ -120,6 +149,7 @@ validate_inputs() {
   require_max_length STAGING_REPLAY_COLD_ACCOUNT_NUMBER 20
   require_account_number_lengths "HOT_ACCOUNT_IDS" "${HOT_ACCOUNT_IDS}" "${STAGING_REPLAY_HOT_ACCOUNT_NUMBER}" "STG-HOT-"
   require_account_number_lengths "COLD_ACCOUNT_IDS" "${COLD_ACCOUNT_IDS}" "${STAGING_REPLAY_COLD_ACCOUNT_NUMBER}" "STG-COLD-"
+  validate_optional_write_accounts
   require_positive_integer STAGING_FIXTURE_PRINCIPAL_DB_ATTEMPTS
   require_non_negative_integer STAGING_FIXTURE_PRINCIPAL_DB_RETRY_SLEEP_SECONDS
 }
@@ -139,7 +169,13 @@ ensure_fixture_principal() {
     -v hot_account_ids="${HOT_ACCOUNT_IDS}" \
     -v cold_account_ids="${COLD_ACCOUNT_IDS}" \
     -v hot_account_number="${STAGING_REPLAY_HOT_ACCOUNT_NUMBER}" \
-    -v cold_account_number="${STAGING_REPLAY_COLD_ACCOUNT_NUMBER}" <<'SQL'
+    -v cold_account_number="${STAGING_REPLAY_COLD_ACCOUNT_NUMBER}" \
+    -v write_source_account_id="${STAGING_MIXED_WORKLOAD_WRITE_SOURCE_ACCOUNT_ID}" \
+    -v write_target_account_id="${STAGING_MIXED_WORKLOAD_WRITE_TARGET_ACCOUNT_ID}" \
+    -v write_source_account_number="${STAGING_MIXED_WORKLOAD_WRITE_SOURCE_ACCOUNT_NUMBER}" \
+    -v write_target_account_number="${STAGING_MIXED_WORKLOAD_WRITE_TARGET_ACCOUNT_NUMBER}" \
+    -v write_source_balance_minor="${STAGING_MIXED_WORKLOAD_WRITE_SOURCE_BALANCE_MINOR}" \
+    -v write_target_balance_minor="${STAGING_MIXED_WORKLOAD_WRITE_TARGET_BALANCE_MINOR}" <<'SQL'
       -- psql 변수(:name)는 -c 경로에서 치환되지 않아 stdin으로 전달한다.
       BEGIN;
 
@@ -149,28 +185,64 @@ ensure_fixture_principal() {
               'hot' AS account_group,
               0 AS group_rank,
               hot.ordinal,
-              hot.account_id_text::bigint AS account_id
+              hot.account_id_text::bigint AS account_id,
+              CASE
+                  WHEN hot.ordinal = 1 THEN :'hot_account_number'
+                  ELSE concat('STG-HOT-', hot.account_id_text)
+              END AS account_number,
+              'Staging hot fixture account' AS display_name,
+              0::bigint AS desired_available_balance_minor
           FROM regexp_split_to_table(:'hot_account_ids', ',') WITH ORDINALITY AS hot(account_id_text, ordinal)
           UNION ALL
           SELECT
               'cold' AS account_group,
               1 AS group_rank,
               cold.ordinal,
-              cold.account_id_text::bigint AS account_id
+              cold.account_id_text::bigint AS account_id,
+              CASE
+                  WHEN cold.ordinal = 1 THEN :'cold_account_number'
+                  ELSE concat('STG-COLD-', cold.account_id_text)
+              END AS account_number,
+              'Staging cold fixture account' AS display_name,
+              0::bigint AS desired_available_balance_minor
           FROM regexp_split_to_table(:'cold_account_ids', ',') WITH ORDINALITY AS cold(account_id_text, ordinal)
+          UNION ALL
+          SELECT
+              'write_source' AS account_group,
+              2 AS group_rank,
+              1 AS ordinal,
+              NULLIF(:'write_source_account_id', '')::bigint AS account_id,
+              :'write_source_account_number' AS account_number,
+              'Staging mixed workload write source account' AS display_name,
+              :'write_source_balance_minor'::bigint AS desired_available_balance_minor
+          WHERE NULLIF(:'write_source_account_id', '') IS NOT NULL
+          UNION ALL
+          SELECT
+              'write_target' AS account_group,
+              3 AS group_rank,
+              1 AS ordinal,
+              NULLIF(:'write_target_account_id', '')::bigint AS account_id,
+              :'write_target_account_number' AS account_number,
+              'Staging mixed workload write target account' AS display_name,
+              :'write_target_balance_minor'::bigint AS desired_available_balance_minor
+          WHERE NULLIF(:'write_target_account_id', '') IS NOT NULL
+      ),
+      fixture_accounts AS (
+          SELECT
+              account_id,
+              account_number,
+              display_name,
+              max(desired_available_balance_minor) OVER (PARTITION BY account_id) AS desired_available_balance_minor,
+              group_rank,
+              ordinal
+          FROM raw_fixture_accounts
       )
       SELECT DISTINCT ON (account_id)
           account_id,
-          CASE
-              WHEN account_group = 'hot' AND ordinal = 1 THEN :'hot_account_number'
-              WHEN account_group = 'cold' AND ordinal = 1 THEN :'cold_account_number'
-              ELSE concat('STG-', upper(account_group), '-', account_id::text)
-          END AS account_number,
-          CASE
-              WHEN account_group = 'hot' THEN 'Staging hot fixture account'
-              ELSE 'Staging cold fixture account'
-          END AS display_name
-      FROM raw_fixture_accounts
+          account_number,
+          display_name,
+          desired_available_balance_minor
+      FROM fixture_accounts
       ORDER BY account_id, group_rank, ordinal;
 
       INSERT INTO bank_account (
@@ -208,14 +280,15 @@ ensure_fixture_principal() {
       SELECT
           account_id,
           0,
-          0,
+          desired_available_balance_minor,
           0,
           'KRW',
           CURRENT_TIMESTAMP
       FROM staging_fixture_accounts
       ON CONFLICT (account_id)
       DO UPDATE
-      SET currency_code = EXCLUDED.currency_code,
+      SET available_balance_minor = GREATEST(account_balance_snapshot.available_balance_minor, EXCLUDED.available_balance_minor),
+          currency_code = EXCLUDED.currency_code,
           updated_at = CURRENT_TIMESTAMP;
 
       INSERT INTO bank_user (
