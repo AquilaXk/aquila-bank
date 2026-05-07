@@ -88,6 +88,7 @@ pre_allocated_vus="${DEPLOY_DRAIN_OCI_PRE_ALLOCATED_VUS:-${K6_PRE_ALLOCATED_VUS:
 max_vus="${DEPLOY_DRAIN_OCI_MAX_VUS:-${K6_MAX_VUS:-${pre_allocated_vus}}}"
 workload_weights="${DEPLOY_DRAIN_OCI_WORKLOAD_WEIGHTS:-${K6_WORKLOAD_WEIGHTS:-hot_first:40,hot_cursor:40,hot_deep_cursor:20}}"
 executed_at_utc="${DEPLOY_DRAIN_EXECUTED_AT_UTC:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
+nginx_log_since="${DEPLOY_DRAIN_OCI_NGINX_LOG_SINCE:-${K6_NGINX_LOG_SINCE:-${executed_at_utc}}}"
 
 backend_image="${DEPLOY_DRAIN_OCI_BACKEND_IMAGE:-${BACKEND_IMAGE:-}}"
 frontend_image="${DEPLOY_DRAIN_OCI_FRONTEND_IMAGE:-${FRONTEND_IMAGE:-}}"
@@ -521,13 +522,57 @@ collect_k6_summary() {
 }
 
 collect_nginx_access_log() {
-  if ! docker exec "${nginx_container}" sh -c 'test -s "$1"' sh "${nginx_access_log}" >/dev/null 2>&1; then
-    write_failure_artifact "nginx-access-log-missing" "Nginx access log is missing in ${nginx_container}"
-    exit 1
+  local container
+  local found_source=false
+  local pattern="\"k6_run_id\":\"${run_id}\""
+  local temp_log="${nginx_access_ref}.tmp"
+  local container_candidates=(
+    "${nginx_container}"
+    "${K6_NGINX_CONTAINER:-}"
+    "${NGINX_CONTAINER:-}"
+    "aquila-bank-nginx"
+    "aquila-nginx"
+    "nginx"
+  )
+
+  if command -v docker >/dev/null 2>&1; then
+    while IFS= read -r container; do
+      container_candidates+=("${container}")
+    done < <(docker ps --format '{{.Names}}' 2>/dev/null | grep -E 'nginx|proxy' || true)
   fi
-  docker exec "${nginx_container}" sh -c 'grep -F "$1" "$2" || true' sh "\"k6_run_id\":\"${run_id}\"" "${nginx_access_log}" >"${nginx_access_ref}"
+
+  : >"${nginx_access_ref}"
+  for container in "${container_candidates[@]}"; do
+    [[ -z "${container}" ]] && continue
+
+    # 운영 Nginx는 access_log 파일 대신 stdout으로 보낼 수 있어 두 경로를 모두 확인한다.
+    if docker exec "${container}" sh -c 'test -s "$1"' sh "${nginx_access_log}" >/dev/null 2>&1; then
+      found_source=true
+      docker exec "${container}" sh -c 'grep -F "$1" "$2" || true' sh "${pattern}" "${nginx_access_log}" >"${nginx_access_ref}"
+      if [[ -s "${nginx_access_ref}" ]]; then
+        break
+      fi
+    fi
+
+    if docker logs --since "${nginx_log_since}" "${container}" >"${temp_log}" 2>/dev/null; then
+      if [[ -s "${temp_log}" ]]; then
+        found_source=true
+      fi
+      grep -F "${pattern}" "${temp_log}" >"${nginx_access_ref}" || true
+      rm -f "${temp_log}"
+      if [[ -s "${nginx_access_ref}" ]]; then
+        break
+      fi
+    fi
+    rm -f "${temp_log}"
+  done
+
   if [[ ! -s "${nginx_access_ref}" ]]; then
-    write_failure_artifact "nginx-run-lines-missing" "Nginx access log has no transaction-read lines for this k6 run id"
+    if [[ "${found_source}" == "true" ]]; then
+      write_failure_artifact "nginx-run-lines-missing" "Nginx access log has no transaction-read lines for this k6 run id"
+    else
+      write_failure_artifact "nginx-access-log-missing" "Nginx access log is missing in ${nginx_container}"
+    fi
     exit 1
   fi
   nginx_499_count="$(grep -c '"status":499' "${nginx_access_ref}" || true)"
