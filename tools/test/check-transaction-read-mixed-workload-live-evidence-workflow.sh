@@ -34,6 +34,13 @@ grep -F 'java-version: "21"' "${workflow}" >/dev/null
 grep -F 'OCI_A1_STAGING_ENV: ${{ secrets.OCI_A1_STAGING_ENV }}' "${workflow}" >/dev/null
 grep -F 'MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV_INPUT: ${{ inputs.evidence_manifest_tsv }}' "${workflow}" >/dev/null
 grep -F 'MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV_VAR: ${{ vars.OCI_MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV }}' "${workflow}" >/dev/null
+grep -F 'staging_db_env_names=(' "${workflow}" >/dev/null
+grep -F 'OCI_A1_BACKEND_ENV_B64' "${workflow}" >/dev/null
+grep -F 'STAGING_OCI_A1_DATABASE_URL' "${workflow}" >/dev/null
+grep -F 'POSTGRES_CONTAINER_NAME' "${workflow}" >/dev/null
+grep -F 'POSTGRES_NETWORK_ALIAS' "${workflow}" >/dev/null
+grep -F 'POSTGRES_HOST_BIND' "${workflow}" >/dev/null
+grep -F 'printf '\''%s=%s\n'\'' "${name}" "${value}" >>"${GITHUB_ENV}"' "${workflow}" >/dev/null
 grep -F 'MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV="${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV_INPUT:-${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV:-${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV_VAR:-}}}"' "${workflow}" >/dev/null
 grep -F 'MIXED_WORKLOAD_EVIDENCE_READY=false' "${workflow}" >/dev/null
 grep -F 'MIXED_WORKLOAD_OCI_DOCKER_CONTEXT="${MIXED_WORKLOAD_OCI_DOCKER_CONTEXT:-${K6_DOCKER_CONTEXT:-${CAPACITY_K6_DOCKER_CONTEXT:-default}}}"' "${workflow}" >/dev/null

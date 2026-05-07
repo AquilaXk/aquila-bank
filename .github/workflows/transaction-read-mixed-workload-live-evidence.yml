@@ -115,6 +115,25 @@ jobs:
             set +a
           fi
 
+          staging_db_env_names=(
+            OCI_A1_BACKEND_ENV_B64
+            STAGING_OCI_A1_DATABASE_URL
+            POSTGRES_CONTAINER_NAME
+            POSTGRES_NETWORK_ALIAS
+            POSTGRES_HOST_BIND
+          )
+          for name in "${staging_db_env_names[@]}"; do
+            value="${!name:-}"
+            if [[ -n "${value}" ]]; then
+              case "${name}" in
+                *_ENV_B64|*DATABASE_URL)
+                  echo "::add-mask::${value}"
+                  ;;
+              esac
+              printf '%s=%s\n' "${name}" "${value}" >>"${GITHUB_ENV}"
+            fi
+          done
+
           MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV="${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV_INPUT:-${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV:-${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV_VAR:-}}}"
           MIXED_WORKLOAD_EVIDENCE_READY=true
           if [[ -z "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" ]]; then
