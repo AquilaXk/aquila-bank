@@ -1,5 +1,6 @@
 package com.aquilabank.global.config;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.mockito.Mockito.mock;
 
@@ -64,14 +65,16 @@ class OutboxConfigurationTest {
   }
 
   @Test
-  void usesLoggingFallbackWhenKafkaIsEnabledButRequiredValuesAreMissing() {
+  void failsFastWhenKafkaIsEnabledButRequiredValuesAreMissing() {
     contextRunner
         .withPropertyValues("outbox.kafka.enabled=true")
         .run(
-            context ->
-                assertInstanceOf(
-                    LoggingOutboxEventPublisher.class,
-                    context.getBean("outboxEventPublishPort", OutboxEventPublishPort.class)));
+            context -> {
+              assertThat(context).hasFailed();
+              assertThat(context.getStartupFailure())
+                  .hasRootCauseMessage(
+                      "outbox.kafka.bootstrap-servers is required when outbox.kafka.enabled=true");
+            });
   }
 
   @Test

@@ -29,6 +29,17 @@ public record OutboxKafkaProperties(
         producer == null
             ? new ProducerProperties("aquila-bank-outbox-producer", "all", true, 1)
             : producer;
+
+    // enabled=true가 fallback으로 통과하면 live evidence가 Kafka publish 경로를 보장하지 못합니다.
+    if (enabled) {
+      requireText(
+          bootstrapServers,
+          "outbox.kafka.bootstrap-servers is required when outbox.kafka.enabled=true");
+      if (!topic.hasDefaultTopic()) {
+        throw new IllegalArgumentException(
+            "outbox.kafka.topic.default-name is required when outbox.kafka.enabled=true");
+      }
+    }
   }
 
   public String disabledReason() {
@@ -65,4 +76,10 @@ public record OutboxKafkaProperties(
       String acks,
       boolean enableIdempotence,
       int maxInFlightRequestsPerConnection) {}
+
+  private static void requireText(String value, String message) {
+    if (!StringUtils.hasText(value)) {
+      throw new IllegalArgumentException(message);
+    }
+  }
 }
