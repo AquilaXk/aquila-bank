@@ -43,7 +43,7 @@ com.aquilabank
 
 ```bash
 tools/test/with-resource-lock.sh back-password-recovery-throttling \
-  tools/test/run-password-recovery-throttling.sh
+  ./back/gradlew -p back test --tests '*LoginThrottlingIntegrationTest'
 ```
 
 ## Account List Pagination
@@ -60,7 +60,9 @@ tools/test/with-resource-lock.sh back-password-recovery-throttling \
 
 ```bash
 tools/test/with-resource-lock.sh back-account-list-keyset \
-  tools/test/run-account-list-keyset-pagination.sh
+  ./back/gradlew -p back test \
+    --tests '*AccountListJwtSecurityIntegrationTest' \
+    --tests '*JdbcAccountListRepositoryIntegrationTest'
 ```
 
 ## Bootstrap Bulk Import
@@ -77,7 +79,7 @@ tools/test/with-resource-lock.sh back-account-list-keyset \
 
 ```bash
 tools/test/with-resource-lock.sh back-bootstrap-bulk-import \
-  tools/test/run-bootstrap-bulk-import-api.sh
+  ./back/gradlew -p back test --tests '*BootstrapBulkImportApiIntegrationTest'
 ```
 
 ## Stack
@@ -120,7 +122,10 @@ tools/test/with-resource-lock.sh back-bootstrap-bulk-import \
 
 ```bash
 tools/test/with-resource-lock.sh back-transaction-baseline \
-  tools/test/run-transaction-query-baseline.sh
+  ./back/gradlew -p back test \
+    --tests '*JdbcTransactionReadRepositoryBaselineIntegrationTest' \
+    --tests '*TransactionDatasourceStatementTimeoutIntegrationTest' \
+    --tests '*TransactionJdbcQueryTimeoutIntegrationTest'
 ```
 
 ## Transaction Read Replica Routing
@@ -226,7 +231,7 @@ partition/archive 는 `GET /api/v1/transactions` read path를 실제로 줄여�
 
 ```bash
 tools/test/with-resource-lock.sh back-transaction-partition-fit \
-  tools/test/run-transaction-read-model-partition-fit.sh
+  ./back/gradlew -p back test --tests '*JdbcTransactionReadRepositoryPartitionFitIntegrationTest'
 ```
 
 ## Run
@@ -505,18 +510,6 @@ tools/test/run-production-t3micro-capacity-smoke.sh
   - `PRODUCTION_T3MICRO_NOTIFICATION_STREAM_MAX`
 - smoke rollback은 workflow 비활성화 또는 variable 값을 기본 budget으로 되돌리는 방식으로 처리합니다.
 
-로컬에서 Docker cgroup 제한까지 걸어 빠르게 회귀를 확인할 때는 아래 entrypoint를 사용합니다.
-
-```bash
-tools/test/run-docker-t3micro-capacity-smoke.sh --print-plan
-tools/test/run-docker-t3micro-capacity-smoke.sh
-```
-
-- 기본 Docker budget은 `--cpus=2`, `--memory=1024m`, `--memory-swap=1024m`, `--pids-limit=384` 입니다.
-- script는 새 부하 발생기를 만들지 않고 기존 `tools/test/run-production-t3micro-capacity-smoke.sh`를 container 안에서 재사용합니다.
-- 기본값은 실행 전 host에서 `testClasses`를 준비해 Gradle compile 비용을 Docker 1GiB 판정에서 분리합니다. 이 동작을 끄려면 `DOCKER_T3MICRO_PREPARE_TEST_CLASSES=false`를 사용합니다.
-- 기본 image는 `eclipse-temurin:21-jdk`이고, 로컬에 다른 Java 21 image가 있으면 `DOCKER_T3MICRO_IMAGE=<image>`로 바꿀 수 있습니다.
-- Docker smoke는 host 자원이 큰 개발 머신에서 놓칠 수 있는 JVM/thread/pool 압력 회귀를 빨리 잡는 용도입니다.
 - 최종 120% headroom 판정은 OCI A1 4 OCPU / 24GB + data 300GB staging에서 transaction replay, read replica smoke, production capacity smoke를 실행한 결과로 닫습니다.
 
 ### k6 Transaction 100m Load Test
@@ -572,10 +565,10 @@ tools/test/run-transaction-read-model-100m-k6-local.sh
 - 기본 설정은 `NOTIFICATION_INBOX_CLEANUP_ENABLED=true`, `NOTIFICATION_INBOX_CLEANUP_RETENTION_DAYS=90`, `NOTIFICATION_INBOX_CLEANUP_BATCH_SIZE=500`, `NOTIFICATION_INBOX_CLEANUP_FIXED_DELAY_MS=300000` 입니다.
 - JWT user inbox list는 active account별 bounded LATERAL query로 `idx_notification_inbox_account_visible_cursor` partial index를 재사용합니다.
 - user inbox EXPLAIN baseline은 active membership/user visibility와 per-user hidden state를 포함한 first/cursor page에서 `notification_inbox` full scan 회귀를 차단합니다.
-- 실행:
+  - 실행:
   ```bash
   tools/test/with-resource-lock.sh back-notification-user-inbox-baseline \
-    tools/test/run-notification-user-inbox-explain-baseline.sh
+    ./back/gradlew -p back test --tests '*JdbcNotificationInboxRepositoryUserExplainBaselineIntegrationTest'
   ```
 
 ## Notification Search API
@@ -650,7 +643,7 @@ tools/test/run-transaction-read-model-100m-k6-local.sh
   - 실행:
     ```bash
     tools/test/with-resource-lock.sh back-notification-sse-fanout-load-fault \
-      tools/test/run-notification-sse-fanout-load-fault.sh
+      ./back/gradlew -p back test --tests '*NotificationSseBrokerTest'
     ```
 
 ## Notification Channel Provider Delivery
@@ -686,7 +679,7 @@ tools/test/with-resource-lock.sh back-notification-provider \
 
 ```bash
 tools/test/with-resource-lock.sh back-notification-provider-smoke \
-  tools/test/run-notification-provider-delivery-smoke.sh
+  ./back/gradlew -p back test --tests '*NotificationChannelProviderDeliverySmokeTest'
 ```
 
 - smoke fixture는 local webhook server에서 `EMAIL=202 Accepted`, `SMS=delayed response`를 주입합니다.
@@ -806,8 +799,13 @@ tools/test/run-sse-multinode-drain-smoke.sh
   - Redis runtime smoke는 compose Redis profile을 띄운 뒤 실제 counter 공유와 TTL 만료를 확인
   - 실행:
     ```bash
-    tools/test/with-resource-lock.sh back-redis-login-throttling-runtime \
-      tools/test/run-redis-login-throttling-runtime-smoke.sh
+    docker compose --profile redis up -d redis
+    REDIS_LOGIN_THROTTLING_RUNTIME_SMOKE=true \
+    REDIS_HOST="${REDIS_HOST:-localhost}" \
+    REDIS_PORT="${REDIS_PORT:-6379}" \
+    SECURITY_LOGIN_THROTTLING_REDIS_KEY_PREFIX="${SECURITY_LOGIN_THROTTLING_REDIS_KEY_PREFIX:-auth:login:runtime-smoke:}" \
+      tools/test/with-resource-lock.sh back-redis-login-throttling-runtime \
+        ./back/gradlew -p back test --tests '*RedisLoginThrottleRuntimeSmokeTest'
     ```
 - 상태 우선순위:
   - 수동 운영 상태 `user_status=LOCKED|DISABLED`가 임시 잠금보다 우선
