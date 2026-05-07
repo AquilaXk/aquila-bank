@@ -1,143 +1,218 @@
 # Aquila Bank
 
-대용량 트래픽을 작은 인프라에서 무제한 처리하는 대신, OCI A1 Flex 4 OCPU / 24GB + data 200GB self-managed PostgreSQL 18 기준으로 1억 건 거래 데이터를 적재하고 bounded query로 조회하는 것을 목표로 하는 웹뱅킹 프로젝트입니다. AWS EC2는 legacy/optional app smoke 기준으로만 유지하고, 1억 건 DB primary evidence는 OCI A1 data volume에 둡니다.
-
-## Overview
-
-- 목표:
-  - 대용량 트래픽 방어와 과부하 시 fail-fast
-  - 실시간 알림 지원
-  - OCI A1 Flex + self-managed PostgreSQL 18 + 200GB Block Volume 기반 1억 건 fixture 적재와 계좌/기간/keyset page 조회 지원
-  - 제한된 cloud budget에서도 운영 가능한 구조 지향
-  - 로컬/배포 환경 모두 `PostgreSQL 18` 표준화
-  - 비용형 DB/capacity baseline은 OCI A1 Flex 4 OCPU / 24GB + data 200GB self-managed PostgreSQL로 통일
-  - AWS App EC2는 legacy/optional 배포 smoke로만 사용
-- 제외 목표:
-  - 전체 1억 건 검색/집계/정렬
-  - Prometheus, Grafana의 같은 host 상시 필수 운영
-  - 작은 인프라 한계를 넘는 무제한 SSE/API 동시성
-- 원칙:
-  - 헥사고날 아키텍처 준수
-  - 도메인과 인프라 경계 분리
-  - bounded query, 동시성 제한, 정합성, 운영 단순성 우선
-
-## Project Architecture Structure
+작은 cloud budget 안에서 거래 정합성, 대량 조회, 실시간 알림, 배포 운영을 함께 검증하는 웹뱅킹 프로젝트입니다.
+단순한 계좌/거래 CRUD보다 `1억 건 거래 read model`, `bounded query`, `outbox 기반 알림`, `OCI A1 운영 budget`, `회귀 방지 gate`에 더 큰 비중을 두고 설계했습니다.
 
 ![Aquila Bank architecture](docs/assets/readme-architecture.png)
 
+## 프로젝트 개요
+
+Aquila Bank는 제한된 인프라에서 무제한 트래픽을 처리하는 프로젝트가 아닙니다. OCI A1 Flex 4 OCPU / 24GB + data 200GB self-managed PostgreSQL 18 기준으로 1억 건 거래 데이터를 적재하고, 계좌/기간/keyset page처럼 bounded 된 조회만 온라인 목표로 둡니다.
+
+- 프런트는 `Next.js 14 + React 18 + TypeScript`, 백엔드는 `Spring Boot 4 + Java 21`로 구성했습니다.
+- 데이터 기준은 `PostgreSQL 18`이고, 이벤트/알림 경로는 `Kafka 4.0`과 outbox 패턴으로 분리했습니다.
+- 운영 경로는 `Nginx reverse proxy`, GitHub Actions CI/CD, OCI A1 staging/production 승격 기준을 중심으로 정리했습니다.
+- Prometheus/Grafana/k6는 부하테스트와 선택 관측 자산으로 두고, 같은 host 상시 필수 운영 구성으로 보지 않습니다.
+
+## 왜 이 프로젝트가 차별점이 있는가
+
+- `거래 정합성`을 기능 수보다 앞에 두었습니다.
+  - 계좌 잔액, 원장, 감사 추적 경계를 분리하고 도메인이 framework/infrastructure 구현에 의존하지 않도록 관리합니다.
+- `작은 인프라에서 버티는 읽기 경로`를 기준으로 설계했습니다.
+  - 전체 1억 건 검색/집계/정렬은 온라인 목표에서 제외하고, `accountId + 기간 + keyset pagination` 경로를 중심으로 봅니다.
+- `실시간 알림을 운영 가능한 비동기 경로`로 다룹니다.
+  - outbox claim, Kafka publish, notification inbox consume, SSE fan-out 경로에서 재시도와 중복 방지를 분리합니다.
+- `성능 주장과 운영 증거`를 분리합니다.
+  - fixture pass나 harness 통과만으로 성능 개선을 주장하지 않고, OCI 또는 production-like live artifact를 기준으로 판단합니다.
+
+## 핵심 기능
+
+### Banking Domain
+
+- 계좌 생성 / 상태 관리 / 잔액 조회
+- 송금, 부분 취소, 한도 정책
+- 거래 상세 조회와 계좌별 거래 목록 조회
+- 원장 감사 추적과 snapshot/reconciliation 복구 경로
+
+### Transaction Read Path
+
+- 1억 건 transaction read model fixture 기준 검증
+- 계좌/기간/status/cursor 조건 기반 bounded query
+- keyset pagination, covering index, timeout, admission control
+- archive query와 retention cutoff load test 기준 분리
+
+### Auth & Security
+
+- JWT access token / refresh token session
+- MFA TOTP / backup code / remember device
+- password recovery token과 delivery outbox
+- internal admin API 인증, 감사 검색, 상태 변경 이력
+
+### Notification & Async
+
+- notification inbox / unread projection
+- SSE stream, replay, reconnect storm 방어
+- outbox dispatcher adaptive batch/backoff
+- provider delivery worker와 DLQ/redrive 운영 API
+
+### Operations
+
+- Nginx reverse proxy baseline과 transaction-read edge gate
+- GitHub Actions backend/frontend/main CI
+- OCI A1 staging deploy와 production promotion gate
+- k6, Prometheus, Grafana 기반 부하테스트/관측 asset
+
+## 기술 스택
+
+| 영역 | 스택 |
+| --- | --- |
+| Frontend | Next.js 14, React 18, TypeScript |
+| Backend | Spring Boot 4, Java 21, Spring Security, JDBC, Flyway |
+| Data | PostgreSQL 18 |
+| Event / Async | Kafka 4.0, Outbox, SSE |
+| Edge / Ops | Nginx, Docker Compose, OCI A1 Flex, GitHub Actions |
+| Observability / Load Test | Prometheus, Grafana, k6, Postgres exporter |
+| Quality | Gradle check, Spotless, JaCoCo, Testcontainers, Next lint |
+
+## 아키텍처 포인트
+
+### 1. Hexagonal Boundary
+
+- `domain`은 Spring/JPA/web/sdk 구현에 의존하지 않습니다.
+- inbound/outbound adapter와 persistence/web/security 설정은 `global`에 둡니다.
+- 비즈니스 규칙은 `util`이 아니라 도메인 model/use case/service에 둡니다.
+
+### 2. Bounded Read Path
+
+- 온라인 거래 목록 조회는 `accountId + 기간 + keyset pagination` 중심으로 제한합니다.
+- 1억 건 전체 검색/집계/정렬은 목표에서 제외합니다.
+- timeout, DB pool, admission control, edge reject curve를 함께 봅니다.
+
+### 3. Outbox & Notification
+
+- 쓰기 transaction 안에서 outbox를 적재하고 worker가 외부 publish/delivery를 분리합니다.
+- Kafka enabled 상태에서는 bootstrap/topic 필수값 누락을 startup 실패로 처리합니다.
+- SSE는 실시간 알림을 제공하되 reconnect gap은 bounded replay와 pull API 재동기화로 다룹니다.
+
+### 4. Evidence-Based Performance
+
+- `[Perf]` 범위는 OCI 또는 production-like live artifact가 있을 때만 사용합니다.
+- synthetic fixture pass, mock evidence, harness-only pass는 성능 개선 증거로 보지 않습니다.
+- 작은 OCI A1 budget에서 CPU/메모리/IO 비용이 낮은 검증된 PostgreSQL 운영 패턴을 우선합니다.
+
+## 프로젝트 구조
+
 ```text
 .
-├── front
-├── back
-├── infra
-├── ops
-├── .github
-├── compose.yml
-├── compose.t3micro.yml
-└── compose.loadtest.yml
+├── front/                  # Next.js 14 / React 18 frontend
+├── back/                   # Spring Boot 4 / Java 21 backend
+├── infra/                  # OCI/AWS 선택형 Terraform baseline
+├── ops/                    # Nginx, Prometheus, Grafana 운영 baseline
+├── tools/                  # test/evidence/ops helper scripts
+├── .github/                # issue/PR templates, CI/CD workflows
+├── compose.yml             # 로컬 PostgreSQL/Kafka 개발 인프라
+├── compose.t3micro.yml     # 작은 CPU/메모리 budget 근사 overlay
+└── compose.loadtest.yml    # k6/Prometheus/Grafana 부하테스트 overlay
 ```
 
-- `front`: 고객/운영 웹 애플리케이션
-- `back`: API, 도메인, 배치, 어댑터
-- `infra`: 선택형 cloud baseline Terraform. 1억 건 DB/capacity 기준은 OCI A1 Flex 4 OCPU / 24GB + data 200GB self-managed PostgreSQL
-- `ops`: reverse proxy 같은 운영 baseline 파일
-- `.github`: 이슈/PR 템플릿과 협업 메타 설정
-- `compose.yml`: 로컬 개발용 Docker Compose 인프라 실행 기준
-- `compose.t3micro.yml`: 로컬 인프라를 작은 CPU/메모리 budget으로 띄우는 legacy small-budget override
-- `compose.loadtest.yml`: k6, Prometheus, Grafana 기반 HTTP 부하 테스트 runtime overlay
+## 로컬 실행
+
+### 사전 준비
+
+- Java 21
+- Node.js LTS
+- Yarn Classic
+- Docker Compose
+
+### 1. 개발용 인프라 실행
+
+```bash
+docker compose up -d postgres kafka
+```
+
+- PostgreSQL: `localhost:5432`
+- Kafka: `localhost:9092`
+
+### 2. 백엔드 실행
+
+```bash
+./back/gradlew -p back bootRun
+```
+
+- Backend: `http://localhost:8080`
+- Actuator health: `http://localhost:8080/actuator/health`
+- Prometheus scrape: `http://localhost:8080/actuator/prometheus`
+
+### 3. 프런트 실행
+
+```bash
+yarn --cwd front install
+yarn --cwd front dev
+```
+
+- Front: `http://localhost:3000`
+
+## 품질 게이트
+
+### Backend
+
+```bash
+./back/gradlew -p back check
+```
+
+- unit/slice test, Testcontainers integration test, query plan gate, JaCoCo coverage verification, Spotless check를 포함합니다.
+- 같은 워크트리에서 backend 검증을 병렬 실행할 때는 `tools/test/with-resource-lock.sh`로 직렬화합니다.
+
+### Frontend
+
+```bash
+yarn --cwd front lint
+```
+
+### Load / Evidence
+
+```bash
+docker compose -f compose.yml -f compose.loadtest.yml --profile loadtest up -d
+```
+
+- k6, Prometheus, Grafana, Alertmanager, Postgres exporter는 부하테스트/선택 관측 용도입니다.
+- 1억 건 primary evidence는 OCI A1 PostgreSQL data volume의 fixture와 cloud/off-host k6 summary로 닫습니다.
 
 ## Runtime Baseline
 
 - database: `PostgreSQL 18`
-- event broker: `Kafka 4.0` single-node KRaft broker, local/deploy always-on
-- primary 100m evidence: `OCI A1 Flex + self-managed PostgreSQL 18 + 200GB Block Volume`
+- event broker: `Kafka 4.0` single-node KRaft broker
+- primary 100m evidence: `OCI A1 Flex 4 OCPU / 24GB + self-managed PostgreSQL 18 + 200GB Block Volume`
 - query/admission budget: OCI A1 `4 OCPU / 24GB` 기반 작은 CPU/메모리 budget
-- latest documented live read evidence: [main805 rerun15](/Users/aquila/Custom/GitProjects/aquila-bank/docs/performance-results/oci-a1-100m-bottleneck-20260506-main805-rerun15.md) 기준 30m soak accepted 200 `112,416`, backend/unknown 429 `0`, 5xx/499 `0`, Hikari warning/pending `0`, PostgreSQL temp file delta `0`, p99.9 `12.86ms`
-- paid DB/capacity baseline: `OCI A1 Flex 4 OCPU / 24GB + self-managed PostgreSQL 18 + 200GB Block Volume`
 - optional legacy app smoke: `EC2 t3.small + gp3 40GiB`
 
 ## Environment Split
 
-- 로컬 개발: `Docker Compose + PostgreSQL 18`
-- Kafka 로컬 검증: `docker compose up`에서 Kafka가 상시 실행됩니다. host-local backend는 `localhost:9092`, compose loadtest backend는 `kafka:9092`를 사용합니다. `OUTBOX_KAFKA_ENABLED=true` 또는 `NOTIFICATION_INBOX_CONSUMER_ENABLED=true`이면 bootstrap/topic 같은 필수값이 비어 있을 때 logging fallback으로 내려가지 않고 startup에서 실패합니다.
-- 로컬 small-budget 근사 검증: legacy 이름의 `compose.t3micro.yml`과 `tools/test/run-docker-t3micro-capacity-smoke.sh`로 CPU/메모리 cgroup 제한을 적용합니다.
-- 로컬 HTTP 부하 테스트: `compose.loadtest.yml`로 backend, Kafka, k6, Prometheus, Grafana, Alertmanager, Postgres exporter를 함께 띄웁니다. Prometheus/Grafana는 부하테스트/선택 운영 자산이며 앱/DB host 상시 필수 구성에서 제외합니다. read/write interference gate는 outbox publish와 notification inbox consume 경로를 실제 broker로 검증합니다.
-- cloud 1억 건 synthetic 조회 테스트: dataset 생성은 OCI A1 PostgreSQL을 향해 `tools/test/prepare-transaction-read-model-100m-fixture.sh`를 실행하고, k6 조회는 remote/off-host runner 또는 기존 legacy 이름의 `tools/test/run-transaction-read-model-100m-k6-local.sh --k6-only`로 분리합니다. 생성 phase와 조회 phase 모두 OCI A1 data volume의 1억 건 dataset을 기준으로 판정합니다.
-- 비용형 1억 건 DB/capacity 기준: [infra/terraform/oci/paid-a1-postgres](/Users/aquila/Custom/GitProjects/aquila-bank/infra/terraform/oci/paid-a1-postgres/README.md)는 `VM.Standard.A1.Flex` 4 OCPU / 24GB + data 200GB self-managed PostgreSQL 18 기준입니다. PostgreSQL 5432 public ingress는 열지 않고 SSH tunnel/private 경로로만 접근합니다.
-- legacy app smoke: `EC2 t3.small + gp3 40GiB`는 AWS 배포 경로 확인용으로만 남기며, remote DB/capacity 기준으로 사용하지 않습니다.
-- reverse proxy baseline template은 [ops/nginx/nginx.conf](/Users/aquila/Custom/GitProjects/aquila-bank/ops/nginx/nginx.conf)에 두고, runtime 값은 `ops/nginx/runtime.env.example` 기반으로 렌더링합니다.
-- `compose.yml`은 로컬 개발 전용이며, 배포용 인프라 정의는 포함하지 않습니다.
-- 최종 1억 건 primary evidence는 OCI A1 PostgreSQL data volume의 fixture와 cloud/off-host k6 summary로 닫습니다. AWS staging smoke는 EC2 app 배포 확인 범위로 제한합니다.
-- 성능 테스트 결과는 [docs/performance-results](/Users/aquila/Custom/GitProjects/aquila-bank/docs/performance-results)에 Markdown으로 남깁니다.
+- 로컬 개발: Docker Compose 기반 PostgreSQL/Kafka
+- 로컬 small-budget 근사 검증: `compose.t3micro.yml`
+- 로컬 HTTP 부하테스트: `compose.loadtest.yml`
+- cloud 1억 건 조회 테스트: OCI A1 PostgreSQL fixture + off-host/cloud k6 runner
+- 비용형 DB/capacity 기준: [infra/terraform/oci/paid-a1-postgres](infra/terraform/oci/paid-a1-postgres/README.md)
+- reverse proxy baseline: [ops/nginx](ops/nginx/README.md)
+- monitoring baseline: [ops/prometheus](ops/prometheus/README.md)
 
 ## Delivery Flow
 
-- feature 작업은 `main`에서 짧게 분기한 `feat/*`, `fix/*`, `perf/*`, `chore/*`, `build/*`, `docs/*` 브랜치에서 진행합니다.
+- 작업 브랜치는 `main`에서 짧게 분기하고 PR base는 `main`으로 둡니다.
 - PR 리뷰와 backend/frontend CI 통과 후 `main`에 병합합니다.
-- `main`에 병합되면 `Main CI` workflow가 backend/frontend check를 다시 실행하고, 같은 SHA를 `Staging Deploy` workflow로 전달합니다.
-- legacy EC2 app smoke는 `EC2 Blue/Green Deploy` workflow가 GHCR image를 만들고 SSM으로 단일 EC2 Docker/Nginx blue-green slot을 전환합니다. Backend smoke는 public Host를 backend Host로 그대로 전달하지 않고, health/API 경로를 배포 직후 확인합니다.
-- staging 배포는 현재 `origin/main` SHA와 일치하는 `Main CI` 성공 SHA만 진행하며, deploy hook secret이 없으면 no-op으로 종료합니다.
-- production 승격은 staging deployment status가 `success`인 같은 SHA만 대상으로 하고, GitHub Environment 수동 승인 또는 `prod-*` tag로만 진행합니다.
+- `main` merge SHA는 staging에 자동 배포합니다.
+- production은 staging 성공 같은 SHA만 GitHub Environment 수동 승인 또는 `prod-*` tag로 승격합니다.
 - 미완성 기능은 장기 `develop` 브랜치 대신 feature flag로 기본 비노출 처리합니다.
-- 상세 운영 규칙은 [docs/delivery-flow.md](/Users/aquila/Custom/GitProjects/aquila-bank/docs/delivery-flow.md)에서 확인합니다.
 
-## Backend Package Structure
+## 관련 문서
 
-```text
-com.aquilabank
-├── domain
-├── global
-└── standard
-    └── util
-```
+- 백엔드 상세 설명: [back/README.md](back/README.md)
+- 프런트 실행 가이드: [front/README.md](front/README.md)
+- OCI A1 PostgreSQL baseline: [infra/terraform/oci/paid-a1-postgres/README.md](infra/terraform/oci/paid-a1-postgres/README.md)
+- Nginx reverse proxy baseline: [ops/nginx/README.md](ops/nginx/README.md)
+- Prometheus/Grafana baseline: [ops/prometheus/README.md](ops/prometheus/README.md)
 
-- `domain`: 핵심 도메인, 유스케이스, 포트
-- `global`: 설정, 보안, 웹, 영속성, 예외 처리 등 인프라/어댑터
-- `standard/util`: 공통 기준과 최소 유틸리티
+## 프로젝트에서 강조하고 싶은 점
 
-## Domain Structure
-
-- `auth`: 로그인, 세션, MFA, 권한
-- `account`: 고객 계좌, 잔액, 상태
-- `transaction`: 대량 거래 조회, 검색, 상세 응답
-- `ledger`: 거래 정합성, 원장 기록, 감사 추적
-- `notification`: 실시간 이벤트, 읽음 처리, 재시도
-- `ops`: 모니터링, 운영 배치, 장애 대응
-
-## Architecture Principle
-
-- domain은 framework, web, persistence 구현체에 의존하지 않습니다.
-- global은 domain을 사용해 어댑터와 설정을 구성합니다.
-- util에는 비즈니스 로직을 두지 않고, 공통 기술 보조 코드만 둡니다.
-- 읽기 경로는 대용량 트래픽 방어, 1억 건 저장 규모, OCI A1 4 OCPU / 24GB + data 200GB 운영 budget 한계를 함께 고려해 경량화와 분리를 우선합니다.
-- transaction-read public edge capacity는 arrival-16 429=0, delayed<25%, p95<350ms와 VU16/burst reject curve gate를 함께 확인합니다.
-- 거래 목록 조회는 `accountId + 기간 + keyset pagination` 경로만 온라인 목표로 둡니다.
-- 전체 1억 건 검색/집계/정렬은 온라인 목표에서 제외합니다.
-
-## Outbox Dispatcher
-
-- `OUTBOX_POLLER_BATCH_SIZE`: 정상 상태 claim batch 상한입니다.
-- `OUTBOX_POLLER_ADAPTIVE_ENABLED`: Kafka/DB 지연 시 adaptive batch/backoff 적용 여부입니다.
-- `OUTBOX_POLLER_MIN_BATCH_SIZE`: publish 실패가 이어질 때 줄일 최소 batch 크기입니다.
-- `OUTBOX_POLLER_MAX_ADAPTIVE_DELAY_MS`: 실패 또는 빈 poll 반복 시 추가 대기 시간 상한입니다.
-- 운영 복구 시 `OUTBOX_POLLER_ADAPTIVE_ENABLED=false`로 고정 batch/주기 모드로 되돌릴 수 있습니다.
-
-## Kafka Runtime
-
-- Kafka는 local/deploy runtime에서 상시 실행합니다. OCI blue-green deploy는 backend 시작 전 단일 broker container를 보장합니다.
-- producer 필수값: `OUTBOX_KAFKA_ENABLED=true`, `OUTBOX_KAFKA_BOOTSTRAP_SERVERS`, `OUTBOX_KAFKA_TOPIC_DEFAULT`.
-- consumer 필수값: `NOTIFICATION_INBOX_CONSUMER_ENABLED=true`, `NOTIFICATION_INBOX_CONSUMER_BOOTSTRAP_SERVERS`, `NOTIFICATION_INBOX_CONSUMER_TRANSFER_BOOKED_TOPIC` 또는 `NOTIFICATION_INBOX_CONSUMER_TRANSFER_REVERSED_TOPIC`.
-- ops/DLQ 필수값: `NOTIFICATION_INBOX_CONSUMER_OPS_ENABLED=true`이면 `NOTIFICATION_INBOX_CONSUMER_DLQ_TOPIC`도 함께 둡니다.
-- production topic safety는 `KAFKA_TOPIC_PROVISIONING_ENABLED`, `KAFKA_TOPIC_STARTUP_VALIDATION_ENABLED`, partitions/replication/min ISR 설정으로 broker/topic drift를 startup에서 막습니다.
-- Kafka enabled 상태에서 필수값이 빠지면 app startup이 실패합니다. 이 기준 때문에 live evidence가 logging fallback 기반 synthetic pass로 오인되지 않습니다.
-
-## Provider Delivery
-
-- notification EMAIL/SMS provider delivery는 `notification_channel_outbox`와 `NotificationChannelProviderPort`를 통해 외부 호출을 worker로 분리합니다.
-- `NOTIFICATION_CHANNEL_PROVIDER_WORKER_ENABLED`: notification provider worker 활성화 여부입니다. 기본값은 `false`입니다.
-- `NOTIFICATION_CHANNEL_PROVIDER_DELIVERY_ENABLED=true`이면 channel별 webhook adapter가 활성화되고, `false`이면 외부 secret 없는 logging adapter fallback을 사용합니다.
-- notification provider destination은 `bank_user_verified_contact`의 `user_id + contact_channel` 기준 `provider_destination`을 사용합니다.
-- password recovery provider delivery는 token 발급 transaction 안에서 `auth_password_recovery_delivery_outbox`를 적재하고, worker가 EMAIL 우선/SMS fallback verified contact snapshot으로 webhook adapter를 호출합니다.
-- `AUTH_PASSWORD_RECOVERY_DELIVERY_ENABLED=true`이고 `AUTH_PASSWORD_RECOVERY_DELIVERY_EMAIL_URL` 또는 `AUTH_PASSWORD_RECOVERY_DELIVERY_SMS_URL`가 있으면 password recovery webhook adapter가 provider endpoint로 `POST` 합니다.
-- verified contact 누락, 비활성 사용자, channel URL 누락, 이미 사용/만료/대체된 password recovery token은 외부 오발송 방지를 위해 fail-safe skip 처리합니다.
-- webhook timeout, 4xx/5xx, network error 같은 실제 provider 장애만 bounded retry/backoff/quarantine 흐름으로 들어갑니다.
+이 프로젝트는 "웹뱅킹 화면을 만들었다"보다 "정합성 있는 금융 도메인을 작은 인프라에서 어디까지 운영 가능하게 만들 수 있는지 검증했다"에 가깝습니다.
+대량 거래 조회, outbox/SSE 알림, admission control, 운영 evidence를 코드와 문서의 같은 레벨에서 관리하는 것을 프로젝트의 기본 규칙으로 삼았습니다.
