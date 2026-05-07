@@ -30,8 +30,8 @@ grep -F "backend_admission_max=10" <<<"${plan}" >/dev/null
 grep -F "backend_admission_adaptive_max=12" <<<"${plan}" >/dev/null
 grep -F "backend_hot_admission_max=10" <<<"${plan}" >/dev/null
 grep -F "backend_hot_admission_adaptive_max=12" <<<"${plan}" >/dev/null
-grep -F "backend_archive_admission_max=6" <<<"${plan}" >/dev/null
-grep -F "backend_archive_admission_adaptive_max=10" <<<"${plan}" >/dev/null
+grep -F "backend_archive_admission_max=10" <<<"${plan}" >/dev/null
+grep -F "backend_archive_admission_adaptive_max=12" <<<"${plan}" >/dev/null
 grep -F "weighted_vu16_max_429_rate=0.05" <<<"${plan}" >/dev/null
 grep -F "short_burst64_max_429_rate=0.10" <<<"${plan}" >/dev/null
 grep -F "hikari_max=8" <<<"${plan}" >/dev/null
@@ -61,8 +61,8 @@ grep -F "| backend admission max | 10 |" "${report_md}" >/dev/null
 grep -F "| backend admission adaptive max | 12 |" "${report_md}" >/dev/null
 grep -F "| backend hot admission max | 10 |" "${report_md}" >/dev/null
 grep -F "| backend hot admission adaptive max | 12 |" "${report_md}" >/dev/null
-grep -F "| backend archive admission max | 6 |" "${report_md}" >/dev/null
-grep -F "| backend archive admission adaptive max | 10 |" "${report_md}" >/dev/null
+grep -F "| backend archive admission max | 10 |" "${report_md}" >/dev/null
+grep -F "| backend archive admission adaptive max | 12 |" "${report_md}" >/dev/null
 grep -F "| paced-weighted-vu16 max 429 rate | 0.05 |" "${report_md}" >/dev/null
 grep -F "| short-burst-64 max 429 rate | 0.10 |" "${report_md}" >/dev/null
 grep -F "| Hikari max pool | 8 |" "${report_md}" >/dev/null
