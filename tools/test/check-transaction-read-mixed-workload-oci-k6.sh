@@ -19,6 +19,9 @@ grep -F "/api/v1/notifications" "${k6_script}" >/dev/null
 grep -F "/api/v1/notifications/stream" "${k6_script}" >/dev/null
 grep -F "aquila_mixed_read_count" "${k6_script}" >/dev/null
 grep -F "aquila_mixed_write_count" "${k6_script}" >/dev/null
+grep -F "aquila_mixed_write_2xx_count" "${k6_script}" >/dev/null
+grep -F "aquila_mixed_write_429_count" "${k6_script}" >/dev/null
+grep -F "aquila_mixed_write_unexpected_status_count" "${k6_script}" >/dev/null
 grep -F "aquila_mixed_auth_count" "${k6_script}" >/dev/null
 grep -F "aquila_mixed_notification_count" "${k6_script}" >/dev/null
 grep -F "aquila_mixed_sse_connect_count" "${k6_script}" >/dev/null
@@ -30,6 +33,63 @@ trap 'rm -rf "${temp_dir}"' EXIT
 output_dir="${temp_dir}/output"
 token_file="${temp_dir}/token.secret"
 printf "secret-token-value\n" >"${token_file}"
+
+fake_bin="${temp_dir}/bin"
+fake_remote_reports="${temp_dir}/remote-reports"
+fake_docker_log="${temp_dir}/fake-docker.log"
+mkdir -p "${fake_bin}" "${fake_remote_reports}"
+cat >"${fake_bin}/docker" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+printf "%s\n" "$*" >>"${FAKE_DOCKER_LOG}"
+
+last_arg="${!#}"
+if [[ "${last_arg}" == *"-summary.json" ]]; then
+  cat "${FAKE_REMOTE_REPORTS}/${last_arg}"
+  exit 0
+fi
+if [[ "${last_arg}" == *"-summary.md" ]]; then
+  cat "${FAKE_REMOTE_REPORTS}/${last_arg}"
+  exit 0
+fi
+
+if [[ "$*" == *"grafana/k6:0.54.0 run /scripts/transaction-read-mixed-workload-100m.js"* ]]; then
+  mkdir -p "${FAKE_REMOTE_REPORTS}"
+  cat >"${FAKE_REMOTE_REPORTS}/${FAKE_K6_REPORT_NAME}-summary.json" <<JSON
+{
+  "metrics": {
+    "aquila_mixed_read_count": {"values": {"count": 12}},
+    "aquila_mixed_read_duration_ms": {"values": {"p(95)": 80, "p(99)": 120, "p(99.9)": 180, "max": 240}},
+    "aquila_mixed_read_edge_429_rate": {"values": {"rate": 0.01}},
+    "aquila_mixed_read_backend_429_count": {"values": {"count": 0}},
+    "aquila_mixed_read_unknown_429_count": {"values": {"count": 0}},
+    "aquila_mixed_write_count": {"values": {"count": 9}},
+    "aquila_mixed_write_duration_ms": {"values": {"p(95)": 95, "p(99)": 140, "p(99.9)": 170, "max": 210}},
+    "aquila_mixed_write_2xx_count": {"values": {"count": 4}},
+    "aquila_mixed_write_429_count": {"values": {"count": 2}},
+    "aquila_mixed_write_unexpected_status_count": {"values": {"count": 3}},
+    "aquila_mixed_write_429_rate": {"values": {"rate": 0.2222222222}},
+    "aquila_mixed_auth_count": {"values": {"count": 3}},
+    "aquila_mixed_auth_duration_ms": {"values": {"p(95)": 42}},
+    "aquila_mixed_notification_count": {"values": {"count": 3}},
+    "aquila_mixed_notification_duration_ms": {"values": {"p(95)": 38}},
+    "aquila_mixed_sse_connect_count": {"values": {"count": 1}},
+    "aquila_mixed_5xx_count": {"values": {"count": 0}},
+    "checks": {"values": {"rate": 0.9, "passes": 18, "fails": 2}}
+  }
+}
+JSON
+  cat >"${FAKE_REMOTE_REPORTS}/${FAKE_K6_REPORT_NAME}-summary.md" <<MD
+# Fake k6 summary
+MD
+  echo "thresholds on metrics 'checks' have been crossed" >&2
+  exit 99
+fi
+
+exit 0
+SH
+chmod +x "${fake_bin}/docker"
 
 echo "[transaction-read-mixed-workload-oci-k6] live plan"
 plan="$(
@@ -108,6 +168,66 @@ grep -F $'mixed-oci-run-fixture\tnginx-edge\t0.08\t0\t0' "${MIXED_WORKLOAD_RUNNE
 echo "[transaction-read-mixed-workload-oci-k6] fixture summary metrics"
 jq -e '.metrics.aquila_mixed_read_count.values.count == 128' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
 jq -e '.metrics.aquila_mixed_write_count.values.count == 32' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
+jq -e '.metrics.aquila_mixed_write_2xx_count.values.count == 28' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
+jq -e '.metrics.aquila_mixed_write_429_count.values.count == 1' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
+jq -e '.metrics.aquila_mixed_write_unexpected_status_count.values.count == 3' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
 jq -e '.metrics.aquila_mixed_auth_count.values.count == 16' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
 jq -e '.metrics.aquila_mixed_notification_count.values.count == 16' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
 jq -e '.metrics.aquila_mixed_sse_connect_count.values.count == 1' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
+
+test "${MIXED_WORKLOAD_RUNNER_WRITE_2XX_COUNT}" = "28"
+test "${MIXED_WORKLOAD_RUNNER_WRITE_429_COUNT}" = "1"
+test "${MIXED_WORKLOAD_RUNNER_WRITE_UNEXPECTED_STATUS_COUNT}" = "3"
+grep -F $'write\tpass\t32\t95\t28\t1\t3' "${MIXED_WORKLOAD_RUNNER_WORKLOAD_COMPONENT_REF}" >/dev/null
+
+echo "[transaction-read-mixed-workload-oci-k6] failed k6 still collects summary"
+live_output_dir="${output_dir}/live-threshold-failure"
+set +e
+PATH="${fake_bin}:${PATH}" \
+FAKE_DOCKER_LOG="${fake_docker_log}" \
+FAKE_REMOTE_REPORTS="${fake_remote_reports}" \
+FAKE_K6_REPORT_NAME="mixed-oci-live-failed-k6" \
+MIXED_WORKLOAD_OCI_NAME=mixed-oci-live-failed \
+MIXED_WORKLOAD_OCI_RUN_ID=mixed-oci-run-live-failed \
+MIXED_WORKLOAD_OCI_OUTPUT_DIR="${live_output_dir}" \
+MIXED_WORKLOAD_OCI_K6_REPORT_NAME=mixed-oci-live-failed-k6 \
+MIXED_WORKLOAD_OCI_DOCKER_CONTEXT=oci-k6-generator \
+MIXED_WORKLOAD_OCI_BASE_URL=http://192.0.2.20:8080 \
+MIXED_WORKLOAD_OCI_REMOTE_WORKDIR=/srv/aquila-bank \
+MIXED_WORKLOAD_OCI_DURATION=30m \
+MIXED_WORKLOAD_OCI_HOT_ACCOUNT_ID=101 \
+MIXED_WORKLOAD_OCI_HOT_FROM=2026-04-01T00:00:00Z \
+MIXED_WORKLOAD_OCI_HOT_TO=2026-04-30T23:59:59Z \
+MIXED_WORKLOAD_OCI_COLD_ACCOUNT_ID=202 \
+MIXED_WORKLOAD_OCI_COLD_FROM=2026-01-01T00:00:00Z \
+MIXED_WORKLOAD_OCI_COLD_TO=2026-01-31T23:59:59Z \
+MIXED_WORKLOAD_OCI_WRITE_SOURCE_ACCOUNT_ID=920000001 \
+MIXED_WORKLOAD_OCI_WRITE_TARGET_ACCOUNT_ID=920000002 \
+MIXED_WORKLOAD_OCI_AUTH_TOKEN_FILE="${token_file}" \
+  bash "${runner}" >"${temp_dir}/live-failed.log" 2>"${temp_dir}/live-failed.err"
+live_failed_status="$?"
+set -e
+test "${live_failed_status}" = "99"
+live_generated_env="$(awk 'NF { line = $0 } END { print line }' "${temp_dir}/live-failed.log")"
+test -f "${live_generated_env}"
+
+# shellcheck disable=SC1090
+source "${live_generated_env}"
+test -f "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}"
+test -f "${live_output_dir}/mixed-oci-live-failed-oci-mixed-failure.md"
+jq -e '.metrics.aquila_mixed_write_2xx_count.values.count == 4' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
+jq -e '.metrics.aquila_mixed_write_429_count.values.count == 2' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
+jq -e '.metrics.aquila_mixed_write_unexpected_status_count.values.count == 3' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
+test "${MIXED_WORKLOAD_RUNNER_WRITE_2XX_COUNT}" = "4"
+test "${MIXED_WORKLOAD_RUNNER_WRITE_429_COUNT}" = "2"
+test "${MIXED_WORKLOAD_RUNNER_WRITE_UNEXPECTED_STATUS_COUNT}" = "3"
+grep -F $'write\tpass\t9\t95\t4\t2\t3' "${MIXED_WORKLOAD_RUNNER_WORKLOAD_COMPONENT_REF}" >/dev/null
+grep -F "OCI mixed workload k6 run failed" "${temp_dir}/live-failed.err" >/dev/null
+if grep -F "secret-token-value" "${temp_dir}/live-failed.log" "${temp_dir}/live-failed.err" >/dev/null; then
+  echo "auth token leaked into failed live mixed workload output" >&2
+  exit 1
+fi
+if grep -F "http://192.0.2.20:8080" "${temp_dir}/live-failed.log" "${temp_dir}/live-failed.err" >/dev/null; then
+  echo "raw OCI base URL leaked into failed live mixed workload output" >&2
+  exit 1
+fi

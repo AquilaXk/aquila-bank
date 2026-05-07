@@ -84,6 +84,7 @@ read_429_source_ref="${generated_dir}/${name}-read-429-source.tsv"
 runner_log_ref="${generated_dir}/${name}-runner.log"
 failure_env="${output_dir}/${name}-oci-mixed-failure.env"
 failure_md="${output_dir}/${name}-oci-mixed-failure.md"
+k6_exit_status=0
 
 auth_token_source="missing"
 
@@ -221,6 +222,9 @@ write_fixture_summary() {
     "aquila_mixed_read_unknown_429_count": {"values": {"count": 0}},
     "aquila_mixed_write_count": {"values": {"count": 32}},
     "aquila_mixed_write_duration_ms": {"values": {"p(95)": 95, "p(99)": 180, "p(99.9)": 240, "max": 300}},
+    "aquila_mixed_write_2xx_count": {"values": {"count": 28}},
+    "aquila_mixed_write_429_count": {"values": {"count": 1}},
+    "aquila_mixed_write_unexpected_status_count": {"values": {"count": 3}},
     "aquila_mixed_write_429_rate": {"values": {"rate": 0.01}},
     "aquila_mixed_auth_count": {"values": {"count": 16}},
     "aquila_mixed_auth_duration_ms": {"values": {"p(95)": 42, "p(99)": 60, "p(99.9)": 70, "max": 75}},
@@ -265,7 +269,7 @@ write_component_artifacts() {
   mkdir -p "${generated_dir}"
   local read_count write_count auth_count notification_count sse_count
   local read_p95 read_p99 read_p999 read_max edge_429_rate backend_429_count unknown_429_count five_xx_count
-  local write_p95 auth_p95 notification_p95 outbox_lag_max
+  local write_p95 write_2xx_count write_429_count write_unexpected_status_count auth_p95 notification_p95 outbox_lag_max
 
   read_count="$(metric_count aquila_mixed_read_count)"
   write_count="$(metric_count aquila_mixed_write_count)"
@@ -277,6 +281,9 @@ write_component_artifacts() {
   read_p999="$(metric_value aquila_mixed_read_duration_ms "p(99.9)" "0")"
   read_max="$(metric_value aquila_mixed_read_duration_ms "max" "0")"
   write_p95="$(metric_value aquila_mixed_write_duration_ms "p(95)" "0")"
+  write_2xx_count="$(metric_count aquila_mixed_write_2xx_count)"
+  write_429_count="$(metric_count aquila_mixed_write_429_count)"
+  write_unexpected_status_count="$(metric_count aquila_mixed_write_unexpected_status_count)"
   auth_p95="$(metric_value aquila_mixed_auth_duration_ms "p(95)" "0")"
   notification_p95="$(metric_value aquila_mixed_notification_duration_ms "p(95)" "0")"
   edge_429_rate="$(metric_value aquila_mixed_read_edge_429_rate "rate" "0")"
@@ -325,12 +332,12 @@ JSON
 }
 JSON
   cat >"${workload_component_ref}" <<TSV
-component	status	count	p95_ms
-read	$(component_status "${read_count}")	${read_count}	${read_p95}
-write	$(component_status "${write_count}")	${write_count}	${write_p95}
-auth	$(component_status "${auth_count}")	${auth_count}	${auth_p95}
-notification	$(component_status "${notification_count}")	${notification_count}	${notification_p95}
-sse	$(component_status "${sse_count}")	${sse_count}	0
+component	status	count	p95_ms	write_2xx_count	write_429_count	write_unexpected_status_count
+read	$(component_status "${read_count}")	${read_count}	${read_p95}	0	0	0
+write	$(component_status "${write_count}")	${write_count}	${write_p95}	${write_2xx_count}	${write_429_count}	${write_unexpected_status_count}
+auth	$(component_status "${auth_count}")	${auth_count}	${auth_p95}	0	0	0
+notification	$(component_status "${notification_count}")	${notification_count}	${notification_p95}	0	0	0
+sse	$(component_status "${sse_count}")	${sse_count}	0	0	0	0
 TSV
   cat >"${outbox_lag_ref}" <<'TSV'
 run_id	outbox_lag_max
@@ -359,6 +366,9 @@ TSV
     printf "MIXED_WORKLOAD_RUNNER_EDGE_429_RATE=%q\n" "${edge_429_rate}"
     printf "MIXED_WORKLOAD_RUNNER_BACKEND_429_COUNT=%q\n" "${backend_429_count}"
     printf "MIXED_WORKLOAD_RUNNER_UNKNOWN_429_COUNT=%q\n" "${unknown_429_count}"
+    printf "MIXED_WORKLOAD_RUNNER_WRITE_2XX_COUNT=%q\n" "${write_2xx_count}"
+    printf "MIXED_WORKLOAD_RUNNER_WRITE_429_COUNT=%q\n" "${write_429_count}"
+    printf "MIXED_WORKLOAD_RUNNER_WRITE_UNEXPECTED_STATUS_COUNT=%q\n" "${write_unexpected_status_count}"
     printf "MIXED_WORKLOAD_RUNNER_FIVE_XX_COUNT=%q\n" "${five_xx_count}"
     printf "MIXED_WORKLOAD_RUNNER_NGINX_499_COUNT=%q\n" "0"
     printf "MIXED_WORKLOAD_RUNNER_HIKARI_VALIDATION_WARNINGS=%q\n" "0"
@@ -405,7 +415,8 @@ run_live_k6() {
     exit 1
   fi
   prepare_remote_report_dir_permissions
-  if ! docker --context "${docker_context}" run --rm \
+  set +e
+  docker --context "${docker_context}" run --rm \
     -e BASE_URL="${base_url}" \
     -e K6_REPORT_NAME="${k6_report_name}" \
     -e K6_RUN_ID="${run_id}" \
@@ -429,9 +440,11 @@ run_live_k6() {
     -v "${remote_workdir}/ops/k6:/scripts:ro" \
     -v "${remote_workdir}/build/reports/k6:/reports" \
     grafana/k6:0.54.0 \
-    run /scripts/transaction-read-mixed-workload-100m.js >"${runner_log_ref}" 2>&1; then
+    run /scripts/transaction-read-mixed-workload-100m.js >"${runner_log_ref}" 2>&1
+  k6_exit_status="$?"
+  set -e
+  if [[ "${k6_exit_status}" -ne 0 ]]; then
     write_failure_artifact "k6-run-failed" "OCI mixed workload k6 run failed"
-    exit 1
   fi
   if ! collect_remote_artifact_file "${k6_report_name}-summary.json" "${k6_summary_ref}"; then
     write_failure_artifact "summary-json-missing" "OCI mixed workload k6 summary JSON was not collected"
@@ -456,3 +469,6 @@ fi
 
 write_component_artifacts
 echo "${evidence_env}"
+if [[ "${k6_exit_status}" -ne 0 ]]; then
+  exit "${k6_exit_status}"
+fi
