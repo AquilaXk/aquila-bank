@@ -102,7 +102,7 @@ print_plan() {
   echo "[transaction-read-residual-single-source-policy] input_tsv=${input_tsv:-missing}"
   echo "[transaction-read-residual-single-source-policy] output_dir=${output_dir}"
   echo "[transaction-read-residual-single-source-policy] source_modes=$(source_modes)"
-  echo "[transaction-read-residual-single-source-policy] operating_contract=paced-or-multi-source"
+  echo "[transaction-read-residual-single-source-policy] operating_contract=single-source-paced"
   echo "[transaction-read-residual-single-source-policy] single_source_unpaced_class=diagnostic-only"
   echo "[transaction-read-residual-single-source-policy] max_operating_edge_429_rate=${max_operating_edge_429_rate}"
   echo "[transaction-read-residual-single-source-policy] max_diagnostic_edge_429_rate=${max_diagnostic_edge_429_rate}"
@@ -166,10 +166,10 @@ awk -F '\t' \
       if (contract != "diagnostic") set_failure("single-source-unpaced-must-be-diagnostic")
       if (edge > edge_budget) set_failure("diagnostic-edge-429-over-budget")
       diagnostic_count++
-    } else if (source == "single-source-paced" || source == "multi-source") {
+    } else if (source == "single-source-paced") {
       budget_class = "operating"
       edge_budget = max_operating_edge
-      if (contract != "operating") set_failure("paced-or-multisource-must-be-operating")
+      if (contract != "operating") set_failure("single-source-paced-must-be-operating")
       if (edge > edge_budget) set_failure("operating-edge-429-over-budget")
       if (retry_p95 > max_operating_retry_p95) set_failure("operating-retry-after-p95-over-budget")
       if (reject_streak > max_operating_streak) set_failure("operating-reject-streak-over-budget")
@@ -226,7 +226,7 @@ cat >"${report_md}" <<REPORT
 ## Summary
 
 - gate_status=${gate_status}
-- operating contract: paced-or-multi-source
+- operating contract: single-source-paced
 - single-source unpaced decision: diagnostic-only
 - operating edge 429 budget: <= ${max_operating_edge_429_rate}
 - diagnostic edge 429 ceiling: <= ${max_diagnostic_edge_429_rate}
@@ -243,7 +243,7 @@ ${budget_table}
 ## Contract Notes
 
 - VU16 unpaced single-source는 NAT/shared-client 병목 재현용 diagnostic으로만 인정한다.
-- 운영 pass는 paced client contract 또는 real-IP multi-source evidence만 인정한다.
+- 운영 pass는 single-source paced client contract만 인정한다.
 - backend 429, 5xx, 499는 rate 정책이 아니라 hard-zero 회귀로 처리한다.
 
 ## Artifacts

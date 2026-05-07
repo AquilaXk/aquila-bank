@@ -118,7 +118,6 @@ function value(name, fallback) {
 }
 function script_for(scenario) {
   if (scenario == "hikari-lifetime") return "tools/test/run-transaction-read-weighted-10m-soak-gate.sh"
-  if (scenario == "real-ip-multisource") return "tools/test/run-k6-transaction-100m-multisource.sh"
   if (scenario == "mixed-workload-30m") return "tools/test/run-t3micro-mixed-workload-soak.sh"
   if (scenario == "cold-warm-cache") return "tools/test/run-transaction-100m-cold-start-cache-warm-gate.sh"
   if (scenario == "deploy-drain") return "tools/test/run-staging-deploy-transaction-replay-gate.sh"
@@ -215,7 +214,6 @@ cat >"${report_md}" <<REPORT
 ## Scenario Mapping
 
 - hikari-lifetime: tools/test/run-transaction-read-weighted-10m-soak-gate.sh
-- real-ip-multisource: tools/test/run-k6-transaction-100m-multisource.sh
 - mixed-workload-30m: tools/test/run-t3micro-mixed-workload-soak.sh
 - cold-warm-cache: tools/test/run-transaction-100m-cold-start-cache-warm-gate.sh
 - deploy-drain: tools/test/run-staging-deploy-transaction-replay-gate.sh

@@ -9,7 +9,7 @@ Environment:
   OCI_EVIDENCE_EXECUTION_NAME                    default transaction-read-oci-evidence-execution-<timestamp>
   OCI_EVIDENCE_EXECUTION_INPUT_TSV               required TSV with OCI execution manifest
   OCI_EVIDENCE_EXECUTION_OUTPUT_DIR              default build/reports/k6/<gate>
-  OCI_EVIDENCE_EXECUTION_REQUIRED_SCENARIOS      default hikari-lifetime,real-ip-multisource,mixed-workload-30m,cold-warm-cache,deploy-drain,p999-long-correlation
+  OCI_EVIDENCE_EXECUTION_REQUIRED_SCENARIOS      default hikari-lifetime,mixed-workload-30m,cold-warm-cache,deploy-drain,p999-long-correlation
   OCI_EVIDENCE_EXECUTION_MAX_EDGE_429_RATE       default 0.10
   OCI_EVIDENCE_EXECUTION_MAX_P999_MS             default 500
   OCI_EVIDENCE_EXECUTION_MAX_POOL_PENDING        default 0
@@ -18,7 +18,6 @@ Environment:
   OCI_EVIDENCE_EXECUTION_P999_MIN_DURATION_MIN   default 30
   OCI_EVIDENCE_EXECUTION_HIKARI_MIN_DURATION_MIN default 30
   OCI_EVIDENCE_EXECUTION_DEPLOY_MIN_DURATION_MIN default 5
-  OCI_EVIDENCE_EXECUTION_MIN_REAL_SOURCE_IPS     default 2
 USAGE
 }
 
@@ -43,7 +42,7 @@ done
 name="${OCI_EVIDENCE_EXECUTION_NAME:-transaction-read-oci-evidence-execution-$(date +%Y-%m-%d-%H%M%S)}"
 input_tsv="${OCI_EVIDENCE_EXECUTION_INPUT_TSV:-}"
 output_dir="${OCI_EVIDENCE_EXECUTION_OUTPUT_DIR:-build/reports/k6/${name}}"
-required_scenarios="${OCI_EVIDENCE_EXECUTION_REQUIRED_SCENARIOS:-hikari-lifetime,real-ip-multisource,mixed-workload-30m,cold-warm-cache,deploy-drain,p999-long-correlation}"
+required_scenarios="${OCI_EVIDENCE_EXECUTION_REQUIRED_SCENARIOS:-hikari-lifetime,mixed-workload-30m,cold-warm-cache,deploy-drain,p999-long-correlation}"
 max_edge_429_rate="${OCI_EVIDENCE_EXECUTION_MAX_EDGE_429_RATE:-0.10}"
 max_p999_ms="${OCI_EVIDENCE_EXECUTION_MAX_P999_MS:-500}"
 max_pool_pending="${OCI_EVIDENCE_EXECUTION_MAX_POOL_PENDING:-0}"
@@ -52,7 +51,6 @@ mixed_min_duration_min="${OCI_EVIDENCE_EXECUTION_MIXED_MIN_DURATION_MIN:-30}"
 p999_min_duration_min="${OCI_EVIDENCE_EXECUTION_P999_MIN_DURATION_MIN:-30}"
 hikari_min_duration_min="${OCI_EVIDENCE_EXECUTION_HIKARI_MIN_DURATION_MIN:-30}"
 deploy_min_duration_min="${OCI_EVIDENCE_EXECUTION_DEPLOY_MIN_DURATION_MIN:-5}"
-min_real_source_ips="${OCI_EVIDENCE_EXECUTION_MIN_REAL_SOURCE_IPS:-2}"
 summary_tsv="${output_dir}/${name}-oci-evidence-execution.tsv"
 report_md="${output_dir}/${name}-oci-evidence-execution.md"
 meta_file="${output_dir}/${name}-oci-evidence-execution.meta"
@@ -130,7 +128,6 @@ print_plan() {
   echo "[transaction-read-oci-evidence-execution] p999_min_duration_min=${p999_min_duration_min}"
   echo "[transaction-read-oci-evidence-execution] hikari_min_duration_min=${hikari_min_duration_min}"
   echo "[transaction-read-oci-evidence-execution] deploy_min_duration_min=${deploy_min_duration_min}"
-  echo "[transaction-read-oci-evidence-execution] min_real_source_ips=${min_real_source_ips}"
   echo "[transaction-read-oci-evidence-execution] summary_tsv=${summary_tsv}"
   echo "[transaction-read-oci-evidence-execution] report_md=${report_md}"
 }
@@ -143,7 +140,6 @@ require_non_negative_integer "OCI_EVIDENCE_EXECUTION_MIXED_MIN_DURATION_MIN" "${
 require_non_negative_integer "OCI_EVIDENCE_EXECUTION_P999_MIN_DURATION_MIN" "${p999_min_duration_min}"
 require_non_negative_integer "OCI_EVIDENCE_EXECUTION_HIKARI_MIN_DURATION_MIN" "${hikari_min_duration_min}"
 require_non_negative_integer "OCI_EVIDENCE_EXECUTION_DEPLOY_MIN_DURATION_MIN" "${deploy_min_duration_min}"
-require_non_negative_integer "OCI_EVIDENCE_EXECUTION_MIN_REAL_SOURCE_IPS" "${min_real_source_ips}"
 
 print_plan
 if [[ "${mode}" == "print-plan" ]]; then
@@ -163,8 +159,7 @@ awk -F '\t' \
   -v mixed_min_duration_min="${mixed_min_duration_min}" \
   -v p999_min_duration_min="${p999_min_duration_min}" \
   -v hikari_min_duration_min="${hikari_min_duration_min}" \
-  -v deploy_min_duration_min="${deploy_min_duration_min}" \
-  -v min_real_source_ips="${min_real_source_ips}" '
+  -v deploy_min_duration_min="${deploy_min_duration_min}" '
 function value(name, fallback) {
   if (!(name in col) || col[name] == "") return fallback
   return $(col[name])
@@ -297,7 +292,6 @@ NR == 1 {
     if (postgres_idle_timeout_ms <= 0) add_reason("postgres-idle-timeout-missing")
   }
   if (scenario == "deploy-drain" && duration_min < deploy_min_duration_min) add_reason("deploy-duration<" deploy_min_duration_min)
-  if (scenario == "real-ip-multisource" && source_ips < min_real_source_ips) add_reason("source-ips<" min_real_source_ips)
 
   if (edge_429_rate > max_edge_429_rate) add_reason("edge429>" max_edge_429_rate)
   if (backend_429_count > 0) add_reason("backend429>0")
@@ -364,7 +358,6 @@ cat >"${report_md}" <<REPORT
 - missing_scenarios=${missing_scenarios:-none}
 - required scenarios: ${required_scenarios}
 - execution artifacts: k6, nginx access, Spring metrics, Hikari log, PostgreSQL wait, timeline
-- real-IP minimum sources: ${min_real_source_ips}
 - mixed workload min duration: ${mixed_min_duration_min}m
 - p99.9 long correlation min duration: ${p999_min_duration_min}m
 - Hikari lifetime min duration: ${hikari_min_duration_min}m

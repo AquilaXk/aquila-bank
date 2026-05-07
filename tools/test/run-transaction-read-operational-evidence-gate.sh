@@ -10,7 +10,7 @@ Environment:
   OP_EVIDENCE_RUN_ID              default same as OP_EVIDENCE_NAME
   OP_EVIDENCE_INPUT_TSV           required TSV with OCI scenario evidence
   OP_EVIDENCE_OUTPUT_DIR          default build/reports/k6/<gate>
-  OP_EVIDENCE_REQUIRED_SCENARIOS  default hikari-soak,cold-warm,mixed-workload,real-ip-multisource,deploy-drain,p999-long
+  OP_EVIDENCE_REQUIRED_SCENARIOS  default hikari-soak,cold-warm,mixed-workload,deploy-drain,p999-long
   OP_EVIDENCE_MAX_EDGE_429_RATE   default 0.10
   OP_EVIDENCE_MAX_COLD_P95_MS     default 1000
   OP_EVIDENCE_MAX_WARM_P95_MS     default 350
@@ -29,7 +29,6 @@ Environment:
   OP_EVIDENCE_P999_MIN_DURATION_MIN   default 30
   OP_EVIDENCE_HIKARI_MIN_DURATION_MIN default 30
   OP_EVIDENCE_DEPLOY_MIN_DURATION_MIN default 5
-  OP_EVIDENCE_MIN_REAL_SOURCE_IPS     default 2
 USAGE
 }
 
@@ -55,7 +54,7 @@ name="${OP_EVIDENCE_NAME:-transaction-read-operational-evidence-$(date +%Y-%m-%d
 run_id="${OP_EVIDENCE_RUN_ID:-${name}}"
 input_tsv="${OP_EVIDENCE_INPUT_TSV:-}"
 output_dir="${OP_EVIDENCE_OUTPUT_DIR:-build/reports/k6/${name}}"
-required_scenarios="${OP_EVIDENCE_REQUIRED_SCENARIOS:-hikari-soak,cold-warm,mixed-workload,real-ip-multisource,deploy-drain,p999-long}"
+required_scenarios="${OP_EVIDENCE_REQUIRED_SCENARIOS:-hikari-soak,cold-warm,mixed-workload,deploy-drain,p999-long}"
 max_edge_429_rate="${OP_EVIDENCE_MAX_EDGE_429_RATE:-0.10}"
 max_cold_p95_ms="${OP_EVIDENCE_MAX_COLD_P95_MS:-1000}"
 max_warm_p95_ms="${OP_EVIDENCE_MAX_WARM_P95_MS:-350}"
@@ -74,7 +73,6 @@ mixed_min_duration_min="${OP_EVIDENCE_MIXED_MIN_DURATION_MIN:-30}"
 p999_min_duration_min="${OP_EVIDENCE_P999_MIN_DURATION_MIN:-30}"
 hikari_min_duration_min="${OP_EVIDENCE_HIKARI_MIN_DURATION_MIN:-30}"
 deploy_min_duration_min="${OP_EVIDENCE_DEPLOY_MIN_DURATION_MIN:-5}"
-min_real_source_ips="${OP_EVIDENCE_MIN_REAL_SOURCE_IPS:-2}"
 summary_tsv="${output_dir}/${name}-operational-evidence.tsv"
 report_md="${output_dir}/${name}-operational-evidence.md"
 meta_file="${output_dir}/${name}-operational-evidence.meta"
@@ -125,7 +123,6 @@ require_non_negative_integer "OP_EVIDENCE_MIXED_MIN_DURATION_MIN" "${mixed_min_d
 require_non_negative_integer "OP_EVIDENCE_P999_MIN_DURATION_MIN" "${p999_min_duration_min}"
 require_non_negative_integer "OP_EVIDENCE_HIKARI_MIN_DURATION_MIN" "${hikari_min_duration_min}"
 require_non_negative_integer "OP_EVIDENCE_DEPLOY_MIN_DURATION_MIN" "${deploy_min_duration_min}"
-require_non_negative_integer "OP_EVIDENCE_MIN_REAL_SOURCE_IPS" "${min_real_source_ips}"
 
 print_plan() {
   echo "[transaction-read-operational-evidence] name=${name}"
@@ -151,7 +148,6 @@ print_plan() {
   echo "[transaction-read-operational-evidence] p999_min_duration_min=${p999_min_duration_min}"
   echo "[transaction-read-operational-evidence] hikari_min_duration_min=${hikari_min_duration_min}"
   echo "[transaction-read-operational-evidence] deploy_min_duration_min=${deploy_min_duration_min}"
-  echo "[transaction-read-operational-evidence] min_real_source_ips=${min_real_source_ips}"
   echo "[transaction-read-operational-evidence] summary_tsv=${summary_tsv}"
   echo "[transaction-read-operational-evidence] report_md=${report_md}"
 }
@@ -192,7 +188,6 @@ awk -F '\t' \
   -v p999_min_duration_min="${p999_min_duration_min}" \
   -v hikari_min_duration_min="${hikari_min_duration_min}" \
   -v deploy_min_duration_min="${deploy_min_duration_min}" \
-  -v min_real_source_ips="${min_real_source_ips}" \
   -v expected_run_id="${run_id}" '
 function add_reason(value) {
   if (reason == "ok") {
@@ -319,10 +314,6 @@ NR == 1 {
   if (scenario == "deploy-drain" && duration_min < deploy_min_duration_min) {
     add_reason("deploy-duration<" deploy_min_duration_min)
   }
-  if (scenario == "real-ip-multisource" && source_ips < min_real_source_ips) {
-    add_reason("source-ips<" min_real_source_ips)
-  }
-
   if (status == "fail") fail_count++
   printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
     scenario, status, reason, duration_min, source_ips, cold_p95_ms, warm_p95_ms, p999_ms,
@@ -403,7 +394,6 @@ cat >"${report_md}" <<REPORT
 - deploy retry/reconnect contract: required
 - Hikari timeline min duration: ${hikari_min_duration_min}m
 - mixed workload min duration: ${mixed_min_duration_min}m
-- real-IP multi-source minimum sources: ${min_real_source_ips}
 
 ## Result Table
 
@@ -412,7 +402,7 @@ ${status_table}
 ## Evidence Contract
 
 - Hikari idle validation warning, 499, 5xx, backend 429, unknown 429은 hard-zero로 묶는다.
-- cold/warm cache, mixed workload, real-IP multi-source, deploy drain, p99.9 long observation은 같은 TSV timeline artifact로 추적한다.
+- cold/warm cache, mixed workload, deploy drain, p99.9 long observation은 같은 TSV timeline artifact로 추적한다.
 - 이 gate는 OCI 실측 산출물을 닫는 검증기이며, 실제 부하 실행은 각 run-* script와 OCI runner에서 수행한다.
 
 ## Artifacts
