@@ -60,6 +60,10 @@ grep -F "workload-mix.json" "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
 grep -F "workload-components.tsv" "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
 grep -F "outbox-lag.tsv" "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
 grep -F "read-429-source.tsv" "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
+grep -F "read-buckets.tsv" "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
+grep -F "write-status.tsv" "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
+grep -F $'\thot,cold,archive\t' "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
+grep -F $'\t1\t0\t' "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
 
 echo "[transaction-read-mixed-workload-live-evidence-autogen] generated manifest passes gate"
 gate_output="$(
@@ -91,7 +95,9 @@ for file in \
   runner-workload-mix.json \
   runner-workload-components.tsv \
   runner-outbox-lag.tsv \
-  runner-read-429-source.tsv; do
+  runner-read-429-source.tsv \
+  runner-read-buckets.tsv \
+  runner-write-status.tsv; do
   printf "stub\n" >"${artifact_dir}/${file}"
 done
 {
@@ -109,6 +115,8 @@ done
   printf "MIXED_WORKLOAD_RUNNER_WORKLOAD_COMPONENT_REF=%q\n" "${artifact_dir}/runner-workload-components.tsv"
   printf "MIXED_WORKLOAD_RUNNER_OUTBOX_LAG_REF=%q\n" "${artifact_dir}/runner-outbox-lag.tsv"
   printf "MIXED_WORKLOAD_RUNNER_READ_429_SOURCE_REF=%q\n" "${artifact_dir}/runner-read-429-source.tsv"
+  printf "MIXED_WORKLOAD_RUNNER_READ_BUCKET_REF=%q\n" "${artifact_dir}/runner-read-buckets.tsv"
+  printf "MIXED_WORKLOAD_RUNNER_WRITE_STATUS_REF=%q\n" "${artifact_dir}/runner-write-status.tsv"
   printf "MIXED_WORKLOAD_RUNNER_EDGE_429_RATE=%q\n" "0.03"
   printf "MIXED_WORKLOAD_RUNNER_BACKEND_429_COUNT=%q\n" "0"
   printf "MIXED_WORKLOAD_RUNNER_UNKNOWN_429_COUNT=%q\n" "0"
@@ -125,6 +133,9 @@ done
   printf "MIXED_WORKLOAD_RUNNER_NGINX_UPSTREAM_P95_MS=%q\n" "12.5"
   printf "MIXED_WORKLOAD_RUNNER_WORKLOAD_COMPONENTS=%q\n" "read,write,auth,notification,sse"
   printf "MIXED_WORKLOAD_RUNNER_READ_P999_MS=%q\n" "333"
+  printf "MIXED_WORKLOAD_RUNNER_READ_BUCKETS=%q\n" "hot,cold,archive"
+  printf "MIXED_WORKLOAD_RUNNER_WRITE_2XX_COUNT=%q\n" "7"
+  printf "MIXED_WORKLOAD_RUNNER_WRITE_UNEXPECTED_STATUS_COUNT=%q\n" "2"
   printf "MIXED_WORKLOAD_RUNNER_OUTBOX_LAG_MAX=%q\n" "0"
 } >"${MIXED_WORKLOAD_STUB_ENV}"
 echo "${MIXED_WORKLOAD_STUB_ENV}"
@@ -151,8 +162,12 @@ grep -F "soak_repeat=2" "${temp_dir}/stub.log" >/dev/null
 source "${stub_env}"
 grep -F "runner-k6-summary.json" "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
 grep -F "runner-workload-components.tsv" "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
+grep -F "runner-read-buckets.tsv" "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
+grep -F "runner-write-status.tsv" "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
 grep -F $'\t0.03\t0\t0\t0\t0\t0\t0\t333\t' "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
 grep -F $'\t101\t222\t444\t1\t0\t12.5\t' "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
+grep -F $'\thot,cold,archive\t' "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
+grep -F $'\t7\t2\t' "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
 live_gate_output="$(
   MIXED_30M_TIMELINE_NAME="${name}-live" \
   MIXED_30M_TIMELINE_INPUT_TSV="${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" \

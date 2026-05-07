@@ -18,14 +18,22 @@ grep -F "/api/v1/auth/sessions" "${k6_script}" >/dev/null
 grep -F "/api/v1/notifications" "${k6_script}" >/dev/null
 grep -F "/api/v1/notifications/stream" "${k6_script}" >/dev/null
 grep -F "aquila_mixed_read_count" "${k6_script}" >/dev/null
+grep -F "aquila_mixed_read_hot_count" "${k6_script}" >/dev/null
+grep -F "aquila_mixed_read_cold_count" "${k6_script}" >/dev/null
+grep -F "aquila_mixed_read_archive_count" "${k6_script}" >/dev/null
 grep -F "aquila_mixed_write_count" "${k6_script}" >/dev/null
 grep -F "aquila_mixed_write_2xx_count" "${k6_script}" >/dev/null
 grep -F "aquila_mixed_write_429_count" "${k6_script}" >/dev/null
 grep -F "aquila_mixed_write_unexpected_status_count" "${k6_script}" >/dev/null
+grep -F "aquila_mixed_write_401_count" "${k6_script}" >/dev/null
+grep -F "aquila_mixed_write_403_count" "${k6_script}" >/dev/null
+grep -F "aquila_mixed_write_409_count" "${k6_script}" >/dev/null
+grep -F "aquila_mixed_write_422_count" "${k6_script}" >/dev/null
 grep -F "aquila_mixed_auth_count" "${k6_script}" >/dev/null
 grep -F "aquila_mixed_notification_count" "${k6_script}" >/dev/null
 grep -F "aquila_mixed_sse_connect_count" "${k6_script}" >/dev/null
 grep -F 'checks: ["rate==1"]' "${k6_script}" >/dev/null
+grep -F 'path: "/api/v1/transactions/archive"' "${k6_script}" >/dev/null
 
 temp_dir="$(mktemp -d)"
 trap 'rm -rf "${temp_dir}"' EXIT
@@ -64,11 +72,31 @@ if [[ "$*" == *"grafana/k6:0.54.0 run /scripts/transaction-read-mixed-workload-1
     "aquila_mixed_read_edge_429_rate": {"values": {"rate": 0.01}},
     "aquila_mixed_read_backend_429_count": {"values": {"count": 0}},
     "aquila_mixed_read_unknown_429_count": {"values": {"count": 0}},
+    "aquila_mixed_read_hot_count": {"values": {"count": 4}},
+    "aquila_mixed_read_hot_duration_ms": {"values": {"p(95)": 70, "p(99.9)": 130}},
+    "aquila_mixed_read_hot_edge_429_rate": {"values": {"rate": 0.01}},
+    "aquila_mixed_read_hot_backend_429_count": {"values": {"count": 0}},
+    "aquila_mixed_read_hot_unknown_429_count": {"values": {"count": 0}},
+    "aquila_mixed_read_cold_count": {"values": {"count": 4}},
+    "aquila_mixed_read_cold_duration_ms": {"values": {"p(95)": 82, "p(99.9)": 150}},
+    "aquila_mixed_read_cold_edge_429_rate": {"values": {"rate": 0.02}},
+    "aquila_mixed_read_cold_backend_429_count": {"values": {"count": 0}},
+    "aquila_mixed_read_cold_unknown_429_count": {"values": {"count": 0}},
+    "aquila_mixed_read_archive_count": {"values": {"count": 4}},
+    "aquila_mixed_read_archive_duration_ms": {"values": {"p(95)": 88, "p(99.9)": 180}},
+    "aquila_mixed_read_archive_edge_429_rate": {"values": {"rate": 0.03}},
+    "aquila_mixed_read_archive_backend_429_count": {"values": {"count": 0}},
+    "aquila_mixed_read_archive_unknown_429_count": {"values": {"count": 0}},
     "aquila_mixed_write_count": {"values": {"count": 9}},
     "aquila_mixed_write_duration_ms": {"values": {"p(95)": 95, "p(99)": 140, "p(99.9)": 170, "max": 210}},
     "aquila_mixed_write_2xx_count": {"values": {"count": 4}},
     "aquila_mixed_write_429_count": {"values": {"count": 2}},
     "aquila_mixed_write_unexpected_status_count": {"values": {"count": 3}},
+    "aquila_mixed_write_401_count": {"values": {"count": 1}},
+    "aquila_mixed_write_403_count": {"values": {"count": 1}},
+    "aquila_mixed_write_409_count": {"values": {"count": 1}},
+    "aquila_mixed_write_422_count": {"values": {"count": 0}},
+    "aquila_mixed_write_other_unexpected_count": {"values": {"count": 0}},
     "aquila_mixed_write_429_rate": {"values": {"rate": 0.2222222222}},
     "aquila_mixed_auth_count": {"values": {"count": 3}},
     "aquila_mixed_auth_duration_ms": {"values": {"p(95)": 42}},
@@ -106,6 +134,9 @@ plan="$(
   MIXED_WORKLOAD_OCI_COLD_ACCOUNT_ID=202 \
   MIXED_WORKLOAD_OCI_COLD_FROM=2026-01-01T00:00:00Z \
   MIXED_WORKLOAD_OCI_COLD_TO=2026-01-31T23:59:59Z \
+  MIXED_WORKLOAD_OCI_ARCHIVE_ACCOUNT_ID=303 \
+  MIXED_WORKLOAD_OCI_ARCHIVE_FROM=2026-01-01T00:00:00Z \
+  MIXED_WORKLOAD_OCI_ARCHIVE_TO=2026-01-31T23:59:59Z \
   MIXED_WORKLOAD_OCI_WRITE_SOURCE_ACCOUNT_ID=920000001 \
   MIXED_WORKLOAD_OCI_WRITE_TARGET_ACCOUNT_ID=920000002 \
   MIXED_WORKLOAD_OCI_AUTH_TOKEN_FILE="${token_file}" \
@@ -157,16 +188,30 @@ test -f "${MIXED_WORKLOAD_RUNNER_WORKLOAD_MIX_REF}"
 test -f "${MIXED_WORKLOAD_RUNNER_WORKLOAD_COMPONENT_REF}"
 test -f "${MIXED_WORKLOAD_RUNNER_OUTBOX_LAG_REF}"
 test -f "${MIXED_WORKLOAD_RUNNER_READ_429_SOURCE_REF}"
+test -f "${MIXED_WORKLOAD_RUNNER_READ_BUCKET_REF}"
+test -f "${MIXED_WORKLOAD_RUNNER_WRITE_STATUS_REF}"
 grep -F $'read\tpass\t' "${MIXED_WORKLOAD_RUNNER_WORKLOAD_COMPONENT_REF}" >/dev/null
 grep -F $'write\tpass\t' "${MIXED_WORKLOAD_RUNNER_WORKLOAD_COMPONENT_REF}" >/dev/null
 grep -F $'auth\tpass\t' "${MIXED_WORKLOAD_RUNNER_WORKLOAD_COMPONENT_REF}" >/dev/null
 grep -F $'notification\tpass\t' "${MIXED_WORKLOAD_RUNNER_WORKLOAD_COMPONENT_REF}" >/dev/null
 grep -F $'sse\tpass\t' "${MIXED_WORKLOAD_RUNNER_WORKLOAD_COMPONENT_REF}" >/dev/null
 grep -F $'mixed-oci-run-fixture\t0' "${MIXED_WORKLOAD_RUNNER_OUTBOX_LAG_REF}" >/dev/null
-grep -F $'mixed-oci-run-fixture\tnginx-edge\t0.08\t0\t0' "${MIXED_WORKLOAD_RUNNER_READ_429_SOURCE_REF}" >/dev/null
+grep -F $'mixed-oci-run-fixture\thot\tnginx-edge\t0.03\t0\t0' "${MIXED_WORKLOAD_RUNNER_READ_429_SOURCE_REF}" >/dev/null
+grep -F $'mixed-oci-run-fixture\tcold\tnginx-edge\t0.05\t0\t0' "${MIXED_WORKLOAD_RUNNER_READ_429_SOURCE_REF}" >/dev/null
+grep -F $'mixed-oci-run-fixture\tarchive\tnginx-edge\t0.08\t0\t0' "${MIXED_WORKLOAD_RUNNER_READ_429_SOURCE_REF}" >/dev/null
+grep -F $'hot\t44\t72\t350\t0.03\t0\t0' "${MIXED_WORKLOAD_RUNNER_READ_BUCKET_REF}" >/dev/null
+grep -F $'cold\t42\t88\t410\t0.05\t0\t0' "${MIXED_WORKLOAD_RUNNER_READ_BUCKET_REF}" >/dev/null
+grep -F $'archive\t42\t96\t440\t0.08\t0\t0' "${MIXED_WORKLOAD_RUNNER_READ_BUCKET_REF}" >/dev/null
+grep -F $'2xx\t28' "${MIXED_WORKLOAD_RUNNER_WRITE_STATUS_REF}" >/dev/null
+grep -F $'401\t1' "${MIXED_WORKLOAD_RUNNER_WRITE_STATUS_REF}" >/dev/null
+grep -F $'403\t1' "${MIXED_WORKLOAD_RUNNER_WRITE_STATUS_REF}" >/dev/null
+grep -F $'409\t1' "${MIXED_WORKLOAD_RUNNER_WRITE_STATUS_REF}" >/dev/null
 
 echo "[transaction-read-mixed-workload-oci-k6] fixture summary metrics"
 jq -e '.metrics.aquila_mixed_read_count.values.count == 128' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
+jq -e '.metrics.aquila_mixed_read_hot_count.values.count == 44' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
+jq -e '.metrics.aquila_mixed_read_cold_count.values.count == 42' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
+jq -e '.metrics.aquila_mixed_read_archive_count.values.count == 42' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
 jq -e '.metrics.aquila_mixed_write_count.values.count == 32' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
 jq -e '.metrics.aquila_mixed_write_2xx_count.values.count == 28' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
 jq -e '.metrics.aquila_mixed_write_429_count.values.count == 1' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
@@ -178,6 +223,10 @@ jq -e '.metrics.aquila_mixed_sse_connect_count.values.count == 1' "${MIXED_WORKL
 test "${MIXED_WORKLOAD_RUNNER_WRITE_2XX_COUNT}" = "28"
 test "${MIXED_WORKLOAD_RUNNER_WRITE_429_COUNT}" = "1"
 test "${MIXED_WORKLOAD_RUNNER_WRITE_UNEXPECTED_STATUS_COUNT}" = "3"
+test "${MIXED_WORKLOAD_RUNNER_READ_BUCKETS}" = "hot,cold,archive"
+test "${MIXED_WORKLOAD_RUNNER_READ_HOT_P999_MS}" = "350"
+test "${MIXED_WORKLOAD_RUNNER_READ_COLD_P999_MS}" = "410"
+test "${MIXED_WORKLOAD_RUNNER_READ_ARCHIVE_P999_MS}" = "440"
 grep -F $'write\tpass\t32\t95\t28\t1\t3' "${MIXED_WORKLOAD_RUNNER_WORKLOAD_COMPONENT_REF}" >/dev/null
 
 echo "[transaction-read-mixed-workload-oci-k6] failed k6 still collects summary"
@@ -201,6 +250,9 @@ MIXED_WORKLOAD_OCI_HOT_TO=2026-04-30T23:59:59Z \
 MIXED_WORKLOAD_OCI_COLD_ACCOUNT_ID=202 \
 MIXED_WORKLOAD_OCI_COLD_FROM=2026-01-01T00:00:00Z \
 MIXED_WORKLOAD_OCI_COLD_TO=2026-01-31T23:59:59Z \
+MIXED_WORKLOAD_OCI_ARCHIVE_ACCOUNT_ID=303 \
+MIXED_WORKLOAD_OCI_ARCHIVE_FROM=2026-01-01T00:00:00Z \
+MIXED_WORKLOAD_OCI_ARCHIVE_TO=2026-01-31T23:59:59Z \
 MIXED_WORKLOAD_OCI_WRITE_SOURCE_ACCOUNT_ID=920000001 \
 MIXED_WORKLOAD_OCI_WRITE_TARGET_ACCOUNT_ID=920000002 \
 MIXED_WORKLOAD_OCI_AUTH_TOKEN_FILE="${token_file}" \

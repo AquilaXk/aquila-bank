@@ -59,6 +59,9 @@ hot_to="${MIXED_WORKLOAD_OCI_HOT_TO:-${K6_HOT_TO:-}}"
 cold_account_id="${MIXED_WORKLOAD_OCI_COLD_ACCOUNT_ID:-${K6_COLD_ACCOUNT_ID:-}}"
 cold_from="${MIXED_WORKLOAD_OCI_COLD_FROM:-${K6_COLD_FROM:-}}"
 cold_to="${MIXED_WORKLOAD_OCI_COLD_TO:-${K6_COLD_TO:-}}"
+archive_account_id="${MIXED_WORKLOAD_OCI_ARCHIVE_ACCOUNT_ID:-${K6_ARCHIVE_ACCOUNT_ID:-${cold_account_id}}}"
+archive_from="${MIXED_WORKLOAD_OCI_ARCHIVE_FROM:-${K6_ARCHIVE_FROM:-${cold_from}}}"
+archive_to="${MIXED_WORKLOAD_OCI_ARCHIVE_TO:-${K6_ARCHIVE_TO:-${cold_to}}}"
 write_source_account_id="${MIXED_WORKLOAD_OCI_WRITE_SOURCE_ACCOUNT_ID:-${K6_WRITE_SOURCE_ACCOUNT_ID:-}}"
 write_target_account_id="${MIXED_WORKLOAD_OCI_WRITE_TARGET_ACCOUNT_ID:-${K6_WRITE_TARGET_ACCOUNT_ID:-}}"
 write_amount_minor="${MIXED_WORKLOAD_OCI_WRITE_AMOUNT_MINOR:-${K6_WRITE_AMOUNT_MINOR:-1}}"
@@ -81,6 +84,8 @@ workload_mix_ref="${generated_dir}/${name}-workload-mix.json"
 workload_component_ref="${generated_dir}/${name}-workload-components.tsv"
 outbox_lag_ref="${generated_dir}/${name}-outbox-lag.tsv"
 read_429_source_ref="${generated_dir}/${name}-read-429-source.tsv"
+read_bucket_ref="${generated_dir}/${name}-read-buckets.tsv"
+write_status_ref="${generated_dir}/${name}-write-status.tsv"
 runner_log_ref="${generated_dir}/${name}-runner.log"
 failure_env="${output_dir}/${name}-oci-mixed-failure.env"
 failure_md="${output_dir}/${name}-oci-mixed-failure.md"
@@ -157,6 +162,9 @@ if [[ "${oci_mode}" == "live" ]]; then
   require_live_env "MIXED_WORKLOAD_OCI_COLD_ACCOUNT_ID" "${cold_account_id}"
   require_live_env "MIXED_WORKLOAD_OCI_COLD_FROM" "${cold_from}"
   require_live_env "MIXED_WORKLOAD_OCI_COLD_TO" "${cold_to}"
+  require_live_env "MIXED_WORKLOAD_OCI_ARCHIVE_ACCOUNT_ID" "${archive_account_id}"
+  require_live_env "MIXED_WORKLOAD_OCI_ARCHIVE_FROM" "${archive_from}"
+  require_live_env "MIXED_WORKLOAD_OCI_ARCHIVE_TO" "${archive_to}"
   require_live_env "MIXED_WORKLOAD_OCI_WRITE_SOURCE_ACCOUNT_ID" "${write_source_account_id}"
   require_live_env "MIXED_WORKLOAD_OCI_WRITE_TARGET_ACCOUNT_ID" "${write_target_account_id}"
   require_live_env "MIXED_WORKLOAD_OCI_AUTH_TOKEN" "${auth_token}"
@@ -174,6 +182,7 @@ print_plan() {
   echo "[transaction-read-mixed-workload-oci-k6] components=read,write,auth,notification,sse"
   echo "[transaction-read-mixed-workload-oci-k6] read_rate=${read_rate}/1s write_vus=${write_vus} auth_rate=${auth_rate}/1s notification_rate=${notification_rate}/1s"
   echo "[transaction-read-mixed-workload-oci-k6] hot_account_id=${hot_account_id:-missing} cold_account_id=${cold_account_id:-missing}"
+  echo "[transaction-read-mixed-workload-oci-k6] archive_account_id=${archive_account_id:-missing}"
   echo "[transaction-read-mixed-workload-oci-k6] write_source_account_id=${write_source_account_id:-missing} write_target_account_id=${write_target_account_id:-missing}"
   echo "[transaction-read-mixed-workload-oci-k6] auth_token=$([[ -n "${auth_token}" ]] && echo present || echo missing) source=${auth_token_source}"
   echo "[transaction-read-mixed-workload-oci-k6] output_dir=${output_dir}"
@@ -220,11 +229,31 @@ write_fixture_summary() {
     "aquila_mixed_read_edge_429_rate": {"values": {"rate": 0.08}},
     "aquila_mixed_read_backend_429_count": {"values": {"count": 0}},
     "aquila_mixed_read_unknown_429_count": {"values": {"count": 0}},
+    "aquila_mixed_read_hot_count": {"values": {"count": 44}},
+    "aquila_mixed_read_hot_duration_ms": {"values": {"p(95)": 72, "p(99)": 180, "p(99.9)": 350, "max": 520}},
+    "aquila_mixed_read_hot_edge_429_rate": {"values": {"rate": 0.03}},
+    "aquila_mixed_read_hot_backend_429_count": {"values": {"count": 0}},
+    "aquila_mixed_read_hot_unknown_429_count": {"values": {"count": 0}},
+    "aquila_mixed_read_cold_count": {"values": {"count": 42}},
+    "aquila_mixed_read_cold_duration_ms": {"values": {"p(95)": 88, "p(99)": 205, "p(99.9)": 410, "max": 590}},
+    "aquila_mixed_read_cold_edge_429_rate": {"values": {"rate": 0.05}},
+    "aquila_mixed_read_cold_backend_429_count": {"values": {"count": 0}},
+    "aquila_mixed_read_cold_unknown_429_count": {"values": {"count": 0}},
+    "aquila_mixed_read_archive_count": {"values": {"count": 42}},
+    "aquila_mixed_read_archive_duration_ms": {"values": {"p(95)": 96, "p(99)": 225, "p(99.9)": 440, "max": 630}},
+    "aquila_mixed_read_archive_edge_429_rate": {"values": {"rate": 0.08}},
+    "aquila_mixed_read_archive_backend_429_count": {"values": {"count": 0}},
+    "aquila_mixed_read_archive_unknown_429_count": {"values": {"count": 0}},
     "aquila_mixed_write_count": {"values": {"count": 32}},
     "aquila_mixed_write_duration_ms": {"values": {"p(95)": 95, "p(99)": 180, "p(99.9)": 240, "max": 300}},
     "aquila_mixed_write_2xx_count": {"values": {"count": 28}},
     "aquila_mixed_write_429_count": {"values": {"count": 1}},
     "aquila_mixed_write_unexpected_status_count": {"values": {"count": 3}},
+    "aquila_mixed_write_401_count": {"values": {"count": 1}},
+    "aquila_mixed_write_403_count": {"values": {"count": 1}},
+    "aquila_mixed_write_409_count": {"values": {"count": 1}},
+    "aquila_mixed_write_422_count": {"values": {"count": 0}},
+    "aquila_mixed_write_other_unexpected_count": {"values": {"count": 0}},
     "aquila_mixed_write_429_rate": {"values": {"rate": 0.01}},
     "aquila_mixed_auth_count": {"values": {"count": 16}},
     "aquila_mixed_auth_duration_ms": {"values": {"p(95)": 42, "p(99)": 60, "p(99.9)": 70, "max": 75}},
@@ -269,7 +298,12 @@ write_component_artifacts() {
   mkdir -p "${generated_dir}"
   local read_count write_count auth_count notification_count sse_count
   local read_p95 read_p99 read_p999 read_max edge_429_rate backend_429_count unknown_429_count five_xx_count
-  local write_p95 write_2xx_count write_429_count write_unexpected_status_count auth_p95 notification_p95 outbox_lag_max
+  local hot_count hot_p95 hot_p999 hot_edge_429_rate hot_backend_429_count hot_unknown_429_count
+  local cold_count cold_p95 cold_p999 cold_edge_429_rate cold_backend_429_count cold_unknown_429_count
+  local archive_count archive_p95 archive_p999 archive_edge_429_rate archive_backend_429_count archive_unknown_429_count
+  local write_p95 write_2xx_count write_429_count write_unexpected_status_count
+  local write_401_count write_403_count write_409_count write_422_count write_other_unexpected_count
+  local auth_p95 notification_p95 outbox_lag_max
 
   read_count="$(metric_count aquila_mixed_read_count)"
   write_count="$(metric_count aquila_mixed_write_count)"
@@ -280,10 +314,33 @@ write_component_artifacts() {
   read_p99="$(metric_value aquila_mixed_read_duration_ms "p(99)" "0")"
   read_p999="$(metric_value aquila_mixed_read_duration_ms "p(99.9)" "0")"
   read_max="$(metric_value aquila_mixed_read_duration_ms "max" "0")"
+  hot_count="$(metric_count aquila_mixed_read_hot_count)"
+  hot_p95="$(metric_value aquila_mixed_read_hot_duration_ms "p(95)" "0")"
+  hot_p999="$(metric_value aquila_mixed_read_hot_duration_ms "p(99.9)" "0")"
+  hot_edge_429_rate="$(metric_value aquila_mixed_read_hot_edge_429_rate "rate" "0")"
+  hot_backend_429_count="$(metric_count aquila_mixed_read_hot_backend_429_count)"
+  hot_unknown_429_count="$(metric_count aquila_mixed_read_hot_unknown_429_count)"
+  cold_count="$(metric_count aquila_mixed_read_cold_count)"
+  cold_p95="$(metric_value aquila_mixed_read_cold_duration_ms "p(95)" "0")"
+  cold_p999="$(metric_value aquila_mixed_read_cold_duration_ms "p(99.9)" "0")"
+  cold_edge_429_rate="$(metric_value aquila_mixed_read_cold_edge_429_rate "rate" "0")"
+  cold_backend_429_count="$(metric_count aquila_mixed_read_cold_backend_429_count)"
+  cold_unknown_429_count="$(metric_count aquila_mixed_read_cold_unknown_429_count)"
+  archive_count="$(metric_count aquila_mixed_read_archive_count)"
+  archive_p95="$(metric_value aquila_mixed_read_archive_duration_ms "p(95)" "0")"
+  archive_p999="$(metric_value aquila_mixed_read_archive_duration_ms "p(99.9)" "0")"
+  archive_edge_429_rate="$(metric_value aquila_mixed_read_archive_edge_429_rate "rate" "0")"
+  archive_backend_429_count="$(metric_count aquila_mixed_read_archive_backend_429_count)"
+  archive_unknown_429_count="$(metric_count aquila_mixed_read_archive_unknown_429_count)"
   write_p95="$(metric_value aquila_mixed_write_duration_ms "p(95)" "0")"
   write_2xx_count="$(metric_count aquila_mixed_write_2xx_count)"
   write_429_count="$(metric_count aquila_mixed_write_429_count)"
   write_unexpected_status_count="$(metric_count aquila_mixed_write_unexpected_status_count)"
+  write_401_count="$(metric_count aquila_mixed_write_401_count)"
+  write_403_count="$(metric_count aquila_mixed_write_403_count)"
+  write_409_count="$(metric_count aquila_mixed_write_409_count)"
+  write_422_count="$(metric_count aquila_mixed_write_422_count)"
+  write_other_unexpected_count="$(metric_count aquila_mixed_write_other_unexpected_count)"
   auth_p95="$(metric_value aquila_mixed_auth_duration_ms "p(95)" "0")"
   notification_p95="$(metric_value aquila_mixed_notification_duration_ms "p(95)" "0")"
   edge_429_rate="$(metric_value aquila_mixed_read_edge_429_rate "rate" "0")"
@@ -324,6 +381,9 @@ JSON
   "run_id": "${run_id}",
   "components": {
     "read": ${read_count},
+    "read_hot": ${hot_count},
+    "read_cold": ${cold_count},
+    "read_archive": ${archive_count},
     "write": ${write_count},
     "auth": ${auth_count},
     "notification": ${notification_count},
@@ -344,9 +404,27 @@ run_id	outbox_lag_max
 TSV
   printf "%s\t%s\n" "${run_id}" "${outbox_lag_max}" >>"${outbox_lag_ref}"
   cat >"${read_429_source_ref}" <<'TSV'
-run_id	source	edge_429_rate	backend_429_count	unknown_429_count
+run_id	bucket	source	edge_429_rate	backend_429_count	unknown_429_count
 TSV
-  printf "%s\tnginx-edge\t%s\t%s\t%s\n" "${run_id}" "${edge_429_rate}" "${backend_429_count}" "${unknown_429_count}" >>"${read_429_source_ref}"
+  printf "%s\thot\tnginx-edge\t%s\t%s\t%s\n" "${run_id}" "${hot_edge_429_rate}" "${hot_backend_429_count}" "${hot_unknown_429_count}" >>"${read_429_source_ref}"
+  printf "%s\tcold\tnginx-edge\t%s\t%s\t%s\n" "${run_id}" "${cold_edge_429_rate}" "${cold_backend_429_count}" "${cold_unknown_429_count}" >>"${read_429_source_ref}"
+  printf "%s\tarchive\tnginx-edge\t%s\t%s\t%s\n" "${run_id}" "${archive_edge_429_rate}" "${archive_backend_429_count}" "${archive_unknown_429_count}" >>"${read_429_source_ref}"
+  cat >"${read_bucket_ref}" <<'TSV'
+bucket	count	p95_ms	p999_ms	edge_429_rate	backend_429_count	unknown_429_count
+TSV
+  printf "hot\t%s\t%s\t%s\t%s\t%s\t%s\n" "${hot_count}" "${hot_p95}" "${hot_p999}" "${hot_edge_429_rate}" "${hot_backend_429_count}" "${hot_unknown_429_count}" >>"${read_bucket_ref}"
+  printf "cold\t%s\t%s\t%s\t%s\t%s\t%s\n" "${cold_count}" "${cold_p95}" "${cold_p999}" "${cold_edge_429_rate}" "${cold_backend_429_count}" "${cold_unknown_429_count}" >>"${read_bucket_ref}"
+  printf "archive\t%s\t%s\t%s\t%s\t%s\t%s\n" "${archive_count}" "${archive_p95}" "${archive_p999}" "${archive_edge_429_rate}" "${archive_backend_429_count}" "${archive_unknown_429_count}" >>"${read_bucket_ref}"
+  cat >"${write_status_ref}" <<'TSV'
+status	count
+TSV
+  printf "2xx\t%s\n" "${write_2xx_count}" >>"${write_status_ref}"
+  printf "429\t%s\n" "${write_429_count}" >>"${write_status_ref}"
+  printf "401\t%s\n" "${write_401_count}" >>"${write_status_ref}"
+  printf "403\t%s\n" "${write_403_count}" >>"${write_status_ref}"
+  printf "409\t%s\n" "${write_409_count}" >>"${write_status_ref}"
+  printf "422\t%s\n" "${write_422_count}" >>"${write_status_ref}"
+  printf "other_unexpected\t%s\n" "${write_other_unexpected_count}" >>"${write_status_ref}"
 
   {
     printf "MIXED_WORKLOAD_RUNNER_ENV_FORMAT=%q\n" "oci-mixed-v1"
@@ -363,12 +441,18 @@ TSV
     printf "MIXED_WORKLOAD_RUNNER_WORKLOAD_COMPONENT_REF=%q\n" "${workload_component_ref}"
     printf "MIXED_WORKLOAD_RUNNER_OUTBOX_LAG_REF=%q\n" "${outbox_lag_ref}"
     printf "MIXED_WORKLOAD_RUNNER_READ_429_SOURCE_REF=%q\n" "${read_429_source_ref}"
+    printf "MIXED_WORKLOAD_RUNNER_READ_BUCKET_REF=%q\n" "${read_bucket_ref}"
+    printf "MIXED_WORKLOAD_RUNNER_WRITE_STATUS_REF=%q\n" "${write_status_ref}"
     printf "MIXED_WORKLOAD_RUNNER_EDGE_429_RATE=%q\n" "${edge_429_rate}"
     printf "MIXED_WORKLOAD_RUNNER_BACKEND_429_COUNT=%q\n" "${backend_429_count}"
     printf "MIXED_WORKLOAD_RUNNER_UNKNOWN_429_COUNT=%q\n" "${unknown_429_count}"
     printf "MIXED_WORKLOAD_RUNNER_WRITE_2XX_COUNT=%q\n" "${write_2xx_count}"
     printf "MIXED_WORKLOAD_RUNNER_WRITE_429_COUNT=%q\n" "${write_429_count}"
     printf "MIXED_WORKLOAD_RUNNER_WRITE_UNEXPECTED_STATUS_COUNT=%q\n" "${write_unexpected_status_count}"
+    printf "MIXED_WORKLOAD_RUNNER_READ_BUCKETS=%q\n" "hot,cold,archive"
+    printf "MIXED_WORKLOAD_RUNNER_READ_HOT_P999_MS=%q\n" "${hot_p999}"
+    printf "MIXED_WORKLOAD_RUNNER_READ_COLD_P999_MS=%q\n" "${cold_p999}"
+    printf "MIXED_WORKLOAD_RUNNER_READ_ARCHIVE_P999_MS=%q\n" "${archive_p999}"
     printf "MIXED_WORKLOAD_RUNNER_FIVE_XX_COUNT=%q\n" "${five_xx_count}"
     printf "MIXED_WORKLOAD_RUNNER_NGINX_499_COUNT=%q\n" "0"
     printf "MIXED_WORKLOAD_RUNNER_HIKARI_VALIDATION_WARNINGS=%q\n" "0"
@@ -428,6 +512,9 @@ run_live_k6() {
     -e K6_COLD_ACCOUNT_ID="${cold_account_id}" \
     -e K6_COLD_FROM="${cold_from}" \
     -e K6_COLD_TO="${cold_to}" \
+    -e K6_ARCHIVE_ACCOUNT_ID="${archive_account_id}" \
+    -e K6_ARCHIVE_FROM="${archive_from}" \
+    -e K6_ARCHIVE_TO="${archive_to}" \
     -e K6_WRITE_SOURCE_ACCOUNT_ID="${write_source_account_id}" \
     -e K6_WRITE_TARGET_ACCOUNT_ID="${write_target_account_id}" \
     -e K6_WRITE_AMOUNT_MINOR="${write_amount_minor}" \
