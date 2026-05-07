@@ -29,6 +29,41 @@ EOF
   chmod +x "${bin_dir}/${command_name}"
 done
 
+freshness_guard_script="tools/ops/transaction-read-model-planner-stats-freshness-guard.sh"
+echo "[transaction-staging-replay-guard] planner stats guard writes report artifact"
+bash -n "${freshness_guard_script}"
+
+cat >"${bin_dir}/psql" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+cat <<'CSV'
+table_name,status,row_estimate,live_tuple_count,modified_tuple_count,modified_ratio,last_analyze_at,analyze_age_hours,analyze_count,autoanalyze_count,analyze_command
+transaction_read_model,stale_analyze_age,50000000,50000002,0,0.0000,2026-05-06 04:49:06.97483+09,29.1,28,10,tools/ops/transaction-read-model-chunk-lifecycle.sh --action analyze --target hot
+transaction_read_model_archive,ok,50000028,50000028,0,0.0000,2026-05-07 09:46:07.782577+09,0.2,68,9,tools/ops/transaction-read-model-chunk-lifecycle.sh --action analyze --target archive
+CSV
+EOF
+chmod +x "${bin_dir}/psql"
+
+planner_report_path="${temp_dir}/planner-stats.csv"
+set +e
+planner_guard_output="$(
+  PATH="${bin_dir}:${PATH}" \
+  DATABASE_URL="postgres://user:pass@localhost:5432/db" \
+  STATS_REPORT_PATH="${planner_report_path}" \
+  "${freshness_guard_script}" 2>&1
+)"
+planner_guard_status=$?
+set -e
+
+if [ "${planner_guard_status}" -eq 0 ]; then
+  echo "planner stats guard unexpectedly succeeded" >&2
+  exit 1
+fi
+
+grep -F "Planner stats freshness guard detected stale stats" <<<"${planner_guard_output}" >/dev/null
+grep -F "transaction_read_model,stale_analyze_age" "${planner_report_path}" >/dev/null
+grep -F "transaction_read_model_archive,ok" "${planner_report_path}" >/dev/null
+
 guard_script="${temp_dir}/planner-guard.sh"
 cat >"${guard_script}" <<'EOF'
 #!/usr/bin/env bash
@@ -94,6 +129,10 @@ guard_retry_script="${temp_dir}/planner-guard-retry.sh"
 cat >"${guard_retry_script}" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+[ -n "${STATS_REPORT_PATH:-}" ] || {
+  echo "STATS_REPORT_PATH missing" >&2
+  exit 42
+}
 count_file="${GUARD_RETRY_COUNT_PATH}"
 count=0
 if [ -f "${count_file}" ]; then
@@ -102,6 +141,12 @@ fi
 count=$((count + 1))
 echo "${count}" >"${count_file}"
 if [ "${count}" -eq 1 ]; then
+  mkdir -p "$(dirname "${STATS_REPORT_PATH}")"
+  cat >"${STATS_REPORT_PATH}" <<'CSV'
+table_name,status,row_estimate,live_tuple_count,modified_tuple_count,modified_ratio,last_analyze_at,analyze_age_hours,analyze_count,autoanalyze_count,analyze_command
+transaction_read_model,stale_analyze_age,50000000,50000002,0,0.0000,2026-05-06 04:49:06.97483+09,29.1,28,10,tools/ops/transaction-read-model-chunk-lifecycle.sh --action analyze --target hot
+transaction_read_model_archive,ok,50000028,50000028,0,0.0000,2026-05-07 09:46:07.782577+09,0.2,68,9,tools/ops/transaction-read-model-chunk-lifecycle.sh --action analyze --target archive
+CSV
   exit 19
 fi
 exit 0
@@ -116,7 +161,7 @@ if [ "${DATABASE_URL:-}" != "postgres://user:pass@localhost:5432/db" ]; then
   echo "analyze DATABASE_URL mismatch: ${DATABASE_URL:-}" >&2
   exit 1
 fi
-if [ "$*" != "--action analyze --target both" ]; then
+if [ "$*" != "--action analyze --target hot --lock-timeout-ms 1500 --statement-timeout-ms 420000" ]; then
   echo "unexpected analyze args: $*" >&2
   exit 1
 fi
@@ -140,6 +185,8 @@ auto_output="$(
   ANALYZE_MARKER_PATH="${temp_dir}/analyze-called" \
   PLANNER_STATS_GUARD_SCRIPT="${guard_retry_script}" \
   PLANNER_STATS_ANALYZE_SCRIPT="${analyze_script}" \
+  PLANNER_STATS_ANALYZE_LOCK_TIMEOUT_MS="1500" \
+  PLANNER_STATS_ANALYZE_HOT_STATEMENT_TIMEOUT_MS="420000" \
   STAGING_BASE_URL="https://staging.example.com" \
   STAGING_REPLAY_TOKEN="token" \
   STAGING_RDS_DATABASE_URL="postgres://user:pass@localhost:5432/db" \
@@ -161,7 +208,7 @@ if [ "${auto_status}" -eq 0 ]; then
   exit 1
 fi
 
-grep -F "Planner stats freshness guard failed; running ANALYZE before replay." <<<"${auto_output}" >/dev/null
+grep -F "Planner stats freshness guard failed; running target ANALYZE before replay." <<<"${auto_output}" >/dev/null
 grep -F "fixture_missing" <<<"${auto_output}" >/dev/null
 grep -Fx "2" "${temp_dir}/guard-retry-count" >/dev/null
 grep -F "analyze-called" "${temp_dir}/analyze-called" >/dev/null

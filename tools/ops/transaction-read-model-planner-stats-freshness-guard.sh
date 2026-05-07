@@ -16,6 +16,9 @@ Environment:
 Threshold overrides:
   STATS_MAX_AGE_HOURS        default 24
   STATS_MAX_MODIFIED_RATIO   default 0.05
+
+Artifacts:
+  STATS_REPORT_PATH          optional CSV copy path for workflow/replay recovery
 USAGE
 }
 
@@ -208,6 +211,11 @@ else
 fi
 
 cat "${result_file}"
+
+if [[ -n "${STATS_REPORT_PATH:-}" ]]; then
+  mkdir -p "$(dirname "${STATS_REPORT_PATH}")"
+  cp "${result_file}" "${STATS_REPORT_PATH}"
+fi
 
 failure_count="$(
   awk -F, 'NR > 1 && $2 != "ok" { count += 1 } END { print count + 0 }' "${result_file}"

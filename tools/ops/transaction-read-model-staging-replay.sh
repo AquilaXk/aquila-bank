@@ -28,6 +28,11 @@ PLANNER_STATS_MAX_AGE_HOURS="${PLANNER_STATS_MAX_AGE_HOURS:-24}"
 PLANNER_STATS_MAX_MODIFIED_RATIO="${PLANNER_STATS_MAX_MODIFIED_RATIO:-0.05}"
 PLANNER_STATS_AUTO_ANALYZE="${PLANNER_STATS_AUTO_ANALYZE:-true}"
 PLANNER_STATS_ANALYZE_SCRIPT="${PLANNER_STATS_ANALYZE_SCRIPT:-tools/ops/transaction-read-model-chunk-lifecycle.sh}"
+PLANNER_STATS_REPORT_PATH="${PLANNER_STATS_REPORT_PATH:-${REPORT_DIR}/planner-stats.csv}"
+PLANNER_STATS_ANALYZE_LOCK_TIMEOUT_MS="${PLANNER_STATS_ANALYZE_LOCK_TIMEOUT_MS:-1000}"
+PLANNER_STATS_ANALYZE_STATEMENT_TIMEOUT_MS="${PLANNER_STATS_ANALYZE_STATEMENT_TIMEOUT_MS:-300000}"
+PLANNER_STATS_ANALYZE_HOT_STATEMENT_TIMEOUT_MS="${PLANNER_STATS_ANALYZE_HOT_STATEMENT_TIMEOUT_MS:-${PLANNER_STATS_ANALYZE_STATEMENT_TIMEOUT_MS}}"
+PLANNER_STATS_ANALYZE_ARCHIVE_STATEMENT_TIMEOUT_MS="${PLANNER_STATS_ANALYZE_ARCHIVE_STATEMENT_TIMEOUT_MS:-${PLANNER_STATS_ANALYZE_STATEMENT_TIMEOUT_MS}}"
 
 fail() {
   echo "::error::$*" >&2
@@ -202,6 +207,9 @@ validate_inputs() {
   require_positive_integer PLANNER_STATS_MAX_AGE_HOURS
   require_ratio_between_zero_and_one PLANNER_STATS_MAX_MODIFIED_RATIO
   require_bool PLANNER_STATS_AUTO_ANALYZE
+  require_positive_integer PLANNER_STATS_ANALYZE_LOCK_TIMEOUT_MS
+  require_positive_integer PLANNER_STATS_ANALYZE_HOT_STATEMENT_TIMEOUT_MS
+  require_positive_integer PLANNER_STATS_ANALYZE_ARCHIVE_STATEMENT_TIMEOUT_MS
 
   if [ "$PAGE_LIMIT" -gt 100 ]; then
     fail "PAGE_LIMIT must be 100 or less"
@@ -218,28 +226,85 @@ validate_inputs() {
   STAGING_BASE_URL="${STAGING_BASE_URL%/}"
 }
 
-run_planner_stats_analyze() {
-  notice "Planner stats freshness guard failed; running ANALYZE before replay."
-  # stats refresh는 replay evidence 정확도 목적이며, chunk lifecycle script의 lock/statement timeout을 사용합니다.
+planner_stats_analyze_targets() {
+  local table_name status rest seen_hot seen_archive
+  seen_hot=false
+  seen_archive=false
+  while IFS=, read -r table_name status rest; do
+    [ "$table_name" != "table_name" ] || continue
+    [ "$status" != "ok" ] || continue
+    case "$table_name" in
+      transaction_read_model)
+        if [ "$seen_hot" = "false" ]; then
+          printf '%s\n' hot
+          seen_hot=true
+        fi
+        ;;
+      transaction_read_model_archive)
+        if [ "$seen_archive" = "false" ]; then
+          printf '%s\n' archive
+          seen_archive=true
+        fi
+        ;;
+    esac
+  done <"$PLANNER_STATS_REPORT_PATH"
+}
+
+planner_stats_statement_timeout_ms() {
+  local target="$1"
+  case "$target" in
+    hot)
+      printf '%s\n' "$PLANNER_STATS_ANALYZE_HOT_STATEMENT_TIMEOUT_MS"
+      ;;
+    archive)
+      printf '%s\n' "$PLANNER_STATS_ANALYZE_ARCHIVE_STATEMENT_TIMEOUT_MS"
+      ;;
+    *)
+      fail "Unknown planner stats analyze target: ${target}"
+      ;;
+  esac
+}
+
+run_planner_stats_guard_once() {
+  mkdir -p "$(dirname "$PLANNER_STATS_REPORT_PATH")"
   DATABASE_URL="$STAGING_DATABASE_URL" \
-    "$PLANNER_STATS_ANALYZE_SCRIPT" --action analyze --target both
+    STATS_MAX_AGE_HOURS="$PLANNER_STATS_MAX_AGE_HOURS" \
+    STATS_MAX_MODIFIED_RATIO="$PLANNER_STATS_MAX_MODIFIED_RATIO" \
+    STATS_REPORT_PATH="$PLANNER_STATS_REPORT_PATH" \
+    "$PLANNER_STATS_GUARD_SCRIPT"
+}
+
+run_planner_stats_analyze() {
+  local target target_count statement_timeout_ms
+  notice "Planner stats freshness guard failed; running target ANALYZE before replay."
+  [ -s "$PLANNER_STATS_REPORT_PATH" ] || fail "Planner stats report is missing: ${PLANNER_STATS_REPORT_PATH}"
+
+  target_count=0
+  while IFS= read -r target; do
+    [ -n "$target" ] || continue
+    target_count=$((target_count + 1))
+    statement_timeout_ms="$(planner_stats_statement_timeout_ms "$target")"
+    # replay 요청 timeout과 DB maintenance timeout을 분리해 50M급 partition ANALYZE를 허용합니다.
+    DATABASE_URL="$STAGING_DATABASE_URL" \
+      "$PLANNER_STATS_ANALYZE_SCRIPT" \
+        --action analyze \
+        --target "$target" \
+        --lock-timeout-ms "$PLANNER_STATS_ANALYZE_LOCK_TIMEOUT_MS" \
+        --statement-timeout-ms "$statement_timeout_ms"
+  done < <(planner_stats_analyze_targets)
+
+  [ "$target_count" -gt 0 ] || fail "Planner stats report has no stale analyze target: ${PLANNER_STATS_REPORT_PATH}"
 }
 
 run_planner_stats_guard() {
   # `reltuples` estimate는 stale stats에 취약해서 replay 전에 ANALYZE 필요 여부를 먼저 차단합니다.
-  if DATABASE_URL="$STAGING_DATABASE_URL" \
-    STATS_MAX_AGE_HOURS="$PLANNER_STATS_MAX_AGE_HOURS" \
-    STATS_MAX_MODIFIED_RATIO="$PLANNER_STATS_MAX_MODIFIED_RATIO" \
-    "$PLANNER_STATS_GUARD_SCRIPT"; then
+  if run_planner_stats_guard_once; then
     return 0
   fi
 
   if [ "$PLANNER_STATS_AUTO_ANALYZE" = "true" ]; then
     run_planner_stats_analyze
-    if DATABASE_URL="$STAGING_DATABASE_URL" \
-      STATS_MAX_AGE_HOURS="$PLANNER_STATS_MAX_AGE_HOURS" \
-      STATS_MAX_MODIFIED_RATIO="$PLANNER_STATS_MAX_MODIFIED_RATIO" \
-      "$PLANNER_STATS_GUARD_SCRIPT"; then
+    if run_planner_stats_guard_once; then
       return 0
     fi
   fi
