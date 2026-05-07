@@ -190,14 +190,17 @@ Alertmanager baseline receiver는 route 구조만 고정하며 실제 Slack/Page
 
 ```bash
 bash tools/ops/validate-prometheus-assets.sh
-tools/test/run-alertmanager-receiver-secret-smoke.sh
-tools/test/run-alertmanager-receiver-secret-workflow-gate.sh
+ALERTMANAGER_RECEIVER_SECRET_SMOKE_ENVIRONMENT=staging \
+ALERTMANAGER_RECEIVER_SLACK_ENABLED=true \
+ALERTMANAGER_RECEIVER_SLACK_WEBHOOK_URL=https://hooks.slack.example/services/test \
+  bash tools/ops/validate-alertmanager-receiver-secrets.sh
 ```
 
 - dashboard JSON은 `uid`, panel 개수, JSON syntax를 같이 확인합니다.
 - alert rule YAML은 group/rule/expr 존재 여부와 YAML syntax를 같이 확인합니다.
 - Prometheus provisioning은 rule file, Alertmanager target, backend/Postgres scrape job을 확인합니다.
 - Grafana provisioning은 datasource uid/type과 dashboard provider path를 확인합니다.
+- staging/production workflow는 같은 `tools/ops/validate-alertmanager-receiver-secrets.sh`를 실제 secret/env로 실행합니다.
 - Alertmanager routing은 severity grouping과 critical/warning receiver route를 확인합니다.
 - receiver secret smoke는 실제 sink enable/secret 누락을 fail-fast로 확인합니다.
 - 실제 Prometheus 적용 전에는 여기에 더해 `promtool check rules`를 추가로 수행합니다.
