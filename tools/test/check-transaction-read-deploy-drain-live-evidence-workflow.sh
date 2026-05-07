@@ -20,10 +20,12 @@ grep -F "deploy drain live evidence contract" "${workflow}" >/dev/null
 grep -F "if: github.event_name == 'pull_request'" "${workflow}" >/dev/null
 grep -F "bash tools/test/check-transaction-read-deploy-drain-live-evidence-workflow.sh" "${workflow}" >/dev/null
 grep -F "bash tools/test/check-transaction-read-deploy-drain-live-evidence-autogen.sh" "${workflow}" >/dev/null
+grep -F "bash tools/test/check-transaction-read-deploy-drain-oci-k6.sh" "${workflow}" >/dev/null
 grep -F "bash tools/test/check-transaction-read-deploy-drain-under-load-gate.sh" "${workflow}" >/dev/null
 grep -F "bash tools/test/check-transaction-read-oci-evidence-execution-gate.sh" "${workflow}" >/dev/null
 grep -F "bash tools/test/check-transaction-read-evidence-completeness-gate.sh" "${workflow}" >/dev/null
 grep -F "if: github.event_name == 'workflow_dispatch'" "${workflow}" >/dev/null
+grep -F "packages: read" "${workflow}" >/dev/null
 grep -F "runs-on: [self-hosted, oci-a1-staging]" "${workflow}" >/dev/null
 grep -F "environment:" "${workflow}" >/dev/null
 grep -F "name: staging" "${workflow}" >/dev/null
@@ -41,6 +43,7 @@ grep -F "DEPLOY_DRAIN_EVIDENCE_READY=false" "${workflow}" >/dev/null
 grep -F "name: Generate deploy drain live evidence manifest artifacts" "${workflow}" >/dev/null
 grep -F "if: env.DEPLOY_DRAIN_EVIDENCE_READY != 'true'" "${workflow}" >/dev/null
 grep -F "DEPLOY_DRAIN_AUTOGEN_MODE: live" "${workflow}" >/dev/null
+grep -F 'DEPLOY_DRAIN_OCI_GITHUB_TOKEN: ${{ github.token }}' "${workflow}" >/dev/null
 grep -F 'generated_env="${DEPLOY_DRAIN_LIVE_OUTPUT_DIR}/${DEPLOY_DRAIN_LIVE_NAME}-generated-evidence.env"' "${workflow}" >/dev/null
 grep -F "bash tools/test/run-transaction-read-deploy-drain-live-evidence-autogen.sh" "${workflow}" >/dev/null
 grep -F 'source "${generated_env}"' "${workflow}" >/dev/null
