@@ -23,7 +23,9 @@ on:
       - ".github/workflows/transaction-read-deploy-drain-live-evidence.yml"
       - "tools/test/check-transaction-read-deploy-drain-live-evidence-workflow.sh"
       - "tools/test/check-transaction-read-deploy-drain-live-evidence-autogen.sh"
+      - "tools/test/check-transaction-read-deploy-drain-oci-k6.sh"
       - "tools/test/run-transaction-read-deploy-drain-live-evidence-autogen.sh"
+      - "tools/test/run-transaction-read-deploy-drain-oci-k6.sh"
       - "tools/test/run-transaction-read-deploy-drain-under-load-gate.sh"
       - "tools/test/check-transaction-read-deploy-drain-under-load-gate.sh"
       - "tools/test/run-transaction-read-oci-evidence-execution-gate.sh"
@@ -33,6 +35,7 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 concurrency:
   group: transaction-read-deploy-drain-live-evidence-${{ github.ref }}
@@ -53,6 +56,9 @@ jobs:
 
       - name: Check deploy drain live evidence autogen
         run: bash tools/test/check-transaction-read-deploy-drain-live-evidence-autogen.sh
+
+      - name: Check deploy drain OCI k6 runner
+        run: bash tools/test/check-transaction-read-deploy-drain-oci-k6.sh
 
       - name: Check deploy drain under-load contract
         run: bash tools/test/check-transaction-read-deploy-drain-under-load-gate.sh
@@ -131,6 +137,7 @@ jobs:
         shell: bash
         env:
           DEPLOY_DRAIN_AUTOGEN_MODE: live
+          DEPLOY_DRAIN_OCI_GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           generated_env="${DEPLOY_DRAIN_LIVE_OUTPUT_DIR}/${DEPLOY_DRAIN_LIVE_NAME}-generated-evidence.env"
