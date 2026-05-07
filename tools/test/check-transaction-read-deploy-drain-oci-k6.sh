@@ -35,6 +35,12 @@ if grep -F "https://staging.example.invalid" <<<"${plan}" >/dev/null; then
   exit 1
 fi
 
+echo "[transaction-read-deploy-drain-oci-k6] nginx current-run log fallback contract"
+grep -F 'docker exec "${container}" sh -c' "${runner}" >/dev/null
+grep -F 'docker logs --since "${nginx_log_since}" "${container}"' "${runner}" >/dev/null
+grep -F '"k6_run_id":"${run_id}"' "${runner}" >/dev/null
+grep -F 'nginx-run-lines-missing' "${runner}" >/dev/null
+
 echo "[transaction-read-deploy-drain-oci-k6] fixture generation"
 evidence_env="$(
   DEPLOY_DRAIN_OCI_MODE=fixture \
