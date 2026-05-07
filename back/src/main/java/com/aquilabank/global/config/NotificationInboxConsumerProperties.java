@@ -28,6 +28,26 @@ public record NotificationInboxConsumerProperties(
     transferReversed = transferReversed == null ? new TopicProperties(null) : transferReversed;
     dlq = dlq == null ? new DlqProperties(null) : dlq;
     ops = ops == null ? new OpsProperties(false, 20, 5, null) : ops;
+
+    // enabled=true가 bean 미생성으로 통과하면 live evidence가 Kafka consume 경로를 보장하지 못합니다.
+    if (enabled) {
+      requireText(
+          bootstrapServers,
+          "notification.inbox.consumer.bootstrap-servers is required when notification.inbox.consumer.enabled=true");
+      if (!hasAnyMainTopic(transferBooked, transferReversed)) {
+        throw new IllegalArgumentException(
+            "notification.inbox.consumer.transfer-booked.topic or notification.inbox.consumer.transfer-reversed.topic is required when notification.inbox.consumer.enabled=true");
+      }
+    }
+    if (ops.enabled()) {
+      if (!enabled) {
+        throw new IllegalArgumentException(
+            "notification.inbox.consumer.enabled=true is required when notification.inbox.consumer.ops.enabled=true");
+      }
+      requireText(
+          dlq.topic(),
+          "notification.inbox.consumer.dlq.topic is required when notification.inbox.consumer.ops.enabled=true");
+    }
   }
 
   public String disabledReason() {
@@ -107,6 +127,18 @@ public record NotificationInboxConsumerProperties(
         throw new IllegalArgumentException(
             "notification.inbox.consumer.ops.health.max-dlq-count must not be negative");
       }
+    }
+  }
+
+  private static boolean hasAnyMainTopic(
+      TopicProperties transferBooked, TopicProperties transferReversed) {
+    return StringUtils.hasText(transferBooked.topic())
+        || StringUtils.hasText(transferReversed.topic());
+  }
+
+  private static void requireText(String value, String message) {
+    if (!StringUtils.hasText(value)) {
+      throw new IllegalArgumentException(message);
     }
   }
 }

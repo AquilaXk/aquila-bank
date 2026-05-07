@@ -56,6 +56,38 @@ class NotificationInboxConsumerConfigurationTest {
   }
 
   @Test
+  void failsFastWhenConsumerIsEnabledButBootstrapServersAreMissing() {
+    contextRunner
+        .withPropertyValues(
+            "notification.inbox.consumer.enabled=true",
+            "notification.inbox.consumer.transfer-booked.topic=bank.transfer.booked.v1")
+        .run(
+            context -> {
+              assertThat(context).hasFailed();
+              assertThat(context.getStartupFailure())
+                  .hasRootCauseMessage(
+                      "notification.inbox.consumer.bootstrap-servers is required when notification.inbox.consumer.enabled=true");
+            });
+  }
+
+  @Test
+  void failsFastWhenOpsIsEnabledButDlqTopicIsMissing() {
+    contextRunner
+        .withPropertyValues(
+            "notification.inbox.consumer.enabled=true",
+            "notification.inbox.consumer.bootstrap-servers=localhost:9092",
+            "notification.inbox.consumer.transfer-booked.topic=bank.transfer.booked.v1",
+            "notification.inbox.consumer.ops.enabled=true")
+        .run(
+            context -> {
+              assertThat(context).hasFailed();
+              assertThat(context.getStartupFailure())
+                  .hasRootCauseMessage(
+                      "notification.inbox.consumer.dlq.topic is required when notification.inbox.consumer.ops.enabled=true");
+            });
+  }
+
+  @Test
   void appliesConfiguredConsumerConcurrencyToListenerFactory() {
     contextRunner
         .withPropertyValues(
