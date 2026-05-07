@@ -32,6 +32,9 @@ export const mixedReadBackend429Count = new Counter("aquila_mixed_read_backend_4
 export const mixedReadUnknown429Count = new Counter("aquila_mixed_read_unknown_429_count");
 export const mixedWriteCount = new Counter("aquila_mixed_write_count");
 export const mixedWriteDurationMs = new Trend("aquila_mixed_write_duration_ms", true);
+export const mixedWrite2xxCount = new Counter("aquila_mixed_write_2xx_count");
+export const mixedWrite429Count = new Counter("aquila_mixed_write_429_count");
+export const mixedWriteUnexpectedStatusCount = new Counter("aquila_mixed_write_unexpected_status_count");
 export const mixedWrite429Rate = new Rate("aquila_mixed_write_429_rate");
 export const mixedAuthCount = new Counter("aquila_mixed_auth_count");
 export const mixedAuthDurationMs = new Trend("aquila_mixed_auth_duration_ms", true);
@@ -191,9 +194,20 @@ export function transferWrite() {
     },
   });
 
+  const accepted = response.status >= 200 && response.status < 300;
+  const boundedRejected = response.status === 429;
   mixedWriteCount.add(1);
   mixedWriteDurationMs.add(response.timings.duration);
-  mixedWrite429Rate.add(response.status === 429);
+  if (accepted) {
+    mixedWrite2xxCount.add(1);
+  }
+  if (boundedRejected) {
+    mixedWrite429Count.add(1);
+  }
+  if (!accepted && !boundedRejected) {
+    mixedWriteUnexpectedStatusCount.add(1);
+  }
+  mixedWrite429Rate.add(boundedRejected);
   recordFiveXx(response);
 
   check(response, {
@@ -288,6 +302,9 @@ function markdownSummary(data) {
 | read edge 429 rate | ${metricValue(data, "aquila_mixed_read_edge_429_rate", "rate")} |
 | read backend 429 count | ${metricValue(data, "aquila_mixed_read_backend_429_count", "count")} |
 | read unknown 429 count | ${metricValue(data, "aquila_mixed_read_unknown_429_count", "count")} |
+| write 2xx count | ${metricValue(data, "aquila_mixed_write_2xx_count", "count")} |
+| write 429 count | ${metricValue(data, "aquila_mixed_write_429_count", "count")} |
+| write unexpected status count | ${metricValue(data, "aquila_mixed_write_unexpected_status_count", "count")} |
 | 5xx count | ${metricValue(data, "aquila_mixed_5xx_count", "count")} |
 `;
 }
