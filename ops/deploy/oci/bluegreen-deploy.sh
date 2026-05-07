@@ -31,6 +31,13 @@ POSTGRES_IMAGE="${POSTGRES_IMAGE:-postgres:18}"
 POSTGRES_DATA_VOLUME="${POSTGRES_DATA_VOLUME:-aquila-postgres-data}"
 POSTGRES_HOST_BIND="${POSTGRES_HOST_BIND:-127.0.0.1:5432}"
 POSTGRES_STARTUP_TIMEOUT_SECONDS="${POSTGRES_STARTUP_TIMEOUT_SECONDS:-120}"
+KAFKA_CONTAINER_NAME="${KAFKA_CONTAINER_NAME:-aquila-kafka}"
+KAFKA_NETWORK_ALIAS="${KAFKA_NETWORK_ALIAS:-kafka}"
+KAFKA_LOG_TAIL_LINES="${KAFKA_LOG_TAIL_LINES:-120}"
+KAFKA_IMAGE="${KAFKA_IMAGE:-bitnamilegacy/kafka:4.0.0-debian-12-r10}"
+KAFKA_DATA_VOLUME="${KAFKA_DATA_VOLUME:-aquila-kafka-data}"
+KAFKA_HOST_BIND="${KAFKA_HOST_BIND:-127.0.0.1:9092}"
+KAFKA_STARTUP_TIMEOUT_SECONDS="${KAFKA_STARTUP_TIMEOUT_SECONDS:-120}"
 DB_PREFLIGHT_ENABLED="${DB_PREFLIGHT_ENABLED:-true}"
 DB_PREFLIGHT_IMAGE="${DB_PREFLIGHT_IMAGE:-postgres:18-alpine}"
 DB_PREFLIGHT_TIMEOUT_SECONDS="${DB_PREFLIGHT_TIMEOUT_SECONDS:-10}"
@@ -176,6 +183,14 @@ postgres_container_running() {
 
 postgres_container_exists() {
   docker ps -a --format '{{.Names}}' | grep -qx "${POSTGRES_CONTAINER_NAME}"
+}
+
+kafka_container_running() {
+  docker ps --format '{{.Names}}' | grep -qx "${KAFKA_CONTAINER_NAME}"
+}
+
+kafka_container_exists() {
+  docker ps -a --format '{{.Names}}' | grep -qx "${KAFKA_CONTAINER_NAME}"
 }
 
 diagnose_postgres_preflight() {
@@ -342,6 +357,115 @@ connect_postgres_container() {
   if ! docker network connect --alias "${POSTGRES_NETWORK_ALIAS}" "${NETWORK}" "${POSTGRES_CONTAINER_NAME}"; then
     log "connect postgres container failed: container=${POSTGRES_CONTAINER_NAME} network=${NETWORK}"
     diagnose_postgres_preflight
+    exit 1
+  fi
+}
+
+diagnose_kafka() {
+  log "kafka diagnostics: expected_container=${KAFKA_CONTAINER_NAME} expected_network=${NETWORK}"
+  docker ps -a \
+    --filter "name=^/${KAFKA_CONTAINER_NAME}$" \
+    --format 'table {{.Names}}\t{{.Status}}\t{{.Networks}}' || true
+  docker network inspect -f 'network containers={{range $id, $container := .Containers}}{{$container.Name}} {{end}}' "${NETWORK}" || true
+
+  if docker inspect "${KAFKA_CONTAINER_NAME}" >/dev/null 2>&1; then
+    docker inspect -f 'kafka networks={{range $name, $_ := .NetworkSettings.Networks}}{{$name}} {{end}}' "${KAFKA_CONTAINER_NAME}" || true
+    docker logs --tail="${KAFKA_LOG_TAIL_LINES}" "${KAFKA_CONTAINER_NAME}" || true
+  fi
+}
+
+connect_kafka_container() {
+  if ! kafka_container_running; then
+    return 0
+  fi
+
+  if docker inspect -f '{{json .NetworkSettings.Networks}}' "${KAFKA_CONTAINER_NAME}" | grep -Fq "\"${NETWORK}\""; then
+    return 0
+  fi
+
+  log "connect kafka container ${KAFKA_CONTAINER_NAME} to network ${NETWORK}"
+  if ! docker network connect --alias "${KAFKA_NETWORK_ALIAS}" "${NETWORK}" "${KAFKA_CONTAINER_NAME}"; then
+    log "connect kafka container failed: container=${KAFKA_CONTAINER_NAME} network=${NETWORK}"
+    diagnose_kafka
+    exit 1
+  fi
+}
+
+start_kafka_docker_container() {
+  log "bootstrap Kafka container with docker volume=${KAFKA_DATA_VOLUME}"
+  docker volume create "${KAFKA_DATA_VOLUME}" >/dev/null
+  if ! docker run -d \
+    --name "${KAFKA_CONTAINER_NAME}" \
+    --restart unless-stopped \
+    --pull missing \
+    --network "${NETWORK}" \
+    --network-alias "${KAFKA_NETWORK_ALIAS}" \
+    --label com.aquilabank.runtime=oci-a1 \
+    --label com.aquilabank.service=kafka \
+    -p "${KAFKA_HOST_BIND}:9092" \
+    -e TZ=Asia/Seoul \
+    -e ALLOW_PLAINTEXT_LISTENER=yes \
+    -e KAFKA_CFG_NODE_ID=0 \
+    -e KAFKA_CFG_PROCESS_ROLES=controller,broker \
+    -e KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093 \
+    -e KAFKA_CFG_ADVERTISED_LISTENERS="PLAINTEXT://${KAFKA_NETWORK_ALIAS}:9092" \
+    -e KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT \
+    -e KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER \
+    -e "KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=0@${KAFKA_NETWORK_ALIAS}:9093" \
+    -e KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT \
+    -e KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR=1 \
+    -e KAFKA_CFG_MIN_INSYNC_REPLICAS=1 \
+    -e KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1 \
+    -e KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR=1 \
+    -e KAFKA_CFG_GROUP_INITIAL_REBALANCE_DELAY_MS=0 \
+    -e KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=false \
+    -e KAFKA_CFG_NUM_PARTITIONS=1 \
+    -e KAFKA_KRAFT_CLUSTER_ID=MkU3OEVBNTcwNTJENDM2Qk \
+    -v "${KAFKA_DATA_VOLUME}:/bitnami/kafka" \
+    "${KAFKA_IMAGE}" >/dev/null; then
+    log "Kafka docker bootstrap failed"
+    diagnose_kafka
+    exit 1
+  fi
+}
+
+check_kafka_ready() {
+  docker exec "${KAFKA_CONTAINER_NAME}" \
+    /opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null
+}
+
+wait_kafka_ready() {
+  local elapsed=0
+
+  while (( elapsed < KAFKA_STARTUP_TIMEOUT_SECONDS )); do
+    if check_kafka_ready; then
+      return 0
+    fi
+    sleep 2
+    elapsed=$((elapsed + 2))
+  done
+
+  return 1
+}
+
+ensure_kafka_container_for_backend() {
+  if kafka_container_running; then
+    connect_kafka_container
+  elif kafka_container_exists; then
+    log "start existing Kafka container ${KAFKA_CONTAINER_NAME}"
+    if ! docker start "${KAFKA_CONTAINER_NAME}" >/dev/null; then
+      log "existing Kafka container failed to start"
+      diagnose_kafka
+      exit 1
+    fi
+    connect_kafka_container
+  else
+    start_kafka_docker_container
+  fi
+
+  if ! wait_kafka_ready; then
+    log "backend Kafka bootstrap requires Kafka container: container=${KAFKA_CONTAINER_NAME} alias=${KAFKA_NETWORK_ALIAS}"
+    diagnose_kafka
     exit 1
   fi
 }
@@ -1059,6 +1183,7 @@ main() {
   docker_login
   connect_postgres_container
   preflight_backend_database
+  ensure_kafka_container_for_backend
 
   blue="$(active_slot)"
   case "${blue}" in

@@ -107,7 +107,9 @@ echo "[production-high-traffic-config] required key plan"
 plan="$("${script}" --print-plan)"
 grep -F "SECURITY_LOGIN_THROTTLING_STORE=memory 또는 redis" <<<"${plan}" >/dev/null
 grep -F "TRANSACTION_READ_REPLICA_ENABLED=false by default" <<<"${plan}" >/dev/null
-grep -F "OUTBOX_KAFKA_ENABLED=false by default" <<<"${plan}" >/dev/null
+grep -F "OUTBOX_KAFKA_ENABLED=true" <<<"${plan}" >/dev/null
+grep -F "NOTIFICATION_INBOX_CONSUMER_ENABLED=true" <<<"${plan}" >/dev/null
+grep -F "KAFKA_TOPIC_STARTUP_VALIDATION_ENABLED=true" <<<"${plan}" >/dev/null
 grep -F "OPS_API_ADMISSION_CONTROL_ENABLED=true" <<<"${plan}" >/dev/null
 grep -F "OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_MAX<=3" <<<"${plan}" >/dev/null
 grep -F "DB_POOL_MAX_SIZE<=4" <<<"${plan}" >/dev/null
@@ -123,10 +125,26 @@ valid_gate_env=(
   SECURITY_LOGIN_THROTTLING_STORE=memory
   SECURITY_LOGIN_THROTTLING_REQUIRE_REDIS=false
   TRANSACTION_READ_REPLICA_ENABLED=false
-  OUTBOX_KAFKA_ENABLED=false
-  NOTIFICATION_INBOX_CONSUMER_ENABLED=false
-  KAFKA_TOPIC_PROVISIONING_ENABLED=false
-  KAFKA_TOPIC_STARTUP_VALIDATION_ENABLED=false
+  OUTBOX_KAFKA_ENABLED=true
+  OUTBOX_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+  OUTBOX_KAFKA_TOPIC_DEFAULT=bank.notification.outbox.v1
+  OUTBOX_KAFKA_TOPIC_TRANSFER_BOOKED=bank.transfer.booked.v1
+  OUTBOX_KAFKA_TOPIC_TRANSFER_REVERSED=bank.transfer.reversed.v1
+  OUTBOX_KAFKA_PRODUCER_ACKS=all
+  OUTBOX_KAFKA_PRODUCER_ENABLE_IDEMPOTENCE=true
+  OUTBOX_KAFKA_PRODUCER_MAX_IN_FLIGHT=1
+  NOTIFICATION_INBOX_CONSUMER_ENABLED=true
+  NOTIFICATION_INBOX_CONSUMER_OPS_ENABLED=true
+  NOTIFICATION_INBOX_CONSUMER_BOOTSTRAP_SERVERS=kafka:9092
+  NOTIFICATION_INBOX_CONSUMER_CONCURRENCY=1
+  NOTIFICATION_INBOX_CONSUMER_TRANSFER_BOOKED_TOPIC=bank.transfer.booked.v1
+  NOTIFICATION_INBOX_CONSUMER_TRANSFER_REVERSED_TOPIC=bank.transfer.reversed.v1
+  NOTIFICATION_INBOX_CONSUMER_DLQ_TOPIC=bank.notification.inbox.dlq.v1
+  KAFKA_TOPIC_PROVISIONING_ENABLED=true
+  KAFKA_TOPIC_STARTUP_VALIDATION_ENABLED=true
+  KAFKA_TOPIC_PROVISIONING_PARTITIONS=1
+  KAFKA_TOPIC_PROVISIONING_REPLICATION_FACTOR=1
+  KAFKA_TOPIC_PROVISIONING_MIN_IN_SYNC_REPLICAS=1
   OPS_API_ADMISSION_CONTROL_ENABLED=true
   OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_MAX=3
   OPS_API_ADMISSION_CONTROL_ACCOUNT_READ_MAX=4
@@ -187,42 +205,28 @@ if env "${valid_gate_env[@]}" TRANSACTION_READ_REPLICA_ENABLED=true "${script}" 
   exit 1
 fi
 
+echo "[production-high-traffic-config] guard: Kafka disabled fails"
+if env "${valid_gate_env[@]}" OUTBOX_KAFKA_ENABLED=false "${script}" >/dev/null 2>&1; then
+  echo "Kafka disabled unexpectedly succeeded" >&2
+  exit 1
+fi
+
 echo "[production-high-traffic-config] guard: Kafka enabled without env fails"
-if env "${valid_gate_env[@]}" OUTBOX_KAFKA_ENABLED=true "${script}" >/dev/null 2>&1; then
+if env "${valid_gate_env[@]}" OUTBOX_KAFKA_BOOTSTRAP_SERVERS= "${script}" >/dev/null 2>&1; then
   echo "Kafka without env unexpectedly succeeded" >&2
   exit 1
 fi
 
 kafka_gate_env=(
   "${valid_gate_env[@]}"
-  OUTBOX_KAFKA_ENABLED=true
-  OUTBOX_KAFKA_BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9092,kafka-3:9092
-  OUTBOX_KAFKA_TOPIC_DEFAULT=bank.notification.outbox.v1
-  OUTBOX_KAFKA_TOPIC_TRANSFER_BOOKED=bank.transfer.booked.v1
-  OUTBOX_KAFKA_TOPIC_TRANSFER_REVERSED=bank.transfer.reversed.v1
-  OUTBOX_KAFKA_PRODUCER_ACKS=all
-  OUTBOX_KAFKA_PRODUCER_ENABLE_IDEMPOTENCE=true
-  OUTBOX_KAFKA_PRODUCER_MAX_IN_FLIGHT=1
-  NOTIFICATION_INBOX_CONSUMER_ENABLED=true
-  NOTIFICATION_INBOX_CONSUMER_OPS_ENABLED=true
-  NOTIFICATION_INBOX_CONSUMER_BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9092,kafka-3:9092
-  NOTIFICATION_INBOX_CONSUMER_CONCURRENCY=1
-  NOTIFICATION_INBOX_CONSUMER_TRANSFER_BOOKED_TOPIC=bank.transfer.booked.v1
-  NOTIFICATION_INBOX_CONSUMER_TRANSFER_REVERSED_TOPIC=bank.transfer.reversed.v1
-  NOTIFICATION_INBOX_CONSUMER_DLQ_TOPIC=bank.notification.inbox.dlq.v1
-  KAFKA_TOPIC_PROVISIONING_ENABLED=true
-  KAFKA_TOPIC_STARTUP_VALIDATION_ENABLED=true
-  KAFKA_TOPIC_PROVISIONING_PARTITIONS=3
-  KAFKA_TOPIC_PROVISIONING_REPLICATION_FACTOR=3
-  KAFKA_TOPIC_PROVISIONING_MIN_IN_SYNC_REPLICAS=2
 )
 
-echo "[production-high-traffic-config] optional: Kafka baseline passes when explicitly configured"
+echo "[production-high-traffic-config] Kafka baseline passes when configured"
 env "${kafka_gate_env[@]}" "${script}" >/dev/null
 
-echo "[production-high-traffic-config] guard: unsafe Kafka replication fails when Kafka is enabled"
-if env "${kafka_gate_env[@]}" KAFKA_TOPIC_PROVISIONING_REPLICATION_FACTOR=1 "${script}" >/dev/null 2>&1; then
-  echo "unsafe Kafka replication unexpectedly succeeded" >&2
+echo "[production-high-traffic-config] guard: unsafe Kafka replication fails when zero"
+if env "${kafka_gate_env[@]}" KAFKA_TOPIC_PROVISIONING_REPLICATION_FACTOR=0 "${script}" >/dev/null 2>&1; then
+  echo "zero Kafka replication unexpectedly succeeded" >&2
   exit 1
 fi
 

@@ -14,7 +14,7 @@
   - AWS App EC2는 legacy/optional 배포 smoke로만 사용
 - 제외 목표:
   - 전체 1억 건 검색/집계/정렬
-  - Kafka, Prometheus, Grafana의 같은 host 상시 필수 운영
+  - Prometheus, Grafana의 같은 host 상시 필수 운영
   - 작은 인프라 한계를 넘는 무제한 SSE/API 동시성
 - 원칙:
   - 헥사고날 아키텍처 준수
@@ -47,6 +47,7 @@
 ## Runtime Baseline
 
 - database: `PostgreSQL 18`
+- event broker: `Kafka 4.0` single-node KRaft broker, local/deploy always-on
 - primary 100m evidence: `OCI A1 Flex + self-managed PostgreSQL 18 + 200GB Block Volume`
 - query/admission budget: OCI A1 `4 OCPU / 24GB` 기반 작은 CPU/메모리 budget
 - latest documented live read evidence: [main805 rerun15](/Users/aquila/Custom/GitProjects/aquila-bank/docs/performance-results/oci-a1-100m-bottleneck-20260506-main805-rerun15.md) 기준 30m soak accepted 200 `112,416`, backend/unknown 429 `0`, 5xx/499 `0`, Hikari warning/pending `0`, PostgreSQL temp file delta `0`, p99.9 `12.86ms`
@@ -56,9 +57,9 @@
 ## Environment Split
 
 - 로컬 개발: `Docker Compose + PostgreSQL 18`
-- Kafka 로컬 검증: `docker compose --profile kafka up`로 명시적으로 opt-in 합니다. `OUTBOX_KAFKA_ENABLED=true` 또는 `NOTIFICATION_INBOX_CONSUMER_ENABLED=true`이면 bootstrap/topic 같은 필수값이 비어 있을 때 logging fallback으로 내려가지 않고 startup에서 실패합니다.
+- Kafka 로컬 검증: `docker compose up`에서 Kafka가 상시 실행됩니다. host-local backend는 `localhost:9092`, compose loadtest backend는 `kafka:9092`를 사용합니다. `OUTBOX_KAFKA_ENABLED=true` 또는 `NOTIFICATION_INBOX_CONSUMER_ENABLED=true`이면 bootstrap/topic 같은 필수값이 비어 있을 때 logging fallback으로 내려가지 않고 startup에서 실패합니다.
 - 로컬 small-budget 근사 검증: legacy 이름의 `compose.t3micro.yml`과 `tools/test/run-docker-t3micro-capacity-smoke.sh`로 CPU/메모리 cgroup 제한을 적용합니다.
-- 로컬 HTTP 부하 테스트: `compose.loadtest.yml`로 backend, k6, Prometheus, Grafana, Alertmanager, Postgres exporter를 함께 띄웁니다. Prometheus/Grafana는 부하테스트/선택 운영 자산이며 앱/DB host 상시 필수 구성에서 제외합니다. read/write interference gate는 Kafka profile까지 함께 띄워 outbox publish와 notification inbox consume 경로를 실제 broker로 검증합니다.
+- 로컬 HTTP 부하 테스트: `compose.loadtest.yml`로 backend, Kafka, k6, Prometheus, Grafana, Alertmanager, Postgres exporter를 함께 띄웁니다. Prometheus/Grafana는 부하테스트/선택 운영 자산이며 앱/DB host 상시 필수 구성에서 제외합니다. read/write interference gate는 outbox publish와 notification inbox consume 경로를 실제 broker로 검증합니다.
 - cloud 1억 건 synthetic 조회 테스트: dataset 생성은 OCI A1 PostgreSQL을 향해 `tools/test/prepare-transaction-read-model-100m-fixture.sh`를 실행하고, k6 조회는 remote/off-host runner 또는 기존 legacy 이름의 `tools/test/run-transaction-read-model-100m-k6-local.sh --k6-only`로 분리합니다. 생성 phase와 조회 phase 모두 OCI A1 data volume의 1억 건 dataset을 기준으로 판정합니다.
 - 비용형 1억 건 DB/capacity 기준: [infra/terraform/oci/paid-a1-postgres](/Users/aquila/Custom/GitProjects/aquila-bank/infra/terraform/oci/paid-a1-postgres/README.md)는 `VM.Standard.A1.Flex` 4 OCPU / 24GB + data 200GB self-managed PostgreSQL 18 기준입니다. PostgreSQL 5432 public ingress는 열지 않고 SSH tunnel/private 경로로만 접근합니다.
 - legacy app smoke: `EC2 t3.small + gp3 40GiB`는 AWS 배포 경로 확인용으로만 남기며, remote DB/capacity 기준으로 사용하지 않습니다.
@@ -121,7 +122,7 @@ com.aquilabank
 
 ## Kafka Runtime
 
-- Kafka는 상시 필수 runtime이 아니라 outbox/notification 간섭을 확인할 때 명시적으로 켭니다.
+- Kafka는 local/deploy runtime에서 상시 실행합니다. OCI blue-green deploy는 backend 시작 전 단일 broker container를 보장합니다.
 - producer 필수값: `OUTBOX_KAFKA_ENABLED=true`, `OUTBOX_KAFKA_BOOTSTRAP_SERVERS`, `OUTBOX_KAFKA_TOPIC_DEFAULT`.
 - consumer 필수값: `NOTIFICATION_INBOX_CONSUMER_ENABLED=true`, `NOTIFICATION_INBOX_CONSUMER_BOOTSTRAP_SERVERS`, `NOTIFICATION_INBOX_CONSUMER_TRANSFER_BOOKED_TOPIC` 또는 `NOTIFICATION_INBOX_CONSUMER_TRANSFER_REVERSED_TOPIC`.
 - ops/DLQ 필수값: `NOTIFICATION_INBOX_CONSUMER_OPS_ENABLED=true`이면 `NOTIFICATION_INBOX_CONSUMER_DLQ_TOPIC`도 함께 둡니다.

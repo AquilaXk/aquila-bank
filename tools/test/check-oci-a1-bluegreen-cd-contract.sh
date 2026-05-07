@@ -202,14 +202,18 @@ script_patterns=(
   'OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_HOT_MAX=${OCI_A1_TRANSACTION_READ_HOT_ADMISSION_MAX:-${OCI_A1_TRANSACTION_READ_ADMISSION_MAX:-8}}'
   'OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_ARCHIVE_MAX=${OCI_A1_TRANSACTION_READ_ARCHIVE_ADMISSION_MAX:-6}'
   "POSTGRES_CONTAINER_NAME"
+  "KAFKA_CONTAINER_NAME"
   "POSTGRES_LOG_TAIL_LINES"
   "POSTGRES_BOOTSTRAP_ENABLED"
   "POSTGRES_IMAGE"
   "POSTGRES_DATA_VOLUME"
   "ensure_postgres_container_for_host"
+  "ensure_kafka_container_for_backend"
   "start_postgres_systemd_service"
   "start_postgres_docker_container"
+  "start_kafka_docker_container"
   'com.aquilabank.service=postgres'
+  'com.aquilabank.service=kafka'
   'com.aquilabank.service=backend'
   'com.aquilabank.service=nginx'
   'com.aquilabank.slot=${green}'
@@ -221,9 +225,12 @@ script_patterns=(
   "require_postgres_container_for_host"
   "diagnose_postgres_preflight"
   "backend DB host requires PostgreSQL container"
+  "backend Kafka bootstrap requires Kafka container"
   'docker logs --tail="${POSTGRES_LOG_TAIL_LINES}"'
+  'docker logs --tail="${KAFKA_LOG_TAIL_LINES}"'
   "docker inspect -f"
   "aquila-postgres"
+  "aquila-kafka"
   "aquila-bank-backend-a"
   "aquila-bank-backend-b"
   "aquila-bank-front-a"
