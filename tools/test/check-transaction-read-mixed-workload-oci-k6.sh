@@ -22,6 +22,7 @@ grep -F "aquila_mixed_write_count" "${k6_script}" >/dev/null
 grep -F "aquila_mixed_auth_count" "${k6_script}" >/dev/null
 grep -F "aquila_mixed_notification_count" "${k6_script}" >/dev/null
 grep -F "aquila_mixed_sse_connect_count" "${k6_script}" >/dev/null
+grep -F 'checks: ["rate==1"]' "${k6_script}" >/dev/null
 
 temp_dir="$(mktemp -d)"
 trap 'rm -rf "${temp_dir}"' EXIT
