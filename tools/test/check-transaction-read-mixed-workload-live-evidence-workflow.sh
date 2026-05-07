@@ -35,6 +35,15 @@ grep -F 'MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV_INPUT: ${{ inputs.evidence_manifes
 grep -F 'MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV_VAR: ${{ vars.OCI_MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV }}' "${workflow}" >/dev/null
 grep -F 'MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV="${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV_INPUT:-${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV:-${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV_VAR:-}}}"' "${workflow}" >/dev/null
 grep -F 'MIXED_WORKLOAD_EVIDENCE_READY=false' "${workflow}" >/dev/null
+grep -F 'MIXED_WORKLOAD_OCI_DOCKER_CONTEXT="${MIXED_WORKLOAD_OCI_DOCKER_CONTEXT:-${K6_DOCKER_CONTEXT:-${CAPACITY_K6_DOCKER_CONTEXT:-default}}}"' "${workflow}" >/dev/null
+grep -F 'MIXED_WORKLOAD_OCI_HOT_ACCOUNT_ID="${MIXED_WORKLOAD_OCI_HOT_ACCOUNT_ID:-${K6_HOT_ACCOUNT_ID:-910000001}}"' "${workflow}" >/dev/null
+grep -F 'MIXED_WORKLOAD_OCI_COLD_ACCOUNT_ID="${MIXED_WORKLOAD_OCI_COLD_ACCOUNT_ID:-${K6_COLD_ACCOUNT_ID:-910000002}}"' "${workflow}" >/dev/null
+grep -F 'MIXED_WORKLOAD_OCI_WRITE_SOURCE_ACCOUNT_ID="${MIXED_WORKLOAD_OCI_WRITE_SOURCE_ACCOUNT_ID:-${K6_WRITE_SOURCE_ACCOUNT_ID:-920000001}}"' "${workflow}" >/dev/null
+grep -F 'MIXED_WORKLOAD_OCI_WRITE_TARGET_ACCOUNT_ID="${MIXED_WORKLOAD_OCI_WRITE_TARGET_ACCOUNT_ID:-${K6_WRITE_TARGET_ACCOUNT_ID:-920000002}}"' "${workflow}" >/dev/null
+grep -F 'printf '\''MIXED_WORKLOAD_OCI_HOT_ACCOUNT_ID=%s\n'\'' "${MIXED_WORKLOAD_OCI_HOT_ACCOUNT_ID}" >>"${GITHUB_ENV}"' "${workflow}" >/dev/null
+grep -F 'printf '\''MIXED_WORKLOAD_OCI_COLD_ACCOUNT_ID=%s\n'\'' "${MIXED_WORKLOAD_OCI_COLD_ACCOUNT_ID}" >>"${GITHUB_ENV}"' "${workflow}" >/dev/null
+grep -F 'printf '\''MIXED_WORKLOAD_OCI_WRITE_SOURCE_ACCOUNT_ID=%s\n'\'' "${MIXED_WORKLOAD_OCI_WRITE_SOURCE_ACCOUNT_ID}" >>"${GITHUB_ENV}"' "${workflow}" >/dev/null
+grep -F 'printf '\''MIXED_WORKLOAD_OCI_WRITE_TARGET_ACCOUNT_ID=%s\n'\'' "${MIXED_WORKLOAD_OCI_WRITE_TARGET_ACCOUNT_ID}" >>"${GITHUB_ENV}"' "${workflow}" >/dev/null
 grep -F 'mixed_workload_auth_token_file="${RUNNER_TEMP}/mixed-workload-live-auth-token"' "${workflow}" >/dev/null
 grep -F 'printf '\''::add-mask::%s\n'\'' "${STAGING_REPLAY_TOKEN}"' "${workflow}" >/dev/null
 grep -F 'printf '\''%s'\'' "${STAGING_REPLAY_TOKEN}" >"${mixed_workload_auth_token_file}"' "${workflow}" >/dev/null
