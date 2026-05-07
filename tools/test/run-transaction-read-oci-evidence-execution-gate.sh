@@ -194,7 +194,7 @@ BEGIN {
   for (i in required_items) {
     required[required_items[i]] = 1
   }
-  print "scenario\tstatus\treason\trun_id\tduration_min\tsource_ips\trun_script\tk6_summary_ref\tnginx_access_ref\tspring_metrics_ref\thikari_log_ref\tpostgres_wait_ref\tdeploy_event_ref\tcache_state_ref\ttimeline_ref\tedge_429_rate\tbackend_429_count\tunknown_429_count\tfive_xx_count\tnginx_499_count\thikari_validation_warnings\tdb_pool_pending_max\tp999_ms\tp95_ms\tp99_ms\tmax_ms\tpostgres_checkpoint_count\tpostgres_temp_file_count\tnginx_upstream_p95_ms\thikari_config_ref\thikari_max_lifetime_ms\thikari_keepalive_time_ms\tpostgres_idle_timeout_ms\toci_nat_idle_timeout_ms\thikari_zero_warning_soak_ref\tworkload_components\tread_p999_ms\tread_429_source_ref"
+  print "scenario\tstatus\treason\trun_id\tduration_min\tsource_ips\trun_script\tk6_summary_ref\tnginx_access_ref\tspring_metrics_ref\thikari_log_ref\tpostgres_wait_ref\tdeploy_event_ref\tcache_state_ref\ttimeline_ref\tedge_429_rate\tbackend_429_count\tunknown_429_count\tfive_xx_count\tnginx_499_count\thikari_validation_warnings\tdb_pool_pending_max\tp999_ms\tp95_ms\tp99_ms\tmax_ms\tpostgres_checkpoint_count\tpostgres_temp_file_count\tnginx_upstream_p95_ms\thikari_config_ref\thikari_max_lifetime_ms\thikari_keepalive_time_ms\tpostgres_idle_timeout_ms\toci_nat_idle_timeout_ms\thikari_zero_warning_soak_ref\tworkload_components\tread_p999_ms\tread_429_source_ref\tread_buckets\tread_bucket_ref\twrite_2xx_count\twrite_unexpected_status_count\twrite_status_ref"
 }
 NR == 1 {
   for (i = 1; i <= NF; i++) {
@@ -232,6 +232,11 @@ NR == 1 {
   workload_components = value("workload_components", "")
   read_p999_ms = value("read_p999_ms", "")
   read_429_source_ref = value("read_429_source_ref", "")
+  read_buckets = value("read_buckets", "")
+  read_bucket_ref = value("read_bucket_ref", "")
+  write_2xx_count = value("write_2xx_count", "")
+  write_unexpected_status_count = value("write_unexpected_status_count", "")
+  write_status_ref = value("write_status_ref", "")
   status = "pass"
   reason = "ok"
   seen[scenario] = 1
@@ -259,10 +264,18 @@ NR == 1 {
     require_ref("workload_component_ref", "workload-component-missing")
     require_ref("outbox_lag_ref", "outbox-lag-missing")
     require_ref("read_429_source_ref", "read-429-source-missing")
+    require_ref("read_bucket_ref", "read-bucket-missing")
+    require_ref("write_status_ref", "write-status-missing")
     read_p999_ms = require_number("read_p999_ms", "read-p999-missing")
+    write_2xx_count = require_number("write_2xx_count", "write-2xx-missing")
+    write_unexpected_status_count = require_number("write_unexpected_status_count", "write-unexpected-status-missing")
     if (read_p999_ms > max_p999_ms) add_reason("read-p999>" max_p999_ms)
+    if (write_2xx_count <= 0) add_reason("write-2xx-missing")
     if (!has_component(workload_components, "read") || !has_component(workload_components, "write") || !has_component(workload_components, "auth") || !has_component(workload_components, "notification") || !has_component(workload_components, "sse")) {
       add_reason("workload-components-missing")
+    }
+    if (!has_component(read_buckets, "hot") || !has_component(read_buckets, "cold") || !has_component(read_buckets, "archive")) {
+      add_reason("read-buckets-missing")
     }
     if (value("outbox_lag_max", "1") + 0 > 0) add_reason("outbox-lag>0")
   }
@@ -303,7 +316,7 @@ NR == 1 {
   if (p999_ms > max_p999_ms) add_reason("p999>" max_p999_ms)
 
   if (status == "fail") fail_count++
-  printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+  printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
     scenario, status, reason, run_id, duration_min, source_ips, run_script,
     value("k6_summary_ref", ""), value("nginx_access_ref", ""), value("spring_metrics_ref", ""),
     value("hikari_log_ref", ""), value("postgres_wait_ref", ""), value("deploy_event_ref", ""),
@@ -312,7 +325,8 @@ NR == 1 {
     value("hikari_validation_warnings", "0"), value("db_pool_pending_max", "0"), value("p999_ms", "0"),
     p95_ms, p99_ms, max_ms, postgres_checkpoint_count, postgres_temp_file_count, nginx_upstream_p95_ms,
     hikari_config_ref, hikari_max_lifetime_ms, hikari_keepalive_time_ms, postgres_idle_timeout_ms, oci_nat_idle_timeout_ms, hikari_zero_warning_soak_ref,
-    workload_components, read_p999_ms, read_429_source_ref
+    workload_components, read_p999_ms, read_429_source_ref,
+    read_buckets, read_bucket_ref, write_2xx_count, write_unexpected_status_count, write_status_ref
 }
 END {
   missing = ""
@@ -374,6 +388,8 @@ cat >"${report_md}" <<REPORT
 - mixed workload closure artifacts: workload mix, component split, outbox lag
 - mixed workload required components: read,write,auth,notification,sse
 - mixed workload read p99.9 and 429 source artifact: required
+- mixed workload hot/cold/archive read bucket artifact: required
+- mixed workload write 2xx and status classification artifact: required
 - deploy drain closure artifacts: 499 budget, retry contract, reconnect success
 
 ## Result Table

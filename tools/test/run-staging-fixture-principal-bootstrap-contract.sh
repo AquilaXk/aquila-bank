@@ -66,6 +66,24 @@ run_bootstrap_with_csv_accounts() {
     "${script}"
 }
 
+run_bootstrap_with_write_accounts() {
+  env \
+    PATH="${tmp_dir}:${PATH}" \
+    PSQL_STUB_LOG="${psql_log}" \
+    PSQL_STDIN_LOG="${psql_stdin_log}" \
+    STAGING_OCI_A1_DATABASE_URL="postgresql://fixture-db/aquila" \
+    STAGING_REPLAY_USER_ID="55" \
+    STAGING_REPLAY_LOGIN_ID="staging-fixture-user" \
+    STAGING_REPLAY_USER_PASSWORD_HASH="fixturePasswordHashWithLetters" \
+    STAGING_REPLAY_USER_DISPLAY_NAME="Staging Fixture User" \
+    HOT_ACCOUNT_ID="1001" \
+    COLD_ACCOUNT_ID="1002" \
+    STAGING_MIXED_WORKLOAD_WRITE_SOURCE_ACCOUNT_ID="920000001" \
+    STAGING_MIXED_WORKLOAD_WRITE_TARGET_ACCOUNT_ID="920000002" \
+    STAGING_MIXED_WORKLOAD_WRITE_SOURCE_BALANCE_MINOR="50000000" \
+    "${script}"
+}
+
 assert_valid_secret_like_values_do_not_enter_arithmetic() {
   run_bootstrap >/dev/null
   grep -q -- "fixture_password_hash=fixturePasswordHashWithLetters" "${psql_log}"
@@ -81,6 +99,22 @@ assert_csv_account_ids_feed_fixture_sql() {
   grep -q -- "cold_account_ids=1002,1004" "${psql_log}"
   grep -q -- "regexp_split_to_table(:'hot_account_ids', ',')" "${psql_stdin_log}"
   grep -q -- "regexp_split_to_table(:'cold_account_ids', ',')" "${psql_stdin_log}"
+  grep -q -- "INSERT INTO user_account_membership" "${psql_stdin_log}"
+}
+
+assert_write_accounts_are_funded_and_authorized() {
+  : >"${psql_log}"
+  : >"${psql_stdin_log}"
+
+  run_bootstrap_with_write_accounts >/dev/null
+
+  grep -q -- "write_source_account_id=920000001" "${psql_log}"
+  grep -q -- "write_target_account_id=920000002" "${psql_log}"
+  grep -q -- "write_source_balance_minor=50000000" "${psql_log}"
+  grep -q -- "'write_source' AS account_group" "${psql_stdin_log}"
+  grep -q -- "'write_target' AS account_group" "${psql_stdin_log}"
+  grep -q -- "desired_available_balance_minor" "${psql_stdin_log}"
+  grep -q -- "GREATEST(account_balance_snapshot.available_balance_minor, EXCLUDED.available_balance_minor)" "${psql_stdin_log}"
   grep -q -- "INSERT INTO user_account_membership" "${psql_stdin_log}"
 }
 
@@ -144,6 +178,7 @@ assert_too_long_password_hash_fails_before_psql() {
 
 assert_valid_secret_like_values_do_not_enter_arithmetic
 assert_csv_account_ids_feed_fixture_sql
+assert_write_accounts_are_funded_and_authorized
 assert_transient_psql_timeout_retries_fixture_sql
 assert_too_long_password_hash_fails_before_psql
 

@@ -17,6 +17,9 @@ on:
     paths:
       - ".github/workflows/transaction-read-mixed-workload-live-evidence.yml"
       - "ops/k6/transaction-read-mixed-workload-100m.js"
+      - "tools/ops/staging-fixture-principal-bootstrap.sh"
+      - "tools/ops/resolve-oci-a1-staging-database-url.sh"
+      - "tools/test/run-staging-fixture-principal-bootstrap-contract.sh"
       - "tools/test/run-transaction-read-mixed-workload-oci-k6.sh"
       - "tools/test/check-transaction-read-mixed-workload-oci-k6.sh"
       - "tools/test/check-transaction-read-mixed-workload-live-evidence-workflow.sh"
@@ -48,6 +51,9 @@ jobs:
 
       - name: Check mixed workload live evidence workflow
         run: bash tools/test/check-transaction-read-mixed-workload-live-evidence-workflow.sh
+
+      - name: Check staging fixture principal contract
+        run: bash tools/test/run-staging-fixture-principal-bootstrap-contract.sh
 
       - name: Check OCI mixed workload k6 runner contract
         run: bash tools/test/check-transaction-read-mixed-workload-oci-k6.sh
@@ -152,6 +158,29 @@ jobs:
           printf 'MIXED_WORKLOAD_OCI_COLD_TO=%s\n' "${MIXED_WORKLOAD_OCI_COLD_TO}" >>"${GITHUB_ENV}"
           printf 'MIXED_WORKLOAD_OCI_WRITE_SOURCE_ACCOUNT_ID=%s\n' "${MIXED_WORKLOAD_OCI_WRITE_SOURCE_ACCOUNT_ID}" >>"${GITHUB_ENV}"
           printf 'MIXED_WORKLOAD_OCI_WRITE_TARGET_ACCOUNT_ID=%s\n' "${MIXED_WORKLOAD_OCI_WRITE_TARGET_ACCOUNT_ID}" >>"${GITHUB_ENV}"
+
+      - name: Resolve mixed workload staging database URL
+        if: env.MIXED_WORKLOAD_EVIDENCE_READY != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! resolved_database_url="$(tools/ops/resolve-oci-a1-staging-database-url.sh)"; then
+            echo "::error::Failed to resolve mixed workload staging database URL."
+            exit 1
+          fi
+          echo "::add-mask::${resolved_database_url}"
+          printf 'STAGING_OCI_A1_DATABASE_URL=%s\n' "${resolved_database_url}" >>"${GITHUB_ENV}"
+
+      - name: Ensure mixed workload fixture principal
+        if: env.MIXED_WORKLOAD_EVIDENCE_READY != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          HOT_ACCOUNT_ID="${MIXED_WORKLOAD_OCI_HOT_ACCOUNT_ID}" \
+          COLD_ACCOUNT_ID="${MIXED_WORKLOAD_OCI_COLD_ACCOUNT_ID}" \
+          STAGING_MIXED_WORKLOAD_WRITE_SOURCE_ACCOUNT_ID="${MIXED_WORKLOAD_OCI_WRITE_SOURCE_ACCOUNT_ID}" \
+          STAGING_MIXED_WORKLOAD_WRITE_TARGET_ACCOUNT_ID="${MIXED_WORKLOAD_OCI_WRITE_TARGET_ACCOUNT_ID}" \
+            tools/ops/staging-fixture-principal-bootstrap.sh
 
       - name: Generate mixed workload live evidence manifest artifacts
         if: env.MIXED_WORKLOAD_EVIDENCE_READY != 'true'
