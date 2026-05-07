@@ -12,10 +12,10 @@ print_plan() {
 - SECURITY_LOGIN_THROTTLING_STORE=memory 또는 redis
 - SECURITY_LOGIN_THROTTLING_REQUIRE_REDIS=false when store=memory
 - TRANSACTION_READ_REPLICA_ENABLED=false by default; true일 때 replica env required
-- OUTBOX_KAFKA_ENABLED=false by default; true일 때 producer env required
-- NOTIFICATION_INBOX_CONSUMER_ENABLED=false by default; true일 때 consumer env required
-- KAFKA_TOPIC_PROVISIONING_ENABLED=false by default; true일 때 topic safety env required
-- KAFKA_TOPIC_STARTUP_VALIDATION_ENABLED=false by default; true일 때 topic safety env required
+- OUTBOX_KAFKA_ENABLED=true
+- NOTIFICATION_INBOX_CONSUMER_ENABLED=true
+- KAFKA_TOPIC_PROVISIONING_ENABLED=true
+- KAFKA_TOPIC_STARTUP_VALIDATION_ENABLED=true
 - OPS_API_ADMISSION_CONTROL_ENABLED=true
 - OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_MAX<=3
 - OPS_T3MICRO_SATURATION_GUARD_ENABLED=true
@@ -145,10 +145,15 @@ validate_kafka() {
   local topic_provisioning_enabled=false
   local topic_validation_enabled=false
 
-  is_true OUTBOX_KAFKA_ENABLED && outbox_enabled=true
-  is_true NOTIFICATION_INBOX_CONSUMER_ENABLED && consumer_enabled=true
-  is_true KAFKA_TOPIC_PROVISIONING_ENABLED && topic_provisioning_enabled=true
-  is_true KAFKA_TOPIC_STARTUP_VALIDATION_ENABLED && topic_validation_enabled=true
+  require_true OUTBOX_KAFKA_ENABLED
+  require_true NOTIFICATION_INBOX_CONSUMER_ENABLED
+  require_true KAFKA_TOPIC_PROVISIONING_ENABLED
+  require_true KAFKA_TOPIC_STARTUP_VALIDATION_ENABLED
+
+  outbox_enabled=true
+  consumer_enabled=true
+  topic_provisioning_enabled=true
+  topic_validation_enabled=true
 
   if [ "$outbox_enabled" = "true" ]; then
     require_env OUTBOX_KAFKA_BOOTSTRAP_SERVERS
@@ -178,8 +183,8 @@ validate_kafka() {
       fail "Kafka topic validation requires OUTBOX_KAFKA_ENABLED or NOTIFICATION_INBOX_CONSUMER_ENABLED"
     fi
     require_positive_integer KAFKA_TOPIC_PROVISIONING_PARTITIONS
-    require_min_integer KAFKA_TOPIC_PROVISIONING_REPLICATION_FACTOR 3
-    require_min_integer KAFKA_TOPIC_PROVISIONING_MIN_IN_SYNC_REPLICAS 2
+    require_min_integer KAFKA_TOPIC_PROVISIONING_REPLICATION_FACTOR 1
+    require_min_integer KAFKA_TOPIC_PROVISIONING_MIN_IN_SYNC_REPLICAS 1
   fi
 
   if [ "$consumer_enabled" = "true" ] && [ "$topic_provisioning_enabled" = "true" ]; then

@@ -92,9 +92,16 @@ grep -F "Retry-After" "${write_script}" >/dev/null
 
 echo "[transaction-read-write-interference] compose kafka override"
 grep -F 'image: ${KAFKA_IMAGE:-bitnamilegacy/kafka:4.0.0-debian-12-r10}' compose.yml >/dev/null
+if sed -n '/^  kafka:/,/^  [a-zA-Z0-9_-]*:/p' compose.yml | grep -F "profiles:" >/dev/null; then
+  echo "Kafka service must be always-on in local compose" >&2
+  exit 1
+fi
 grep -F 'KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://${KAFKA_ADVERTISED_HOST:-localhost}:${KAFKA_PORT:-9092}' compose.yml >/dev/null
-grep -F 'OUTBOX_KAFKA_BOOTSTRAP_SERVERS: ${OUTBOX_KAFKA_BOOTSTRAP_SERVERS:-}' compose.loadtest.yml >/dev/null
-grep -F 'NOTIFICATION_INBOX_CONSUMER_BOOTSTRAP_SERVERS: ${NOTIFICATION_INBOX_CONSUMER_BOOTSTRAP_SERVERS:-}' compose.loadtest.yml >/dev/null
+grep -F 'OUTBOX_KAFKA_ENABLED: ${OUTBOX_KAFKA_ENABLED:-true}' compose.loadtest.yml >/dev/null
+grep -F 'OUTBOX_KAFKA_BOOTSTRAP_SERVERS: ${OUTBOX_KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}' compose.loadtest.yml >/dev/null
+grep -F 'NOTIFICATION_INBOX_CONSUMER_ENABLED: ${NOTIFICATION_INBOX_CONSUMER_ENABLED:-true}' compose.loadtest.yml >/dev/null
+grep -F 'NOTIFICATION_INBOX_CONSUMER_BOOTSTRAP_SERVERS: ${NOTIFICATION_INBOX_CONSUMER_BOOTSTRAP_SERVERS:-kafka:9092}' compose.loadtest.yml >/dev/null
+grep -F 'KAFKA_TOPIC_STARTUP_VALIDATION_ENABLED: ${KAFKA_TOPIC_STARTUP_VALIDATION_ENABLED:-true}' compose.loadtest.yml >/dev/null
 
 echo "[transaction-read-write-interference] invalid input fails"
 if INTERFERENCE_DURATION=0m "${runner}" --print-plan >/dev/null 2>&1; then
