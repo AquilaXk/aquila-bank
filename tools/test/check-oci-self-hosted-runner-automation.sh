@@ -129,7 +129,7 @@ workflow_patterns=(
   "runs-on: [self-hosted, oci-a1-staging]"
   "ops/deploy/oci/check-self-hosted-runner.sh"
   "OCI_A1_OBSERVABILITY_EXPECTED_CONTEXTS"
-  "OCI_A1_OBSERVABILITY_EXPECTED_CONTEXT_POLICY: fail"
+  "OCI_A1_OBSERVABILITY_EXPECTED_CONTEXT_POLICY: report"
   "bash tools/ops/collect-oci-a1-direct-observability.sh"
   "Upload OCI A1 direct observability artifact"
   "build/reports/oci-a1-direct-observability/"
@@ -137,6 +137,7 @@ workflow_patterns=(
 for pattern in "${workflow_patterns[@]}"; do
   require_pattern "$pattern" "$doctor_workflow"
 done
+reject_pattern "OCI_A1_OBSERVABILITY_EXPECTED_CONTEXT_POLICY: fail" "$doctor_workflow"
 require_pattern "ops/deploy/oci/check-self-hosted-runner.sh" "$staging_workflow"
 reject_pattern "for command_name in base64 curl jq psql" "$staging_workflow"
 
