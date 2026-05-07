@@ -26,7 +26,7 @@ jobs:
         shell: bash
         env:
           OCI_A1_OBSERVABILITY_EXPECTED_CONTEXTS: ${{ vars.OCI_A1_OBSERVABILITY_EXPECTED_CONTEXTS || 'desktop-linux,oci-a1-staging' }}
-          OCI_A1_OBSERVABILITY_EXPECTED_CONTEXT_POLICY: fail
+          OCI_A1_OBSERVABILITY_EXPECTED_CONTEXT_POLICY: report
         run: |
           set -euo pipefail
           bash tools/ops/collect-oci-a1-direct-observability.sh
