@@ -6,6 +6,7 @@ import json
 import os
 import pathlib
 import secrets
+import subprocess
 import sys
 import time
 
@@ -102,7 +103,42 @@ def resolve_session_id() -> tuple[int, str]:
     raw = os.environ.get("STAGING_REPLAY_SESSION_ID")
     if raw:
         return positive_int("STAGING_REPLAY_SESSION_ID"), "env"
+    database_url = os.environ.get("STAGING_REPLAY_DATABASE_URL") or os.environ.get("STAGING_DATABASE_URL")
+    if database_url:
+        return reserve_database_session_id(database_url), "database_sequence"
     return random_session_id(), "generated"
+
+
+def reserve_database_session_id(database_url: str) -> int:
+    query = """
+WITH candidate AS (
+    SELECT nextval(pg_get_serial_sequence('auth_refresh_token_session', 'id'))::bigint AS id
+)
+SELECT id
+FROM candidate
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM auth_refresh_token_session existing
+    WHERE existing.id = candidate.id
+);
+"""
+    for _ in range(5):
+        result = subprocess.run(
+            ["psql", database_url, "-AtX", "-v", "ON_ERROR_STOP=1", "-c", query],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        if result.returncode != 0:
+            fail("Failed to reserve auth_refresh_token_session sequence id")
+        value = result.stdout.strip()
+        if not value:
+            continue
+        if not value.isdigit() or int(value) <= 0:
+            fail("auth_refresh_token_session sequence returned an invalid id")
+        return int(value)
+    fail("Failed to reserve unused auth_refresh_token_session id")
 
 
 def issue_token(secret: str, issuer: str, user_id: int, subject: str, session_id: int, ttl_seconds: int) -> str:
