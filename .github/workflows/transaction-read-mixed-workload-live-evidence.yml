@@ -18,7 +18,9 @@ on:
       - ".github/workflows/transaction-read-mixed-workload-live-evidence.yml"
       - "ops/k6/transaction-read-mixed-workload-100m.js"
       - "tools/ops/staging-fixture-principal-bootstrap.sh"
+      - "tools/ops/issue-staging-replay-token.py"
       - "tools/ops/resolve-oci-a1-staging-database-url.sh"
+      - "tools/test/check-issue-staging-replay-token.py"
       - "tools/test/run-staging-fixture-principal-bootstrap-contract.sh"
       - "tools/test/run-transaction-read-mixed-workload-oci-k6.sh"
       - "tools/test/check-transaction-read-mixed-workload-oci-k6.sh"
@@ -54,6 +56,9 @@ jobs:
 
       - name: Check staging fixture principal contract
         run: bash tools/test/run-staging-fixture-principal-bootstrap-contract.sh
+
+      - name: Check staging replay token issuer contract
+        run: python3 tools/test/check-issue-staging-replay-token.py
 
       - name: Check OCI mixed workload k6 runner contract
         run: bash tools/test/check-transaction-read-mixed-workload-oci-k6.sh
@@ -151,8 +156,15 @@ jobs:
           MIXED_WORKLOAD_OCI_WRITE_SOURCE_ACCOUNT_ID="${MIXED_WORKLOAD_OCI_WRITE_SOURCE_ACCOUNT_ID:-${K6_WRITE_SOURCE_ACCOUNT_ID:-920000001}}"
           MIXED_WORKLOAD_OCI_WRITE_TARGET_ACCOUNT_ID="${MIXED_WORKLOAD_OCI_WRITE_TARGET_ACCOUNT_ID:-${K6_WRITE_TARGET_ACCOUNT_ID:-920000002}}"
 
-          if [[ -n "${STAGING_REPLAY_TOKEN:-}" ]]; then
-            mixed_workload_auth_token_file="${RUNNER_TEMP}/mixed-workload-live-auth-token"
+          mixed_workload_auth_token_file="${RUNNER_TEMP}/mixed-workload-live-auth-token"
+          if [[ -n "${OCI_A1_BACKEND_ENV_B64:-}" ]]; then
+            STAGING_REPLAY_TOKEN_OUTPUT_FILE="${mixed_workload_auth_token_file}" \
+            STAGING_REPLAY_TOKEN_TTL_SECONDS="${MIXED_WORKLOAD_REPLAY_TOKEN_TTL_SECONDS:-7200}" \
+              python3 tools/ops/issue-staging-replay-token.py
+            mixed_workload_auth_token="$(<"${mixed_workload_auth_token_file}")"
+            printf '::add-mask::%s\n' "${mixed_workload_auth_token}"
+            printf 'MIXED_WORKLOAD_OCI_AUTH_TOKEN_FILE=%s\n' "${mixed_workload_auth_token_file}" >>"${GITHUB_ENV}"
+          elif [[ -n "${STAGING_REPLAY_TOKEN:-}" ]]; then
             printf '::add-mask::%s\n' "${STAGING_REPLAY_TOKEN}"
             printf '%s' "${STAGING_REPLAY_TOKEN}" >"${mixed_workload_auth_token_file}"
             chmod 600 "${mixed_workload_auth_token_file}"
