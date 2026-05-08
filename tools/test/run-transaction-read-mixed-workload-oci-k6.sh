@@ -86,6 +86,7 @@ outbox_lag_ref="${generated_dir}/${name}-outbox-lag.tsv"
 read_429_source_ref="${generated_dir}/${name}-read-429-source.tsv"
 read_bucket_ref="${generated_dir}/${name}-read-buckets.tsv"
 write_status_ref="${generated_dir}/${name}-write-status.tsv"
+write_429_source_ref="${generated_dir}/${name}-write-429-source.tsv"
 runner_log_ref="${generated_dir}/${name}-runner.log"
 failure_env="${output_dir}/${name}-oci-mixed-failure.env"
 failure_md="${output_dir}/${name}-oci-mixed-failure.md"
@@ -248,6 +249,9 @@ write_fixture_summary() {
     "aquila_mixed_write_duration_ms": {"values": {"p(95)": 95, "p(99)": 180, "p(99.9)": 240, "max": 300}},
     "aquila_mixed_write_2xx_count": {"values": {"count": 28}},
     "aquila_mixed_write_429_count": {"values": {"count": 1}},
+    "aquila_mixed_write_edge_429_count": {"values": {"count": 1}},
+    "aquila_mixed_write_backend_429_count": {"values": {"count": 0}},
+    "aquila_mixed_write_unknown_429_count": {"values": {"count": 0}},
     "aquila_mixed_write_unexpected_status_count": {"values": {"count": 3}},
     "aquila_mixed_write_401_count": {"values": {"count": 1}},
     "aquila_mixed_write_403_count": {"values": {"count": 1}},
@@ -301,7 +305,7 @@ write_component_artifacts() {
   local hot_count hot_p95 hot_p999 hot_edge_429_rate hot_backend_429_count hot_unknown_429_count
   local cold_count cold_p95 cold_p999 cold_edge_429_rate cold_backend_429_count cold_unknown_429_count
   local archive_count archive_p95 archive_p999 archive_edge_429_rate archive_backend_429_count archive_unknown_429_count
-  local write_p95 write_2xx_count write_429_count write_unexpected_status_count
+  local write_p95 write_2xx_count write_429_count write_edge_429_count write_backend_429_count write_unknown_429_count write_unexpected_status_count
   local write_401_count write_403_count write_409_count write_422_count write_other_unexpected_count
   local auth_p95 notification_p95 outbox_lag_max
 
@@ -335,6 +339,9 @@ write_component_artifacts() {
   write_p95="$(metric_value aquila_mixed_write_duration_ms "p(95)" "0")"
   write_2xx_count="$(metric_count aquila_mixed_write_2xx_count)"
   write_429_count="$(metric_count aquila_mixed_write_429_count)"
+  write_edge_429_count="$(metric_count aquila_mixed_write_edge_429_count)"
+  write_backend_429_count="$(metric_count aquila_mixed_write_backend_429_count)"
+  write_unknown_429_count="$(metric_count aquila_mixed_write_unknown_429_count)"
   write_unexpected_status_count="$(metric_count aquila_mixed_write_unexpected_status_count)"
   write_401_count="$(metric_count aquila_mixed_write_401_count)"
   write_403_count="$(metric_count aquila_mixed_write_403_count)"
@@ -425,6 +432,12 @@ TSV
   printf "409\t%s\n" "${write_409_count}" >>"${write_status_ref}"
   printf "422\t%s\n" "${write_422_count}" >>"${write_status_ref}"
   printf "other_unexpected\t%s\n" "${write_other_unexpected_count}" >>"${write_status_ref}"
+  cat >"${write_429_source_ref}" <<'TSV'
+run_id	source	count
+TSV
+  printf "%s\tedge\t%s\n" "${run_id}" "${write_edge_429_count}" >>"${write_429_source_ref}"
+  printf "%s\tbackend\t%s\n" "${run_id}" "${write_backend_429_count}" >>"${write_429_source_ref}"
+  printf "%s\tunknown\t%s\n" "${run_id}" "${write_unknown_429_count}" >>"${write_429_source_ref}"
 
   {
     printf "MIXED_WORKLOAD_RUNNER_ENV_FORMAT=%q\n" "oci-mixed-v1"
@@ -443,11 +456,15 @@ TSV
     printf "MIXED_WORKLOAD_RUNNER_READ_429_SOURCE_REF=%q\n" "${read_429_source_ref}"
     printf "MIXED_WORKLOAD_RUNNER_READ_BUCKET_REF=%q\n" "${read_bucket_ref}"
     printf "MIXED_WORKLOAD_RUNNER_WRITE_STATUS_REF=%q\n" "${write_status_ref}"
+    printf "MIXED_WORKLOAD_RUNNER_WRITE_429_SOURCE_REF=%q\n" "${write_429_source_ref}"
     printf "MIXED_WORKLOAD_RUNNER_EDGE_429_RATE=%q\n" "${edge_429_rate}"
     printf "MIXED_WORKLOAD_RUNNER_BACKEND_429_COUNT=%q\n" "${backend_429_count}"
     printf "MIXED_WORKLOAD_RUNNER_UNKNOWN_429_COUNT=%q\n" "${unknown_429_count}"
     printf "MIXED_WORKLOAD_RUNNER_WRITE_2XX_COUNT=%q\n" "${write_2xx_count}"
     printf "MIXED_WORKLOAD_RUNNER_WRITE_429_COUNT=%q\n" "${write_429_count}"
+    printf "MIXED_WORKLOAD_RUNNER_WRITE_EDGE_429_COUNT=%q\n" "${write_edge_429_count}"
+    printf "MIXED_WORKLOAD_RUNNER_WRITE_BACKEND_429_COUNT=%q\n" "${write_backend_429_count}"
+    printf "MIXED_WORKLOAD_RUNNER_WRITE_UNKNOWN_429_COUNT=%q\n" "${write_unknown_429_count}"
     printf "MIXED_WORKLOAD_RUNNER_WRITE_UNEXPECTED_STATUS_COUNT=%q\n" "${write_unexpected_status_count}"
     printf "MIXED_WORKLOAD_RUNNER_READ_BUCKETS=%q\n" "hot,cold,archive"
     printf "MIXED_WORKLOAD_RUNNER_READ_HOT_P999_MS=%q\n" "${hot_p999}"
