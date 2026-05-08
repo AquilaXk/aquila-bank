@@ -199,9 +199,7 @@ assert_replay_token_session_is_bootstrapped_without_token_leak() {
   grep -q -- "pg_get_serial_sequence('auth_refresh_token_session', 'id')" "${psql_stdin_log}"
   grep -q -- "session_status = 'ACTIVE'" "${psql_stdin_log}"
   grep -q -- "expires_at > CURRENT_TIMESTAMP" "${psql_stdin_log}"
-  grep -q -- "auth_refresh_token_session.session_status <> 'ACTIVE'" "${psql_stdin_log}"
-  grep -q -- "auth_refresh_token_session.expires_at <= CURRENT_TIMESTAMP" "${psql_stdin_log}"
-  grep -q -- "replay_allow_session_reassign" "${psql_stdin_log}"
+  grep -q -- "user_id = EXCLUDED.user_id" "${psql_stdin_log}"
   if grep -F "eyJhbGciOiJIUzI1NiJ9" "${psql_log}" "${psql_stdin_log}" >/dev/null; then
     echo "replay bearer token must not be printed or passed to psql" >&2
     exit 1
@@ -215,9 +213,11 @@ assert_replay_token_session_reassign_is_explicit() {
   run_bootstrap_with_replay_token_file_reassign >/dev/null
 
   grep -q -- "replay_allow_session_reassign=true" "${psql_log}"
-  grep -q -- "(:replay_allow_session_reassign)::boolean IS NOT TRUE" "${psql_stdin_log}"
-  grep -q -- "user_id = CASE" "${psql_stdin_log}"
-  grep -q -- "(:replay_allow_session_reassign)::boolean IS TRUE" "${psql_stdin_log}"
+  grep -q -- "user_id = EXCLUDED.user_id" "${psql_stdin_log}"
+  if grep -F "replay session id belongs to another user" "${psql_stdin_log}" >/dev/null; then
+    echo "reassign mode must skip replay session collision preflight" >&2
+    exit 1
+  fi
 }
 
 assert_replay_token_user_mismatch_fails_before_psql() {

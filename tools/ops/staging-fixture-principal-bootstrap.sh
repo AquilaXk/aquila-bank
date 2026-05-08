@@ -234,11 +234,34 @@ validate_inputs() {
   resolve_replay_token_session
 }
 
+check_replay_session_ownership() {
+  [[ -n "${STAGING_REPLAY_SESSION_ID}" ]] || return 0
+  [[ "${STAGING_REPLAY_ALLOW_SESSION_REASSIGN}" == "true" ]] && return 0
+
+  psql "${STAGING_DATABASE_URL}" \
+    -v ON_ERROR_STOP=1 \
+    -v fixture_user_id="${STAGING_REPLAY_USER_ID}" \
+    -v replay_session_id="${STAGING_REPLAY_SESSION_ID}" <<'SQL'
+      SELECT CASE
+          WHEN EXISTS (
+              SELECT 1
+              FROM auth_refresh_token_session
+              WHERE id = NULLIF(:'replay_session_id', '')::bigint
+                AND user_id <> :fixture_user_id
+                AND session_status = 'ACTIVE'
+                AND expires_at > CURRENT_TIMESTAMP
+          )
+          THEN CAST('replay session id belongs to another user' AS integer)
+          ELSE 1
+      END;
+SQL
+}
+
 ensure_fixture_principal() {
   # replay JWT는 user_id claim을 고정하므로, smoke/replay 전에 권한 row도 같은 id로 고정합니다.
   local attempt=1
   while true; do
-    if psql "${STAGING_DATABASE_URL}" \
+    if check_replay_session_ownership && psql "${STAGING_DATABASE_URL}" \
     -v ON_ERROR_STOP=1 \
     -v fixture_user_id="${STAGING_REPLAY_USER_ID}" \
     -v fixture_login_id="${STAGING_REPLAY_LOGIN_ID}" \
@@ -403,21 +426,6 @@ ensure_fixture_principal() {
           updated_at = CURRENT_TIMESTAMP;
 
       -- mixed workload write는 current session active gate를 통과해야 하므로 replay JWT의 session row를 맞춘다.
-      SELECT CASE
-          WHEN EXISTS (
-              SELECT 1
-              FROM auth_refresh_token_session
-              WHERE id = NULLIF(:'replay_session_id', '')::bigint
-                AND user_id <> :fixture_user_id
-                AND session_status = 'ACTIVE'
-                AND expires_at > CURRENT_TIMESTAMP
-          )
-          AND (:replay_allow_session_reassign)::boolean IS NOT TRUE
-          THEN CAST('replay session id belongs to another user' AS integer)
-          ELSE 1
-      END
-      WHERE NULLIF(:'replay_session_id', '') IS NOT NULL;
-
       INSERT INTO auth_refresh_token_session (
           id,
           user_id,
@@ -445,21 +453,14 @@ ensure_fixture_principal() {
       WHERE NULLIF(:'replay_session_id', '') IS NOT NULL
       ON CONFLICT (id)
       DO UPDATE
-      SET user_id = CASE
-              WHEN (:replay_allow_session_reassign)::boolean IS TRUE THEN EXCLUDED.user_id
-              ELSE auth_refresh_token_session.user_id
-          END,
+      SET user_id = EXCLUDED.user_id,
           token_hash = EXCLUDED.token_hash,
           device_binding_hash = EXCLUDED.device_binding_hash,
           device_name = EXCLUDED.device_name,
           ip_address = EXCLUDED.ip_address,
           session_status = 'ACTIVE',
           expires_at = GREATEST(auth_refresh_token_session.expires_at, EXCLUDED.expires_at),
-          updated_at = CURRENT_TIMESTAMP
-      WHERE (:replay_allow_session_reassign)::boolean IS TRUE
-         OR auth_refresh_token_session.user_id = EXCLUDED.user_id
-         OR auth_refresh_token_session.session_status <> 'ACTIVE'
-         OR auth_refresh_token_session.expires_at <= CURRENT_TIMESTAMP;
+          updated_at = CURRENT_TIMESTAMP;
 
       INSERT INTO user_account_membership (
           user_id,
