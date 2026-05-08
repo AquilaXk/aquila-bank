@@ -23,6 +23,7 @@ STAGING_MIXED_WORKLOAD_WRITE_TARGET_BALANCE_MINOR="${STAGING_MIXED_WORKLOAD_WRIT
 STAGING_FIXTURE_PRINCIPAL_DB_ATTEMPTS="${STAGING_FIXTURE_PRINCIPAL_DB_ATTEMPTS:-3}"
 STAGING_FIXTURE_PRINCIPAL_DB_RETRY_SLEEP_SECONDS="${STAGING_FIXTURE_PRINCIPAL_DB_RETRY_SLEEP_SECONDS:-5}"
 STAGING_REPLAY_TOKEN_FILE="${STAGING_REPLAY_TOKEN_FILE:-}"
+STAGING_REPLAY_ALLOW_SESSION_REASSIGN="${STAGING_REPLAY_ALLOW_SESSION_REASSIGN:-false}"
 STAGING_REPLAY_SESSION_ID=""
 STAGING_REPLAY_SESSION_EXPIRES_EPOCH=""
 STAGING_REPLAY_SESSION_TOKEN_HASH=""
@@ -53,6 +54,12 @@ require_non_negative_integer() {
   local name="$1"
   local value="${!name:-}"
   [[ "$value" =~ ^[0-9]+$ ]] || fail "${name} must be a non-negative integer"
+}
+
+require_boolean() {
+  local name="$1"
+  local value="${!name:-}"
+  [[ "${value}" == "true" || "${value}" == "false" ]] || fail "${name} must be true or false"
 }
 
 normalize_account_ids() {
@@ -223,6 +230,7 @@ validate_inputs() {
   validate_optional_write_accounts
   require_positive_integer STAGING_FIXTURE_PRINCIPAL_DB_ATTEMPTS
   require_non_negative_integer STAGING_FIXTURE_PRINCIPAL_DB_RETRY_SLEEP_SECONDS
+  require_boolean STAGING_REPLAY_ALLOW_SESSION_REASSIGN
   resolve_replay_token_session
 }
 
@@ -251,7 +259,8 @@ ensure_fixture_principal() {
     -v replay_session_id="${STAGING_REPLAY_SESSION_ID}" \
     -v replay_session_expires_epoch="${STAGING_REPLAY_SESSION_EXPIRES_EPOCH}" \
     -v replay_session_token_hash="${STAGING_REPLAY_SESSION_TOKEN_HASH}" \
-    -v replay_session_device_binding_hash="${STAGING_REPLAY_SESSION_DEVICE_BINDING_HASH}" <<'SQL'
+    -v replay_session_device_binding_hash="${STAGING_REPLAY_SESSION_DEVICE_BINDING_HASH}" \
+    -v replay_allow_session_reassign="${STAGING_REPLAY_ALLOW_SESSION_REASSIGN}" <<'SQL'
       -- psql 변수(:name)는 -c 경로에서 치환되지 않아 stdin으로 전달한다.
       BEGIN;
 
@@ -403,6 +412,7 @@ ensure_fixture_principal() {
                 AND session_status = 'ACTIVE'
                 AND expires_at > CURRENT_TIMESTAMP
           )
+          AND :'replay_allow_session_reassign' <> 'true'
           THEN CAST('replay session id belongs to another user' AS integer)
           ELSE 1
       END
@@ -435,14 +445,19 @@ ensure_fixture_principal() {
       WHERE NULLIF(:'replay_session_id', '') IS NOT NULL
       ON CONFLICT (id)
       DO UPDATE
-      SET token_hash = EXCLUDED.token_hash,
+      SET user_id = CASE
+              WHEN :'replay_allow_session_reassign' = 'true' THEN EXCLUDED.user_id
+              ELSE auth_refresh_token_session.user_id
+          END,
+          token_hash = EXCLUDED.token_hash,
           device_binding_hash = EXCLUDED.device_binding_hash,
           device_name = EXCLUDED.device_name,
           ip_address = EXCLUDED.ip_address,
           session_status = 'ACTIVE',
           expires_at = GREATEST(auth_refresh_token_session.expires_at, EXCLUDED.expires_at),
           updated_at = CURRENT_TIMESTAMP
-      WHERE auth_refresh_token_session.user_id = EXCLUDED.user_id
+      WHERE :'replay_allow_session_reassign' = 'true'
+         OR auth_refresh_token_session.user_id = EXCLUDED.user_id
          OR auth_refresh_token_session.session_status <> 'ACTIVE'
          OR auth_refresh_token_session.expires_at <= CURRENT_TIMESTAMP;
 

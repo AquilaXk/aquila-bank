@@ -213,6 +213,7 @@ jobs:
           mixed_workload_auth_token="$(<"${mixed_workload_auth_token_file}")"
           printf '::add-mask::%s\n' "${mixed_workload_auth_token}"
           printf 'MIXED_WORKLOAD_OCI_AUTH_TOKEN_FILE=%s\n' "${mixed_workload_auth_token_file}" >>"${GITHUB_ENV}"
+          printf 'STAGING_REPLAY_ALLOW_SESSION_REASSIGN=true\n' >>"${GITHUB_ENV}"
 
       - name: Ensure mixed workload fixture principal
         if: env.MIXED_WORKLOAD_EVIDENCE_READY != 'true'

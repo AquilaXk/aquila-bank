@@ -73,6 +73,7 @@ grep -F 'python3 tools/ops/issue-staging-replay-token.py' "${workflow}" >/dev/nu
 grep -F 'mixed_workload_auth_token="$(<"${mixed_workload_auth_token_file}")"' "${workflow}" >/dev/null
 grep -F 'printf '\''::add-mask::%s\n'\'' "${mixed_workload_auth_token}"' "${workflow}" >/dev/null
 grep -F 'if [[ -z "${OCI_A1_BACKEND_ENV_B64:-}" && -n "${STAGING_REPLAY_TOKEN:-}" ]]; then' "${workflow}" >/dev/null
+grep -F 'printf '\''STAGING_REPLAY_ALLOW_SESSION_REASSIGN=true\n'\'' >>"${GITHUB_ENV}"' "${workflow}" >/dev/null
 grep -F 'printf '\''::add-mask::%s\n'\'' "${STAGING_REPLAY_TOKEN}"' "${workflow}" >/dev/null
 grep -F 'printf '\''%s'\'' "${STAGING_REPLAY_TOKEN}" >"${mixed_workload_auth_token_file}"' "${workflow}" >/dev/null
 grep -F 'chmod 600 "${mixed_workload_auth_token_file}"' "${workflow}" >/dev/null
