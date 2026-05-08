@@ -62,11 +62,11 @@ bash tools/ops/render-nginx-runtime-config.sh /tmp/aquila-bank-nginx.conf ops/ng
 - `limit_req_zone $binary_remote_addr zone=aquila_bank_auth_per_ip:10m rate=5r/s;`
 - `limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_hot_per_ip:10m rate=256r/s;`
 - `limit_req_zone $binary_remote_addr zone=aquila_bank_transaction_archive_per_ip:10m rate=256r/s;`
-- `limit_req_zone $binary_remote_addr zone=aquila_bank_transfer_per_ip:10m rate=3r/s;`
+- `limit_req_zone $binary_remote_addr zone=aquila_bank_transfer_per_ip:10m rate=5r/s;`
 - `location = /api/v1/auth/login`, `location = /api/v1/auth/refresh`, `location = /api/v1/auth/password-recovery/request`에 `limit_req zone=aquila_bank_auth_per_ip burst=10 nodelay;`를 적용합니다.
 - `location = /api/v1/transactions`에는 `limit_req zone=aquila_bank_transaction_hot_per_ip burst=256 nodelay;`를 적용합니다.
 - `location = /api/v1/transactions/archive`에는 `limit_req zone=aquila_bank_transaction_archive_per_ip burst=256 nodelay;`를 적용합니다.
-- `location = /api/v1/transfers`, `location ~ ^/api/v1/transfers/[^/]+/reversal$`에는 `limit_req zone=aquila_bank_transfer_per_ip burst=6 nodelay;`를 적용합니다.
+- `location = /api/v1/transfers`, `location ~ ^/api/v1/transfers/[^/]+/reversal$`에는 `limit_req zone=aquila_bank_transfer_per_ip burst=10 nodelay;`를 적용합니다.
 - exact/regex location은 generic `/api/`보다 먼저 매칭되므로 zone을 중첩 적용하지 않습니다.
 - `/api/`에는 `limit_req zone=aquila_bank_api_per_ip burst=20 delay=5;`를 유지합니다.
 - `/api/v1/notifications/stream`은 장기 연결이라 일반 API와 성격이 달라 exact location으로 분리하고 rate limit 대상에서 제외합니다.
@@ -74,6 +74,7 @@ bash tools/ops/render-nginx-runtime-config.sh /tmp/aquila-bank-nginx.conf ops/ng
 - 정상 client/SDK는 `X-RateLimit-Retry-After-Millis`와 jitter를 반영하고, sustained read에서는 k6 `preemptive pacing`과 같은 요청 전 token pacing으로 edge reject 동기화를 피합니다.
 - backend에는 login/password recovery throttling이 이미 있으므로, Nginx auth zone은 edge 1차 차단으로 보고 backend는 계정/IP 단위 2차 가드로 둡니다.
 - transaction-read `burst80` profile은 delay queue 의존 없이 burst80 promotion target을 닫기 위해 `256r/s`, `burst=256`, `nodelay`를 기본값으로 둡니다. run #25319314917의 burst80 edge 429 `22.8838%` 초과를 edge bucket headroom으로 낮추는 운영 후보이며, backend 429 hard-zero gate와 함께만 승격합니다.
+- transfer-write edge budget은 run #25532922589에서 write p95 `11.068ms`, DB wait `0`, outbox lag max `0`, 5xx `0`인 상태에서 `rate=3r/s`가 accepted throughput을 제한한 근거로 `5r/s`, `burst=10`, `nodelay`로 둡니다. 이 값은 read-heavy traffic과 분리하며, backend 429/5xx/499가 생기면 즉시 되돌립니다.
 - `burst64` profile은 이전 운영 후보 기준이며 `160r/s`, `burst=20`, `nodelay`를 rollback 비교용으로 유지합니다.
 - `fail-fast` profile은 `96r/s`, `burst=12`, `nodelay`로 delayed ratio ceiling 검증이나 latency 우선 rollback에 사용합니다.
 - 실제 서비스 트래픽 특성에 따라 `rate`와 `burst`는 조정하되, 로그인/토큰 재발급/SSE 재연결 패턴과 shared IP 영향을 같이 확인합니다.
