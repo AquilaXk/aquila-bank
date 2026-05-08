@@ -199,6 +199,7 @@ jobs:
           COLD_ACCOUNT_ID="${MIXED_WORKLOAD_OCI_COLD_ACCOUNT_ID}" \
           STAGING_MIXED_WORKLOAD_WRITE_SOURCE_ACCOUNT_ID="${MIXED_WORKLOAD_OCI_WRITE_SOURCE_ACCOUNT_ID}" \
           STAGING_MIXED_WORKLOAD_WRITE_TARGET_ACCOUNT_ID="${MIXED_WORKLOAD_OCI_WRITE_TARGET_ACCOUNT_ID}" \
+          STAGING_REPLAY_TOKEN_FILE="${MIXED_WORKLOAD_OCI_AUTH_TOKEN_FILE:-}" \
             tools/ops/staging-fixture-principal-bootstrap.sh
 
       - name: Generate mixed workload live evidence manifest artifacts

@@ -84,6 +84,50 @@ run_bootstrap_with_write_accounts() {
     "${script}"
 }
 
+run_bootstrap_with_replay_token_file() {
+  local token_file="${tmp_dir}/staging-replay-token.jwt"
+  printf '%s' \
+    'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJzdGFnaW5nLWZpeHR1cmUtdXNlciIsInVzZXJfaWQiOjU1LCJzZXNzaW9uX2lkIjoxMjM0NSwiZXhwIjoxODkzNDU2MDAwfQ.sig' \
+    >"${token_file}"
+  chmod 600 "${token_file}"
+
+  env \
+    PATH="${tmp_dir}:${PATH}" \
+    PSQL_STUB_LOG="${psql_log}" \
+    PSQL_STDIN_LOG="${psql_stdin_log}" \
+    STAGING_OCI_A1_DATABASE_URL="postgresql://fixture-db/aquila" \
+    STAGING_REPLAY_USER_ID="55" \
+    STAGING_REPLAY_LOGIN_ID="staging-fixture-user" \
+    STAGING_REPLAY_USER_PASSWORD_HASH="fixturePasswordHashWithLetters" \
+    STAGING_REPLAY_USER_DISPLAY_NAME="Staging Fixture User" \
+    STAGING_REPLAY_TOKEN_FILE="${token_file}" \
+    HOT_ACCOUNT_ID="1001" \
+    COLD_ACCOUNT_ID="1002" \
+    "${script}"
+}
+
+run_bootstrap_with_mismatched_replay_token_file() {
+  local token_file="${tmp_dir}/staging-replay-token-mismatch.jwt"
+  printf '%s' \
+    'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJzdGFnaW5nLWZpeHR1cmUtdXNlciIsInVzZXJfaWQiOjU2LCJzZXNzaW9uX2lkIjoxMjM0NSwiZXhwIjoxODkzNDU2MDAwfQ.sig' \
+    >"${token_file}"
+  chmod 600 "${token_file}"
+
+  env \
+    PATH="${tmp_dir}:${PATH}" \
+    PSQL_STUB_LOG="${psql_log}" \
+    PSQL_STDIN_LOG="${psql_stdin_log}" \
+    STAGING_OCI_A1_DATABASE_URL="postgresql://fixture-db/aquila" \
+    STAGING_REPLAY_USER_ID="55" \
+    STAGING_REPLAY_LOGIN_ID="staging-fixture-user" \
+    STAGING_REPLAY_USER_PASSWORD_HASH="fixturePasswordHashWithLetters" \
+    STAGING_REPLAY_USER_DISPLAY_NAME="Staging Fixture User" \
+    STAGING_REPLAY_TOKEN_FILE="${token_file}" \
+    HOT_ACCOUNT_ID="1001" \
+    COLD_ACCOUNT_ID="1002" \
+    "${script}"
+}
+
 assert_valid_secret_like_values_do_not_enter_arithmetic() {
   run_bootstrap >/dev/null
   grep -q -- "fixture_password_hash=fixturePasswordHashWithLetters" "${psql_log}"
@@ -116,6 +160,40 @@ assert_write_accounts_are_funded_and_authorized() {
   grep -q -- "desired_available_balance_minor" "${psql_stdin_log}"
   grep -q -- "GREATEST(account_balance_snapshot.available_balance_minor, EXCLUDED.available_balance_minor)" "${psql_stdin_log}"
   grep -q -- "INSERT INTO user_account_membership" "${psql_stdin_log}"
+}
+
+assert_replay_token_session_is_bootstrapped_without_token_leak() {
+  : >"${psql_log}"
+  : >"${psql_stdin_log}"
+
+  run_bootstrap_with_replay_token_file >/dev/null
+
+  grep -q -- "replay_session_id=12345" "${psql_log}"
+  grep -q -- "replay_session_expires_epoch=1893456000" "${psql_log}"
+  grep -q -- "INSERT INTO auth_refresh_token_session" "${psql_stdin_log}"
+  grep -q -- "OVERRIDING SYSTEM VALUE" "${psql_stdin_log}"
+  grep -q -- "pg_get_serial_sequence('auth_refresh_token_session', 'id')" "${psql_stdin_log}"
+  if grep -F "eyJhbGciOiJIUzI1NiJ9" "${psql_log}" "${psql_stdin_log}" >/dev/null; then
+    echo "replay bearer token must not be printed or passed to psql" >&2
+    exit 1
+  fi
+}
+
+assert_replay_token_user_mismatch_fails_before_psql() {
+  local log="${tmp_dir}/replay-token-mismatch.log"
+  : >"${psql_log}"
+  : >"${psql_stdin_log}"
+
+  if run_bootstrap_with_mismatched_replay_token_file >"${log}" 2>&1; then
+    echo "expected replay token user mismatch to fail" >&2
+    exit 1
+  fi
+
+  grep -q -- "STAGING_REPLAY_TOKEN user_id claim must match STAGING_REPLAY_USER_ID" "${log}"
+  if [ -s "${psql_log}" ]; then
+    echo "expected replay token mismatch to fail before psql execution" >&2
+    exit 1
+  fi
 }
 
 assert_transient_psql_timeout_retries_fixture_sql() {
@@ -179,6 +257,8 @@ assert_too_long_password_hash_fails_before_psql() {
 assert_valid_secret_like_values_do_not_enter_arithmetic
 assert_csv_account_ids_feed_fixture_sql
 assert_write_accounts_are_funded_and_authorized
+assert_replay_token_session_is_bootstrapped_without_token_leak
+assert_replay_token_user_mismatch_fails_before_psql
 assert_transient_psql_timeout_retries_fixture_sql
 assert_too_long_password_hash_fails_before_psql
 
