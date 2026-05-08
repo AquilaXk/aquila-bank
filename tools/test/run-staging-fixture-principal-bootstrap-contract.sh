@@ -220,6 +220,19 @@ assert_replay_token_session_reassign_is_explicit() {
   fi
 }
 
+assert_replay_token_session_collision_uses_sanitized_exception() {
+  : >"${psql_log}"
+  : >"${psql_stdin_log}"
+
+  run_bootstrap_with_replay_token_file >/dev/null
+
+  grep -q -- "replay_session_owner_conflict" "${psql_stdin_log}"
+  if grep -F "CAST('replay session id belongs to another user' AS integer)" "${psql_stdin_log}" >/dev/null; then
+    echo "replay session collision preflight must not rely on integer cast failure" >&2
+    exit 1
+  fi
+}
+
 assert_replay_token_user_mismatch_fails_before_psql() {
   local log="${tmp_dir}/replay-token-mismatch.log"
   : >"${psql_log}"
@@ -300,6 +313,7 @@ assert_csv_account_ids_feed_fixture_sql
 assert_write_accounts_are_funded_and_authorized
 assert_replay_token_session_is_bootstrapped_without_token_leak
 assert_replay_token_session_reassign_is_explicit
+assert_replay_token_session_collision_uses_sanitized_exception
 assert_replay_token_user_mismatch_fails_before_psql
 assert_transient_psql_timeout_retries_fixture_sql
 assert_too_long_password_hash_fails_before_psql

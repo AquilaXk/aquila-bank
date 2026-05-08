@@ -242,6 +242,7 @@ check_replay_session_ownership() {
     -v ON_ERROR_STOP=1 \
     -v fixture_user_id="${STAGING_REPLAY_USER_ID}" \
     -v replay_session_id="${STAGING_REPLAY_SESSION_ID}" <<'SQL'
+      -- token session 탈취 방지: 충돌은 타입 오류가 아닌 고정 메시지로 종료한다.
       SELECT CASE
           WHEN EXISTS (
               SELECT 1
@@ -251,9 +252,14 @@ check_replay_session_ownership() {
                 AND session_status = 'ACTIVE'
                 AND expires_at > CURRENT_TIMESTAMP
           )
-          THEN CAST('replay session id belongs to another user' AS integer)
-          ELSE 1
-      END;
+          THEN 'true'
+          ELSE 'false'
+      END AS replay_session_owner_conflict
+      \gset
+      \if :replay_session_owner_conflict
+        \echo 'replay_session_owner_conflict'
+        \quit 1
+      \endif
 SQL
 }
 
