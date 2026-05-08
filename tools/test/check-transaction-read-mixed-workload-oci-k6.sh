@@ -24,6 +24,9 @@ grep -F "aquila_mixed_read_archive_count" "${k6_script}" >/dev/null
 grep -F "aquila_mixed_write_count" "${k6_script}" >/dev/null
 grep -F "aquila_mixed_write_2xx_count" "${k6_script}" >/dev/null
 grep -F "aquila_mixed_write_429_count" "${k6_script}" >/dev/null
+grep -F "aquila_mixed_write_edge_429_count" "${k6_script}" >/dev/null
+grep -F "aquila_mixed_write_backend_429_count" "${k6_script}" >/dev/null
+grep -F "aquila_mixed_write_unknown_429_count" "${k6_script}" >/dev/null
 grep -F "aquila_mixed_write_unexpected_status_count" "${k6_script}" >/dev/null
 grep -F "aquila_mixed_write_401_count" "${k6_script}" >/dev/null
 grep -F "aquila_mixed_write_403_count" "${k6_script}" >/dev/null
@@ -35,6 +38,7 @@ grep -F "aquila_mixed_sse_connect_count" "${k6_script}" >/dev/null
 grep -F 'checks: ["rate==1"]' "${k6_script}" >/dev/null
 grep -F 'path: "/api/v1/transactions/archive"' "${k6_script}" >/dev/null
 grep -F "function mixedWriteIdempotencyKey(" "${k6_script}" >/dev/null
+grep -F "function rejectedSource(" "${k6_script}" >/dev/null
 grep -F "const IDEMPOTENCY_KEY_MAX_LENGTH = 80" "${k6_script}" >/dev/null
 grep -F "stableHashSegment(runId)" "${k6_script}" >/dev/null
 grep -F '"Idempotency-Key": mixedWriteIdempotencyKey(__VU, __ITER)' "${k6_script}" >/dev/null
@@ -99,6 +103,9 @@ if [[ "$*" == *"grafana/k6:0.54.0 run /scripts/transaction-read-mixed-workload-1
     "aquila_mixed_write_duration_ms": {"values": {"p(95)": 95, "p(99)": 140, "p(99.9)": 170, "max": 210}},
     "aquila_mixed_write_2xx_count": {"values": {"count": 4}},
     "aquila_mixed_write_429_count": {"values": {"count": 2}},
+    "aquila_mixed_write_edge_429_count": {"values": {"count": 1}},
+    "aquila_mixed_write_backend_429_count": {"values": {"count": 1}},
+    "aquila_mixed_write_unknown_429_count": {"values": {"count": 0}},
     "aquila_mixed_write_unexpected_status_count": {"values": {"count": 3}},
     "aquila_mixed_write_401_count": {"values": {"count": 1}},
     "aquila_mixed_write_403_count": {"values": {"count": 1}},
@@ -198,6 +205,7 @@ test -f "${MIXED_WORKLOAD_RUNNER_OUTBOX_LAG_REF}"
 test -f "${MIXED_WORKLOAD_RUNNER_READ_429_SOURCE_REF}"
 test -f "${MIXED_WORKLOAD_RUNNER_READ_BUCKET_REF}"
 test -f "${MIXED_WORKLOAD_RUNNER_WRITE_STATUS_REF}"
+test -f "${MIXED_WORKLOAD_RUNNER_WRITE_429_SOURCE_REF}"
 grep -F $'read\tpass\t' "${MIXED_WORKLOAD_RUNNER_WORKLOAD_COMPONENT_REF}" >/dev/null
 grep -F $'write\tpass\t' "${MIXED_WORKLOAD_RUNNER_WORKLOAD_COMPONENT_REF}" >/dev/null
 grep -F $'auth\tpass\t' "${MIXED_WORKLOAD_RUNNER_WORKLOAD_COMPONENT_REF}" >/dev/null
@@ -214,6 +222,9 @@ grep -F $'2xx\t28' "${MIXED_WORKLOAD_RUNNER_WRITE_STATUS_REF}" >/dev/null
 grep -F $'401\t1' "${MIXED_WORKLOAD_RUNNER_WRITE_STATUS_REF}" >/dev/null
 grep -F $'403\t1' "${MIXED_WORKLOAD_RUNNER_WRITE_STATUS_REF}" >/dev/null
 grep -F $'409\t1' "${MIXED_WORKLOAD_RUNNER_WRITE_STATUS_REF}" >/dev/null
+grep -F $'mixed-oci-run-fixture\tedge\t1' "${MIXED_WORKLOAD_RUNNER_WRITE_429_SOURCE_REF}" >/dev/null
+grep -F $'mixed-oci-run-fixture\tbackend\t0' "${MIXED_WORKLOAD_RUNNER_WRITE_429_SOURCE_REF}" >/dev/null
+grep -F $'mixed-oci-run-fixture\tunknown\t0' "${MIXED_WORKLOAD_RUNNER_WRITE_429_SOURCE_REF}" >/dev/null
 
 echo "[transaction-read-mixed-workload-oci-k6] fixture summary metrics"
 jq -e '.metrics.aquila_mixed_read_count.values.count == 128' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
@@ -223,6 +234,9 @@ jq -e '.metrics.aquila_mixed_read_archive_count.values.count == 42' "${MIXED_WOR
 jq -e '.metrics.aquila_mixed_write_count.values.count == 32' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
 jq -e '.metrics.aquila_mixed_write_2xx_count.values.count == 28' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
 jq -e '.metrics.aquila_mixed_write_429_count.values.count == 1' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
+jq -e '.metrics.aquila_mixed_write_edge_429_count.values.count == 1' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
+jq -e '.metrics.aquila_mixed_write_backend_429_count.values.count == 0' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
+jq -e '.metrics.aquila_mixed_write_unknown_429_count.values.count == 0' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
 jq -e '.metrics.aquila_mixed_write_unexpected_status_count.values.count == 3' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
 jq -e '.metrics.aquila_mixed_auth_count.values.count == 16' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
 jq -e '.metrics.aquila_mixed_notification_count.values.count == 16' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
@@ -230,6 +244,9 @@ jq -e '.metrics.aquila_mixed_sse_connect_count.values.count == 1' "${MIXED_WORKL
 
 test "${MIXED_WORKLOAD_RUNNER_WRITE_2XX_COUNT}" = "28"
 test "${MIXED_WORKLOAD_RUNNER_WRITE_429_COUNT}" = "1"
+test "${MIXED_WORKLOAD_RUNNER_WRITE_EDGE_429_COUNT}" = "1"
+test "${MIXED_WORKLOAD_RUNNER_WRITE_BACKEND_429_COUNT}" = "0"
+test "${MIXED_WORKLOAD_RUNNER_WRITE_UNKNOWN_429_COUNT}" = "0"
 test "${MIXED_WORKLOAD_RUNNER_WRITE_UNEXPECTED_STATUS_COUNT}" = "3"
 test "${MIXED_WORKLOAD_RUNNER_READ_BUCKETS}" = "hot,cold,archive"
 test "${MIXED_WORKLOAD_RUNNER_READ_HOT_P999_MS}" = "350"
@@ -277,10 +294,20 @@ test -f "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}"
 test -f "${live_output_dir}/mixed-oci-live-failed-oci-mixed-failure.md"
 jq -e '.metrics.aquila_mixed_write_2xx_count.values.count == 4' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
 jq -e '.metrics.aquila_mixed_write_429_count.values.count == 2' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
+jq -e '.metrics.aquila_mixed_write_edge_429_count.values.count == 1' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
+jq -e '.metrics.aquila_mixed_write_backend_429_count.values.count == 1' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
+jq -e '.metrics.aquila_mixed_write_unknown_429_count.values.count == 0' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
 jq -e '.metrics.aquila_mixed_write_unexpected_status_count.values.count == 3' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
 test "${MIXED_WORKLOAD_RUNNER_WRITE_2XX_COUNT}" = "4"
 test "${MIXED_WORKLOAD_RUNNER_WRITE_429_COUNT}" = "2"
+test "${MIXED_WORKLOAD_RUNNER_WRITE_EDGE_429_COUNT}" = "1"
+test "${MIXED_WORKLOAD_RUNNER_WRITE_BACKEND_429_COUNT}" = "1"
+test "${MIXED_WORKLOAD_RUNNER_WRITE_UNKNOWN_429_COUNT}" = "0"
 test "${MIXED_WORKLOAD_RUNNER_WRITE_UNEXPECTED_STATUS_COUNT}" = "3"
+test -f "${MIXED_WORKLOAD_RUNNER_WRITE_429_SOURCE_REF}"
+grep -F $'mixed-oci-run-live-failed\tedge\t1' "${MIXED_WORKLOAD_RUNNER_WRITE_429_SOURCE_REF}" >/dev/null
+grep -F $'mixed-oci-run-live-failed\tbackend\t1' "${MIXED_WORKLOAD_RUNNER_WRITE_429_SOURCE_REF}" >/dev/null
+grep -F $'mixed-oci-run-live-failed\tunknown\t0' "${MIXED_WORKLOAD_RUNNER_WRITE_429_SOURCE_REF}" >/dev/null
 grep -F $'write\tpass\t9\t95\t4\t2\t3' "${MIXED_WORKLOAD_RUNNER_WORKLOAD_COMPONENT_REF}" >/dev/null
 grep -F "OCI mixed workload k6 run failed" "${temp_dir}/live-failed.err" >/dev/null
 if grep -F "secret-token-value" "${temp_dir}/live-failed.log" "${temp_dir}/live-failed.err" >/dev/null; then

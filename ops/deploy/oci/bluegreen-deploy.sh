@@ -842,8 +842,8 @@ ${real_ip_trusted_proxy_lines}
   # active/archive read는 arrival-16 정상 구간을 delay queue 없이 통과시키도록 headroom을 둡니다.
   limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_hot_per_ip:10m rate=${transaction_read_hot_rate_rps}r/s;
   limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_archive_per_ip:10m rate=${transaction_read_archive_rate_rps}r/s;
-  # transfer write는 live mixed workload 기준 DB wait 없이 5r/s를 흡수해 edge 429만 먼저 줄입니다.
-  limit_req_zone \$binary_remote_addr zone=aquila_bank_transfer_per_ip:10m rate=5r/s;
+  # transfer write는 live mixed workload 기준 DB wait 없이 5r/s cap에 걸려 8r/s까지 headroom을 엽니다.
+  limit_req_zone \$binary_remote_addr zone=aquila_bank_transfer_per_ip:10m rate=8r/s;
 
   upstream aquila_bank_backend {
     server ${backend_name}:${BACKEND_PORT};
@@ -1022,7 +1022,7 @@ ${real_ip_trusted_proxy_lines}
       proxy_set_header X-Forwarded-Port \$server_port;
       proxy_set_header Connection "";
       proxy_next_upstream off;
-      limit_req zone=aquila_bank_transfer_per_ip burst=10 nodelay;
+      limit_req zone=aquila_bank_transfer_per_ip burst=16 nodelay;
       proxy_read_timeout 30s;
       proxy_send_timeout 30s;
     }
@@ -1039,7 +1039,7 @@ ${real_ip_trusted_proxy_lines}
       proxy_set_header X-Forwarded-Port \$server_port;
       proxy_set_header Connection "";
       proxy_next_upstream off;
-      limit_req zone=aquila_bank_transfer_per_ip burst=10 nodelay;
+      limit_req zone=aquila_bank_transfer_per_ip burst=16 nodelay;
       proxy_read_timeout 30s;
       proxy_send_timeout 30s;
     }

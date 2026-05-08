@@ -122,7 +122,7 @@ ops:
         path-prefixes:
           - /api/v1/accounts
       - group: transfer-write
-        max-concurrency: ${OPS_API_ADMISSION_CONTROL_TRANSFER_WRITE_MAX:2}
+        max-concurrency: ${OPS_API_ADMISSION_CONTROL_TRANSFER_WRITE_MAX:4}
         path-prefixes:
           - /api/v1/transfers
       - group: notification-stream

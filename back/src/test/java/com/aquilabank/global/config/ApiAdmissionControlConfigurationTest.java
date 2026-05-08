@@ -94,7 +94,27 @@ class ApiAdmissionControlConfigurationTest {
             });
   }
 
+  @Test
+  void bindsTransferWriteDefaultHeadroom() {
+    contextRunner.run(
+        context -> {
+          assertThat(context).hasNotFailed();
+          ApiAdmissionControlProperties.EndpointLimit endpoint =
+              endpoint(context, "transfer-write");
+
+          assertThat(endpoint.maxConcurrency()).isEqualTo(4);
+          assertThat(endpoint.pathPrefixes()).containsExactly("/api/v1/transfers");
+          assertThat(endpoint.adaptive().enabled()).isFalse();
+          assertThat(endpoint.adaptive().maxConcurrency()).isEqualTo(4);
+        });
+  }
+
   private ApiAdmissionControlProperties.EndpointLimit transactionReadEndpoint(
+      org.springframework.context.ApplicationContext context, String group) {
+    return endpoint(context, group);
+  }
+
+  private ApiAdmissionControlProperties.EndpointLimit endpoint(
       org.springframework.context.ApplicationContext context, String group) {
     return context.getBean(ApiAdmissionControlProperties.class).endpoints().stream()
         .filter(endpoint -> endpoint.group().equals(group))

@@ -53,6 +53,9 @@ export const mixedWriteCount = new Counter("aquila_mixed_write_count");
 export const mixedWriteDurationMs = new Trend("aquila_mixed_write_duration_ms", true);
 export const mixedWrite2xxCount = new Counter("aquila_mixed_write_2xx_count");
 export const mixedWrite429Count = new Counter("aquila_mixed_write_429_count");
+export const mixedWriteEdge429Count = new Counter("aquila_mixed_write_edge_429_count");
+export const mixedWriteBackend429Count = new Counter("aquila_mixed_write_backend_429_count");
+export const mixedWriteUnknown429Count = new Counter("aquila_mixed_write_unknown_429_count");
 export const mixedWriteUnexpectedStatusCount = new Counter("aquila_mixed_write_unexpected_status_count");
 export const mixedWrite401Count = new Counter("aquila_mixed_write_401_count");
 export const mixedWrite403Count = new Counter("aquila_mixed_write_403_count");
@@ -185,6 +188,25 @@ function retryAfterSeconds(response) {
     return 0;
   }
   return Math.min(seconds, maxRetryAfterSleepSeconds);
+}
+
+function responseHeader(response, name) {
+  return response.headers[name] || response.headers[name.toLowerCase()] || "";
+}
+
+function rejectedSource(response) {
+  if (response.status !== 429) {
+    return "none";
+  }
+  if (responseHeader(response, "X-Aquila-429-Source")) {
+    return "backend";
+  }
+  const edgeSource = responseHeader(response, "X-Aquila-Reject-Source");
+  const rateLimitScope = responseHeader(response, "X-RateLimit-Scope");
+  if (edgeSource === "nginx-edge" || rateLimitScope === "nginx-edge") {
+    return "edge";
+  }
+  return "unknown";
 }
 
 function recordFiveXx(response) {
@@ -322,6 +344,7 @@ export function transferWrite() {
 
   const accepted = response.status >= 200 && response.status < 300;
   const boundedRejected = response.status === 429;
+  const source = rejectedSource(response);
   mixedWriteCount.add(1);
   mixedWriteDurationMs.add(response.timings.duration);
   if (accepted) {
@@ -329,6 +352,13 @@ export function transferWrite() {
   }
   if (boundedRejected) {
     mixedWrite429Count.add(1);
+    if (source === "edge") {
+      mixedWriteEdge429Count.add(1);
+    } else if (source === "backend") {
+      mixedWriteBackend429Count.add(1);
+    } else {
+      mixedWriteUnknown429Count.add(1);
+    }
   }
   if (!accepted && !boundedRejected) {
     mixedWriteUnexpectedStatusCount.add(1);
@@ -444,6 +474,9 @@ function markdownSummary(data) {
 | archive read p95 ms | ${metricValue(data, "aquila_mixed_read_archive_duration_ms", "p(95)")} |
 | write 2xx count | ${metricValue(data, "aquila_mixed_write_2xx_count", "count")} |
 | write 429 count | ${metricValue(data, "aquila_mixed_write_429_count", "count")} |
+| write edge 429 count | ${metricValue(data, "aquila_mixed_write_edge_429_count", "count")} |
+| write backend 429 count | ${metricValue(data, "aquila_mixed_write_backend_429_count", "count")} |
+| write unknown 429 count | ${metricValue(data, "aquila_mixed_write_unknown_429_count", "count")} |
 | write unexpected status count | ${metricValue(data, "aquila_mixed_write_unexpected_status_count", "count")} |
 | write 401 count | ${metricValue(data, "aquila_mixed_write_401_count", "count")} |
 | write 403 count | ${metricValue(data, "aquila_mixed_write_403_count", "count")} |
