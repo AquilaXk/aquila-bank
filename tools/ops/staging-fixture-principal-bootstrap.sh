@@ -412,7 +412,7 @@ ensure_fixture_principal() {
                 AND session_status = 'ACTIVE'
                 AND expires_at > CURRENT_TIMESTAMP
           )
-          AND :'replay_allow_session_reassign' <> 'true'
+          AND (:replay_allow_session_reassign)::boolean IS NOT TRUE
           THEN CAST('replay session id belongs to another user' AS integer)
           ELSE 1
       END
@@ -446,7 +446,7 @@ ensure_fixture_principal() {
       ON CONFLICT (id)
       DO UPDATE
       SET user_id = CASE
-              WHEN :'replay_allow_session_reassign' = 'true' THEN EXCLUDED.user_id
+              WHEN (:replay_allow_session_reassign)::boolean IS TRUE THEN EXCLUDED.user_id
               ELSE auth_refresh_token_session.user_id
           END,
           token_hash = EXCLUDED.token_hash,
@@ -456,7 +456,7 @@ ensure_fixture_principal() {
           session_status = 'ACTIVE',
           expires_at = GREATEST(auth_refresh_token_session.expires_at, EXCLUDED.expires_at),
           updated_at = CURRENT_TIMESTAMP
-      WHERE :'replay_allow_session_reassign' = 'true'
+      WHERE (:replay_allow_session_reassign)::boolean IS TRUE
          OR auth_refresh_token_session.user_id = EXCLUDED.user_id
          OR auth_refresh_token_session.session_status <> 'ACTIVE'
          OR auth_refresh_token_session.expires_at <= CURRENT_TIMESTAMP;

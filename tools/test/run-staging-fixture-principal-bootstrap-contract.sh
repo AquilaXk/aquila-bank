@@ -215,9 +215,9 @@ assert_replay_token_session_reassign_is_explicit() {
   run_bootstrap_with_replay_token_file_reassign >/dev/null
 
   grep -q -- "replay_allow_session_reassign=true" "${psql_log}"
-  grep -q -- ":'replay_allow_session_reassign' <> 'true'" "${psql_stdin_log}"
+  grep -q -- "(:replay_allow_session_reassign)::boolean IS NOT TRUE" "${psql_stdin_log}"
   grep -q -- "user_id = CASE" "${psql_stdin_log}"
-  grep -q -- ":'replay_allow_session_reassign' = 'true'" "${psql_stdin_log}"
+  grep -q -- "(:replay_allow_session_reassign)::boolean IS TRUE" "${psql_stdin_log}"
 }
 
 assert_replay_token_user_mismatch_fails_before_psql() {
