@@ -158,6 +158,7 @@ jobs:
 
           mixed_workload_auth_token_file="${RUNNER_TEMP}/mixed-workload-live-auth-token"
           if [[ -n "${OCI_A1_BACKEND_ENV_B64:-}" ]]; then
+            STAGING_REPLAY_SESSION_ID="" \
             STAGING_REPLAY_TOKEN_OUTPUT_FILE="${mixed_workload_auth_token_file}" \
             STAGING_REPLAY_TOKEN_TTL_SECONDS="${MIXED_WORKLOAD_REPLAY_TOKEN_TTL_SECONDS:-7200}" \
               python3 tools/ops/issue-staging-replay-token.py

@@ -64,6 +64,7 @@ grep -F 'STAGING_REPLAY_TOKEN_FILE="${MIXED_WORKLOAD_OCI_AUTH_TOKEN_FILE:-}"' "$
 grep -F "tools/ops/staging-fixture-principal-bootstrap.sh" "${workflow}" >/dev/null
 grep -F 'mixed_workload_auth_token_file="${RUNNER_TEMP}/mixed-workload-live-auth-token"' "${workflow}" >/dev/null
 grep -F 'if [[ -n "${OCI_A1_BACKEND_ENV_B64:-}" ]]; then' "${workflow}" >/dev/null
+grep -F 'STAGING_REPLAY_SESSION_ID="" \' "${workflow}" >/dev/null
 grep -F 'STAGING_REPLAY_TOKEN_OUTPUT_FILE="${mixed_workload_auth_token_file}" \' "${workflow}" >/dev/null
 grep -F 'STAGING_REPLAY_TOKEN_TTL_SECONDS="${MIXED_WORKLOAD_REPLAY_TOKEN_TTL_SECONDS:-7200}" \' "${workflow}" >/dev/null
 grep -F 'python3 tools/ops/issue-staging-replay-token.py' "${workflow}" >/dev/null
