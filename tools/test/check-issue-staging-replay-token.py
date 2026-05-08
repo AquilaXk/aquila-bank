@@ -14,6 +14,7 @@ import time
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "tools" / "ops" / "issue-staging-replay-token.py"
+MIN_RUN_LOCAL_SESSION_ID = 9_000_000_000_000_000_000
 
 
 def fail(message: str) -> None:
@@ -82,6 +83,8 @@ def assert_ephemeral_token_is_signed() -> None:
             fail("issuer should write token only to the output file")
         if secret in result.stdout or secret in result.stderr:
             fail("issuer output must not leak JWT secret")
+        if "session_id_source=env" not in result.stdout:
+            fail(f"issuer should mark explicit session id source: {result.stdout!r}")
 
         mode = stat.S_IMODE(output_file.stat().st_mode)
         if mode != 0o600:
@@ -118,6 +121,31 @@ def assert_ephemeral_token_is_signed() -> None:
             fail(f"iat claim should be current run time: {payload!r}")
 
 
+def assert_empty_session_id_uses_reserved_generated_range() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        output_file = pathlib.Path(temp_dir) / "generated-session.jwt"
+        secret = "contract-secret-with-enough-entropy"
+        env_b64 = encode_env(f"SECURITY_JWT_SECRET={secret}\n")
+        result = run_issuer(
+            {
+                "OCI_A1_BACKEND_ENV_B64": env_b64,
+                "STAGING_REPLAY_TOKEN_OUTPUT_FILE": str(output_file),
+                "STAGING_REPLAY_SESSION_ID": "",
+            }
+        )
+
+        if result.returncode != 0:
+            fail(f"issuer should generate session id, stderr={result.stderr!r}, stdout={result.stdout!r}")
+        if "session_id_source=generated" not in result.stdout:
+            fail(f"issuer should mark generated session id source: {result.stdout!r}")
+
+        token = output_file.read_text(encoding="utf-8").strip()
+        payload = decode_segment(token.split(".")[1])
+        session_id = payload.get("session_id")
+        if not isinstance(session_id, int) or session_id < MIN_RUN_LOCAL_SESSION_ID:
+            fail(f"generated session id should use reserved high range: {payload!r}")
+
+
 def assert_missing_secret_fails_without_token() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         output_file = pathlib.Path(temp_dir) / "missing-secret.jwt"
@@ -140,6 +168,8 @@ def assert_missing_secret_fails_without_token() -> None:
 def main() -> None:
     print("[issue-staging-replay-token] signed token contract")
     assert_ephemeral_token_is_signed()
+    print("[issue-staging-replay-token] generated session contract")
+    assert_empty_session_id_uses_reserved_generated_range()
     print("[issue-staging-replay-token] missing secret contract")
     assert_missing_secret_fails_without_token()
     print("ok")

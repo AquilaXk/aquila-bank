@@ -11,6 +11,7 @@ import time
 
 
 MAX_BIGINT = 9_223_372_036_854_775_807
+MIN_RUN_LOCAL_SESSION_ID = 9_000_000_000_000_000_000
 DEFAULT_USER_ID = 55
 DEFAULT_LOGIN_ID = "staging-fixture-user"
 DEFAULT_TTL_SECONDS = 7200
@@ -83,8 +84,25 @@ def require_backend_value(values: dict[str, str], name: str) -> str:
 
 
 def random_session_id() -> int:
-    # sequence 기반 운영 session과 충돌하지 않도록 63-bit 양수 범위에서 run-local id를 뽑는다.
-    return secrets.randbelow(MAX_BIGINT - 1) + 1
+    # sequence 기반 운영 session과 충돌하지 않도록 run-local 전용 high range를 사용한다.
+    return MIN_RUN_LOCAL_SESSION_ID + secrets.randbelow(MAX_BIGINT - MIN_RUN_LOCAL_SESSION_ID)
+
+
+def resolve_ttl_seconds() -> int:
+    raw = os.environ.get("STAGING_REPLAY_TOKEN_TTL_SECONDS")
+    if raw:
+        return positive_int("STAGING_REPLAY_TOKEN_TTL_SECONDS")
+    raw = os.environ.get("MIXED_WORKLOAD_REPLAY_TOKEN_TTL_SECONDS")
+    if raw:
+        return positive_int("MIXED_WORKLOAD_REPLAY_TOKEN_TTL_SECONDS")
+    return DEFAULT_TTL_SECONDS
+
+
+def resolve_session_id() -> tuple[int, str]:
+    raw = os.environ.get("STAGING_REPLAY_SESSION_ID")
+    if raw:
+        return positive_int("STAGING_REPLAY_SESSION_ID"), "env"
+    return random_session_id(), "generated"
 
 
 def issue_token(secret: str, issuer: str, user_id: int, subject: str, session_id: int, ttl_seconds: int) -> str:
@@ -132,17 +150,15 @@ def main() -> None:
     if not subject:
         fail("STAGING_REPLAY_LOGIN_ID must not be blank")
 
-    ttl_seconds = positive_int(
-        "STAGING_REPLAY_TOKEN_TTL_SECONDS",
-        positive_int("MIXED_WORKLOAD_REPLAY_TOKEN_TTL_SECONDS", DEFAULT_TTL_SECONDS),
-    )
-    session_id = positive_int("STAGING_REPLAY_SESSION_ID", random_session_id())
+    ttl_seconds = resolve_ttl_seconds()
+    session_id, session_id_source = resolve_session_id()
 
     token = issue_token(secret, issuer, user_id, subject, session_id, ttl_seconds)
     write_token(output_path, token)
     print(
         "[issue-staging-replay-token] wrote "
-        f"token_file={output_path} user_id={user_id} session_id=present ttl_seconds={ttl_seconds}"
+        f"token_file={output_path} user_id={user_id} "
+        f"session_id_source={session_id_source} ttl_seconds={ttl_seconds}"
     )
 
 
