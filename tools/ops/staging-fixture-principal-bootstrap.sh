@@ -22,6 +22,11 @@ STAGING_MIXED_WORKLOAD_WRITE_SOURCE_BALANCE_MINOR="${STAGING_MIXED_WORKLOAD_WRIT
 STAGING_MIXED_WORKLOAD_WRITE_TARGET_BALANCE_MINOR="${STAGING_MIXED_WORKLOAD_WRITE_TARGET_BALANCE_MINOR:-0}"
 STAGING_FIXTURE_PRINCIPAL_DB_ATTEMPTS="${STAGING_FIXTURE_PRINCIPAL_DB_ATTEMPTS:-3}"
 STAGING_FIXTURE_PRINCIPAL_DB_RETRY_SLEEP_SECONDS="${STAGING_FIXTURE_PRINCIPAL_DB_RETRY_SLEEP_SECONDS:-5}"
+STAGING_REPLAY_TOKEN_FILE="${STAGING_REPLAY_TOKEN_FILE:-}"
+STAGING_REPLAY_SESSION_ID=""
+STAGING_REPLAY_SESSION_EXPIRES_EPOCH=""
+STAGING_REPLAY_SESSION_TOKEN_HASH=""
+STAGING_REPLAY_SESSION_DEVICE_BINDING_HASH=""
 
 fail() {
   echo "::error::$*" >&2
@@ -104,6 +109,72 @@ require_account_number_lengths() {
   done
 }
 
+resolve_replay_token_session() {
+  local token_file="${STAGING_REPLAY_TOKEN_FILE}"
+  local claim_values
+
+  [[ -n "${token_file}" ]] || return 0
+  [[ -s "${token_file}" ]] || fail "STAGING_REPLAY_TOKEN_FILE must be a non-empty file"
+
+  require_command python3
+  if ! claim_values="$(python3 - "${STAGING_REPLAY_USER_ID}" "${token_file}" <<'PY'
+import base64
+import hashlib
+import json
+import pathlib
+import sys
+import time
+
+expected_user_id = int(sys.argv[1])
+token = pathlib.Path(sys.argv[2]).read_text(encoding="utf-8").strip()
+parts = token.split(".")
+if len(parts) < 2:
+    raise SystemExit("STAGING_REPLAY_TOKEN must be a JWT")
+
+payload_segment = parts[1]
+payload_segment += "=" * (-len(payload_segment) % 4)
+try:
+    payload = json.loads(base64.urlsafe_b64decode(payload_segment.encode("ascii")))
+except Exception as exc:  # noqa: BLE001 - sanitized CLI error only
+    raise SystemExit(f"STAGING_REPLAY_TOKEN payload decode failed: {exc}") from exc
+
+
+def positive_int(name: str) -> int:
+    value = payload.get(name)
+    if isinstance(value, bool):
+        raise SystemExit(f"STAGING_REPLAY_TOKEN {name} claim must be a positive integer")
+    if isinstance(value, int):
+        result = value
+    elif isinstance(value, str) and value.isdigit():
+        result = int(value)
+    else:
+        raise SystemExit(f"STAGING_REPLAY_TOKEN {name} claim must be a positive integer")
+    if result <= 0:
+        raise SystemExit(f"STAGING_REPLAY_TOKEN {name} claim must be a positive integer")
+    return result
+
+
+user_id = positive_int("user_id")
+session_id = positive_int("session_id")
+expires_epoch = positive_int("exp")
+if user_id != expected_user_id:
+    raise SystemExit("STAGING_REPLAY_TOKEN user_id claim must match STAGING_REPLAY_USER_ID")
+if expires_epoch <= int(time.time()):
+    raise SystemExit("STAGING_REPLAY_TOKEN exp claim is expired")
+
+token_hash = hashlib.sha256(f"staging-replay-refresh:{user_id}:{session_id}".encode()).hexdigest()
+device_binding_hash = hashlib.sha256(
+    f"staging-replay-device:{user_id}:{session_id}".encode()
+).hexdigest()
+print(f"{user_id}\t{session_id}\t{expires_epoch}\t{token_hash}\t{device_binding_hash}")
+PY
+  )"; then
+    fail "${claim_values}"
+  fi
+
+  IFS=$'\t' read -r _ STAGING_REPLAY_SESSION_ID STAGING_REPLAY_SESSION_EXPIRES_EPOCH STAGING_REPLAY_SESSION_TOKEN_HASH STAGING_REPLAY_SESSION_DEVICE_BINDING_HASH <<<"${claim_values}"
+}
+
 validate_optional_write_accounts() {
   local has_source=false
   local has_target=false
@@ -152,6 +223,7 @@ validate_inputs() {
   validate_optional_write_accounts
   require_positive_integer STAGING_FIXTURE_PRINCIPAL_DB_ATTEMPTS
   require_non_negative_integer STAGING_FIXTURE_PRINCIPAL_DB_RETRY_SLEEP_SECONDS
+  resolve_replay_token_session
 }
 
 ensure_fixture_principal() {
@@ -175,7 +247,11 @@ ensure_fixture_principal() {
     -v write_source_account_number="${STAGING_MIXED_WORKLOAD_WRITE_SOURCE_ACCOUNT_NUMBER}" \
     -v write_target_account_number="${STAGING_MIXED_WORKLOAD_WRITE_TARGET_ACCOUNT_NUMBER}" \
     -v write_source_balance_minor="${STAGING_MIXED_WORKLOAD_WRITE_SOURCE_BALANCE_MINOR}" \
-    -v write_target_balance_minor="${STAGING_MIXED_WORKLOAD_WRITE_TARGET_BALANCE_MINOR}" <<'SQL'
+    -v write_target_balance_minor="${STAGING_MIXED_WORKLOAD_WRITE_TARGET_BALANCE_MINOR}" \
+    -v replay_session_id="${STAGING_REPLAY_SESSION_ID}" \
+    -v replay_session_expires_epoch="${STAGING_REPLAY_SESSION_EXPIRES_EPOCH}" \
+    -v replay_session_token_hash="${STAGING_REPLAY_SESSION_TOKEN_HASH}" \
+    -v replay_session_device_binding_hash="${STAGING_REPLAY_SESSION_DEVICE_BINDING_HASH}" <<'SQL'
       -- psql 변수(:name)는 -c 경로에서 치환되지 않아 stdin으로 전달한다.
       BEGIN;
 
@@ -317,6 +393,59 @@ ensure_fixture_principal() {
           user_status = 'ACTIVE',
           updated_at = CURRENT_TIMESTAMP;
 
+      -- mixed workload write는 current session active gate를 통과해야 하므로 replay JWT의 session row를 맞춘다.
+      SELECT CASE
+          WHEN EXISTS (
+              SELECT 1
+              FROM auth_refresh_token_session
+              WHERE id = NULLIF(:'replay_session_id', '')::bigint
+                AND user_id <> :fixture_user_id
+                AND session_status = 'ACTIVE'
+                AND expires_at > CURRENT_TIMESTAMP
+          )
+          THEN CAST('replay session id belongs to another user' AS integer)
+          ELSE 1
+      END
+      WHERE NULLIF(:'replay_session_id', '') IS NOT NULL;
+
+      INSERT INTO auth_refresh_token_session (
+          id,
+          user_id,
+          token_hash,
+          device_binding_hash,
+          device_name,
+          ip_address,
+          session_status,
+          expires_at,
+          created_at,
+          updated_at
+      )
+      OVERRIDING SYSTEM VALUE
+      SELECT
+          NULLIF(:'replay_session_id', '')::bigint,
+          :fixture_user_id,
+          :'replay_session_token_hash',
+          :'replay_session_device_binding_hash',
+          'staging-mixed-workload',
+          '127.0.0.1',
+          'ACTIVE',
+          to_timestamp(NULLIF(:'replay_session_expires_epoch', '')::double precision),
+          CURRENT_TIMESTAMP,
+          CURRENT_TIMESTAMP
+      WHERE NULLIF(:'replay_session_id', '') IS NOT NULL
+      ON CONFLICT (id)
+      DO UPDATE
+      SET token_hash = EXCLUDED.token_hash,
+          device_binding_hash = EXCLUDED.device_binding_hash,
+          device_name = EXCLUDED.device_name,
+          ip_address = EXCLUDED.ip_address,
+          session_status = 'ACTIVE',
+          expires_at = GREATEST(auth_refresh_token_session.expires_at, EXCLUDED.expires_at),
+          updated_at = CURRENT_TIMESTAMP
+      WHERE auth_refresh_token_session.user_id = EXCLUDED.user_id
+         OR auth_refresh_token_session.session_status <> 'ACTIVE'
+         OR auth_refresh_token_session.expires_at <= CURRENT_TIMESTAMP;
+
       INSERT INTO user_account_membership (
           user_id,
           account_id,
@@ -345,6 +474,13 @@ ensure_fixture_principal() {
           true
       );
 
+      SELECT setval(
+          pg_get_serial_sequence('auth_refresh_token_session', 'id'),
+          GREATEST((SELECT COALESCE(MAX(id), 1) FROM auth_refresh_token_session), 1),
+          true
+      )
+      WHERE NULLIF(:'replay_session_id', '') IS NOT NULL;
+
       COMMIT;
 SQL
     then
@@ -364,4 +500,8 @@ SQL
 validate_inputs
 ensure_fixture_principal
 
-echo "[staging-fixture-principal] ensured user_id=${STAGING_REPLAY_USER_ID} hot_account_ids=${HOT_ACCOUNT_IDS} cold_account_ids=${COLD_ACCOUNT_IDS}"
+replay_session_status="absent"
+if [[ -n "${STAGING_REPLAY_SESSION_ID}" ]]; then
+  replay_session_status="present"
+fi
+echo "[staging-fixture-principal] ensured user_id=${STAGING_REPLAY_USER_ID} hot_account_ids=${HOT_ACCOUNT_IDS} cold_account_ids=${COLD_ACCOUNT_IDS} replay_session=${replay_session_status}"
