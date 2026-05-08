@@ -34,6 +34,14 @@ grep -F "aquila_mixed_notification_count" "${k6_script}" >/dev/null
 grep -F "aquila_mixed_sse_connect_count" "${k6_script}" >/dev/null
 grep -F 'checks: ["rate==1"]' "${k6_script}" >/dev/null
 grep -F 'path: "/api/v1/transactions/archive"' "${k6_script}" >/dev/null
+grep -F "function mixedWriteIdempotencyKey(" "${k6_script}" >/dev/null
+grep -F "const IDEMPOTENCY_KEY_MAX_LENGTH = 80" "${k6_script}" >/dev/null
+grep -F "stableHashSegment(runId)" "${k6_script}" >/dev/null
+grep -F '"Idempotency-Key": mixedWriteIdempotencyKey(__VU, __ITER)' "${k6_script}" >/dev/null
+if grep -F '"Idempotency-Key": `mixed-${runId}-${__VU}-${__ITER}-${Date.now()}`' "${k6_script}" >/dev/null; then
+  echo "mixed workload write idempotency key must stay within the API 80 character contract" >&2
+  exit 1
+fi
 
 temp_dir="$(mktemp -d)"
 trap 'rm -rf "${temp_dir}"' EXIT

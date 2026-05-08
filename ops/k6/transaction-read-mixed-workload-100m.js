@@ -27,6 +27,7 @@ const notificationRate = Number(__ENV.K6_MIXED_NOTIFICATION_RATE || "1");
 const limit = Number(__ENV.K6_LIMIT || "50");
 const sseTimeout = __ENV.K6_MIXED_SSE_TIMEOUT || "5s";
 const maxRetryAfterSleepSeconds = Number(__ENV.K6_MAX_RETRY_AFTER_SLEEP_SECONDS || "1");
+const IDEMPOTENCY_KEY_MAX_LENGTH = 80;
 
 export const mixedReadCount = new Counter("aquila_mixed_read_count");
 export const mixedReadDurationMs = new Trend("aquila_mixed_read_duration_ms", true);
@@ -141,6 +142,37 @@ function requireInput(name, value) {
   if (!value) {
     throw new Error(`${name} is required`);
   }
+}
+
+// API의 idempotency key 80자 계약을 넘기면 write 2xx가 0으로 왜곡됩니다.
+function stableHashSegment(value) {
+  let hash = 2166136261;
+  const source = String(value || "");
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function idempotencySegment(value) {
+  const segment = String(value || "run").replace(/[^A-Za-z0-9_-]/g, "-");
+  return segment || "run";
+}
+
+function mixedWriteIdempotencyKey(vu, iteration) {
+  const suffix = [
+    stableHashSegment(runId),
+    Number(vu || 0).toString(36),
+    Number(iteration || 0).toString(36),
+    Date.now().toString(36),
+  ].join("-");
+  const prefixBudget = Math.max(1, IDEMPOTENCY_KEY_MAX_LENGTH - "mixed--".length - suffix.length);
+  const prefix = idempotencySegment(runId).slice(0, prefixBudget);
+  const key = `mixed-${prefix}-${suffix}`;
+  return key.length <= IDEMPOTENCY_KEY_MAX_LENGTH
+    ? key
+    : key.slice(0, IDEMPOTENCY_KEY_MAX_LENGTH);
 }
 
 function retryAfterSeconds(response) {
@@ -284,7 +316,7 @@ export function transferWrite() {
     headers: {
       ...headers(writeSourceAccountId, "k6-mixed-write"),
       "Content-Type": "application/json",
-      "Idempotency-Key": `mixed-${runId}-${__VU}-${__ITER}-${Date.now()}`,
+      "Idempotency-Key": mixedWriteIdempotencyKey(__VU, __ITER),
     },
   });
 
