@@ -173,6 +173,10 @@ assert_replay_token_session_is_bootstrapped_without_token_leak() {
   grep -q -- "INSERT INTO auth_refresh_token_session" "${psql_stdin_log}"
   grep -q -- "OVERRIDING SYSTEM VALUE" "${psql_stdin_log}"
   grep -q -- "pg_get_serial_sequence('auth_refresh_token_session', 'id')" "${psql_stdin_log}"
+  grep -q -- "session_status = 'ACTIVE'" "${psql_stdin_log}"
+  grep -q -- "expires_at > CURRENT_TIMESTAMP" "${psql_stdin_log}"
+  grep -q -- "auth_refresh_token_session.session_status <> 'ACTIVE'" "${psql_stdin_log}"
+  grep -q -- "auth_refresh_token_session.expires_at <= CURRENT_TIMESTAMP" "${psql_stdin_log}"
   if grep -F "eyJhbGciOiJIUzI1NiJ9" "${psql_log}" "${psql_stdin_log}" >/dev/null; then
     echo "replay bearer token must not be printed or passed to psql" >&2
     exit 1

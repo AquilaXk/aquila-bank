@@ -400,6 +400,8 @@ ensure_fixture_principal() {
               FROM auth_refresh_token_session
               WHERE id = NULLIF(:'replay_session_id', '')::bigint
                 AND user_id <> :fixture_user_id
+                AND session_status = 'ACTIVE'
+                AND expires_at > CURRENT_TIMESTAMP
           )
           THEN CAST('replay session id belongs to another user' AS integer)
           ELSE 1
@@ -440,7 +442,9 @@ ensure_fixture_principal() {
           session_status = 'ACTIVE',
           expires_at = GREATEST(auth_refresh_token_session.expires_at, EXCLUDED.expires_at),
           updated_at = CURRENT_TIMESTAMP
-      WHERE auth_refresh_token_session.user_id = EXCLUDED.user_id;
+      WHERE auth_refresh_token_session.user_id = EXCLUDED.user_id
+         OR auth_refresh_token_session.session_status <> 'ACTIVE'
+         OR auth_refresh_token_session.expires_at <= CURRENT_TIMESTAMP;
 
       INSERT INTO user_account_membership (
           user_id,
