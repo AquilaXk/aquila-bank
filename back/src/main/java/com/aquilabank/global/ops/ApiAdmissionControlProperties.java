@@ -33,7 +33,7 @@ public record ApiAdmissionControlProperties(
             List.of("/api/v1/transactions"),
             new AdaptiveLimit(true, 6, 12, 64, 1, 20, 0.5, 1, 1, 0, 0, 0)),
         new EndpointLimit("account-read", 4, 0, List.of("/api/v1/accounts"), null),
-        new EndpointLimit("transfer-write", 2, 0, List.of("/api/v1/transfers"), null),
+        new EndpointLimit("transfer-write", 4, 0, List.of("/api/v1/transfers"), null),
         new EndpointLimit(
             "notification-stream", 4, 0, List.of("/api/v1/notifications/stream"), null),
         new EndpointLimit(
