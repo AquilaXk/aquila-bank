@@ -63,6 +63,27 @@ class JdbcTransferLimitUsageRepositoryIntegrationTest extends PostgresContainerT
     assertThat(total).isEqualTo(3_000L);
   }
 
+  @Test
+  void dailyLimitLookupIndexCoversAmountMinorForIndexOnlySum() {
+    String indexDefinition =
+        jdbcTemplate.queryForObject(
+            """
+            SELECT indexdef
+            FROM pg_indexes
+            WHERE schemaname = 'public'
+              AND indexname = 'idx_ledger_entry_transfer_limit_daily_covering'
+            """,
+            new MapSqlParameterSource(),
+            String.class);
+
+    assertThat(indexDefinition)
+        .contains("ledger_entry")
+        .contains("account_id")
+        .contains("currency_code")
+        .contains("booked_at")
+        .contains("INCLUDE (amount_minor)");
+  }
+
   private long insertAccount(String displayName) {
     Long accountId =
         jdbcTemplate.queryForObject(
