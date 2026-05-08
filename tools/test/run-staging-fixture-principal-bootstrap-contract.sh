@@ -106,6 +106,29 @@ run_bootstrap_with_replay_token_file() {
     "${script}"
 }
 
+run_bootstrap_with_replay_token_file_reassign() {
+  local token_file="${tmp_dir}/staging-replay-token-reassign.jwt"
+  printf '%s' \
+    'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJzdGFnaW5nLWZpeHR1cmUtdXNlciIsInVzZXJfaWQiOjU1LCJzZXNzaW9uX2lkIjoxMjM0NSwiZXhwIjoxODkzNDU2MDAwfQ.sig' \
+    >"${token_file}"
+  chmod 600 "${token_file}"
+
+  env \
+    PATH="${tmp_dir}:${PATH}" \
+    PSQL_STUB_LOG="${psql_log}" \
+    PSQL_STDIN_LOG="${psql_stdin_log}" \
+    STAGING_OCI_A1_DATABASE_URL="postgresql://fixture-db/aquila" \
+    STAGING_REPLAY_USER_ID="55" \
+    STAGING_REPLAY_LOGIN_ID="staging-fixture-user" \
+    STAGING_REPLAY_USER_PASSWORD_HASH="fixturePasswordHashWithLetters" \
+    STAGING_REPLAY_USER_DISPLAY_NAME="Staging Fixture User" \
+    STAGING_REPLAY_TOKEN_FILE="${token_file}" \
+    STAGING_REPLAY_ALLOW_SESSION_REASSIGN="true" \
+    HOT_ACCOUNT_ID="1001" \
+    COLD_ACCOUNT_ID="1002" \
+    "${script}"
+}
+
 run_bootstrap_with_mismatched_replay_token_file() {
   local token_file="${tmp_dir}/staging-replay-token-mismatch.jwt"
   printf '%s' \
@@ -170,15 +193,29 @@ assert_replay_token_session_is_bootstrapped_without_token_leak() {
 
   grep -q -- "replay_session_id=12345" "${psql_log}"
   grep -q -- "replay_session_expires_epoch=1893456000" "${psql_log}"
+  grep -q -- "replay_allow_session_reassign=false" "${psql_log}"
   grep -q -- "INSERT INTO auth_refresh_token_session" "${psql_stdin_log}"
   grep -q -- "OVERRIDING SYSTEM VALUE" "${psql_stdin_log}"
   grep -q -- "pg_get_serial_sequence('auth_refresh_token_session', 'id')" "${psql_stdin_log}"
   grep -q -- "session_status = 'ACTIVE'" "${psql_stdin_log}"
   grep -q -- "expires_at > CURRENT_TIMESTAMP" "${psql_stdin_log}"
-  grep -q -- "auth_refresh_token_session.session_status <> 'ACTIVE'" "${psql_stdin_log}"
-  grep -q -- "auth_refresh_token_session.expires_at <= CURRENT_TIMESTAMP" "${psql_stdin_log}"
+  grep -q -- "user_id = EXCLUDED.user_id" "${psql_stdin_log}"
   if grep -F "eyJhbGciOiJIUzI1NiJ9" "${psql_log}" "${psql_stdin_log}" >/dev/null; then
     echo "replay bearer token must not be printed or passed to psql" >&2
+    exit 1
+  fi
+}
+
+assert_replay_token_session_reassign_is_explicit() {
+  : >"${psql_log}"
+  : >"${psql_stdin_log}"
+
+  run_bootstrap_with_replay_token_file_reassign >/dev/null
+
+  grep -q -- "replay_allow_session_reassign=true" "${psql_log}"
+  grep -q -- "user_id = EXCLUDED.user_id" "${psql_stdin_log}"
+  if grep -F "replay session id belongs to another user" "${psql_stdin_log}" >/dev/null; then
+    echo "reassign mode must skip replay session collision preflight" >&2
     exit 1
   fi
 }
@@ -262,6 +299,7 @@ assert_valid_secret_like_values_do_not_enter_arithmetic
 assert_csv_account_ids_feed_fixture_sql
 assert_write_accounts_are_funded_and_authorized
 assert_replay_token_session_is_bootstrapped_without_token_leak
+assert_replay_token_session_reassign_is_explicit
 assert_replay_token_user_mismatch_fails_before_psql
 assert_transient_psql_timeout_retries_fixture_sql
 assert_too_long_password_hash_fails_before_psql

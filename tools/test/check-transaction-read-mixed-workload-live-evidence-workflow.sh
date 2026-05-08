@@ -19,6 +19,7 @@ grep -F "mixed workload live evidence contract" "${workflow}" >/dev/null
 grep -F "if: github.event_name == 'pull_request'" "${workflow}" >/dev/null
 grep -F "bash tools/test/check-transaction-read-mixed-workload-live-evidence-workflow.sh" "${workflow}" >/dev/null
 grep -F "bash tools/test/run-staging-fixture-principal-bootstrap-contract.sh" "${workflow}" >/dev/null
+grep -F "python3 tools/test/check-issue-staging-replay-token.py" "${workflow}" >/dev/null
 grep -F "bash tools/test/check-transaction-read-mixed-workload-oci-k6.sh" "${workflow}" >/dev/null
 grep -F "bash tools/test/check-transaction-read-mixed-workload-live-evidence-autogen.sh" "${workflow}" >/dev/null
 grep -F "bash tools/test/check-transaction-read-mixed-workload-30m-timeline.sh" "${workflow}" >/dev/null
@@ -36,6 +37,8 @@ grep -F 'MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV_INPUT: ${{ inputs.evidence_manifes
 grep -F 'MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV_VAR: ${{ vars.OCI_MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV }}' "${workflow}" >/dev/null
 grep -F 'staging_db_env_names=(' "${workflow}" >/dev/null
 grep -F 'OCI_A1_BACKEND_ENV_B64' "${workflow}" >/dev/null
+grep -F 'tools/ops/issue-staging-replay-token.py' "${workflow}" >/dev/null
+grep -F 'tools/test/check-issue-staging-replay-token.py' "${workflow}" >/dev/null
 grep -F 'STAGING_OCI_A1_DATABASE_URL' "${workflow}" >/dev/null
 grep -F 'POSTGRES_CONTAINER_NAME' "${workflow}" >/dev/null
 grep -F 'POSTGRES_NETWORK_ALIAS' "${workflow}" >/dev/null
@@ -54,12 +57,23 @@ grep -F 'printf '\''MIXED_WORKLOAD_OCI_WRITE_SOURCE_ACCOUNT_ID=%s\n'\'' "${MIXED
 grep -F 'printf '\''MIXED_WORKLOAD_OCI_WRITE_TARGET_ACCOUNT_ID=%s\n'\'' "${MIXED_WORKLOAD_OCI_WRITE_TARGET_ACCOUNT_ID}" >>"${GITHUB_ENV}"' "${workflow}" >/dev/null
 grep -F "name: Resolve mixed workload staging database URL" "${workflow}" >/dev/null
 grep -F "tools/ops/resolve-oci-a1-staging-database-url.sh" "${workflow}" >/dev/null
+grep -F "name: Issue mixed workload replay token" "${workflow}" >/dev/null
+grep -F 'STAGING_REPLAY_DATABASE_URL="${STAGING_OCI_A1_DATABASE_URL:-}" \' "${workflow}" >/dev/null
 grep -F "name: Ensure mixed workload fixture principal" "${workflow}" >/dev/null
 grep -F 'STAGING_MIXED_WORKLOAD_WRITE_SOURCE_ACCOUNT_ID="${MIXED_WORKLOAD_OCI_WRITE_SOURCE_ACCOUNT_ID}"' "${workflow}" >/dev/null
 grep -F 'STAGING_MIXED_WORKLOAD_WRITE_TARGET_ACCOUNT_ID="${MIXED_WORKLOAD_OCI_WRITE_TARGET_ACCOUNT_ID}"' "${workflow}" >/dev/null
 grep -F 'STAGING_REPLAY_TOKEN_FILE="${MIXED_WORKLOAD_OCI_AUTH_TOKEN_FILE:-}"' "${workflow}" >/dev/null
 grep -F "tools/ops/staging-fixture-principal-bootstrap.sh" "${workflow}" >/dev/null
 grep -F 'mixed_workload_auth_token_file="${RUNNER_TEMP}/mixed-workload-live-auth-token"' "${workflow}" >/dev/null
+grep -F 'if [[ -z "${OCI_A1_BACKEND_ENV_B64:-}" ]]; then' "${workflow}" >/dev/null
+grep -F 'STAGING_REPLAY_SESSION_ID="" \' "${workflow}" >/dev/null
+grep -F 'STAGING_REPLAY_TOKEN_OUTPUT_FILE="${mixed_workload_auth_token_file}" \' "${workflow}" >/dev/null
+grep -F 'STAGING_REPLAY_TOKEN_TTL_SECONDS="${MIXED_WORKLOAD_REPLAY_TOKEN_TTL_SECONDS:-7200}" \' "${workflow}" >/dev/null
+grep -F 'python3 tools/ops/issue-staging-replay-token.py' "${workflow}" >/dev/null
+grep -F 'mixed_workload_auth_token="$(<"${mixed_workload_auth_token_file}")"' "${workflow}" >/dev/null
+grep -F 'printf '\''::add-mask::%s\n'\'' "${mixed_workload_auth_token}"' "${workflow}" >/dev/null
+grep -F 'if [[ -z "${OCI_A1_BACKEND_ENV_B64:-}" && -n "${STAGING_REPLAY_TOKEN:-}" ]]; then' "${workflow}" >/dev/null
+grep -F 'printf '\''STAGING_REPLAY_ALLOW_SESSION_REASSIGN=true\n'\'' >>"${GITHUB_ENV}"' "${workflow}" >/dev/null
 grep -F 'printf '\''::add-mask::%s\n'\'' "${STAGING_REPLAY_TOKEN}"' "${workflow}" >/dev/null
 grep -F 'printf '\''%s'\'' "${STAGING_REPLAY_TOKEN}" >"${mixed_workload_auth_token_file}"' "${workflow}" >/dev/null
 grep -F 'chmod 600 "${mixed_workload_auth_token_file}"' "${workflow}" >/dev/null
