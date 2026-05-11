@@ -1,742 +1,99 @@
 "use client";
 
-import type { FormEvent } from "react";
 import { AccountsSection } from "@/components/customer-banking/sections/accounts-section";
 import { DashboardSection } from "@/components/customer-banking/sections/dashboard-section";
 import { NotificationsSection } from "@/components/customer-banking/sections/notifications-section";
 import { SecuritySection } from "@/components/customer-banking/sections/security-section";
 import { TransactionsSection } from "@/components/customer-banking/sections/transactions-section";
 import { TransferSection } from "@/components/customer-banking/sections/transfer-section";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { AquilaBankApiClient } from "@/lib/api/client";
-import {
-  clearCustomerSession,
-  loadCustomerSession,
-  saveCustomerSession,
-  toCustomerSession,
-} from "@/lib/api/session";
-import type {
-  AccountItem,
-  AccountSummaryResponse,
-  AuthSessionItem,
-  BackupCodeIssueResponse,
-  CustomerSession,
-  LoginResponse,
-  NotificationItem,
-  NotificationPreferenceItem,
-  NotificationQueryResponse,
-  PasswordRecoveryRequestResult,
-  TransactionDetailResponse,
-  TransactionItem,
-  TransactionQueryResponse,
-  TotpEnrollmentStartResponse,
-  TransferResponse,
-  TransferReversalResponse,
-} from "@/lib/api/types";
+import { useCustomerBanking } from "@/hooks/use-customer-banking";
 import { mainMenus, quickMenus } from "@/lib/customer-banking/constants";
-import {
-  formatDateTime,
-  formatMinorAmount,
-  maskToken,
-  toErrorMessage,
-  toIsoDateTime,
-  toLocalInputValue,
-  toOptionalNumber,
-} from "@/lib/customer-banking/format";
-import type { AlertMessage, MenuSection } from "@/lib/customer-banking/types";
+import { formatDateTime, maskToken } from "@/lib/customer-banking/format";
 
 export default function HomePage() {
-  const api = useMemo(() => new AquilaBankApiClient(), []);
-  const [activeSection, setActiveSection] = useState<MenuSection>("dashboard");
-  const [session, setSession] = useState<CustomerSession | null>(null);
-  const [alert, setAlert] = useState<AlertMessage>({
-    type: "info",
-    text: "안전한 웹뱅킹 이용을 위해 로그인 후 업무를 진행하세요.",
-  });
-  const [busyLabel, setBusyLabel] = useState<string | null>(null);
-  const [loginForm, setLoginForm] = useState({ loginId: "", password: "" });
-  const [challenge, setChallenge] = useState<LoginResponse | null>(null);
-  const [totpChallengeForm, setTotpChallengeForm] = useState({
-    totpCode: "",
-    rememberDevice: false,
-  });
-  const [backupChallengeForm, setBackupChallengeForm] = useState({
-    backupCode: "",
-    rememberDevice: false,
-  });
-  const [passwordRecoveryForm, setPasswordRecoveryForm] = useState({
-    loginId: "",
-    recoveryToken: "",
-    newPassword: "",
-  });
-  const [passwordResetForm, setPasswordResetForm] = useState({
-    currentPassword: "",
-    newPassword: "",
-  });
-  const [totpCode, setTotpCode] = useState("");
-  const [sessions, setSessions] = useState<AuthSessionItem[]>([]);
-  const [totpEnrollment, setTotpEnrollment] =
-    useState<TotpEnrollmentStartResponse | null>(null);
-  const [backupCodes, setBackupCodes] = useState<BackupCodeIssueResponse | null>(
-    null,
-  );
-  const [passwordRecoveryResult, setPasswordRecoveryResult] =
-    useState<PasswordRecoveryRequestResult | null>(null);
-  const [accounts, setAccounts] = useState<AccountItem[]>([]);
-  const [accountCursor, setAccountCursor] = useState("");
-  const [accountLimit, setAccountLimit] = useState(20);
-  const [selectedAccount, setSelectedAccount] =
-    useState<AccountSummaryResponse | null>(null);
-  const [transferForm, setTransferForm] = useState({
-    sourceAccountId: "",
-    targetAccountId: "",
-    amountMinor: "",
-    currencyCode: "KRW",
-    summary: "",
-  });
-  const [transferResult, setTransferResult] = useState<TransferResponse | null>(
-    null,
-  );
-  const [reversalForm, setReversalForm] = useState({
-    transactionReference: "",
-    sourceAccountId: "",
-    amountMinor: "",
-    reversalReason: "CUSTOMER_REQUEST",
-    summary: "",
-  });
-  const [reversalResult, setReversalResult] =
-    useState<TransferReversalResponse | null>(null);
-  const [transactionMode, setTransactionMode] = useState<"active" | "archive">(
-    "active",
-  );
-  const [transactionFilters, setTransactionFilters] = useState({
-    accountId: "",
-    from: toLocalInputValue(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)),
-    to: toLocalInputValue(new Date()),
-    limit: "50",
-    cursor: "",
-    status: "",
-    direction: "",
-    minAmountMinor: "",
-    maxAmountMinor: "",
-    transactionReference: "",
-    responseShape: "full" as "full" | "slim",
-  });
-  const [transactionSlice, setTransactionSlice] =
-    useState<TransactionQueryResponse | null>(null);
-  const [transactions, setTransactions] = useState<TransactionItem[]>([]);
-  const [transactionDetail, setTransactionDetail] =
-    useState<TransactionDetailResponse | null>(null);
-  const [notificationMode, setNotificationMode] = useState<"inbox" | "search">(
-    "inbox",
-  );
-  const [notificationFilters, setNotificationFilters] = useState({
-    limit: "20",
-    cursor: "",
-    readStatus: "ALL",
-    eventType: "",
-    from: toLocalInputValue(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)),
-    to: toLocalInputValue(new Date()),
-  });
-  const [notificationSlice, setNotificationSlice] =
-    useState<NotificationQueryResponse | null>(null);
-  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-  const [selectedNotificationIds, setSelectedNotificationIds] = useState<number[]>(
-    [],
-  );
-  const [unreadCount, setUnreadCount] = useState<number | null>(null);
-  const [preferences, setPreferences] = useState<NotificationPreferenceItem[]>([]);
-  const [sseStatus, setSseStatus] = useState({
-    state: "disconnected",
-    lastEventAt: "",
-    lastEventId: "",
-  });
-  const eventSourceRef = useRef<EventSource | null>(null);
-
-  useEffect(() => {
-    const storedSession = loadCustomerSession();
-    if (storedSession) {
-      setSession(storedSession);
-      setAlert({
-        type: "success",
-        text: "저장된 세션을 불러왔습니다.",
-      });
-    }
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      eventSourceRef.current?.close();
-    };
-  }, []);
-
-  function applyLoginResult(result: LoginResponse): void {
-    if (result.status === "MFA_REQUIRED") {
-      setChallenge(result);
-      setAlert({
-        type: "info",
-        text: "추가 인증이 필요합니다. TOTP 또는 backup code를 입력하세요.",
-      });
-      return;
-    }
-
-    const nextSession = toCustomerSession(result);
-    if (!nextSession) {
-      setAlert({
-        type: "error",
-        text: "로그인 응답에 accessToken 또는 refreshToken이 없습니다.",
-      });
-      return;
-    }
-
-    saveCustomerSession(nextSession);
-    setSession(nextSession);
-    setChallenge(null);
-    setAlert({
-      type: "success",
-      text: "로그인되었습니다.",
-    });
-  }
-
-  async function runAction(label: string, action: () => Promise<void>): Promise<void> {
-    setBusyLabel(label);
-    try {
-      await action();
-    } catch (error) {
-      setAlert({ type: "error", text: toErrorMessage(error) });
-    } finally {
-      setBusyLabel(null);
-    }
-  }
-
-  function requireSession(): CustomerSession | null {
-    if (!session) {
-      setAlert({ type: "error", text: "로그인이 필요한 업무입니다." });
-      return null;
-    }
-    return session;
-  }
-
-  async function handleLogin(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    await runAction("로그인", async () => {
-      const result = await api.login(loginForm);
-      applyLoginResult(result);
-    });
-  }
-
-  async function handleTotpChallenge(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!challenge?.challengeId) {
-      setAlert({ type: "error", text: "인증 challenge가 없습니다." });
-      return;
-    }
-    await runAction("TOTP 인증", async () => {
-      const result = await api.verifyTotpChallenge({
-        challengeId: challenge.challengeId as string,
-        totpCode: totpChallengeForm.totpCode,
-        rememberDevice: totpChallengeForm.rememberDevice,
-      });
-      applyLoginResult(result);
-    });
-  }
-
-  async function handleBackupChallenge(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!challenge?.challengeId) {
-      setAlert({ type: "error", text: "인증 challenge가 없습니다." });
-      return;
-    }
-    await runAction("Backup code 인증", async () => {
-      const result = await api.verifyBackupCodeChallenge({
-        challengeId: challenge.challengeId as string,
-        backupCode: backupChallengeForm.backupCode,
-        rememberDevice: backupChallengeForm.rememberDevice,
-      });
-      applyLoginResult(result);
-    });
-  }
-
-  async function handleRefresh() {
-    const currentSession = requireSession();
-    if (!currentSession) {
-      return;
-    }
-    await runAction("토큰 재발급", async () => {
-      const result = await api.refresh({ refreshToken: currentSession.refreshToken });
-      applyLoginResult(result);
-    });
-  }
-
-  async function handleLogout() {
-    const currentSession = requireSession();
-    if (!currentSession) {
-      return;
-    }
-    await runAction("로그아웃", async () => {
-      await api.logout(
-        { refreshToken: currentSession.refreshToken },
-        currentSession.accessToken,
-      );
-      clearCustomerSession();
-      setSession(null);
-      setSessions([]);
-      setAlert({ type: "success", text: "로그아웃되었습니다." });
-    });
-  }
-
-  async function handlePasswordRecoveryRequest(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    await runAction("비밀번호 찾기 요청", async () => {
-      const result = await api.requestPasswordRecovery({
-        loginId: passwordRecoveryForm.loginId,
-      });
-      setPasswordRecoveryResult(result);
-      setAlert({
-        type: "success",
-        text: "비밀번호 복구 요청이 접수되었습니다.",
-      });
-    });
-  }
-
-  async function handlePasswordRecoveryConfirm(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    await runAction("비밀번호 복구 확정", async () => {
-      await api.confirmPasswordRecovery({
-        recoveryToken: passwordRecoveryForm.recoveryToken,
-        newPassword: passwordRecoveryForm.newPassword,
-      });
-      setAlert({ type: "success", text: "비밀번호가 변경되었습니다." });
-    });
-  }
-
-  async function handlePasswordReset(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const currentSession = requireSession();
-    if (!currentSession) {
-      return;
-    }
-    await runAction("비밀번호 변경", async () => {
-      await api.resetPassword(passwordResetForm, currentSession.accessToken);
-      clearCustomerSession();
-      setSession(null);
-      setAlert({
-        type: "success",
-        text: "비밀번호가 변경되었습니다. 다시 로그인하세요.",
-      });
-    });
-  }
-
-  async function handleLoadSessions() {
-    const currentSession = requireSession();
-    if (!currentSession) {
-      return;
-    }
-    await runAction("세션 조회", async () => {
-      const result = await api.getSessions(currentSession.accessToken);
-      setSessions(result.items);
-      setAlert({ type: "success", text: "세션 목록을 불러왔습니다." });
-    });
-  }
-
-  async function handleRevokeSession(sessionId: number) {
-    const currentSession = requireSession();
-    if (!currentSession) {
-      return;
-    }
-    await runAction("세션 해지", async () => {
-      await api.revokeSession(sessionId, currentSession.accessToken);
-      setSessions((items) => items.filter((item) => item.sessionId !== sessionId));
-      setAlert({ type: "success", text: "선택한 세션을 해지했습니다." });
-    });
-  }
-
-  async function handleRevokeAllSessions() {
-    const currentSession = requireSession();
-    if (!currentSession) {
-      return;
-    }
-    await runAction("전체 세션 해지", async () => {
-      await api.revokeAllSessions(currentSession.accessToken);
-      clearCustomerSession();
-      setSession(null);
-      setSessions([]);
-      setAlert({ type: "success", text: "전체 세션을 해지했습니다." });
-    });
-  }
-
-  async function handleStartTotpEnrollment() {
-    const currentSession = requireSession();
-    if (!currentSession) {
-      return;
-    }
-    await runAction("TOTP 등록 시작", async () => {
-      const result = await api.startTotpEnrollment(currentSession.accessToken);
-      setTotpEnrollment(result);
-      setAlert({ type: "success", text: "TOTP 등록 정보가 발급되었습니다." });
-    });
-  }
-
-  async function handleVerifyTotpEnrollment() {
-    const currentSession = requireSession();
-    if (!currentSession) {
-      return;
-    }
-    await runAction("TOTP 등록 확인", async () => {
-      const result = await api.verifyTotpEnrollment(
-        { totpCode },
-        currentSession.accessToken,
-      );
-      setAlert({ type: "success", text: `TOTP 상태: ${result.status}` });
-    });
-  }
-
-  async function handleDisableTotp() {
-    const currentSession = requireSession();
-    if (!currentSession) {
-      return;
-    }
-    await runAction("TOTP 해지", async () => {
-      await api.disableTotp({ totpCode }, currentSession.accessToken);
-      clearCustomerSession();
-      setSession(null);
-      setAlert({ type: "success", text: "TOTP가 해지되었습니다." });
-    });
-  }
-
-  async function handleIssueBackupCodes() {
-    const currentSession = requireSession();
-    if (!currentSession) {
-      return;
-    }
-    await runAction("Backup code 발급", async () => {
-      const result = await api.issueBackupCodes(
-        { totpCode },
-        currentSession.accessToken,
-      );
-      setBackupCodes(result);
-      setAlert({ type: "success", text: "Backup code가 발급되었습니다." });
-    });
-  }
-
-  async function handleLoadAccounts(cursor = "", append = false) {
-    const currentSession = requireSession();
-    if (!currentSession) {
-      return;
-    }
-    await runAction("계좌 조회", async () => {
-      const result = await api.getAccounts(currentSession.accessToken, {
-        limit: accountLimit,
-        cursor,
-      });
-      setAccounts((items) => (append ? [...items, ...result.items] : result.items));
-      setAccountCursor(result.nextCursor ?? "");
-      if (result.items[0] && !selectedAccount) {
-        setSelectedAccount(result.items[0]);
-        setTransferForm((form) => ({
-          ...form,
-          sourceAccountId: String(result.items[0].accountId),
-        }));
-        setTransactionFilters((form) => ({
-          ...form,
-          accountId: String(result.items[0].accountId),
-        }));
-      }
-      setAlert({ type: "success", text: "계좌 목록을 불러왔습니다." });
-    });
-  }
-
-  async function handleLoadAccountDetail(accountId: number) {
-    const currentSession = requireSession();
-    if (!currentSession) {
-      return;
-    }
-    await runAction("계좌 상세 조회", async () => {
-      const result = await api.getAccount(accountId, currentSession.accessToken);
-      setSelectedAccount(result);
-      setTransferForm((form) => ({
-        ...form,
-        sourceAccountId: String(result.accountId),
-      }));
-      setTransactionFilters((form) => ({
-        ...form,
-        accountId: String(result.accountId),
-      }));
-      setAlert({ type: "success", text: "계좌 상세를 불러왔습니다." });
-    });
-  }
-
-  async function handleTransfer(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const currentSession = requireSession();
-    if (!currentSession) {
-      return;
-    }
-    await runAction("이체", async () => {
-      const result = await api.transfer(
-        {
-          sourceAccountId: Number(transferForm.sourceAccountId),
-          targetAccountId: Number(transferForm.targetAccountId),
-          amountMinor: Number(transferForm.amountMinor),
-          currencyCode: transferForm.currencyCode,
-          summary: transferForm.summary,
-        },
-        currentSession.accessToken,
-      );
-      setTransferResult(result);
-      setAlert({
-        type: "success",
-        text: `이체가 접수되었습니다. 거래번호 ${result.transactionReference}`,
-      });
-    });
-  }
-
-  async function handleReversal(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const currentSession = requireSession();
-    if (!currentSession) {
-      return;
-    }
-    await runAction("이체 취소", async () => {
-      const result = await api.reverseTransfer(
-        reversalForm.transactionReference,
-        {
-          sourceAccountId: Number(reversalForm.sourceAccountId),
-          amountMinor: Number(reversalForm.amountMinor),
-          reversalReason: reversalForm.reversalReason,
-          summary: reversalForm.summary,
-        },
-        currentSession.accessToken,
-      );
-      setReversalResult(result);
-      setAlert({
-        type: "success",
-        text: `취소 거래가 접수되었습니다. 거래번호 ${result.reversalTransactionReference}`,
-      });
-    });
-  }
-
-  async function handleSearchTransactions(
-    mode = transactionMode,
-    cursor = "",
-    append = false,
-  ) {
-    const currentSession = requireSession();
-    if (!currentSession) {
-      return;
-    }
-    await runAction("거래내역 조회", async () => {
-      const params = {
-        accountId: Number(transactionFilters.accountId),
-        from: toIsoDateTime(transactionFilters.from),
-        to: toIsoDateTime(transactionFilters.to),
-        limit: Number(transactionFilters.limit || 50),
-        cursor,
-        status: transactionFilters.status || undefined,
-        direction: transactionFilters.direction || undefined,
-        minAmountMinor: toOptionalNumber(transactionFilters.minAmountMinor),
-        maxAmountMinor: toOptionalNumber(transactionFilters.maxAmountMinor),
-        transactionReference: transactionFilters.transactionReference || undefined,
-        responseShape: transactionFilters.responseShape,
-      };
-      const result =
-        mode === "archive"
-          ? await api.getArchivedTransactions(params, currentSession.accessToken)
-          : await api.getTransactions(params, currentSession.accessToken);
-      setTransactionMode(mode);
-      setTransactionSlice(result);
-      setTransactions((items) => (append ? [...items, ...result.items] : result.items));
-      setTransactionFilters((form) => ({
-        ...form,
-        cursor: result.nextCursor ?? "",
-      }));
-      setAlert({ type: "success", text: "거래내역을 불러왔습니다." });
-    });
-  }
-
-  async function handleLoadTransactionDetail(transactionReference: string) {
-    const currentSession = requireSession();
-    if (!currentSession) {
-      return;
-    }
-    const accountId = Number(transactionFilters.accountId || selectedAccount?.accountId);
-    if (!accountId) {
-      setAlert({ type: "error", text: "거래 상세 조회 계좌를 선택하세요." });
-      return;
-    }
-    await runAction("거래 상세 조회", async () => {
-      const result = await api.getTransactionDetail(
-        transactionReference,
-        accountId,
-        currentSession.accessToken,
-      );
-      setTransactionDetail(result);
-      setAlert({ type: "success", text: "거래 상세를 불러왔습니다." });
-    });
-  }
-
-  async function handleLoadNotifications(
-    mode = notificationMode,
-    cursor = "",
-    append = false,
-  ) {
-    const currentSession = requireSession();
-    if (!currentSession) {
-      return;
-    }
-    await runAction("알림 조회", async () => {
-      const commonParams = {
-        limit: Number(notificationFilters.limit || 20),
-        cursor,
-      };
-      const result =
-        mode === "search"
-          ? await api.searchNotifications(
-              {
-                ...commonParams,
-                readStatus: notificationFilters.readStatus,
-                eventType: notificationFilters.eventType || undefined,
-                from: toIsoDateTime(notificationFilters.from),
-                to: toIsoDateTime(notificationFilters.to),
-              },
-              currentSession.accessToken,
-            )
-          : await api.getNotifications(commonParams, currentSession.accessToken);
-      setNotificationMode(mode);
-      setNotificationSlice(result);
-      setNotifications((items) => (append ? [...items, ...result.items] : result.items));
-      setNotificationFilters((form) => ({
-        ...form,
-        cursor: result.nextCursor ?? "",
-      }));
-      setSelectedNotificationIds([]);
-      setAlert({ type: "success", text: "알림을 불러왔습니다." });
-    });
-  }
-
-  async function handleLoadUnreadCount() {
-    const currentSession = requireSession();
-    if (!currentSession) {
-      return;
-    }
-    await runAction("미확인 알림 조회", async () => {
-      const result = await api.getUnreadCount(currentSession.accessToken);
-      setUnreadCount(result.unreadCount);
-      setAlert({ type: "success", text: "미확인 알림 수를 불러왔습니다." });
-    });
-  }
-
-  async function handleLoadPreferences() {
-    const currentSession = requireSession();
-    if (!currentSession) {
-      return;
-    }
-    await runAction("알림 설정 조회", async () => {
-      const result = await api.getNotificationPreferences(currentSession.accessToken);
-      setPreferences(result.items);
-      setAlert({ type: "success", text: "알림 설정을 불러왔습니다." });
-    });
-  }
-
-  async function handleUpdatePreferences() {
-    const currentSession = requireSession();
-    if (!currentSession) {
-      return;
-    }
-    await runAction("알림 설정 저장", async () => {
-      await api.updateNotificationPreferences({ items: preferences }, currentSession.accessToken);
-      setAlert({ type: "success", text: "알림 설정을 저장했습니다." });
-    });
-  }
-
-  function toggleNotificationId(notificationId: number): void {
-    setSelectedNotificationIds((items) =>
-      items.includes(notificationId)
-        ? items.filter((item) => item !== notificationId)
-        : [...items, notificationId],
-    );
-  }
-
-  async function handleNotificationBulkAction(
-    action: "read" | "archive" | "delete",
-    notificationId?: number,
-  ) {
-    const currentSession = requireSession();
-    if (!currentSession) {
-      return;
-    }
-    const notificationIds =
-      notificationId === undefined ? selectedNotificationIds : [notificationId];
-    if (notificationIds.length === 0) {
-      setAlert({ type: "error", text: "선택된 알림이 없습니다." });
-      return;
-    }
-    await runAction("알림 처리", async () => {
-      if (action === "read" && notificationId !== undefined) {
-        await api.markNotificationAsRead(notificationId, currentSession.accessToken);
-      } else if (action === "read") {
-        await api.markNotificationsAsRead({ notificationIds }, currentSession.accessToken);
-      } else if (action === "archive") {
-        await api.archiveNotifications({ notificationIds }, currentSession.accessToken);
-      } else {
-        await api.deleteNotifications({ notificationIds }, currentSession.accessToken);
-      }
-      setNotifications((items) =>
-        action === "delete" || action === "archive"
-          ? items.filter((item) => !notificationIds.includes(item.notificationId))
-          : items.map((item) =>
-              notificationIds.includes(item.notificationId)
-                ? { ...item, read: true, readAt: new Date().toISOString() }
-                : item,
-            ),
-      );
-      setSelectedNotificationIds([]);
-      setAlert({ type: "success", text: "알림 처리가 완료되었습니다." });
-    });
-  }
-
-  function handleConnectNotifications() {
-    const currentSession = requireSession();
-    if (!currentSession) {
-      return;
-    }
-    try {
-      eventSourceRef.current?.close();
-      const eventSource = new EventSource(
-        api.streamUrl("/api/v1/notifications/stream", currentSession.accessToken),
-      );
-      eventSourceRef.current = eventSource;
-      setSseStatus({
-        state: "connecting",
-        lastEventAt: "",
-        lastEventId: "",
-      });
-      eventSource.onopen = () => {
-        setSseStatus((status) => ({ ...status, state: "connected" }));
-        setAlert({ type: "success", text: "알림 스트림에 연결되었습니다." });
-      };
-      eventSource.onmessage = (event) => {
-        setSseStatus({
-          state: "connected",
-          lastEventAt: new Date().toISOString(),
-          lastEventId: event.lastEventId || "",
-        });
-      };
-      eventSource.onerror = () => {
-        setSseStatus((status) => ({ ...status, state: "error" }));
-      };
-    } catch (error) {
-      setAlert({ type: "error", text: toErrorMessage(error) });
-    }
-  }
-
-  function handleDisconnectNotifications() {
-    eventSourceRef.current?.close();
-    eventSourceRef.current = null;
-    setSseStatus((status) => ({ ...status, state: "disconnected" }));
-  }
-
-  const isBusy = busyLabel !== null;
+  const {
+    activeSection,
+    setActiveSection,
+    session,
+    alert,
+    busyLabel,
+    loginForm,
+    challenge,
+    totpChallengeForm,
+    backupChallengeForm,
+    passwordRecoveryForm,
+    passwordResetForm,
+    totpCode,
+    sessions,
+    totpEnrollment,
+    backupCodes,
+    passwordRecoveryResult,
+    accounts,
+    accountCursor,
+    accountLimit,
+    selectedAccount,
+    transferForm,
+    transferResult,
+    reversalForm,
+    reversalResult,
+    transactionMode,
+    transactionFilters,
+    transactionSlice,
+    transactions,
+    transactionDetail,
+    notificationMode,
+    notificationFilters,
+    notificationSlice,
+    notifications,
+    selectedNotificationIds,
+    unreadCount,
+    preferences,
+    sseStatus,
+    handleLogin,
+    handleTotpChallenge,
+    handleBackupChallenge,
+    handleRefresh,
+    handleLogout,
+    handlePasswordRecoveryRequest,
+    handlePasswordRecoveryConfirm,
+    handlePasswordReset,
+    handleLoadSessions,
+    handleRevokeSession,
+    handleRevokeAllSessions,
+    handleStartTotpEnrollment,
+    handleVerifyTotpEnrollment,
+    handleDisableTotp,
+    handleIssueBackupCodes,
+    handleLoadAccounts,
+    handleLoadAccountDetail,
+    handleTransfer,
+    handleReversal,
+    handleSearchTransactions,
+    handleLoadTransactionDetail,
+    handleLoadNotifications,
+    handleLoadUnreadCount,
+    handleLoadPreferences,
+    handleUpdatePreferences,
+    toggleNotificationId,
+    handleNotificationBulkAction,
+    handleConnectNotifications,
+    handleDisconnectNotifications,
+    isBusy,
+    setLoginForm,
+    setTotpChallengeForm,
+    setBackupChallengeForm,
+    setPasswordRecoveryForm,
+    setPasswordResetForm,
+    setTotpCode,
+    setAccountLimit,
+    setTransferForm,
+    setReversalForm,
+    setTransactionMode,
+    setTransactionFilters,
+    setNotificationMode,
+    setNotificationFilters,
+    setPreferences,
+  } = useCustomerBanking();
 
   return (
     <main className="bank-shell">
