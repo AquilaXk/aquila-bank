@@ -18,11 +18,14 @@ const files = {
   enterprise: read("src/components/customer-banking/sections/enterprise-services-section.tsx"),
   securityHub: read("src/components/customer-banking/sections/security-hub-section.tsx"),
   support: read("src/components/customer-banking/sections/support-center-section.tsx"),
+  playwrightConfig: read("playwright.config.ts"),
+  clickFlow: read("e2e/customer-banking-click-flow.spec.ts"),
   styles: read("src/styles/customer-banking.css"),
 };
 
 const required = [
   ["package script", files.packageJson, "test:fulfillment-ux"],
+  ["package click flow script", files.packageJson, "test:e2e:click-flow"],
   ["preview request type", files.apiTypes, "TransferPreviewRequest"],
   ["preview response type", files.apiTypes, "TransferPreviewResponse"],
   ["preview blocked reason", files.apiTypes, "blockedReason"],
@@ -55,6 +58,10 @@ const required = [
   ["registration flow styles", files.styles, ".registration-flow-grid"],
   ["incident form styles", files.styles, ".incident-form"],
   ["certificate list styles", files.styles, ".certificate-list"],
+  ["playwright config", files.playwrightConfig, "defineConfig"],
+  ["click flow playwright test", files.clickFlow, "@playwright/test"],
+  ["click flow transfer guard", files.clickFlow, "권한 만료 또는 미로그인"],
+  ["click flow public service", files.clickFlow, "공과금 상세"],
 ];
 
 const missing = required.filter(([, content, expected]) => !content.includes(expected));
