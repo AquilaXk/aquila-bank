@@ -4,7 +4,14 @@ import type { TransferResponse, TransferReversalResponse } from '@/lib/api/types
 import { formatDateTime, formatMinorAmount } from '@/lib/customer-banking/format';
 import { ResultPanel } from '../common';
 
-type TransferStep = "input" | "confirm" | "submitting" | "complete" | "failed";
+type TransferStep =
+  | "input"
+  | "receiverCheck"
+  | "confirm"
+  | "otp"
+  | "submitting"
+  | "complete"
+  | "failed";
 
 export function TransferSection({
   isBusy,
@@ -52,6 +59,7 @@ export function TransferSection({
   }) => void;
 }) {
   const [transferStep, setTransferStep] = useState<TransferStep>("input");
+  const [otpCode, setOtpCode] = useState("");
 
   useEffect(() => {
     if (transferResult) {
@@ -61,13 +69,26 @@ export function TransferSection({
 
   function updateTransferForm(value: typeof transferForm): void {
     setTransferStep("input");
+    setOtpCode("");
     onTransferChange(value);
   }
 
   async function handleTransferSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (transferStep !== "confirm") {
+    if (transferStep === "input") {
+      setTransferStep("receiverCheck");
+      return;
+    }
+    if (transferStep === "receiverCheck") {
       setTransferStep("confirm");
+      return;
+    }
+    if (transferStep === "confirm") {
+      setTransferStep("otp");
+      return;
+    }
+    if (transferStep !== "otp" || otpCode.length < 6) {
+      setTransferStep("otp");
       return;
     }
 
@@ -78,11 +99,25 @@ export function TransferSection({
 
   const stepLabels: Array<{ id: TransferStep; label: string }> = [
     { id: "input", label: "입력" },
+    { id: "receiverCheck", label: "받는 분 확인" },
     { id: "confirm", label: "이체 확인" },
+    { id: "otp", label: "OTP 확인" },
     { id: "submitting", label: "처리 중" },
     { id: "complete", label: "완료" },
     { id: "failed", label: "실패" },
   ];
+  const amountMinor = Number(transferForm.amountMinor || 0);
+  const transferFeeMinor = amountMinor >= 100000000 ? 500 : 0;
+  const limitMinor = 1000000000;
+  const isOverLimit = amountMinor > limitMinor;
+  const submitLabel =
+    transferStep === "receiverCheck"
+      ? "받는 분 확인 완료"
+      : transferStep === "confirm"
+        ? "OTP 확인"
+        : transferStep === "otp"
+          ? "이체 실행"
+          : "받는 분 확인";
 
   return (
     <section className="task-section">
@@ -109,6 +144,24 @@ export function TransferSection({
               </li>
             ))}
           </ol>
+          <div className="transfer-risk-grid" aria-label="이체 사전 확인">
+            <div>
+              <span>받는 분 확인</span>
+              <strong>계좌 ID {transferForm.targetAccountId || "-"}</strong>
+            </div>
+            <div>
+              <span>수수료</span>
+              <strong>
+                {formatMinorAmount(transferFeeMinor, transferForm.currencyCode)}
+              </strong>
+            </div>
+            <div>
+              <span>이체한도</span>
+              <strong className={isOverLimit ? "danger-text" : ""}>
+                {formatMinorAmount(limitMinor, transferForm.currencyCode)}
+              </strong>
+            </div>
+          </div>
           <div className="form-grid">
             <label>
               <span>출금계좌 ID</span>
@@ -192,37 +245,62 @@ export function TransferSection({
               </span>
             </div>
           ) : null}
-          <button disabled={isBusy} type="submit">
-            {transferStep === "confirm" ? "이체 실행" : "이체 확인"}
+          {transferStep === "otp" ? (
+            <label>
+              <span>OTP 확인</span>
+              <input
+                inputMode="numeric"
+                maxLength={6}
+                onChange={(event) => setOtpCode(event.target.value)}
+                placeholder="6자리"
+                required
+                value={otpCode}
+              />
+            </label>
+          ) : null}
+          {isOverLimit ? (
+            <div className="confirm-box warning" role="alert">
+              <strong>이체한도 초과</strong>
+              <span>고객센터의 이체한도 메뉴에서 보안등급과 한도를 확인하세요.</span>
+            </div>
+          ) : null}
+          <button disabled={isBusy || isOverLimit} type="submit">
+            {submitLabel}
           </button>
         </form>
 
-        <ResultPanel
-          title="이체 결과"
-          rows={
-            transferResult
-              ? [
-                  ["거래번호", transferResult.transactionReference],
-                  ["상태", transferResult.status],
-                  [
-                    "이체금액",
-                    formatMinorAmount(
-                      transferResult.amountMinor,
-                      transferResult.currencyCode,
-                    ),
-                  ],
-                  [
-                    "이체 후 잔액",
-                    formatMinorAmount(
-                      transferResult.availableBalanceAfterMinor,
-                      transferResult.currencyCode,
-                    ),
-                  ],
-                  ["기장시각", formatDateTime(transferResult.bookedAt)],
-                ]
-              : []
-          }
-        />
+        <div className="transfer-receipt">
+          <ResultPanel
+            title="이체 완료증"
+            rows={
+              transferResult
+                ? [
+                    ["거래번호", transferResult.transactionReference],
+                    ["상태", transferResult.status],
+                    [
+                      "이체금액",
+                      formatMinorAmount(
+                        transferResult.amountMinor,
+                        transferResult.currencyCode,
+                      ),
+                    ],
+                    [
+                      "수수료",
+                      formatMinorAmount(transferFeeMinor, transferResult.currencyCode),
+                    ],
+                    [
+                      "이체 후 잔액",
+                      formatMinorAmount(
+                        transferResult.availableBalanceAfterMinor,
+                        transferResult.currencyCode,
+                      ),
+                    ],
+                    ["기장시각", formatDateTime(transferResult.bookedAt)],
+                  ]
+                : []
+            }
+          />
+        </div>
       </div>
 
       <div className="two-column">
