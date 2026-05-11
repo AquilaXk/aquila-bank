@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { AccountsSection } from "@/components/customer-banking/sections/accounts-section";
+import { BankNoticeStrip } from "@/components/customer-banking/common";
 import { DashboardSection } from "@/components/customer-banking/sections/dashboard-section";
 import { EnterpriseServicesSection } from "@/components/customer-banking/sections/enterprise-services-section";
 import { NotificationsSection } from "@/components/customer-banking/sections/notifications-section";
@@ -186,7 +187,7 @@ export default function HomePage() {
             ))}
           </nav>
         </div>
-        <div className="banking-status-bar" aria-label="뱅킹 이용 상태">
+        <div className="bank-service-strip" aria-label="뱅킹 이용 상태">
           <span>
             보안등급 <strong>정상</strong>
           </span>
@@ -413,7 +414,7 @@ export default function HomePage() {
                 </div>
               </dl>
             ) : (
-              <p className="rail-copy">인증 후 조회, 이체, 거래내역 업무를 이용할 수 있습니다.</p>
+              <p className="rail-copy">로그인 후 조회, 이체, 거래내역 이용 가능</p>
             )}
             <div className="button-row compact">
               <button onClick={() => setActiveSection("security")} type="button">
@@ -457,6 +458,22 @@ export default function HomePage() {
                 </button>
               ))}
             </div>
+          </section>
+
+          <section className="rail-panel security-notice">
+            <div className="rail-heading">
+              <span>보안알림</span>
+            </div>
+            <BankNoticeStrip
+              items={[
+                { label: "보안등급", value: "정상" },
+                { label: "접속상태", value: "HTTPS" },
+                {
+                  label: "인증수단",
+                  value: session ? "세션 활성" : "로그인 필요",
+                },
+              ]}
+            />
           </section>
 
           <section className="rail-panel notice-list">

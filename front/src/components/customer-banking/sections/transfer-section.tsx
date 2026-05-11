@@ -2,7 +2,7 @@ import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
 import type { TransferPreviewResponse, TransferResponse, TransferReversalResponse } from '@/lib/api/types';
 import { formatDateTime, formatMinorAmount } from '@/lib/customer-banking/format';
-import { ResultPanel } from '../common';
+import { BankNoticeStrip, ResultPanel, WorkTabs } from '../common';
 
 type TransferStep =
   | "input"
@@ -12,6 +12,44 @@ type TransferStep =
   | "submitting"
   | "complete"
   | "failed";
+
+function stayOnCurrentWorkTab(): void {}
+
+function getTransferBlockedReasonLabel(reason: string | undefined, allowed: boolean | undefined): string {
+  if (allowed) {
+    return "이체 가능";
+  }
+  switch (reason) {
+    case "LIMIT_EXCEEDED":
+    case "DAILY_LIMIT_EXCEEDED":
+    case "SINGLE_LIMIT_EXCEEDED":
+      return "한도 확인 필요";
+    case "OTP_REQUIRED":
+      return "보안 확인 필요";
+    case "TARGET_ACCOUNT_NOT_FOUND":
+    case "INVALID_TARGET_ACCOUNT":
+      return "받는 계좌 확인 필요";
+    case "INSUFFICIENT_FUNDS":
+      return "출금가능금액 확인 필요";
+    case "PREVIEW_REQUIRED":
+    default:
+      return "받는 계좌 확인 필요";
+  }
+}
+
+function getTransferStatusLabel(status: string | undefined): string {
+  switch (status) {
+    case "BOOKED":
+    case "REVERSED":
+      return "처리 완료";
+    case "FAILED":
+      return "처리 실패";
+    case "PENDING":
+      return "처리 중";
+    default:
+      return status ? "처리 확인 필요" : "-";
+  }
+}
 
 export function TransferSection({
   isBusy,
@@ -119,8 +157,11 @@ export function TransferSection({
   const amountMinor = Number(transferForm.amountMinor || 0);
   const transferFeeMinor = transferPreview?.feeMinor ?? 0;
   const limitMinor = transferPreview?.singleTransferLimitMinor ?? 1000000000;
-  const dailyRemainingMinor = transferPreview?.dailyRemainingMinor ?? limitMinor;
-  const blockedReason = transferPreview?.blockedReason ?? "PREVIEW_REQUIRED";
+  const remainingLimitMinor = transferPreview?.dailyRemainingMinor ?? limitMinor;
+  const blockedReasonLabel = getTransferBlockedReasonLabel(
+    transferPreview?.blockedReason,
+    transferPreview?.allowed,
+  );
   const otpRequired = transferPreview?.otpRequired ?? true;
   const isOverLimit = transferPreview
     ? !transferPreview.allowed
@@ -144,6 +185,21 @@ export function TransferSection({
           <h1>즉시이체</h1>
         </div>
       </div>
+      <WorkTabs
+        active="transfer"
+        items={[
+          { id: "transfer", label: "즉시이체", onClick: stayOnCurrentWorkTab, disabled: true },
+          { id: "reversal", label: "이체 취소", onClick: stayOnCurrentWorkTab, disabled: true },
+        ]}
+      />
+      <BankNoticeStrip
+        items={[
+          { label: "이용시간", value: "00:05-23:50" },
+          { label: "수수료", value: formatMinorAmount(transferFeeMinor, transferForm.currencyCode) },
+          { label: "잔여한도", value: formatMinorAmount(remainingLimitMinor, transferForm.currencyCode) },
+          { label: "보안 확인", value: otpRequired ? "OTP 필요" : "추가 확인 없음" },
+        ]}
+      />
 
       <div className="two-column">
         <form className="bank-form" onSubmit={handleTransferSubmit}>
@@ -163,32 +219,32 @@ export function TransferSection({
           </ol>
           <div className="transfer-risk-grid" aria-label="이체 사전 확인">
             <div>
-              <span>받는 분 검증</span>
+              <span>받는 분</span>
               <strong>
                 {transferPreview
                   ? `${transferPreview.targetAccount.displayName} ${transferPreview.targetAccount.maskedAccountNumber}`
                   : `계좌 ID ${transferForm.targetAccountId || "-"}`}
               </strong>
-              <small>backend preview: {blockedReason}</small>
+              <small>{blockedReasonLabel}</small>
             </div>
             <div>
               <span>수수료</span>
               <strong>
                 {formatMinorAmount(transferFeeMinor, transferForm.currencyCode)}
               </strong>
-              <small>feePolicy {transferPreview?.feePolicy ?? "-"}</small>
+              <small>이체 실행 전 최종 확인</small>
             </div>
             <div>
-              <span>잔여 이체한도</span>
+              <span>잔여한도</span>
               <strong className={isOverLimit ? "danger-text" : ""}>
-                {formatMinorAmount(dailyRemainingMinor, transferForm.currencyCode)}
+                {formatMinorAmount(remainingLimitMinor, transferForm.currencyCode)}
               </strong>
-              <small>dailyRemainingMinor / 단건 {formatMinorAmount(limitMinor, transferForm.currencyCode)}</small>
+              <small>1회 한도 {formatMinorAmount(limitMinor, transferForm.currencyCode)}</small>
             </div>
             <div>
-              <span>OTP 확인</span>
+              <span>보안 확인</span>
               <strong>{otpRequired ? "필요" : "미필요"}</strong>
-              <small>otpRequired {String(otpRequired)}</small>
+              <small>OTP 또는 보안매체 확인</small>
             </div>
           </div>
           <div className="form-grid">
@@ -221,7 +277,7 @@ export function TransferSection({
               />
             </label>
             <label>
-              <span>금액 minor</span>
+              <span>이체금액</span>
               <input
                 inputMode="numeric"
                 onChange={(event) =>
@@ -296,7 +352,7 @@ export function TransferSection({
           {isOverLimit ? (
             <div className="confirm-box warning" role="alert">
               <strong>이체 사전 검증 실패</strong>
-              <span>사유 {blockedReason}. 고객센터의 이체한도 메뉴에서 보안등급과 한도를 확인하세요.</span>
+              <span>{blockedReasonLabel}. 고객센터의 이체한도 메뉴에서 보안등급과 한도를 확인하세요.</span>
             </div>
           ) : null}
           <button disabled={isBusy || isOverLimit} type="submit">
@@ -311,7 +367,7 @@ export function TransferSection({
               transferResult
                 ? [
                     ["거래번호", transferResult.transactionReference],
-                    ["상태", transferResult.status],
+                    ["상태", getTransferStatusLabel(transferResult.status)],
                     [
                       "이체금액",
                       formatMinorAmount(
@@ -349,7 +405,7 @@ export function TransferSection({
         <form className="bank-form" onSubmit={onReversal}>
           <div className="form-heading">
             <strong>이체 취소</strong>
-            <span>원거래 reference 기준</span>
+            <span>원거래번호 기준</span>
           </div>
           <label>
             <span>원거래번호</span>
@@ -380,7 +436,7 @@ export function TransferSection({
               />
             </label>
             <label>
-              <span>취소금액 minor</span>
+              <span>취소금액</span>
               <input
                 inputMode="numeric"
                 onChange={(event) =>
@@ -405,11 +461,11 @@ export function TransferSection({
               }
               value={reversalForm.reversalReason}
             >
-              <option value="CUSTOMER_REQUEST">CUSTOMER_REQUEST</option>
-              <option value="DUPLICATE">DUPLICATE</option>
-              <option value="WRONG_AMOUNT">WRONG_AMOUNT</option>
-              <option value="WRONG_TARGET">WRONG_TARGET</option>
-              <option value="FRAUD_REPORTED">FRAUD_REPORTED</option>
+              <option value="CUSTOMER_REQUEST">고객 요청</option>
+              <option value="DUPLICATE">중복 이체</option>
+              <option value="WRONG_AMOUNT">금액 오류</option>
+              <option value="WRONG_TARGET">받는 분 오류</option>
+              <option value="FRAUD_REPORTED">사기 의심 신고</option>
             </select>
           </label>
           <label>
@@ -435,7 +491,7 @@ export function TransferSection({
               ? [
                   ["원거래", reversalResult.originalTransactionReference],
                   ["취소거래", reversalResult.reversalTransactionReference],
-                  ["상태", reversalResult.status],
+                  ["상태", getTransferStatusLabel(reversalResult.status)],
                   [
                     "취소금액",
                     formatMinorAmount(

@@ -99,6 +99,7 @@ label span {
 
 .bank-shell {
   min-width: 1180px;
+  background: var(--page);
 }
 
 .skip-link {
@@ -242,8 +243,10 @@ label span {
   color: var(--primary);
 }
 
+.bank-service-strip,
 .banking-status-bar {
   display: flex;
+  align-items: center;
   flex-wrap: wrap;
   gap: 8px 18px;
   width: min(1440px, calc(100% - 48px));
@@ -256,6 +259,7 @@ label span {
   font-weight: 700;
 }
 
+.bank-service-strip strong,
 .banking-status-bar strong {
   color: var(--success);
 }
@@ -323,7 +327,7 @@ label span {
 .rail-panel,
 .table-panel {
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 3px;
   background: var(--surface);
 }
 
@@ -341,7 +345,7 @@ label span {
 }
 
 .section-title {
-  padding-bottom: 14px;
+  padding-bottom: 10px;
   border-bottom: 2px solid #263b56;
 }
 
@@ -354,7 +358,7 @@ label span {
 
 .section-title h1 {
   margin: 0;
-  font-size: 24px;
+  font-size: 22px;
   letter-spacing: 0;
 }
 
@@ -717,7 +721,7 @@ label span {
 .detail-panel,
 .result-panel {
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 3px;
   background: #fff;
   padding: 14px;
 }
@@ -814,7 +818,7 @@ label span {
   display: grid;
   gap: 12px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 3px;
   background: var(--surface-muted);
   padding: 14px;
 }
@@ -1177,6 +1181,44 @@ label span {
   color: #fff;
 }
 
+.work-tabs {
+  display: flex;
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  background: #fff;
+  scrollbar-width: thin;
+}
+
+.work-tabs button {
+  flex: 0 0 auto;
+  min-width: 96px;
+  min-height: 34px;
+  border: 0;
+  border-radius: 0;
+  border-right: 1px solid var(--line-strong);
+  background: #fff;
+  color: var(--muted);
+  padding: 0 12px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.work-tabs button:last-child {
+  border-right: 0;
+}
+
+.work-tabs button.active {
+  background: var(--primary);
+  color: #fff;
+}
+
+.work-tabs button.active:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
 .right-rail {
   display: flex;
   flex-direction: column;
@@ -1212,6 +1254,39 @@ label span {
   gap: 8px;
   margin: 12px 0;
   font-size: 12px;
+}
+
+.bank-notice-strip {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+  font-size: 12px;
+}
+
+.bank-notice-strip div {
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.bank-notice-strip dt {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.bank-notice-strip dd {
+  min-width: 0;
+  margin: 0;
+  color: #102f55;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.security-notice dd {
+  color: var(--success);
 }
 
 .quick-grid {
@@ -1255,6 +1330,8 @@ label span {
 
   .utility-bar,
   .brand-row,
+  .bank-service-strip,
+  .banking-status-bar,
   .bank-layout {
     width: min(100% - 24px, 960px);
   }
@@ -1300,6 +1377,7 @@ label span {
 @media (max-width: 760px) {
   .utility-bar,
   .brand-row,
+  .bank-service-strip,
   .banking-status-bar,
   .bank-layout {
     width: calc(100% - 20px);
@@ -1363,6 +1441,7 @@ label span {
 }
 
 @media (max-width: 480px) {
+  .bank-service-strip,
   .banking-status-bar {
     gap: 6px 10px;
   }

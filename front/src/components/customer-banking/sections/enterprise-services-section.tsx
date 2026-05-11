@@ -7,10 +7,13 @@ import type {
   CustomerApplicationLatestResult,
   CustomerApplicationSubmitHandler,
 } from "@/lib/customer-banking/types";
+import { BankNoticeStrip, WorkTabs } from "../common";
+
+function stayOnCurrentWorkTab(): void {}
 
 const fulfillmentDetails = [
   {
-    title: "공과금 상세",
+    title: "공과금 납부",
     applicationType: "BILL_PAYMENT",
     headline: "지로/지방세/아파트관리비 납부",
     description: "기관 선택, 납부번호 조회, 납부 예정금액 확인, 납부확인증 발급 흐름을 한 화면에 배치합니다.",
@@ -24,7 +27,7 @@ const fulfillmentDetails = [
     status: "OTP 확인 후 접수",
   },
   {
-    title: "오픈뱅킹 상세",
+    title: "오픈뱅킹 연결",
     applicationType: "OPEN_BANKING_CONNECTION",
     headline: "타행 계좌 연결 및 통합조회",
     description: "동의 상태, 연결 은행, 대표 계좌, 잔액 갱신 시각을 고객이 반복 조회하기 쉬운 표 형태로 제공합니다.",
@@ -38,7 +41,7 @@ const fulfillmentDetails = [
     status: "OTP 확인 후 연결 신청",
   },
   {
-    title: "예금상품 상세",
+    title: "예금 가입",
     applicationType: "DEPOSIT_PRODUCT_APPLICATION",
     headline: "정기예금/입출금 상품 비교",
     description: "금리, 가입 기간, 우대 조건, 중도해지 기준을 실제 상품몰처럼 비교 가능한 정보 구조로 확장합니다.",
@@ -52,7 +55,7 @@ const fulfillmentDetails = [
     status: "OTP 확인 후 가입 신청",
   },
   {
-    title: "대출 상세",
+    title: "대출 신청",
     applicationType: "LOAN_APPLICATION",
     headline: "한도조회/상환조회/서류 안내",
     description: "한도조회 준비 정보와 상환 스케줄, 필요 서류, 금리 변동 안내를 분리해 보여줍니다.",
@@ -66,7 +69,7 @@ const fulfillmentDetails = [
     status: "OTP 확인 후 한도 신청",
   },
   {
-    title: "외환 상세",
+    title: "외환 신청",
     applicationType: "FOREIGN_EXCHANGE_APPLICATION",
     headline: "환율/외화예금/해외송금 준비",
     description: "통화별 환율, 우대율, 외화예금 가능 여부, 해외송금 준비 정보를 은행권 외환 메뉴처럼 묶습니다.",
@@ -138,6 +141,23 @@ export function EnterpriseServicesSection({
           <h1>공과금 · 오픈뱅킹 · 금융상품</h1>
         </div>
       </div>
+      <WorkTabs
+        active="bill"
+        items={[
+          { id: "bill", label: "공과금", onClick: stayOnCurrentWorkTab, disabled: true },
+          { id: "open-banking", label: "오픈뱅킹", onClick: stayOnCurrentWorkTab, disabled: true },
+          { id: "products", label: "금융상품", onClick: stayOnCurrentWorkTab, disabled: true },
+        ]}
+      />
+      <BankNoticeStrip
+        items={[
+          { label: "공과금", value: "납부 접수" },
+          { label: "오픈뱅킹", value: "연결 신청" },
+          { label: "예금상품", value: "가입 신청" },
+          { label: "대출", value: "한도 신청" },
+          { label: "외환", value: "외환 신청" },
+        ]}
+      />
 
       <div className="enterprise-service-grid">
         {enterpriseServiceItems.map((item) => (
@@ -164,27 +184,27 @@ export function EnterpriseServicesSection({
             <tr>
               <td>공과금</td>
               <td>기관 선택, 납부번호 조회, 납부 확인증</td>
-              <td>read-only 메뉴</td>
+              <td>접수 가능</td>
             </tr>
             <tr>
               <td>오픈뱅킹</td>
               <td>타행 계좌 연결, 잔액 통합조회, 해지</td>
-              <td>read-only 메뉴</td>
+              <td>연결 신청</td>
             </tr>
             <tr>
               <td>예금상품</td>
               <td>상품 목록, 금리, 가입 전 유의사항</td>
-              <td>상품 안내</td>
+              <td>가입 신청</td>
             </tr>
             <tr>
               <td>대출</td>
               <td>한도조회, 신청, 상환 조회</td>
-              <td>상담 안내</td>
+              <td>한도 신청</td>
             </tr>
             <tr>
               <td>외환</td>
               <td>환율 조회, 외화예금, 해외송금</td>
-              <td>환율 조회</td>
+              <td>외환 신청</td>
             </tr>
           </tbody>
         </table>
@@ -225,7 +245,7 @@ export function EnterpriseServicesSection({
                   payload: Object.fromEntries(
                     item.formFields.map((field) => [field.key, form[field.key]]),
                   ),
-                  successMessage: `${item.title} 신청이 접수되었습니다.`,
+                  successMessage: `${item.title} 접수가 완료되었습니다.`,
                 });
               }}
             >

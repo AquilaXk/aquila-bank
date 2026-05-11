@@ -18,6 +18,7 @@ const files = {
   enterprise: read("src/components/customer-banking/sections/enterprise-services-section.tsx"),
   securityHub: read("src/components/customer-banking/sections/security-hub-section.tsx"),
   support: read("src/components/customer-banking/sections/support-center-section.tsx"),
+  security: read("src/components/customer-banking/sections/security-section.tsx"),
   playwrightConfig: read("playwright.config.ts"),
   clickFlow: read("e2e/customer-banking-click-flow.spec.ts"),
   styles: read("src/styles/customer-banking.css"),
@@ -49,20 +50,19 @@ const required = [
   ["preview page binding", files.page, "onPreviewTransfer"],
   ["customer application page binding", files.page, "onSubmitCustomerApplication"],
   ["preview section prop", files.transfer, "onPreviewTransfer"],
-  ["backend preview label", files.transfer, "backend preview"],
-  ["receiver validation display", files.transfer, "받는 분 검증"],
-  ["fee policy display", files.transfer, "feePolicy"],
-  ["limit remaining display", files.transfer, "dailyRemainingMinor"],
-  ["otp required display", files.transfer, "otpRequired"],
-  ["bill payment detail", files.enterprise, "공과금 상세"],
+  ["transfer security verification label", files.transfer, "보안 확인"],
+  ["receiver validation display", files.transfer, "받는 분"],
+  ["fee display", files.transfer, "수수료"],
+  ["limit remaining display", files.transfer, "잔여한도"],
+  ["bill payment detail", files.enterprise, "공과금 납부"],
   ["bill payment write type", files.enterprise, "BILL_PAYMENT"],
-  ["open banking detail", files.enterprise, "오픈뱅킹 상세"],
+  ["open banking detail", files.enterprise, "오픈뱅킹 연결"],
   ["open banking write type", files.enterprise, "OPEN_BANKING_CONNECTION"],
-  ["deposit product detail", files.enterprise, "예금상품 상세"],
+  ["deposit product detail", files.enterprise, "예금 가입"],
   ["deposit product write type", files.enterprise, "DEPOSIT_PRODUCT_APPLICATION"],
-  ["loan detail", files.enterprise, "대출 상세"],
+  ["loan detail", files.enterprise, "대출 신청"],
   ["loan write type", files.enterprise, "LOAN_APPLICATION"],
-  ["fx detail", files.enterprise, "외환 상세"],
+  ["fx detail", files.enterprise, "외환 신청"],
   ["fx write type", files.enterprise, "FOREIGN_EXCHANGE_APPLICATION"],
   ["enterprise application submit panel", files.enterprise, "application-submit-panel"],
   ["common certificate registration", files.securityHub, "공동인증서 등록"],
@@ -87,7 +87,7 @@ const required = [
   ["playwright config", files.playwrightConfig, "defineConfig"],
   ["click flow playwright test", files.clickFlow, "@playwright/test"],
   ["click flow transfer guard", files.clickFlow, "권한 만료 또는 미로그인"],
-  ["click flow public service", files.clickFlow, "공과금 상세"],
+  ["click flow public service", files.clickFlow, "신청 접수"],
   ["click flow application submit buttons", files.clickFlow, "신청 접수"],
   ["backend customer application controller", files.backendController, "/api/v1/customer-service/applications"],
   ["backend idempotency header", files.backendController, "Idempotency-Key"],
@@ -98,12 +98,31 @@ const required = [
   ["backend TOTP coverage", files.backendTotpTest, "TotpOperationVerifyServiceTest"],
 ];
 
-const missing = required.filter(([, content, expected]) => !content.includes(expected));
+const customerSections = [
+  files.transfer,
+  files.enterprise,
+  files.security,
+  files.securityHub,
+  files.support,
+].join("\n");
 
-if (missing.length > 0) {
+const forbidden = [
+  ["no-op work tabs", customerSections, "onClick: () => undefined"],
+  ["raw challenge type fallback", files.security, 'props.challenge.challengeType ?? "TOTP"'],
+  ["raw blocked reason render", files.transfer, "{blockedReason}"],
+  ["raw transfer status render", files.transfer, '["상태", transferResult.status]'],
+];
+
+const missing = required.filter(([, content, expected]) => !content.includes(expected));
+const present = forbidden.filter(([, content, value]) => content.includes(value));
+
+if (missing.length > 0 || present.length > 0) {
   console.error("[customer-banking-fulfillment-ux] contract violations:");
   for (const [name, , expected] of missing) {
     console.error(`- missing ${name}: ${expected}`);
+  }
+  for (const [name, , value] of present) {
+    console.error(`- forbidden ${name}: ${value}`);
   }
   process.exit(1);
 }

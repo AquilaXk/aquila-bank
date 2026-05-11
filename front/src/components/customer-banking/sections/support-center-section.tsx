@@ -6,6 +6,9 @@ import type {
   CustomerApplicationLatestResult,
   CustomerApplicationSubmitHandler,
 } from "@/lib/customer-banking/types";
+import { BankNoticeStrip, WorkTabs } from "../common";
+
+function stayOnCurrentWorkTab(): void {}
 
 const faqItems = [
   {
@@ -18,7 +21,7 @@ const faqItems = [
   },
   {
     question: "오픈뱅킹 연결 계좌가 보이지 않습니다.",
-    answer: "동의 만료일과 은행별 점검 시간을 확인한 뒤 오픈뱅킹 상세의 통합조회 갱신을 다시 실행합니다.",
+    answer: "동의 만료일과 은행 점검 시간을 확인한 뒤 통합조회를 다시 실행합니다.",
   },
 ];
 
@@ -89,6 +92,22 @@ export function SupportCenterSection({
           <h1>고객지원 · 사고신고 · 이체한도</h1>
         </div>
       </div>
+      <WorkTabs
+        active="support"
+        items={[
+          { id: "support", label: "고객센터", onClick: stayOnCurrentWorkTab, disabled: true },
+          { id: "incident", label: "사고신고", onClick: stayOnCurrentWorkTab, disabled: true },
+          { id: "certificate", label: "증명서", onClick: stayOnCurrentWorkTab, disabled: true },
+        ]}
+      />
+      <BankNoticeStrip
+        items={[
+          { label: "FAQ", value: "자주 찾는 문의" },
+          { label: "사고신고", value: "분실/도용 접수" },
+          { label: "이체한도", value: "보안등급 확인" },
+          { label: "증명서 발급", value: "확인증/잔액/거래내역" },
+        ]}
+      />
 
       <div className="support-service-grid">
         {supportCenterItems.map((item) => (
@@ -104,7 +123,7 @@ export function SupportCenterSection({
         <div className="panel-toolbar">
           <div>
             <strong>사고신고 우선순위</strong>
-            <span>분실/도용 의심 업무는 실행 화면과 분리해 즉시 찾을 수 있게 둡니다.</span>
+            <span>분실/도용 의심 업무 우선 접수</span>
           </div>
         </div>
         <div className="bank-table-wrap">
@@ -143,7 +162,7 @@ export function SupportCenterSection({
           <div className="panel-toolbar">
             <div>
               <strong>FAQ</strong>
-              <span>반복 문의는 업무 화면 바로 옆에서 확인합니다.</span>
+              <span>자주 찾는 문의</span>
             </div>
           </div>
           {faqItems.map((item) => (
@@ -158,7 +177,7 @@ export function SupportCenterSection({
           <div className="panel-toolbar">
             <div>
               <strong>사고신고 접수</strong>
-              <span>분실/도용/오류 신고를 한 화면에서 접수 준비합니다.</span>
+              <span>분실/도용/오류 신고</span>
             </div>
           </div>
           <div className="form-grid">
@@ -240,7 +259,7 @@ export function SupportCenterSection({
           <div className="panel-toolbar">
             <div>
               <strong>증명서 발급</strong>
-              <span>완료증, 잔액, 거래내역 증명서를 업무별로 분리합니다.</span>
+              <span>확인증, 잔액, 거래내역</span>
             </div>
           </div>
           {certificateItems.map((item) => (
