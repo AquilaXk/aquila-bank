@@ -36,6 +36,15 @@ required_patterns=(
   "client_body_timeout 10s;"
   "log_format aquila_bank_upstream escape=json"
   '"status":$status'
+  '"host":"$host"'
+  '"request_method":"$request_method"'
+  '"request_uri":"$request_uri"'
+  '"scheme":"$scheme"'
+  '"server_port":"$server_port"'
+  '"http_user_agent":"$http_user_agent"'
+  '"http_referer":"$http_referer"'
+  '"x_forwarded_for":"$http_x_forwarded_for"'
+  '"ssl_protocol":"$ssl_protocol"'
   '"realip_remote_addr":"$realip_remote_addr"'
   '"upstream_status":"$upstream_status"'
   '"request_time":$request_time'
@@ -74,6 +83,7 @@ required_patterns=(
   "add_header Referrer-Policy no-referrer always;"
   "add_header Permissions-Policy \"geolocation=(), microphone=(), camera=()\" always;"
   "add_header X-Robots-Tag \"noindex, nofollow, noarchive\" always;"
+  "add_header Strict-Transport-Security \"max-age=\${NGINX_HSTS_MAX_AGE_SECONDS}; includeSubDomains\" always;"
   "location ~* ^/(?:\\.env(?:\\..*)?|\\.git(?:/|\$)|wp-login\\.php|xmlrpc\\.php|phpmyadmin(?:/|\$)|adminer(?:/|\$)|vendor/phpunit(?:/|\$)|cgi-bin(?:/|\$))"
   "add_header X-Aquila-Reject-Source nginx-bot-guard always;"
   "add_header X-Aquila-Reject-Reason scanner-path always;"
@@ -134,7 +144,22 @@ for pattern in "${required_patterns[@]}"; do
 done
 
 deploy_required_patterns=(
+  'NGINX_ENABLE_HTTPS="${NGINX_ENABLE_HTTPS:-auto}"'
+  'NGINX_SSL_CERTIFICATE_PATH="${NGINX_SSL_CERTIFICATE_PATH:-/etc/letsencrypt/live/${SERVER_NAME}/fullchain.pem}"'
+  "NGINX_ENABLE_HTTPS=true requires NGINX_SERVER_NAME to be a real FQDN"
+  '"host":"\$host"'
+  '"request_method":"\$request_method"'
+  '"request_uri":"\$request_uri"'
+  '"http_user_agent":"\$http_user_agent"'
+  '"x_forwarded_for":"\$http_x_forwarded_for"'
+  '"ssl_protocol":"\$ssl_protocol"'
+  '"body_bytes_sent":\$body_bytes_sent'
+  "nginx_https_port_flags"
+  "443:443"
+  "nginx_tls_mount_flags"
   "server_tokens off;"
+  "listen 443 ssl http2;"
+  'return 308 https://${SERVER_NAME}\$request_uri;'
   'limit_req_zone \$binary_remote_addr zone=aquila_bank_frontend_per_ip:10m rate=10r/s;'
   "add_header X-Aquila-Reject-Source nginx-bot-guard always;"
   "add_header X-Aquila-Reject-Reason scanner-path always;"
@@ -143,6 +168,8 @@ deploy_required_patterns=(
   "add_header Referrer-Policy no-referrer always;"
   "add_header Permissions-Policy \"geolocation=(), microphone=(), camera=()\" always;"
   "add_header X-Robots-Tag \"noindex, nofollow, noarchive\" always;"
+  'add_header Strict-Transport-Security \"max-age=${hsts_max_age_seconds}; includeSubDomains\" always;'
+  "location ^~ /.well-known/acme-challenge/"
   "limit_req zone=aquila_bank_frontend_per_ip burst=60 delay=20;"
 )
 

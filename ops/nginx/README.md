@@ -25,9 +25,11 @@
   - `NGINX_FRONTEND_SERVER`
   - `NGINX_BACKEND_API_SERVERS`
 - 선택 env:
+  - `NGINX_ENABLE_HTTPS` 기본값 `auto`, OCI blue/green 배포에서 `true|false|auto`
   - `NGINX_EDGE_RETRY_AFTER_SECONDS` 기본값 `1`
   - `NGINX_EDGE_RETRY_AFTER_MILLIS` 기본값 `150`
   - `NGINX_EDGE_RETRY_JITTER_MILLIS` 기본값 `100`
+  - `NGINX_HSTS_MAX_AGE_SECONDS` 기본값 `31536000`
   - `NGINX_REAL_IP_HEADER` 기본값 `X-Forwarded-For`, 허용값 `X-Forwarded-For` 또는 `X-Real-IP`
   - `NGINX_REAL_IP_TRUSTED_PROXIES` 기본값 `10.60.0.0/16`, comma-separated trusted LB/CDN CIDR, `none`이면 TCP peer address
   - `NGINX_TRANSACTION_READ_BUDGET_PROFILE` 기본값 `burst80`, 허용값 `burst80|burst64|balanced|fail-fast`
@@ -52,7 +54,10 @@ bash tools/ops/render-nginx-runtime-config.sh /tmp/aquila-bank-nginx.conf ops/ng
 - `listen 80`에서는 `/.well-known/acme-challenge/`와 `/actuator/health`만 예외로 두고 나머지는 `308`으로 HTTPS redirect 합니다.
 - `listen 443 ssl http2`에서 TLS termination을 수행합니다.
 - `ssl_certificate`, `ssl_certificate_key`는 `${NGINX_SSL_CERTIFICATE_PATH}`, `${NGINX_SSL_CERTIFICATE_KEY_PATH}`를 통해 runtime에서 채웁니다.
+- HTTPS server에서는 `Strict-Transport-Security: max-age=${NGINX_HSTS_MAX_AGE_SECONDS}; includeSubDomains`를 내려 TLS downgrade 재시도를 줄입니다.
 - `return 308 https://$server_name$request_uri;`를 써서 요청 `Host` 헤더를 그대로 반사하지 않고 설정한 host 기준으로 redirect 합니다.
+- OCI blue/green 배포는 `NGINX_ENABLE_HTTPS=auto`일 때 `NGINX_SERVER_NAME`이 `_`가 아니고 cert/key 파일이 존재하면 443을 publish 합니다. 강제하려면 `NGINX_ENABLE_HTTPS=true`로 두고, 파일이 없으면 배포 전에 fail-fast 합니다.
+- raw IP는 공인 인증서 발급 대상이 아니므로 상용 HTTPS 전환은 FQDN DNS가 OCI public IP를 가리킨 뒤 진행합니다.
 
 ## Rate Limit 기준
 
@@ -71,6 +76,7 @@ bash tools/ops/render-nginx-runtime-config.sh /tmp/aquila-bank-nginx.conf ops/ng
 - `/api/`에는 `limit_req zone=aquila_bank_api_per_ip burst=20 delay=5;`를 유지합니다.
 - `/api/v1/notifications/stream`은 장기 연결이라 일반 API와 성격이 달라 exact location으로 분리하고 rate limit 대상에서 제외합니다.
 - `429`는 Nginx에서 JSON body와 `X-Aquila-Reject-Source: nginx-edge`, `Retry-After`, `X-RateLimit-Retry-After-Millis`, `X-RateLimit-Retry-Jitter-Millis`를 내려 k6/client backoff가 edge rejection을 구분하게 합니다. OCI A1 기본값은 `150ms + jitter 100ms`로 retry 동기화를 짧게 분산합니다.
+- access log는 JSON line으로 `host`, `request_method`, `request_uri`, `http_user_agent`, `x_forwarded_for`, `scheme`, `server_port`, `ssl_protocol`, `reject_source`, `reject_reason`, `limit_req_status`를 남깁니다. scanner path 차단과 edge 429는 backend 4xx와 섞지 않고 이 필드로 분리합니다.
 - 정상 client/SDK는 `X-RateLimit-Retry-After-Millis`와 jitter를 반영하고, sustained read에서는 k6 `preemptive pacing`과 같은 요청 전 token pacing으로 edge reject 동기화를 피합니다.
 - backend에는 login/password recovery throttling이 이미 있으므로, Nginx auth zone은 edge 1차 차단으로 보고 backend는 계정/IP 단위 2차 가드로 둡니다.
 - transaction-read `burst80` profile은 delay queue 의존 없이 burst80 promotion target을 닫기 위해 `256r/s`, `burst=256`, `nodelay`를 기본값으로 둡니다. run #25319314917의 burst80 edge 429 `22.8838%` 초과를 edge bucket headroom으로 낮추는 운영 후보이며, backend 429 hard-zero gate와 함께만 승격합니다.

@@ -23,6 +23,12 @@ HEALTH_INTERVAL_SECONDS="${HEALTH_INTERVAL_SECONDS:-3}"
 BLUE_DRAIN_SECONDS="${BLUE_DRAIN_SECONDS:-15}"
 SERVER_NAME="${NGINX_SERVER_NAME:-_}"
 BACKEND_PROXY_HOST="${NGINX_BACKEND_PROXY_HOST:-}"
+NGINX_ENABLE_HTTPS="${NGINX_ENABLE_HTTPS:-auto}"
+NGINX_SSL_CERTIFICATE_PATH="${NGINX_SSL_CERTIFICATE_PATH:-/etc/letsencrypt/live/${SERVER_NAME}/fullchain.pem}"
+NGINX_SSL_CERTIFICATE_KEY_PATH="${NGINX_SSL_CERTIFICATE_KEY_PATH:-/etc/letsencrypt/live/${SERVER_NAME}/privkey.pem}"
+NGINX_SSL_MOUNT_PATH="${NGINX_SSL_MOUNT_PATH:-/etc/letsencrypt}"
+NGINX_ACME_CHALLENGE_ROOT="${NGINX_ACME_CHALLENGE_ROOT:-/var/www/certbot}"
+NGINX_HSTS_MAX_AGE_SECONDS="${NGINX_HSTS_MAX_AGE_SECONDS:-31536000}"
 POSTGRES_CONTAINER_NAME="${POSTGRES_CONTAINER_NAME:-aquila-postgres}"
 POSTGRES_NETWORK_ALIAS="${POSTGRES_NETWORK_ALIAS:-aquila-postgres}"
 POSTGRES_LOG_TAIL_LINES="${POSTGRES_LOG_TAIL_LINES:-120}"
@@ -77,6 +83,9 @@ install_runtime() {
 prepare_layout() {
   mkdir -p "${APP_DIR}/env" "${APP_DIR}/nginx" "${APP_DIR}/state" "${APP_DIR}/logs"
   chmod 750 "${APP_DIR}" "${APP_DIR}/env" "${APP_DIR}/nginx" "${APP_DIR}/state" "${APP_DIR}/logs"
+  if nginx_https_enabled; then
+    mkdir -p "${NGINX_ACME_CHALLENGE_ROOT}"
+  fi
   docker network create "${NETWORK}" >/dev/null 2>&1 || true
 }
 
@@ -686,6 +695,56 @@ validate_nginx_real_ip_header() {
   esac
 }
 
+nginx_https_enabled() {
+  case "${NGINX_ENABLE_HTTPS}" in
+    true) return 0 ;;
+    false) return 1 ;;
+    auto)
+      [[ "${SERVER_NAME}" != "_" && -f "${NGINX_SSL_CERTIFICATE_PATH}" && -f "${NGINX_SSL_CERTIFICATE_KEY_PATH}" ]]
+      return
+      ;;
+    *) log "NGINX_ENABLE_HTTPS must be auto, true, or false: ${NGINX_ENABLE_HTTPS}"; exit 1 ;;
+  esac
+}
+
+require_nginx_https_runtime() {
+  if [[ "${NGINX_ENABLE_HTTPS}" == "true" ]]; then
+    if [[ -z "${SERVER_NAME}" || "${SERVER_NAME}" == "_" ]]; then
+      log "NGINX_ENABLE_HTTPS=true requires NGINX_SERVER_NAME to be a real FQDN"
+      exit 1
+    fi
+    if [[ ! -f "${NGINX_SSL_CERTIFICATE_PATH}" || ! -f "${NGINX_SSL_CERTIFICATE_KEY_PATH}" ]]; then
+      log "NGINX_ENABLE_HTTPS=true requires TLS cert/key files: cert=${NGINX_SSL_CERTIFICATE_PATH} key=${NGINX_SSL_CERTIFICATE_KEY_PATH}"
+      exit 1
+    fi
+  fi
+
+  case "${NGINX_ENABLE_HTTPS}" in
+    auto)
+      if nginx_https_enabled; then
+        log "nginx HTTPS enabled: server_name=${SERVER_NAME}"
+      else
+        log "nginx HTTPS disabled by auto mode: set NGINX_SERVER_NAME and TLS cert/key files to enable"
+      fi
+      ;;
+    true) log "nginx HTTPS enabled: server_name=${SERVER_NAME}" ;;
+    false) log "nginx HTTPS disabled by NGINX_ENABLE_HTTPS=false" ;;
+  esac
+}
+
+nginx_https_port_flags() {
+  if nginx_https_enabled; then
+    printf '%s\n' "-p" "443:443"
+  fi
+}
+
+nginx_tls_mount_flags() {
+  if nginx_https_enabled; then
+    printf '%s\n' "-v" "${NGINX_SSL_MOUNT_PATH}:${NGINX_SSL_MOUNT_PATH}:ro"
+    printf '%s\n' "-v" "${NGINX_ACME_CHALLENGE_ROOT}:${NGINX_ACME_CHALLENGE_ROOT}:ro"
+  fi
+}
+
 render_nginx_real_ip_trusted_proxy_lines() {
   local proxies_csv="$1"
   local lines=""
@@ -733,12 +792,13 @@ render_nginx_limit_req_mode() {
 render_nginx_config() {
   local slot="$1"
   local backend_name frontend_name backend_proxy_host edge_retry_after_seconds edge_retry_after_millis edge_retry_jitter_millis
-  local backend_api_keepalive_timeout_seconds
+  local backend_api_keepalive_timeout_seconds hsts_max_age_seconds
   local real_ip_header real_ip_trusted_proxies real_ip_trusted_proxy_lines
   local transaction_read_budget_profile transaction_read_profile_hot_rate_rps transaction_read_profile_archive_rate_rps
   local transaction_read_profile_hot_burst transaction_read_profile_archive_burst transaction_read_profile_hot_delay transaction_read_profile_archive_delay
   local transaction_read_hot_rate_rps transaction_read_archive_rate_rps transaction_read_hot_burst transaction_read_archive_burst
   local transaction_read_hot_delay transaction_read_archive_delay transaction_read_hot_limit_mode transaction_read_archive_limit_mode
+  local https_redirect_server_block proxy_server_listen proxy_server_tls_directives proxy_server_hsts_header
   backend_name="$(slot_name backend "${slot}")"
   frontend_name="$(slot_name frontend "${slot}")"
   backend_proxy_host="${BACKEND_PROXY_HOST:-${backend_name}}"
@@ -746,6 +806,11 @@ render_nginx_config() {
   edge_retry_after_seconds="${NGINX_EDGE_RETRY_AFTER_SECONDS:-1}"
   edge_retry_after_millis="${NGINX_EDGE_RETRY_AFTER_MILLIS:-150}"
   edge_retry_jitter_millis="${NGINX_EDGE_RETRY_JITTER_MILLIS:-100}"
+  hsts_max_age_seconds="${NGINX_HSTS_MAX_AGE_SECONDS:-31536000}"
+  if ! [[ "${hsts_max_age_seconds}" =~ ^[0-9]+$ ]]; then
+    log "NGINX_HSTS_MAX_AGE_SECONDS must be a non-negative integer: ${hsts_max_age_seconds}"
+    exit 1
+  fi
   real_ip_header="${NGINX_REAL_IP_HEADER:-X-Forwarded-For}"
   real_ip_trusted_proxies="${NGINX_REAL_IP_TRUSTED_PROXIES:-${OCI_A1_NGINX_REAL_IP_TRUSTED_PROXIES:-10.60.0.0/16}}"
   validate_nginx_real_ip_header "${real_ip_header}"
@@ -798,6 +863,67 @@ render_nginx_config() {
   transaction_read_hot_limit_mode="$(render_nginx_limit_req_mode "${transaction_read_hot_delay}")"
   transaction_read_archive_limit_mode="$(render_nginx_limit_req_mode "${transaction_read_archive_delay}")"
 
+  if nginx_https_enabled; then
+    proxy_server_listen="listen 443 ssl http2;"
+    proxy_server_tls_directives="    ssl_certificate ${NGINX_SSL_CERTIFICATE_PATH};
+    ssl_certificate_key ${NGINX_SSL_CERTIFICATE_KEY_PATH};
+    ssl_session_cache shared:AquilaBankTLS:10m;
+    ssl_session_timeout 1d;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;"
+    proxy_server_hsts_header="    add_header Strict-Transport-Security \"max-age=${hsts_max_age_seconds}; includeSubDomains\" always;"
+    https_redirect_server_block="
+  server {
+    listen 80 default_server;
+    server_name ${SERVER_NAME};
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options DENY always;
+    add_header Referrer-Policy no-referrer always;
+    add_header Permissions-Policy \"geolocation=(), microphone=(), camera=()\" always;
+    add_header X-Robots-Tag \"noindex, nofollow, noarchive\" always;
+
+    proxy_http_version 1.1;
+    proxy_connect_timeout 3s;
+    proxy_socket_keepalive on;
+
+    location ~* ^/(?:\\.env(?:\\..*)?|\\.git(?:/|\$)|wp-login\\.php|xmlrpc\\.php|phpmyadmin(?:/|\$)|adminer(?:/|\$)|vendor/phpunit(?:/|\$)|cgi-bin(?:/|\$)) {
+      add_header X-Aquila-Reject-Source nginx-bot-guard always;
+      add_header X-Aquila-Reject-Reason scanner-path always;
+      return 404;
+    }
+
+    location ^~ /.well-known/acme-challenge/ {
+      root ${NGINX_ACME_CHALLENGE_ROOT};
+      default_type text/plain;
+    }
+
+    location ^~ /actuator/health {
+      proxy_pass http://aquila_bank_backend;
+      proxy_set_header Host ${backend_proxy_host};
+      proxy_set_header X-Request-Id \$request_id;
+      proxy_set_header X-K6-Run-Id \$http_x_k6_run_id;
+      proxy_set_header X-Real-IP \$remote_addr;
+      proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto \$scheme;
+      proxy_set_header X-Forwarded-Host \$host;
+      proxy_set_header X-Forwarded-Port \$server_port;
+      proxy_set_header Connection \"\";
+      proxy_read_timeout 5s;
+      proxy_send_timeout 5s;
+      access_log off;
+    }
+
+    location / {
+      return 308 https://${SERVER_NAME}\$request_uri;
+    }
+  }"
+  else
+    proxy_server_listen="listen 80 default_server;"
+    proxy_server_tls_directives=""
+    proxy_server_hsts_header=""
+    https_redirect_server_block=""
+  fi
+
   cat <<NGINX
 worker_processes auto;
 
@@ -817,8 +943,18 @@ http {
       '"time":"\$time_iso8601",'
       '"remote_addr":"\$remote_addr",'
       '"realip_remote_addr":"\$realip_remote_addr",'
+      '"host":"\$host",'
+      '"request_method":"\$request_method",'
+      '"request_uri":"\$request_uri",'
+      '"scheme":"\$scheme",'
+      '"server_port":"\$server_port",'
+      '"http_user_agent":"\$http_user_agent",'
+      '"http_referer":"\$http_referer",'
+      '"x_forwarded_for":"\$http_x_forwarded_for",'
+      '"ssl_protocol":"\$ssl_protocol",'
       '"request":"\$request",'
       '"status":\$status,'
+      '"body_bytes_sent":\$body_bytes_sent,'
       '"request_time":\$request_time,'
       '"upstream_status":"\$upstream_status",'
       '"upstream_response_time":"\$upstream_response_time",'
@@ -863,15 +999,18 @@ ${real_ip_trusted_proxy_lines}
     server ${frontend_name}:${FRONTEND_PORT};
     keepalive 8;
   }
+${https_redirect_server_block}
 
   server {
-    listen 80 default_server;
+    ${proxy_server_listen}
     server_name ${SERVER_NAME};
     add_header X-Content-Type-Options nosniff always;
     add_header X-Frame-Options DENY always;
     add_header Referrer-Policy no-referrer always;
     add_header Permissions-Policy "geolocation=(), microphone=(), camera=()" always;
     add_header X-Robots-Tag "noindex, nofollow, noarchive" always;
+${proxy_server_hsts_header}
+${proxy_server_tls_directives}
 
     proxy_http_version 1.1;
     proxy_connect_timeout 3s;
@@ -1108,7 +1247,12 @@ nginx_container_running() {
 
 ensure_nginx_container() {
   if nginx_container_running; then
-    return 0
+    if nginx_https_enabled && ! docker port "${NGINX_CONTAINER}" 443/tcp >/dev/null 2>&1; then
+      log "recreate nginx container to publish HTTPS port 443"
+      docker rm -f "${NGINX_CONTAINER}" >/dev/null
+    else
+      return 0
+    fi
   fi
 
   docker rm -f "${NGINX_CONTAINER}" >/dev/null 2>&1 || true
@@ -1120,6 +1264,8 @@ ensure_nginx_container() {
     --label com.aquilabank.runtime=oci-a1 \
     --label com.aquilabank.service=nginx \
     -p 80:80 \
+    $(nginx_https_port_flags) \
+    $(nginx_tls_mount_flags) \
     -v "${APP_DIR}/nginx/nginx.conf:/etc/nginx/nginx.conf:ro" \
     nginx:1.27-alpine >/dev/null
 }
@@ -1153,6 +1299,7 @@ switch_nginx() {
   render_nginx_config "${green}" >"${next_config}"
   # Nginx reload 전 동일 Docker network에서 config를 검증해 기존 blue 슬롯을 보존한다.
   docker run --rm --network "${NETWORK}" \
+    $(nginx_tls_mount_flags) \
     -v "${next_config}:/etc/nginx/nginx.conf:ro" \
     nginx:1.27-alpine nginx -t
 
@@ -1194,6 +1341,7 @@ cleanup_blue() {
 
 main() {
   local blue green
+  require_nginx_https_runtime
   install_runtime
   prepare_layout
   write_env_files
