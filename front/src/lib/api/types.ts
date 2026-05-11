@@ -84,11 +84,11 @@ export type AuthSessionListResponse = {
 };
 
 export type RefreshRequest = {
-  refreshToken: string;
+  refreshToken?: string;
 };
 
 export type LogoutRequest = {
-  refreshToken: string;
+  refreshToken?: string;
 };
 
 export type PasswordResetRequest = {
@@ -299,8 +299,6 @@ export type NotificationPreferenceUpdateRequest = {
 };
 
 export type CustomerSession = {
-  accessToken: string;
-  refreshToken: string;
   tokenType: string;
   userId: Nullable<number>;
   expiresAt: Nullable<string>;

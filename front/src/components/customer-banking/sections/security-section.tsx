@@ -1,6 +1,6 @@
 import type { FormEvent } from 'react';
 import type { AuthSessionItem, BackupCodeIssueResponse, CustomerSession, LoginResponse, PasswordRecoveryRequestResult, TotpEnrollmentStartResponse } from '@/lib/api/types';
-import { formatDateTime, maskToken } from '@/lib/customer-banking/format';
+import { formatDateTime } from '@/lib/customer-banking/format';
 
 export function SecuritySection(props: {
   backupChallengeForm: {
@@ -132,8 +132,8 @@ export function SecuritySection(props: {
               <dd>{props.session?.userId ?? "-"}</dd>
             </div>
             <div>
-              <dt>Access Token</dt>
-              <dd>{props.session ? maskToken(props.session.accessToken) : "-"}</dd>
+              <dt>세션 방식</dt>
+              <dd>{props.session?.tokenType ?? "-"}</dd>
             </div>
             <div>
               <dt>Refresh 만료</dt>

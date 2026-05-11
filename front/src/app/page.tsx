@@ -8,7 +8,7 @@ import { TransactionsSection } from "@/components/customer-banking/sections/tran
 import { TransferSection } from "@/components/customer-banking/sections/transfer-section";
 import { useCustomerBanking } from "@/hooks/use-customer-banking";
 import { mainMenus, quickMenus } from "@/lib/customer-banking/constants";
-import { formatDateTime, maskToken } from "@/lib/customer-banking/format";
+import { formatDateTime } from "@/lib/customer-banking/format";
 
 export default function HomePage() {
   const {
@@ -318,8 +318,8 @@ export default function HomePage() {
                   <dd>{session.userId ?? "-"}</dd>
                 </div>
                 <div>
-                  <dt>Access Token</dt>
-                  <dd>{maskToken(session.accessToken)}</dd>
+                  <dt>세션 방식</dt>
+                  <dd>{session.tokenType}</dd>
                 </div>
                 <div>
                   <dt>만료</dt>

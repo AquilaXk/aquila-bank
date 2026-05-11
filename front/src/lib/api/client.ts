@@ -6,7 +6,6 @@ import type {
   BackupCodeIssueResponse,
   LoginRequest,
   LoginResponse,
-  LogoutRequest,
   NotificationBulkActionRequest,
   NotificationPreferenceResponse,
   NotificationPreferenceUpdateRequest,
@@ -19,7 +18,6 @@ import type {
   PasswordRecoveryRequest,
   PasswordRecoveryRequestResult,
   PasswordResetRequest,
-  RefreshRequest,
   TotpChallengeVerifyRequest,
   TotpCodeRequest,
   TotpEnrollmentStartResponse,
@@ -36,7 +34,6 @@ import type {
 type RequestOptions = {
   method?: "GET" | "POST" | "DELETE";
   body?: unknown;
-  accessToken?: string;
   headers?: Record<string, string>;
 };
 
@@ -91,10 +88,6 @@ function defaultHeaders(options: RequestOptions): HeadersInit {
     headers["Content-Type"] = "application/json";
   }
 
-  if (options.accessToken) {
-    headers.Authorization = `Bearer ${options.accessToken}`;
-  }
-
   return headers;
 }
 
@@ -119,16 +112,12 @@ export function createIdempotencyKey(prefix = "web"): string {
 export class AquilaBankApiClient {
   constructor(private readonly baseUrl = resolveApiBaseUrl()) {}
 
-  streamUrl(path: string, accessToken?: string): string {
+  streamUrl(path: string): string {
     if (!this.baseUrl) {
       throw new ApiConfigurationError();
     }
 
     const url = new URL(`${this.baseUrl}${path}`);
-    if (accessToken) {
-      // EventSource는 custom header를 지원하지 않아 MVP에서는 query fallback으로 제한합니다.
-      url.searchParams.set("accessToken", accessToken);
-    }
     return url.toString();
   }
 
@@ -187,83 +176,71 @@ export class AquilaBankApiClient {
     });
   }
 
-  startTotpEnrollment(accessToken: string): Promise<TotpEnrollmentStartResponse> {
+  startTotpEnrollment(): Promise<TotpEnrollmentStartResponse> {
     return this.request("/api/v1/auth/mfa/totp/enroll", {
       method: "POST",
-      accessToken,
     });
   }
 
   verifyTotpEnrollment(
     request: TotpCodeRequest,
-    accessToken: string,
   ): Promise<TotpEnrollmentVerifyResponse> {
     return this.request("/api/v1/auth/mfa/totp/enroll/verify", {
       method: "POST",
       body: request,
-      accessToken,
     });
   }
 
-  disableTotp(request: TotpCodeRequest, accessToken: string): Promise<void> {
+  disableTotp(request: TotpCodeRequest): Promise<void> {
     return this.request("/api/v1/auth/mfa/totp/disable", {
       method: "POST",
       body: request,
-      accessToken,
     });
   }
 
   issueBackupCodes(
     request: TotpCodeRequest,
-    accessToken: string,
   ): Promise<BackupCodeIssueResponse> {
     return this.request("/api/v1/auth/mfa/backup-codes", {
       method: "POST",
       body: request,
-      accessToken,
     });
   }
 
-  getSessions(accessToken: string, size = 20): Promise<AuthSessionListResponse> {
-    return this.request(appendSearchParams("/api/v1/auth/sessions", { size }), {
-      accessToken,
-    });
+  getSessions(size = 20): Promise<AuthSessionListResponse> {
+    return this.request(appendSearchParams("/api/v1/auth/sessions", { size }));
   }
 
-  revokeSession(sessionId: number, accessToken: string): Promise<void> {
+  revokeSession(sessionId: number): Promise<void> {
     return this.request(`/api/v1/auth/sessions/${sessionId}`, {
       method: "DELETE",
-      accessToken,
     });
   }
 
-  revokeAllSessions(accessToken: string): Promise<void> {
+  revokeAllSessions(): Promise<void> {
     return this.request("/api/v1/auth/sessions", {
       method: "DELETE",
-      accessToken,
     });
   }
 
-  refresh(request: RefreshRequest): Promise<LoginResponse> {
+  refresh(): Promise<LoginResponse> {
     return this.request("/api/v1/auth/refresh", {
       method: "POST",
-      body: request,
+      body: {},
     });
   }
 
-  logout(request: LogoutRequest, accessToken: string): Promise<void> {
+  logout(): Promise<void> {
     return this.request("/api/v1/auth/logout", {
       method: "POST",
-      body: request,
-      accessToken,
+      body: {},
     });
   }
 
-  resetPassword(request: PasswordResetRequest, accessToken: string): Promise<void> {
+  resetPassword(request: PasswordResetRequest): Promise<void> {
     return this.request("/api/v1/auth/password-reset", {
       method: "POST",
       body: request,
-      accessToken,
     });
   }
 
@@ -290,27 +267,22 @@ export class AquilaBankApiClient {
   }
 
   getAccounts(
-    accessToken: string,
     params: { limit?: number; cursor?: string } = {},
   ): Promise<AccountListResponse> {
-    return this.request(appendSearchParams("/api/v1/accounts", params), {
-      accessToken,
-    });
+    return this.request(appendSearchParams("/api/v1/accounts", params));
   }
 
-  getAccount(accountId: number, accessToken: string): Promise<AccountSummaryResponse> {
-    return this.request(`/api/v1/accounts/${accountId}`, { accessToken });
+  getAccount(accountId: number): Promise<AccountSummaryResponse> {
+    return this.request(`/api/v1/accounts/${accountId}`);
   }
 
   transfer(
     request: TransferRequest,
-    accessToken: string,
     idempotencyKey = createIdempotencyKey("transfer"),
   ): Promise<TransferResponse> {
     return this.request("/api/v1/transfers", {
       method: "POST",
       body: request,
-      accessToken,
       headers: { "Idempotency-Key": idempotencyKey },
     });
   }
@@ -318,122 +290,85 @@ export class AquilaBankApiClient {
   reverseTransfer(
     transactionReference: string,
     request: TransferReversalRequest,
-    accessToken: string,
     idempotencyKey = createIdempotencyKey("reversal"),
   ): Promise<TransferReversalResponse> {
     return this.request(`/api/v1/transfers/${transactionReference}/reversal`, {
       method: "POST",
       body: request,
-      accessToken,
       headers: { "Idempotency-Key": idempotencyKey },
     });
   }
 
-  getTransactions(
-    params: TransactionQueryParams,
-    accessToken: string,
-  ): Promise<TransactionQueryResponse> {
-    return this.request(appendSearchParams("/api/v1/transactions", params), {
-      accessToken,
-    });
+  getTransactions(params: TransactionQueryParams): Promise<TransactionQueryResponse> {
+    return this.request(appendSearchParams("/api/v1/transactions", params));
   }
 
   getArchivedTransactions(
     params: TransactionQueryParams,
-    accessToken: string,
   ): Promise<TransactionQueryResponse> {
-    return this.request(appendSearchParams("/api/v1/transactions/archive", params), {
-      accessToken,
-    });
+    return this.request(appendSearchParams("/api/v1/transactions/archive", params));
   }
 
   getTransactionDetail(
     transactionReference: string,
     accountId: number,
-    accessToken: string,
   ): Promise<TransactionDetailResponse> {
     return this.request(
       appendSearchParams(`/api/v1/transactions/${transactionReference}`, { accountId }),
-      { accessToken },
     );
   }
 
-  getNotifications(
-    params: NotificationQueryParams,
-    accessToken: string,
-  ): Promise<NotificationQueryResponse> {
-    return this.request(appendSearchParams("/api/v1/notifications", params), {
-      accessToken,
-    });
+  getNotifications(params: NotificationQueryParams): Promise<NotificationQueryResponse> {
+    return this.request(appendSearchParams("/api/v1/notifications", params));
   }
 
   searchNotifications(
     params: NotificationSearchParams,
-    accessToken: string,
   ): Promise<NotificationSearchResponse> {
-    return this.request(appendSearchParams("/api/v1/notifications/search", params), {
-      accessToken,
-    });
+    return this.request(appendSearchParams("/api/v1/notifications/search", params));
   }
 
-  getUnreadCount(accessToken: string): Promise<NotificationUnreadCountResponse> {
-    return this.request("/api/v1/notifications/unread-count", { accessToken });
+  getUnreadCount(): Promise<NotificationUnreadCountResponse> {
+    return this.request("/api/v1/notifications/unread-count");
   }
 
-  getNotificationPreferences(
-    accessToken: string,
-  ): Promise<NotificationPreferenceResponse> {
-    return this.request("/api/v1/notifications/preferences", { accessToken });
+  getNotificationPreferences(): Promise<NotificationPreferenceResponse> {
+    return this.request("/api/v1/notifications/preferences");
   }
 
   updateNotificationPreferences(
     request: NotificationPreferenceUpdateRequest,
-    accessToken: string,
   ): Promise<void> {
     return this.request("/api/v1/notifications/preferences", {
       method: "POST",
       body: request,
-      accessToken,
     });
   }
 
-  markNotificationAsRead(notificationId: number, accessToken: string): Promise<void> {
+  markNotificationAsRead(notificationId: number): Promise<void> {
     return this.request(`/api/v1/notifications/${notificationId}/read`, {
       method: "POST",
-      accessToken,
     });
   }
 
-  markNotificationsAsRead(
-    request: NotificationBulkActionRequest,
-    accessToken: string,
-  ): Promise<void> {
+  markNotificationsAsRead(request: NotificationBulkActionRequest): Promise<void> {
     return this.request("/api/v1/notifications/read", {
       method: "POST",
       body: request,
-      accessToken,
     });
   }
 
-  archiveNotifications(
-    request: NotificationBulkActionRequest,
-    accessToken: string,
-  ): Promise<void> {
+  archiveNotifications(request: NotificationBulkActionRequest): Promise<void> {
     return this.request("/api/v1/notifications/archive", {
       method: "POST",
       body: request,
-      accessToken,
     });
   }
 
-  deleteNotifications(
-    request: NotificationBulkActionRequest,
-    accessToken: string,
-  ): Promise<void> {
+  deleteNotifications(request: NotificationBulkActionRequest): Promise<void> {
     return this.request("/api/v1/notifications/delete", {
       method: "POST",
       body: request,
-      accessToken,
     });
   }
 }

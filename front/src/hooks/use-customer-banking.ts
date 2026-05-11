@@ -1,7 +1,7 @@
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AquilaBankApiClient } from '@/lib/api/client';
-import { clearCustomerSession, loadCustomerSession, saveCustomerSession, toCustomerSession } from '@/lib/api/session';
+import { clearCustomerSession, toCustomerSession } from '@/lib/api/session';
 import type { AccountItem, AccountSummaryResponse, AuthSessionItem, BackupCodeIssueResponse, CustomerSession, LoginResponse, NotificationItem, NotificationPreferenceItem, NotificationQueryResponse, PasswordRecoveryRequestResult, TransactionDetailResponse, TransactionItem, TransactionQueryResponse, TotpEnrollmentStartResponse, TransferResponse, TransferReversalResponse } from '@/lib/api/types';
 import { formatMinorAmount, toErrorMessage, toIsoDateTime, toLocalInputValue, toOptionalNumber } from '@/lib/customer-banking/format';
 import type { AlertMessage, MenuSection } from '@/lib/customer-banking/types';
@@ -115,17 +115,6 @@ export function useCustomerBanking() {
   const eventSourceRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
-    const storedSession = loadCustomerSession();
-    if (storedSession) {
-      setSession(storedSession);
-      setAlert({
-        type: "success",
-        text: "저장된 세션을 불러왔습니다.",
-      });
-    }
-  }, []);
-
-  useEffect(() => {
     return () => {
       eventSourceRef.current?.close();
     };
@@ -145,12 +134,11 @@ export function useCustomerBanking() {
     if (!nextSession) {
       setAlert({
         type: "error",
-        text: "로그인 응답에 accessToken 또는 refreshToken이 없습니다.",
+        text: "로그인 세션을 생성하지 못했습니다.",
       });
       return;
     }
 
-    saveCustomerSession(nextSession);
     setSession(nextSession);
     setChallenge(null);
     setAlert({
@@ -219,26 +207,21 @@ export function useCustomerBanking() {
   }
 
   async function handleRefresh() {
-    const currentSession = requireSession();
-    if (!currentSession) {
+    if (!requireSession()) {
       return;
     }
     await runAction("토큰 재발급", async () => {
-      const result = await api.refresh({ refreshToken: currentSession.refreshToken });
+      const result = await api.refresh();
       applyLoginResult(result);
     });
   }
 
   async function handleLogout() {
-    const currentSession = requireSession();
-    if (!currentSession) {
+    if (!requireSession()) {
       return;
     }
     await runAction("로그아웃", async () => {
-      await api.logout(
-        { refreshToken: currentSession.refreshToken },
-        currentSession.accessToken,
-      );
+      await api.logout();
       clearCustomerSession();
       setSession(null);
       setSessions([]);
@@ -273,12 +256,11 @@ export function useCustomerBanking() {
 
   async function handlePasswordReset(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const currentSession = requireSession();
-    if (!currentSession) {
+    if (!requireSession()) {
       return;
     }
     await runAction("비밀번호 변경", async () => {
-      await api.resetPassword(passwordResetForm, currentSession.accessToken);
+      await api.resetPassword(passwordResetForm);
       clearCustomerSession();
       setSession(null);
       setAlert({
@@ -289,36 +271,33 @@ export function useCustomerBanking() {
   }
 
   async function handleLoadSessions() {
-    const currentSession = requireSession();
-    if (!currentSession) {
+    if (!requireSession()) {
       return;
     }
     await runAction("세션 조회", async () => {
-      const result = await api.getSessions(currentSession.accessToken);
+      const result = await api.getSessions();
       setSessions(result.items);
       setAlert({ type: "success", text: "세션 목록을 불러왔습니다." });
     });
   }
 
   async function handleRevokeSession(sessionId: number) {
-    const currentSession = requireSession();
-    if (!currentSession) {
+    if (!requireSession()) {
       return;
     }
     await runAction("세션 해지", async () => {
-      await api.revokeSession(sessionId, currentSession.accessToken);
+      await api.revokeSession(sessionId);
       setSessions((items) => items.filter((item) => item.sessionId !== sessionId));
       setAlert({ type: "success", text: "선택한 세션을 해지했습니다." });
     });
   }
 
   async function handleRevokeAllSessions() {
-    const currentSession = requireSession();
-    if (!currentSession) {
+    if (!requireSession()) {
       return;
     }
     await runAction("전체 세션 해지", async () => {
-      await api.revokeAllSessions(currentSession.accessToken);
+      await api.revokeAllSessions();
       clearCustomerSession();
       setSession(null);
       setSessions([]);
@@ -327,38 +306,32 @@ export function useCustomerBanking() {
   }
 
   async function handleStartTotpEnrollment() {
-    const currentSession = requireSession();
-    if (!currentSession) {
+    if (!requireSession()) {
       return;
     }
     await runAction("TOTP 등록 시작", async () => {
-      const result = await api.startTotpEnrollment(currentSession.accessToken);
+      const result = await api.startTotpEnrollment();
       setTotpEnrollment(result);
       setAlert({ type: "success", text: "TOTP 등록 정보가 발급되었습니다." });
     });
   }
 
   async function handleVerifyTotpEnrollment() {
-    const currentSession = requireSession();
-    if (!currentSession) {
+    if (!requireSession()) {
       return;
     }
     await runAction("TOTP 등록 확인", async () => {
-      const result = await api.verifyTotpEnrollment(
-        { totpCode },
-        currentSession.accessToken,
-      );
+      const result = await api.verifyTotpEnrollment({ totpCode });
       setAlert({ type: "success", text: `TOTP 상태: ${result.status}` });
     });
   }
 
   async function handleDisableTotp() {
-    const currentSession = requireSession();
-    if (!currentSession) {
+    if (!requireSession()) {
       return;
     }
     await runAction("TOTP 해지", async () => {
-      await api.disableTotp({ totpCode }, currentSession.accessToken);
+      await api.disableTotp({ totpCode });
       clearCustomerSession();
       setSession(null);
       setAlert({ type: "success", text: "TOTP가 해지되었습니다." });
@@ -366,27 +339,22 @@ export function useCustomerBanking() {
   }
 
   async function handleIssueBackupCodes() {
-    const currentSession = requireSession();
-    if (!currentSession) {
+    if (!requireSession()) {
       return;
     }
     await runAction("Backup code 발급", async () => {
-      const result = await api.issueBackupCodes(
-        { totpCode },
-        currentSession.accessToken,
-      );
+      const result = await api.issueBackupCodes({ totpCode });
       setBackupCodes(result);
       setAlert({ type: "success", text: "Backup code가 발급되었습니다." });
     });
   }
 
   async function handleLoadAccounts(cursor = "", append = false) {
-    const currentSession = requireSession();
-    if (!currentSession) {
+    if (!requireSession()) {
       return;
     }
     await runAction("계좌 조회", async () => {
-      const result = await api.getAccounts(currentSession.accessToken, {
+      const result = await api.getAccounts({
         limit: accountLimit,
         cursor,
       });
@@ -408,12 +376,11 @@ export function useCustomerBanking() {
   }
 
   async function handleLoadAccountDetail(accountId: number) {
-    const currentSession = requireSession();
-    if (!currentSession) {
+    if (!requireSession()) {
       return;
     }
     await runAction("계좌 상세 조회", async () => {
-      const result = await api.getAccount(accountId, currentSession.accessToken);
+      const result = await api.getAccount(accountId);
       setSelectedAccount(result);
       setTransferForm((form) => ({
         ...form,
@@ -429,8 +396,7 @@ export function useCustomerBanking() {
 
   async function handleTransfer(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const currentSession = requireSession();
-    if (!currentSession) {
+    if (!requireSession()) {
       return;
     }
     await runAction("이체", async () => {
@@ -442,7 +408,6 @@ export function useCustomerBanking() {
           currencyCode: transferForm.currencyCode,
           summary: transferForm.summary,
         },
-        currentSession.accessToken,
       );
       setTransferResult(result);
       setAlert({
@@ -454,8 +419,7 @@ export function useCustomerBanking() {
 
   async function handleReversal(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const currentSession = requireSession();
-    if (!currentSession) {
+    if (!requireSession()) {
       return;
     }
     await runAction("이체 취소", async () => {
@@ -467,7 +431,6 @@ export function useCustomerBanking() {
           reversalReason: reversalForm.reversalReason,
           summary: reversalForm.summary,
         },
-        currentSession.accessToken,
       );
       setReversalResult(result);
       setAlert({
@@ -482,8 +445,7 @@ export function useCustomerBanking() {
     cursor = "",
     append = false,
   ) {
-    const currentSession = requireSession();
-    if (!currentSession) {
+    if (!requireSession()) {
       return;
     }
     await runAction("거래내역 조회", async () => {
@@ -502,8 +464,8 @@ export function useCustomerBanking() {
       };
       const result =
         mode === "archive"
-          ? await api.getArchivedTransactions(params, currentSession.accessToken)
-          : await api.getTransactions(params, currentSession.accessToken);
+          ? await api.getArchivedTransactions(params)
+          : await api.getTransactions(params);
       setTransactionMode(mode);
       setTransactionSlice(result);
       setTransactions((items) => (append ? [...items, ...result.items] : result.items));
@@ -516,8 +478,7 @@ export function useCustomerBanking() {
   }
 
   async function handleLoadTransactionDetail(transactionReference: string) {
-    const currentSession = requireSession();
-    if (!currentSession) {
+    if (!requireSession()) {
       return;
     }
     const accountId = Number(transactionFilters.accountId || selectedAccount?.accountId);
@@ -529,7 +490,6 @@ export function useCustomerBanking() {
       const result = await api.getTransactionDetail(
         transactionReference,
         accountId,
-        currentSession.accessToken,
       );
       setTransactionDetail(result);
       setAlert({ type: "success", text: "거래 상세를 불러왔습니다." });
@@ -541,8 +501,7 @@ export function useCustomerBanking() {
     cursor = "",
     append = false,
   ) {
-    const currentSession = requireSession();
-    if (!currentSession) {
+    if (!requireSession()) {
       return;
     }
     await runAction("알림 조회", async () => {
@@ -560,9 +519,8 @@ export function useCustomerBanking() {
                 from: toIsoDateTime(notificationFilters.from),
                 to: toIsoDateTime(notificationFilters.to),
               },
-              currentSession.accessToken,
             )
-          : await api.getNotifications(commonParams, currentSession.accessToken);
+          : await api.getNotifications(commonParams);
       setNotificationMode(mode);
       setNotificationSlice(result);
       setNotifications((items) => (append ? [...items, ...result.items] : result.items));
@@ -576,36 +534,33 @@ export function useCustomerBanking() {
   }
 
   async function handleLoadUnreadCount() {
-    const currentSession = requireSession();
-    if (!currentSession) {
+    if (!requireSession()) {
       return;
     }
     await runAction("미확인 알림 조회", async () => {
-      const result = await api.getUnreadCount(currentSession.accessToken);
+      const result = await api.getUnreadCount();
       setUnreadCount(result.unreadCount);
       setAlert({ type: "success", text: "미확인 알림 수를 불러왔습니다." });
     });
   }
 
   async function handleLoadPreferences() {
-    const currentSession = requireSession();
-    if (!currentSession) {
+    if (!requireSession()) {
       return;
     }
     await runAction("알림 설정 조회", async () => {
-      const result = await api.getNotificationPreferences(currentSession.accessToken);
+      const result = await api.getNotificationPreferences();
       setPreferences(result.items);
       setAlert({ type: "success", text: "알림 설정을 불러왔습니다." });
     });
   }
 
   async function handleUpdatePreferences() {
-    const currentSession = requireSession();
-    if (!currentSession) {
+    if (!requireSession()) {
       return;
     }
     await runAction("알림 설정 저장", async () => {
-      await api.updateNotificationPreferences({ items: preferences }, currentSession.accessToken);
+      await api.updateNotificationPreferences({ items: preferences });
       setAlert({ type: "success", text: "알림 설정을 저장했습니다." });
     });
   }
@@ -622,8 +577,7 @@ export function useCustomerBanking() {
     action: "read" | "archive" | "delete",
     notificationId?: number,
   ) {
-    const currentSession = requireSession();
-    if (!currentSession) {
+    if (!requireSession()) {
       return;
     }
     const notificationIds =
@@ -634,13 +588,13 @@ export function useCustomerBanking() {
     }
     await runAction("알림 처리", async () => {
       if (action === "read" && notificationId !== undefined) {
-        await api.markNotificationAsRead(notificationId, currentSession.accessToken);
+        await api.markNotificationAsRead(notificationId);
       } else if (action === "read") {
-        await api.markNotificationsAsRead({ notificationIds }, currentSession.accessToken);
+        await api.markNotificationsAsRead({ notificationIds });
       } else if (action === "archive") {
-        await api.archiveNotifications({ notificationIds }, currentSession.accessToken);
+        await api.archiveNotifications({ notificationIds });
       } else {
-        await api.deleteNotifications({ notificationIds }, currentSession.accessToken);
+        await api.deleteNotifications({ notificationIds });
       }
       setNotifications((items) =>
         action === "delete" || action === "archive"
@@ -657,15 +611,12 @@ export function useCustomerBanking() {
   }
 
   function handleConnectNotifications() {
-    const currentSession = requireSession();
-    if (!currentSession) {
+    if (!requireSession()) {
       return;
     }
     try {
       eventSourceRef.current?.close();
-      const eventSource = new EventSource(
-        api.streamUrl("/api/v1/notifications/stream", currentSession.accessToken),
-      );
+      const eventSource = new EventSource(api.streamUrl("/api/v1/notifications/stream"));
       eventSourceRef.current = eventSource;
       setSseStatus({
         state: "connecting",
