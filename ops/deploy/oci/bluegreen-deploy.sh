@@ -83,9 +83,7 @@ install_runtime() {
 prepare_layout() {
   mkdir -p "${APP_DIR}/env" "${APP_DIR}/nginx" "${APP_DIR}/state" "${APP_DIR}/logs"
   chmod 750 "${APP_DIR}" "${APP_DIR}/env" "${APP_DIR}/nginx" "${APP_DIR}/state" "${APP_DIR}/logs"
-  if nginx_https_enabled; then
-    mkdir -p "${NGINX_ACME_CHALLENGE_ROOT}"
-  fi
+  mkdir -p "${NGINX_ACME_CHALLENGE_ROOT}"
   docker network create "${NETWORK}" >/dev/null 2>&1 || true
 }
 
@@ -741,8 +739,11 @@ nginx_https_port_flags() {
 nginx_tls_mount_flags() {
   if nginx_https_enabled; then
     printf '%s\n' "-v" "${NGINX_SSL_MOUNT_PATH}:${NGINX_SSL_MOUNT_PATH}:ro"
-    printf '%s\n' "-v" "${NGINX_ACME_CHALLENGE_ROOT}:${NGINX_ACME_CHALLENGE_ROOT}:ro"
   fi
+}
+
+nginx_acme_mount_flags() {
+  printf '%s\n' "-v" "${NGINX_ACME_CHALLENGE_ROOT}:${NGINX_ACME_CHALLENGE_ROOT}:ro"
 }
 
 render_nginx_real_ip_trusted_proxy_lines() {
@@ -1017,6 +1018,11 @@ ${proxy_server_tls_directives}
     proxy_socket_keepalive on;
     error_page 429 = @aquila_edge_rate_limited;
 
+    location ^~ /.well-known/acme-challenge/ {
+      root ${NGINX_ACME_CHALLENGE_ROOT};
+      default_type text/plain;
+    }
+
     location ~* ^/(?:\\.env(?:\\..*)?|\\.git(?:/|\$)|wp-login\\.php|xmlrpc\\.php|phpmyadmin(?:/|\$)|adminer(?:/|\$)|vendor/phpunit(?:/|\$)|cgi-bin(?:/|\$)) {
       add_header X-Aquila-Reject-Source nginx-bot-guard always;
       add_header X-Aquila-Reject-Reason scanner-path always;
@@ -1266,6 +1272,7 @@ ensure_nginx_container() {
     -p 80:80 \
     $(nginx_https_port_flags) \
     $(nginx_tls_mount_flags) \
+    $(nginx_acme_mount_flags) \
     -v "${APP_DIR}/nginx/nginx.conf:/etc/nginx/nginx.conf:ro" \
     nginx:1.27-alpine >/dev/null
 }
@@ -1300,6 +1307,7 @@ switch_nginx() {
   # Nginx reload 전 동일 Docker network에서 config를 검증해 기존 blue 슬롯을 보존한다.
   docker run --rm --network "${NETWORK}" \
     $(nginx_tls_mount_flags) \
+    $(nginx_acme_mount_flags) \
     -v "${next_config}:/etc/nginx/nginx.conf:ro" \
     nginx:1.27-alpine nginx -t
 
