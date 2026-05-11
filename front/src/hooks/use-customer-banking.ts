@@ -2,7 +2,7 @@ import type { FormEvent } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AquilaBankApiClient } from '@/lib/api/client';
 import { clearCustomerSession, toCustomerSession } from '@/lib/api/session';
-import type { AccountItem, AccountSummaryResponse, AuthSessionItem, BackupCodeIssueResponse, CustomerSession, LoginResponse, NotificationItem, NotificationPreferenceItem, NotificationQueryResponse, PasswordRecoveryRequestResult, TransactionDetailResponse, TransactionItem, TransactionQueryResponse, TotpEnrollmentStartResponse, TransferResponse, TransferReversalResponse } from '@/lib/api/types';
+import type { AccountItem, AccountSummaryResponse, AuthSessionItem, BackupCodeIssueResponse, CustomerSession, LoginResponse, NotificationItem, NotificationPreferenceItem, NotificationQueryResponse, PasswordRecoveryRequestResult, TransactionDetailResponse, TransactionItem, TransactionQueryResponse, TotpEnrollmentStartResponse, TransferPreviewResponse, TransferResponse, TransferReversalResponse } from '@/lib/api/types';
 import { formatMinorAmount, toErrorMessage, toIsoDateTime, toLocalInputValue, toOptionalNumber } from '@/lib/customer-banking/format';
 import type { AlertMessage, MenuSection } from '@/lib/customer-banking/types';
 
@@ -58,6 +58,8 @@ export function useCustomerBanking() {
   const [transferResult, setTransferResult] = useState<TransferResponse | null>(
     null,
   );
+  const [transferPreview, setTransferPreview] =
+    useState<TransferPreviewResponse | null>(null);
   const [reversalForm, setReversalForm] = useState({
     transactionReference: "",
     sourceAccountId: "",
@@ -419,6 +421,34 @@ export function useCustomerBanking() {
     });
   }
 
+  function handleTransferFormChange(value: typeof transferForm): void {
+    setTransferPreview(null);
+    setTransferResult(null);
+    setTransferForm(value);
+  }
+
+  async function handlePreviewTransfer(): Promise<boolean> {
+    if (!requireSession()) {
+      return false;
+    }
+    return runAction("받는 사람 검증", async () => {
+      const result = await api.previewTransfer({
+        sourceAccountId: Number(transferForm.sourceAccountId),
+        targetAccountId: Number(transferForm.targetAccountId),
+        amountMinor: Number(transferForm.amountMinor),
+        currencyCode: transferForm.currencyCode,
+      });
+      setTransferPreview(result);
+      if (!result.allowed) {
+        throw new Error(`이체 사전 검증 실패: ${result.blockedReason}`);
+      }
+      setAlert({
+        type: "success",
+        text: `받는 사람 검증 완료: ${result.targetAccount.displayName}`,
+      });
+    });
+  }
+
   async function handleReversal(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!requireSession()) {
@@ -679,6 +709,7 @@ export function useCustomerBanking() {
     selectedAccount,
     transferForm,
     transferResult,
+    transferPreview,
     reversalForm,
     reversalResult,
     transactionMode,
@@ -712,6 +743,7 @@ export function useCustomerBanking() {
     handleLoadAccounts,
     handleLoadAccountDetail,
     handleTransfer,
+    handlePreviewTransfer,
     handleReversal,
     handleSearchTransactions,
     handleLoadTransactionDetail,
@@ -731,7 +763,7 @@ export function useCustomerBanking() {
     setPasswordResetForm,
     setTotpCode,
     setAccountLimit,
-    setTransferForm,
+    setTransferForm: handleTransferFormChange,
     setReversalForm,
     setTransactionMode,
     setTransactionFilters,

@@ -43,6 +43,7 @@ export default function HomePage() {
     selectedAccount,
     transferForm,
     transferResult,
+    transferPreview,
     reversalForm,
     reversalResult,
     transactionMode,
@@ -76,6 +77,7 @@ export default function HomePage() {
     handleLoadAccounts,
     handleLoadAccountDetail,
     handleTransfer,
+    handlePreviewTransfer,
     handleReversal,
     handleSearchTransactions,
     handleLoadTransactionDetail,
@@ -255,7 +257,9 @@ export default function HomePage() {
               reversalForm={reversalForm}
               reversalResult={reversalResult}
               transferForm={transferForm}
+              transferPreview={transferPreview}
               transferResult={transferResult}
+              onPreviewTransfer={handlePreviewTransfer}
               onReversal={handleReversal}
               onReversalChange={setReversalForm}
               onTransfer={handleTransfer}

@@ -4,18 +4,26 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.aquilabank.domain.account.model.AccountSummary;
+import com.aquilabank.domain.account.usecase.AccountSummaryQueryUseCase;
 import com.aquilabank.domain.ledger.model.TransferResult;
 import com.aquilabank.domain.ledger.model.TransferReversalResult;
+import com.aquilabank.domain.ledger.port.TransferLimitUsageReadPort;
 import com.aquilabank.domain.ledger.usecase.TransferCommandUseCase;
 import com.aquilabank.domain.ledger.usecase.TransferReversalUseCase;
+import com.aquilabank.global.config.TransferLimitPolicyProperties;
 import com.aquilabank.global.security.BootstrapHeaderAuthenticationFilter;
 import com.aquilabank.global.web.ApiExceptionHandler;
 import com.aquilabank.global.web.security.CurrentAuthenticatedPrincipalArgumentResolver;
 import com.aquilabank.global.web.security.RequestAccountAuthorizationService;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -27,6 +35,8 @@ class TransferCommandControllerTest {
   private TransferCommandUseCase transferCommandUseCase;
   private TransferReversalUseCase transferReversalUseCase;
   private RequestAccountAuthorizationService requestAccountAuthorizationService;
+  private AccountSummaryQueryUseCase accountSummaryQueryUseCase;
+  private TransferLimitUsageReadPort transferLimitUsageReadPort;
   private MockMvc mockMvc;
 
   @BeforeEach
@@ -34,16 +44,57 @@ class TransferCommandControllerTest {
     transferCommandUseCase = mock(TransferCommandUseCase.class);
     transferReversalUseCase = mock(TransferReversalUseCase.class);
     requestAccountAuthorizationService = mock(RequestAccountAuthorizationService.class);
+    accountSummaryQueryUseCase = mock(AccountSummaryQueryUseCase.class);
+    transferLimitUsageReadPort = mock(TransferLimitUsageReadPort.class);
     mockMvc =
         MockMvcBuilders.standaloneSetup(
                 new TransferCommandController(
                     transferCommandUseCase,
                     transferReversalUseCase,
-                    requestAccountAuthorizationService))
+                    requestAccountAuthorizationService,
+                    accountSummaryQueryUseCase,
+                    transferLimitUsageReadPort,
+                    new TransferLimitPolicyProperties(2_000L, 3_000L, "Asia/Seoul"),
+                    Clock.fixed(Instant.parse("2026-05-11T01:00:00Z"), ZoneOffset.UTC)))
             .addFilters(new BootstrapHeaderAuthenticationFilter("X-Account-Id", "X-Subject"))
             .setCustomArgumentResolvers(new CurrentAuthenticatedPrincipalArgumentResolver())
             .setControllerAdvice(new ApiExceptionHandler())
             .build();
+  }
+
+  @Test
+  void previewsTransferRecipientFeeAndLimitWithoutWritingLedger() throws Exception {
+    when(requestAccountAuthorizationService.resolveTransferSourceAccountId(
+            org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(101L)))
+        .thenReturn(101L);
+    when(accountSummaryQueryUseCase.getByAccountId(101L))
+        .thenReturn(account(101L, "111122223333", "생활비 계좌", "ACTIVE", 10_000L));
+    when(accountSummaryQueryUseCase.getByAccountId(202L))
+        .thenReturn(account(202L, "999900001234", "홍길동", "ACTIVE", 0L));
+    when(transferLimitUsageReadPort.sumBookedDebitAmountMinor(
+            org.mockito.ArgumentMatchers.eq(101L),
+            org.mockito.ArgumentMatchers.eq("KRW"),
+            org.mockito.ArgumentMatchers.any(),
+            org.mockito.ArgumentMatchers.any()))
+        .thenReturn(1_000L);
+
+    mockMvc
+        .perform(
+            get("/api/v1/transfers/preview")
+                .header("X-Account-Id", "101")
+                .queryParam("sourceAccountId", "101")
+                .queryParam("targetAccountId", "202")
+                .queryParam("amountMinor", "1500")
+                .queryParam("currencyCode", "KRW"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.sourceAccountId").value(101))
+        .andExpect(jsonPath("$.targetAccount.accountId").value(202))
+        .andExpect(jsonPath("$.feeMinor").value(0))
+        .andExpect(jsonPath("$.singleTransferLimitMinor").value(2000))
+        .andExpect(jsonPath("$.dailyTransferLimitMinor").value(3000))
+        .andExpect(jsonPath("$.dailyUsedMinor").value(1000))
+        .andExpect(jsonPath("$.allowed").value(true))
+        .andExpect(jsonPath("$.otpRequired").value(true));
   }
 
   @Test
@@ -174,5 +225,23 @@ class TransferCommandControllerTest {
                     }
                     """))
         .andExpect(status().isBadRequest());
+  }
+
+  private static AccountSummary account(
+      long accountId,
+      String accountNumber,
+      String displayName,
+      String status,
+      long availableBalanceMinor) {
+    return new AccountSummary(
+        accountId,
+        accountNumber,
+        displayName,
+        status,
+        "KRW",
+        availableBalanceMinor,
+        0L,
+        Instant.parse("2026-05-11T00:00:00Z"),
+        Instant.parse("2026-05-11T00:00:00Z"));
   }
 }

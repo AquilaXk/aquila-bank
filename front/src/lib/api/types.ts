@@ -136,6 +136,38 @@ export type TransferRequest = {
   summary: string;
 };
 
+export type TransferPreviewRequest = {
+  sourceAccountId: number;
+  targetAccountId: number;
+  amountMinor: number;
+  currencyCode: string;
+};
+
+export type TransferPreviewAccount = {
+  accountId: number;
+  maskedAccountNumber: string;
+  displayName: string;
+  accountStatus: string;
+  currencyCode: string;
+};
+
+export type TransferPreviewResponse = {
+  sourceAccountId: number;
+  targetAccount: TransferPreviewAccount;
+  amountMinor: number;
+  currencyCode: string;
+  feeMinor: number;
+  feePolicy: string;
+  totalDebitMinor: number;
+  singleTransferLimitMinor: number;
+  dailyTransferLimitMinor: number;
+  dailyUsedMinor: number;
+  dailyRemainingMinor: number;
+  allowed: boolean;
+  blockedReason: string;
+  otpRequired: boolean;
+};
+
 export type TransferResponse = {
   transactionReference: string;
   sourceAccountId: number;

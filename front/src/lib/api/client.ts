@@ -25,6 +25,8 @@ import type {
   TransactionDetailResponse,
   TransactionQueryParams,
   TransactionQueryResponse,
+  TransferPreviewRequest,
+  TransferPreviewResponse,
   TransferRequest,
   TransferResponse,
   TransferReversalRequest,
@@ -274,6 +276,12 @@ export class AquilaBankApiClient {
 
   getAccount(accountId: number): Promise<AccountSummaryResponse> {
     return this.request(`/api/v1/accounts/${accountId}`);
+  }
+
+  previewTransfer(
+    params: TransferPreviewRequest,
+  ): Promise<TransferPreviewResponse> {
+    return this.request(appendSearchParams("/api/v1/transfers/preview", params));
   }
 
   transfer(

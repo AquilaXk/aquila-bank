@@ -12,6 +12,8 @@
     "test:auth-session": "node scripts/check-auth-session-hardening-contract.mjs",
     "test:ops-console": "node scripts/check-ops-console-contract.mjs",
     "test:enterprise-ux": "node scripts/check-customer-banking-enterprise-ux.mjs",
+    "test:fulfillment-ux": "node scripts/check-customer-banking-fulfillment-ux.mjs",
+    "test:e2e:click-flow": "playwright test --config=playwright.config.ts e2e/customer-banking-click-flow.spec.ts",
     "test:e2e:a11y": "node scripts/check-customer-banking-visual-a11y.mjs"
   },
   "dependencies": {
@@ -20,6 +22,7 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@types/node": "^20.17.10",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
