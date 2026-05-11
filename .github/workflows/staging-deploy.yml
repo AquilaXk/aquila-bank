@@ -455,6 +455,7 @@ jobs:
           STAGING_PUBLIC_API_BASE_URL="${STAGING_PUBLIC_API_BASE_URL:-${STAGING_BASE_URL}}"
           STAGING_PUBLIC_BASE_URL="${STAGING_PUBLIC_BASE_URL:-https://${NGINX_SERVER_NAME}}"
           STAGING_PUBLIC_EDGE_SMOKE_ENABLED="${STAGING_PUBLIC_EDGE_SMOKE_ENABLED:-true}"
+          STAGING_PUBLIC_FRONTEND_SMOKE_ENABLED="${STAGING_PUBLIC_FRONTEND_SMOKE_ENABLED:-true}"
 
           HOT_ACCOUNT_ID="${STAGING_REPLAY_HOT_ACCOUNT_ID:-${HOT_ACCOUNT_ID:-}}"
           HOT_FROM="${STAGING_REPLAY_HOT_FROM:-${HOT_FROM:-}}"
@@ -524,6 +525,7 @@ jobs:
             STAGING_PUBLIC_API_BASE_URL
             STAGING_PUBLIC_BASE_URL
             STAGING_PUBLIC_EDGE_SMOKE_ENABLED
+            STAGING_PUBLIC_FRONTEND_SMOKE_ENABLED
             STAGING_BASE_URL
             STAGING_SMOKE_BASE_URL
             STAGING_SMOKE_HEALTH_PATH
@@ -676,6 +678,18 @@ jobs:
           PUBLIC_EDGE_BASE_URL="${STAGING_PUBLIC_BASE_URL}" \
             PUBLIC_EDGE_EXPECT_HSTS=true \
             tools/test/check-public-edge-bot-guard-live.sh
+
+      - name: Run public frontend live smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${STAGING_PUBLIC_FRONTEND_SMOKE_ENABLED}" != "true" ]]; then
+            echo "::notice::Public frontend live smoke skipped."
+            exit 0
+          fi
+          PUBLIC_FRONTEND_BASE_URL="${STAGING_PUBLIC_BASE_URL}" \
+            PUBLIC_FRONTEND_EXPECT_HSTS=true \
+            tools/test/check-public-frontend-live-smoke.sh
 
       - name: Validate OCI A1 storage baseline
         shell: bash
