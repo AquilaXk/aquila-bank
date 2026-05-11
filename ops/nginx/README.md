@@ -25,9 +25,11 @@
   - `NGINX_FRONTEND_SERVER`
   - `NGINX_BACKEND_API_SERVERS`
 - 선택 env:
+  - `NGINX_ENABLE_HTTPS` 기본값 `auto`, OCI blue/green 배포에서 `true|false|auto`
   - `NGINX_EDGE_RETRY_AFTER_SECONDS` 기본값 `1`
   - `NGINX_EDGE_RETRY_AFTER_MILLIS` 기본값 `150`
   - `NGINX_EDGE_RETRY_JITTER_MILLIS` 기본값 `100`
+  - `NGINX_HSTS_MAX_AGE_SECONDS` 기본값 `31536000`
   - `NGINX_REAL_IP_HEADER` 기본값 `X-Forwarded-For`, 허용값 `X-Forwarded-For` 또는 `X-Real-IP`
   - `NGINX_REAL_IP_TRUSTED_PROXIES` 기본값 `10.60.0.0/16`, comma-separated trusted LB/CDN CIDR, `none`이면 TCP peer address
   - `NGINX_TRANSACTION_READ_BUDGET_PROFILE` 기본값 `burst80`, 허용값 `burst80|burst64|balanced|fail-fast`
@@ -52,7 +54,10 @@ bash tools/ops/render-nginx-runtime-config.sh /tmp/aquila-bank-nginx.conf ops/ng
 - `listen 80`에서는 `/.well-known/acme-challenge/`와 `/actuator/health`만 예외로 두고 나머지는 `308`으로 HTTPS redirect 합니다.
 - `listen 443 ssl http2`에서 TLS termination을 수행합니다.
 - `ssl_certificate`, `ssl_certificate_key`는 `${NGINX_SSL_CERTIFICATE_PATH}`, `${NGINX_SSL_CERTIFICATE_KEY_PATH}`를 통해 runtime에서 채웁니다.
+- HTTPS server에서는 `Strict-Transport-Security: max-age=${NGINX_HSTS_MAX_AGE_SECONDS}; includeSubDomains`를 내려 TLS downgrade 재시도를 줄입니다.
 - `return 308 https://$server_name$request_uri;`를 써서 요청 `Host` 헤더를 그대로 반사하지 않고 설정한 host 기준으로 redirect 합니다.
+- OCI blue/green 배포는 `NGINX_ENABLE_HTTPS=auto`일 때 `NGINX_SERVER_NAME`이 `_`가 아니고 cert/key 파일이 존재하면 443을 publish 합니다. 강제하려면 `NGINX_ENABLE_HTTPS=true`로 두고, 파일이 없으면 배포 전에 fail-fast 합니다.
+- raw IP는 공인 인증서 발급 대상이 아니므로 상용 HTTPS 전환은 FQDN DNS가 OCI public IP를 가리킨 뒤 진행합니다.
 
 ## Rate Limit 기준
 

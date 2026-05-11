@@ -139,7 +139,8 @@ if ! contains_pattern "server_tokens off;" ||
   ! contains_pattern "add_header X-Frame-Options DENY always;" ||
   ! contains_pattern "add_header Referrer-Policy no-referrer always;" ||
   ! contains_pattern "add_header Permissions-Policy \"geolocation=(), microphone=(), camera=()\" always;" ||
-  ! contains_pattern "add_header X-Robots-Tag \"noindex, nofollow, noarchive\" always;"; then
+  ! contains_pattern "add_header X-Robots-Tag \"noindex, nofollow, noarchive\" always;" ||
+  ! contains_pattern "add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains\" always;"; then
   echo "[nginx-runtime-gate] rendered config must include bot guard and browser security headers" >&2
   exit 1
 fi

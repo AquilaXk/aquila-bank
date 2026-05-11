@@ -7,7 +7,7 @@
 - host: OCI A1 Flex 4 OCPU / 24GB
 - app dir: `/opt/aquila-bank`
 - Docker network: `aquila-bank-prod`
-- public entrypoint: `aquila-bank-nginx` on host port `80`
+- public entrypoint: `aquila-bank-nginx` on host port `80`, and `443` when `NGINX_ENABLE_HTTPS` resolves to enabled
 - backend slots: `aquila-bank-backend-a`, `aquila-bank-backend-b`
 - frontend slots: `aquila-bank-front-a`, `aquila-bank-front-b`
 
@@ -105,6 +105,14 @@ ops/deploy/oci/check-self-hosted-runner.sh
 - `STAGING_REPLAY_ITERATIONS`, `STAGING_REPLAY_PAGE_LIMIT`, replay threshold 계열
 - `ALERTMANAGER_RECEIVER_*`
 - `STAGING_ROLLBACK_WEBHOOK_URL`, `STAGING_ROLLBACK_TOKEN`
+- `NGINX_ENABLE_HTTPS`: `auto|true|false`, 기본 `auto`
+- `NGINX_SERVER_NAME`: HTTPS 활성 시 실제 FQDN
+- `NGINX_SSL_CERTIFICATE_PATH`, `NGINX_SSL_CERTIFICATE_KEY_PATH`: HTTPS 활성 시 host/container 공통 경로
+- `NGINX_SSL_MOUNT_PATH`: 인증서 root mount 경로, 기본 `/etc/letsencrypt`
+- `NGINX_ACME_CHALLENGE_ROOT`: ACME HTTP challenge webroot, 기본 `/var/www/certbot`
+- `NGINX_HSTS_MAX_AGE_SECONDS`: 기본 `31536000`
+
+`NGINX_ENABLE_HTTPS=auto`는 `NGINX_SERVER_NAME`이 `_`가 아니고 cert/key 파일이 존재할 때만 443을 publish한다. `true`는 cert/key가 없으면 배포 전에 실패한다. raw IP는 공인 TLS 인증서 발급 대상이 아니므로 staging/production HTTPS는 먼저 FQDN DNS를 public IP로 연결한 뒤 활성화한다.
 
 ## Local Manual Run
 
