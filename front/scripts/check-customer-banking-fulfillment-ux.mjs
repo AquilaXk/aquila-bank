@@ -15,6 +15,10 @@ const files = {
   hook: read("src/hooks/use-customer-banking.ts"),
   page: read("src/app/page.tsx"),
   transfer: read("src/components/customer-banking/sections/transfer-section.tsx"),
+  enterprise: read("src/components/customer-banking/sections/enterprise-services-section.tsx"),
+  securityHub: read("src/components/customer-banking/sections/security-hub-section.tsx"),
+  support: read("src/components/customer-banking/sections/support-center-section.tsx"),
+  styles: read("src/styles/customer-banking.css"),
 };
 
 const required = [
@@ -33,6 +37,24 @@ const required = [
   ["fee policy display", files.transfer, "feePolicy"],
   ["limit remaining display", files.transfer, "dailyRemainingMinor"],
   ["otp required display", files.transfer, "otpRequired"],
+  ["bill payment detail", files.enterprise, "공과금 상세"],
+  ["open banking detail", files.enterprise, "오픈뱅킹 상세"],
+  ["deposit product detail", files.enterprise, "예금상품 상세"],
+  ["loan detail", files.enterprise, "대출 상세"],
+  ["fx detail", files.enterprise, "외환 상세"],
+  ["common certificate registration", files.securityHub, "공동인증서 등록"],
+  ["financial certificate registration", files.securityHub, "금융인증서 등록"],
+  ["security media registration", files.securityHub, "보안매체 등록"],
+  ["otp registration", files.securityHub, "OTP 등록"],
+  ["transfer receipt certificate", files.support, "이체확인증"],
+  ["balance certificate", files.support, "잔액증명서"],
+  ["transaction certificate", files.support, "거래내역확인서"],
+  ["support FAQ", files.support, "FAQ"],
+  ["incident intake", files.support, "사고신고 접수"],
+  ["fulfillment detail styles", files.styles, ".fulfillment-detail-grid"],
+  ["registration flow styles", files.styles, ".registration-flow-grid"],
+  ["incident form styles", files.styles, ".incident-form"],
+  ["certificate list styles", files.styles, ".certificate-list"],
 ];
 
 const missing = required.filter(([, content, expected]) => !content.includes(expected));

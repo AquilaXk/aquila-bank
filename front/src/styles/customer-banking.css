@@ -528,6 +528,159 @@ label span {
   padding: 0 12px;
 }
 
+.fulfillment-detail-grid,
+.registration-flow-grid,
+.support-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.fulfillment-detail-card,
+.registration-flow-card,
+.faq-list,
+.incident-form,
+.certificate-list {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  padding: 14px;
+}
+
+.fulfillment-detail-head {
+  display: grid;
+  gap: 6px;
+}
+
+.fulfillment-detail-head span,
+.registration-flow-card span {
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.fulfillment-detail-head strong,
+.registration-flow-card strong {
+  color: #102f55;
+  font-size: 17px;
+}
+
+.fulfillment-detail-head p,
+.registration-flow-card p,
+.faq-list p,
+.certificate-item p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.detail-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.detail-list div {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.detail-list dt {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.detail-list dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.process-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.process-strip li {
+  border: 1px solid #bcd3ef;
+  border-radius: 6px;
+  background: var(--primary-soft);
+  color: #184069;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+  min-height: 36px;
+  padding: 8px;
+  text-align: center;
+}
+
+.check-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.support-detail-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.faq-list details {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.faq-list summary {
+  cursor: pointer;
+  color: #102f55;
+  font-weight: 800;
+}
+
+.incident-form button {
+  width: fit-content;
+}
+
+.certificate-list {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.certificate-list .panel-toolbar {
+  grid-column: 1 / -1;
+}
+
+.certificate-item {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-muted);
+  padding: 12px;
+}
+
+.certificate-item span {
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.certificate-item button {
+  width: fit-content;
+}
+
 .account-grid,
 .split-work {
   display: grid;
@@ -1098,6 +1251,10 @@ label span {
   .enterprise-service-grid,
   .security-hub-grid,
   .support-service-grid,
+  .fulfillment-detail-grid,
+  .registration-flow-grid,
+  .support-detail-grid,
+  .certificate-list,
   .transfer-risk-grid,
   .account-grid,
   .split-work,
@@ -1169,7 +1326,8 @@ label span {
   }
 
   .session-required,
-  .stepper {
+  .stepper,
+  .process-strip {
     grid-template-columns: 1fr;
   }
 
