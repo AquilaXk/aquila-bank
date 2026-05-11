@@ -32,6 +32,8 @@ grep -F 'description: "Cold-labeled range end for k6; default matches the fixtur
 grep -F "docker_context:" "${workflow}" >/dev/null
 grep -F 'SOAK_30M_DOCKER_CONTEXT_INPUT: ${{ inputs.docker_context }}' "${workflow}" >/dev/null
 grep -F "workload_weights:" "${workflow}" >/dev/null
+grep -F 'description: "Weighted-random k6 workload weights; default includes archive-backed cold read paths"' "${workflow}" >/dev/null
+grep -F 'default: "hot_first:30,hot_cursor:20,hot_deep_cursor:10,cold_first:20,cold_cursor:10,cold_deep_cursor:10"' "${workflow}" >/dev/null
 grep -F 'SOAK_30M_WORKLOAD_WEIGHTS_INPUT: ${{ inputs.workload_weights }}' "${workflow}" >/dev/null
 grep -F "30m Soak Live Evidence Contract" "${workflow}" >/dev/null
 grep -F "tools/test/check-transaction-read-30m-soak-live-evidence-gate.sh" "${workflow}" >/dev/null
@@ -66,7 +68,7 @@ grep -F 'K6_DOCKER_CONTEXT_SOURCE="input"' "${workflow}" >/dev/null
 grep -F 'K6_DOCKER_CONTEXT_SOURCE="env"' "${workflow}" >/dev/null
 grep -F 'K6_DOCKER_CONTEXT_SOURCE="default"' "${workflow}" >/dev/null
 grep -F 'K6_WORKLOAD_SHAPE="weighted-random"' "${workflow}" >/dev/null
-grep -F 'K6_WORKLOAD_WEIGHTS="${SOAK_30M_WORKLOAD_WEIGHTS_INPUT:-hot_first:40,hot_cursor:40,hot_deep_cursor:20}"' "${workflow}" >/dev/null
+grep -F 'K6_WORKLOAD_WEIGHTS="${SOAK_30M_WORKLOAD_WEIGHTS_INPUT:-hot_first:30,hot_cursor:20,hot_deep_cursor:10,cold_first:20,cold_cursor:10,cold_deep_cursor:10}"' "${workflow}" >/dev/null
 if grep -F 'K6_RUN_PURPOSE="30m-soak-live-evidence"' "${workflow}" >/dev/null; then
   echo "30m live k6 runner must use an accepted K6_RUN_PURPOSE" >&2
   exit 1
