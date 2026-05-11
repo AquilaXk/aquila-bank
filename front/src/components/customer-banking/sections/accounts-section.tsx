@@ -92,6 +92,57 @@ export function AccountsSection({
         <span>다음 조회 {accountCursor ? "가능" : "없음"}</span>
       </div>
 
+      <div className="account-summary-panel" aria-label="계좌 업무 요약">
+        <div>
+          <span>계좌 업무 요약</span>
+          <strong>{accounts.length}건</strong>
+          <small>보유계좌</small>
+        </div>
+        <div>
+          <span>계좌 상태</span>
+          <strong>{selectedAccount ? selectedAccount.accountStatus : "미선택"}</strong>
+          <small>상세 조회</small>
+        </div>
+        <div>
+          <span>출금가능금액</span>
+          <strong>
+            {selectedAccount
+              ? formatMinorAmount(
+                  selectedAccount.availableBalanceMinor,
+                  selectedAccount.currencyCode,
+                )
+              : "-"}
+          </strong>
+          <small>선택 계좌 기준</small>
+        </div>
+      </div>
+
+      <section className="work-command-panel" aria-label="조회 업무">
+        <div>
+          <strong>조회 업무</strong>
+          <span>계좌 목록을 조회하고 선택 계좌의 잔액과 보류금액을 확인합니다.</span>
+        </div>
+        <div className="button-row compact">
+          <button disabled={isBusy} onClick={onLoadAccounts} type="button">
+            전계좌조회
+          </button>
+          <button
+            disabled={!selectedAccount || isBusy}
+            onClick={() =>
+              selectedAccount
+                ? onLoadAccountDetail(selectedAccount.accountId)
+                : undefined
+            }
+            type="button"
+          >
+            계좌상세조회
+          </button>
+          <button disabled={!accountCursor || isBusy} onClick={onLoadNextAccounts} type="button">
+            다음 조회
+          </button>
+        </div>
+      </section>
+
       <div className="account-grid">
         <section className="table-panel embedded">
           <div className="panel-toolbar">
@@ -150,7 +201,7 @@ export function AccountsSection({
 
         <aside className="detail-panel">
           <div className="form-heading">
-            <strong>계좌상세</strong>
+            <strong>계좌 상태</strong>
             <span>{selectedAccount ? selectedAccount.accountStatus : "미선택"}</span>
           </div>
           {selectedAccount ? (

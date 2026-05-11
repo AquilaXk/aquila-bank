@@ -137,18 +137,19 @@ export function TransactionsSection({
         <span>다음 조회 {slice?.hasNext ? "가능" : "없음"}</span>
       </div>
 
-      <form className="bank-form filter-form" onSubmit={onSearch}>
-        <div className="filter-summary" aria-label="현재 조건">
-          <strong>현재 조건</strong>
-          <span>계좌 {filters.accountId || "미입력"}</span>
-          <span>
-            기간 {filters.from || "-"} ~ {filters.to || "-"}
-          </span>
-          <span>건수 {filters.limit}</span>
-          <span>
-            다음 조회 {slice?.nextCursor ? "준비됨" : "첫 조회"}
-          </span>
-        </div>
+      <div className="transaction-work-grid">
+        <form className="bank-form filter-form" onSubmit={onSearch}>
+          <div className="filter-summary" aria-label="현재 조건">
+            <strong>거래 조건</strong>
+            <span>계좌 {filters.accountId || "미입력"}</span>
+            <span>
+              기간 {filters.from || "-"} ~ {filters.to || "-"}
+            </span>
+            <span>건수 {filters.limit}</span>
+            <span>
+              다음 조회 {slice?.nextCursor ? "준비됨" : "첫 조회"}
+            </span>
+          </div>
         <div className="filter-grid">
           <label>
             <span>계좌 ID</span>
@@ -286,13 +287,13 @@ export function TransactionsSection({
             다음 페이지
           </button>
         </div>
-      </form>
+        </form>
 
-      <div className="split-work">
+        <div className="split-work">
         <section className="table-panel embedded">
           <div className="panel-toolbar">
             <div>
-              <strong>거래내역</strong>
+              <strong>입출금 내역</strong>
               <span>
                 {slice
                   ? `${transactions.length}건 / 다음 조회 ${slice.hasNext ? "가능" : "없음"}`
@@ -360,7 +361,7 @@ export function TransactionsSection({
 
         <aside className="detail-panel">
           <div className="form-heading">
-            <strong>거래상세</strong>
+            <strong>거래 상세정보</strong>
             <span>
               {transactionDetail
                 ? getTransactionStatusLabel(transactionDetail.transactionStatus)
@@ -416,6 +417,7 @@ export function TransactionsSection({
             <p className="rail-copy">거래내역에서 상세 버튼을 선택하세요.</p>
           )}
         </aside>
+        </div>
       </div>
     </section>
   );

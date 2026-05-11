@@ -955,6 +955,64 @@ label span {
   width: fit-content;
 }
 
+.account-summary-panel {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.account-summary-panel > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  border: 1px solid #bcd3ef;
+  border-top: 3px solid var(--primary);
+  border-radius: 3px;
+  background: #fff;
+  padding: 12px;
+}
+
+.account-summary-panel span,
+.account-summary-panel small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.account-summary-panel strong {
+  overflow-wrap: anywhere;
+  color: var(--primary-dark);
+  font-size: 18px;
+}
+
+.work-command-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--primary);
+  background: #fff;
+  padding: 12px 14px;
+}
+
+.work-command-panel > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.work-command-panel strong {
+  color: #102f55;
+}
+
+.work-command-panel span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .account-grid,
 .split-work {
   display: grid;
@@ -1075,6 +1133,12 @@ label span {
 .bank-form > button {
   background: var(--primary);
   color: #fff;
+}
+
+.transaction-work-grid {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
 }
 
 .stepper {
@@ -1597,6 +1661,7 @@ label span {
 
   .summary-grid,
   .bank-home-grid,
+  .account-summary-panel,
   .enterprise-service-grid,
   .security-hub-grid,
   .support-service-grid,
@@ -1607,6 +1672,7 @@ label span {
   .transfer-risk-grid,
   .account-grid,
   .split-work,
+  .work-command-panel,
   .form-grid,
   .filter-grid,
   .notification-status,
