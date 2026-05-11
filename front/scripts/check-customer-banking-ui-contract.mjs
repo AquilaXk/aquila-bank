@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const root = new URL("..", import.meta.url).pathname;
@@ -7,9 +7,15 @@ function read(path) {
   return readFileSync(join(root, path), "utf8");
 }
 
+function readOptional(path) {
+  const filePath = join(root, path);
+  return existsSync(filePath) ? readFileSync(filePath, "utf8") : "";
+}
+
 const files = {
   page: read("src/app/page.tsx"),
   layout: read("src/app/layout.tsx"),
+  manifest: readOptional("src/app/manifest.ts"),
   constants: read("src/lib/customer-banking/constants.ts"),
   transfer: read("src/components/customer-banking/sections/transfer-section.tsx"),
   transactions: read("src/components/customer-banking/sections/transactions-section.tsx"),
@@ -47,6 +53,15 @@ const checks = [
   ["notification live connection label", files.notifications, "실시간 연결 상태"],
   ["notification bulk action label", files.notifications, "선택 일괄 처리"],
   ["filter summary style", files.styles, ".filter-summary"],
+  ["skip link", files.page, "본문 바로가기"],
+  ["work area id", files.page, "bank-work-area"],
+  ["active menu aria current", files.page, "aria-current"],
+  ["open graph metadata", files.layout, "openGraph"],
+  ["viewport theme color", files.layout, "themeColor"],
+  ["manifest file", files.manifest, "Aquila Bank 개인 인터넷뱅킹"],
+  ["manifest public url", files.manifest, "https://bank.aquilaxk.site"],
+  ["mobile small breakpoint", files.styles, "@media (max-width: 480px)"],
+  ["button overflow guard", files.styles, "overflow-wrap: anywhere"],
 ];
 
 const missing = checks.filter(([, content, expected]) => !content.includes(expected));

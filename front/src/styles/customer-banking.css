@@ -56,6 +56,8 @@ button {
   color: var(--text);
   cursor: pointer;
   font-weight: 700;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 button:hover:not(:disabled) {
@@ -89,6 +91,25 @@ label span {
 
 .bank-shell {
   min-width: 1180px;
+}
+
+.skip-link {
+  position: absolute;
+  z-index: 100;
+  top: 8px;
+  left: 8px;
+  transform: translateY(-140%);
+  border: 2px solid var(--primary);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--primary-dark);
+  padding: 8px 12px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.skip-link:focus {
+  transform: translateY(0);
 }
 
 .bank-header {
@@ -1050,5 +1071,34 @@ label span {
   .session-required button {
     grid-row: auto;
     width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .banking-status-bar {
+    gap: 6px 10px;
+  }
+
+  .utility-left {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .primary-nav,
+  .side-menu {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .nav-tab,
+  .side-item,
+  .quick-grid button,
+  .recent-menu-list button {
+    width: 100%;
+  }
+
+  .bank-table th,
+  .bank-table td {
+    padding: 9px 10px;
   }
 }

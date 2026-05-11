@@ -105,6 +105,9 @@ export default function HomePage() {
 
   return (
     <main className="bank-shell">
+      <a className="skip-link" href="#bank-work-area">
+        본문 바로가기
+      </a>
       <header className="bank-header">
         <div className="utility-bar" aria-label="상단 유틸리티">
           <div className="utility-left">
@@ -150,6 +153,7 @@ export default function HomePage() {
           <nav className="primary-nav" aria-label="주요 메뉴">
             {mainMenus.map((item) => (
               <button
+                aria-current={activeSection === item.id ? "page" : undefined}
                 className={activeSection === item.id ? "nav-tab active" : "nav-tab"}
                 key={item.id}
                 onClick={() => setActiveSection(item.id)}
@@ -175,6 +179,7 @@ export default function HomePage() {
           <div className="side-title">개인뱅킹</div>
           {mainMenus.map((item) => (
             <button
+              aria-current={activeSection === item.id ? "page" : undefined}
               className={activeSection === item.id ? "side-item active" : "side-item"}
               key={item.id}
               onClick={() => setActiveSection(item.id)}
@@ -186,7 +191,7 @@ export default function HomePage() {
           ))}
         </aside>
 
-        <section className="work-area" aria-live="polite">
+        <section className="work-area" id="bank-work-area" aria-live="polite">
           <div className={`alert ${alert.type}`}>
             <strong>{alert.type === "error" ? "확인 필요" : "안내"}</strong>
             <span>{alert.text}</span>
