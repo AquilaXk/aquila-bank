@@ -251,13 +251,13 @@ export type NotificationSearchParams = NotificationQueryParams & {
 
 export type NotificationItem = {
   notificationId: number;
-  eventId: number;
+  accountId: number;
   eventType: string;
   title: string;
   message: string;
-  readAt: Nullable<string>;
-  archivedAt: Nullable<string>;
+  read: boolean;
   createdAt: string;
+  readAt: Nullable<string>;
 };
 
 export type NotificationQueryResponse = {
@@ -281,10 +281,9 @@ export type NotificationBulkActionRequest = {
 };
 
 export type NotificationPreferenceItem = {
-  eventType: string;
-  channelType: string;
+  category: string;
+  channel: string;
   enabled: boolean;
-  updatedAt?: Nullable<string>;
 };
 
 export type NotificationPreferenceResponse = {
@@ -293,8 +292,8 @@ export type NotificationPreferenceResponse = {
 
 export type NotificationPreferenceUpdateRequest = {
   items: Array<{
-    eventType: string;
-    channelType: string;
+    category: string;
+    channel: string;
     enabled: boolean;
   }>;
 };

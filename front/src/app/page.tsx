@@ -1,7 +1,7 @@
 "use client";
 
 import type { FormEvent } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ApiClientError,
   ApiConfigurationError,
@@ -20,6 +20,9 @@ import type {
   BackupCodeIssueResponse,
   CustomerSession,
   LoginResponse,
+  NotificationItem,
+  NotificationPreferenceItem,
+  NotificationQueryResponse,
   PasswordRecoveryRequestResult,
   TransactionDetailResponse,
   TransactionItem,
@@ -190,6 +193,31 @@ export default function HomePage() {
   const [transactions, setTransactions] = useState<TransactionItem[]>([]);
   const [transactionDetail, setTransactionDetail] =
     useState<TransactionDetailResponse | null>(null);
+  const [notificationMode, setNotificationMode] = useState<"inbox" | "search">(
+    "inbox",
+  );
+  const [notificationFilters, setNotificationFilters] = useState({
+    limit: "20",
+    cursor: "",
+    readStatus: "ALL",
+    eventType: "",
+    from: toLocalInputValue(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)),
+    to: toLocalInputValue(new Date()),
+  });
+  const [notificationSlice, setNotificationSlice] =
+    useState<NotificationQueryResponse | null>(null);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [selectedNotificationIds, setSelectedNotificationIds] = useState<number[]>(
+    [],
+  );
+  const [unreadCount, setUnreadCount] = useState<number | null>(null);
+  const [preferences, setPreferences] = useState<NotificationPreferenceItem[]>([]);
+  const [sseStatus, setSseStatus] = useState({
+    state: "disconnected",
+    lastEventAt: "",
+    lastEventId: "",
+  });
+  const eventSourceRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
     const storedSession = loadCustomerSession();
@@ -200,6 +228,12 @@ export default function HomePage() {
         text: "저장된 세션을 불러왔습니다.",
       });
     }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      eventSourceRef.current?.close();
+    };
   }, []);
 
   function applyLoginResult(result: LoginResponse): void {
@@ -607,6 +641,167 @@ export default function HomePage() {
     });
   }
 
+  async function handleLoadNotifications(
+    mode = notificationMode,
+    cursor = "",
+    append = false,
+  ) {
+    const currentSession = requireSession();
+    if (!currentSession) {
+      return;
+    }
+    await runAction("알림 조회", async () => {
+      const commonParams = {
+        limit: Number(notificationFilters.limit || 20),
+        cursor,
+      };
+      const result =
+        mode === "search"
+          ? await api.searchNotifications(
+              {
+                ...commonParams,
+                readStatus: notificationFilters.readStatus,
+                eventType: notificationFilters.eventType || undefined,
+                from: toIsoDateTime(notificationFilters.from),
+                to: toIsoDateTime(notificationFilters.to),
+              },
+              currentSession.accessToken,
+            )
+          : await api.getNotifications(commonParams, currentSession.accessToken);
+      setNotificationMode(mode);
+      setNotificationSlice(result);
+      setNotifications((items) => (append ? [...items, ...result.items] : result.items));
+      setNotificationFilters((form) => ({
+        ...form,
+        cursor: result.nextCursor ?? "",
+      }));
+      setSelectedNotificationIds([]);
+      setAlert({ type: "success", text: "알림을 불러왔습니다." });
+    });
+  }
+
+  async function handleLoadUnreadCount() {
+    const currentSession = requireSession();
+    if (!currentSession) {
+      return;
+    }
+    await runAction("미확인 알림 조회", async () => {
+      const result = await api.getUnreadCount(currentSession.accessToken);
+      setUnreadCount(result.unreadCount);
+      setAlert({ type: "success", text: "미확인 알림 수를 불러왔습니다." });
+    });
+  }
+
+  async function handleLoadPreferences() {
+    const currentSession = requireSession();
+    if (!currentSession) {
+      return;
+    }
+    await runAction("알림 설정 조회", async () => {
+      const result = await api.getNotificationPreferences(currentSession.accessToken);
+      setPreferences(result.items);
+      setAlert({ type: "success", text: "알림 설정을 불러왔습니다." });
+    });
+  }
+
+  async function handleUpdatePreferences() {
+    const currentSession = requireSession();
+    if (!currentSession) {
+      return;
+    }
+    await runAction("알림 설정 저장", async () => {
+      await api.updateNotificationPreferences({ items: preferences }, currentSession.accessToken);
+      setAlert({ type: "success", text: "알림 설정을 저장했습니다." });
+    });
+  }
+
+  function toggleNotificationId(notificationId: number): void {
+    setSelectedNotificationIds((items) =>
+      items.includes(notificationId)
+        ? items.filter((item) => item !== notificationId)
+        : [...items, notificationId],
+    );
+  }
+
+  async function handleNotificationBulkAction(
+    action: "read" | "archive" | "delete",
+    notificationId?: number,
+  ) {
+    const currentSession = requireSession();
+    if (!currentSession) {
+      return;
+    }
+    const notificationIds =
+      notificationId === undefined ? selectedNotificationIds : [notificationId];
+    if (notificationIds.length === 0) {
+      setAlert({ type: "error", text: "선택된 알림이 없습니다." });
+      return;
+    }
+    await runAction("알림 처리", async () => {
+      if (action === "read" && notificationId !== undefined) {
+        await api.markNotificationAsRead(notificationId, currentSession.accessToken);
+      } else if (action === "read") {
+        await api.markNotificationsAsRead({ notificationIds }, currentSession.accessToken);
+      } else if (action === "archive") {
+        await api.archiveNotifications({ notificationIds }, currentSession.accessToken);
+      } else {
+        await api.deleteNotifications({ notificationIds }, currentSession.accessToken);
+      }
+      setNotifications((items) =>
+        action === "delete" || action === "archive"
+          ? items.filter((item) => !notificationIds.includes(item.notificationId))
+          : items.map((item) =>
+              notificationIds.includes(item.notificationId)
+                ? { ...item, read: true, readAt: new Date().toISOString() }
+                : item,
+            ),
+      );
+      setSelectedNotificationIds([]);
+      setAlert({ type: "success", text: "알림 처리가 완료되었습니다." });
+    });
+  }
+
+  function handleConnectNotifications() {
+    const currentSession = requireSession();
+    if (!currentSession) {
+      return;
+    }
+    try {
+      eventSourceRef.current?.close();
+      const eventSource = new EventSource(
+        api.streamUrl("/api/v1/notifications/stream", currentSession.accessToken),
+      );
+      eventSourceRef.current = eventSource;
+      setSseStatus({
+        state: "connecting",
+        lastEventAt: "",
+        lastEventId: "",
+      });
+      eventSource.onopen = () => {
+        setSseStatus((status) => ({ ...status, state: "connected" }));
+        setAlert({ type: "success", text: "알림 스트림에 연결되었습니다." });
+      };
+      eventSource.onmessage = (event) => {
+        setSseStatus({
+          state: "connected",
+          lastEventAt: new Date().toISOString(),
+          lastEventId: event.lastEventId || "",
+        });
+      };
+      eventSource.onerror = () => {
+        setSseStatus((status) => ({ ...status, state: "error" }));
+      };
+    } catch (error) {
+      setAlert({ type: "error", text: toErrorMessage(error) });
+    }
+  }
+
+  function handleDisconnectNotifications() {
+    eventSourceRef.current?.close();
+    eventSourceRef.current = null;
+    setSseStatus((status) => ({ ...status, state: "disconnected" }));
+  }
+
   const isBusy = busyLabel !== null;
 
   return (
@@ -759,6 +954,7 @@ export default function HomePage() {
               totpCode={totpCode}
               totpEnrollment={totpEnrollment}
               onBackupChallengeChange={setBackupChallengeForm}
+              onBackupChallenge={handleBackupChallenge}
               onDisableTotp={handleDisableTotp}
               onIssueBackupCodes={handleIssueBackupCodes}
               onLoadSessions={handleLoadSessions}
@@ -781,7 +977,40 @@ export default function HomePage() {
             />
           ) : null}
           {activeSection === "notifications" ? (
-            <BusinessPlaceholder section={activeSection} onMove={setActiveSection} />
+            <NotificationsSection
+              filters={notificationFilters}
+              isBusy={isBusy}
+              mode={notificationMode}
+              notifications={notifications}
+              preferences={preferences}
+              selectedIds={selectedNotificationIds}
+              slice={notificationSlice}
+              sseStatus={sseStatus}
+              unreadCount={unreadCount}
+              onBulkAction={handleNotificationBulkAction}
+              onConnect={handleConnectNotifications}
+              onDisconnect={handleDisconnectNotifications}
+              onFilterChange={setNotificationFilters}
+              onLoadPreferences={handleLoadPreferences}
+              onLoadUnreadCount={handleLoadUnreadCount}
+              onModeChange={setNotificationMode}
+              onNext={() =>
+                notificationSlice?.nextCursor
+                  ? handleLoadNotifications(
+                      notificationMode,
+                      notificationSlice.nextCursor,
+                      true,
+                    )
+                  : undefined
+              }
+              onPreferenceChange={setPreferences}
+              onSearch={(event) => {
+                event.preventDefault();
+                handleLoadNotifications(notificationMode);
+              }}
+              onToggleId={toggleNotificationId}
+              onUpdatePreferences={handleUpdatePreferences}
+            />
           ) : null}
         </section>
 
@@ -1734,60 +1963,340 @@ function ResultPanel({ title, rows }: { title: string; rows: string[][] }) {
   );
 }
 
-function BusinessPlaceholder({
-  section,
-  onMove,
+function NotificationsSection({
+  filters,
+  isBusy,
+  mode,
+  notifications,
+  preferences,
+  selectedIds,
+  slice,
+  sseStatus,
+  unreadCount,
+  onBulkAction,
+  onConnect,
+  onDisconnect,
+  onFilterChange,
+  onLoadPreferences,
+  onLoadUnreadCount,
+  onModeChange,
+  onNext,
+  onPreferenceChange,
+  onSearch,
+  onToggleId,
+  onUpdatePreferences,
 }: {
-  section: MenuSection;
-  onMove: (section: MenuSection) => void;
+  filters: {
+    limit: string;
+    cursor: string;
+    readStatus: string;
+    eventType: string;
+    from: string;
+    to: string;
+  };
+  isBusy: boolean;
+  mode: "inbox" | "search";
+  notifications: NotificationItem[];
+  preferences: NotificationPreferenceItem[];
+  selectedIds: number[];
+  slice: NotificationQueryResponse | null;
+  sseStatus: {
+    state: string;
+    lastEventAt: string;
+    lastEventId: string;
+  };
+  unreadCount: number | null;
+  onBulkAction: (
+    action: "read" | "archive" | "delete",
+    notificationId?: number,
+  ) => void;
+  onConnect: () => void;
+  onDisconnect: () => void;
+  onFilterChange: (value: {
+    limit: string;
+    cursor: string;
+    readStatus: string;
+    eventType: string;
+    from: string;
+    to: string;
+  }) => void;
+  onLoadPreferences: () => void;
+  onLoadUnreadCount: () => void;
+  onModeChange: (mode: "inbox" | "search") => void;
+  onNext: () => void;
+  onPreferenceChange: (value: NotificationPreferenceItem[]) => void;
+  onSearch: (event: FormEvent<HTMLFormElement>) => void;
+  onToggleId: (notificationId: number) => void;
+  onUpdatePreferences: () => void;
 }) {
-  if (section === "accounts" || section === "transfer" || section === "transactions") {
-    return (
-      <section className="task-section">
-        <div className="section-title">
-          <div>
-            <p>{section === "transfer" ? "이체" : "조회"}</p>
-            <h1>
-              {section === "accounts"
-                ? "계좌조회"
-                : section === "transfer"
-                  ? "이체"
-                  : "거래내역 조회"}
-            </h1>
-          </div>
-          <button onClick={() => onMove("security")} type="button">
-            로그인 확인
+  return (
+    <section className="task-section">
+      <div className="section-title">
+        <div>
+          <p>고객센터</p>
+          <h1>알림</h1>
+        </div>
+        <div className="button-row">
+          <button disabled={isBusy} onClick={onLoadUnreadCount} type="button">
+            미확인 조회
+          </button>
+          <button disabled={isBusy} onClick={onConnect} type="button">
+            SSE 연결
+          </button>
+          <button onClick={onDisconnect} type="button">
+            연결 해제
           </button>
         </div>
-        <div className="empty-business">
-          <strong>업무 화면 연결 대기</strong>
-          <span>다음 구현 단위에서 백엔드 공개 API와 연결됩니다.</span>
-        </div>
-      </section>
-    );
-  }
+      </div>
 
-  if (section === "notifications") {
-    return (
-      <section className="task-section">
-        <div className="section-title">
-          <div>
-            <p>고객센터</p>
-            <h1>알림</h1>
+      <div className="notification-status">
+        <div>
+          <span>SSE</span>
+          <strong>{sseStatus.state}</strong>
+        </div>
+        <div>
+          <span>Unread</span>
+          <strong>{unreadCount ?? "-"}</strong>
+        </div>
+        <div>
+          <span>Last Event</span>
+          <strong>{sseStatus.lastEventId || "-"}</strong>
+        </div>
+        <div>
+          <span>수신시각</span>
+          <strong>{formatDateTime(sseStatus.lastEventAt)}</strong>
+        </div>
+      </div>
+
+      <form className="bank-form filter-form" onSubmit={onSearch}>
+        <div className="panel-toolbar inline-toolbar">
+          <div className="tab-switch" role="tablist" aria-label="알림 조회 구분">
+            <button
+              aria-selected={mode === "inbox"}
+              className={mode === "inbox" ? "active" : ""}
+              onClick={() => onModeChange("inbox")}
+              role="tab"
+              type="button"
+            >
+              Inbox
+            </button>
+            <button
+              aria-selected={mode === "search"}
+              className={mode === "search" ? "active" : ""}
+              onClick={() => onModeChange("search")}
+              role="tab"
+              type="button"
+            >
+              Search
+            </button>
           </div>
-          <button onClick={() => onMove("security")} type="button">
-            로그인 확인
-          </button>
+          <div className="button-row compact">
+            <button disabled={isBusy} type="submit">
+              조회
+            </button>
+            <button disabled={!slice?.nextCursor || isBusy} onClick={onNext} type="button">
+              다음
+            </button>
+          </div>
         </div>
-        <div className="empty-business">
-          <strong>알림 화면 연결 대기</strong>
-          <span>다음 구현 단위에서 inbox, 검색, SSE 상태가 연결됩니다.</span>
+        <div className="filter-grid notification-filter">
+          <label>
+            <span>건수</span>
+            <select
+              onChange={(event) =>
+                onFilterChange({ ...filters, limit: event.target.value })
+              }
+              value={filters.limit}
+            >
+              <option value="20">20</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+          </label>
+          <label>
+            <span>읽음상태</span>
+            <select
+              disabled={mode === "inbox"}
+              onChange={(event) =>
+                onFilterChange({ ...filters, readStatus: event.target.value })
+              }
+              value={filters.readStatus}
+            >
+              <option value="ALL">ALL</option>
+              <option value="READ">READ</option>
+              <option value="UNREAD">UNREAD</option>
+            </select>
+          </label>
+          <label>
+            <span>이벤트 유형</span>
+            <input
+              disabled={mode === "inbox"}
+              onChange={(event) =>
+                onFilterChange({ ...filters, eventType: event.target.value })
+              }
+              value={filters.eventType}
+            />
+          </label>
+          <label>
+            <span>시작일시</span>
+            <input
+              disabled={mode === "inbox"}
+              onChange={(event) =>
+                onFilterChange({ ...filters, from: event.target.value })
+              }
+              type="datetime-local"
+              value={filters.from}
+            />
+          </label>
+          <label>
+            <span>종료일시</span>
+            <input
+              disabled={mode === "inbox"}
+              onChange={(event) =>
+                onFilterChange({ ...filters, to: event.target.value })
+              }
+              type="datetime-local"
+              value={filters.to}
+            />
+          </label>
         </div>
-      </section>
-    );
-  }
+      </form>
 
-  return null;
+      <div className="split-work">
+        <section className="table-panel embedded">
+          <div className="panel-toolbar">
+            <div>
+              <strong>알림함</strong>
+              <span>
+                {slice
+                  ? `${notifications.length}건 표시 / next ${slice.hasNext ? "있음" : "없음"}`
+                  : "조회 전"}
+              </span>
+            </div>
+            <div className="button-row compact">
+              <button
+                disabled={selectedIds.length === 0 || isBusy}
+                onClick={() => onBulkAction("read")}
+                type="button"
+              >
+                읽음
+              </button>
+              <button
+                disabled={selectedIds.length === 0 || isBusy}
+                onClick={() => onBulkAction("archive")}
+                type="button"
+              >
+                보관
+              </button>
+              <button
+                disabled={selectedIds.length === 0 || isBusy}
+                onClick={() => onBulkAction("delete")}
+                type="button"
+              >
+                삭제
+              </button>
+            </div>
+          </div>
+          <div className="bank-table-wrap">
+            <table className="bank-table">
+              <caption>알림 목록</caption>
+              <thead>
+                <tr>
+                  <th>선택</th>
+                  <th>상태</th>
+                  <th>유형</th>
+                  <th>제목</th>
+                  <th>수신시각</th>
+                  <th>관리</th>
+                </tr>
+              </thead>
+              <tbody>
+                {notifications.length === 0 ? (
+                  <tr>
+                    <td colSpan={6}>조회된 알림이 없습니다.</td>
+                  </tr>
+                ) : (
+                  notifications.map((item) => (
+                    <tr key={item.notificationId}>
+                      <td>
+                        <input
+                          aria-label={`${item.notificationId} 선택`}
+                          checked={selectedIds.includes(item.notificationId)}
+                          onChange={() => onToggleId(item.notificationId)}
+                          type="checkbox"
+                        />
+                      </td>
+                      <td>
+                        <span className={item.read ? "status-badge" : "status-badge unread"}>
+                          {item.read ? "READ" : "UNREAD"}
+                        </span>
+                      </td>
+                      <td>{item.eventType}</td>
+                      <td>
+                        <strong>{item.title}</strong>
+                        <p className="table-message">{item.message}</p>
+                      </td>
+                      <td>{formatDateTime(item.createdAt)}</td>
+                      <td>
+                        <button
+                          disabled={item.read || isBusy}
+                          onClick={() => onBulkAction("read", item.notificationId)}
+                          type="button"
+                        >
+                          읽음
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <aside className="detail-panel">
+          <div className="form-heading">
+            <strong>알림 수신 설정</strong>
+            <span>{preferences.length}건</span>
+          </div>
+          <div className="button-row compact preference-actions">
+            <button disabled={isBusy} onClick={onLoadPreferences} type="button">
+              설정 조회
+            </button>
+            <button disabled={preferences.length === 0 || isBusy} onClick={onUpdatePreferences} type="button">
+              저장
+            </button>
+          </div>
+          {preferences.length === 0 ? (
+            <p className="rail-copy">알림 설정을 조회하세요.</p>
+          ) : (
+            <div className="preference-list">
+              {preferences.map((item, index) => (
+                <label className="preference-row" key={`${item.category}-${item.channel}`}>
+                  <input
+                    checked={item.enabled}
+                    onChange={(event) => {
+                      const nextItems = [...preferences];
+                      nextItems[index] = {
+                        ...item,
+                        enabled: event.target.checked,
+                      };
+                      onPreferenceChange(nextItems);
+                    }}
+                    type="checkbox"
+                  />
+                  <span>
+                    <strong>{item.category}</strong>
+                    <small>{item.channel}</small>
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+        </aside>
+      </div>
+    </section>
+  );
 }
 
 function SecuritySection(props: {
@@ -1824,6 +2333,7 @@ function SecuritySection(props: {
     backupCode: string;
     rememberDevice: boolean;
   }) => void;
+  onBackupChallenge: (event: FormEvent<HTMLFormElement>) => void;
   onDisableTotp: () => void;
   onIssueBackupCodes: () => void;
   onLoadSessions: () => void;
