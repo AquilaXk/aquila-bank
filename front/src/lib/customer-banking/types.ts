@@ -1,3 +1,5 @@
+import type { CustomerApplicationResponse, CustomerApplicationType } from "@/lib/api/types";
+
 export type MenuSection =
   | "dashboard"
   | "accounts"
@@ -13,3 +15,17 @@ export type AlertMessage = {
   type: "info" | "success" | "error";
   text: string;
 };
+
+export type CustomerApplicationSubmitInput = {
+  applicationType: CustomerApplicationType;
+  accountId?: string;
+  totpCode: string;
+  payload: Record<string, unknown>;
+  successMessage: string;
+};
+
+export type CustomerApplicationSubmitHandler = (
+  input: CustomerApplicationSubmitInput,
+) => Promise<boolean>;
+
+export type CustomerApplicationLatestResult = CustomerApplicationResponse | null;

@@ -1,4 +1,11 @@
+"use client";
+
+import { useState } from "react";
 import { supportCenterItems } from "@/lib/customer-banking/constants";
+import type {
+  CustomerApplicationLatestResult,
+  CustomerApplicationSubmitHandler,
+} from "@/lib/customer-banking/types";
 
 const faqItems = [
   {
@@ -33,7 +40,47 @@ const certificateItems = [
   },
 ];
 
-export function SupportCenterSection() {
+type SupportCenterSectionProps = {
+  applicationResult: CustomerApplicationLatestResult;
+  isBusy: boolean;
+  onSubmitCustomerApplication: CustomerApplicationSubmitHandler;
+};
+
+export function SupportCenterSection({
+  applicationResult,
+  isBusy,
+  onSubmitCustomerApplication,
+}: SupportCenterSectionProps) {
+  const [incidentForm, setIncidentForm] = useState({
+    incidentType: "security-media",
+    accountId: "",
+    target: "",
+    contact: "",
+    totpCode: "",
+  });
+  const [certificateForms, setCertificateForms] = useState(() =>
+    Object.fromEntries(
+      certificateItems.map((item) => [
+        item.title,
+        {
+          accountId: "",
+          purpose: "제출용",
+          totpCode: "",
+        },
+      ]),
+    ),
+  );
+
+  function updateCertificateForm(title: string, key: string, value: string) {
+    setCertificateForms((items) => ({
+      ...items,
+      [title]: {
+        ...items[title],
+        [key]: value,
+      },
+    }));
+  }
+
   return (
     <section className="task-section">
       <div className="section-title">
@@ -117,7 +164,12 @@ export function SupportCenterSection() {
           <div className="form-grid">
             <label>
               <span>신고 유형</span>
-              <select defaultValue="security-media">
+              <select
+                value={incidentForm.incidentType}
+                onChange={(event) =>
+                  setIncidentForm((form) => ({ ...form, incidentType: event.target.value }))
+                }
+              >
                 <option value="security-media">보안매체 분실</option>
                 <option value="certificate">인증서 도용 의심</option>
                 <option value="transfer">미확인 이체</option>
@@ -126,18 +178,62 @@ export function SupportCenterSection() {
             </label>
             <label>
               <span>대상 계좌/매체</span>
-              <input defaultValue="선택 대기" readOnly />
+              <input
+                value={incidentForm.target}
+                onChange={(event) =>
+                  setIncidentForm((form) => ({ ...form, target: event.target.value }))
+                }
+              />
             </label>
             <label>
               <span>긴급 연락처</span>
-              <input defaultValue="본인 인증 후 표시" readOnly />
+              <input
+                value={incidentForm.contact}
+                onChange={(event) =>
+                  setIncidentForm((form) => ({ ...form, contact: event.target.value }))
+                }
+              />
             </label>
             <label>
-              <span>처리 상태</span>
-              <input defaultValue="접수 전 확인" readOnly />
+              <span>계좌 ID</span>
+              <input
+                inputMode="numeric"
+                value={incidentForm.accountId}
+                onChange={(event) =>
+                  setIncidentForm((form) => ({ ...form, accountId: event.target.value }))
+                }
+              />
+            </label>
+            <label>
+              <span>OTP</span>
+              <input
+                inputMode="numeric"
+                value={incidentForm.totpCode}
+                onChange={(event) =>
+                  setIncidentForm((form) => ({ ...form, totpCode: event.target.value }))
+                }
+              />
             </label>
           </div>
-          <button type="button">신고 접수 준비</button>
+          <button
+            type="button"
+            disabled={isBusy}
+            onClick={() =>
+              void onSubmitCustomerApplication({
+                applicationType: "INCIDENT_REPORT",
+                accountId: incidentForm.accountId,
+                totpCode: incidentForm.totpCode,
+                payload: {
+                  incidentType: incidentForm.incidentType,
+                  target: incidentForm.target,
+                  contact: incidentForm.contact,
+                },
+                successMessage: "사고신고가 접수되었습니다.",
+              })
+            }
+          >
+            신고 접수
+          </button>
         </article>
 
         <article className="certificate-list">
@@ -152,11 +248,65 @@ export function SupportCenterSection() {
               <strong>{item.title}</strong>
               <p>{item.description}</p>
               <span>{item.scope}</span>
-              <button type="button">발급 화면 보기</button>
+              <div className="form-grid compact">
+                <label>
+                  <span>계좌 ID</span>
+                  <input
+                    inputMode="numeric"
+                    value={certificateForms[item.title].accountId}
+                    onChange={(event) =>
+                      updateCertificateForm(item.title, "accountId", event.target.value)
+                    }
+                  />
+                </label>
+                <label>
+                  <span>발급 목적</span>
+                  <input
+                    value={certificateForms[item.title].purpose}
+                    onChange={(event) =>
+                      updateCertificateForm(item.title, "purpose", event.target.value)
+                    }
+                  />
+                </label>
+                <label>
+                  <span>OTP</span>
+                  <input
+                    inputMode="numeric"
+                    value={certificateForms[item.title].totpCode}
+                    onChange={(event) =>
+                      updateCertificateForm(item.title, "totpCode", event.target.value)
+                    }
+                  />
+                </label>
+              </div>
+              <button
+                type="button"
+                disabled={isBusy}
+                onClick={() =>
+                  void onSubmitCustomerApplication({
+                    applicationType: "CERTIFICATE_ISSUANCE",
+                    accountId: certificateForms[item.title].accountId,
+                    totpCode: certificateForms[item.title].totpCode,
+                    payload: {
+                      certificateName: item.title,
+                      purpose: certificateForms[item.title].purpose,
+                      scope: item.scope,
+                    },
+                    successMessage: `${item.title} 발급이 접수되었습니다.`,
+                  })
+                }
+              >
+                발급 접수
+              </button>
             </div>
           ))}
         </article>
       </section>
+      {applicationResult ? (
+        <p className="application-result-line">
+          최근 고객센터 접수 {applicationResult.applicationReference} · {applicationResult.status}
+        </p>
+      ) : null}
     </section>
   );
 }

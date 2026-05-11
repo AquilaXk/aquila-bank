@@ -1,0 +1,126 @@
+package com.aquilabank.domain.customerapplication.usecase;
+
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import com.aquilabank.domain.customerapplication.model.CustomerApplicationStatus;
+import com.aquilabank.domain.customerapplication.model.CustomerApplicationSubmission;
+import com.aquilabank.domain.customerapplication.model.CustomerApplicationSubmitCommand;
+import com.aquilabank.domain.customerapplication.model.CustomerApplicationType;
+import com.aquilabank.domain.customerapplication.port.CustomerApplicationReferencePort;
+import com.aquilabank.domain.customerapplication.port.CustomerApplicationSecurityVerificationPort;
+import com.aquilabank.domain.customerapplication.port.CustomerApplicationWritePort;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.List;
+import java.util.Map;
+import org.junit.jupiter.api.Test;
+
+class CustomerApplicationServiceTest {
+
+  private final CustomerApplicationWritePort writePort = mock(CustomerApplicationWritePort.class);
+  private final CustomerApplicationSecurityVerificationPort securityVerificationPort =
+      mock(CustomerApplicationSecurityVerificationPort.class);
+  private final CustomerApplicationReferencePort referencePort =
+      mock(CustomerApplicationReferencePort.class);
+  private final Clock clock = Clock.fixed(Instant.parse("2026-05-11T03:00:00Z"), ZoneOffset.UTC);
+  private final CustomerApplicationService service =
+      new CustomerApplicationService(writePort, securityVerificationPort, referencePort, clock);
+
+  @Test
+  void verifiesTotpAndSubmitsCustomerApplication() {
+    when(referencePort.issueReference(CustomerApplicationType.BILL_PAYMENT))
+        .thenReturn("CSA-20260511-001");
+    when(writePort.submit(argThat(command -> "CSA-20260511-001".equals(command.reference()))))
+        .thenReturn(submission());
+
+    service.submit(
+        new CustomerApplicationSubmitCommand(
+            7L,
+            101L,
+            CustomerApplicationType.BILL_PAYMENT,
+            "bill-001",
+            "123456",
+            Map.of("billerCode", "GIRO", "paymentNumber", "1234567890")));
+
+    verify(securityVerificationPort).verifyTotp(7L, "123456");
+    verify(writePort)
+        .submit(
+            argThat(
+                command ->
+                    command.userId() == 7L
+                        && Long.valueOf(101L).equals(command.accountId())
+                        && command.applicationType() == CustomerApplicationType.BILL_PAYMENT
+                        && command.status() == CustomerApplicationStatus.SUBMITTED
+                        && command.mfaVerified()
+                        && command.mfaVerifiedAt().equals(Instant.parse("2026-05-11T03:00:00Z"))
+                        && command.requestFingerprint().length() == 64));
+  }
+
+  @Test
+  void rejectsHighRiskApplicationWithoutTotpCode() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            service.submit(
+                new CustomerApplicationSubmitCommand(
+                    7L,
+                    101L,
+                    CustomerApplicationType.BILL_PAYMENT,
+                    "bill-001",
+                    "",
+                    Map.of("billerCode", "GIRO"))));
+  }
+
+  @Test
+  void fingerprintsNestedListPayloadDeterministically() {
+    when(referencePort.issueReference(CustomerApplicationType.OPEN_BANKING_CONNECTION))
+        .thenReturn("CSA-20260511-002");
+    when(writePort.submit(argThat(command -> "CSA-20260511-002".equals(command.reference()))))
+        .thenReturn(
+            new CustomerApplicationSubmission(
+                "CSA-20260511-002",
+                7L,
+                null,
+                CustomerApplicationType.OPEN_BANKING_CONNECTION,
+                CustomerApplicationStatus.SUBMITTED,
+                true,
+                Instant.parse("2026-05-11T03:00:00Z"),
+                Instant.parse("2026-05-11T03:00:00Z"),
+                Instant.parse("2026-05-11T03:00:00Z")));
+
+    service.submit(
+        new CustomerApplicationSubmitCommand(
+            7L,
+            null,
+            CustomerApplicationType.OPEN_BANKING_CONNECTION,
+            "open-001",
+            "123456",
+            Map.of("banks", List.of("088", "020"))));
+
+    verify(writePort)
+        .submit(
+            argThat(
+                command ->
+                    command.requestFingerprint().length() == 64
+                        && command.payload().containsKey("banks")));
+  }
+
+  private static CustomerApplicationSubmission submission() {
+    Instant now = Instant.parse("2026-05-11T03:00:00Z");
+    return new CustomerApplicationSubmission(
+        "CSA-20260511-001",
+        7L,
+        101L,
+        CustomerApplicationType.BILL_PAYMENT,
+        CustomerApplicationStatus.SUBMITTED,
+        true,
+        now,
+        now,
+        now);
+  }
+}

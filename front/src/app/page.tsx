@@ -46,6 +46,7 @@ export default function HomePage() {
     transferPreview,
     reversalForm,
     reversalResult,
+    customerApplicationResult,
     transactionMode,
     transactionFilters,
     transactionSlice,
@@ -79,6 +80,7 @@ export default function HomePage() {
     handleTransfer,
     handlePreviewTransfer,
     handleReversal,
+    handleSubmitCustomerApplication,
     handleSearchTransactions,
     handleLoadTransactionDetail,
     handleLoadNotifications,
@@ -330,10 +332,26 @@ export default function HomePage() {
               onVerifyTotpEnrollment={handleVerifyTotpEnrollment}
             />
           ) : null}
-          {activeSection === "securityHub" ? <SecurityHubSection /> : null}
-          {activeSection === "supportCenter" ? <SupportCenterSection /> : null}
+          {activeSection === "securityHub" ? (
+            <SecurityHubSection
+              applicationResult={customerApplicationResult}
+              isBusy={isBusy}
+              onSubmitCustomerApplication={handleSubmitCustomerApplication}
+            />
+          ) : null}
+          {activeSection === "supportCenter" ? (
+            <SupportCenterSection
+              applicationResult={customerApplicationResult}
+              isBusy={isBusy}
+              onSubmitCustomerApplication={handleSubmitCustomerApplication}
+            />
+          ) : null}
           {activeSection === "enterpriseServices" ? (
-            <EnterpriseServicesSection />
+            <EnterpriseServicesSection
+              applicationResult={customerApplicationResult}
+              isBusy={isBusy}
+              onSubmitCustomerApplication={handleSubmitCustomerApplication}
+            />
           ) : null}
           {activeSection === "notifications" ? (
             <NotificationsSection

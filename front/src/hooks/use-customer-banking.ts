@@ -2,9 +2,9 @@ import type { FormEvent } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AquilaBankApiClient } from '@/lib/api/client';
 import { clearCustomerSession, toCustomerSession } from '@/lib/api/session';
-import type { AccountItem, AccountSummaryResponse, AuthSessionItem, BackupCodeIssueResponse, CustomerSession, LoginResponse, NotificationItem, NotificationPreferenceItem, NotificationQueryResponse, PasswordRecoveryRequestResult, TransactionDetailResponse, TransactionItem, TransactionQueryResponse, TotpEnrollmentStartResponse, TransferPreviewResponse, TransferResponse, TransferReversalResponse } from '@/lib/api/types';
+import type { AccountItem, AccountSummaryResponse, AuthSessionItem, BackupCodeIssueResponse, CustomerApplicationResponse, CustomerSession, LoginResponse, NotificationItem, NotificationPreferenceItem, NotificationQueryResponse, PasswordRecoveryRequestResult, TransactionDetailResponse, TransactionItem, TransactionQueryResponse, TotpEnrollmentStartResponse, TransferPreviewResponse, TransferResponse, TransferReversalResponse } from '@/lib/api/types';
 import { formatMinorAmount, toErrorMessage, toIsoDateTime, toLocalInputValue, toOptionalNumber } from '@/lib/customer-banking/format';
-import type { AlertMessage, MenuSection } from '@/lib/customer-banking/types';
+import type { AlertMessage, CustomerApplicationSubmitInput, MenuSection } from '@/lib/customer-banking/types';
 
 export function useCustomerBanking() {
   const api = useMemo(() => new AquilaBankApiClient(), []);
@@ -69,6 +69,8 @@ export function useCustomerBanking() {
   });
   const [reversalResult, setReversalResult] =
     useState<TransferReversalResponse | null>(null);
+  const [customerApplicationResult, setCustomerApplicationResult] =
+    useState<CustomerApplicationResponse | null>(null);
   const [transactionMode, setTransactionMode] = useState<"active" | "archive">(
     "active",
   );
@@ -472,6 +474,27 @@ export function useCustomerBanking() {
     });
   }
 
+  async function handleSubmitCustomerApplication(
+    input: CustomerApplicationSubmitInput,
+  ): Promise<boolean> {
+    if (!requireSession()) {
+      return false;
+    }
+    return runAction("업무 신청 접수", async () => {
+      const result = await api.submitCustomerApplication({
+        applicationType: input.applicationType,
+        accountId: toOptionalNumber(input.accountId ?? ""),
+        totpCode: input.totpCode,
+        payload: input.payload,
+      });
+      setCustomerApplicationResult(result);
+      setAlert({
+        type: "success",
+        text: `${input.successMessage} 접수번호 ${result.applicationReference}`,
+      });
+    });
+  }
+
   async function handleSearchTransactions(
     mode = transactionMode,
     cursor = "",
@@ -712,6 +735,7 @@ export function useCustomerBanking() {
     transferPreview,
     reversalForm,
     reversalResult,
+    customerApplicationResult,
     transactionMode,
     transactionFilters,
     transactionSlice,
@@ -745,6 +769,7 @@ export function useCustomerBanking() {
     handleTransfer,
     handlePreviewTransfer,
     handleReversal,
+    handleSubmitCustomerApplication,
     handleSearchTransactions,
     handleLoadTransactionDetail,
     handleLoadNotifications,
