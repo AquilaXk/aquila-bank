@@ -56,6 +56,8 @@ button {
   color: var(--text);
   cursor: pointer;
   font-weight: 700;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 button:hover:not(:disabled) {
@@ -89,6 +91,25 @@ label span {
 
 .bank-shell {
   min-width: 1180px;
+}
+
+.skip-link {
+  position: absolute;
+  z-index: 100;
+  top: 8px;
+  left: 8px;
+  transform: translateY(-140%);
+  border: 2px solid var(--primary);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--primary-dark);
+  padding: 8px 12px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.skip-link:focus {
+  transform: translateY(0);
 }
 
 .bank-header {
@@ -131,6 +152,14 @@ label span {
 
 .utility-link.active {
   color: var(--primary);
+}
+
+.service-map {
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: #f8fafc;
+  padding: 0 10px;
+  color: #344054;
 }
 
 .search-field {
@@ -203,6 +232,24 @@ label span {
 .nav-tab.active {
   border-bottom: 3px solid var(--primary);
   color: var(--primary);
+}
+
+.banking-status-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  width: min(1440px, calc(100% - 48px));
+  min-height: 36px;
+  margin: 0 auto;
+  padding: 8px 0 10px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.banking-status-bar strong {
+  color: var(--success);
 }
 
 .bank-layout {
@@ -321,6 +368,13 @@ label span {
   font-size: 12px;
 }
 
+.bulk-label {
+  align-self: center;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .alert {
   display: flex;
   gap: 10px;
@@ -357,6 +411,30 @@ label span {
   color: var(--primary-dark);
   padding: 9px 12px;
   font-weight: 800;
+}
+
+.session-required {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 12px;
+  align-items: center;
+  border: 1px solid #f7c580;
+  border-radius: 4px;
+  background: #fff7ed;
+  padding: 12px;
+}
+
+.session-required strong {
+  color: #9a3412;
+}
+
+.session-required span {
+  color: #62410f;
+}
+
+.session-required button {
+  grid-row: span 2;
+  padding: 0 12px;
 }
 
 .summary-grid {
@@ -509,6 +587,49 @@ label span {
 .bank-form > button {
   background: var(--primary);
   color: #fff;
+}
+
+.stepper {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stepper li {
+  min-height: 30px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--muted);
+  padding: 6px 8px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.stepper li.active {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #fff;
+}
+
+.confirm-box,
+.filter-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  border: 1px solid #bcd3ef;
+  border-radius: 4px;
+  background: var(--primary-soft);
+  padding: 10px 12px;
+}
+
+.confirm-box strong,
+.filter-summary strong {
+  color: var(--primary-dark);
 }
 
 .filter-form {
@@ -826,6 +947,21 @@ label span {
   font-size: 12px;
 }
 
+.recent-menu-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.recent-menu-list button {
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 34px;
+  padding: 0 10px;
+  text-align: left;
+  font-size: 12px;
+}
+
 .notice-list ul {
   margin: 12px 0 0;
   padding-left: 18px;
@@ -871,5 +1007,98 @@ label span {
   .utility-bar,
   .primary-nav {
     flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 760px) {
+  .utility-bar,
+  .brand-row,
+  .banking-status-bar,
+  .bank-layout {
+    width: calc(100% - 20px);
+  }
+
+  .utility-bar,
+  .brand-row {
+    align-items: flex-start;
+  }
+
+  .utility-left,
+  .utility-right,
+  .primary-nav {
+    width: 100%;
+  }
+
+  .utility-right,
+  .search-field {
+    grid-template-columns: 1fr;
+  }
+
+  .search-field {
+    width: 100%;
+  }
+
+  .side-menu {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .side-item {
+    min-height: 50px;
+  }
+
+  .nav-tab {
+    min-width: 0;
+    flex: 1 1 30%;
+  }
+
+  .task-section,
+  .rail-panel {
+    padding: 12px;
+  }
+
+  .section-title,
+  .panel-toolbar,
+  .rail-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .session-required,
+  .stepper {
+    grid-template-columns: 1fr;
+  }
+
+  .session-required button {
+    grid-row: auto;
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .banking-status-bar {
+    gap: 6px 10px;
+  }
+
+  .utility-left {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .primary-nav,
+  .side-menu {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .nav-tab,
+  .side-item,
+  .quick-grid button,
+  .recent-menu-list button {
+    width: 100%;
+  }
+
+  .bank-table th,
+  .bank-table td {
+    padding: 9px 10px;
   }
 }

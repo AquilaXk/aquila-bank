@@ -147,12 +147,14 @@ export function useCustomerBanking() {
     });
   }
 
-  async function runAction(label: string, action: () => Promise<void>): Promise<void> {
+  async function runAction(label: string, action: () => Promise<void>): Promise<boolean> {
     setBusyLabel(label);
     try {
       await action();
+      return true;
     } catch (error) {
       setAlert({ type: "error", text: toErrorMessage(error) });
+      return false;
     } finally {
       setBusyLabel(null);
     }
@@ -397,9 +399,9 @@ export function useCustomerBanking() {
   async function handleTransfer(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!requireSession()) {
-      return;
+      return false;
     }
-    await runAction("이체", async () => {
+    return runAction("이체", async () => {
       const result = await api.transfer(
         {
           sourceAccountId: Number(transferForm.sourceAccountId),
@@ -420,9 +422,9 @@ export function useCustomerBanking() {
   async function handleReversal(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!requireSession()) {
-      return;
+      return false;
     }
-    await runAction("이체 취소", async () => {
+    return runAction("이체 취소", async () => {
       const result = await api.reverseTransfer(
         reversalForm.transactionReference,
         {

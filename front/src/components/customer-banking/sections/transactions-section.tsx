@@ -81,6 +81,17 @@ export function TransactionsSection({
       </div>
 
       <form className="bank-form filter-form" onSubmit={onSearch}>
+        <div className="filter-summary" aria-label="현재 조건">
+          <strong>현재 조건</strong>
+          <span>계좌 {filters.accountId || "미입력"}</span>
+          <span>
+            기간 {filters.from || "-"} ~ {filters.to || "-"}
+          </span>
+          <span>건수 {filters.limit}</span>
+          <span>
+            cursor pagination {slice?.nextCursor ? "다음 페이지 준비" : "첫 페이지"}
+          </span>
+        </div>
         <div className="filter-grid">
           <label>
             <span>계좌 ID</span>
@@ -215,7 +226,7 @@ export function TransactionsSection({
             조회
           </button>
           <button disabled={!slice?.nextCursor || isBusy} onClick={onNext} type="button">
-            다음 거래
+            다음 페이지
           </button>
         </div>
       </form>

@@ -8,7 +8,12 @@ import { SecuritySection } from "@/components/customer-banking/sections/security
 import { TransactionsSection } from "@/components/customer-banking/sections/transactions-section";
 import { TransferSection } from "@/components/customer-banking/sections/transfer-section";
 import { useCustomerBanking } from "@/hooks/use-customer-banking";
-import { mainMenus, quickMenus } from "@/lib/customer-banking/constants";
+import {
+  mainMenus,
+  noticeItems,
+  quickMenus,
+  recentMenus,
+} from "@/lib/customer-banking/constants";
 import { formatDateTime } from "@/lib/customer-banking/format";
 
 export default function HomePage() {
@@ -95,9 +100,14 @@ export default function HomePage() {
     setNotificationFilters,
     setPreferences,
   } = useCustomerBanking();
+  const sessionRequired =
+    !session && activeSection !== "dashboard" && activeSection !== "security";
 
   return (
     <main className="bank-shell">
+      <a className="skip-link" href="#bank-work-area">
+        본문 바로가기
+      </a>
       <header className="bank-header">
         <div className="utility-bar" aria-label="상단 유틸리티">
           <div className="utility-left">
@@ -115,9 +125,12 @@ export default function HomePage() {
             </button>
           </div>
           <div className="utility-right">
+            <button className="utility-link service-map" type="button">
+              전체서비스
+            </button>
             <label className="search-field">
-              <span>검색</span>
-              <input aria-label="통합 검색" placeholder="업무명 또는 메뉴 검색" />
+              <span>통합검색</span>
+              <input aria-label="통합검색" placeholder="업무명 또는 메뉴 검색" />
             </label>
           </div>
         </div>
@@ -140,6 +153,7 @@ export default function HomePage() {
           <nav className="primary-nav" aria-label="주요 메뉴">
             {mainMenus.map((item) => (
               <button
+                aria-current={activeSection === item.id ? "page" : undefined}
                 className={activeSection === item.id ? "nav-tab active" : "nav-tab"}
                 key={item.id}
                 onClick={() => setActiveSection(item.id)}
@@ -150,6 +164,14 @@ export default function HomePage() {
             ))}
           </nav>
         </div>
+        <div className="banking-status-bar" aria-label="뱅킹 이용 상태">
+          <span>
+            보안등급 <strong>정상</strong>
+          </span>
+          <span>HTTPS 보안접속</span>
+          <span>평일 09:00-18:00 상담</span>
+          <span>서비스 상태 정상</span>
+        </div>
       </header>
 
       <div className="bank-layout">
@@ -157,6 +179,7 @@ export default function HomePage() {
           <div className="side-title">개인뱅킹</div>
           {mainMenus.map((item) => (
             <button
+              aria-current={activeSection === item.id ? "page" : undefined}
               className={activeSection === item.id ? "side-item active" : "side-item"}
               key={item.id}
               onClick={() => setActiveSection(item.id)}
@@ -168,7 +191,7 @@ export default function HomePage() {
           ))}
         </aside>
 
-        <section className="work-area" aria-live="polite">
+        <section className="work-area" id="bank-work-area" aria-live="polite">
           <div className={`alert ${alert.type}`}>
             <strong>{alert.type === "error" ? "확인 필요" : "안내"}</strong>
             <span>{alert.text}</span>
@@ -176,6 +199,15 @@ export default function HomePage() {
           {busyLabel ? (
             <div className="busy-strip" role="status">
               {busyLabel} 처리 중
+            </div>
+          ) : null}
+          {sessionRequired ? (
+            <div className="session-required" role="status">
+              <strong>권한 만료 또는 미로그인</strong>
+              <span>로그인 필요 업무입니다. 인증센터에서 로그인 후 조회와 이체를 진행하세요.</span>
+              <button onClick={() => setActiveSection("security")} type="button">
+                인증센터로 이동
+              </button>
             </div>
           ) : null}
           {activeSection === "dashboard" ? (
@@ -354,8 +386,29 @@ export default function HomePage() {
             </div>
             <div className="quick-grid">
               {quickMenus.map((item) => (
-                <button key={item} type="button">
-                  {item}
+                <button
+                  key={item.label}
+                  onClick={() => setActiveSection(item.section)}
+                  type="button"
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="rail-panel recent-list">
+            <div className="rail-heading">
+              <span>최근 이용 메뉴</span>
+            </div>
+            <div className="recent-menu-list">
+              {recentMenus.map((item) => (
+                <button
+                  key={item.label}
+                  onClick={() => setActiveSection(item.section)}
+                  type="button"
+                >
+                  {item.label}
                 </button>
               ))}
             </div>
@@ -363,12 +416,12 @@ export default function HomePage() {
 
           <section className="rail-panel notice-list">
             <div className="rail-heading">
-              <span>보안안내</span>
+              <span>공지사항</span>
             </div>
             <ul>
-              <li>OTP 전체 번호 요구 시 즉시 거래를 중단하세요.</li>
-              <li>타 계좌 거래 조회는 권한 확인 후 차단됩니다.</li>
-              <li>대량 거래 조회는 기간과 계좌 기준으로 제한됩니다.</li>
+              {noticeItems.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
             </ul>
           </section>
         </aside>
