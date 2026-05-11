@@ -14,6 +14,8 @@ Environment:
   OCI_EVIDENCE_EXECUTION_MAX_P999_MS             default 500
   OCI_EVIDENCE_EXECUTION_MAX_POOL_PENDING        default 0
   OCI_EVIDENCE_EXECUTION_MAX_POSTGRES_TEMP_FILE_DELTA default 0
+  OCI_EVIDENCE_EXECUTION_MIN_SOURCE_IPS          default 1
+  OCI_EVIDENCE_EXECUTION_MIN_MIXED_WRITE_ACCEPTED_RATIO default 0.80
   OCI_EVIDENCE_EXECUTION_MIXED_MIN_DURATION_MIN  default 30
   OCI_EVIDENCE_EXECUTION_P999_MIN_DURATION_MIN   default 30
   OCI_EVIDENCE_EXECUTION_HIKARI_MIN_DURATION_MIN default 30
@@ -47,6 +49,8 @@ max_edge_429_rate="${OCI_EVIDENCE_EXECUTION_MAX_EDGE_429_RATE:-0.10}"
 max_p999_ms="${OCI_EVIDENCE_EXECUTION_MAX_P999_MS:-500}"
 max_pool_pending="${OCI_EVIDENCE_EXECUTION_MAX_POOL_PENDING:-0}"
 max_postgres_temp_file_delta="${OCI_EVIDENCE_EXECUTION_MAX_POSTGRES_TEMP_FILE_DELTA:-0}"
+min_source_ips="${OCI_EVIDENCE_EXECUTION_MIN_SOURCE_IPS:-1}"
+min_mixed_write_accepted_ratio="${OCI_EVIDENCE_EXECUTION_MIN_MIXED_WRITE_ACCEPTED_RATIO:-0.80}"
 mixed_min_duration_min="${OCI_EVIDENCE_EXECUTION_MIXED_MIN_DURATION_MIN:-30}"
 p999_min_duration_min="${OCI_EVIDENCE_EXECUTION_P999_MIN_DURATION_MIN:-30}"
 hikari_min_duration_min="${OCI_EVIDENCE_EXECUTION_HIKARI_MIN_DURATION_MIN:-30}"
@@ -124,6 +128,8 @@ print_plan() {
   echo "[transaction-read-oci-evidence-execution] max_p999_ms=${max_p999_ms}"
   echo "[transaction-read-oci-evidence-execution] max_pool_pending=${max_pool_pending}"
   echo "[transaction-read-oci-evidence-execution] max_postgres_temp_file_delta=${max_postgres_temp_file_delta}"
+  echo "[transaction-read-oci-evidence-execution] min_source_ips=${min_source_ips}"
+  echo "[transaction-read-oci-evidence-execution] min_mixed_write_accepted_ratio=${min_mixed_write_accepted_ratio}"
   echo "[transaction-read-oci-evidence-execution] mixed_min_duration_min=${mixed_min_duration_min}"
   echo "[transaction-read-oci-evidence-execution] p999_min_duration_min=${p999_min_duration_min}"
   echo "[transaction-read-oci-evidence-execution] hikari_min_duration_min=${hikari_min_duration_min}"
@@ -136,6 +142,8 @@ require_rate "OCI_EVIDENCE_EXECUTION_MAX_EDGE_429_RATE" "${max_edge_429_rate}"
 require_non_negative_number "OCI_EVIDENCE_EXECUTION_MAX_P999_MS" "${max_p999_ms}"
 require_non_negative_integer "OCI_EVIDENCE_EXECUTION_MAX_POOL_PENDING" "${max_pool_pending}"
 require_non_negative_integer "OCI_EVIDENCE_EXECUTION_MAX_POSTGRES_TEMP_FILE_DELTA" "${max_postgres_temp_file_delta}"
+require_non_negative_integer "OCI_EVIDENCE_EXECUTION_MIN_SOURCE_IPS" "${min_source_ips}"
+require_rate "OCI_EVIDENCE_EXECUTION_MIN_MIXED_WRITE_ACCEPTED_RATIO" "${min_mixed_write_accepted_ratio}"
 require_non_negative_integer "OCI_EVIDENCE_EXECUTION_MIXED_MIN_DURATION_MIN" "${mixed_min_duration_min}"
 require_non_negative_integer "OCI_EVIDENCE_EXECUTION_P999_MIN_DURATION_MIN" "${p999_min_duration_min}"
 require_non_negative_integer "OCI_EVIDENCE_EXECUTION_HIKARI_MIN_DURATION_MIN" "${hikari_min_duration_min}"
@@ -156,6 +164,8 @@ awk -F '\t' \
   -v max_p999_ms="${max_p999_ms}" \
   -v max_pool_pending="${max_pool_pending}" \
   -v max_postgres_temp_file_delta="${max_postgres_temp_file_delta}" \
+  -v min_source_ips="${min_source_ips}" \
+  -v min_mixed_write_accepted_ratio="${min_mixed_write_accepted_ratio}" \
   -v mixed_min_duration_min="${mixed_min_duration_min}" \
   -v p999_min_duration_min="${p999_min_duration_min}" \
   -v hikari_min_duration_min="${hikari_min_duration_min}" \
@@ -194,7 +204,7 @@ BEGIN {
   for (i in required_items) {
     required[required_items[i]] = 1
   }
-  print "scenario\tstatus\treason\trun_id\tduration_min\tsource_ips\trun_script\tk6_summary_ref\tnginx_access_ref\tspring_metrics_ref\thikari_log_ref\tpostgres_wait_ref\tdeploy_event_ref\tcache_state_ref\ttimeline_ref\tedge_429_rate\tbackend_429_count\tunknown_429_count\tfive_xx_count\tnginx_499_count\thikari_validation_warnings\tdb_pool_pending_max\tp999_ms\tp95_ms\tp99_ms\tmax_ms\tpostgres_checkpoint_count\tpostgres_temp_file_count\tnginx_upstream_p95_ms\thikari_config_ref\thikari_max_lifetime_ms\thikari_keepalive_time_ms\tpostgres_idle_timeout_ms\toci_nat_idle_timeout_ms\thikari_zero_warning_soak_ref\tworkload_components\tread_p999_ms\tread_429_source_ref\tread_buckets\tread_bucket_ref\twrite_2xx_count\twrite_unexpected_status_count\twrite_status_ref"
+  print "scenario\tstatus\treason\trun_id\tduration_min\tsource_ips\trun_script\tk6_summary_ref\tnginx_access_ref\tspring_metrics_ref\thikari_log_ref\tpostgres_wait_ref\tdeploy_event_ref\tcache_state_ref\ttimeline_ref\tedge_429_rate\tbackend_429_count\tunknown_429_count\tfive_xx_count\tnginx_499_count\thikari_validation_warnings\tdb_pool_pending_max\tp999_ms\tp95_ms\tp99_ms\tmax_ms\tpostgres_checkpoint_count\tpostgres_temp_file_count\tnginx_upstream_p95_ms\thikari_config_ref\thikari_max_lifetime_ms\thikari_keepalive_time_ms\tpostgres_idle_timeout_ms\toci_nat_idle_timeout_ms\thikari_zero_warning_soak_ref\tworkload_components\tread_p999_ms\tread_429_source_ref\tread_buckets\tread_bucket_ref\twrite_2xx_count\twrite_unexpected_status_count\twrite_status_ref\twrite_accepted_ratio\tmin_write_accepted_ratio"
 }
 NR == 1 {
   for (i = 1; i <= NF; i++) {
@@ -237,6 +247,8 @@ NR == 1 {
   write_2xx_count = value("write_2xx_count", "")
   write_unexpected_status_count = value("write_unexpected_status_count", "")
   write_status_ref = value("write_status_ref", "")
+  write_accepted_ratio = value("write_accepted_ratio", "")
+  row_min_write_accepted_ratio = value("min_write_accepted_ratio", "")
   status = "pass"
   reason = "ok"
   seen[scenario] = 1
@@ -244,6 +256,7 @@ NR == 1 {
   if (run_id == "") add_reason("run-id-missing")
   if (executed_at == "") add_reason("executed-at-missing")
   if (run_script !~ /^tools\/test\/run-.*[.]sh$/) add_reason("run-script-invalid")
+  if (source_ips < min_source_ips) add_reason("source-ips<" min_source_ips)
   require_ref("k6_summary_ref", "k6-summary-missing")
   require_ref("nginx_access_ref", "nginx-access-missing")
   require_ref("spring_metrics_ref", "spring-metrics-missing")
@@ -269,8 +282,15 @@ NR == 1 {
     read_p999_ms = require_number("read_p999_ms", "read-p999-missing")
     write_2xx_count = require_number("write_2xx_count", "write-2xx-missing")
     write_unexpected_status_count = require_number("write_unexpected_status_count", "write-unexpected-status-missing")
+    write_accepted_ratio = require_number("write_accepted_ratio", "write-accepted-ratio-missing")
+    if (row_min_write_accepted_ratio == "" || row_min_write_accepted_ratio == "n/a") {
+      row_min_write_accepted_ratio = min_mixed_write_accepted_ratio
+    } else {
+      row_min_write_accepted_ratio = require_number("min_write_accepted_ratio", "min-write-accepted-ratio-invalid")
+    }
     if (read_p999_ms > max_p999_ms) add_reason("read-p999>" max_p999_ms)
     if (write_2xx_count <= 0) add_reason("write-2xx-missing")
+    if (write_accepted_ratio < row_min_write_accepted_ratio) add_reason("write-accepted-ratio<" row_min_write_accepted_ratio)
     if (!has_component(workload_components, "read") || !has_component(workload_components, "write") || !has_component(workload_components, "auth") || !has_component(workload_components, "notification") || !has_component(workload_components, "sse")) {
       add_reason("workload-components-missing")
     }
@@ -316,7 +336,7 @@ NR == 1 {
   if (p999_ms > max_p999_ms) add_reason("p999>" max_p999_ms)
 
   if (status == "fail") fail_count++
-  printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+  printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
     scenario, status, reason, run_id, duration_min, source_ips, run_script,
     value("k6_summary_ref", ""), value("nginx_access_ref", ""), value("spring_metrics_ref", ""),
     value("hikari_log_ref", ""), value("postgres_wait_ref", ""), value("deploy_event_ref", ""),
@@ -326,7 +346,7 @@ NR == 1 {
     p95_ms, p99_ms, max_ms, postgres_checkpoint_count, postgres_temp_file_count, nginx_upstream_p95_ms,
     hikari_config_ref, hikari_max_lifetime_ms, hikari_keepalive_time_ms, postgres_idle_timeout_ms, oci_nat_idle_timeout_ms, hikari_zero_warning_soak_ref,
     workload_components, read_p999_ms, read_429_source_ref,
-    read_buckets, read_bucket_ref, write_2xx_count, write_unexpected_status_count, write_status_ref
+    read_buckets, read_bucket_ref, write_2xx_count, write_unexpected_status_count, write_status_ref, write_accepted_ratio, row_min_write_accepted_ratio
 }
 END {
   missing = ""
@@ -379,6 +399,8 @@ cat >"${report_md}" <<REPORT
 - edge 429 max rate: ${max_edge_429_rate}
 - p99.9 max: ${max_p999_ms}ms
 - PostgreSQL temp file delta max: ${max_postgres_temp_file_delta}
+- source IPs min: ${min_source_ips}
+- mixed workload write accepted ratio min: ${min_mixed_write_accepted_ratio}
 - backend 429/unknown 429/499/5xx/Hikari warning/pool pending target: 0
 - unknown 429 hard-zero
 - p99.9 closure artifacts: PostgreSQL checkpoint, temp file, Nginx upstream latency
@@ -390,6 +412,7 @@ cat >"${report_md}" <<REPORT
 - mixed workload read p99.9 and 429 source artifact: required
 - mixed workload hot/cold/archive read bucket artifact: required
 - mixed workload write 2xx and status classification artifact: required
+- mixed workload write accepted ratio: required
 - deploy drain closure artifacts: 499 budget, retry contract, reconnect success
 
 ## Result Table

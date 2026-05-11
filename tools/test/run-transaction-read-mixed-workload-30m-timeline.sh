@@ -87,6 +87,7 @@ cat >"${report_md}" <<REPORT
 - read p99.9 and 429 source artifact: required
 - hot/cold/archive read bucket artifact: required
 - write 2xx and status classification artifact: required
+- write accepted ratio guardrail: required
 - workload mix/component and outbox lag artifact: required
 - execution gate report: ${execution_report}
 

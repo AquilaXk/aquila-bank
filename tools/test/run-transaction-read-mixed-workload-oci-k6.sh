@@ -15,6 +15,7 @@ Environment:
   MIXED_WORKLOAD_OCI_REMOTE_WORKDIR          repo path on remote Docker host
   MIXED_WORKLOAD_OCI_DURATION                default 30m
   MIXED_WORKLOAD_OCI_AUTH_TOKEN_FILE         bearer token file, optional but required by auth component in live
+  MIXED_WORKLOAD_OCI_WRITE_ACCEPTED_RATIO_THRESHOLD default 0.80
 USAGE
 }
 
@@ -71,6 +72,7 @@ write_vus="${MIXED_WORKLOAD_OCI_WRITE_VUS:-2}"
 auth_rate="${MIXED_WORKLOAD_OCI_AUTH_RATE:-1}"
 notification_rate="${MIXED_WORKLOAD_OCI_NOTIFICATION_RATE:-1}"
 limit="${MIXED_WORKLOAD_OCI_LIMIT:-50}"
+write_accepted_ratio_threshold="${MIXED_WORKLOAD_OCI_WRITE_ACCEPTED_RATIO_THRESHOLD:-${K6_MIXED_WRITE_ACCEPTED_RATIO_THRESHOLD:-0.80}}"
 executed_at_utc="${MIXED_WORKLOAD_EXECUTED_AT_UTC:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
 
 k6_summary_ref="${generated_dir}/${name}-k6-summary.json"
@@ -107,6 +109,14 @@ if ! [[ "${name}" =~ ^[A-Za-z0-9._-]+$ ]]; then
 fi
 if ! [[ "${duration}" =~ ^[1-9][0-9]*(s|m|h)$ ]]; then
   echo "MIXED_WORKLOAD_OCI_DURATION must use a positive duration such as 60s, 30m, or 1h: ${duration}" >&2
+  exit 1
+fi
+if ! [[ "${write_accepted_ratio_threshold}" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+  echo "MIXED_WORKLOAD_OCI_WRITE_ACCEPTED_RATIO_THRESHOLD must be a non-negative decimal: ${write_accepted_ratio_threshold}" >&2
+  exit 1
+fi
+if ! awk -v value="${write_accepted_ratio_threshold}" 'BEGIN { exit !(value >= 0 && value <= 1) }'; then
+  echo "MIXED_WORKLOAD_OCI_WRITE_ACCEPTED_RATIO_THRESHOLD must be between 0 and 1: ${write_accepted_ratio_threshold}" >&2
   exit 1
 fi
 
@@ -182,6 +192,7 @@ print_plan() {
   echo "[transaction-read-mixed-workload-oci-k6] duration=${duration}"
   echo "[transaction-read-mixed-workload-oci-k6] components=read,write,auth,notification,sse"
   echo "[transaction-read-mixed-workload-oci-k6] read_rate=${read_rate}/1s write_vus=${write_vus} auth_rate=${auth_rate}/1s notification_rate=${notification_rate}/1s"
+  echo "[transaction-read-mixed-workload-oci-k6] write_accepted_ratio_threshold=${write_accepted_ratio_threshold}"
   echo "[transaction-read-mixed-workload-oci-k6] hot_account_id=${hot_account_id:-missing} cold_account_id=${cold_account_id:-missing}"
   echo "[transaction-read-mixed-workload-oci-k6] archive_account_id=${archive_account_id:-missing}"
   echo "[transaction-read-mixed-workload-oci-k6] write_source_account_id=${write_source_account_id:-missing} write_target_account_id=${write_target_account_id:-missing}"
@@ -259,6 +270,7 @@ write_fixture_summary() {
     "aquila_mixed_write_422_count": {"values": {"count": 0}},
     "aquila_mixed_write_other_unexpected_count": {"values": {"count": 0}},
     "aquila_mixed_write_429_rate": {"values": {"rate": 0.01}},
+    "aquila_mixed_write_accepted_ratio": {"values": {"rate": 0.875}},
     "aquila_mixed_auth_count": {"values": {"count": 16}},
     "aquila_mixed_auth_duration_ms": {"values": {"p(95)": 42, "p(99)": 60, "p(99.9)": 70, "max": 75}},
     "aquila_mixed_notification_count": {"values": {"count": 16}},
@@ -306,6 +318,7 @@ write_component_artifacts() {
   local cold_count cold_p95 cold_p999 cold_edge_429_rate cold_backend_429_count cold_unknown_429_count
   local archive_count archive_p95 archive_p999 archive_edge_429_rate archive_backend_429_count archive_unknown_429_count
   local write_p95 write_2xx_count write_429_count write_edge_429_count write_backend_429_count write_unknown_429_count write_unexpected_status_count
+  local write_accepted_ratio
   local write_401_count write_403_count write_409_count write_422_count write_other_unexpected_count
   local auth_p95 notification_p95 outbox_lag_max
 
@@ -343,6 +356,10 @@ write_component_artifacts() {
   write_backend_429_count="$(metric_count aquila_mixed_write_backend_429_count)"
   write_unknown_429_count="$(metric_count aquila_mixed_write_unknown_429_count)"
   write_unexpected_status_count="$(metric_count aquila_mixed_write_unexpected_status_count)"
+  write_accepted_ratio="$(metric_value aquila_mixed_write_accepted_ratio "rate" "n/a")"
+  if [[ "${write_accepted_ratio}" == "n/a" || -z "${write_accepted_ratio}" ]]; then
+    write_accepted_ratio="$(awk -v accepted="${write_2xx_count}" -v total="${write_count}" 'BEGIN { if (total > 0) printf "%.6f", accepted / total; else print "0" }')"
+  fi
   write_401_count="$(metric_count aquila_mixed_write_401_count)"
   write_403_count="$(metric_count aquila_mixed_write_403_count)"
   write_409_count="$(metric_count aquila_mixed_write_409_count)"
@@ -466,6 +483,8 @@ TSV
     printf "MIXED_WORKLOAD_RUNNER_WRITE_BACKEND_429_COUNT=%q\n" "${write_backend_429_count}"
     printf "MIXED_WORKLOAD_RUNNER_WRITE_UNKNOWN_429_COUNT=%q\n" "${write_unknown_429_count}"
     printf "MIXED_WORKLOAD_RUNNER_WRITE_UNEXPECTED_STATUS_COUNT=%q\n" "${write_unexpected_status_count}"
+    printf "MIXED_WORKLOAD_RUNNER_WRITE_ACCEPTED_RATIO=%q\n" "${write_accepted_ratio}"
+    printf "MIXED_WORKLOAD_RUNNER_MIN_WRITE_ACCEPTED_RATIO=%q\n" "${write_accepted_ratio_threshold}"
     printf "MIXED_WORKLOAD_RUNNER_READ_BUCKETS=%q\n" "hot,cold,archive"
     printf "MIXED_WORKLOAD_RUNNER_READ_HOT_P999_MS=%q\n" "${hot_p999}"
     printf "MIXED_WORKLOAD_RUNNER_READ_COLD_P999_MS=%q\n" "${cold_p999}"
@@ -540,6 +559,7 @@ run_live_k6() {
     -e K6_MIXED_WRITE_VUS="${write_vus}" \
     -e K6_MIXED_AUTH_RATE="${auth_rate}" \
     -e K6_MIXED_NOTIFICATION_RATE="${notification_rate}" \
+    -e K6_MIXED_WRITE_ACCEPTED_RATIO_THRESHOLD="${write_accepted_ratio_threshold}" \
     -e K6_LIMIT="${limit}" \
     -v "${remote_workdir}/ops/k6:/scripts:ro" \
     -v "${remote_workdir}/build/reports/k6:/reports" \
