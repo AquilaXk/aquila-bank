@@ -28,6 +28,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 class TransferCommandControllerTest {
@@ -64,28 +65,12 @@ class TransferCommandControllerTest {
 
   @Test
   void previewsTransferRecipientFeeAndLimitWithoutWritingLedger() throws Exception {
-    when(requestAccountAuthorizationService.resolveTransferSourceAccountId(
-            org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(101L)))
-        .thenReturn(101L);
-    when(accountSummaryQueryUseCase.getByAccountId(101L))
-        .thenReturn(account(101L, "111122223333", "생활비 계좌", "ACTIVE", 10_000L));
-    when(accountSummaryQueryUseCase.getByAccountId(202L))
-        .thenReturn(account(202L, "999900001234", "홍길동", "ACTIVE", 0L));
-    when(transferLimitUsageReadPort.sumBookedDebitAmountMinor(
-            org.mockito.ArgumentMatchers.eq(101L),
-            org.mockito.ArgumentMatchers.eq("KRW"),
-            org.mockito.ArgumentMatchers.any(),
-            org.mockito.ArgumentMatchers.any()))
-        .thenReturn(1_000L);
+    stubPreview(
+        account(101L, "111122223333", "생활비 계좌", "ACTIVE", 10_000L),
+        account(202L, "999900001234", "홍길동", "ACTIVE", 0L),
+        1_000L);
 
-    mockMvc
-        .perform(
-            get("/api/v1/transfers/preview")
-                .header("X-Account-Id", "101")
-                .queryParam("sourceAccountId", "101")
-                .queryParam("targetAccountId", "202")
-                .queryParam("amountMinor", "1500")
-                .queryParam("currencyCode", "KRW"))
+    performPreview(1_500L, "KRW")
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.sourceAccountId").value(101))
         .andExpect(jsonPath("$.targetAccount.accountId").value(202))
@@ -95,6 +80,73 @@ class TransferCommandControllerTest {
         .andExpect(jsonPath("$.dailyUsedMinor").value(1000))
         .andExpect(jsonPath("$.allowed").value(true))
         .andExpect(jsonPath("$.otpRequired").value(true));
+  }
+
+  @Test
+  void previewsCurrencyMismatchAsBlocked() throws Exception {
+    stubPreview(
+        account(101L, "111122223333", "생활비 계좌", "ACTIVE", "KRW", 10_000L),
+        account(202L, "999900001234", "외화 계좌", "ACTIVE", "USD", 0L),
+        0L);
+
+    performPreview(1_000L, "KRW")
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.allowed").value(false))
+        .andExpect(jsonPath("$.blockedReason").value("CURRENCY_MISMATCH"));
+  }
+
+  @Test
+  void previewsInactiveRecipientAsBlockedAndMasksShortAccountNumber() throws Exception {
+    stubPreview(
+        account(101L, "111122223333", "생활비 계좌", "ACTIVE", 10_000L),
+        account(202L, "123", "휴면 계좌", "SUSPENDED", 0L),
+        0L);
+
+    performPreview(1_000L, "KRW")
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.targetAccount.maskedAccountNumber").value("****"))
+        .andExpect(jsonPath("$.allowed").value(false))
+        .andExpect(jsonPath("$.blockedReason").value("TARGET_ACCOUNT_NOT_ACTIVE"));
+  }
+
+  @Test
+  void previewsSingleTransferLimitExceededAsBlocked() throws Exception {
+    stubPreview(
+        account(101L, "111122223333", "생활비 계좌", "ACTIVE", 10_000L),
+        account(202L, "999900001234", "홍길동", "ACTIVE", 0L),
+        0L);
+
+    performPreview(2_001L, "KRW")
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.allowed").value(false))
+        .andExpect(jsonPath("$.blockedReason").value("SINGLE_LIMIT_EXCEEDED"));
+  }
+
+  @Test
+  void previewsDailyTransferLimitExceededAsBlocked() throws Exception {
+    stubPreview(
+        account(101L, "111122223333", "생활비 계좌", "ACTIVE", 10_000L),
+        account(202L, "999900001234", "홍길동", "ACTIVE", 0L),
+        2_000L);
+
+    performPreview(1_500L, "KRW")
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.dailyRemainingMinor").value(1_000))
+        .andExpect(jsonPath("$.allowed").value(false))
+        .andExpect(jsonPath("$.blockedReason").value("DAILY_LIMIT_EXCEEDED"));
+  }
+
+  @Test
+  void previewsInsufficientBalanceAsBlocked() throws Exception {
+    stubPreview(
+        account(101L, "111122223333", "생활비 계좌", "ACTIVE", 1_000L),
+        account(202L, "999900001234", "홍길동", "ACTIVE", 0L),
+        0L);
+
+    performPreview(1_500L, "KRW")
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.allowed").value(false))
+        .andExpect(jsonPath("$.blockedReason").value("INSUFFICIENT_BALANCE"));
   }
 
   @Test
@@ -233,15 +285,50 @@ class TransferCommandControllerTest {
       String displayName,
       String status,
       long availableBalanceMinor) {
+    return account(accountId, accountNumber, displayName, status, "KRW", availableBalanceMinor);
+  }
+
+  private static AccountSummary account(
+      long accountId,
+      String accountNumber,
+      String displayName,
+      String status,
+      String currencyCode,
+      long availableBalanceMinor) {
     return new AccountSummary(
         accountId,
         accountNumber,
         displayName,
         status,
-        "KRW",
+        currencyCode,
         availableBalanceMinor,
         0L,
         Instant.parse("2026-05-11T00:00:00Z"),
         Instant.parse("2026-05-11T00:00:00Z"));
+  }
+
+  private void stubPreview(
+      AccountSummary sourceAccount, AccountSummary targetAccount, long dailyUsedMinor) {
+    when(requestAccountAuthorizationService.resolveTransferSourceAccountId(
+            org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(101L)))
+        .thenReturn(101L);
+    when(accountSummaryQueryUseCase.getByAccountId(101L)).thenReturn(sourceAccount);
+    when(accountSummaryQueryUseCase.getByAccountId(202L)).thenReturn(targetAccount);
+    when(transferLimitUsageReadPort.sumBookedDebitAmountMinor(
+            org.mockito.ArgumentMatchers.eq(101L),
+            org.mockito.ArgumentMatchers.eq("KRW"),
+            org.mockito.ArgumentMatchers.any(),
+            org.mockito.ArgumentMatchers.any()))
+        .thenReturn(dailyUsedMinor);
+  }
+
+  private ResultActions performPreview(long amountMinor, String currencyCode) throws Exception {
+    return mockMvc.perform(
+        get("/api/v1/transfers/preview")
+            .header("X-Account-Id", "101")
+            .queryParam("sourceAccountId", "101")
+            .queryParam("targetAccountId", "202")
+            .queryParam("amountMinor", String.valueOf(amountMinor))
+            .queryParam("currencyCode", currencyCode));
   }
 }
