@@ -130,6 +130,12 @@ export function TransactionsSection({
           { label: "다음 조회", value: slice?.hasNext ? "가능" : "대기" },
         ]}
       />
+      <div className="work-summary-strip" aria-label="거래 조회 결과">
+        <span>조회 조건 {filters.accountId ? "입력" : "대기"}</span>
+        <span>조회 결과 {transactions.length}건</span>
+        <span>상세 {transactionDetail ? "선택" : "대기"}</span>
+        <span>다음 조회 {slice?.hasNext ? "가능" : "없음"}</span>
+      </div>
 
       <form className="bank-form filter-form" onSubmit={onSearch}>
         <div className="filter-summary" aria-label="현재 조건">

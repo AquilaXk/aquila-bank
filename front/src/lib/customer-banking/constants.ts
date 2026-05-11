@@ -75,7 +75,7 @@ export const enterpriseServiceItems = [
 export const supportCenterItems = [
   {
     title: "고객센터",
-    description: "상담, 자주 찾는 질문, 증명서 발급, 서비스 이용시간 메뉴를 제공합니다.",
+    description: "상담, 자주 찾는 질문, 증명서 발급, 서비스 이용시간",
     action: "상담/FAQ",
   },
   {
@@ -103,7 +103,7 @@ export const securityHubItems = [
   },
   {
     title: "금융인증서",
-    description: "클라우드 인증서 로그인, 발급, 재등록 흐름을 안내합니다.",
+    description: "클라우드 인증서 로그인, 발급, 재등록",
     status: "금융인증",
   },
   {

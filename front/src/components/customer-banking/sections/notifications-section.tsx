@@ -123,6 +123,11 @@ export function NotificationsSection({
           { label: "다음 조회", value: slice?.hasNext ? "가능" : "없음" },
         ]}
       />
+      <div className="work-summary-strip" aria-label="알림 업무현황">
+        <span>조회 결과 {notifications.length}건</span>
+        <span>미확인 {unreadCount == null ? "조회 전" : `${unreadCount}건`}</span>
+        <span>수신 설정 {preferences.length}건</span>
+      </div>
 
       <form className="bank-form filter-form" onSubmit={onSearch}>
         <div className="panel-toolbar inline-toolbar">

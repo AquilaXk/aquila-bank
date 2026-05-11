@@ -86,6 +86,11 @@ export function AccountsSection({
           { label: "통화", value: "계좌별 통화 표시" },
         ]}
       />
+      <div className="work-summary-strip" aria-label="계좌 조회 결과">
+        <span>조회 결과 {accounts.length}건</span>
+        <span>상세 {selectedAccount ? "선택" : "대기"}</span>
+        <span>다음 조회 {accountCursor ? "가능" : "없음"}</span>
+      </div>
 
       <div className="account-grid">
         <section className="table-panel embedded">
