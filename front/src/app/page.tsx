@@ -2,11 +2,7 @@
 
 import type { FormEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  ApiClientError,
-  ApiConfigurationError,
-  AquilaBankApiClient,
-} from "@/lib/api/client";
+import { AquilaBankApiClient } from "@/lib/api/client";
 import {
   clearCustomerSession,
   loadCustomerSession,
@@ -31,85 +27,17 @@ import type {
   TransferResponse,
   TransferReversalResponse,
 } from "@/lib/api/types";
-
-type MenuSection =
-  | "dashboard"
-  | "accounts"
-  | "transfer"
-  | "transactions"
-  | "notifications"
-  | "security";
-
-type AlertMessage = {
-  type: "info" | "success" | "error";
-  text: string;
-};
-
-const mainMenus: Array<{ id: MenuSection; label: string; group: string }> = [
-  { id: "dashboard", label: "뱅킹홈", group: "개인뱅킹" },
-  { id: "accounts", label: "조회", group: "계좌" },
-  { id: "transfer", label: "이체", group: "이체" },
-  { id: "transactions", label: "거래내역 조회", group: "조회" },
-  { id: "notifications", label: "알림", group: "고객센터" },
-  { id: "security", label: "인증/세션 관리", group: "뱅킹관리" },
-];
-
-const quickMenus = ["계좌조회", "즉시이체", "거래내역", "인증센터", "알림함"];
-
-function toLocalInputValue(date: Date): string {
-  const offset = date.getTimezoneOffset();
-  const localDate = new Date(date.getTime() - offset * 60_000);
-  return localDate.toISOString().slice(0, 16);
-}
-
-function toIsoDateTime(value: string): string {
-  return new Date(value).toISOString();
-}
-
-function toOptionalNumber(value: string): number | undefined {
-  if (!value.trim()) {
-    return undefined;
-  }
-  return Number(value);
-}
-
-function formatMinorAmount(value: number, currencyCode = "KRW"): string {
-  return new Intl.NumberFormat("ko-KR", {
-    style: "currency",
-    currency: currencyCode,
-    maximumFractionDigits: 0,
-  }).format(value / 100);
-}
-
-function toErrorMessage(error: unknown): string {
-  if (error instanceof ApiConfigurationError) {
-    return "백엔드 API 주소가 설정되지 않았습니다. NEXT_PUBLIC_API_BASE_URL을 확인하세요.";
-  }
-  if (error instanceof ApiClientError) {
-    return `[${error.status}] ${error.message}`;
-  }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return "요청 처리 중 오류가 발생했습니다.";
-}
-
-function formatDateTime(value?: string | null): string {
-  if (!value) {
-    return "-";
-  }
-  return new Intl.DateTimeFormat("ko-KR", {
-    dateStyle: "short",
-    timeStyle: "short",
-  }).format(new Date(value));
-}
-
-function maskToken(value: string): string {
-  if (value.length <= 16) {
-    return value;
-  }
-  return `${value.slice(0, 10)}...${value.slice(-6)}`;
-}
+import { mainMenus, quickMenus } from "@/lib/customer-banking/constants";
+import {
+  formatDateTime,
+  formatMinorAmount,
+  maskToken,
+  toErrorMessage,
+  toIsoDateTime,
+  toLocalInputValue,
+  toOptionalNumber,
+} from "@/lib/customer-banking/format";
+import type { AlertMessage, MenuSection } from "@/lib/customer-banking/types";
 
 export default function HomePage() {
   const api = useMemo(() => new AquilaBankApiClient(), []);
