@@ -1,0 +1,202 @@
+.ops-shell {
+  min-height: 100vh;
+  background: #f3f6fa;
+  color: #172033;
+  font-family:
+    "Pretendard",
+    "Apple SD Gothic Neo",
+    "Malgun Gothic",
+    Arial,
+    sans-serif;
+}
+
+.ops-shell.disabled {
+  display: grid;
+  place-items: center;
+  padding: 32px;
+}
+
+.ops-disabled {
+  display: grid;
+  gap: 8px;
+  width: min(520px, 100%);
+  padding: 24px;
+  border: 1px solid #c9d5e4;
+  background: #fff;
+}
+
+.ops-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 72px;
+  padding: 0 32px;
+  border-bottom: 1px solid #c9d5e4;
+  background: #fff;
+}
+
+.ops-header div {
+  display: grid;
+  gap: 3px;
+}
+
+.ops-header strong {
+  font-size: 22px;
+  color: #102f55;
+}
+
+.ops-header span,
+.ops-card-head span,
+.ops-lookup-title span {
+  color: #66758a;
+  font-size: 13px;
+}
+
+.ops-header a,
+.ops-card-head button,
+.ops-lookup-fields button {
+  border: 1px solid #1157a6;
+  background: #1157a6;
+  color: #fff;
+  padding: 8px 12px;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.ops-guard {
+  display: grid;
+  grid-template-columns: minmax(240px, 1.3fr) minmax(260px, 1fr) 120px;
+  gap: 12px;
+  padding: 18px 32px;
+  border-bottom: 1px solid #dbe3ed;
+  background: #edf3fb;
+}
+
+.ops-guard label,
+.ops-lookup-fields label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #263b56;
+}
+
+.ops-guard input,
+.ops-lookup-fields input {
+  min-width: 0;
+  border: 1px solid #b9c7d8;
+  background: #fff;
+  padding: 9px 10px;
+  color: #172033;
+}
+
+.ops-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  padding: 18px 32px;
+}
+
+.ops-section-map {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ops-section-map span {
+  border: 1px solid #c5d2e2;
+  background: #fff;
+  padding: 6px 10px;
+  color: #263b56;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ops-grid.compact {
+  padding: 0;
+}
+
+.ops-card {
+  min-width: 0;
+  border: 1px solid #d4deea;
+  background: #fff;
+}
+
+.ops-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  border-bottom: 1px solid #e3eaf2;
+}
+
+.ops-card-head div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.ops-card-head strong {
+  color: #102f55;
+}
+
+.ops-card-head span {
+  overflow-wrap: anywhere;
+}
+
+.ops-result {
+  min-height: 180px;
+  max-height: 360px;
+  margin: 0;
+  overflow: auto;
+  padding: 14px;
+  background: #fbfcfe;
+  color: #172033;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.ops-result.muted {
+  color: #6c7a8c;
+}
+
+.ops-result.error {
+  color: #a31919;
+  background: #fff7f7;
+}
+
+.ops-lookups {
+  display: grid;
+  gap: 14px;
+  padding: 18px 32px 32px;
+}
+
+.ops-lookup-title {
+  display: grid;
+  gap: 4px;
+}
+
+.ops-lookup-fields {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+@media (max-width: 980px) {
+  .ops-guard,
+  .ops-grid,
+  .ops-lookup-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .ops-header,
+  .ops-guard,
+  .ops-grid,
+  .ops-lookups {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}
