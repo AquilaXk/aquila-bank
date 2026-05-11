@@ -1,12 +1,16 @@
 package com.aquilabank.global.web.ledger;
 
+import com.aquilabank.domain.account.model.AccountSummary;
+import com.aquilabank.domain.account.usecase.AccountSummaryQueryUseCase;
 import com.aquilabank.domain.ledger.model.TransferCommand;
 import com.aquilabank.domain.ledger.model.TransferResult;
 import com.aquilabank.domain.ledger.model.TransferReversalCommand;
 import com.aquilabank.domain.ledger.model.TransferReversalReason;
 import com.aquilabank.domain.ledger.model.TransferReversalResult;
+import com.aquilabank.domain.ledger.port.TransferLimitUsageReadPort;
 import com.aquilabank.domain.ledger.usecase.TransferCommandUseCase;
 import com.aquilabank.domain.ledger.usecase.TransferReversalUseCase;
+import com.aquilabank.global.config.TransferLimitPolicyProperties;
 import com.aquilabank.global.security.AuthenticatedRequestPrincipal;
 import com.aquilabank.global.web.security.CurrentAuthenticatedPrincipal;
 import com.aquilabank.global.web.security.RequestAccountAuthorizationService;
@@ -16,13 +20,19 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /** 송금 명령 use case를 노출하는 HTTP adapter */
@@ -34,14 +44,92 @@ public class TransferCommandController {
   private final TransferCommandUseCase transferCommandUseCase;
   private final TransferReversalUseCase transferReversalUseCase;
   private final RequestAccountAuthorizationService requestAccountAuthorizationService;
+  private final AccountSummaryQueryUseCase accountSummaryQueryUseCase;
+  private final TransferLimitUsageReadPort transferLimitUsageReadPort;
+  private final TransferLimitPolicyProperties transferLimitPolicyProperties;
+  private final Clock clock;
 
+  @Autowired
   public TransferCommandController(
       TransferCommandUseCase transferCommandUseCase,
       TransferReversalUseCase transferReversalUseCase,
-      RequestAccountAuthorizationService requestAccountAuthorizationService) {
+      RequestAccountAuthorizationService requestAccountAuthorizationService,
+      AccountSummaryQueryUseCase accountSummaryQueryUseCase,
+      TransferLimitUsageReadPort transferLimitUsageReadPort,
+      TransferLimitPolicyProperties transferLimitPolicyProperties) {
+    this(
+        transferCommandUseCase,
+        transferReversalUseCase,
+        requestAccountAuthorizationService,
+        accountSummaryQueryUseCase,
+        transferLimitUsageReadPort,
+        transferLimitPolicyProperties,
+        Clock.systemUTC());
+  }
+
+  TransferCommandController(
+      TransferCommandUseCase transferCommandUseCase,
+      TransferReversalUseCase transferReversalUseCase,
+      RequestAccountAuthorizationService requestAccountAuthorizationService,
+      AccountSummaryQueryUseCase accountSummaryQueryUseCase,
+      TransferLimitUsageReadPort transferLimitUsageReadPort,
+      TransferLimitPolicyProperties transferLimitPolicyProperties,
+      Clock clock) {
     this.transferCommandUseCase = transferCommandUseCase;
     this.transferReversalUseCase = transferReversalUseCase;
     this.requestAccountAuthorizationService = requestAccountAuthorizationService;
+    this.accountSummaryQueryUseCase = accountSummaryQueryUseCase;
+    this.transferLimitUsageReadPort = transferLimitUsageReadPort;
+    this.transferLimitPolicyProperties = transferLimitPolicyProperties;
+    this.clock = clock;
+  }
+
+  @GetMapping("/preview")
+  public TransferPreviewResponse preview(
+      @CurrentAuthenticatedPrincipal AuthenticatedRequestPrincipal principal,
+      @RequestParam @Positive(message = "sourceAccountId must be positive") long sourceAccountId,
+      @RequestParam @Positive(message = "targetAccountId must be positive") long targetAccountId,
+      @RequestParam @Positive(message = "amountMinor must be positive") long amountMinor,
+      @RequestParam
+          @NotBlank(message = "currencyCode is required") @Pattern(
+              regexp = "^[A-Z]{3}$",
+              message = "currencyCode must be a 3-letter uppercase code")
+          String currencyCode) {
+    long resolvedSourceAccountId =
+        requestAccountAuthorizationService.resolveTransferSourceAccountId(
+            principal, sourceAccountId);
+    AccountSummary source = accountSummaryQueryUseCase.getByAccountId(resolvedSourceAccountId);
+    AccountSummary target = accountSummaryQueryUseCase.getByAccountId(targetAccountId);
+    ZoneId businessZoneId = ZoneId.of(transferLimitPolicyProperties.businessZoneId());
+    Instant now = clock.instant();
+    LocalDate businessDate = LocalDate.ofInstant(now, businessZoneId);
+    Instant fromInclusive = businessDate.atStartOfDay(businessZoneId).toInstant();
+    Instant toExclusive = businessDate.plusDays(1).atStartOfDay(businessZoneId).toInstant();
+    long dailyUsedMinor =
+        transferLimitUsageReadPort.sumBookedDebitAmountMinor(
+            resolvedSourceAccountId, currencyCode, fromInclusive, toExclusive);
+    long feeMinor = 0L;
+    long totalDebitMinor = amountMinor + feeMinor;
+    long dailyRemainingMinor =
+        Math.max(0L, transferLimitPolicyProperties.dailyTransferLimitMinor() - dailyUsedMinor);
+    String blockedReason =
+        resolvePreviewBlockedReason(
+            source, target, amountMinor, totalDebitMinor, dailyUsedMinor, currencyCode);
+    return new TransferPreviewResponse(
+        resolvedSourceAccountId,
+        TransferPreviewAccountResponse.from(target),
+        amountMinor,
+        currencyCode,
+        feeMinor,
+        "INTERNAL_TRANSFER_WAIVED",
+        totalDebitMinor,
+        transferLimitPolicyProperties.singleTransferLimitMinor(),
+        transferLimitPolicyProperties.dailyTransferLimitMinor(),
+        dailyUsedMinor,
+        dailyRemainingMinor,
+        "OK".equals(blockedReason),
+        blockedReason,
+        true);
   }
 
   @PostMapping
@@ -84,6 +172,74 @@ public class TransferCommandController {
                 idempotencyKey));
     return TransferReversalResponse.from(result);
   }
+
+  private String resolvePreviewBlockedReason(
+      AccountSummary source,
+      AccountSummary target,
+      long amountMinor,
+      long totalDebitMinor,
+      long dailyUsedMinor,
+      String currencyCode) {
+    if (!source.currencyCode().equals(currencyCode)
+        || !target.currencyCode().equals(currencyCode)) {
+      return "CURRENCY_MISMATCH";
+    }
+    if (!"ACTIVE".equals(target.accountStatus())) {
+      return "TARGET_ACCOUNT_NOT_ACTIVE";
+    }
+    if (amountMinor > transferLimitPolicyProperties.singleTransferLimitMinor()) {
+      return "SINGLE_LIMIT_EXCEEDED";
+    }
+    if (dailyUsedMinor + amountMinor > transferLimitPolicyProperties.dailyTransferLimitMinor()) {
+      return "DAILY_LIMIT_EXCEEDED";
+    }
+    if (totalDebitMinor > source.availableBalanceMinor()) {
+      return "INSUFFICIENT_BALANCE";
+    }
+    return "OK";
+  }
+
+  /** 송금 preview target 계좌 요약. 계좌번호는 확인용 마지막 4자리만 노출합니다. */
+  public record TransferPreviewAccountResponse(
+      long accountId,
+      String maskedAccountNumber,
+      String displayName,
+      String accountStatus,
+      String currencyCode) {
+
+    static TransferPreviewAccountResponse from(AccountSummary summary) {
+      return new TransferPreviewAccountResponse(
+          summary.accountId(),
+          maskAccountNumber(summary.accountNumber()),
+          summary.displayName(),
+          summary.accountStatus(),
+          summary.currencyCode());
+    }
+
+    private static String maskAccountNumber(String accountNumber) {
+      if (accountNumber.length() <= 4) {
+        return "****";
+      }
+      return "********" + accountNumber.substring(accountNumber.length() - 4);
+    }
+  }
+
+  /** 송금 실행 전 수취인/수수료/한도 확인 응답 */
+  public record TransferPreviewResponse(
+      long sourceAccountId,
+      TransferPreviewAccountResponse targetAccount,
+      long amountMinor,
+      String currencyCode,
+      long feeMinor,
+      String feePolicy,
+      long totalDebitMinor,
+      long singleTransferLimitMinor,
+      long dailyTransferLimitMinor,
+      long dailyUsedMinor,
+      long dailyRemainingMinor,
+      boolean allowed,
+      String blockedReason,
+      boolean otpRequired) {}
 
   /** 송금 요청 body */
   public record TransferRequest(
