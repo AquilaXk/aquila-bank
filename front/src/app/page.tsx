@@ -19,6 +19,9 @@ import {
   recentMenus,
 } from "@/lib/customer-banking/constants";
 import { formatDateTime } from "@/lib/customer-banking/format";
+import type { MenuSection } from "@/lib/customer-banking/types";
+
+const publicSections: MenuSection[] = ["dashboard", "security"];
 
 export default function HomePage() {
   const {
@@ -108,15 +111,45 @@ export default function HomePage() {
     setNotificationFilters,
     setPreferences,
   } = useCustomerBanking();
-  const publicSections = [
-    "dashboard",
-    "security",
-    "securityHub",
-    "supportCenter",
-    "enterpriseServices",
-  ];
   const sessionRequired =
     !session && !publicSections.includes(activeSection);
+  const canRenderWorkSection = !sessionRequired;
+
+  function moveToSection(section: MenuSection) {
+    setActiveSection(section);
+  }
+
+  function renderLoginRequiredWork() {
+    return (
+      <div className="session-required login-required-work" role="status">
+        <div>
+          <strong>로그인이 필요한 업무</strong>
+          <small className="login-required-code">권한 만료/미로그인</small>
+          <span>
+            조회, 이체, 거래내역, 알림, 신청 업무는 로그인 후 이용하세요.
+          </span>
+        </div>
+        <div className="login-method-grid" aria-label="로그인 방식">
+          <button onClick={() => moveToSection("security")} type="button">
+            공동인증서 로그인
+          </button>
+          <button onClick={() => moveToSection("security")} type="button">
+            금융인증서 로그인
+          </button>
+          <button onClick={() => moveToSection("security")} type="button">
+            아이디 로그인
+          </button>
+        </div>
+        <button
+          className="primary-login-button"
+          onClick={() => moveToSection("security")}
+          type="button"
+        >
+          인증센터 로그인
+        </button>
+      </div>
+    );
+  }
 
   return (
     <main className="bank-shell">
@@ -134,14 +167,14 @@ export default function HomePage() {
             </button>
             <button
               className="utility-link"
-              onClick={() => setActiveSection("security")}
+              onClick={() => moveToSection("security")}
               type="button"
             >
               인증센터
             </button>
             <button
               className="utility-link"
-              onClick={() => setActiveSection("supportCenter")}
+              onClick={() => moveToSection("supportCenter")}
               type="button"
             >
               고객센터
@@ -179,7 +212,7 @@ export default function HomePage() {
                 aria-current={activeSection === item.id ? "page" : undefined}
                 className={activeSection === item.id ? "nav-tab active" : "nav-tab"}
                 key={item.id}
-                onClick={() => setActiveSection(item.id)}
+                onClick={() => moveToSection(item.id)}
                 type="button"
               >
                 {item.label}
@@ -205,7 +238,7 @@ export default function HomePage() {
               aria-current={activeSection === item.id ? "page" : undefined}
               className={activeSection === item.id ? "side-item active" : "side-item"}
               key={item.id}
-              onClick={() => setActiveSection(item.id)}
+              onClick={() => moveToSection(item.id)}
               type="button"
             >
               <span>{item.group}</span>
@@ -224,24 +257,16 @@ export default function HomePage() {
               {busyLabel} 처리 중
             </div>
           ) : null}
-          {sessionRequired ? (
-            <div className="session-required" role="status">
-              <strong>권한 만료 또는 미로그인</strong>
-              <span>로그인 필요 업무입니다. 인증센터에서 로그인 후 조회와 이체를 진행하세요.</span>
-              <button onClick={() => setActiveSection("security")} type="button">
-                인증센터로 이동
-              </button>
-            </div>
-          ) : null}
+          {sessionRequired ? renderLoginRequiredWork() : null}
           {activeSection === "dashboard" ? (
             <DashboardSection
               hasSession={Boolean(session)}
-              onMove={setActiveSection}
+              onMove={moveToSection}
               onRefresh={handleRefresh}
               isBusy={isBusy}
             />
           ) : null}
-          {activeSection === "accounts" ? (
+          {canRenderWorkSection && activeSection === "accounts" ? (
             <AccountsSection
               accountCursor={accountCursor}
               accountLimit={accountLimit}
@@ -254,7 +279,7 @@ export default function HomePage() {
               onLoadNextAccounts={() => handleLoadAccounts(accountCursor, true)}
             />
           ) : null}
-          {activeSection === "transfer" ? (
+          {canRenderWorkSection && activeSection === "transfer" ? (
             <TransferSection
               isBusy={isBusy}
               reversalForm={reversalForm}
@@ -269,7 +294,7 @@ export default function HomePage() {
               onTransferChange={setTransferForm}
             />
           ) : null}
-          {activeSection === "transactions" ? (
+          {canRenderWorkSection && activeSection === "transactions" ? (
             <TransactionsSection
               filters={transactionFilters}
               isBusy={isBusy}
@@ -333,28 +358,28 @@ export default function HomePage() {
               onVerifyTotpEnrollment={handleVerifyTotpEnrollment}
             />
           ) : null}
-          {activeSection === "securityHub" ? (
+          {canRenderWorkSection && activeSection === "securityHub" ? (
             <SecurityHubSection
               applicationResult={customerApplicationResult}
               isBusy={isBusy}
               onSubmitCustomerApplication={handleSubmitCustomerApplication}
             />
           ) : null}
-          {activeSection === "supportCenter" ? (
+          {canRenderWorkSection && activeSection === "supportCenter" ? (
             <SupportCenterSection
               applicationResult={customerApplicationResult}
               isBusy={isBusy}
               onSubmitCustomerApplication={handleSubmitCustomerApplication}
             />
           ) : null}
-          {activeSection === "enterpriseServices" ? (
+          {canRenderWorkSection && activeSection === "enterpriseServices" ? (
             <EnterpriseServicesSection
               applicationResult={customerApplicationResult}
               isBusy={isBusy}
               onSubmitCustomerApplication={handleSubmitCustomerApplication}
             />
           ) : null}
-          {activeSection === "notifications" ? (
+          {canRenderWorkSection && activeSection === "notifications" ? (
             <NotificationsSection
               filters={notificationFilters}
               isBusy={isBusy}
@@ -417,7 +442,7 @@ export default function HomePage() {
               <p className="rail-copy">로그인 후 조회, 이체, 거래내역 이용 가능</p>
             )}
             <div className="button-row compact">
-              <button onClick={() => setActiveSection("security")} type="button">
+              <button onClick={() => moveToSection("security")} type="button">
                 인증센터
               </button>
               <button disabled={!session || isBusy} onClick={handleRefresh} type="button">
@@ -434,7 +459,7 @@ export default function HomePage() {
               {quickMenus.map((item) => (
                 <button
                   key={item.label}
-                  onClick={() => setActiveSection(item.section)}
+                  onClick={() => moveToSection(item.section)}
                   type="button"
                 >
                   {item.label}
@@ -451,7 +476,7 @@ export default function HomePage() {
               {recentMenus.map((item) => (
                 <button
                   key={item.label}
-                  onClick={() => setActiveSection(item.section)}
+                  onClick={() => moveToSection(item.section)}
                   type="button"
                 >
                   {item.label}

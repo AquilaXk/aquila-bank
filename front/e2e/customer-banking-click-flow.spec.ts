@@ -24,7 +24,7 @@ test("고객 웹뱅킹 주요 공개 업무와 미로그인 이체 가드를 실
   for (const menuName of protectedMenuNames) {
     await page
       .getByRole("navigation", { name: "주요 메뉴" })
-      .getByRole("button", { name: menuName })
+      .getByRole("button", { exact: true, name: menuName })
       .click();
     await expect(page.getByText("로그인이 필요한 업무")).toBeVisible();
     await expect(page.getByText("공동인증서 로그인")).toBeVisible();

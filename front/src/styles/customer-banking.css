@@ -449,6 +449,51 @@ label span {
   padding: 0 12px;
 }
 
+.login-required-work {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+
+.login-required-work button {
+  grid-row: auto;
+}
+
+.login-required-work > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.login-required-code {
+  color: #9a3412;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.login-method-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.login-method-grid button {
+  min-height: 42px;
+  background: #fff;
+}
+
+.primary-login-button {
+  width: fit-content;
+  min-width: 180px;
+  border-color: var(--primary-dark);
+  background: var(--primary);
+  color: #fff;
+}
+
+.primary-login-button:hover:not(:disabled) {
+  border-color: var(--primary-dark);
+  background: var(--primary-dark);
+  color: #fff;
+}
+
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
