@@ -7,7 +7,8 @@
     "dev": "next dev -p ${PORT:-3000}",
     "build": "next build",
     "start": "next start -p ${PORT:-3000}",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test:ui-contract": "node scripts/check-customer-banking-ui-contract.mjs"
   },
   "dependencies": {
     "next": "^14.2.5",

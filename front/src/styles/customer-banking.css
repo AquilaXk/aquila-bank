@@ -133,6 +133,14 @@ label span {
   color: var(--primary);
 }
 
+.service-map {
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: #f8fafc;
+  padding: 0 10px;
+  color: #344054;
+}
+
 .search-field {
   display: grid;
   grid-template-columns: auto 220px;
@@ -203,6 +211,24 @@ label span {
 .nav-tab.active {
   border-bottom: 3px solid var(--primary);
   color: var(--primary);
+}
+
+.banking-status-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  width: min(1440px, calc(100% - 48px));
+  min-height: 36px;
+  margin: 0 auto;
+  padding: 8px 0 10px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.banking-status-bar strong {
+  color: var(--success);
 }
 
 .bank-layout {
@@ -826,6 +852,21 @@ label span {
   font-size: 12px;
 }
 
+.recent-menu-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.recent-menu-list button {
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 34px;
+  padding: 0 10px;
+  text-align: left;
+  font-size: 12px;
+}
+
 .notice-list ul {
   margin: 12px 0 0;
   padding-left: 18px;
@@ -871,5 +912,59 @@ label span {
   .utility-bar,
   .primary-nav {
     flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 760px) {
+  .utility-bar,
+  .brand-row,
+  .banking-status-bar,
+  .bank-layout {
+    width: calc(100% - 20px);
+  }
+
+  .utility-bar,
+  .brand-row {
+    align-items: flex-start;
+  }
+
+  .utility-left,
+  .utility-right,
+  .primary-nav {
+    width: 100%;
+  }
+
+  .utility-right,
+  .search-field {
+    grid-template-columns: 1fr;
+  }
+
+  .search-field {
+    width: 100%;
+  }
+
+  .side-menu {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .side-item {
+    min-height: 50px;
+  }
+
+  .nav-tab {
+    min-width: 0;
+    flex: 1 1 30%;
+  }
+
+  .task-section,
+  .rail-panel {
+    padding: 12px;
+  }
+
+  .section-title,
+  .panel-toolbar,
+  .rail-heading {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
