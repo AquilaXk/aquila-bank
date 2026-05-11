@@ -30,6 +30,11 @@ const required = [
   ["mobile overflow guard", files.styles, "overflow-wrap: anywhere"],
   ["transfer step aria", files.transfer, 'aria-label="이체 진행 단계"'],
   ["otp input numeric", files.transfer, 'inputMode="numeric"'],
+  ["bank service strip", files.styles, ".bank-service-strip"],
+  ["bank notice strip", files.styles, ".bank-notice-strip"],
+  ["bank work tabs", files.styles, ".work-tabs"],
+  ["bank page title compact", files.styles, ".section-title h1"],
+  ["right rail security notice", files.page, "보안알림"],
 ];
 
 const missing = required.filter(([, content, expected]) => !content.includes(expected));

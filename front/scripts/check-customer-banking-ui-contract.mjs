@@ -17,11 +17,31 @@ const files = {
   layout: read("src/app/layout.tsx"),
   manifest: readOptional("src/app/manifest.ts"),
   constants: read("src/lib/customer-banking/constants.ts"),
+  dashboard: read("src/components/customer-banking/sections/dashboard-section.tsx"),
+  accounts: read("src/components/customer-banking/sections/accounts-section.tsx"),
   transfer: read("src/components/customer-banking/sections/transfer-section.tsx"),
   transactions: read("src/components/customer-banking/sections/transactions-section.tsx"),
   notifications: read("src/components/customer-banking/sections/notifications-section.tsx"),
+  security: read("src/components/customer-banking/sections/security-section.tsx"),
+  securityHub: read("src/components/customer-banking/sections/security-hub-section.tsx"),
+  support: read("src/components/customer-banking/sections/support-center-section.tsx"),
+  enterprise: read("src/components/customer-banking/sections/enterprise-services-section.tsx"),
   styles: read("src/styles/customer-banking.css"),
 };
+
+const customerVisibleContent = [
+  files.page,
+  files.constants,
+  files.dashboard,
+  files.accounts,
+  files.transfer,
+  files.transactions,
+  files.notifications,
+  files.security,
+  files.securityHub,
+  files.support,
+  files.enterprise,
+].join("\n");
 
 const checks = [
   ["top personal tab", files.page, "개인"],
@@ -48,7 +68,7 @@ const checks = [
   ["transfer failed state", files.transfer, "실패"],
   ["transfer stepper style", files.styles, ".stepper"],
   ["transaction current filters", files.transactions, "현재 조건"],
-  ["transaction cursor pagination", files.transactions, "cursor pagination"],
+  ["transaction next lookup label", files.transactions, "다음 조회"],
   ["transaction next page label", files.transactions, "다음 페이지"],
   ["notification live connection label", files.notifications, "실시간 연결 상태"],
   ["notification bulk action label", files.notifications, "선택 일괄 처리"],
@@ -62,14 +82,48 @@ const checks = [
   ["manifest public url", files.manifest, "https://bank.aquilaxk.site"],
   ["mobile small breakpoint", files.styles, "@media (max-width: 480px)"],
   ["button overflow guard", files.styles, "overflow-wrap: anywhere"],
+  ["bank shell status class", files.styles, ".bank-service-strip"],
+  ["bank work tabs class", files.styles, ".work-tabs"],
+  ["bank notice strip class", files.styles, ".bank-notice-strip"],
+  ["bank dense table class", files.styles, ".bank-table"],
+  ["bank right rail security notice", files.page, "보안알림"],
+  ["dashboard operating hours", files.dashboard, "이용시간"],
+  ["dashboard security level", files.dashboard, "보안등급"],
+  ["account available amount label", files.accounts, "출금가능금액"],
+  ["transfer receiver label", files.transfer, "받는 분"],
+  ["transfer security verification label", files.transfer, "보안 확인"],
+  ["security center login status", files.security, "로그인 상태"],
+  ["security hub certificate tab", files.securityHub, "공동인증서"],
+  ["support certificate issue label", files.support, "증명서 발급"],
+  ["enterprise bill payment application label", files.enterprise, "공과금 납부"],
+];
+
+const forbidden = [
+  ["customer visible read-only", customerVisibleContent, "read-only"],
+  ["customer visible backend preview", customerVisibleContent, "backend preview"],
+  ["customer visible bounded query", customerVisibleContent, "bounded query"],
+  ["customer visible idempotency key", customerVisibleContent, "Idempotency-Key"],
+  ["customer visible cursor pagination", customerVisibleContent, "cursor pagination"],
+  ["customer visible response shape", customerVisibleContent, "응답형태"],
+  ["customer visible transfer minor label", customerVisibleContent, "금액 minor"],
+  ["customer visible reversal minor label", customerVisibleContent, "취소금액 minor"],
+  ["customer visible min minor label", customerVisibleContent, "최소금액 minor"],
+  ["customer visible max minor label", customerVisibleContent, "최대금액 minor"],
+  ["customer visible daily remaining field", customerVisibleContent, "dailyRemainingMinor /"],
 ];
 
 const missing = checks.filter(([, content, expected]) => !content.includes(expected));
+const present = forbidden.filter(([, content, expected]) =>
+  content.toLowerCase().includes(expected.toLowerCase()),
+);
 
-if (missing.length > 0) {
-  console.error("[customer-banking-ui-contract] missing required UI contract:");
+if (missing.length > 0 || present.length > 0) {
+  console.error("[customer-banking-ui-contract] bank UX contract violations:");
   for (const [name, , expected] of missing) {
-    console.error(`- ${name}: ${expected}`);
+    console.error(`- missing ${name}: ${expected}`);
+  }
+  for (const [name, , expected] of present) {
+    console.error(`- forbidden ${name}: ${expected}`);
   }
   process.exit(1);
 }
