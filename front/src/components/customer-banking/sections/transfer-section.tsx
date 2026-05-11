@@ -1,6 +1,6 @@
 import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
-import type { TransferResponse, TransferReversalResponse } from '@/lib/api/types';
+import type { TransferPreviewResponse, TransferResponse, TransferReversalResponse } from '@/lib/api/types';
 import { formatDateTime, formatMinorAmount } from '@/lib/customer-banking/format';
 import { ResultPanel } from '../common';
 
@@ -18,7 +18,9 @@ export function TransferSection({
   reversalForm,
   reversalResult,
   transferForm,
+  transferPreview,
   transferResult,
+  onPreviewTransfer,
   onReversal,
   onReversalChange,
   onTransfer,
@@ -40,7 +42,9 @@ export function TransferSection({
     currencyCode: string;
     summary: string;
   };
+  transferPreview: TransferPreviewResponse | null;
   transferResult: TransferResponse | null;
+  onPreviewTransfer: () => Promise<boolean>;
   onReversal: (event: FormEvent<HTMLFormElement>) => void;
   onReversalChange: (value: {
     transactionReference: string;
@@ -76,7 +80,13 @@ export function TransferSection({
   async function handleTransferSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (transferStep === "input") {
-      setTransferStep("receiverCheck");
+      setTransferStep("submitting");
+      const ok = await onPreviewTransfer();
+      setTransferStep(ok ? "receiverCheck" : "failed");
+      return;
+    }
+    if (transferStep === "failed") {
+      setTransferStep("input");
       return;
     }
     if (transferStep === "receiverCheck") {
@@ -107,9 +117,14 @@ export function TransferSection({
     { id: "failed", label: "실패" },
   ];
   const amountMinor = Number(transferForm.amountMinor || 0);
-  const transferFeeMinor = amountMinor >= 100000000 ? 500 : 0;
-  const limitMinor = 1000000000;
-  const isOverLimit = amountMinor > limitMinor;
+  const transferFeeMinor = transferPreview?.feeMinor ?? 0;
+  const limitMinor = transferPreview?.singleTransferLimitMinor ?? 1000000000;
+  const dailyRemainingMinor = transferPreview?.dailyRemainingMinor ?? limitMinor;
+  const blockedReason = transferPreview?.blockedReason ?? "PREVIEW_REQUIRED";
+  const otpRequired = transferPreview?.otpRequired ?? true;
+  const isOverLimit = transferPreview
+    ? !transferPreview.allowed
+    : amountMinor > limitMinor;
   const submitLabel =
     transferStep === "receiverCheck"
       ? "받는 분 확인 완료"
@@ -117,6 +132,8 @@ export function TransferSection({
         ? "OTP 확인"
         : transferStep === "otp"
           ? "이체 실행"
+          : transferStep === "failed"
+            ? "입력 다시 확인"
           : "받는 분 확인";
 
   return (
@@ -146,20 +163,32 @@ export function TransferSection({
           </ol>
           <div className="transfer-risk-grid" aria-label="이체 사전 확인">
             <div>
-              <span>받는 분 확인</span>
-              <strong>계좌 ID {transferForm.targetAccountId || "-"}</strong>
+              <span>받는 분 검증</span>
+              <strong>
+                {transferPreview
+                  ? `${transferPreview.targetAccount.displayName} ${transferPreview.targetAccount.maskedAccountNumber}`
+                  : `계좌 ID ${transferForm.targetAccountId || "-"}`}
+              </strong>
+              <small>backend preview: {blockedReason}</small>
             </div>
             <div>
               <span>수수료</span>
               <strong>
                 {formatMinorAmount(transferFeeMinor, transferForm.currencyCode)}
               </strong>
+              <small>feePolicy {transferPreview?.feePolicy ?? "-"}</small>
             </div>
             <div>
-              <span>이체한도</span>
+              <span>잔여 이체한도</span>
               <strong className={isOverLimit ? "danger-text" : ""}>
-                {formatMinorAmount(limitMinor, transferForm.currencyCode)}
+                {formatMinorAmount(dailyRemainingMinor, transferForm.currencyCode)}
               </strong>
+              <small>dailyRemainingMinor / 단건 {formatMinorAmount(limitMinor, transferForm.currencyCode)}</small>
+            </div>
+            <div>
+              <span>OTP 확인</span>
+              <strong>{otpRequired ? "필요" : "미필요"}</strong>
+              <small>otpRequired {String(otpRequired)}</small>
             </div>
           </div>
           <div className="form-grid">
@@ -242,6 +271,12 @@ export function TransferSection({
                   transferForm.currencyCode,
                 )}
                 을 이체합니다.
+                {transferPreview
+                  ? ` 총 출금액은 ${formatMinorAmount(
+                      transferPreview.totalDebitMinor,
+                      transferPreview.currencyCode,
+                    )}입니다.`
+                  : ""}
               </span>
             </div>
           ) : null}
@@ -260,8 +295,8 @@ export function TransferSection({
           ) : null}
           {isOverLimit ? (
             <div className="confirm-box warning" role="alert">
-              <strong>이체한도 초과</strong>
-              <span>고객센터의 이체한도 메뉴에서 보안등급과 한도를 확인하세요.</span>
+              <strong>이체 사전 검증 실패</strong>
+              <span>사유 {blockedReason}. 고객센터의 이체한도 메뉴에서 보안등급과 한도를 확인하세요.</span>
             </div>
           ) : null}
           <button disabled={isBusy || isOverLimit} type="submit">
@@ -287,6 +322,13 @@ export function TransferSection({
                     [
                       "수수료",
                       formatMinorAmount(transferFeeMinor, transferResult.currencyCode),
+                    ],
+                    [
+                      "총 출금액",
+                      formatMinorAmount(
+                        transferPreview?.totalDebitMinor ?? transferResult.amountMinor,
+                        transferResult.currencyCode,
+                      ),
                     ],
                     [
                       "이체 후 잔액",
