@@ -19,6 +19,7 @@ test("고객 웹뱅킹 주요 공개 업무와 미로그인 이체 가드를 실
   await expect(page.getByText("공동인증서 등록")).toBeVisible();
   await expect(page.getByText("금융인증서 등록")).toBeVisible();
   await expect(page.getByText("보안매체 등록")).toBeVisible();
+  await expect(page.getByRole("button", { name: "등록 신청" }).first()).toBeVisible();
 
   await page
     .getByRole("navigation", { name: "주요 메뉴" })
@@ -27,6 +28,7 @@ test("고객 웹뱅킹 주요 공개 업무와 미로그인 이체 가드를 실
   await expect(page.getByText("공과금 상세")).toBeVisible();
   await expect(page.getByText("오픈뱅킹 상세")).toBeVisible();
   await expect(page.getByText("외환 상세")).toBeVisible();
+  await expect(page.getByRole("button", { name: "신청 접수" }).first()).toBeVisible();
 
   await page
     .getByRole("navigation", { name: "주요 메뉴" })
@@ -34,6 +36,8 @@ test("고객 웹뱅킹 주요 공개 업무와 미로그인 이체 가드를 실
     .click();
   await expect(page.getByText("사고신고 접수", { exact: true })).toBeVisible();
   await expect(page.getByText("이체확인증", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "신고 접수" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "발급 접수" }).first()).toBeVisible();
   await page.getByText("FAQ 이체확인증은 어디서 발급하나요?").click();
   await expect(page.getByText("이체 완료 후 완료증 영역")).toBeVisible();
 
