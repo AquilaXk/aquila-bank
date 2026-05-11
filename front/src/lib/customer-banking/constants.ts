@@ -33,6 +33,100 @@ export const recentMenus: Array<{ label: string; section: MenuSection }> = [
   { label: "알림 수신 설정", section: "notifications" },
 ];
 
+export const recommendedKeywords = [
+  "인증서",
+  "OTP",
+  "이체한도",
+  "공과금",
+  "환율",
+];
+
+export const serviceMapGroups: Array<{
+  title: string;
+  items: Array<{ label: string; section: MenuSection }>;
+}> = [
+  {
+    title: "조회",
+    items: [
+      { label: "계좌조회", section: "accounts" },
+      { label: "거래내역 조회", section: "transactions" },
+      { label: "출금가능금액", section: "accounts" },
+      { label: "오픈뱅킹 조회", section: "enterpriseServices" },
+    ],
+  },
+  {
+    title: "이체",
+    items: [
+      { label: "즉시이체", section: "transfer" },
+      { label: "이체결과 조회", section: "transactions" },
+      { label: "자동이체", section: "transfer" },
+      { label: "이체한도 조회", section: "supportCenter" },
+    ],
+  },
+  {
+    title: "공과금",
+    items: [
+      { label: "공과금 납부", section: "enterpriseServices" },
+      { label: "지방세", section: "enterpriseServices" },
+      { label: "생활요금", section: "enterpriseServices" },
+      { label: "납부내역", section: "enterpriseServices" },
+    ],
+  },
+  {
+    title: "금융상품",
+    items: [
+      { label: "예금상품", section: "enterpriseServices" },
+      { label: "대출", section: "enterpriseServices" },
+      { label: "외환", section: "enterpriseServices" },
+      { label: "오픈뱅킹", section: "enterpriseServices" },
+    ],
+  },
+  {
+    title: "인증/보안",
+    items: [
+      { label: "인증센터", section: "security" },
+      { label: "공동인증서", section: "securityHub" },
+      { label: "금융인증서", section: "securityHub" },
+      { label: "OTP", section: "securityHub" },
+    ],
+  },
+  {
+    title: "고객센터",
+    items: [
+      { label: "고객센터", section: "supportCenter" },
+      { label: "사고신고", section: "supportCenter" },
+      { label: "증명서 발급", section: "supportCenter" },
+      { label: "공지사항", section: "dashboard" },
+    ],
+  },
+];
+
+export const favoriteServiceItems: Array<{
+  label: string;
+  section: MenuSection;
+  group: string;
+}> = [
+  { label: "계좌조회", section: "accounts", group: "조회" },
+  { label: "즉시이체", section: "transfer", group: "이체" },
+  { label: "거래내역 조회", section: "transactions", group: "조회" },
+  { label: "공과금 납부", section: "enterpriseServices", group: "공과금" },
+  { label: "인증서 관리", section: "security", group: "인증" },
+  { label: "사고신고", section: "supportCenter", group: "고객센터" },
+];
+
+export const serviceHourItems = [
+  { task: "조회", time: "00:30~23:30", status: "정상" },
+  { task: "이체", time: "00:30~23:30", status: "정상" },
+  { task: "공과금", time: "07:00~23:30", status: "정상" },
+  { task: "고객센터", time: "09:00~18:00", status: "상담" },
+];
+
+export const bankingNewsItems = [
+  "전자금융 이용시간 일부 변경 안내",
+  "비대면 계좌개설 안심차단 서비스 안내",
+  "OTP 오류횟수 초기화 업무 안내",
+];
+
 export const noticeItems = [
   "OTP/보안카드 전체 번호 입력 요구 시 거래를 중단하세요.",
   "거래내역은 계좌와 기간 조건으로 조회합니다.",

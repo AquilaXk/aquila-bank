@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Image from "next/image";
 import { AccountsSection } from "@/components/customer-banking/sections/accounts-section";
 import { BankNoticeStrip } from "@/components/customer-banking/common";
@@ -17,6 +18,8 @@ import {
   noticeItems,
   quickMenus,
   recentMenus,
+  recommendedKeywords,
+  serviceMapGroups,
 } from "@/lib/customer-banking/constants";
 import { formatDateTime } from "@/lib/customer-banking/format";
 import type { MenuSection } from "@/lib/customer-banking/types";
@@ -114,9 +117,16 @@ export default function HomePage() {
   const sessionRequired =
     !session && !publicSections.includes(activeSection);
   const canRenderWorkSection = !sessionRequired;
+  const [searchQuery, setSearchQuery] = useState("");
+  const [serviceMapOpen, setServiceMapOpen] = useState(false);
 
   function moveToSection(section: MenuSection) {
     setActiveSection(section);
+  }
+
+  function moveFromServiceMap(section: MenuSection) {
+    setServiceMapOpen(false);
+    moveToSection(section);
   }
 
   function renderLoginRequiredWork() {
@@ -181,13 +191,38 @@ export default function HomePage() {
             </button>
           </div>
           <div className="utility-right">
-            <button className="utility-link service-map" type="button">
+            <button
+              aria-controls="service-map-panel"
+              aria-expanded={serviceMapOpen}
+              className="utility-link service-map"
+              onClick={() => setServiceMapOpen((value) => !value)}
+              type="button"
+            >
               전체서비스
             </button>
-            <label className="search-field">
-              <span>통합검색</span>
-              <input aria-label="통합검색" placeholder="업무명 또는 메뉴 검색" />
-            </label>
+            <div className="utility-search">
+              <label className="search-field">
+                <span>통합검색</span>
+                <input
+                  aria-label="통합검색"
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="업무명 또는 메뉴 검색"
+                  value={searchQuery}
+                />
+              </label>
+              <div className="keyword-list" aria-label="추천검색어">
+                <span>추천검색어</span>
+                {recommendedKeywords.map((keyword) => (
+                  <button
+                    key={keyword}
+                    onClick={() => setSearchQuery(keyword)}
+                    type="button"
+                  >
+                    {keyword}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
         <div className="brand-row">
@@ -228,6 +263,34 @@ export default function HomePage() {
           <span>평일 09:00-18:00 상담</span>
           <span>서비스 상태 정상</span>
         </div>
+        {serviceMapOpen ? (
+          <section
+            aria-label="전체서비스 메뉴"
+            className="service-map-panel"
+            id="service-map-panel"
+          >
+            <div className="service-map-title">
+              <strong>전체서비스 메뉴</strong>
+              <span>개인뱅킹</span>
+            </div>
+            <div className="service-map-grid">
+              {serviceMapGroups.map((group) => (
+                <div className="service-map-group" key={group.title}>
+                  <strong>{group.title}</strong>
+                  {group.items.map((item) => (
+                    <button
+                      key={`${group.title}-${item.label}`}
+                      onClick={() => moveFromServiceMap(item.section)}
+                      type="button"
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
       </header>
 
       <div className="bank-layout">

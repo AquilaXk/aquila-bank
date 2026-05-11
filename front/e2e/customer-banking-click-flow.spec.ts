@@ -7,21 +7,26 @@ test("고객 웹뱅킹 주요 공개 업무와 미로그인 이체 가드를 실
 
   await expect(page.getByRole("heading", { name: "뱅킹 업무" })).toBeVisible();
   await expect(page.getByText("보안등급").first()).toBeVisible();
-  await expect(page.getByText("이용시간")).toBeVisible();
+  await expect(page.getByText("이용시간", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("업무현황")).toBeVisible();
   await expect(page.getByText("알림 수신 설정")).toBeVisible();
   await expect(page.getByText("추천검색어")).toBeVisible();
   await expect(page.getByText("자주찾는서비스")).toBeVisible();
   await expect(page.getByText("새소식")).toBeVisible();
-  await expect(page.getByText("서비스 이용시간")).toBeVisible();
+  await expect(page.getByRole("table", { name: "서비스 이용시간" })).toBeVisible();
 
   await page.getByRole("button", { name: "전체서비스" }).click();
   await expect(page.getByText("전체서비스 메뉴")).toBeVisible();
   await expect(page.getByRole("button", { name: "공과금" }).first()).toBeVisible();
   await expect(page.getByRole("button", { name: "고객센터" }).first()).toBeVisible();
 
-  await page.getByRole("button", { name: "이체한도" }).click();
+  await page
+    .getByLabel("추천검색어")
+    .getByRole("button", { exact: true, name: "이체한도" })
+    .click();
   await expect(page.getByLabel("통합검색")).toHaveValue("이체한도");
+  await page.getByRole("button", { name: "전체서비스" }).click();
+  await expect(page.getByText("전체서비스 메뉴")).toHaveCount(0);
 
   const protectedMenuNames = [
     "조회",
