@@ -13,6 +13,7 @@ const files = {
   page: read("src/app/page.tsx"),
   constants: read("src/lib/customer-banking/constants.ts"),
   types: read("src/lib/customer-banking/types.ts"),
+  transfer: read("src/components/customer-banking/sections/transfer-section.tsx"),
   enterprise: read("src/components/customer-banking/sections/enterprise-services-section.tsx"),
   support: read("src/components/customer-banking/sections/support-center-section.tsx"),
   securityHub: read("src/components/customer-banking/sections/security-hub-section.tsx"),
@@ -49,8 +50,14 @@ const required = [
   ["security financial certificate panel", files.securityHub, "금융인증서"],
   ["security OTP panel", files.securityHub, "OTP"],
   ["security media panel", files.securityHub, "보안매체"],
+  ["transfer receiver validation", files.transfer, "받는 분 확인"],
+  ["transfer fee estimate", files.transfer, "수수료"],
+  ["transfer limit check", files.transfer, "이체한도"],
+  ["transfer OTP confirmation", files.transfer, "OTP 확인"],
+  ["transfer receipt", files.transfer, "이체 완료증"],
   ["enterprise grid styles", files.styles, ".enterprise-service-grid"],
   ["security hub styles", files.styles, ".security-hub-grid"],
+  ["receipt styles", files.styles, ".transfer-receipt"],
 ];
 
 const forbidden = [

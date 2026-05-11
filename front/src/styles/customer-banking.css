@@ -644,7 +644,7 @@ label span {
 
 .stepper {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
   gap: 4px;
   margin: 0;
   padding: 0;
@@ -680,9 +680,49 @@ label span {
   padding: 10px 12px;
 }
 
+.confirm-box.warning {
+  border-color: #f7c580;
+  background: #fff7ed;
+}
+
 .confirm-box strong,
 .filter-summary strong {
   color: var(--primary-dark);
+}
+
+.danger-text {
+  color: var(--danger);
+}
+
+.transfer-risk-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.transfer-risk-grid div {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #fff;
+  padding: 10px;
+}
+
+.transfer-risk-grid span {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.transfer-risk-grid strong {
+  overflow-wrap: anywhere;
+  color: #102f55;
+}
+
+.transfer-receipt .result-panel {
+  min-height: 100%;
 }
 
 .filter-form {
@@ -1050,6 +1090,7 @@ label span {
   .enterprise-service-grid,
   .security-hub-grid,
   .support-service-grid,
+  .transfer-risk-grid,
   .account-grid,
   .split-work,
   .form-grid,
