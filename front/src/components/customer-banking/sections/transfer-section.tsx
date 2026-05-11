@@ -1,7 +1,10 @@
 import type { FormEvent } from 'react';
+import { useEffect, useState } from 'react';
 import type { TransferResponse, TransferReversalResponse } from '@/lib/api/types';
 import { formatDateTime, formatMinorAmount } from '@/lib/customer-banking/format';
 import { ResultPanel } from '../common';
+
+type TransferStep = "input" | "confirm" | "submitting" | "complete" | "failed";
 
 export function TransferSection({
   isBusy,
@@ -39,7 +42,7 @@ export function TransferSection({
     reversalReason: string;
     summary: string;
   }) => void;
-  onTransfer: (event: FormEvent<HTMLFormElement>) => void;
+  onTransfer: (event: FormEvent<HTMLFormElement>) => Promise<boolean>;
   onTransferChange: (value: {
     sourceAccountId: string;
     targetAccountId: string;
@@ -48,6 +51,39 @@ export function TransferSection({
     summary: string;
   }) => void;
 }) {
+  const [transferStep, setTransferStep] = useState<TransferStep>("input");
+
+  useEffect(() => {
+    if (transferResult) {
+      setTransferStep("complete");
+    }
+  }, [transferResult]);
+
+  function updateTransferForm(value: typeof transferForm): void {
+    setTransferStep("input");
+    onTransferChange(value);
+  }
+
+  async function handleTransferSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (transferStep !== "confirm") {
+      setTransferStep("confirm");
+      return;
+    }
+
+    setTransferStep("submitting");
+    const ok = await onTransfer(event);
+    setTransferStep(ok ? "complete" : "failed");
+  }
+
+  const stepLabels: Array<{ id: TransferStep; label: string }> = [
+    { id: "input", label: "입력" },
+    { id: "confirm", label: "이체 확인" },
+    { id: "submitting", label: "처리 중" },
+    { id: "complete", label: "완료" },
+    { id: "failed", label: "실패" },
+  ];
+
   return (
     <section className="task-section">
       <div className="section-title">
@@ -58,18 +94,28 @@ export function TransferSection({
       </div>
 
       <div className="two-column">
-        <form className="bank-form" onSubmit={onTransfer}>
+        <form className="bank-form" onSubmit={handleTransferSubmit}>
           <div className="form-heading">
             <strong>이체정보 입력</strong>
-            <span>요청 단위 중복 방지</span>
+            <span>{transferStep === "confirm" ? "최종 확인 후 실행" : "요청 단위 중복 방지"}</span>
           </div>
+          <ol className="stepper" aria-label="이체 진행 단계">
+            {stepLabels.map((step) => (
+              <li
+                className={transferStep === step.id ? "active" : ""}
+                key={step.id}
+              >
+                {step.label}
+              </li>
+            ))}
+          </ol>
           <div className="form-grid">
             <label>
               <span>출금계좌 ID</span>
               <input
                 inputMode="numeric"
                 onChange={(event) =>
-                  onTransferChange({
+                  updateTransferForm({
                     ...transferForm,
                     sourceAccountId: event.target.value,
                   })
@@ -83,7 +129,7 @@ export function TransferSection({
               <input
                 inputMode="numeric"
                 onChange={(event) =>
-                  onTransferChange({
+                  updateTransferForm({
                     ...transferForm,
                     targetAccountId: event.target.value,
                   })
@@ -97,7 +143,7 @@ export function TransferSection({
               <input
                 inputMode="numeric"
                 onChange={(event) =>
-                  onTransferChange({
+                  updateTransferForm({
                     ...transferForm,
                     amountMinor: event.target.value,
                   })
@@ -111,7 +157,7 @@ export function TransferSection({
               <input
                 maxLength={3}
                 onChange={(event) =>
-                  onTransferChange({
+                  updateTransferForm({
                     ...transferForm,
                     currencyCode: event.target.value.toUpperCase(),
                   })
@@ -126,14 +172,28 @@ export function TransferSection({
             <input
               maxLength={120}
               onChange={(event) =>
-                onTransferChange({ ...transferForm, summary: event.target.value })
+                updateTransferForm({ ...transferForm, summary: event.target.value })
               }
               required
               value={transferForm.summary}
             />
           </label>
+          {transferStep === "confirm" ? (
+            <div className="confirm-box" role="status">
+              <strong>이체 확인</strong>
+              <span>
+                출금계좌 {transferForm.sourceAccountId}에서 입금계좌{" "}
+                {transferForm.targetAccountId}로{" "}
+                {formatMinorAmount(
+                  Number(transferForm.amountMinor || 0),
+                  transferForm.currencyCode,
+                )}
+                을 이체합니다.
+              </span>
+            </div>
+          ) : null}
           <button disabled={isBusy} type="submit">
-            이체 실행
+            {transferStep === "confirm" ? "이체 실행" : "이체 확인"}
           </button>
         </form>
 

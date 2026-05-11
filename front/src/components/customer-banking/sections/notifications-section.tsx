@@ -90,7 +90,7 @@ export function NotificationsSection({
 
       <div className="notification-status">
         <div>
-          <span>SSE</span>
+          <span>실시간 연결 상태</span>
           <strong>{sseStatus.state}</strong>
         </div>
         <div>
@@ -213,6 +213,7 @@ export function NotificationsSection({
               </span>
             </div>
             <div className="button-row compact">
+              <span className="bulk-label">선택 일괄 처리</span>
               <button
                 disabled={selectedIds.length === 0 || isBusy}
                 onClick={() => onBulkAction("read")}

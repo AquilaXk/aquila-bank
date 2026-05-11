@@ -11,6 +11,9 @@ const files = {
   page: read("src/app/page.tsx"),
   layout: read("src/app/layout.tsx"),
   constants: read("src/lib/customer-banking/constants.ts"),
+  transfer: read("src/components/customer-banking/sections/transfer-section.tsx"),
+  transactions: read("src/components/customer-banking/sections/transactions-section.tsx"),
+  notifications: read("src/components/customer-banking/sections/notifications-section.tsx"),
   styles: read("src/styles/customer-banking.css"),
 };
 
@@ -32,6 +35,18 @@ const checks = [
   ["notifications 업무 menu", files.constants, "알림함"],
   ["responsive shell media query", files.styles, "@media (max-width: 760px)"],
   ["metadata public title", files.layout, "Aquila Bank 개인 인터넷뱅킹"],
+  ["session expired notice", files.page, "권한 만료"],
+  ["session required class", files.styles, ".session-required"],
+  ["transfer confirm step", files.transfer, "이체 확인"],
+  ["transfer complete state", files.transfer, "완료"],
+  ["transfer failed state", files.transfer, "실패"],
+  ["transfer stepper style", files.styles, ".stepper"],
+  ["transaction current filters", files.transactions, "현재 조건"],
+  ["transaction cursor pagination", files.transactions, "cursor pagination"],
+  ["transaction next page label", files.transactions, "다음 페이지"],
+  ["notification live connection label", files.notifications, "실시간 연결 상태"],
+  ["notification bulk action label", files.notifications, "선택 일괄 처리"],
+  ["filter summary style", files.styles, ".filter-summary"],
 ];
 
 const missing = checks.filter(([, content, expected]) => !content.includes(expected));

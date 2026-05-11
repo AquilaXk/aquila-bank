@@ -100,6 +100,8 @@ export default function HomePage() {
     setNotificationFilters,
     setPreferences,
   } = useCustomerBanking();
+  const sessionRequired =
+    !session && activeSection !== "dashboard" && activeSection !== "security";
 
   return (
     <main className="bank-shell">
@@ -192,6 +194,15 @@ export default function HomePage() {
           {busyLabel ? (
             <div className="busy-strip" role="status">
               {busyLabel} 처리 중
+            </div>
+          ) : null}
+          {sessionRequired ? (
+            <div className="session-required" role="status">
+              <strong>권한 만료 또는 미로그인</strong>
+              <span>로그인 필요 업무입니다. 인증센터에서 로그인 후 조회와 이체를 진행하세요.</span>
+              <button onClick={() => setActiveSection("security")} type="button">
+                인증센터로 이동
+              </button>
             </div>
           ) : null}
           {activeSection === "dashboard" ? (

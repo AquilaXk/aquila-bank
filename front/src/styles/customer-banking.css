@@ -347,6 +347,13 @@ label span {
   font-size: 12px;
 }
 
+.bulk-label {
+  align-self: center;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .alert {
   display: flex;
   gap: 10px;
@@ -383,6 +390,30 @@ label span {
   color: var(--primary-dark);
   padding: 9px 12px;
   font-weight: 800;
+}
+
+.session-required {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 12px;
+  align-items: center;
+  border: 1px solid #f7c580;
+  border-radius: 4px;
+  background: #fff7ed;
+  padding: 12px;
+}
+
+.session-required strong {
+  color: #9a3412;
+}
+
+.session-required span {
+  color: #62410f;
+}
+
+.session-required button {
+  grid-row: span 2;
+  padding: 0 12px;
 }
 
 .summary-grid {
@@ -535,6 +566,49 @@ label span {
 .bank-form > button {
   background: var(--primary);
   color: #fff;
+}
+
+.stepper {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stepper li {
+  min-height: 30px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--muted);
+  padding: 6px 8px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.stepper li.active {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #fff;
+}
+
+.confirm-box,
+.filter-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  border: 1px solid #bcd3ef;
+  border-radius: 4px;
+  background: var(--primary-soft);
+  padding: 10px 12px;
+}
+
+.confirm-box strong,
+.filter-summary strong {
+  color: var(--primary-dark);
 }
 
 .filter-form {
@@ -966,5 +1040,15 @@ label span {
   .rail-heading {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .session-required,
+  .stepper {
+    grid-template-columns: 1fr;
+  }
+
+  .session-required button {
+    grid-row: auto;
+    width: 100%;
   }
 }
