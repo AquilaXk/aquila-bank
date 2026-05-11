@@ -7,6 +7,9 @@ import type {
   CustomerApplicationLatestResult,
   CustomerApplicationSubmitHandler,
 } from "@/lib/customer-banking/types";
+import { BankNoticeStrip, WorkTabs } from "../common";
+
+function stayOnCurrentWorkTab(): void {}
 
 const registrationFlows = [
   {
@@ -82,6 +85,22 @@ export function SecurityHubSection({
           <h1>인증서 · OTP · 보안매체</h1>
         </div>
       </div>
+      <WorkTabs
+        active="certificate"
+        items={[
+          { id: "certificate", label: "인증서", onClick: stayOnCurrentWorkTab, disabled: true },
+          { id: "otp", label: "OTP", onClick: stayOnCurrentWorkTab, disabled: true },
+          { id: "media", label: "보안매체", onClick: stayOnCurrentWorkTab, disabled: true },
+        ]}
+      />
+      <BankNoticeStrip
+        items={[
+          { label: "공동인증서", value: "고위험 이체" },
+          { label: "금융인증서", value: "로그인/조회" },
+          { label: "OTP", value: "이체 승인" },
+          { label: "보안매체", value: "업무별 한도" },
+        ]}
+      />
 
       <div className="security-hub-grid">
         {securityHubItems.map((item) => (
@@ -97,7 +116,7 @@ export function SecurityHubSection({
         <div className="panel-toolbar">
           <div>
             <strong>보안매체별 적용 업무</strong>
-            <span>실제 비밀값 저장 없이 화면 기준만 제공합니다.</span>
+            <span>이체/인증 업무 적용 기준</span>
           </div>
         </div>
         <div className="bank-table-wrap">

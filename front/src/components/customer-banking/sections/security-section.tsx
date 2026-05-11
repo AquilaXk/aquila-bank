@@ -1,6 +1,20 @@
 import type { FormEvent } from 'react';
 import type { AuthSessionItem, BackupCodeIssueResponse, CustomerSession, LoginResponse, PasswordRecoveryRequestResult, TotpEnrollmentStartResponse } from '@/lib/api/types';
 import { formatDateTime } from '@/lib/customer-banking/format';
+import { BankNoticeStrip, WorkTabs } from '../common';
+
+function stayOnCurrentWorkTab(): void {}
+
+function getChallengeLabel(challengeType: string | null | undefined): string {
+  switch (challengeType) {
+    case "TOTP":
+      return "OTP 인증";
+    case "BACKUP_CODE":
+      return "복구코드 인증";
+    default:
+      return "추가 인증";
+  }
+}
 
 export function SecuritySection(props: {
   backupChallengeForm: {
@@ -80,6 +94,22 @@ export function SecuritySection(props: {
           </button>
         </div>
       </div>
+      <WorkTabs
+        active="login"
+        items={[
+          { id: "login", label: "로그인", onClick: stayOnCurrentWorkTab, disabled: true },
+          { id: "mfa", label: "추가 인증", onClick: stayOnCurrentWorkTab, disabled: true },
+          { id: "session", label: "세션", onClick: stayOnCurrentWorkTab, disabled: true },
+        ]}
+      />
+      <BankNoticeStrip
+        items={[
+          { label: "로그인 상태", value: props.session ? "로그인됨" : "로그인 필요" },
+          { label: "추가 인증", value: props.challenge ? "확인 필요" : "대기" },
+          { label: "세션", value: formatDateTime(props.session?.refreshExpiresAt) },
+          { label: "보안수단", value: "OTP / 복구코드" },
+        ]}
+      />
 
       <div className="two-column">
         <form className="bank-form" onSubmit={props.onLogin}>
@@ -88,7 +118,7 @@ export function SecuritySection(props: {
             <span>아이디와 비밀번호</span>
           </div>
           <label>
-            <span>이용자 ID</span>
+            <span>고객 ID</span>
             <input
               autoComplete="username"
               onChange={(event) =>
@@ -128,7 +158,7 @@ export function SecuritySection(props: {
           </div>
           <dl className="detail-list">
             <div>
-              <dt>User ID</dt>
+              <dt>고객번호</dt>
               <dd>{props.session?.userId ?? "-"}</dd>
             </div>
             <div>
@@ -136,7 +166,7 @@ export function SecuritySection(props: {
               <dd>{props.session?.tokenType ?? "-"}</dd>
             </div>
             <div>
-              <dt>Refresh 만료</dt>
+              <dt>세션 만료</dt>
               <dd>{formatDateTime(props.session?.refreshExpiresAt)}</dd>
             </div>
           </dl>
@@ -147,8 +177,8 @@ export function SecuritySection(props: {
         <div className="two-column">
           <form className="bank-form" onSubmit={props.onTotpChallenge}>
             <div className="form-heading">
-              <strong>TOTP 추가 인증</strong>
-              <span>{props.challenge.challengeType ?? "TOTP"}</span>
+              <strong>OTP 추가 인증</strong>
+              <span>{getChallengeLabel(props.challenge.challengeType)}</span>
             </div>
             <label>
               <span>인증번호 6자리</span>
@@ -185,11 +215,11 @@ export function SecuritySection(props: {
 
           <form className="bank-form" onSubmit={props.onBackupChallenge}>
             <div className="form-heading">
-              <strong>Backup Code 인증</strong>
+              <strong>복구코드 인증</strong>
               <span>대체 인증수단</span>
             </div>
             <label>
-              <span>Backup Code</span>
+              <span>복구코드</span>
               <input
                 onChange={(event) =>
                   props.onBackupChallengeChange({
@@ -228,7 +258,7 @@ export function SecuritySection(props: {
             <span>복구 요청</span>
           </div>
           <label>
-            <span>이용자 ID</span>
+            <span>고객 ID</span>
             <input
               onChange={(event) =>
                 props.onPasswordRecoveryChange({
@@ -245,7 +275,7 @@ export function SecuritySection(props: {
           </button>
           {props.passwordRecoveryResult?.handoffRequestId ? (
             <p className="field-note">
-              Request ID: {props.passwordRecoveryResult.handoffRequestId}
+              요청번호: {props.passwordRecoveryResult.handoffRequestId}
             </p>
           ) : null}
         </form>
@@ -253,7 +283,7 @@ export function SecuritySection(props: {
         <form className="bank-form" onSubmit={props.onPasswordRecoveryConfirm}>
           <div className="form-heading">
             <strong>복구 확정</strong>
-            <span>토큰 기반 변경</span>
+            <span>본인확인 후 변경</span>
           </div>
           <label>
             <span>복구 토큰</span>
@@ -329,11 +359,11 @@ export function SecuritySection(props: {
 
         <div className="bank-form passive">
           <div className="form-heading">
-            <strong>MFA 관리</strong>
-            <span>TOTP / Backup Code</span>
+            <strong>추가 인증 관리</strong>
+            <span>OTP / 복구코드</span>
           </div>
           <label>
-            <span>TOTP 인증번호</span>
+            <span>OTP 인증번호</span>
             <input
               inputMode="numeric"
               maxLength={6}
@@ -374,7 +404,7 @@ export function SecuritySection(props: {
           {props.totpEnrollment ? (
             <dl className="detail-list compact-list">
               <div>
-                <dt>Secret</dt>
+                <dt>등록키</dt>
                 <dd>{props.totpEnrollment.secretKey}</dd>
               </div>
               <div>
@@ -397,7 +427,7 @@ export function SecuritySection(props: {
         <div className="panel-toolbar">
           <div>
             <strong>접속 세션</strong>
-            <span>현재 사용자 refresh token session</span>
+            <span>현재 로그인 기기와 세션 상태</span>
           </div>
           <div className="button-row compact">
             <button
@@ -421,7 +451,7 @@ export function SecuritySection(props: {
             <caption>인증 세션 목록</caption>
             <thead>
               <tr>
-                <th>Session ID</th>
+                <th>세션번호</th>
                 <th>상태</th>
                 <th>기기</th>
                 <th>IP</th>

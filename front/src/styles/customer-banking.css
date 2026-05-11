@@ -1214,6 +1214,11 @@ label span {
   color: #fff;
 }
 
+.work-tabs button.active:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
 .right-rail {
   display: flex;
   flex-direction: column;
