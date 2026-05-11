@@ -213,6 +213,10 @@ export function TransferSection({
             <span>{transferStep === "confirm" ? "최종 확인 후 실행" : "요청 단위 중복 방지"}</span>
           </div>
           <div className="process-panel">
+            <div className="form-heading">
+              <strong>이체 절차</strong>
+              <span>받는 분 확인 · 이체정보 확인 · OTP 확인 · 완료증</span>
+            </div>
             <ol className="stepper" aria-label="이체 진행 단계">
               {stepLabels.map((step) => (
                 <li
@@ -224,7 +228,7 @@ export function TransferSection({
               ))}
             </ol>
           </div>
-          <div className="transfer-risk-grid" aria-label="이체 사전 확인">
+          <div className="transfer-risk-grid transfer-process-grid" aria-label="이체 사전 확인">
             <div>
               <span>받는 분</span>
               <strong>
@@ -325,7 +329,7 @@ export function TransferSection({
           </label>
           {transferStep === "confirm" ? (
             <div className="confirm-box" role="status">
-              <strong>이체 확인</strong>
+              <strong>이체정보 확인</strong>
               <span>
                 출금계좌 {transferForm.sourceAccountId}에서 입금계좌{" "}
                 {transferForm.targetAccountId}로{" "}
@@ -367,7 +371,7 @@ export function TransferSection({
           </button>
         </form>
 
-        <div className="transfer-receipt">
+        <div className="transfer-receipt transfer-receipt-panel">
           <ResultPanel
             title="이체 완료증"
             rows={
