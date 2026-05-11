@@ -123,9 +123,24 @@ fi
 
 if ! contains_pattern "limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_hot_per_ip:10m rate=256r/s;" ||
   ! contains_pattern "limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_archive_per_ip:10m rate=256r/s;" ||
+  ! contains_pattern "limit_req_zone \$binary_remote_addr zone=aquila_bank_frontend_per_ip:10m rate=10r/s;" ||
   ! contains_pattern "limit_req zone=aquila_bank_transaction_hot_per_ip burst=256 nodelay;" ||
-  ! contains_pattern "limit_req zone=aquila_bank_transaction_archive_per_ip burst=256 nodelay;"; then
+  ! contains_pattern "limit_req zone=aquila_bank_transaction_archive_per_ip burst=256 nodelay;" ||
+  ! contains_pattern "limit_req zone=aquila_bank_frontend_per_ip burst=60 delay=20;"; then
   echo "[nginx-runtime-gate] rendered config must use transaction-read burst80 nodelay defaults" >&2
+  exit 1
+fi
+
+if ! contains_pattern "server_tokens off;" ||
+  ! contains_pattern "location ~* ^/(?:\\.env(?:\\..*)?|\\.git(?:/|\$)|wp-login\\.php|xmlrpc\\.php|phpmyadmin(?:/|\$)|adminer(?:/|\$)|vendor/phpunit(?:/|\$)|cgi-bin(?:/|\$))" ||
+  ! contains_pattern "add_header X-Aquila-Reject-Source nginx-bot-guard always;" ||
+  ! contains_pattern "add_header X-Aquila-Reject-Reason scanner-path always;" ||
+  ! contains_pattern "add_header X-Content-Type-Options nosniff always;" ||
+  ! contains_pattern "add_header X-Frame-Options DENY always;" ||
+  ! contains_pattern "add_header Referrer-Policy no-referrer always;" ||
+  ! contains_pattern "add_header Permissions-Policy \"geolocation=(), microphone=(), camera=()\" always;" ||
+  ! contains_pattern "add_header X-Robots-Tag \"noindex, nofollow, noarchive\" always;"; then
+  echo "[nginx-runtime-gate] rendered config must include bot guard and browser security headers" >&2
   exit 1
 fi
 

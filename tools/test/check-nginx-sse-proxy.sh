@@ -23,8 +23,17 @@ if [[ ! -f "$runtime_gate_path" ]]; then
   exit 1
 fi
 
+deploy_path="ops/deploy/oci/bluegreen-deploy.sh"
+if [[ ! -f "$deploy_path" ]]; then
+  echo "[nginx-sse-check] missing deploy renderer: $deploy_path" >&2
+  exit 1
+fi
+
 required_patterns=(
   "limit_req_status 429;"
+  "server_tokens off;"
+  "client_header_timeout 10s;"
+  "client_body_timeout 10s;"
   "log_format aquila_bank_upstream escape=json"
   '"status":$status'
   '"realip_remote_addr":"$realip_remote_addr"'
@@ -46,6 +55,7 @@ required_patterns=(
   "real_ip_recursive on;"
   "limit_req_zone \$binary_remote_addr zone=aquila_bank_api_per_ip:10m rate=30r/s;"
   "limit_req_zone \$binary_remote_addr zone=aquila_bank_auth_per_ip:10m rate=5r/s;"
+  "limit_req_zone \$binary_remote_addr zone=aquila_bank_frontend_per_ip:10m rate=10r/s;"
   "limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_hot_per_ip:10m rate=\${NGINX_TRANSACTION_READ_HOT_RATE_RPS}r/s;"
   "limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_archive_per_ip:10m rate=\${NGINX_TRANSACTION_READ_ARCHIVE_RATE_RPS}r/s;"
   "limit_req_zone \$binary_remote_addr zone=aquila_bank_transfer_per_ip:10m rate=8r/s;"
@@ -59,6 +69,14 @@ required_patterns=(
   "keepalive_requests 1000;"
   "keepalive_timeout \${NGINX_BACKEND_API_KEEPALIVE_TIMEOUT_SECONDS}s;"
   "server_name \${NGINX_SERVER_NAME};"
+  "add_header X-Content-Type-Options nosniff always;"
+  "add_header X-Frame-Options DENY always;"
+  "add_header Referrer-Policy no-referrer always;"
+  "add_header Permissions-Policy \"geolocation=(), microphone=(), camera=()\" always;"
+  "add_header X-Robots-Tag \"noindex, nofollow, noarchive\" always;"
+  "location ~* ^/(?:\\.env(?:\\..*)?|\\.git(?:/|\$)|wp-login\\.php|xmlrpc\\.php|phpmyadmin(?:/|\$)|adminer(?:/|\$)|vendor/phpunit(?:/|\$)|cgi-bin(?:/|\$))"
+  "add_header X-Aquila-Reject-Source nginx-bot-guard always;"
+  "add_header X-Aquila-Reject-Reason scanner-path always;"
   "location ^~ /.well-known/acme-challenge/"
   "return 308 https://\$server_name\$request_uri;"
   "listen 443 ssl http2;"
@@ -105,11 +123,32 @@ required_patterns=(
   "limit_req zone=aquila_bank_api_per_ip burst=20 delay=5;"
   "location ^~ /actuator/health"
   "location / {"
+  "limit_req zone=aquila_bank_frontend_per_ip burst=60 delay=20;"
 )
 
 for pattern in "${required_patterns[@]}"; do
   if ! contains_pattern "$pattern"; then
     echo "[nginx-sse-check] missing directive: $pattern" >&2
+    exit 1
+  fi
+done
+
+deploy_required_patterns=(
+  "server_tokens off;"
+  'limit_req_zone \$binary_remote_addr zone=aquila_bank_frontend_per_ip:10m rate=10r/s;'
+  "add_header X-Aquila-Reject-Source nginx-bot-guard always;"
+  "add_header X-Aquila-Reject-Reason scanner-path always;"
+  "add_header X-Content-Type-Options nosniff always;"
+  "add_header X-Frame-Options DENY always;"
+  "add_header Referrer-Policy no-referrer always;"
+  "add_header Permissions-Policy \"geolocation=(), microphone=(), camera=()\" always;"
+  "add_header X-Robots-Tag \"noindex, nofollow, noarchive\" always;"
+  "limit_req zone=aquila_bank_frontend_per_ip burst=60 delay=20;"
+)
+
+for pattern in "${deploy_required_patterns[@]}"; do
+  if ! grep -Fq -- "$pattern" "$deploy_path"; then
+    echo "[nginx-sse-check] deploy renderer missing directive: $pattern" >&2
     exit 1
   fi
 done
