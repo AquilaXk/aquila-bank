@@ -4,7 +4,10 @@ export type MenuSection =
   | "transfer"
   | "transactions"
   | "notifications"
-  | "security";
+  | "security"
+  | "securityHub"
+  | "supportCenter"
+  | "enterpriseServices";
 
 export type AlertMessage = {
   type: "info" | "success" | "error";

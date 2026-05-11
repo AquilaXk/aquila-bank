@@ -3,8 +3,11 @@
 import Image from "next/image";
 import { AccountsSection } from "@/components/customer-banking/sections/accounts-section";
 import { DashboardSection } from "@/components/customer-banking/sections/dashboard-section";
+import { EnterpriseServicesSection } from "@/components/customer-banking/sections/enterprise-services-section";
 import { NotificationsSection } from "@/components/customer-banking/sections/notifications-section";
+import { SecurityHubSection } from "@/components/customer-banking/sections/security-hub-section";
 import { SecuritySection } from "@/components/customer-banking/sections/security-section";
+import { SupportCenterSection } from "@/components/customer-banking/sections/support-center-section";
 import { TransactionsSection } from "@/components/customer-banking/sections/transactions-section";
 import { TransferSection } from "@/components/customer-banking/sections/transfer-section";
 import { useCustomerBanking } from "@/hooks/use-customer-banking";
@@ -100,8 +103,15 @@ export default function HomePage() {
     setNotificationFilters,
     setPreferences,
   } = useCustomerBanking();
+  const publicSections = [
+    "dashboard",
+    "security",
+    "securityHub",
+    "supportCenter",
+    "enterpriseServices",
+  ];
   const sessionRequired =
-    !session && activeSection !== "dashboard" && activeSection !== "security";
+    !session && !publicSections.includes(activeSection);
 
   return (
     <main className="bank-shell">
@@ -117,10 +127,18 @@ export default function HomePage() {
             <button className="utility-link" type="button">
               기업
             </button>
-            <button className="utility-link" type="button">
+            <button
+              className="utility-link"
+              onClick={() => setActiveSection("security")}
+              type="button"
+            >
               인증센터
             </button>
-            <button className="utility-link" type="button">
+            <button
+              className="utility-link"
+              onClick={() => setActiveSection("supportCenter")}
+              type="button"
+            >
               고객센터
             </button>
           </div>
@@ -307,6 +325,11 @@ export default function HomePage() {
               onTotpCodeChange={setTotpCode}
               onVerifyTotpEnrollment={handleVerifyTotpEnrollment}
             />
+          ) : null}
+          {activeSection === "securityHub" ? <SecurityHubSection /> : null}
+          {activeSection === "supportCenter" ? <SupportCenterSection /> : null}
+          {activeSection === "enterpriseServices" ? (
+            <EnterpriseServicesSection />
           ) : null}
           {activeSection === "notifications" ? (
             <NotificationsSection
