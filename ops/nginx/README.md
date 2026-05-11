@@ -14,6 +14,7 @@
 - transaction-read 전용 edge rate limit
 - API/SSE upstream 분리
 - multi-node backend pool placeholder
+- `/admin` public path closed-by-default
 
 ## Runtime Render 기준
 
@@ -50,7 +51,7 @@ bash tools/ops/render-nginx-runtime-config.sh /tmp/aquila-bank-nginx.conf ops/ng
 
 ## TLS / `server_name` 기준
 
-- `server_name`은 `_` wildcard 대신 실제 FQDN 하나로 고정합니다. template에서는 `${NGINX_SERVER_NAME}` placeholder를 사용합니다.
+- `server_name`은 `_` wildcard 대신 실제 FQDN 하나로 고정합니다. staging 기본 FQDN은 `bank.aquilaxk.site`입니다.
 - `listen 80`에서는 `/.well-known/acme-challenge/`와 `/actuator/health`만 예외로 두고 나머지는 `308`으로 HTTPS redirect 합니다.
 - `listen 443 ssl http2`에서 TLS termination을 수행합니다.
 - `ssl_certificate`, `ssl_certificate_key`는 `${NGINX_SSL_CERTIFICATE_PATH}`, `${NGINX_SSL_CERTIFICATE_KEY_PATH}`를 통해 runtime에서 채웁니다.
@@ -80,6 +81,7 @@ bash tools/ops/render-nginx-runtime-config.sh /tmp/aquila-bank-nginx.conf ops/ng
 - access log는 JSON line으로 `host`, `request_method`, `request_uri`, `http_user_agent`, `x_forwarded_for`, `scheme`, `server_port`, `ssl_protocol`, `reject_source`, `reject_reason`, `limit_req_status`를 남깁니다. scanner path 차단과 edge 429는 backend 4xx와 섞지 않고 이 필드로 분리합니다.
 - 정상 client/SDK는 `X-RateLimit-Retry-After-Millis`와 jitter를 반영하고, sustained read에서는 k6 `preemptive pacing`과 같은 요청 전 token pacing으로 edge reject 동기화를 피합니다.
 - backend에는 login/password recovery throttling이 이미 있으므로, Nginx auth zone은 edge 1차 차단으로 보고 backend는 계정/IP 단위 2차 가드로 둡니다.
+- `/admin`은 운영 콘솔이 별도 인증/망분리 계약으로 열리기 전까지 public edge에서 `404`로 닫고, `X-Aquila-Reject-Reason: admin-path-closed`로 관측합니다.
 - transaction-read `burst80` profile은 delay queue 의존 없이 burst80 promotion target을 닫기 위해 `256r/s`, `burst=256`, `nodelay`를 기본값으로 둡니다. run #25319314917의 burst80 edge 429 `22.8838%` 초과를 edge bucket headroom으로 낮추는 운영 후보이며, backend 429 hard-zero gate와 함께만 승격합니다.
 - transfer-write edge budget은 run #25536470734에서 write p95 약 `13ms`, DB wait `0`, outbox lag max `0`, 5xx `0`인 상태에서 `rate=5r/s`가 accepted throughput을 제한한 근거로 `8r/s`, `burst=16`, `nodelay`로 둡니다. 이 값은 read-heavy traffic과 분리하며, backend 429/5xx/499가 생기면 즉시 되돌립니다.
 - `burst64` profile은 이전 운영 후보 기준이며 `160r/s`, `burst=20`, `nodelay`를 rollback 비교용으로 유지합니다.
