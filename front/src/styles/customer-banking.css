@@ -161,13 +161,19 @@ label span {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 38px;
-  height: 38px;
+  width: 42px;
+  height: 42px;
   border-radius: 6px;
-  background: var(--primary);
-  color: #fff;
-  font-size: 22px;
-  font-weight: 900;
+  border: 1px solid var(--line-strong);
+  background: #fff;
+  overflow: hidden;
+}
+
+.brand-symbol img {
+  display: block;
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
 }
 
 .brand-mark strong {

@@ -7,6 +7,10 @@ export const metadata: Metadata = {
   title: "Aquila Bank",
   description:
     "Real-time notifications and high-volume transaction lookup workspace.",
+  icons: {
+    icon: "/favicon.ico",
+    apple: "/apple-touch-icon.png",
+  },
 };
 
 export default function RootLayout({

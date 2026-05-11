@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { AccountsSection } from "@/components/customer-banking/sections/accounts-section";
 import { DashboardSection } from "@/components/customer-banking/sections/dashboard-section";
 import { NotificationsSection } from "@/components/customer-banking/sections/notifications-section";
@@ -122,7 +123,15 @@ export default function HomePage() {
         </div>
         <div className="brand-row">
           <div className="brand-mark" aria-label="Aquila Bank">
-            <span className="brand-symbol">A</span>
+            <span className="brand-symbol" aria-hidden="true">
+              <Image
+                alt=""
+                height={34}
+                priority
+                src="/brand-mascot.png"
+                width={34}
+              />
+            </span>
             <div>
               <strong>Aquila Bank</strong>
               <small>Personal Internet Banking</small>
