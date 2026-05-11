@@ -35,4 +35,9 @@ resource "oci_core_instance" "this" {
     source_id               = local.selected_image_id
     source_type             = "image"
   }
+
+  lifecycle {
+    # 최신 이미지 조회는 신규 생성 전용. 운영 중 네트워크 변경에 image drift가 섞이지 않게 고정한다.
+    ignore_changes = [source_details[0].source_id]
+  }
 }

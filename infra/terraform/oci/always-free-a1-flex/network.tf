@@ -64,6 +64,18 @@ resource "oci_core_security_list" "public_ssh" {
       min = 80
     }
   }
+
+  ingress_security_rules {
+    description = "HTTPS ingress for OCI A1 staging"
+    protocol    = "6"
+    source      = var.https_ingress_cidr
+    source_type = "CIDR_BLOCK"
+
+    tcp_options {
+      max = 443
+      min = 443
+    }
+  }
 }
 
 resource "oci_core_subnet" "public" {
