@@ -111,6 +111,42 @@ export function SecuritySection(props: {
         ]}
       />
 
+      <div className="security-dashboard" aria-label="보안관리">
+        <div>
+          <span>보안관리</span>
+          <strong>{props.session ? "정상" : "로그인 필요"}</strong>
+          <small>인증센터</small>
+        </div>
+        <div>
+          <span>추가 인증</span>
+          <strong>{props.challenge ? getChallengeLabel(props.challenge.challengeType) : "대기"}</strong>
+          <small>OTP / 복구코드</small>
+        </div>
+        <div>
+          <span>접속관리</span>
+          <strong>{props.sessions.length}건</strong>
+          <small>활성 세션</small>
+        </div>
+      </div>
+
+      <section className="auth-method-grid" aria-label="로그인 방식">
+        <div>
+          <span>로그인 방식</span>
+          <strong>공동인증서</strong>
+          <small>전자서명 기반 로그인</small>
+        </div>
+        <div>
+          <span>로그인 방식</span>
+          <strong>금융인증서</strong>
+          <small>클라우드 인증서</small>
+        </div>
+        <div>
+          <span>로그인 방식</span>
+          <strong>아이디 로그인</strong>
+          <small>추가 인증 연계</small>
+        </div>
+      </section>
+
       <div className="two-column">
         <form className="bank-form" onSubmit={props.onLogin}>
           <div className="form-heading">

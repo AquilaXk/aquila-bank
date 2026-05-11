@@ -48,6 +48,13 @@ const required = [
   ["unauth login method grid", files.styles, ".login-method-grid"],
   ["bank shell security level", files.page, "보안등급"],
   ["bank work operating hours", files.dashboard, "이용시간"],
+  ["account visual summary style", files.styles, ".account-summary-panel"],
+  ["work command panel style", files.styles, ".work-command-panel"],
+  ["transfer process grid style", files.styles, ".transfer-process-grid"],
+  ["transfer receipt panel style", files.styles, ".transfer-receipt-panel"],
+  ["transaction work grid style", files.styles, ".transaction-work-grid"],
+  ["auth method grid style", files.styles, ".auth-method-grid"],
+  ["security dashboard style", files.styles, ".security-dashboard"],
   ["work summary strip", files.styles, ".work-summary-strip"],
   ["process panel", files.styles, ".process-panel"],
 ];
