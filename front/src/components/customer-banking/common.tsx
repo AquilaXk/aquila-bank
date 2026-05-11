@@ -6,7 +6,7 @@ export function ResultPanel({ title, rows }: { title: string; rows: string[][] }
         <span>{rows.length > 0 ? "완료" : "대기"}</span>
       </div>
       {rows.length === 0 ? (
-        <p className="rail-copy">처리 결과가 여기에 표시됩니다.</p>
+        <p className="rail-copy">처리 결과 없음</p>
       ) : (
         <dl className="detail-list">
           {rows.map(([key, value]) => (
@@ -18,5 +18,52 @@ export function ResultPanel({ title, rows }: { title: string; rows: string[][] }
         </dl>
       )}
     </div>
+  );
+}
+
+export function WorkTabs({
+  active,
+  items,
+}: {
+  active: string;
+  items: Array<{
+    id: string;
+    label: string;
+    onClick: () => void;
+    disabled?: boolean;
+  }>;
+}) {
+  return (
+    <div className="work-tabs">
+      {items.map((item) => (
+        <button
+          aria-current={active === item.id ? "page" : undefined}
+          className={active === item.id ? "active" : undefined}
+          disabled={item.disabled}
+          key={item.id}
+          onClick={item.onClick}
+          type="button"
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function BankNoticeStrip({
+  items,
+}: {
+  items: Array<{ label: string; value: string }>;
+}) {
+  return (
+    <dl className="bank-notice-strip">
+      {items.map((item) => (
+        <div key={item.label}>
+          <dt>{item.label}</dt>
+          <dd>{item.value}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }

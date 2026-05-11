@@ -34,41 +34,41 @@ export const recentMenus: Array<{ label: string; section: MenuSection }> = [
 ];
 
 export const noticeItems = [
-  "보안카드 전체 번호 입력 요구 시 즉시 거래를 중단하세요.",
-  "대량 거래 조회는 계좌, 기간, cursor 조건으로 제한됩니다.",
-  "공동인증서 및 OTP 재발급은 인증센터에서 진행합니다.",
+  "OTP/보안카드 전체 번호 입력 요구 시 거래를 중단하세요.",
+  "거래내역은 계좌와 기간 조건으로 조회합니다.",
+  "공동인증서와 OTP 재발급은 인증센터에서 처리합니다.",
 ];
 
 export const enterpriseServiceItems = [
   {
     title: "공과금",
     category: "납부",
-    description: "지방세, 국세, 아파트관리비, 전기/통신요금 납부 메뉴 진입점입니다.",
-    status: "read-only",
+    description: "지로, 지방세, 아파트관리비, 전기/통신요금",
+    status: "접수 가능",
   },
   {
     title: "오픈뱅킹",
     category: "통합조회",
-    description: "타 금융기관 계좌 연결, 잔액 조회, 해지 동선을 분리해 보여줍니다.",
-    status: "read-only",
+    description: "타행 계좌 연결, 통합조회, 연결 해지",
+    status: "접수 가능",
   },
   {
     title: "예금상품",
     category: "상품",
-    description: "입출금, 예금, 적금 상품 목록과 가입 전 확인 항목을 제공합니다.",
-    status: "상품 안내",
+    description: "입출금, 예금, 적금 상품 신청",
+    status: "접수 가능",
   },
   {
     title: "대출",
     category: "여신",
-    description: "신용대출, 담보대출, 상환 조회 메뉴를 신청 실행 없이 안내합니다.",
-    status: "상담 안내",
+    description: "한도조회, 상담 신청, 상환 조회",
+    status: "접수 가능",
   },
   {
     title: "외환",
     category: "FX",
-    description: "환율 조회, 외화예금, 해외송금 메뉴를 조회형 업무로 배치합니다.",
-    status: "환율 조회",
+    description: "환율 조회, 외화예금, 해외송금 신청",
+    status: "접수 가능",
   },
 ];
 
