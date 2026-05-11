@@ -76,6 +76,7 @@ bash tools/ops/render-nginx-runtime-config.sh /tmp/aquila-bank-nginx.conf ops/ng
 - `/api/`에는 `limit_req zone=aquila_bank_api_per_ip burst=20 delay=5;`를 유지합니다.
 - `/api/v1/notifications/stream`은 장기 연결이라 일반 API와 성격이 달라 exact location으로 분리하고 rate limit 대상에서 제외합니다.
 - `429`는 Nginx에서 JSON body와 `X-Aquila-Reject-Source: nginx-edge`, `Retry-After`, `X-RateLimit-Retry-After-Millis`, `X-RateLimit-Retry-Jitter-Millis`를 내려 k6/client backoff가 edge rejection을 구분하게 합니다. OCI A1 기본값은 `150ms + jitter 100ms`로 retry 동기화를 짧게 분산합니다.
+- access log는 JSON line으로 `host`, `request_method`, `request_uri`, `http_user_agent`, `x_forwarded_for`, `scheme`, `server_port`, `ssl_protocol`, `reject_source`, `reject_reason`, `limit_req_status`를 남깁니다. scanner path 차단과 edge 429는 backend 4xx와 섞지 않고 이 필드로 분리합니다.
 - 정상 client/SDK는 `X-RateLimit-Retry-After-Millis`와 jitter를 반영하고, sustained read에서는 k6 `preemptive pacing`과 같은 요청 전 token pacing으로 edge reject 동기화를 피합니다.
 - backend에는 login/password recovery throttling이 이미 있으므로, Nginx auth zone은 edge 1차 차단으로 보고 backend는 계정/IP 단위 2차 가드로 둡니다.
 - transaction-read `burst80` profile은 delay queue 의존 없이 burst80 promotion target을 닫기 위해 `256r/s`, `burst=256`, `nodelay`를 기본값으로 둡니다. run #25319314917의 burst80 edge 429 `22.8838%` 초과를 edge bucket headroom으로 낮추는 운영 후보이며, backend 429 hard-zero gate와 함께만 승격합니다.
