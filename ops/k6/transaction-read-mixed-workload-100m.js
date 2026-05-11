@@ -27,6 +27,7 @@ const notificationRate = Number(__ENV.K6_MIXED_NOTIFICATION_RATE || "1");
 const limit = Number(__ENV.K6_LIMIT || "50");
 const sseTimeout = __ENV.K6_MIXED_SSE_TIMEOUT || "5s";
 const maxRetryAfterSleepSeconds = Number(__ENV.K6_MAX_RETRY_AFTER_SLEEP_SECONDS || "1");
+const writeAcceptedRatioThreshold = __ENV.K6_MIXED_WRITE_ACCEPTED_RATIO_THRESHOLD || "0.80";
 const IDEMPOTENCY_KEY_MAX_LENGTH = 80;
 
 export const mixedReadCount = new Counter("aquila_mixed_read_count");
@@ -63,6 +64,7 @@ export const mixedWrite409Count = new Counter("aquila_mixed_write_409_count");
 export const mixedWrite422Count = new Counter("aquila_mixed_write_422_count");
 export const mixedWriteOtherUnexpectedCount = new Counter("aquila_mixed_write_other_unexpected_count");
 export const mixedWrite429Rate = new Rate("aquila_mixed_write_429_rate");
+export const mixedWriteAcceptedRatio = new Rate("aquila_mixed_write_accepted_ratio");
 export const mixedAuthCount = new Counter("aquila_mixed_auth_count");
 export const mixedAuthDurationMs = new Trend("aquila_mixed_auth_duration_ms", true);
 export const mixedNotificationCount = new Counter("aquila_mixed_notification_count");
@@ -124,6 +126,7 @@ export const options = {
     aquila_mixed_sse_connect_count: ["count>0"],
     checks: ["rate==1"],
     aquila_mixed_5xx_count: ["count==0"],
+    aquila_mixed_write_accepted_ratio: [`rate>=${writeAcceptedRatioThreshold}`],
   },
 };
 
@@ -347,6 +350,7 @@ export function transferWrite() {
   const source = rejectedSource(response);
   mixedWriteCount.add(1);
   mixedWriteDurationMs.add(response.timings.duration);
+  mixedWriteAcceptedRatio.add(accepted);
   if (accepted) {
     mixedWrite2xxCount.add(1);
   }
@@ -456,6 +460,7 @@ function markdownSummary(data) {
 - runId: ${runId}
 - duration: ${duration}
 - components: read,write,auth,notification,sse
+- write accepted ratio threshold: ${writeAcceptedRatioThreshold}
 
 | metric | value |
 | --- | ---: |
@@ -474,6 +479,7 @@ function markdownSummary(data) {
 | archive read p95 ms | ${metricValue(data, "aquila_mixed_read_archive_duration_ms", "p(95)")} |
 | write 2xx count | ${metricValue(data, "aquila_mixed_write_2xx_count", "count")} |
 | write 429 count | ${metricValue(data, "aquila_mixed_write_429_count", "count")} |
+| write accepted ratio | ${metricValue(data, "aquila_mixed_write_accepted_ratio", "rate")} |
 | write edge 429 count | ${metricValue(data, "aquila_mixed_write_edge_429_count", "count")} |
 | write backend 429 count | ${metricValue(data, "aquila_mixed_write_backend_429_count", "count")} |
 | write unknown 429 count | ${metricValue(data, "aquila_mixed_write_unknown_429_count", "count")} |

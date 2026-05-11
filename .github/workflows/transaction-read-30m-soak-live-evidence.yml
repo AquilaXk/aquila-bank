@@ -60,9 +60,9 @@ on:
         required: false
         type: string
       workload_weights:
-        description: "Weighted-random k6 workload weights; default uses fixture-backed hot read paths"
+        description: "Weighted-random k6 workload weights; default includes archive-backed cold read paths"
         required: false
-        default: "hot_first:40,hot_cursor:40,hot_deep_cursor:20"
+        default: "hot_first:30,hot_cursor:20,hot_deep_cursor:10,cold_first:20,cold_cursor:10,cold_deep_cursor:10"
         type: string
   pull_request:
     branches:
@@ -224,7 +224,7 @@ jobs:
           K6_OVERLOAD_MODE="false"
           K6_BURST_RATE="${K6_VUS}"
           K6_WORKLOAD_SHAPE="weighted-random"
-          K6_WORKLOAD_WEIGHTS="${SOAK_30M_WORKLOAD_WEIGHTS_INPUT:-hot_first:40,hot_cursor:40,hot_deep_cursor:20}"
+          K6_WORKLOAD_WEIGHTS="${SOAK_30M_WORKLOAD_WEIGHTS_INPUT:-hot_first:30,hot_cursor:20,hot_deep_cursor:10,cold_first:20,cold_cursor:10,cold_deep_cursor:10}"
           K6_PREEMPTIVE_PACING="true"
           K6_PREEMPTIVE_PACING_RPS="${K6_VUS}"
           K6_PREEMPTIVE_PACING_MAX_SLEEP_MS="250"

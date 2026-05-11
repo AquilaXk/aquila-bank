@@ -64,6 +64,8 @@ grep -F "read-buckets.tsv" "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
 grep -F "write-status.tsv" "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
 grep -F $'\thot,cold,archive\t' "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
 grep -F $'\t1\t0\t' "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
+grep -F $'\twrite_accepted_ratio\tmin_write_accepted_ratio' "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
+grep -F $'\t1\t0.80' "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
 
 echo "[transaction-read-mixed-workload-live-evidence-autogen] generated manifest passes gate"
 gate_output="$(
@@ -136,6 +138,8 @@ done
   printf "MIXED_WORKLOAD_RUNNER_READ_BUCKETS=%q\n" "hot,cold,archive"
   printf "MIXED_WORKLOAD_RUNNER_WRITE_2XX_COUNT=%q\n" "7"
   printf "MIXED_WORKLOAD_RUNNER_WRITE_UNEXPECTED_STATUS_COUNT=%q\n" "2"
+  printf "MIXED_WORKLOAD_RUNNER_WRITE_ACCEPTED_RATIO=%q\n" "0.875"
+  printf "MIXED_WORKLOAD_RUNNER_MIN_WRITE_ACCEPTED_RATIO=%q\n" "0.80"
   printf "MIXED_WORKLOAD_RUNNER_OUTBOX_LAG_MAX=%q\n" "0"
 } >"${MIXED_WORKLOAD_STUB_ENV}"
 echo "${MIXED_WORKLOAD_STUB_ENV}"
@@ -168,6 +172,7 @@ grep -F $'\t0.03\t0\t0\t0\t0\t0\t0\t333\t' "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_T
 grep -F $'\t101\t222\t444\t1\t0\t12.5\t' "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
 grep -F $'\thot,cold,archive\t' "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
 grep -F $'\t7\t2\t' "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
+grep -F $'\t0.875\t0.80' "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
 live_gate_output="$(
   MIXED_30M_TIMELINE_NAME="${name}-live" \
   MIXED_30M_TIMELINE_INPUT_TSV="${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" \

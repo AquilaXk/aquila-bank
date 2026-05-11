@@ -28,6 +28,8 @@ grep -F "aquila_mixed_write_edge_429_count" "${k6_script}" >/dev/null
 grep -F "aquila_mixed_write_backend_429_count" "${k6_script}" >/dev/null
 grep -F "aquila_mixed_write_unknown_429_count" "${k6_script}" >/dev/null
 grep -F "aquila_mixed_write_unexpected_status_count" "${k6_script}" >/dev/null
+grep -F "aquila_mixed_write_accepted_ratio" "${k6_script}" >/dev/null
+grep -F "K6_MIXED_WRITE_ACCEPTED_RATIO_THRESHOLD" "${k6_script}" >/dev/null
 grep -F "aquila_mixed_write_401_count" "${k6_script}" >/dev/null
 grep -F "aquila_mixed_write_403_count" "${k6_script}" >/dev/null
 grep -F "aquila_mixed_write_409_count" "${k6_script}" >/dev/null
@@ -113,6 +115,7 @@ if [[ "$*" == *"grafana/k6:0.54.0 run /scripts/transaction-read-mixed-workload-1
     "aquila_mixed_write_422_count": {"values": {"count": 0}},
     "aquila_mixed_write_other_unexpected_count": {"values": {"count": 0}},
     "aquila_mixed_write_429_rate": {"values": {"rate": 0.2222222222}},
+    "aquila_mixed_write_accepted_ratio": {"values": {"rate": 0.4444444444}},
     "aquila_mixed_auth_count": {"values": {"count": 3}},
     "aquila_mixed_auth_duration_ms": {"values": {"p(95)": 42}},
     "aquila_mixed_notification_count": {"values": {"count": 3}},
@@ -164,6 +167,7 @@ grep -F "base_url=configured" <<<"${plan}" >/dev/null
 grep -F "remote_workdir=/srv/aquila-bank" <<<"${plan}" >/dev/null
 grep -F "duration=30m" <<<"${plan}" >/dev/null
 grep -F "components=read,write,auth,notification,sse" <<<"${plan}" >/dev/null
+grep -F "write_accepted_ratio_threshold=0.80" <<<"${plan}" >/dev/null
 grep -F "auth_token=present source=file" <<<"${plan}" >/dev/null
 grep -F "evidence_env=${output_dir}/mixed-oci-check-oci-mixed-evidence.env" <<<"${plan}" >/dev/null
 if grep -F "secret-token-value" <<<"${plan}" >/dev/null; then
@@ -238,6 +242,7 @@ jq -e '.metrics.aquila_mixed_write_edge_429_count.values.count == 1' "${MIXED_WO
 jq -e '.metrics.aquila_mixed_write_backend_429_count.values.count == 0' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
 jq -e '.metrics.aquila_mixed_write_unknown_429_count.values.count == 0' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
 jq -e '.metrics.aquila_mixed_write_unexpected_status_count.values.count == 3' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
+jq -e '.metrics.aquila_mixed_write_accepted_ratio.values.rate == 0.875' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
 jq -e '.metrics.aquila_mixed_auth_count.values.count == 16' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
 jq -e '.metrics.aquila_mixed_notification_count.values.count == 16' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
 jq -e '.metrics.aquila_mixed_sse_connect_count.values.count == 1' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
@@ -248,6 +253,8 @@ test "${MIXED_WORKLOAD_RUNNER_WRITE_EDGE_429_COUNT}" = "1"
 test "${MIXED_WORKLOAD_RUNNER_WRITE_BACKEND_429_COUNT}" = "0"
 test "${MIXED_WORKLOAD_RUNNER_WRITE_UNKNOWN_429_COUNT}" = "0"
 test "${MIXED_WORKLOAD_RUNNER_WRITE_UNEXPECTED_STATUS_COUNT}" = "3"
+test "${MIXED_WORKLOAD_RUNNER_WRITE_ACCEPTED_RATIO}" = "0.875"
+test "${MIXED_WORKLOAD_RUNNER_MIN_WRITE_ACCEPTED_RATIO}" = "0.80"
 test "${MIXED_WORKLOAD_RUNNER_READ_BUCKETS}" = "hot,cold,archive"
 test "${MIXED_WORKLOAD_RUNNER_READ_HOT_P999_MS}" = "350"
 test "${MIXED_WORKLOAD_RUNNER_READ_COLD_P999_MS}" = "410"
@@ -298,12 +305,15 @@ jq -e '.metrics.aquila_mixed_write_edge_429_count.values.count == 1' "${MIXED_WO
 jq -e '.metrics.aquila_mixed_write_backend_429_count.values.count == 1' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
 jq -e '.metrics.aquila_mixed_write_unknown_429_count.values.count == 0' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
 jq -e '.metrics.aquila_mixed_write_unexpected_status_count.values.count == 3' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
+jq -e '.metrics.aquila_mixed_write_accepted_ratio.values.rate == 0.4444444444' "${MIXED_WORKLOAD_RUNNER_K6_SUMMARY_REF}" >/dev/null
 test "${MIXED_WORKLOAD_RUNNER_WRITE_2XX_COUNT}" = "4"
 test "${MIXED_WORKLOAD_RUNNER_WRITE_429_COUNT}" = "2"
 test "${MIXED_WORKLOAD_RUNNER_WRITE_EDGE_429_COUNT}" = "1"
 test "${MIXED_WORKLOAD_RUNNER_WRITE_BACKEND_429_COUNT}" = "1"
 test "${MIXED_WORKLOAD_RUNNER_WRITE_UNKNOWN_429_COUNT}" = "0"
 test "${MIXED_WORKLOAD_RUNNER_WRITE_UNEXPECTED_STATUS_COUNT}" = "3"
+test "${MIXED_WORKLOAD_RUNNER_WRITE_ACCEPTED_RATIO}" = "0.4444444444"
+test "${MIXED_WORKLOAD_RUNNER_MIN_WRITE_ACCEPTED_RATIO}" = "0.80"
 test -f "${MIXED_WORKLOAD_RUNNER_WRITE_429_SOURCE_REF}"
 grep -F $'mixed-oci-run-live-failed\tedge\t1' "${MIXED_WORKLOAD_RUNNER_WRITE_429_SOURCE_REF}" >/dev/null
 grep -F $'mixed-oci-run-live-failed\tbackend\t1' "${MIXED_WORKLOAD_RUNNER_WRITE_429_SOURCE_REF}" >/dev/null
