@@ -1,5 +1,10 @@
 import type { MenuSection } from '@/lib/customer-banking/types';
 import { BankNoticeStrip, WorkTabs } from '../common';
+import {
+  bankingNewsItems,
+  favoriteServiceItems,
+  serviceHourItems,
+} from '@/lib/customer-banking/constants';
 
 export function DashboardSection({
   hasSession,
@@ -69,35 +74,63 @@ export function DashboardSection({
         <span>알림 수신 대기</span>
         <span>인증서 관리</span>
       </div>
-      <div className="summary-grid">
-        <article className="summary-box">
-          <span>전계좌조회</span>
-          <strong>계좌 목록/잔액</strong>
-          <button onClick={() => onMove("accounts")} type="button">
-            바로가기
-          </button>
-        </article>
-        <article className="summary-box">
-          <span>즉시이체</span>
-          <strong>즉시이체/취소</strong>
-          <button onClick={() => onMove("transfer")} type="button">
-            바로가기
-          </button>
-        </article>
-        <article className="summary-box">
-          <span>거래내역조회</span>
-          <strong>거래내역</strong>
-          <button onClick={() => onMove("transactions")} type="button">
-            바로가기
-          </button>
-        </article>
-        <article className="summary-box">
-          <span>인증센터</span>
-          <strong>인증서/보안업무</strong>
-          <button onClick={() => onMove("security")} type="button">
-            바로가기
-          </button>
-        </article>
+      <div className="bank-home-grid">
+        <section className="table-panel bank-home-panel">
+          <div className="panel-toolbar">
+            <strong>자주찾는서비스</strong>
+            <span>개인뱅킹</span>
+          </div>
+          <div className="bank-service-list">
+            {favoriteServiceItems.map((item) => (
+              <button
+                key={item.label}
+                onClick={() => onMove(item.section)}
+                type="button"
+              >
+                <span>{item.group}</span>
+                <strong>{item.label}</strong>
+              </button>
+            ))}
+          </div>
+        </section>
+        <section className="table-panel bank-home-panel">
+          <div className="panel-toolbar">
+            <strong>새소식</strong>
+            <span>공지</span>
+          </div>
+          <ul className="bank-news-list">
+            {bankingNewsItems.map((item) => (
+              <li key={item}>
+                <button type="button">{item}</button>
+              </li>
+            ))}
+          </ul>
+        </section>
+        <section className="table-panel bank-home-panel hours-panel">
+          <div className="panel-toolbar">
+            <strong>서비스 이용시간</strong>
+            <span>상태</span>
+          </div>
+          <table className="service-hours-table">
+            <caption>서비스 이용시간</caption>
+            <thead>
+              <tr>
+                <th>업무</th>
+                <th>시간</th>
+                <th>상태</th>
+              </tr>
+            </thead>
+            <tbody>
+              {serviceHourItems.map((item) => (
+                <tr key={item.task}>
+                  <td>{item.task}</td>
+                  <td>{item.time}</td>
+                  <td>{item.status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
       </div>
       <div className="bank-table-wrap">
         <table className="bank-table">
