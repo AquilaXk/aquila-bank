@@ -618,7 +618,10 @@ export function useCustomerBanking() {
     }
     try {
       eventSourceRef.current?.close();
-      const eventSource = new EventSource(api.streamUrl("/api/v1/notifications/stream"));
+      const eventSource = new EventSource(
+        api.streamUrl("/api/v1/notifications/stream"),
+        { withCredentials: true },
+      );
       eventSourceRef.current = eventSource;
       setSseStatus({
         state: "connecting",
