@@ -1,6 +1,7 @@
 import type { FormEvent } from 'react';
 import type { NotificationItem, NotificationPreferenceItem, NotificationQueryResponse } from '@/lib/api/types';
 import { formatDateTime } from '@/lib/customer-banking/format';
+import { BankNoticeStrip, WorkTabs } from '../common';
 
 export function NotificationsSection({
   filters,
@@ -70,6 +71,14 @@ export function NotificationsSection({
 }) {
   return (
     <section className="task-section">
+      <WorkTabs
+        active={mode === "inbox" ? "알림함" : "조건검색"}
+        items={[
+          { id: "알림함", label: "알림함", onClick: () => onModeChange("inbox") },
+          { id: "조건검색", label: "조건검색", onClick: () => onModeChange("search") },
+          { id: "수신설정", label: "수신설정", onClick: onLoadPreferences },
+        ]}
+      />
       <div className="section-title">
         <div>
           <p>고객센터</p>
@@ -80,7 +89,7 @@ export function NotificationsSection({
             미확인 조회
           </button>
           <button disabled={isBusy} onClick={onConnect} type="button">
-            SSE 연결
+            실시간 연결
           </button>
           <button onClick={onDisconnect} type="button">
             연결 해제
@@ -94,11 +103,11 @@ export function NotificationsSection({
           <strong>{sseStatus.state}</strong>
         </div>
         <div>
-          <span>Unread</span>
+          <span>미확인</span>
           <strong>{unreadCount ?? "-"}</strong>
         </div>
         <div>
-          <span>Last Event</span>
+          <span>최근 알림</span>
           <strong>{sseStatus.lastEventId || "-"}</strong>
         </div>
         <div>
@@ -106,6 +115,14 @@ export function NotificationsSection({
           <strong>{formatDateTime(sseStatus.lastEventAt)}</strong>
         </div>
       </div>
+      <BankNoticeStrip
+        items={[
+          { label: "알림함", value: `${notifications.length}건` },
+          { label: "조건검색", value: mode === "search" ? "사용 중" : "대기" },
+          { label: "미확인", value: unreadCount == null ? "조회 전" : `${unreadCount}건` },
+          { label: "다음 조회", value: slice?.hasNext ? "가능" : "없음" },
+        ]}
+      />
 
       <form className="bank-form filter-form" onSubmit={onSearch}>
         <div className="panel-toolbar inline-toolbar">
@@ -117,7 +134,7 @@ export function NotificationsSection({
               role="tab"
               type="button"
             >
-              Inbox
+              알림함
             </button>
             <button
               aria-selected={mode === "search"}
@@ -126,7 +143,7 @@ export function NotificationsSection({
               role="tab"
               type="button"
             >
-              Search
+              조건검색
             </button>
           </div>
           <div className="button-row compact">
@@ -134,7 +151,7 @@ export function NotificationsSection({
               조회
             </button>
             <button disabled={!slice?.nextCursor || isBusy} onClick={onNext} type="button">
-              다음
+              다음 조회
             </button>
           </div>
         </div>
@@ -161,9 +178,9 @@ export function NotificationsSection({
               }
               value={filters.readStatus}
             >
-              <option value="ALL">ALL</option>
-              <option value="READ">READ</option>
-              <option value="UNREAD">UNREAD</option>
+              <option value="ALL">전체</option>
+              <option value="READ">확인</option>
+              <option value="UNREAD">미확인</option>
             </select>
           </label>
           <label>
@@ -208,7 +225,7 @@ export function NotificationsSection({
               <strong>알림함</strong>
               <span>
                 {slice
-                  ? `${notifications.length}건 표시 / next ${slice.hasNext ? "있음" : "없음"}`
+                  ? `${notifications.length}건 / 다음 조회 ${slice.hasNext ? "가능" : "없음"}`
                   : "조회 전"}
               </span>
             </div>
@@ -268,7 +285,7 @@ export function NotificationsSection({
                       </td>
                       <td>
                         <span className={item.read ? "status-badge" : "status-badge unread"}>
-                          {item.read ? "READ" : "UNREAD"}
+                          {item.read ? "확인" : "미확인"}
                         </span>
                       </td>
                       <td>{item.eventType}</td>

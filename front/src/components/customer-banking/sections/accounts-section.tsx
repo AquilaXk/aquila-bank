@@ -1,5 +1,6 @@
 import type { AccountItem, AccountSummaryResponse } from '@/lib/api/types';
 import { formatDateTime, formatMinorAmount } from '@/lib/customer-banking/format';
+import { BankNoticeStrip, WorkTabs } from '../common';
 
 export function AccountsSection({
   accountCursor,
@@ -24,6 +25,34 @@ export function AccountsSection({
 }) {
   return (
     <section className="task-section">
+      <WorkTabs
+        active="전계좌조회"
+        items={[
+          { id: "전계좌조회", label: "전계좌조회", onClick: onLoadAccounts },
+          {
+            id: "계좌상세",
+            label: "계좌상세",
+            onClick: () => {
+              if (selectedAccount) {
+                onLoadAccountDetail(selectedAccount.accountId);
+              }
+            },
+            disabled: !selectedAccount,
+          },
+          {
+            id: "거래내역",
+            label: "거래내역",
+            onClick: () => undefined,
+            disabled: true,
+          },
+          {
+            id: "이체",
+            label: "이체",
+            onClick: () => undefined,
+            disabled: true,
+          },
+        ]}
+      />
       <div className="section-title">
         <div>
           <p>조회</p>
@@ -49,13 +78,21 @@ export function AccountsSection({
           </button>
         </div>
       </div>
+      <BankNoticeStrip
+        items={[
+          { label: "조회구분", value: "전계좌조회" },
+          { label: "표시건수", value: `${accountLimit}건` },
+          { label: "상태", value: "정상/제한 계좌 포함" },
+          { label: "통화", value: "계좌별 통화 표시" },
+        ]}
+      />
 
       <div className="account-grid">
         <section className="table-panel embedded">
           <div className="panel-toolbar">
             <div>
               <strong>보유계좌</strong>
-              <span>계좌별 잔액과 상태</span>
+              <span>계좌별 잔액과 상태 · {accounts.length}건</span>
             </div>
           </div>
           <div className="bank-table-wrap">
@@ -73,7 +110,7 @@ export function AccountsSection({
               <tbody>
                 {accounts.length === 0 ? (
                   <tr>
-                    <td colSpan={5}>조회된 계좌가 없습니다.</td>
+                    <td colSpan={5}>조회 내역 없음</td>
                   </tr>
                 ) : (
                   accounts.map((account) => (
@@ -125,7 +162,7 @@ export function AccountsSection({
               </div>
               <dl className="detail-list">
                 <div>
-                  <dt>Account ID</dt>
+                  <dt>고객계좌번호</dt>
                   <dd>{selectedAccount.accountId}</dd>
                 </div>
                 <div>
@@ -148,7 +185,7 @@ export function AccountsSection({
               </dl>
             </>
           ) : (
-            <p className="rail-copy">계좌 목록에서 상세 버튼을 선택하세요.</p>
+            <p className="rail-copy">계좌 선택 필요</p>
           )}
         </aside>
       </div>

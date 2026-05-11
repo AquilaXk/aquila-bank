@@ -1,6 +1,27 @@
 import type { FormEvent } from 'react';
 import type { TransactionDetailResponse, TransactionItem, TransactionQueryResponse } from '@/lib/api/types';
 import { formatDateTime, formatMinorAmount } from '@/lib/customer-banking/format';
+import { BankNoticeStrip, WorkTabs } from '../common';
+
+const transactionStatusLabels: Record<string, string> = {
+  PENDING: "처리중",
+  BOOKED: "처리완료",
+  REVERSED: "취소완료",
+  FAILED: "실패",
+};
+
+const transactionDirectionLabels: Record<string, string> = {
+  DEBIT: "출금",
+  CREDIT: "입금",
+};
+
+function getTransactionStatusLabel(status: string) {
+  return transactionStatusLabels[status] ?? status;
+}
+
+function getTransactionDirectionLabel(direction: string) {
+  return transactionDirectionLabels[direction] ?? direction;
+}
 
 export function TransactionsSection({
   filters,
@@ -53,6 +74,28 @@ export function TransactionsSection({
 }) {
   return (
     <section className="task-section">
+      <WorkTabs
+        active="거래내역조회"
+        items={[
+          {
+            id: "거래내역조회",
+            label: "거래내역조회",
+            onClick: () => onModeChange("active"),
+          },
+          {
+            id: "상세조회",
+            label: "상세조회",
+            onClick: () => undefined,
+            disabled: true,
+          },
+          {
+            id: "증명서 발급",
+            label: "증명서 발급",
+            onClick: () => undefined,
+            disabled: true,
+          },
+        ]}
+      />
       <div className="section-title">
         <div>
           <p>조회</p>
@@ -79,6 +122,14 @@ export function TransactionsSection({
           </button>
         </div>
       </div>
+      <BankNoticeStrip
+        items={[
+          { label: "조회기간", value: `${filters.from || "-"} ~ ${filters.to || "-"}` },
+          { label: "계좌", value: filters.accountId || "미입력" },
+          { label: "표시건수", value: `${filters.limit}건` },
+          { label: "다음 조회", value: slice?.hasNext ? "가능" : "대기" },
+        ]}
+      />
 
       <form className="bank-form filter-form" onSubmit={onSearch}>
         <div className="filter-summary" aria-label="현재 조건">
@@ -89,7 +140,7 @@ export function TransactionsSection({
           </span>
           <span>건수 {filters.limit}</span>
           <span>
-            cursor pagination {slice?.nextCursor ? "다음 페이지 준비" : "첫 페이지"}
+            다음 조회 {slice?.nextCursor ? "준비됨" : "첫 조회"}
           </span>
         </div>
         <div className="filter-grid">
@@ -148,10 +199,10 @@ export function TransactionsSection({
               value={filters.status}
             >
               <option value="">전체</option>
-              <option value="PENDING">PENDING</option>
-              <option value="BOOKED">BOOKED</option>
-              <option value="REVERSED">REVERSED</option>
-              <option value="FAILED">FAILED</option>
+              <option value="PENDING">처리중</option>
+              <option value="BOOKED">처리완료</option>
+              <option value="REVERSED">취소완료</option>
+              <option value="FAILED">실패</option>
             </select>
           </label>
           <label>
@@ -168,7 +219,7 @@ export function TransactionsSection({
             </select>
           </label>
           <label>
-            <span>최소금액 minor</span>
+            <span>최소금액</span>
             <input
               inputMode="numeric"
               onChange={(event) =>
@@ -181,7 +232,7 @@ export function TransactionsSection({
             />
           </label>
           <label>
-            <span>최대금액 minor</span>
+            <span>최대금액</span>
             <input
               inputMode="numeric"
               onChange={(event) =>
@@ -206,7 +257,7 @@ export function TransactionsSection({
             />
           </label>
           <label>
-            <span>응답형태</span>
+            <span>조회방식</span>
             <select
               onChange={(event) =>
                 onFilterChange({
@@ -216,8 +267,8 @@ export function TransactionsSection({
               }
               value={filters.responseShape}
             >
-              <option value="full">full</option>
-              <option value="slim">slim</option>
+              <option value="full">상세</option>
+              <option value="slim">요약</option>
             </select>
           </label>
         </div>
@@ -238,7 +289,7 @@ export function TransactionsSection({
               <strong>거래내역</strong>
               <span>
                 {slice
-                  ? `${transactions.length}건 표시 / next ${slice.hasNext ? "있음" : "없음"}`
+                  ? `${transactions.length}건 / 다음 조회 ${slice.hasNext ? "가능" : "없음"}`
                   : "조회 전"}
               </span>
             </div>
@@ -267,9 +318,11 @@ export function TransactionsSection({
                     <tr key={`${item.id}-${item.transactionReference}`}>
                       <td>{formatDateTime(item.bookedAt)}</td>
                       <td>{item.transactionReference}</td>
-                      <td>{item.direction}</td>
+                      <td>{getTransactionDirectionLabel(item.direction)}</td>
                       <td>
-                        <span className="status-badge">{item.status}</span>
+                        <span className="status-badge">
+                          {getTransactionStatusLabel(item.status)}
+                        </span>
                       </td>
                       <td className={item.direction === "DEBIT" ? "amount debit" : "amount credit"}>
                         {formatMinorAmount(item.amountMinor, item.currencyCode)}
@@ -302,7 +355,11 @@ export function TransactionsSection({
         <aside className="detail-panel">
           <div className="form-heading">
             <strong>거래상세</strong>
-            <span>{transactionDetail?.transactionStatus ?? "미선택"}</span>
+            <span>
+              {transactionDetail
+                ? getTransactionStatusLabel(transactionDetail.transactionStatus)
+                : "미선택"}
+            </span>
           </div>
           {transactionDetail ? (
             <dl className="detail-list">
@@ -312,7 +369,7 @@ export function TransactionsSection({
               </div>
               <div>
                 <dt>입출금</dt>
-                <dd>{transactionDetail.direction}</dd>
+                <dd>{getTransactionDirectionLabel(transactionDetail.direction)}</dd>
               </div>
               <div>
                 <dt>금액</dt>
@@ -337,7 +394,7 @@ export function TransactionsSection({
                 <dd>{transactionDetail.counterpartyMaskedName ?? "-"}</dd>
               </div>
               <div>
-                <dt>Ledger</dt>
+                <dt>처리번호</dt>
                 <dd>{transactionDetail.entryReference}</dd>
               </div>
               <div>
