@@ -60,9 +60,15 @@ export function DashboardSection({
           { label: "이용시간", value: "00:30~23:30" },
           { label: "보안등급", value: "개인 인증 완료 후 이체 가능" },
           { label: "상담", value: "평일 09:00~18:00" },
-          { label: "서비스", value: "조회/이체/인증 업무 제공" },
+          { label: "업무현황", value: "조회/이체/인증 정상" },
         ]}
       />
+      <div className="work-summary-strip" aria-label="개인뱅킹 업무현황">
+        <span>조회 결과 대기</span>
+        <span>이체 처리 대기</span>
+        <span>알림 수신 대기</span>
+        <span>인증서 관리</span>
+      </div>
       <div className="summary-grid">
         <article className="summary-box">
           <span>전계좌조회</span>
@@ -116,7 +122,7 @@ export function DashboardSection({
             </tr>
             <tr>
               <td>알림</td>
-              <td>실시간 알림과 알림함 동시 제공</td>
+              <td>실시간 알림과 알림함</td>
               <td>실시간 알림</td>
             </tr>
           </tbody>

@@ -479,6 +479,25 @@ label span {
   width: 100%;
 }
 
+.work-summary-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.work-summary-strip span {
+  min-height: 30px;
+  border: 1px solid #bcd3ef;
+  border-radius: 4px;
+  background: #fff;
+  color: #102f55;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
 .enterprise-service-grid,
 .security-hub-grid,
 .support-service-grid {
@@ -652,6 +671,15 @@ label span {
   color: var(--primary-dark);
   padding: 10px 12px;
   font-weight: 800;
+}
+
+.process-panel {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #bcd3ef;
+  border-radius: 4px;
+  background: #fff;
+  padding: 12px;
 }
 
 .check-list {

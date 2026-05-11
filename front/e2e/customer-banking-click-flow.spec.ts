@@ -8,6 +8,9 @@ test("고객 웹뱅킹 주요 공개 업무와 미로그인 이체 가드를 실
   await expect(page.getByRole("heading", { name: "뱅킹 업무" })).toBeVisible();
   await expect(page.getByText("보안등급").first()).toBeVisible();
   await expect(page.getByText("이용시간")).toBeVisible();
+  await expect(page.getByText("업무현황")).toBeVisible();
+  await expect(page.getByText("알림 수신 설정")).toBeVisible();
+
   await page.getByRole("navigation", { name: "주요 메뉴" }).getByRole("button", { name: "이체" }).click();
   await expect(page.getByText("권한 만료 또는 미로그인")).toBeVisible();
 

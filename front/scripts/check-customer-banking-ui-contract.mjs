@@ -102,6 +102,14 @@ const checks = [
   ["enterprise bill payment application label", files.enterprise, "공과금 납부"],
   ["enterprise open banking application label", files.enterprise, "오픈뱅킹 연결"],
   ["enterprise foreign exchange application label", files.enterprise, "외환 신청"],
+  ["productized work status label", customerVisibleContent, "업무현황"],
+  ["productized inquiry result label", customerVisibleContent, "조회 결과"],
+  ["productized processing result label", customerVisibleContent, "처리 결과"],
+  ["productized certificate management label", customerVisibleContent, "인증서 관리"],
+  ["productized receive settings label", customerVisibleContent, "수신 설정"],
+  ["productized final confirmation label", customerVisibleContent, "최종 확인"],
+  ["productized work summary style", files.styles, ".work-summary-strip"],
+  ["productized process panel style", files.styles, ".process-panel"],
 ];
 
 const forbidden = [
@@ -117,6 +125,12 @@ const forbidden = [
   ["customer visible min minor label", customerVisibleContent, "최소금액 minor"],
   ["customer visible max minor label", customerVisibleContent, "최대금액 minor"],
   ["customer visible daily remaining field", customerVisibleContent, "dailyRemainingMinor /"],
+  ["customer visible explanatory provide", customerVisibleContent, "제공"],
+  ["customer visible explanatory screen structure", customerVisibleContent, "화면 구조"],
+  ["customer visible explanatory flow", customerVisibleContent, "흐름"],
+  ["customer visible bank-like explanation", customerVisibleContent, "처럼"],
+  ["customer visible actual implementation explanation", customerVisibleContent, "실제"],
+  ["customer visible customer explanation", customerVisibleContent, "고객이"],
 ];
 
 const missing = checks.filter(([, content, expected]) => !content.includes(expected));
