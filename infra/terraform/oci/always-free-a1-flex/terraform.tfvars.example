@@ -11,9 +11,10 @@ image_operating_system         = "Canonical Ubuntu"
 image_operating_system_version = null
 source_image_ocid_override     = null
 
-ssh_public_key   = "ssh-ed25519 example-public-key"
-ssh_ingress_cidr = "203.0.113.10/32"
+ssh_public_key    = "ssh-ed25519 example-public-key"
+ssh_ingress_cidr  = "203.0.113.10/32"
 http_ingress_cidr = "0.0.0.0/0"
+https_ingress_cidr = "0.0.0.0/0"
 
 name_prefix    = "aquila-free-a1"
 hostname_label = "aquilafreea1"

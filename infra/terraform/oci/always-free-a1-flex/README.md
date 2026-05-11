@@ -10,7 +10,7 @@ OCI Always Free 한도 안에서 `VM.Standard.A1.Flex` 인스턴스 1대를 만�
 - Boot Volume: `50GB`
 - Data Block Volume: `150GB`, Lower Cost `0` VPU/GB
 - Network: 새 VCN, public subnet, Internet Gateway, Route Table
-- Ingress: SSH `22/tcp`, staging HTTP `80/tcp`
+- Ingress: SSH `22/tcp`, staging HTTP `80/tcp`, staging HTTPS `443/tcp`
 - 제외: NAT Gateway, Load Balancer, Managed Database
 
 ## 무료 한도 조건
@@ -22,7 +22,8 @@ OCI Always Free 한도 안에서 `VM.Standard.A1.Flex` 인스턴스 1대를 만�
 - 기존 200GB boot volume 단일 구성에서 이 구조로 바꾸면 boot volume shrink가 아니라 instance 재생성으로 처리될 수 있다. `terraform plan`에서 destroy/create 범위를 먼저 확인한다.
 - `region`은 tenancy 홈 리전으로 설정한다. 홈 리전 밖 volume은 무료 한도 적용에서 벗어날 수 있다.
 - 기본 경로는 Terraform `oci_core_images` data source로 `VM.Standard.A1.Flex` 호환 최신 Ubuntu 이미지를 조회한다.
-- 최신 이미지 자동 조회는 다음 `terraform apply` 시점에 더 새 이미지가 잡힐 수 있다. 재현성이 필요하면 `source_image_ocid_override`에 특정 image OCID를 고정한다.
+- 최신 이미지 자동 조회는 신규 생성에만 사용한다. 기존 instance는 `source_id` drift를 무시해 보안목록 같은 운영 변경에 이미지 변경이 섞이지 않게 한다.
+- 재현성이 필요하면 `source_image_ocid_override`에 특정 image OCID를 고정한다.
 - cloud-init은 data volume을 `/var/lib/aquila-data`에 mount하고 Docker data-root를 `/var/lib/aquila-data/docker`로 고정한다. staging deploy의 Docker named volume과 image layer는 이 data volume을 사용한다.
 
 ## 준비 값
@@ -37,6 +38,7 @@ OCI Always Free 한도 안에서 `VM.Standard.A1.Flex` 인스턴스 1대를 만�
 - `ssh_public_key`
 - `ssh_ingress_cidr`
 - `http_ingress_cidr`
+- `https_ingress_cidr`
 
 선택 값:
 
@@ -48,6 +50,7 @@ OCI Always Free 한도 안에서 `VM.Standard.A1.Flex` 인스턴스 1대를 만�
 
 `ssh_ingress_cidr`는 운영자 현재 공인 IP의 `/32`를 우선 사용한다. `0.0.0.0/0`은 임시 테스트가 아니면 사용하지 않는다.
 `http_ingress_cidr`는 GitHub Actions smoke와 브라우저 접근을 받는 staging HTTP 포트다. public staging이면 `0.0.0.0/0`, 사설 접근만 허용할 수 있으면 제한 CIDR을 사용한다.
+`https_ingress_cidr`는 공인 인증서 기반 HTTPS 포트다. public staging이면 `0.0.0.0/0`, Cloudflare Tunnel/사설 접근만 사용할 수 있으면 제한 CIDR을 사용한다.
 
 ## 실행
 
