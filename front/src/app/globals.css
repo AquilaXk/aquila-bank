@@ -383,6 +383,70 @@ label span {
   width: 100%;
 }
 
+.account-grid,
+.split-work {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.detail-panel,
+.result-panel {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  padding: 14px;
+}
+
+.balance-card {
+  display: grid;
+  gap: 4px;
+  margin: 12px 0;
+  border: 1px solid #bcd3ef;
+  border-radius: 6px;
+  background: var(--primary-soft);
+  padding: 16px;
+}
+
+.balance-card span,
+.balance-card small {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.balance-card strong {
+  color: var(--primary-dark);
+  font-size: 26px;
+}
+
+.amount-cell,
+.amount {
+  text-align: right;
+  font-weight: 800;
+}
+
+.amount.debit {
+  color: var(--primary-dark);
+}
+
+.amount.credit {
+  color: var(--success);
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  border: 1px solid #bfd3ea;
+  border-radius: 4px;
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .two-column {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -406,6 +470,35 @@ label span {
 .bank-form > button {
   background: var(--primary);
   color: #fff;
+}
+
+.filter-form {
+  margin-top: 12px;
+}
+
+.form-grid,
+.filter-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.filter-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.inline-control {
+  display: grid;
+  grid-template-columns: auto 90px;
+  align-items: center;
+  gap: 8px;
+}
+
+.inline-control span {
+  margin: 0;
 }
 
 .form-heading {
@@ -490,6 +583,10 @@ label span {
   overflow: hidden;
 }
 
+.table-panel.embedded {
+  margin-top: 0;
+}
+
 .panel-toolbar {
   padding: 12px 14px;
   border-bottom: 1px solid var(--line);
@@ -565,6 +662,28 @@ label span {
 
 .empty-business span {
   color: var(--muted);
+}
+
+.tab-switch {
+  display: inline-flex;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+}
+
+.tab-switch button {
+  min-width: 90px;
+  border: 0;
+  border-radius: 0;
+}
+
+.tab-switch button + button {
+  border-left: 1px solid var(--line-strong);
+}
+
+.tab-switch button.active {
+  background: var(--primary);
+  color: #fff;
 }
 
 .right-rail {
@@ -652,6 +771,10 @@ label span {
   }
 
   .summary-grid,
+  .account-grid,
+  .split-work,
+  .form-grid,
+  .filter-grid,
   .two-column {
     grid-template-columns: 1fr;
   }

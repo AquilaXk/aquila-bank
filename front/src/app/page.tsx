@@ -14,12 +14,19 @@ import {
   toCustomerSession,
 } from "@/lib/api/session";
 import type {
+  AccountItem,
+  AccountSummaryResponse,
   AuthSessionItem,
   BackupCodeIssueResponse,
   CustomerSession,
   LoginResponse,
   PasswordRecoveryRequestResult,
+  TransactionDetailResponse,
+  TransactionItem,
+  TransactionQueryResponse,
   TotpEnrollmentStartResponse,
+  TransferResponse,
+  TransferReversalResponse,
 } from "@/lib/api/types";
 
 type MenuSection =
@@ -45,6 +52,31 @@ const mainMenus: Array<{ id: MenuSection; label: string; group: string }> = [
 ];
 
 const quickMenus = ["계좌조회", "즉시이체", "거래내역", "인증센터", "알림함"];
+
+function toLocalInputValue(date: Date): string {
+  const offset = date.getTimezoneOffset();
+  const localDate = new Date(date.getTime() - offset * 60_000);
+  return localDate.toISOString().slice(0, 16);
+}
+
+function toIsoDateTime(value: string): string {
+  return new Date(value).toISOString();
+}
+
+function toOptionalNumber(value: string): number | undefined {
+  if (!value.trim()) {
+    return undefined;
+  }
+  return Number(value);
+}
+
+function formatMinorAmount(value: number, currencyCode = "KRW"): string {
+  return new Intl.NumberFormat("ko-KR", {
+    style: "currency",
+    currency: currencyCode,
+    maximumFractionDigits: 0,
+  }).format(value / 100);
+}
 
 function toErrorMessage(error: unknown): string {
   if (error instanceof ApiConfigurationError) {
@@ -113,6 +145,51 @@ export default function HomePage() {
   );
   const [passwordRecoveryResult, setPasswordRecoveryResult] =
     useState<PasswordRecoveryRequestResult | null>(null);
+  const [accounts, setAccounts] = useState<AccountItem[]>([]);
+  const [accountCursor, setAccountCursor] = useState("");
+  const [accountLimit, setAccountLimit] = useState(20);
+  const [selectedAccount, setSelectedAccount] =
+    useState<AccountSummaryResponse | null>(null);
+  const [transferForm, setTransferForm] = useState({
+    sourceAccountId: "",
+    targetAccountId: "",
+    amountMinor: "",
+    currencyCode: "KRW",
+    summary: "",
+  });
+  const [transferResult, setTransferResult] = useState<TransferResponse | null>(
+    null,
+  );
+  const [reversalForm, setReversalForm] = useState({
+    transactionReference: "",
+    sourceAccountId: "",
+    amountMinor: "",
+    reversalReason: "CUSTOMER_REQUEST",
+    summary: "",
+  });
+  const [reversalResult, setReversalResult] =
+    useState<TransferReversalResponse | null>(null);
+  const [transactionMode, setTransactionMode] = useState<"active" | "archive">(
+    "active",
+  );
+  const [transactionFilters, setTransactionFilters] = useState({
+    accountId: "",
+    from: toLocalInputValue(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)),
+    to: toLocalInputValue(new Date()),
+    limit: "50",
+    cursor: "",
+    status: "",
+    direction: "",
+    minAmountMinor: "",
+    maxAmountMinor: "",
+    transactionReference: "",
+    responseShape: "full" as "full" | "slim",
+  });
+  const [transactionSlice, setTransactionSlice] =
+    useState<TransactionQueryResponse | null>(null);
+  const [transactions, setTransactions] = useState<TransactionItem[]>([]);
+  const [transactionDetail, setTransactionDetail] =
+    useState<TransactionDetailResponse | null>(null);
 
   useEffect(() => {
     const storedSession = loadCustomerSession();
@@ -374,6 +451,162 @@ export default function HomePage() {
     });
   }
 
+  async function handleLoadAccounts(cursor = "", append = false) {
+    const currentSession = requireSession();
+    if (!currentSession) {
+      return;
+    }
+    await runAction("계좌 조회", async () => {
+      const result = await api.getAccounts(currentSession.accessToken, {
+        limit: accountLimit,
+        cursor,
+      });
+      setAccounts((items) => (append ? [...items, ...result.items] : result.items));
+      setAccountCursor(result.nextCursor ?? "");
+      if (result.items[0] && !selectedAccount) {
+        setSelectedAccount(result.items[0]);
+        setTransferForm((form) => ({
+          ...form,
+          sourceAccountId: String(result.items[0].accountId),
+        }));
+        setTransactionFilters((form) => ({
+          ...form,
+          accountId: String(result.items[0].accountId),
+        }));
+      }
+      setAlert({ type: "success", text: "계좌 목록을 불러왔습니다." });
+    });
+  }
+
+  async function handleLoadAccountDetail(accountId: number) {
+    const currentSession = requireSession();
+    if (!currentSession) {
+      return;
+    }
+    await runAction("계좌 상세 조회", async () => {
+      const result = await api.getAccount(accountId, currentSession.accessToken);
+      setSelectedAccount(result);
+      setTransferForm((form) => ({
+        ...form,
+        sourceAccountId: String(result.accountId),
+      }));
+      setTransactionFilters((form) => ({
+        ...form,
+        accountId: String(result.accountId),
+      }));
+      setAlert({ type: "success", text: "계좌 상세를 불러왔습니다." });
+    });
+  }
+
+  async function handleTransfer(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const currentSession = requireSession();
+    if (!currentSession) {
+      return;
+    }
+    await runAction("이체", async () => {
+      const result = await api.transfer(
+        {
+          sourceAccountId: Number(transferForm.sourceAccountId),
+          targetAccountId: Number(transferForm.targetAccountId),
+          amountMinor: Number(transferForm.amountMinor),
+          currencyCode: transferForm.currencyCode,
+          summary: transferForm.summary,
+        },
+        currentSession.accessToken,
+      );
+      setTransferResult(result);
+      setAlert({
+        type: "success",
+        text: `이체가 접수되었습니다. 거래번호 ${result.transactionReference}`,
+      });
+    });
+  }
+
+  async function handleReversal(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const currentSession = requireSession();
+    if (!currentSession) {
+      return;
+    }
+    await runAction("이체 취소", async () => {
+      const result = await api.reverseTransfer(
+        reversalForm.transactionReference,
+        {
+          sourceAccountId: Number(reversalForm.sourceAccountId),
+          amountMinor: Number(reversalForm.amountMinor),
+          reversalReason: reversalForm.reversalReason,
+          summary: reversalForm.summary,
+        },
+        currentSession.accessToken,
+      );
+      setReversalResult(result);
+      setAlert({
+        type: "success",
+        text: `취소 거래가 접수되었습니다. 거래번호 ${result.reversalTransactionReference}`,
+      });
+    });
+  }
+
+  async function handleSearchTransactions(
+    mode = transactionMode,
+    cursor = "",
+    append = false,
+  ) {
+    const currentSession = requireSession();
+    if (!currentSession) {
+      return;
+    }
+    await runAction("거래내역 조회", async () => {
+      const params = {
+        accountId: Number(transactionFilters.accountId),
+        from: toIsoDateTime(transactionFilters.from),
+        to: toIsoDateTime(transactionFilters.to),
+        limit: Number(transactionFilters.limit || 50),
+        cursor,
+        status: transactionFilters.status || undefined,
+        direction: transactionFilters.direction || undefined,
+        minAmountMinor: toOptionalNumber(transactionFilters.minAmountMinor),
+        maxAmountMinor: toOptionalNumber(transactionFilters.maxAmountMinor),
+        transactionReference: transactionFilters.transactionReference || undefined,
+        responseShape: transactionFilters.responseShape,
+      };
+      const result =
+        mode === "archive"
+          ? await api.getArchivedTransactions(params, currentSession.accessToken)
+          : await api.getTransactions(params, currentSession.accessToken);
+      setTransactionMode(mode);
+      setTransactionSlice(result);
+      setTransactions((items) => (append ? [...items, ...result.items] : result.items));
+      setTransactionFilters((form) => ({
+        ...form,
+        cursor: result.nextCursor ?? "",
+      }));
+      setAlert({ type: "success", text: "거래내역을 불러왔습니다." });
+    });
+  }
+
+  async function handleLoadTransactionDetail(transactionReference: string) {
+    const currentSession = requireSession();
+    if (!currentSession) {
+      return;
+    }
+    const accountId = Number(transactionFilters.accountId || selectedAccount?.accountId);
+    if (!accountId) {
+      setAlert({ type: "error", text: "거래 상세 조회 계좌를 선택하세요." });
+      return;
+    }
+    await runAction("거래 상세 조회", async () => {
+      const result = await api.getTransactionDetail(
+        transactionReference,
+        accountId,
+        currentSession.accessToken,
+      );
+      setTransactionDetail(result);
+      setAlert({ type: "success", text: "거래 상세를 불러왔습니다." });
+    });
+  }
+
   const isBusy = busyLabel !== null;
 
   return (
@@ -458,6 +691,58 @@ export default function HomePage() {
               isBusy={isBusy}
             />
           ) : null}
+          {activeSection === "accounts" ? (
+            <AccountsSection
+              accountCursor={accountCursor}
+              accountLimit={accountLimit}
+              accounts={accounts}
+              isBusy={isBusy}
+              selectedAccount={selectedAccount}
+              onAccountLimitChange={setAccountLimit}
+              onLoadAccountDetail={handleLoadAccountDetail}
+              onLoadAccounts={() => handleLoadAccounts()}
+              onLoadNextAccounts={() => handleLoadAccounts(accountCursor, true)}
+            />
+          ) : null}
+          {activeSection === "transfer" ? (
+            <TransferSection
+              isBusy={isBusy}
+              reversalForm={reversalForm}
+              reversalResult={reversalResult}
+              transferForm={transferForm}
+              transferResult={transferResult}
+              onReversal={handleReversal}
+              onReversalChange={setReversalForm}
+              onTransfer={handleTransfer}
+              onTransferChange={setTransferForm}
+            />
+          ) : null}
+          {activeSection === "transactions" ? (
+            <TransactionsSection
+              filters={transactionFilters}
+              isBusy={isBusy}
+              mode={transactionMode}
+              slice={transactionSlice}
+              transactionDetail={transactionDetail}
+              transactions={transactions}
+              onDetail={handleLoadTransactionDetail}
+              onFilterChange={setTransactionFilters}
+              onModeChange={setTransactionMode}
+              onNext={() =>
+                transactionSlice?.nextCursor
+                  ? handleSearchTransactions(
+                      transactionMode,
+                      transactionSlice.nextCursor,
+                      true,
+                    )
+                  : undefined
+              }
+              onSearch={(event) => {
+                event.preventDefault();
+                handleSearchTransactions(transactionMode);
+              }}
+            />
+          ) : null}
           {activeSection === "security" ? (
             <SecuritySection
               backupChallengeForm={backupChallengeForm}
@@ -494,9 +779,10 @@ export default function HomePage() {
               onTotpCodeChange={setTotpCode}
               onVerifyTotpEnrollment={handleVerifyTotpEnrollment}
             />
-          ) : (
+          ) : null}
+          {activeSection === "notifications" ? (
             <BusinessPlaceholder section={activeSection} onMove={setActiveSection} />
-          )}
+          ) : null}
         </section>
 
         <aside className="right-rail" aria-label="빠른 업무">
@@ -652,6 +938,799 @@ function DashboardSection({
         </table>
       </div>
     </section>
+  );
+}
+
+function AccountsSection({
+  accountCursor,
+  accountLimit,
+  accounts,
+  isBusy,
+  selectedAccount,
+  onAccountLimitChange,
+  onLoadAccountDetail,
+  onLoadAccounts,
+  onLoadNextAccounts,
+}: {
+  accountCursor: string;
+  accountLimit: number;
+  accounts: AccountItem[];
+  isBusy: boolean;
+  selectedAccount: AccountSummaryResponse | null;
+  onAccountLimitChange: (value: number) => void;
+  onLoadAccountDetail: (accountId: number) => void;
+  onLoadAccounts: () => void;
+  onLoadNextAccounts: () => void;
+}) {
+  return (
+    <section className="task-section">
+      <div className="section-title">
+        <div>
+          <p>조회</p>
+          <h1>계좌조회</h1>
+        </div>
+        <div className="button-row">
+          <label className="inline-control">
+            <span>건수</span>
+            <select
+              onChange={(event) => onAccountLimitChange(Number(event.target.value))}
+              value={accountLimit}
+            >
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+              <option value={50}>50</option>
+            </select>
+          </label>
+          <button disabled={isBusy} onClick={onLoadAccounts} type="button">
+            조회
+          </button>
+          <button disabled={!accountCursor || isBusy} onClick={onLoadNextAccounts} type="button">
+            다음
+          </button>
+        </div>
+      </div>
+
+      <div className="account-grid">
+        <section className="table-panel embedded">
+          <div className="panel-toolbar">
+            <div>
+              <strong>보유계좌</strong>
+              <span>계좌별 잔액과 상태</span>
+            </div>
+          </div>
+          <div className="bank-table-wrap">
+            <table className="bank-table">
+              <caption>계좌 목록</caption>
+              <thead>
+                <tr>
+                  <th>계좌번호</th>
+                  <th>계좌명</th>
+                  <th>상태</th>
+                  <th>출금가능액</th>
+                  <th>관리</th>
+                </tr>
+              </thead>
+              <tbody>
+                {accounts.length === 0 ? (
+                  <tr>
+                    <td colSpan={5}>조회된 계좌가 없습니다.</td>
+                  </tr>
+                ) : (
+                  accounts.map((account) => (
+                    <tr key={account.accountId}>
+                      <td>{account.accountNumber}</td>
+                      <td>{account.displayName}</td>
+                      <td>
+                        <span className="status-badge">{account.accountStatus}</span>
+                      </td>
+                      <td className="amount-cell">
+                        {formatMinorAmount(
+                          account.availableBalanceMinor,
+                          account.currencyCode,
+                        )}
+                      </td>
+                      <td>
+                        <button
+                          disabled={isBusy}
+                          onClick={() => onLoadAccountDetail(account.accountId)}
+                          type="button"
+                        >
+                          상세
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <aside className="detail-panel">
+          <div className="form-heading">
+            <strong>계좌상세</strong>
+            <span>{selectedAccount ? selectedAccount.accountStatus : "미선택"}</span>
+          </div>
+          {selectedAccount ? (
+            <>
+              <div className="balance-card">
+                <span>{selectedAccount.displayName}</span>
+                <strong>
+                  {formatMinorAmount(
+                    selectedAccount.availableBalanceMinor,
+                    selectedAccount.currencyCode,
+                  )}
+                </strong>
+                <small>출금가능금액</small>
+              </div>
+              <dl className="detail-list">
+                <div>
+                  <dt>Account ID</dt>
+                  <dd>{selectedAccount.accountId}</dd>
+                </div>
+                <div>
+                  <dt>계좌번호</dt>
+                  <dd>{selectedAccount.accountNumber}</dd>
+                </div>
+                <div>
+                  <dt>보류금액</dt>
+                  <dd>
+                    {formatMinorAmount(
+                      selectedAccount.pendingBalanceMinor,
+                      selectedAccount.currencyCode,
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt>잔액 갱신</dt>
+                  <dd>{formatDateTime(selectedAccount.balanceUpdatedAt)}</dd>
+                </div>
+              </dl>
+            </>
+          ) : (
+            <p className="rail-copy">계좌 목록에서 상세 버튼을 선택하세요.</p>
+          )}
+        </aside>
+      </div>
+    </section>
+  );
+}
+
+function TransferSection({
+  isBusy,
+  reversalForm,
+  reversalResult,
+  transferForm,
+  transferResult,
+  onReversal,
+  onReversalChange,
+  onTransfer,
+  onTransferChange,
+}: {
+  isBusy: boolean;
+  reversalForm: {
+    transactionReference: string;
+    sourceAccountId: string;
+    amountMinor: string;
+    reversalReason: string;
+    summary: string;
+  };
+  reversalResult: TransferReversalResponse | null;
+  transferForm: {
+    sourceAccountId: string;
+    targetAccountId: string;
+    amountMinor: string;
+    currencyCode: string;
+    summary: string;
+  };
+  transferResult: TransferResponse | null;
+  onReversal: (event: FormEvent<HTMLFormElement>) => void;
+  onReversalChange: (value: {
+    transactionReference: string;
+    sourceAccountId: string;
+    amountMinor: string;
+    reversalReason: string;
+    summary: string;
+  }) => void;
+  onTransfer: (event: FormEvent<HTMLFormElement>) => void;
+  onTransferChange: (value: {
+    sourceAccountId: string;
+    targetAccountId: string;
+    amountMinor: string;
+    currencyCode: string;
+    summary: string;
+  }) => void;
+}) {
+  return (
+    <section className="task-section">
+      <div className="section-title">
+        <div>
+          <p>이체</p>
+          <h1>즉시이체</h1>
+        </div>
+      </div>
+
+      <div className="two-column">
+        <form className="bank-form" onSubmit={onTransfer}>
+          <div className="form-heading">
+            <strong>이체정보 입력</strong>
+            <span>요청 단위 중복 방지</span>
+          </div>
+          <div className="form-grid">
+            <label>
+              <span>출금계좌 ID</span>
+              <input
+                inputMode="numeric"
+                onChange={(event) =>
+                  onTransferChange({
+                    ...transferForm,
+                    sourceAccountId: event.target.value,
+                  })
+                }
+                required
+                value={transferForm.sourceAccountId}
+              />
+            </label>
+            <label>
+              <span>입금계좌 ID</span>
+              <input
+                inputMode="numeric"
+                onChange={(event) =>
+                  onTransferChange({
+                    ...transferForm,
+                    targetAccountId: event.target.value,
+                  })
+                }
+                required
+                value={transferForm.targetAccountId}
+              />
+            </label>
+            <label>
+              <span>금액 minor</span>
+              <input
+                inputMode="numeric"
+                onChange={(event) =>
+                  onTransferChange({
+                    ...transferForm,
+                    amountMinor: event.target.value,
+                  })
+                }
+                required
+                value={transferForm.amountMinor}
+              />
+            </label>
+            <label>
+              <span>통화</span>
+              <input
+                maxLength={3}
+                onChange={(event) =>
+                  onTransferChange({
+                    ...transferForm,
+                    currencyCode: event.target.value.toUpperCase(),
+                  })
+                }
+                required
+                value={transferForm.currencyCode}
+              />
+            </label>
+          </div>
+          <label>
+            <span>받는 분 통장 표시</span>
+            <input
+              maxLength={120}
+              onChange={(event) =>
+                onTransferChange({ ...transferForm, summary: event.target.value })
+              }
+              required
+              value={transferForm.summary}
+            />
+          </label>
+          <button disabled={isBusy} type="submit">
+            이체 실행
+          </button>
+        </form>
+
+        <ResultPanel
+          title="이체 결과"
+          rows={
+            transferResult
+              ? [
+                  ["거래번호", transferResult.transactionReference],
+                  ["상태", transferResult.status],
+                  [
+                    "이체금액",
+                    formatMinorAmount(
+                      transferResult.amountMinor,
+                      transferResult.currencyCode,
+                    ),
+                  ],
+                  [
+                    "이체 후 잔액",
+                    formatMinorAmount(
+                      transferResult.availableBalanceAfterMinor,
+                      transferResult.currencyCode,
+                    ),
+                  ],
+                  ["기장시각", formatDateTime(transferResult.bookedAt)],
+                ]
+              : []
+          }
+        />
+      </div>
+
+      <div className="two-column">
+        <form className="bank-form" onSubmit={onReversal}>
+          <div className="form-heading">
+            <strong>이체 취소</strong>
+            <span>원거래 reference 기준</span>
+          </div>
+          <label>
+            <span>원거래번호</span>
+            <input
+              onChange={(event) =>
+                onReversalChange({
+                  ...reversalForm,
+                  transactionReference: event.target.value,
+                })
+              }
+              required
+              value={reversalForm.transactionReference}
+            />
+          </label>
+          <div className="form-grid">
+            <label>
+              <span>출금계좌 ID</span>
+              <input
+                inputMode="numeric"
+                onChange={(event) =>
+                  onReversalChange({
+                    ...reversalForm,
+                    sourceAccountId: event.target.value,
+                  })
+                }
+                required
+                value={reversalForm.sourceAccountId}
+              />
+            </label>
+            <label>
+              <span>취소금액 minor</span>
+              <input
+                inputMode="numeric"
+                onChange={(event) =>
+                  onReversalChange({
+                    ...reversalForm,
+                    amountMinor: event.target.value,
+                  })
+                }
+                required
+                value={reversalForm.amountMinor}
+              />
+            </label>
+          </div>
+          <label>
+            <span>취소사유</span>
+            <select
+              onChange={(event) =>
+                onReversalChange({
+                  ...reversalForm,
+                  reversalReason: event.target.value,
+                })
+              }
+              value={reversalForm.reversalReason}
+            >
+              <option value="CUSTOMER_REQUEST">CUSTOMER_REQUEST</option>
+              <option value="DUPLICATE">DUPLICATE</option>
+              <option value="WRONG_AMOUNT">WRONG_AMOUNT</option>
+              <option value="WRONG_TARGET">WRONG_TARGET</option>
+              <option value="FRAUD_REPORTED">FRAUD_REPORTED</option>
+            </select>
+          </label>
+          <label>
+            <span>적요</span>
+            <input
+              maxLength={120}
+              onChange={(event) =>
+                onReversalChange({ ...reversalForm, summary: event.target.value })
+              }
+              required
+              value={reversalForm.summary}
+            />
+          </label>
+          <button disabled={isBusy} type="submit">
+            취소 실행
+          </button>
+        </form>
+
+        <ResultPanel
+          title="취소 결과"
+          rows={
+            reversalResult
+              ? [
+                  ["원거래", reversalResult.originalTransactionReference],
+                  ["취소거래", reversalResult.reversalTransactionReference],
+                  ["상태", reversalResult.status],
+                  [
+                    "취소금액",
+                    formatMinorAmount(
+                      reversalResult.amountMinor,
+                      reversalResult.currencyCode,
+                    ),
+                  ],
+                  ["기장시각", formatDateTime(reversalResult.bookedAt)],
+                ]
+              : []
+          }
+        />
+      </div>
+    </section>
+  );
+}
+
+function TransactionsSection({
+  filters,
+  isBusy,
+  mode,
+  slice,
+  transactionDetail,
+  transactions,
+  onDetail,
+  onFilterChange,
+  onModeChange,
+  onNext,
+  onSearch,
+}: {
+  filters: {
+    accountId: string;
+    from: string;
+    to: string;
+    limit: string;
+    cursor: string;
+    status: string;
+    direction: string;
+    minAmountMinor: string;
+    maxAmountMinor: string;
+    transactionReference: string;
+    responseShape: "full" | "slim";
+  };
+  isBusy: boolean;
+  mode: "active" | "archive";
+  slice: TransactionQueryResponse | null;
+  transactionDetail: TransactionDetailResponse | null;
+  transactions: TransactionItem[];
+  onDetail: (transactionReference: string) => void;
+  onFilterChange: (value: {
+    accountId: string;
+    from: string;
+    to: string;
+    limit: string;
+    cursor: string;
+    status: string;
+    direction: string;
+    minAmountMinor: string;
+    maxAmountMinor: string;
+    transactionReference: string;
+    responseShape: "full" | "slim";
+  }) => void;
+  onModeChange: (mode: "active" | "archive") => void;
+  onNext: () => void;
+  onSearch: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <section className="task-section">
+      <div className="section-title">
+        <div>
+          <p>조회</p>
+          <h1>거래내역 조회</h1>
+        </div>
+        <div className="tab-switch" role="tablist" aria-label="거래 조회 구분">
+          <button
+            aria-selected={mode === "active"}
+            className={mode === "active" ? "active" : ""}
+            onClick={() => onModeChange("active")}
+            role="tab"
+            type="button"
+          >
+            일반
+          </button>
+          <button
+            aria-selected={mode === "archive"}
+            className={mode === "archive" ? "active" : ""}
+            onClick={() => onModeChange("archive")}
+            role="tab"
+            type="button"
+          >
+            아카이브
+          </button>
+        </div>
+      </div>
+
+      <form className="bank-form filter-form" onSubmit={onSearch}>
+        <div className="filter-grid">
+          <label>
+            <span>계좌 ID</span>
+            <input
+              inputMode="numeric"
+              onChange={(event) =>
+                onFilterChange({ ...filters, accountId: event.target.value })
+              }
+              required
+              value={filters.accountId}
+            />
+          </label>
+          <label>
+            <span>시작일시</span>
+            <input
+              onChange={(event) =>
+                onFilterChange({ ...filters, from: event.target.value })
+              }
+              required
+              type="datetime-local"
+              value={filters.from}
+            />
+          </label>
+          <label>
+            <span>종료일시</span>
+            <input
+              onChange={(event) =>
+                onFilterChange({ ...filters, to: event.target.value })
+              }
+              required
+              type="datetime-local"
+              value={filters.to}
+            />
+          </label>
+          <label>
+            <span>건수</span>
+            <select
+              onChange={(event) =>
+                onFilterChange({ ...filters, limit: event.target.value })
+              }
+              value={filters.limit}
+            >
+              <option value="20">20</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+          </label>
+          <label>
+            <span>상태</span>
+            <select
+              onChange={(event) =>
+                onFilterChange({ ...filters, status: event.target.value })
+              }
+              value={filters.status}
+            >
+              <option value="">전체</option>
+              <option value="PENDING">PENDING</option>
+              <option value="BOOKED">BOOKED</option>
+              <option value="REVERSED">REVERSED</option>
+              <option value="FAILED">FAILED</option>
+            </select>
+          </label>
+          <label>
+            <span>입출금</span>
+            <select
+              onChange={(event) =>
+                onFilterChange({ ...filters, direction: event.target.value })
+              }
+              value={filters.direction}
+            >
+              <option value="">전체</option>
+              <option value="DEBIT">출금</option>
+              <option value="CREDIT">입금</option>
+            </select>
+          </label>
+          <label>
+            <span>최소금액 minor</span>
+            <input
+              inputMode="numeric"
+              onChange={(event) =>
+                onFilterChange({
+                  ...filters,
+                  minAmountMinor: event.target.value,
+                })
+              }
+              value={filters.minAmountMinor}
+            />
+          </label>
+          <label>
+            <span>최대금액 minor</span>
+            <input
+              inputMode="numeric"
+              onChange={(event) =>
+                onFilterChange({
+                  ...filters,
+                  maxAmountMinor: event.target.value,
+                })
+              }
+              value={filters.maxAmountMinor}
+            />
+          </label>
+          <label>
+            <span>거래번호</span>
+            <input
+              onChange={(event) =>
+                onFilterChange({
+                  ...filters,
+                  transactionReference: event.target.value,
+                })
+              }
+              value={filters.transactionReference}
+            />
+          </label>
+          <label>
+            <span>응답형태</span>
+            <select
+              onChange={(event) =>
+                onFilterChange({
+                  ...filters,
+                  responseShape: event.target.value as "full" | "slim",
+                })
+              }
+              value={filters.responseShape}
+            >
+              <option value="full">full</option>
+              <option value="slim">slim</option>
+            </select>
+          </label>
+        </div>
+        <div className="button-row">
+          <button disabled={isBusy} type="submit">
+            조회
+          </button>
+          <button disabled={!slice?.nextCursor || isBusy} onClick={onNext} type="button">
+            다음 거래
+          </button>
+        </div>
+      </form>
+
+      <div className="split-work">
+        <section className="table-panel embedded">
+          <div className="panel-toolbar">
+            <div>
+              <strong>거래내역</strong>
+              <span>
+                {slice
+                  ? `${transactions.length}건 표시 / next ${slice.hasNext ? "있음" : "없음"}`
+                  : "조회 전"}
+              </span>
+            </div>
+          </div>
+          <div className="bank-table-wrap">
+            <table className="bank-table">
+              <caption>거래내역 목록</caption>
+              <thead>
+                <tr>
+                  <th>기장일시</th>
+                  <th>거래번호</th>
+                  <th>입출금</th>
+                  <th>상태</th>
+                  <th>금액</th>
+                  <th>잔액</th>
+                  <th>상세</th>
+                </tr>
+              </thead>
+              <tbody>
+                {transactions.length === 0 ? (
+                  <tr>
+                    <td colSpan={7}>조회된 거래가 없습니다.</td>
+                  </tr>
+                ) : (
+                  transactions.map((item) => (
+                    <tr key={`${item.id}-${item.transactionReference}`}>
+                      <td>{formatDateTime(item.bookedAt)}</td>
+                      <td>{item.transactionReference}</td>
+                      <td>{item.direction}</td>
+                      <td>
+                        <span className="status-badge">{item.status}</span>
+                      </td>
+                      <td className={item.direction === "DEBIT" ? "amount debit" : "amount credit"}>
+                        {formatMinorAmount(item.amountMinor, item.currencyCode)}
+                      </td>
+                      <td>
+                        {item.balanceAfterMinor == null
+                          ? "-"
+                          : formatMinorAmount(
+                              item.balanceAfterMinor,
+                              item.currencyCode,
+                            )}
+                      </td>
+                      <td>
+                        <button
+                          disabled={isBusy}
+                          onClick={() => onDetail(item.transactionReference)}
+                          type="button"
+                        >
+                          상세
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <aside className="detail-panel">
+          <div className="form-heading">
+            <strong>거래상세</strong>
+            <span>{transactionDetail?.transactionStatus ?? "미선택"}</span>
+          </div>
+          {transactionDetail ? (
+            <dl className="detail-list">
+              <div>
+                <dt>거래번호</dt>
+                <dd>{transactionDetail.transactionReference}</dd>
+              </div>
+              <div>
+                <dt>입출금</dt>
+                <dd>{transactionDetail.direction}</dd>
+              </div>
+              <div>
+                <dt>금액</dt>
+                <dd>
+                  {formatMinorAmount(
+                    transactionDetail.amountMinor,
+                    transactionDetail.currencyCode,
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt>잔액</dt>
+                <dd>
+                  {formatMinorAmount(
+                    transactionDetail.balanceAfterMinor,
+                    transactionDetail.currencyCode,
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt>상대방</dt>
+                <dd>{transactionDetail.counterpartyMaskedName ?? "-"}</dd>
+              </div>
+              <div>
+                <dt>Ledger</dt>
+                <dd>{transactionDetail.entryReference}</dd>
+              </div>
+              <div>
+                <dt>발생시각</dt>
+                <dd>{formatDateTime(transactionDetail.occurredAt)}</dd>
+              </div>
+              <div>
+                <dt>설명</dt>
+                <dd>{transactionDetail.description ?? "-"}</dd>
+              </div>
+            </dl>
+          ) : (
+            <p className="rail-copy">거래내역에서 상세 버튼을 선택하세요.</p>
+          )}
+        </aside>
+      </div>
+    </section>
+  );
+}
+
+function ResultPanel({ title, rows }: { title: string; rows: string[][] }) {
+  return (
+    <div className="result-panel">
+      <div className="form-heading">
+        <strong>{title}</strong>
+        <span>{rows.length > 0 ? "완료" : "대기"}</span>
+      </div>
+      {rows.length === 0 ? (
+        <p className="rail-copy">처리 결과가 여기에 표시됩니다.</p>
+      ) : (
+        <dl className="detail-list">
+          {rows.map(([key, value]) => (
+            <div key={key}>
+              <dt>{key}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </div>
   );
 }
 
