@@ -112,7 +112,22 @@ ops/deploy/oci/check-self-hosted-runner.sh
 - `NGINX_ACME_CHALLENGE_ROOT`: ACME HTTP challenge webroot, 기본 `/var/www/certbot`
 - `NGINX_HSTS_MAX_AGE_SECONDS`: 기본 `31536000`
 
-`NGINX_ENABLE_HTTPS=auto`는 `NGINX_SERVER_NAME`이 `_`가 아니고 cert/key 파일이 존재할 때만 443을 publish한다. `true`는 cert/key가 없으면 배포 전에 실패한다. raw IP는 공인 TLS 인증서 발급 대상이 아니므로 staging/production HTTPS는 먼저 FQDN DNS를 public IP로 연결한 뒤 활성화한다.
+Staging HTTPS 기본 계약:
+
+```bash
+NGINX_SERVER_NAME=bank.aquilaxk.site
+NGINX_ENABLE_HTTPS=auto
+NGINX_SSL_CERTIFICATE_PATH=/etc/letsencrypt/live/bank.aquilaxk.site/fullchain.pem
+NGINX_SSL_CERTIFICATE_KEY_PATH=/etc/letsencrypt/live/bank.aquilaxk.site/privkey.pem
+NGINX_SSL_MOUNT_PATH=/etc/letsencrypt
+NGINX_ACME_CHALLENGE_ROOT=/var/www/certbot
+NGINX_HSTS_MAX_AGE_SECONDS=31536000
+STAGING_PUBLIC_BASE_URL=https://bank.aquilaxk.site
+```
+
+`NGINX_ENABLE_HTTPS=auto`는 `NGINX_SERVER_NAME`이 `_`가 아니고 cert/key 파일이 존재할 때만 443을 publish한다. `true`는 cert/key가 없으면 배포 전에 실패한다. raw IP는 공인 TLS 인증서 발급 대상이 아니므로 staging/production HTTPS는 먼저 FQDN DNS가 public IP를 가리킨 뒤 활성화한다.
+
+외부 bot/DoS 방어는 origin Nginx의 scanner path 차단, per-IP rate limit, security header를 1차 방어선으로 둔다. 상용 기준에서는 Cloudflare/WAF, managed rate limit, bot score/challenge, CDN cache rule을 앞단에 두고 `NGINX_REAL_IP_TRUSTED_PROXIES`를 Cloudflare/WAF egress CIDR로 줄여야 한다.
 
 ## Local Manual Run
 

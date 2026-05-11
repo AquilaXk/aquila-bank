@@ -282,6 +282,8 @@ jobs:
           source "${staging_env_path}"
           set +a
 
+          NGINX_SERVER_NAME="${NGINX_SERVER_NAME:-bank.aquilaxk.site}"
+          STAGING_BASE_URL="${STAGING_BASE_URL:-https://${NGINX_SERVER_NAME}}"
           STAGING_PUBLIC_API_BASE_URL="${STAGING_PUBLIC_API_BASE_URL:-${STAGING_BASE_URL:-}}"
           if [[ -z "${STAGING_PUBLIC_API_BASE_URL}" ]]; then
             echo "::error::STAGING_PUBLIC_API_BASE_URL or STAGING_BASE_URL is required."
@@ -442,6 +444,17 @@ jobs:
           OCI_A1_STORAGE_MOUNT_PATH="${OCI_A1_STORAGE_MOUNT_PATH:-/var/lib/aquila-data}"
           OCI_A1_STORAGE_MIN_USABLE_GIB="${OCI_A1_STORAGE_MIN_USABLE_GIB:-140}"
           OCI_A1_CAPACITY_PROFILE_ENABLED="${OCI_A1_CAPACITY_PROFILE_ENABLED:-true}"
+          NGINX_SERVER_NAME="${NGINX_SERVER_NAME:-bank.aquilaxk.site}"
+          NGINX_ENABLE_HTTPS="${NGINX_ENABLE_HTTPS:-auto}"
+          NGINX_SSL_CERTIFICATE_PATH="${NGINX_SSL_CERTIFICATE_PATH:-/etc/letsencrypt/live/${NGINX_SERVER_NAME}/fullchain.pem}"
+          NGINX_SSL_CERTIFICATE_KEY_PATH="${NGINX_SSL_CERTIFICATE_KEY_PATH:-/etc/letsencrypt/live/${NGINX_SERVER_NAME}/privkey.pem}"
+          NGINX_SSL_MOUNT_PATH="${NGINX_SSL_MOUNT_PATH:-/etc/letsencrypt}"
+          NGINX_ACME_CHALLENGE_ROOT="${NGINX_ACME_CHALLENGE_ROOT:-/var/www/certbot}"
+          NGINX_HSTS_MAX_AGE_SECONDS="${NGINX_HSTS_MAX_AGE_SECONDS:-31536000}"
+          STAGING_BASE_URL="${STAGING_BASE_URL:-https://${NGINX_SERVER_NAME}}"
+          STAGING_PUBLIC_API_BASE_URL="${STAGING_PUBLIC_API_BASE_URL:-${STAGING_BASE_URL}}"
+          STAGING_PUBLIC_BASE_URL="${STAGING_PUBLIC_BASE_URL:-https://${NGINX_SERVER_NAME}}"
+          STAGING_PUBLIC_EDGE_SMOKE_ENABLED="${STAGING_PUBLIC_EDGE_SMOKE_ENABLED:-true}"
 
           HOT_ACCOUNT_ID="${STAGING_REPLAY_HOT_ACCOUNT_ID:-${HOT_ACCOUNT_ID:-}}"
           HOT_FROM="${STAGING_REPLAY_HOT_FROM:-${HOT_FROM:-}}"
@@ -509,6 +522,8 @@ jobs:
             OCI_A1_BACKEND_ENV_B64
             OCI_A1_FRONTEND_ENV_B64
             STAGING_PUBLIC_API_BASE_URL
+            STAGING_PUBLIC_BASE_URL
+            STAGING_PUBLIC_EDGE_SMOKE_ENABLED
             STAGING_BASE_URL
             STAGING_SMOKE_BASE_URL
             STAGING_SMOKE_HEALTH_PATH
@@ -649,6 +664,18 @@ jobs:
         run: |
           set -euo pipefail
           tools/ops/staging-postdeploy-smoke.sh
+
+      - name: Run public edge bot guard smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${STAGING_PUBLIC_EDGE_SMOKE_ENABLED}" != "true" ]]; then
+            echo "::notice::Public edge bot guard smoke skipped."
+            exit 0
+          fi
+          PUBLIC_EDGE_BASE_URL="${STAGING_PUBLIC_BASE_URL}" \
+            PUBLIC_EDGE_EXPECT_HSTS=true \
+            tools/test/check-public-edge-bot-guard-live.sh
 
       - name: Validate OCI A1 storage baseline
         shell: bash

@@ -87,6 +87,8 @@ required_patterns=(
   "location ~* ^/(?:\\.env(?:\\..*)?|\\.git(?:/|\$)|wp-login\\.php|xmlrpc\\.php|phpmyadmin(?:/|\$)|adminer(?:/|\$)|vendor/phpunit(?:/|\$)|cgi-bin(?:/|\$))"
   "add_header X-Aquila-Reject-Source nginx-bot-guard always;"
   "add_header X-Aquila-Reject-Reason scanner-path always;"
+  "location ^~ /admin"
+  "add_header X-Aquila-Reject-Reason admin-path-closed always;"
   "location ^~ /.well-known/acme-challenge/"
   "return 308 https://\$server_name\$request_uri;"
   "listen 443 ssl http2;"
@@ -166,6 +168,7 @@ deploy_required_patterns=(
   'limit_req_zone \$binary_remote_addr zone=aquila_bank_frontend_per_ip:10m rate=10r/s;'
   "add_header X-Aquila-Reject-Source nginx-bot-guard always;"
   "add_header X-Aquila-Reject-Reason scanner-path always;"
+  "add_header X-Aquila-Reject-Reason admin-path-closed always;"
   "add_header X-Content-Type-Options nosniff always;"
   "add_header X-Frame-Options DENY always;"
   "add_header Referrer-Policy no-referrer always;"

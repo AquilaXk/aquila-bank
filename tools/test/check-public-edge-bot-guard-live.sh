@@ -146,6 +146,13 @@ assert_scanner_path() {
   require_header "${label}" "X-Aquila-Reject-Reason" "scanner-path"
 }
 
+assert_closed_admin_path() {
+  request "/admin" "closed_admin"
+  require_status "closed_admin" "404"
+  require_header "closed_admin" "X-Aquila-Reject-Source" "nginx-bot-guard"
+  require_header "closed_admin" "X-Aquila-Reject-Reason" "admin-path-closed"
+}
+
 assert_health() {
   request "/actuator/health" "health"
   require_status "health" "200"
@@ -162,6 +169,7 @@ assert_scanner_path "/.git/config" "scanner_git"
 assert_scanner_path "/wp-login.php" "scanner_wp_login"
 assert_scanner_path "/xmlrpc.php" "scanner_xmlrpc"
 assert_scanner_path "/phpmyadmin/" "scanner_phpmyadmin"
+assert_closed_admin_path
 assert_health
 
 echo "[public-edge-bot-guard] live smoke passed"

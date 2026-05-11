@@ -893,6 +893,12 @@ render_nginx_config() {
       return 404;
     }
 
+    location ^~ /admin {
+      add_header X-Aquila-Reject-Source nginx-bot-guard always;
+      add_header X-Aquila-Reject-Reason admin-path-closed always;
+      return 404;
+    }
+
     location ^~ /.well-known/acme-challenge/ {
       root ${NGINX_ACME_CHALLENGE_ROOT};
       default_type text/plain;
@@ -1026,6 +1032,12 @@ ${proxy_server_tls_directives}
     location ~* ^/(?:\\.env(?:\\..*)?|\\.git(?:/|\$)|wp-login\\.php|xmlrpc\\.php|phpmyadmin(?:/|\$)|adminer(?:/|\$)|vendor/phpunit(?:/|\$)|cgi-bin(?:/|\$)) {
       add_header X-Aquila-Reject-Source nginx-bot-guard always;
       add_header X-Aquila-Reject-Reason scanner-path always;
+      return 404;
+    }
+
+    location ^~ /admin {
+      add_header X-Aquila-Reject-Source nginx-bot-guard always;
+      add_header X-Aquila-Reject-Reason admin-path-closed always;
       return 404;
     }
 
