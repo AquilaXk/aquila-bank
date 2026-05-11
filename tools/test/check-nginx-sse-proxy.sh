@@ -155,8 +155,11 @@ deploy_required_patterns=(
   '"ssl_protocol":"\$ssl_protocol"'
   '"body_bytes_sent":\$body_bytes_sent'
   "nginx_https_port_flags"
+  "nginx_acme_mount_flags"
   "443:443"
   "nginx_tls_mount_flags"
+  'mkdir -p "${NGINX_ACME_CHALLENGE_ROOT}"'
+  '${NGINX_ACME_CHALLENGE_ROOT}:${NGINX_ACME_CHALLENGE_ROOT}:ro'
   "server_tokens off;"
   "listen 443 ssl http2;"
   'return 308 https://${SERVER_NAME}\$request_uri;'
@@ -170,6 +173,7 @@ deploy_required_patterns=(
   "add_header X-Robots-Tag \"noindex, nofollow, noarchive\" always;"
   'add_header Strict-Transport-Security \"max-age=${hsts_max_age_seconds}; includeSubDomains\" always;'
   "location ^~ /.well-known/acme-challenge/"
+  "root \${NGINX_ACME_CHALLENGE_ROOT};"
   "limit_req zone=aquila_bank_frontend_per_ip burst=60 delay=20;"
 )
 

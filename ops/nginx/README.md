@@ -58,6 +58,7 @@ bash tools/ops/render-nginx-runtime-config.sh /tmp/aquila-bank-nginx.conf ops/ng
 - `return 308 https://$server_name$request_uri;`를 써서 요청 `Host` 헤더를 그대로 반사하지 않고 설정한 host 기준으로 redirect 합니다.
 - OCI blue/green 배포는 `NGINX_ENABLE_HTTPS=auto`일 때 `NGINX_SERVER_NAME`이 `_`가 아니고 cert/key 파일이 존재하면 443을 publish 합니다. 강제하려면 `NGINX_ENABLE_HTTPS=true`로 두고, 파일이 없으면 배포 전에 fail-fast 합니다.
 - raw IP는 공인 인증서 발급 대상이 아니므로 상용 HTTPS 전환은 FQDN DNS가 OCI public IP를 가리킨 뒤 진행합니다.
+- 인증서 최초 발급을 위해 OCI blue/green HTTP-only 모드에서도 `/.well-known/acme-challenge/`는 `NGINX_ACME_CHALLENGE_ROOT` webroot로 제공합니다. 이 경로를 통해 certbot webroot 발급을 먼저 끝낸 뒤 `NGINX_ENABLE_HTTPS=true`로 재배포합니다.
 
 ## Rate Limit 기준
 
