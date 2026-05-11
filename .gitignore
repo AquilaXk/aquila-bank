@@ -71,6 +71,9 @@ docs/
 .aider*
 .windsurf/
 .ai/
+.playwright-mcp/
+customer-banking-*-desktop.png
+customer-banking-*-mobile.png
 
 # Terraform local state
 **/.terraform/
