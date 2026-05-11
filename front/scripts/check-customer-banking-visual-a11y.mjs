@@ -12,6 +12,7 @@ const files = {
   packageJson: read("package.json"),
   page: read("src/app/page.tsx"),
   styles: read("src/styles/customer-banking.css"),
+  dashboard: read("src/components/customer-banking/sections/dashboard-section.tsx"),
   transfer: read("src/components/customer-banking/sections/transfer-section.tsx"),
 };
 
@@ -35,6 +36,8 @@ const required = [
   ["bank work tabs", files.styles, ".work-tabs"],
   ["bank page title compact", files.styles, ".section-title h1"],
   ["right rail security notice", files.page, "보안알림"],
+  ["bank shell security level", files.page, "보안등급"],
+  ["bank work operating hours", files.dashboard, "이용시간"],
 ];
 
 const missing = required.filter(([, content, expected]) => !content.includes(expected));

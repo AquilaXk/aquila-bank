@@ -92,15 +92,22 @@ const checks = [
   ["account available amount label", files.accounts, "출금가능금액"],
   ["transfer receiver label", files.transfer, "받는 분"],
   ["transfer security verification label", files.transfer, "보안 확인"],
+  ["auth center eyebrow", files.security, "인증센터"],
+  ["auth center heading", files.security, "로그인 및 보안관리"],
   ["security center login status", files.security, "로그인 상태"],
   ["security hub certificate tab", files.securityHub, "공동인증서"],
+  ["support incident report label", files.support, "사고신고 접수"],
   ["support certificate issue label", files.support, "증명서 발급"],
+  ["support transfer confirmation label", files.support, "이체확인증"],
   ["enterprise bill payment application label", files.enterprise, "공과금 납부"],
+  ["enterprise open banking application label", files.enterprise, "오픈뱅킹 연결"],
+  ["enterprise foreign exchange application label", files.enterprise, "외환 신청"],
 ];
 
 const forbidden = [
   ["customer visible read-only", customerVisibleContent, "read-only"],
   ["customer visible backend preview", customerVisibleContent, "backend preview"],
+  ["customer visible backend", customerVisibleContent, "backend"],
   ["customer visible bounded query", customerVisibleContent, "bounded query"],
   ["customer visible idempotency key", customerVisibleContent, "Idempotency-Key"],
   ["customer visible cursor pagination", customerVisibleContent, "cursor pagination"],

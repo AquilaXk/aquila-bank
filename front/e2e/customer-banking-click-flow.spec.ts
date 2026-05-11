@@ -6,6 +6,8 @@ test("고객 웹뱅킹 주요 공개 업무와 미로그인 이체 가드를 실
   await page.goto("/");
 
   await expect(page.getByRole("heading", { name: "뱅킹 업무" })).toBeVisible();
+  await expect(page.getByText("보안등급").first()).toBeVisible();
+  await expect(page.getByText("이용시간")).toBeVisible();
   await page.getByRole("navigation", { name: "주요 메뉴" }).getByRole("button", { name: "이체" }).click();
   await expect(page.getByText("권한 만료 또는 미로그인")).toBeVisible();
 
@@ -25,9 +27,10 @@ test("고객 웹뱅킹 주요 공개 업무와 미로그인 이체 가드를 실
     .getByRole("navigation", { name: "주요 메뉴" })
     .getByRole("button", { name: "공과금/금융상품" })
     .click();
-  await expect(page.getByText("공과금 상세")).toBeVisible();
-  await expect(page.getByText("오픈뱅킹 상세")).toBeVisible();
-  await expect(page.getByText("외환 상세")).toBeVisible();
+  const enterpriseDetails = page.getByLabel("부가업무 상세 화면");
+  await expect(enterpriseDetails.getByText("공과금 납부", { exact: true })).toBeVisible();
+  await expect(enterpriseDetails.getByText("오픈뱅킹 연결", { exact: true })).toBeVisible();
+  await expect(enterpriseDetails.getByText("외환 신청", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "신청 접수" }).first()).toBeVisible();
 
   await page
