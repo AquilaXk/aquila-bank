@@ -36,6 +36,8 @@ const required = [
   ["bank work tabs", files.styles, ".work-tabs"],
   ["bank page title compact", files.styles, ".section-title h1"],
   ["right rail security notice", files.page, "보안알림"],
+  ["unauth work gate heading", files.page, "로그인이 필요한 업무"],
+  ["unauth login method grid", files.styles, ".login-method-grid"],
   ["bank shell security level", files.page, "보안등급"],
   ["bank work operating hours", files.dashboard, "이용시간"],
   ["work summary strip", files.styles, ".work-summary-strip"],
