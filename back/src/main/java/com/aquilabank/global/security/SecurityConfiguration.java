@@ -33,7 +33,6 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.server.resource.web.BearerTokenResolver;
-import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.AnonymousAuthenticationFilter;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
@@ -42,6 +41,7 @@ import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 @Configuration
 @EnableConfigurationProperties({
   SecurityJwtProperties.class,
+  SecurityAuthCookieProperties.class,
   SecurityTotpProperties.class,
   SecurityRememberDeviceProperties.class,
   LoginProtectionProperties.class,
@@ -187,8 +187,10 @@ public class SecurityConfiguration {
   }
 
   @Bean
-  BearerTokenResolver publicApiBearerTokenResolver() {
-    DefaultBearerTokenResolver delegate = new DefaultBearerTokenResolver();
+  BearerTokenResolver publicApiBearerTokenResolver(
+      SecurityAuthCookieProperties securityAuthCookieProperties) {
+    CookieBearerTokenResolver delegate =
+        new CookieBearerTokenResolver(securityAuthCookieProperties.accessTokenCookieName());
     return request -> isInternalApiRequest(request) ? null : delegate.resolve(request);
   }
 
