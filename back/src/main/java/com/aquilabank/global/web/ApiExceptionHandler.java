@@ -14,6 +14,7 @@ import com.aquilabank.domain.auth.exception.PasswordRecoveryTokenNotFoundExcepti
 import com.aquilabank.domain.auth.exception.UserAccountMembershipNotFoundException;
 import com.aquilabank.domain.auth.model.AuthStatusChangeReasonCode;
 import com.aquilabank.domain.auth.model.InternalAuthConflictReasonCode;
+import com.aquilabank.domain.customerapplication.exception.CustomerApplicationConflictException;
 import com.aquilabank.domain.ledger.exception.CommandConflictException;
 import com.aquilabank.domain.ledger.exception.CurrencyMismatchException;
 import com.aquilabank.domain.ledger.exception.InsufficientBalanceException;
@@ -308,6 +309,7 @@ public class ApiExceptionHandler {
   @ExceptionHandler({
     DuplicateExternalIdentityMappingException.class,
     DuplicateLoginIdException.class,
+    CustomerApplicationConflictException.class,
     CommandConflictException.class,
     CurrencyMismatchException.class,
     InsufficientBalanceException.class,
