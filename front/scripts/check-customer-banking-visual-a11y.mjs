@@ -38,6 +38,8 @@ const required = [
   ["right rail security notice", files.page, "보안알림"],
   ["bank shell security level", files.page, "보안등급"],
   ["bank work operating hours", files.dashboard, "이용시간"],
+  ["work summary strip", files.styles, ".work-summary-strip"],
+  ["process panel", files.styles, ".process-panel"],
 ];
 
 const missing = required.filter(([, content, expected]) => !content.includes(expected));

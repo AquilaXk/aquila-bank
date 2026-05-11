@@ -54,6 +54,8 @@ const required = [
   ["receiver validation display", files.transfer, "받는 분"],
   ["fee display", files.transfer, "수수료"],
   ["limit remaining display", files.transfer, "잔여한도"],
+  ["transfer final confirmation", files.transfer, "최종 확인"],
+  ["transfer processing result", files.transfer, "처리 결과"],
   ["bill payment detail", files.enterprise, "공과금 납부"],
   ["bill payment write type", files.enterprise, "BILL_PAYMENT"],
   ["open banking detail", files.enterprise, "오픈뱅킹 연결"],
@@ -69,6 +71,7 @@ const required = [
   ["financial certificate registration", files.securityHub, "금융인증서 등록"],
   ["security media registration", files.securityHub, "보안매체 등록"],
   ["otp registration", files.securityHub, "OTP 등록"],
+  ["security certificate management", files.securityHub, "인증서 관리"],
   ["certificate registration write type", files.securityHub, "CERTIFICATE_REGISTRATION"],
   ["security media write type", files.securityHub, "SECURITY_MEDIA_APPLICATION"],
   ["transfer receipt certificate", files.support, "이체확인증"],
@@ -84,6 +87,7 @@ const required = [
   ["certificate list styles", files.styles, ".certificate-list"],
   ["application submit styles", files.styles, ".application-submit-panel"],
   ["application result styles", files.styles, ".application-result-line"],
+  ["process panel styles", files.styles, ".process-panel"],
   ["playwright config", files.playwrightConfig, "defineConfig"],
   ["click flow playwright test", files.clickFlow, "@playwright/test"],
   ["click flow transfer guard", files.clickFlow, "권한 만료 또는 미로그인"],
@@ -111,6 +115,10 @@ const forbidden = [
   ["raw challenge type fallback", files.security, 'props.challenge.challengeType ?? "TOTP"'],
   ["raw blocked reason render", files.transfer, "{blockedReason}"],
   ["raw transfer status render", files.transfer, '["상태", transferResult.status]'],
+  ["customer visible explanatory provide", customerSections, "제공"],
+  ["customer visible explanatory flow", customerSections, "흐름"],
+  ["customer visible bank-like explanation", customerSections, "처럼"],
+  ["customer visible actual implementation explanation", customerSections, "실제"],
 ];
 
 const missing = required.filter(([, content, expected]) => !content.includes(expected));
