@@ -807,6 +807,10 @@ events {
 
 http {
   limit_req_status 429;
+  server_tokens off;
+  client_header_timeout 10s;
+  client_body_timeout 10s;
+  send_timeout 30s;
   # upstream latency와 edge limit 결과를 같은 JSON line에 남겨 429 원인을 분리합니다.
   log_format aquila_bank_upstream escape=json
     '{'
@@ -839,6 +843,8 @@ ${real_ip_trusted_proxy_lines}
   limit_req_zone \$binary_remote_addr zone=aquila_bank_api_per_ip:10m rate=30r/s;
   # 공개 auth 진입점은 token/bcrypt 비용 전에 더 보수적으로 edge 차단합니다.
   limit_req_zone \$binary_remote_addr zone=aquila_bank_auth_per_ip:10m rate=5r/s;
+  # 페이지/정적 리소스 경로도 저비용 edge queue로 bot burst를 먼저 흡수합니다.
+  limit_req_zone \$binary_remote_addr zone=aquila_bank_frontend_per_ip:10m rate=10r/s;
   # active/archive read는 arrival-16 정상 구간을 delay queue 없이 통과시키도록 headroom을 둡니다.
   limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_hot_per_ip:10m rate=${transaction_read_hot_rate_rps}r/s;
   limit_req_zone \$binary_remote_addr zone=aquila_bank_transaction_archive_per_ip:10m rate=${transaction_read_archive_rate_rps}r/s;
@@ -861,11 +867,22 @@ ${real_ip_trusted_proxy_lines}
   server {
     listen 80 default_server;
     server_name ${SERVER_NAME};
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options DENY always;
+    add_header Referrer-Policy no-referrer always;
+    add_header Permissions-Policy "geolocation=(), microphone=(), camera=()" always;
+    add_header X-Robots-Tag "noindex, nofollow, noarchive" always;
 
     proxy_http_version 1.1;
     proxy_connect_timeout 3s;
     proxy_socket_keepalive on;
     error_page 429 = @aquila_edge_rate_limited;
+
+    location ~* ^/(?:\\.env(?:\\..*)?|\\.git(?:/|\$)|wp-login\\.php|xmlrpc\\.php|phpmyadmin(?:/|\$)|adminer(?:/|\$)|vendor/phpunit(?:/|\$)|cgi-bin(?:/|\$)) {
+      add_header X-Aquila-Reject-Source nginx-bot-guard always;
+      add_header X-Aquila-Reject-Reason scanner-path always;
+      return 404;
+    }
 
     location @aquila_edge_rate_limited {
       internal;
@@ -1072,6 +1089,7 @@ ${real_ip_trusted_proxy_lines}
       proxy_set_header X-Forwarded-Host \$host;
       proxy_set_header X-Forwarded-Port \$server_port;
       proxy_set_header Connection "";
+      limit_req zone=aquila_bank_frontend_per_ip burst=60 delay=20;
       proxy_read_timeout 60s;
       proxy_send_timeout 60s;
     }

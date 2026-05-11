@@ -25,16 +25,19 @@ public class OidcLoginAuthenticationSuccessHandler implements AuthenticationSucc
   private final ExternalOidcLoginUseCase externalOidcLoginUseCase;
   private final AuthSessionMetadataResolver authSessionMetadataResolver;
   private final RefreshDeviceBindingCookieManager refreshDeviceBindingCookieManager;
+  private final AuthSessionCookieManager authSessionCookieManager;
   private final ObjectMapper objectMapper;
 
   public OidcLoginAuthenticationSuccessHandler(
       ExternalOidcLoginUseCase externalOidcLoginUseCase,
       AuthSessionMetadataResolver authSessionMetadataResolver,
       RefreshDeviceBindingCookieManager refreshDeviceBindingCookieManager,
+      AuthSessionCookieManager authSessionCookieManager,
       ObjectMapper objectMapper) {
     this.externalOidcLoginUseCase = externalOidcLoginUseCase;
     this.authSessionMetadataResolver = authSessionMetadataResolver;
     this.refreshDeviceBindingCookieManager = refreshDeviceBindingCookieManager;
+    this.authSessionCookieManager = authSessionCookieManager;
     this.objectMapper = objectMapper;
   }
 
@@ -69,6 +72,7 @@ public class OidcLoginAuthenticationSuccessHandler implements AuthenticationSucc
 
   private void writeSuccess(HttpServletResponse response, LoginResult result) throws IOException {
     HttpHeaders headers = new HttpHeaders();
+    authSessionCookieManager.addSessionCookies(headers, result);
     if (result.refreshDeviceBindingToken() != null) {
       refreshDeviceBindingCookieManager.addBindingCookie(
           headers, result.refreshDeviceBindingToken());

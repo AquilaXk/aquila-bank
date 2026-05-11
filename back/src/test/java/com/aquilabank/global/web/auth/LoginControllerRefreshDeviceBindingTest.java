@@ -3,6 +3,7 @@ package com.aquilabank.global.web.auth;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -31,6 +32,7 @@ import com.aquilabank.domain.auth.usecase.TotpDisableUseCase;
 import com.aquilabank.domain.auth.usecase.TotpEnrollmentUseCase;
 import com.aquilabank.global.security.AuthenticatedUserPrincipal;
 import com.aquilabank.global.security.LoginThrottleGuard;
+import com.aquilabank.global.security.SecurityAuthCookieProperties;
 import com.aquilabank.global.security.SecurityJwtProperties;
 import com.aquilabank.global.security.SecurityRememberDeviceProperties;
 import com.aquilabank.global.web.ApiExceptionHandler;
@@ -50,6 +52,8 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 class LoginControllerRefreshDeviceBindingTest {
 
   private static final String COOKIE_NAME = "ab_refresh_device";
+  private static final String ACCESS_COOKIE_NAME = "ab_access_token";
+  private static final String REFRESH_COOKIE_NAME = "ab_refresh_token";
 
   private LoginUseCase loginUseCase;
   private RefreshTokenUseCase refreshTokenUseCase;
@@ -97,7 +101,12 @@ class LoginControllerRefreshDeviceBindingTest {
                         new SecurityRememberDeviceProperties("ab_mfa_remember_device", 2_592_000L)),
                     new RefreshDeviceBindingCookieManager(
                         new SecurityJwtProperties(
-                            "secret", "issuer", 900L, 1_209_600L, COOKIE_NAME))))
+                            "secret", "issuer", 900L, 1_209_600L, COOKIE_NAME)),
+                    new AuthSessionCookieManager(
+                        new SecurityJwtProperties(
+                            "secret", "issuer", 900L, 1_209_600L, COOKIE_NAME),
+                        new SecurityAuthCookieProperties(
+                            ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME, false))))
             .setControllerAdvice(new ApiExceptionHandler())
             .setCustomArgumentResolvers(new CurrentAuthenticatedPrincipalArgumentResolver())
             .build();
@@ -141,9 +150,18 @@ class LoginControllerRefreshDeviceBindingTest {
         .andExpect(jsonPath("$.status").value("SUCCESS"))
         .andExpect(
             header()
-                .string(
+                .stringValues(
                     "Set-Cookie",
-                    org.hamcrest.Matchers.containsString(COOKIE_NAME + "=binding-token")));
+                    org.hamcrest.Matchers.hasItems(
+                        org.hamcrest.Matchers.containsString(COOKIE_NAME + "=binding-token"),
+                        org.hamcrest.Matchers.allOf(
+                            org.hamcrest.Matchers.containsString(
+                                ACCESS_COOKIE_NAME + "=access-token"),
+                            org.hamcrest.Matchers.containsString("HttpOnly")),
+                        org.hamcrest.Matchers.allOf(
+                            org.hamcrest.Matchers.containsString(
+                                REFRESH_COOKIE_NAME + "=refresh-token"),
+                            org.hamcrest.Matchers.containsString("HttpOnly")))));
   }
 
   @Test
@@ -179,9 +197,13 @@ class LoginControllerRefreshDeviceBindingTest {
         .andExpect(jsonPath("$.status").value("SUCCESS"))
         .andExpect(
             header()
-                .string(
+                .stringValues(
                     "Set-Cookie",
-                    org.hamcrest.Matchers.containsString(COOKIE_NAME + "=binding-token")));
+                    org.hamcrest.Matchers.hasItems(
+                        org.hamcrest.Matchers.containsString(COOKIE_NAME + "=binding-token"),
+                        org.hamcrest.Matchers.containsString(ACCESS_COOKIE_NAME + "=access-token"),
+                        org.hamcrest.Matchers.containsString(
+                            REFRESH_COOKIE_NAME + "=refresh-token"))));
   }
 
   @Test
@@ -217,9 +239,42 @@ class LoginControllerRefreshDeviceBindingTest {
         .andExpect(jsonPath("$.status").value("SUCCESS"))
         .andExpect(
             header()
-                .string(
+                .stringValues(
                     "Set-Cookie",
-                    org.hamcrest.Matchers.containsString(COOKIE_NAME + "=next-binding-token")));
+                    org.hamcrest.Matchers.hasItems(
+                        org.hamcrest.Matchers.containsString(COOKIE_NAME + "=next-binding-token"),
+                        org.hamcrest.Matchers.containsString(ACCESS_COOKIE_NAME + "=access-token"),
+                        org.hamcrest.Matchers.containsString(
+                            REFRESH_COOKIE_NAME + "=next-refresh-token"))));
+  }
+
+  @Test
+  void refreshReadsRefreshTokenCookieWhenBodyOmitsRefreshToken() throws Exception {
+    when(refreshTokenUseCase.refresh(
+            argThat(
+                (RefreshTokenCommand command) ->
+                    "refresh-token".equals(command.refreshToken())
+                        && "binding-token".equals(command.refreshDeviceBindingToken()))))
+        .thenReturn(
+            LoginResult.success(
+                "access-token",
+                "next-refresh-token",
+                "Bearer",
+                Instant.parse("2026-04-20T12:00:00Z"),
+                Instant.parse("2026-05-04T11:45:00Z"),
+                7L,
+                "next-binding-token",
+                null));
+
+    mockMvc
+        .perform(
+            post("/api/v1/auth/refresh")
+                .cookie(new Cookie(COOKIE_NAME, "binding-token"))
+                .cookie(new Cookie(REFRESH_COOKIE_NAME, "refresh-token"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("SUCCESS"));
   }
 
   @Test
@@ -229,22 +284,30 @@ class LoginControllerRefreshDeviceBindingTest {
     mockMvc
         .perform(
             post("/api/v1/auth/logout")
+                .cookie(new Cookie(REFRESH_COOKIE_NAME, "refresh-token"))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(
-                    """
-                    {
-                      "refreshToken": "refresh-token"
-                    }
-                    """))
+                .content("{}"))
         .andExpect(status().isNoContent())
         .andExpect(
             header()
                 .stringValues(
                     "Set-Cookie",
-                    org.hamcrest.Matchers.hasItem(
+                    org.hamcrest.Matchers.hasItems(
                         org.hamcrest.Matchers.allOf(
                             org.hamcrest.Matchers.containsString(COOKIE_NAME + "="),
+                            org.hamcrest.Matchers.containsString("Max-Age=0")),
+                        org.hamcrest.Matchers.allOf(
+                            org.hamcrest.Matchers.containsString(ACCESS_COOKIE_NAME + "="),
+                            org.hamcrest.Matchers.containsString("Max-Age=0")),
+                        org.hamcrest.Matchers.allOf(
+                            org.hamcrest.Matchers.containsString(REFRESH_COOKIE_NAME + "="),
                             org.hamcrest.Matchers.containsString("Max-Age=0")))));
+
+    verify(logoutUseCase)
+        .logout(
+            argThat(
+                command ->
+                    command.userId() == 7L && "refresh-token".equals(command.refreshToken())));
   }
 
   @Test

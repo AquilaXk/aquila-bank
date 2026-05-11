@@ -25,6 +25,7 @@ import com.aquilabank.domain.auth.usecase.TotpDisableUseCase;
 import com.aquilabank.domain.auth.usecase.TotpEnrollmentUseCase;
 import com.aquilabank.global.security.AuthenticatedUserPrincipal;
 import com.aquilabank.global.security.LoginThrottleGuard;
+import com.aquilabank.global.security.SecurityAuthCookieProperties;
 import com.aquilabank.global.security.SecurityJwtProperties;
 import com.aquilabank.global.security.SecurityRememberDeviceProperties;
 import com.aquilabank.global.web.ApiExceptionHandler;
@@ -70,7 +71,12 @@ class LoginControllerBackupCodeTest {
                         new SecurityRememberDeviceProperties("ab_mfa_remember_device", 2_592_000L)),
                     new RefreshDeviceBindingCookieManager(
                         new SecurityJwtProperties(
-                            "secret", "issuer", 900L, 1_209_600L, "ab_refresh_device"))))
+                            "secret", "issuer", 900L, 1_209_600L, "ab_refresh_device")),
+                    new AuthSessionCookieManager(
+                        new SecurityJwtProperties(
+                            "secret", "issuer", 900L, 1_209_600L, "ab_refresh_device"),
+                        new SecurityAuthCookieProperties(
+                            "ab_access_token", "ab_refresh_token", false))))
             .setControllerAdvice(new ApiExceptionHandler())
             .setCustomArgumentResolvers(new CurrentAuthenticatedPrincipalArgumentResolver())
             .build();

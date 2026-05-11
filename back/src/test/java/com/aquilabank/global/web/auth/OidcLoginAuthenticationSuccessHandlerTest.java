@@ -10,6 +10,7 @@ import com.aquilabank.domain.auth.model.AuthSessionClientMetadata;
 import com.aquilabank.domain.auth.model.ExternalOidcLoginCommand;
 import com.aquilabank.domain.auth.model.LoginResult;
 import com.aquilabank.domain.auth.usecase.ExternalOidcLoginUseCase;
+import com.aquilabank.global.security.SecurityAuthCookieProperties;
 import com.aquilabank.global.security.SecurityJwtProperties;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -42,6 +43,10 @@ class OidcLoginAuthenticationSuccessHandlerTest {
             externalOidcLoginUseCase,
             authSessionMetadataResolver,
             refreshDeviceBindingCookieManager,
+            new AuthSessionCookieManager(
+                new SecurityJwtProperties(
+                    "secret", "issuer", 900L, 1_209_600L, "ab_refresh_device"),
+                new SecurityAuthCookieProperties("ab_access_token", "ab_refresh_token", false)),
             OBJECT_MAPPER);
     AuthSessionClientMetadata metadata =
         new AuthSessionClientMetadata("macOS / Safari", "203.0.113.20");
@@ -75,7 +80,10 @@ class OidcLoginAuthenticationSuccessHandlerTest {
     assertThat(body.get("status").asText()).isEqualTo("SUCCESS");
     assertThat(body.get("accessToken").asText()).isEqualTo("access-token");
     assertThat(body.get("refreshToken").asText()).isEqualTo("refresh-token");
-    assertThat(response.getHeader("Set-Cookie")).contains("ab_refresh_device=binding-token");
+    assertThat(response.getHeaders("Set-Cookie"))
+        .anySatisfy(cookie -> assertThat(cookie).contains("ab_access_token=access-token"))
+        .anySatisfy(cookie -> assertThat(cookie).contains("ab_refresh_token=refresh-token"))
+        .anySatisfy(cookie -> assertThat(cookie).contains("ab_refresh_device=binding-token"));
     verify(externalOidcLoginUseCase)
         .login(
             argThat(

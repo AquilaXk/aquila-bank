@@ -92,6 +92,7 @@ public class LoginController {
   private final LoginThrottleGuard loginThrottleGuard;
   private final RememberDeviceCookieManager rememberDeviceCookieManager;
   private final RefreshDeviceBindingCookieManager refreshDeviceBindingCookieManager;
+  private final AuthSessionCookieManager authSessionCookieManager;
 
   public LoginController(
       LoginUseCase loginUseCase,
@@ -111,7 +112,8 @@ public class LoginController {
       AuthSessionMetadataResolver authSessionMetadataResolver,
       LoginThrottleGuard loginThrottleGuard,
       RememberDeviceCookieManager rememberDeviceCookieManager,
-      RefreshDeviceBindingCookieManager refreshDeviceBindingCookieManager) {
+      RefreshDeviceBindingCookieManager refreshDeviceBindingCookieManager,
+      AuthSessionCookieManager authSessionCookieManager) {
     this.loginUseCase = loginUseCase;
     this.authSessionListUseCase = authSessionListUseCase;
     this.authSessionRevokeUseCase = authSessionRevokeUseCase;
@@ -130,6 +132,7 @@ public class LoginController {
     this.loginThrottleGuard = loginThrottleGuard;
     this.rememberDeviceCookieManager = rememberDeviceCookieManager;
     this.refreshDeviceBindingCookieManager = refreshDeviceBindingCookieManager;
+    this.authSessionCookieManager = authSessionCookieManager;
   }
 
   @PostMapping("/login")
@@ -242,10 +245,11 @@ public class LoginController {
   @PostMapping("/refresh")
   public ResponseEntity<LoginResponse> refresh(
       HttpServletRequest httpServletRequest, @Valid @RequestBody RefreshRequest request) {
+    String refreshToken = resolveRefreshToken(request.refreshToken(), httpServletRequest);
     LoginResult result =
         refreshTokenUseCase.refresh(
             new RefreshTokenCommand(
-                request.refreshToken(),
+                refreshToken,
                 refreshDeviceBindingCookieManager.resolve(httpServletRequest),
                 authSessionMetadataResolver.resolve(httpServletRequest),
                 RequestTraceContext.currentRequestId().orElse("-")));
@@ -257,10 +261,11 @@ public class LoginController {
       @CurrentAuthenticatedPrincipal AuthenticatedRequestPrincipal principal,
       HttpServletRequest httpServletRequest,
       @Valid @RequestBody LogoutRequest request) {
+    String refreshToken = resolveRefreshToken(request.refreshToken(), httpServletRequest);
     logoutUseCase.logout(
         new LogoutCommand(
             resolveUserId(principal),
-            request.refreshToken(),
+            refreshToken,
             rememberDeviceCookieManager.resolve(httpServletRequest)));
     return noContentResponseClearingAuthCookies();
   }
@@ -304,11 +309,11 @@ public class LoginController {
 
   /** refresh token 재발급 요청 body */
   public record RefreshRequest(
-      @NotBlank(message = "refreshToken is required") @Size(max = 160, message = "refreshToken must be 160 characters or less") String refreshToken) {}
+      @Size(max = 160, message = "refreshToken must be 160 characters or less") String refreshToken) {}
 
   /** logout 요청 body */
   public record LogoutRequest(
-      @NotBlank(message = "refreshToken is required") @Size(max = 160, message = "refreshToken must be 160 characters or less") String refreshToken) {}
+      @Size(max = 160, message = "refreshToken must be 160 characters or less") String refreshToken) {}
 
   /** password reset 요청 body */
   public record PasswordResetRequest(
@@ -437,6 +442,7 @@ public class LoginController {
   private ResponseEntity<LoginResponse> loginResponse(
       LoginResult result, boolean clearRememberDeviceCookie) {
     HttpHeaders headers = new HttpHeaders();
+    authSessionCookieManager.addSessionCookies(headers, result);
     if (result.refreshDeviceBindingToken() != null) {
       refreshDeviceBindingCookieManager.addBindingCookie(
           headers, result.refreshDeviceBindingToken());
@@ -451,9 +457,21 @@ public class LoginController {
 
   private ResponseEntity<Void> noContentResponseClearingAuthCookies() {
     HttpHeaders headers = new HttpHeaders();
+    authSessionCookieManager.addClearCookies(headers);
     rememberDeviceCookieManager.addClearCookie(headers);
     refreshDeviceBindingCookieManager.addClearCookie(headers);
     return ResponseEntity.noContent().headers(headers).build();
+  }
+
+  private String resolveRefreshToken(String requestRefreshToken, HttpServletRequest request) {
+    if (requestRefreshToken != null && !requestRefreshToken.isBlank()) {
+      return requestRefreshToken;
+    }
+    String cookieRefreshToken = authSessionCookieManager.resolveRefreshToken(request);
+    if (cookieRefreshToken != null && !cookieRefreshToken.isBlank()) {
+      return cookieRefreshToken;
+    }
+    throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "refreshToken is required");
   }
 
   private AuthenticatedUserPrincipal requireUserPrincipal(AuthenticatedRequestPrincipal principal) {
