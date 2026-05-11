@@ -16,7 +16,7 @@ const fulfillmentDetails = [
     title: "공과금 납부",
     applicationType: "BILL_PAYMENT",
     headline: "지로/지방세/아파트관리비 납부",
-    description: "기관 선택, 납부번호 조회, 납부 예정금액 확인, 납부확인증 발급 흐름을 한 화면에 배치합니다.",
+    description: "기관 선택, 납부번호 조회, 납부 예정금액, 납부확인증",
     fields: ["납부기관", "전자납부번호", "출금계좌", "납부예정일"],
     formFields: [
       { key: "billerCode", label: "납부기관", value: "GIRO" },
@@ -30,7 +30,7 @@ const fulfillmentDetails = [
     title: "오픈뱅킹 연결",
     applicationType: "OPEN_BANKING_CONNECTION",
     headline: "타행 계좌 연결 및 통합조회",
-    description: "동의 상태, 연결 은행, 대표 계좌, 잔액 갱신 시각을 고객이 반복 조회하기 쉬운 표 형태로 제공합니다.",
+    description: "동의 상태, 연결 은행, 대표 계좌, 잔액 갱신 시각",
     fields: ["은행", "계좌 별칭", "동의 만료일", "최근 동기화"],
     formFields: [
       { key: "bankCode", label: "은행코드", value: "088" },
@@ -44,7 +44,7 @@ const fulfillmentDetails = [
     title: "예금 가입",
     applicationType: "DEPOSIT_PRODUCT_APPLICATION",
     headline: "정기예금/입출금 상품 비교",
-    description: "금리, 가입 기간, 우대 조건, 중도해지 기준을 실제 상품몰처럼 비교 가능한 정보 구조로 확장합니다.",
+    description: "금리, 가입 기간, 우대 조건, 중도해지 기준",
     fields: ["상품명", "기본금리", "우대조건", "가입기간"],
     formFields: [
       { key: "productCode", label: "상품코드", value: "DEP-12M" },
@@ -72,7 +72,7 @@ const fulfillmentDetails = [
     title: "외환 신청",
     applicationType: "FOREIGN_EXCHANGE_APPLICATION",
     headline: "환율/외화예금/해외송금 준비",
-    description: "통화별 환율, 우대율, 외화예금 가능 여부, 해외송금 준비 정보를 은행권 외환 메뉴처럼 묶습니다.",
+    description: "통화별 환율, 우대율, 외화예금, 해외송금 준비",
     fields: ["통화", "고시환율", "우대율", "송금 목적"],
     formFields: [
       { key: "currencyCode", label: "통화", value: "USD" },

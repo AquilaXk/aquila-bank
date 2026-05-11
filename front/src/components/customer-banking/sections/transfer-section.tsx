@@ -200,6 +200,11 @@ export function TransferSection({
           { label: "보안 확인", value: otpRequired ? "OTP 필요" : "추가 확인 없음" },
         ]}
       />
+      <div className="work-summary-strip" aria-label="이체 처리 결과">
+        <span>받는 분 {transferPreview ? "확인" : "대기"}</span>
+        <span>최종 확인 {transferStep === "confirm" ? "진행" : "대기"}</span>
+        <span>처리 결과 {transferResult ? getTransferStatusLabel(transferResult.status) : "대기"}</span>
+      </div>
 
       <div className="two-column">
         <form className="bank-form" onSubmit={handleTransferSubmit}>
@@ -207,16 +212,18 @@ export function TransferSection({
             <strong>이체정보 입력</strong>
             <span>{transferStep === "confirm" ? "최종 확인 후 실행" : "요청 단위 중복 방지"}</span>
           </div>
-          <ol className="stepper" aria-label="이체 진행 단계">
-            {stepLabels.map((step) => (
-              <li
-                className={transferStep === step.id ? "active" : ""}
-                key={step.id}
-              >
-                {step.label}
-              </li>
-            ))}
-          </ol>
+          <div className="process-panel">
+            <ol className="stepper" aria-label="이체 진행 단계">
+              {stepLabels.map((step) => (
+                <li
+                  className={transferStep === step.id ? "active" : ""}
+                  key={step.id}
+                >
+                  {step.label}
+                </li>
+              ))}
+            </ol>
+          </div>
           <div className="transfer-risk-grid" aria-label="이체 사전 확인">
             <div>
               <span>받는 분</span>
