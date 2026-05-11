@@ -625,6 +625,31 @@ label span {
   text-align: center;
 }
 
+.application-submit-panel {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.application-submit-panel button {
+  width: fit-content;
+}
+
+.form-grid.compact {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.application-result-line {
+  margin: 12px 0 0;
+  border: 1px solid #bcd3ef;
+  border-radius: 4px;
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+  padding: 10px 12px;
+  font-weight: 800;
+}
+
 .check-list {
   display: grid;
   gap: 6px;

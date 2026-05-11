@@ -4,6 +4,8 @@ import type {
   AuthSessionListResponse,
   BackupCodeChallengeVerifyRequest,
   BackupCodeIssueResponse,
+  CustomerApplicationRequest,
+  CustomerApplicationResponse,
   LoginRequest,
   LoginResponse,
   NotificationBulkActionRequest,
@@ -301,6 +303,17 @@ export class AquilaBankApiClient {
     idempotencyKey = createIdempotencyKey("reversal"),
   ): Promise<TransferReversalResponse> {
     return this.request(`/api/v1/transfers/${transactionReference}/reversal`, {
+      method: "POST",
+      body: request,
+      headers: { "Idempotency-Key": idempotencyKey },
+    });
+  }
+
+  submitCustomerApplication(
+    request: CustomerApplicationRequest,
+    idempotencyKey = createIdempotencyKey("application"),
+  ): Promise<CustomerApplicationResponse> {
+    return this.request("/api/v1/customer-service/applications", {
       method: "POST",
       body: request,
       headers: { "Idempotency-Key": idempotencyKey },

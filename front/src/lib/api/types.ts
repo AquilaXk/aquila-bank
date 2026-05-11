@@ -206,6 +206,36 @@ export type TransferReversalResponse = {
   status: string;
 };
 
+export type CustomerApplicationType =
+  | "BILL_PAYMENT"
+  | "OPEN_BANKING_CONNECTION"
+  | "DEPOSIT_PRODUCT_APPLICATION"
+  | "LOAN_APPLICATION"
+  | "FOREIGN_EXCHANGE_APPLICATION"
+  | "CERTIFICATE_ISSUANCE"
+  | "CERTIFICATE_REGISTRATION"
+  | "SECURITY_MEDIA_APPLICATION"
+  | "TRANSFER_LIMIT_CHANGE"
+  | "INCIDENT_REPORT";
+
+export type CustomerApplicationRequest = {
+  applicationType: CustomerApplicationType;
+  accountId?: number;
+  totpCode: string;
+  payload: Record<string, unknown>;
+};
+
+export type CustomerApplicationResponse = {
+  applicationReference: string;
+  accountId: Nullable<number>;
+  applicationType: CustomerApplicationType | string;
+  status: string;
+  mfaVerified: boolean;
+  mfaVerifiedAt: Nullable<string>;
+  submittedAt: string;
+  updatedAt: string;
+};
+
 export type TransactionStatus =
   | "PENDING"
   | "BOOKED"
