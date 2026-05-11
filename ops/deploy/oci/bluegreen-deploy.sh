@@ -1297,6 +1297,32 @@ ensure_nginx_config_visible() {
   docker rm -f "${NGINX_CONTAINER}" >/dev/null
 }
 
+reload_nginx_or_recreate() {
+  local slot="$1"
+  local mode="${2:-active}"
+
+  if docker exec "${NGINX_CONTAINER}" nginx -s reload; then
+    return 0
+  fi
+
+  if [[ "${mode}" == "rollback" ]]; then
+    log "nginx reload failed after previous config restore; recreate nginx container with previous config"
+  else
+    log "nginx reload failed; recreate nginx container with active config"
+  fi
+
+  # PID 파일 누락처럼 config가 아닌 runtime reload 계약이 깨진 경우는 새 컨테이너가 가장 작은 복구 단위다.
+  docker rm -f "${NGINX_CONTAINER}" >/dev/null 2>&1 || true
+  ensure_nginx_container
+
+  if [[ "${mode}" != "rollback" ]]; then
+    ensure_nginx_config_visible "${slot}"
+    ensure_nginx_container
+  fi
+
+  docker exec "${NGINX_CONTAINER}" nginx -t
+}
+
 switch_nginx() {
   local green="$1"
   local next_config="${APP_DIR}/nginx/nginx.conf.next"
@@ -1324,11 +1350,11 @@ switch_nginx() {
   ensure_nginx_config_visible "${green}"
   ensure_nginx_container
 
-  if ! docker exec "${NGINX_CONTAINER}" nginx -s reload; then
-    log "nginx reload failed; restore previous config"
+  if ! reload_nginx_or_recreate "${green}"; then
+    log "nginx reload/recreate failed; restore previous config"
     if [[ -s "${backup_config}" ]]; then
       cp "${backup_config}" "${active_config}"
-      docker exec "${NGINX_CONTAINER}" nginx -s reload || true
+      reload_nginx_or_recreate "${green}" "rollback" || true
     fi
     return 1
   fi
