@@ -11,7 +11,8 @@
     "test:ui-contract": "node scripts/check-customer-banking-ui-contract.mjs",
     "test:auth-session": "node scripts/check-auth-session-hardening-contract.mjs",
     "test:ops-console": "node scripts/check-ops-console-contract.mjs",
-    "test:enterprise-ux": "node scripts/check-customer-banking-enterprise-ux.mjs"
+    "test:enterprise-ux": "node scripts/check-customer-banking-enterprise-ux.mjs",
+    "test:e2e:a11y": "node scripts/check-customer-banking-visual-a11y.mjs"
   },
   "dependencies": {
     "next": "^14.2.5",

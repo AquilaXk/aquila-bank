@@ -65,6 +65,14 @@ button:hover:not(:disabled) {
   color: var(--primary);
 }
 
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+a:focus-visible {
+  outline: 3px solid #79b8ff;
+  outline-offset: 2px;
+}
+
 button:disabled {
   cursor: not-allowed;
   opacity: 0.48;
@@ -1192,6 +1200,12 @@ label span {
   .quick-grid button,
   .recent-menu-list button {
     width: 100%;
+  }
+
+  button,
+  input,
+  select {
+    min-height: 44px;
   }
 
   .bank-table th,
