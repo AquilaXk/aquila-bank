@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 export function ResultPanel({ title, rows }: { title: string; rows: string[][] }) {
   return (
     <div className="result-panel">
@@ -18,6 +20,65 @@ export function ResultPanel({ title, rows }: { title: string; rows: string[][] }
         </dl>
       )}
     </div>
+  );
+}
+
+export function WorkPanel({
+  children,
+  className = "",
+  title,
+  meta,
+}: {
+  children: ReactNode;
+  className?: string;
+  title: string;
+  meta?: string;
+}) {
+  return (
+    <section className={`table-panel bank-work-panel ${className}`.trim()}>
+      <div className="panel-toolbar">
+        <div>
+          <strong>{title}</strong>
+          {meta ? <span>{meta}</span> : null}
+        </div>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+export function BankTable({
+  caption,
+  children,
+}: {
+  caption: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="bank-table-wrap">
+      <table className="bank-table">
+        <caption>{caption}</caption>
+        {children}
+      </table>
+    </div>
+  );
+}
+
+export function FormField({
+  children,
+  label,
+  note,
+}: {
+  children: ReactNode;
+  label: string;
+  note?: string;
+}) {
+  return (
+    <label className="form-field">
+      <span>{label}</span>
+      {children}
+      {note ? <small className="field-note">{note}</small> : null}
+    </label>
   );
 }
 

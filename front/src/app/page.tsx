@@ -1,9 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
 import { AccountsSection } from "@/components/customer-banking/sections/accounts-section";
-import { BankNoticeStrip } from "@/components/customer-banking/common";
+import { BankHeader, RightRail, SideMenu } from "@/components/customer-banking/layout";
 import { DashboardSection } from "@/components/customer-banking/sections/dashboard-section";
 import { EnterpriseServicesSection } from "@/components/customer-banking/sections/enterprise-services-section";
 import { NotificationsSection } from "@/components/customer-banking/sections/notifications-section";
@@ -13,15 +12,6 @@ import { SupportCenterSection } from "@/components/customer-banking/sections/sup
 import { TransactionsSection } from "@/components/customer-banking/sections/transactions-section";
 import { TransferSection } from "@/components/customer-banking/sections/transfer-section";
 import { useCustomerBanking } from "@/hooks/use-customer-banking";
-import {
-  mainMenus,
-  noticeItems,
-  quickMenus,
-  recentMenus,
-  recommendedKeywords,
-  serviceMapGroups,
-} from "@/lib/customer-banking/constants";
-import { formatDateTime } from "@/lib/customer-banking/format";
 import type { MenuSection } from "@/lib/customer-banking/types";
 
 const publicSections: MenuSection[] = ["dashboard", "security"];
@@ -89,6 +79,7 @@ export default function HomePage() {
     handleReversal,
     handleSubmitCustomerApplication,
     handleSearchTransactions,
+    handleResetTransactionFilters,
     handleLoadTransactionDetail,
     handleLoadNotifications,
     handleLoadUnreadCount,
@@ -119,14 +110,10 @@ export default function HomePage() {
   const canRenderWorkSection = !sessionRequired;
   const [searchQuery, setSearchQuery] = useState("");
   const [serviceMapOpen, setServiceMapOpen] = useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
 
   function moveToSection(section: MenuSection) {
     setActiveSection(section);
-  }
-
-  function moveFromServiceMap(section: MenuSection) {
-    setServiceMapOpen(false);
-    moveToSection(section);
   }
 
   function renderLoginRequiredWork() {
@@ -172,158 +159,25 @@ export default function HomePage() {
       <a className="skip-link" href="#bank-work-area">
         본문 바로가기
       </a>
-      <header className="bank-header">
-        <div className="utility-bar" aria-label="상단 유틸리티">
-          <div className="utility-left">
-            <button className="utility-link active" type="button">
-              개인
-            </button>
-            <button className="utility-link" type="button">
-              기업
-            </button>
-            <button
-              className="utility-link"
-              onClick={() => moveToSection("security")}
-              type="button"
-            >
-              인증센터
-            </button>
-            <button
-              className="utility-link"
-              onClick={() => moveToSection("supportCenter")}
-              type="button"
-            >
-              고객센터
-            </button>
-          </div>
-          <div className="utility-right">
-            <button
-              aria-controls="service-map-panel"
-              aria-expanded={serviceMapOpen}
-              className="utility-link service-map"
-              onClick={() => setServiceMapOpen((value) => !value)}
-              type="button"
-            >
-              전체서비스
-            </button>
-            <div className="utility-search">
-              <label className="search-field">
-                <span>통합검색</span>
-                <input
-                  aria-label="통합검색"
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder="업무명 또는 메뉴 검색"
-                  value={searchQuery}
-                />
-              </label>
-              <div className="keyword-list" aria-label="추천검색어">
-                <span>추천검색어</span>
-                {recommendedKeywords.map((keyword) => (
-                  <button
-                    key={keyword}
-                    onClick={() => setSearchQuery(keyword)}
-                    type="button"
-                  >
-                    {keyword}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="brand-row">
-          <div className="brand-mark" aria-label="Aquila Bank">
-            <span className="brand-symbol" aria-hidden="true">
-              <Image
-                alt=""
-                height={34}
-                priority
-                src="/brand-mascot.png"
-                width={34}
-              />
-            </span>
-            <div>
-              <strong>Aquila Bank</strong>
-              <small>Personal Internet Banking</small>
-            </div>
-          </div>
-          <nav className="primary-nav" aria-label="주요 메뉴">
-            {mainMenus.map((item) => (
-              <button
-                aria-current={activeSection === item.id ? "page" : undefined}
-                className={activeSection === item.id ? "nav-tab active" : "nav-tab"}
-                key={item.id}
-                onClick={() => moveToSection(item.id)}
-                type="button"
-              >
-                {item.label}
-              </button>
-            ))}
-          </nav>
-        </div>
-        <div className="bank-service-strip" aria-label="뱅킹 이용 상태">
-          <span>
-            보안등급 <strong>정상</strong>
-          </span>
-          <span>HTTPS 보안접속</span>
-          <span>평일 09:00-18:00 상담</span>
-          <span>서비스 상태 정상</span>
-        </div>
-        <div className="layout-health-strip" aria-label="화면 이용 상태">
-          <span>개인뱅킹</span>
-          <span>{session ? "로그인 정상" : "미로그인"}</span>
-          <span>{sessionRequired ? "로그인 필요" : "업무 가능"}</span>
-        </div>
-        {serviceMapOpen ? (
-          <section
-            aria-label="전체서비스 메뉴"
-            className="service-map-panel"
-            id="service-map-panel"
-          >
-            <div className="service-map-title">
-              <strong>전체서비스 메뉴</strong>
-              <span>개인뱅킹</span>
-            </div>
-            <div className="service-map-grid">
-              {serviceMapGroups.map((group) => (
-                <div className="service-map-group" key={group.title}>
-                  <strong>{group.title}</strong>
-                  {group.items.map((item) => (
-                    <button
-                      key={`${group.title}-${item.label}`}
-                      onClick={() => moveFromServiceMap(item.section)}
-                      type="button"
-                    >
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
-              ))}
-            </div>
-          </section>
-        ) : null}
-      </header>
+      <BankHeader
+        activeSection={activeSection}
+        mobileSearchOpen={mobileSearchOpen}
+        searchQuery={searchQuery}
+        serviceMapOpen={serviceMapOpen}
+        session={session}
+        sessionRequired={sessionRequired}
+        onMobileSearchToggle={() => setMobileSearchOpen((value) => !value)}
+        onMove={moveToSection}
+        onSearchChange={setSearchQuery}
+        onServiceMapToggle={() => setServiceMapOpen((value) => !value)}
+      />
 
       <div
         className="bank-layout"
         data-active-section={activeSection}
         data-auth-state={session ? "member" : "guest"}
       >
-        <aside className="side-menu" aria-label="개인뱅킹 메뉴">
-          <div className="side-title">개인뱅킹</div>
-          {mainMenus.map((item) => (
-            <button
-              aria-current={activeSection === item.id ? "page" : undefined}
-              className={activeSection === item.id ? "side-item active" : "side-item"}
-              key={item.id}
-              onClick={() => moveToSection(item.id)}
-              type="button"
-            >
-              <span>{item.group}</span>
-              <strong>{item.label}</strong>
-            </button>
-          ))}
-        </aside>
+        <SideMenu activeSection={activeSection} onMove={moveToSection} />
 
         <section
           aria-live="polite"
@@ -401,6 +255,7 @@ export default function HomePage() {
                 event.preventDefault();
                 handleSearchTransactions(transactionMode);
               }}
+              onReset={handleResetTransactionFilters}
             />
           ) : null}
           {activeSection === "security" ? (
@@ -500,101 +355,12 @@ export default function HomePage() {
           ) : null}
         </section>
 
-        <aside className="right-rail" aria-label="빠른 업무">
-          <section className="rail-panel login-panel">
-            <div className="rail-heading">
-              <span>로그인 상태</span>
-              <strong>{session ? "정상" : "미로그인"}</strong>
-            </div>
-            {session ? (
-              <dl className="session-summary">
-                <div>
-                  <dt>User ID</dt>
-                  <dd>{session.userId ?? "-"}</dd>
-                </div>
-                <div>
-                  <dt>세션 방식</dt>
-                  <dd>{session.tokenType}</dd>
-                </div>
-                <div>
-                  <dt>만료</dt>
-                  <dd>{formatDateTime(session.expiresAt)}</dd>
-                </div>
-              </dl>
-            ) : (
-              <p className="rail-copy">로그인 후 조회, 이체, 거래내역 이용 가능</p>
-            )}
-            <div className="button-row compact rail-auth-actions">
-              <button onClick={() => moveToSection("security")} type="button">
-                인증센터
-              </button>
-              <button disabled={!session || isBusy} onClick={handleRefresh} type="button">
-                재발급
-              </button>
-            </div>
-          </section>
-
-          <section className="rail-panel">
-            <div className="rail-heading">
-              <span>빠른메뉴</span>
-            </div>
-            <div className="quick-grid">
-              {quickMenus.map((item) => (
-                <button
-                  key={item.label}
-                  onClick={() => moveToSection(item.section)}
-                  type="button"
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-          </section>
-
-          <section className="rail-panel recent-list">
-            <div className="rail-heading">
-              <span>최근 이용 메뉴</span>
-            </div>
-            <div className="recent-menu-list">
-              {recentMenus.map((item) => (
-                <button
-                  key={item.label}
-                  onClick={() => moveToSection(item.section)}
-                  type="button"
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-          </section>
-
-          <section className="rail-panel security-notice">
-            <div className="rail-heading">
-              <span>보안알림</span>
-            </div>
-            <BankNoticeStrip
-              items={[
-                { label: "보안등급", value: "정상" },
-                { label: "접속상태", value: "HTTPS" },
-                {
-                  label: "인증수단",
-                  value: session ? "세션 활성" : "로그인 필요",
-                },
-              ]}
-            />
-          </section>
-
-          <section className="rail-panel notice-list">
-            <div className="rail-heading">
-              <span>공지사항</span>
-            </div>
-            <ul>
-              {noticeItems.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-          </section>
-        </aside>
+        <RightRail
+          isBusy={isBusy}
+          session={session}
+          onMove={moveToSection}
+          onRefresh={handleRefresh}
+        />
       </div>
     </main>
   );

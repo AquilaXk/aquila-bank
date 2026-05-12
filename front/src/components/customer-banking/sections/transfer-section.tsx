@@ -15,6 +15,10 @@ type TransferStep =
 
 function stayOnCurrentWorkTab(): void {}
 
+function printTransferReceipt(): void {
+  window.print();
+}
+
 function getTransferBlockedReasonLabel(reason: string | undefined, allowed: boolean | undefined): string {
   if (allowed) {
     return "이체 가능";
@@ -387,7 +391,21 @@ export function TransferSection({
           </button>
         </form>
 
-        <div className="transfer-receipt transfer-receipt-panel">
+        <div
+          aria-label="이체 완료증 인쇄"
+          className="transfer-receipt transfer-receipt-panel transfer-print-receipt"
+        >
+          <div className="receipt-action-row">
+            <span>완료증 출력</span>
+            <button
+              className="print-receipt-button"
+              disabled={!transferResult}
+              onClick={printTransferReceipt}
+              type="button"
+            >
+              인쇄
+            </button>
+          </div>
           <ResultPanel
             title="이체 완료증"
             rows={

@@ -11,7 +11,10 @@ function read(path) {
 const files = {
   packageJson: read("package.json"),
   common: read("src/components/customer-banking/common.tsx"),
-  page: read("src/app/page.tsx"),
+  page: [
+    read("src/app/page.tsx"),
+    read("src/components/customer-banking/layout.tsx"),
+  ].join("\n"),
   playwright: read("playwright.config.ts"),
   styles: read("src/styles/customer-banking.css"),
   accounts: read("src/components/customer-banking/sections/accounts-section.tsx"),

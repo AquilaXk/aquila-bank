@@ -1,7 +1,22 @@
 import type { FormEvent } from 'react';
+import { useState } from 'react';
 import type { TransactionDetailResponse, TransactionItem, TransactionQueryResponse } from '@/lib/api/types';
-import { formatDateTime, formatMinorAmount } from '@/lib/customer-banking/format';
+import { formatDateTime, formatMinorAmount, toLocalInputValue } from '@/lib/customer-banking/format';
 import { BankNoticeStrip, EmptyState, WorkStateGrid, WorkTabs } from '../common';
+
+type TransactionFilters = {
+  accountId: string;
+  from: string;
+  to: string;
+  limit: string;
+  cursor: string;
+  status: string;
+  direction: string;
+  minAmountMinor: string;
+  maxAmountMinor: string;
+  transactionReference: string;
+  responseShape: "full" | "slim";
+};
 
 const transactionStatusLabels: Record<string, string> = {
   PENDING: "처리중",
@@ -34,44 +49,40 @@ export function TransactionsSection({
   onFilterChange,
   onModeChange,
   onNext,
+  onReset,
   onSearch,
 }: {
-  filters: {
-    accountId: string;
-    from: string;
-    to: string;
-    limit: string;
-    cursor: string;
-    status: string;
-    direction: string;
-    minAmountMinor: string;
-    maxAmountMinor: string;
-    transactionReference: string;
-    responseShape: "full" | "slim";
-  };
+  filters: TransactionFilters;
   isBusy: boolean;
   mode: "active" | "archive";
   slice: TransactionQueryResponse | null;
   transactionDetail: TransactionDetailResponse | null;
   transactions: TransactionItem[];
   onDetail: (transactionReference: string) => void;
-  onFilterChange: (value: {
-    accountId: string;
-    from: string;
-    to: string;
-    limit: string;
-    cursor: string;
-    status: string;
-    direction: string;
-    minAmountMinor: string;
-    maxAmountMinor: string;
-    transactionReference: string;
-    responseShape: "full" | "slim";
-  }) => void;
+  onFilterChange: (value: TransactionFilters) => void;
   onModeChange: (mode: "active" | "archive") => void;
   onNext: () => void;
+  onReset: () => void;
   onSearch: (event: FormEvent<HTMLFormElement>) => void;
 }) {
+  const [filterOpen, setFilterOpen] = useState(true);
+
+  function setQuickRange(days: number): void {
+    const to = new Date();
+    const from = new Date(to);
+    if (days === 0) {
+      from.setHours(0, 0, 0, 0);
+    } else {
+      from.setDate(from.getDate() - days);
+    }
+    onFilterChange({
+      ...filters,
+      cursor: "",
+      from: toLocalInputValue(from),
+      to: toLocalInputValue(to),
+    });
+  }
+
   return (
     <section className="task-section">
       <WorkTabs
@@ -159,7 +170,30 @@ export function TransactionsSection({
               다음 조회 {slice?.nextCursor ? "준비됨" : "첫 조회"}
             </span>
           </div>
-        <div className="filter-grid">
+          <div className="quick-range-toolbar touch-action-strip" aria-label="기간 빠른 선택">
+            <button onClick={() => setQuickRange(0)} type="button">
+              오늘
+            </button>
+            <button onClick={() => setQuickRange(30)} type="button">
+              1개월
+            </button>
+            <button onClick={() => setQuickRange(90)} type="button">
+              3개월
+            </button>
+            <button onClick={onReset} type="button">
+              초기화
+            </button>
+            <button
+              aria-controls="transaction-detail-filter"
+              aria-expanded={filterOpen}
+              onClick={() => setFilterOpen((value) => !value)}
+              type="button"
+            >
+              {filterOpen ? "상세조건 접기" : "상세조건 펼치기"}
+            </button>
+          </div>
+        {filterOpen ? (
+        <div className="filter-grid" id="transaction-detail-filter">
           <label>
             <span>계좌 ID</span>
             <input
@@ -288,6 +322,11 @@ export function TransactionsSection({
             </select>
           </label>
         </div>
+        ) : (
+          <div className="filter-collapsed-line" id="transaction-detail-filter" role="status">
+            상세조건 접힘 · 계좌, 기간, 금액 조건은 현재 값으로 유지됩니다.
+          </div>
+        )}
         <div className="button-row">
           <button disabled={isBusy} type="submit">
             조회
