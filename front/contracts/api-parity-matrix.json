@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "description": "Backend global/web endpoint to frontend implementation matrix. Keep intentional internal write/bootstrap/recovery APIs out of customer UI until permission, audit, and confirmation UX are designed.",
+  "description": "Backend global/web endpoint to frontend implementation matrix. Keep internal write/bootstrap/admin APIs out of customer UI; expose only selected ops recovery actions with guarded confirmation UX.",
   "endpoints": [
     {
       "id": "account.list",
@@ -754,8 +754,17 @@
       "method": "POST",
       "path": "/internal/api/v1/ledger/command-idempotency/recovery/stale-started",
       "audience": "internal-recovery",
-      "frontendStatus": "intentional-no-ui",
-      "rationale": "idempotency recovery write API는 중복 처리 위험이 있어 별도 runbook 승인과 감사 UI 전까지 비노출한다."
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/ops-console/client.ts",
+          "contains": ["/internal/api/v1/ledger/command-idempotency/recovery/stale-started"]
+        },
+        {
+          "file": "src/components/ops-console/ops-console.tsx",
+          "contains": ["RUN IDEMPOTENCY", "Command idempotency recovery"]
+        }
+      ]
     },
     {
       "id": "internal.ledger.audit.by.entry",
@@ -770,32 +779,68 @@
       "method": "POST",
       "path": "/internal/api/v1/outbox/notification-channel/quarantined-events/{id}/redrive",
       "audience": "internal-recovery",
-      "frontendStatus": "intentional-no-ui",
-      "rationale": "notification channel redrive는 재전송 부작용이 있어 권한, 확인, 결과 감사 UX 전까지 비노출한다."
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/ops-console/client.ts",
+          "contains": ["/internal/api/v1/outbox/notification-channel/quarantined-events/${id}/redrive"]
+        },
+        {
+          "file": "src/components/ops-console/ops-console.tsx",
+          "contains": ["RUN CHANNEL", "Channel quarantined event ID"]
+        }
+      ]
     },
     {
       "id": "internal.notification.dlq.redrive",
       "method": "POST",
       "path": "/internal/api/v1/outbox/notification/dlq-events/redrive",
       "audience": "internal-recovery",
-      "frontendStatus": "intentional-no-ui",
-      "rationale": "DLQ redrive는 중복 알림 가능성이 있어 운영 승인 UX와 retry 결과 표시 전까지 프론트 노출하지 않는다."
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/ops-console/client.ts",
+          "contains": ["/internal/api/v1/outbox/notification/dlq-events/redrive"]
+        },
+        {
+          "file": "src/components/ops-console/ops-console.tsx",
+          "contains": ["RUN DLQ", "DLQ partition", "DLQ offset"]
+        }
+      ]
     },
     {
       "id": "internal.outbox.recovery.stale.sending",
       "method": "POST",
       "path": "/internal/api/v1/outbox/recovery/stale-sending",
       "audience": "internal-recovery",
-      "frontendStatus": "intentional-no-ui",
-      "rationale": "outbox recovery write API는 이벤트 재처리 경로라 중복 방지/순서 보장 범위 문서화 후 별도 UI로 다룬다."
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/ops-console/client.ts",
+          "contains": ["/internal/api/v1/outbox/recovery/stale-sending"]
+        },
+        {
+          "file": "src/components/ops-console/ops-console.tsx",
+          "contains": ["RUN OUTBOX", "Outbox stale recovery"]
+        }
+      ]
     },
     {
       "id": "internal.snapshot.reconciliation.recovery",
       "method": "POST",
       "path": "/internal/api/v1/ledger/snapshot-reconciliation/accounts/{accountId}/recovery",
       "audience": "internal-recovery",
-      "frontendStatus": "intentional-no-ui",
-      "rationale": "잔액 snapshot recovery는 원장 정합성에 직접 영향이 있어 별도 승인/감사/rollback UX 없이는 노출 금지한다."
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/ops-console/client.ts",
+          "contains": ["/internal/api/v1/ledger/snapshot-reconciliation/accounts/${accountId}/recovery"]
+        },
+        {
+          "file": "src/components/ops-console/ops-console.tsx",
+          "contains": ["RUN SNAPSHOT", "Snapshot reason"]
+        }
+      ]
     }
   ]
 }
