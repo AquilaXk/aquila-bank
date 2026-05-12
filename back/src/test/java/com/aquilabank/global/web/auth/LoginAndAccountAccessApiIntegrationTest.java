@@ -117,6 +117,7 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
   private long userId;
   private long allowedSourceAccountId;
   private long targetAccountId;
+  private String targetAccountNumber;
   private long deniedAccountId;
   private final Map<String, String> refreshDeviceBindingTokenByRefreshToken = new HashMap<>();
 
@@ -129,6 +130,7 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
 
     allowedSourceAccountId = bootstrapAccount("allowed source", 10_000L);
     targetAccountId = bootstrapAccount("allowed target", 0L);
+    targetAccountNumber = loadAccountNumber(targetAccountId);
     deniedAccountId = bootstrapAccount("denied source", 5_000L);
 
     userId = bootstrapUser("alice", "Alice", "password123!");
@@ -152,13 +154,13 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
                         """
                         {
                           "sourceAccountId": %d,
-                          "targetAccountId": %d,
+                          "targetAccountNumber": "%s",
                           "amountMinor": 1500,
                           "currencyCode": "KRW",
                           "summary": "rent"
                         }
                         """
-                            .formatted(allowedSourceAccountId, targetAccountId)))
+                            .formatted(allowedSourceAccountId, targetAccountNumber)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.sourceAccountId").value(allowedSourceAccountId))
             .andReturn();
@@ -254,13 +256,13 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
                         """
                         {
                           "sourceAccountId": %d,
-                          "targetAccountId": %d,
+                          "targetAccountNumber": "%s",
                           "amountMinor": 1500,
                           "currencyCode": "KRW",
                           "summary": "rent"
                         }
                         """
-                            .formatted(allowedSourceAccountId, targetAccountId)))
+                            .formatted(allowedSourceAccountId, targetAccountNumber)))
             .andExpect(status().isOk())
             .andReturn();
 
@@ -304,13 +306,13 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
                     """
                     {
                       "sourceAccountId": %d,
-                      "targetAccountId": %d,
+                      "targetAccountNumber": "%s",
                       "amountMinor": 500,
                       "currencyCode": "KRW",
                       "summary": "locked-blocked"
                     }
                     """
-                        .formatted(allowedSourceAccountId, targetAccountId)))
+                        .formatted(allowedSourceAccountId, targetAccountNumber)))
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.message").value("account access is denied"));
 
@@ -350,13 +352,13 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
                         """
                         {
                           "sourceAccountId": %d,
-                          "targetAccountId": %d,
+                          "targetAccountNumber": "%s",
                           "amountMinor": 1500,
                           "currencyCode": "KRW",
                           "summary": "rent"
                         }
                         """
-                            .formatted(allowedSourceAccountId, targetAccountId)))
+                            .formatted(allowedSourceAccountId, targetAccountNumber)))
             .andExpect(status().isOk())
             .andReturn();
 
@@ -399,13 +401,13 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
                     """
                     {
                       "sourceAccountId": %d,
-                      "targetAccountId": %d,
+                      "targetAccountNumber": "%s",
                       "amountMinor": 500,
                       "currencyCode": "KRW",
                       "summary": "closed-blocked"
                     }
                     """
-                        .formatted(allowedSourceAccountId, targetAccountId)))
+                        .formatted(allowedSourceAccountId, targetAccountNumber)))
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.message").value("account access is denied"));
 
@@ -509,13 +511,13 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
                         """
                         {
                           "sourceAccountId": %d,
-                          "targetAccountId": %d,
+                          "targetAccountNumber": "%s",
                           "amountMinor": 1500,
                           "currencyCode": "KRW",
                           "summary": "rent"
                         }
                         """
-                            .formatted(allowedSourceAccountId, targetAccountId)))
+                            .formatted(allowedSourceAccountId, targetAccountNumber)))
             .andExpect(status().isOk())
             .andReturn();
 
@@ -575,13 +577,13 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
                     """
                     {
                       "sourceAccountId": %d,
-                      "targetAccountId": %d,
+                      "targetAccountNumber": "%s",
                       "amountMinor": 500,
                       "currencyCode": "KRW",
                       "summary": "blocked"
                     }
                     """
-                        .formatted(deniedAccountId, targetAccountId)))
+                        .formatted(deniedAccountId, targetAccountNumber)))
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.message").value("account access is denied"));
   }
@@ -633,13 +635,13 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
                     """
                     {
                       "sourceAccountId": %d,
-                      "targetAccountId": %d,
+                      "targetAccountNumber": "%s",
                       "amountMinor": 500,
                       "currencyCode": "KRW",
                       "summary": "viewer-blocked"
                     }
                     """
-                        .formatted(allowedSourceAccountId, targetAccountId)))
+                        .formatted(allowedSourceAccountId, targetAccountNumber)))
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.message").value("account access is denied"));
   }
@@ -1067,13 +1069,13 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
                     """
                     {
                       "sourceAccountId": %d,
-                      "targetAccountId": %d,
+                      "targetAccountNumber": "%s",
                       "amountMinor": 500,
                       "currencyCode": "KRW",
                       "summary": "revoked-session-blocked"
                     }
                     """
-                        .formatted(allowedSourceAccountId, targetAccountId)))
+                        .formatted(allowedSourceAccountId, targetAccountNumber)))
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.message").value("current session is not active"));
 
@@ -1109,13 +1111,13 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
                     """
                     {
                       "sourceAccountId": %d,
-                      "targetAccountId": %d,
+                      "targetAccountNumber": "%s",
                       "amountMinor": 500,
                       "currencyCode": "KRW",
                       "summary": "legacy-session-blocked"
                     }
                     """
-                        .formatted(allowedSourceAccountId, targetAccountId)))
+                        .formatted(allowedSourceAccountId, targetAccountNumber)))
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.message").value("current session is not active"));
 
@@ -1445,13 +1447,13 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
                     """
                     {
                       "sourceAccountId": %d,
-                      "targetAccountId": %d,
+                      "targetAccountNumber": "%s",
                       "amountMinor": 500,
                       "currencyCode": "KRW",
                       "summary": "disabled-blocked"
                     }
                     """
-                        .formatted(allowedSourceAccountId, targetAccountId)))
+                        .formatted(allowedSourceAccountId, targetAccountNumber)))
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.message").value("current session is not active"));
   }
@@ -1547,13 +1549,13 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
                     """
                     {
                       "sourceAccountId": %d,
-                      "targetAccountId": %d,
+                      "targetAccountNumber": "%s",
                       "amountMinor": 500,
                       "currencyCode": "KRW",
                       "summary": "revoked-blocked"
                     }
                     """
-                        .formatted(allowedSourceAccountId, targetAccountId)))
+                        .formatted(allowedSourceAccountId, targetAccountNumber)))
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.message").value("account access is denied"));
 
@@ -2893,6 +2895,22 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
         .stream()
         .findFirst()
         .orElseThrow(() -> new AssertionError("refresh token session id is not found"));
+  }
+
+  private String loadAccountNumber(long accountId) {
+    return jdbcTemplate
+        .query(
+            """
+            SELECT account_number
+            FROM bank_account
+            WHERE id = :accountId
+            """,
+            new org.springframework.jdbc.core.namedparam.MapSqlParameterSource()
+                .addValue("accountId", accountId),
+            (rs, rowNum) -> rs.getString("account_number"))
+        .stream()
+        .findFirst()
+        .orElseThrow(() -> new AssertionError("account number is not found"));
   }
 
   private TotpCredentialView loadTotpCredential(long userId) {

@@ -16,6 +16,23 @@ import org.springframework.transaction.annotation.Transactional;
 @Repository
 public class JdbcAccountSummaryRepository implements AccountSummaryReadPort {
 
+  private static final String ACCOUNT_SUMMARY_SELECT =
+      """
+      SELECT account.id,
+             account.account_number,
+             account.display_name,
+             account.account_status,
+             account.currency_code AS account_currency_code,
+             snapshot.available_balance_minor,
+             snapshot.pending_balance_minor,
+             snapshot.currency_code AS snapshot_currency_code,
+             account.created_at,
+             snapshot.updated_at
+      FROM bank_account account
+      JOIN account_balance_snapshot snapshot
+        ON snapshot.account_id = account.id
+      """;
+
   private final NamedParameterJdbcTemplate jdbcTemplate;
 
   public JdbcAccountSummaryRepository(NamedParameterJdbcTemplate jdbcTemplate) {
@@ -26,27 +43,22 @@ public class JdbcAccountSummaryRepository implements AccountSummaryReadPort {
   @Transactional(readOnly = true)
   public Optional<AccountSummary> findByAccountId(long accountId) {
     // account_id PK exact lookup이라 account 원본과 snapshot을 한 번만 join 합니다.
-    return jdbcTemplate
-        .query(
-            """
-            SELECT account.id,
-                   account.account_number,
-                   account.display_name,
-                   account.account_status,
-                   account.currency_code AS account_currency_code,
-                   snapshot.available_balance_minor,
-                   snapshot.pending_balance_minor,
-                   snapshot.currency_code AS snapshot_currency_code,
-                   account.created_at,
-                   snapshot.updated_at
-            FROM bank_account account
-            JOIN account_balance_snapshot snapshot
-              ON snapshot.account_id = account.id
-            WHERE account.id = :accountId
-            """,
-            new MapSqlParameterSource().addValue("accountId", accountId),
-            (rs, rowNum) -> mapAccountSummary(rs))
-        .stream()
+    return queryOne(
+        ACCOUNT_SUMMARY_SELECT + "WHERE account.id = :accountId",
+        new MapSqlParameterSource().addValue("accountId", accountId));
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public Optional<AccountSummary> findByAccountNumber(String accountNumber) {
+    // account_number unique index exact lookup으로 수취인 탐색 비용과 노출 범위를 낮춥니다.
+    return queryOne(
+        ACCOUNT_SUMMARY_SELECT + "WHERE account.account_number = :accountNumber",
+        new MapSqlParameterSource().addValue("accountNumber", accountNumber));
+  }
+
+  private Optional<AccountSummary> queryOne(String sql, MapSqlParameterSource parameters) {
+    return jdbcTemplate.query(sql, parameters, (rs, rowNum) -> mapAccountSummary(rs)).stream()
         .findFirst();
   }
 

@@ -91,7 +91,7 @@ export function TransferSection({
   reversalResult: TransferReversalResponse | null;
   transferForm: {
     sourceAccountId: string;
-    targetAccountId: string;
+    targetAccountNumber: string;
     amountMinor: string;
     currencyCode: string;
     summary: string;
@@ -107,10 +107,10 @@ export function TransferSection({
     reversalReason: string;
     summary: string;
   }) => void;
-  onTransfer: (event: FormEvent<HTMLFormElement>) => Promise<boolean>;
+  onTransfer: (event: FormEvent<HTMLFormElement>, totpCode?: string) => Promise<boolean>;
   onTransferChange: (value: {
     sourceAccountId: string;
-    targetAccountId: string;
+    targetAccountNumber: string;
     amountMinor: string;
     currencyCode: string;
     summary: string;
@@ -157,7 +157,7 @@ export function TransferSection({
     }
 
     setTransferStep("submitting");
-    const ok = await onTransfer(event);
+    const ok = await onTransfer(event, otpRequired ? otpCode : undefined);
     setTransferStep(ok ? "complete" : "failed");
   }
 
@@ -193,7 +193,7 @@ export function TransferSection({
             ? "입력 다시 확인"
           : "받는 분 확인";
   const sourceAccountError = transferForm.sourceAccountId ? "" : "출금계좌를 입력하세요.";
-  const targetAccountError = transferForm.targetAccountId ? "" : "입금계좌를 입력하세요.";
+  const targetAccountError = transferForm.targetAccountNumber ? "" : "입금계좌를 입력하세요.";
   const amountError = amountMinor > 0 ? "" : "이체금액을 입력하세요.";
   const summaryError = transferForm.summary ? "" : "받는 분 통장 표시를 입력하세요.";
   const otpError =
@@ -296,7 +296,7 @@ export function TransferSection({
               <strong>
                 {transferPreview
                   ? `${transferPreview.targetAccount.displayName} ${transferPreview.targetAccount.maskedAccountNumber}`
-                  : `계좌 ID ${transferForm.targetAccountId || "-"}`}
+                  : `계좌번호 ${transferForm.targetAccountNumber || "-"}`}
               </strong>
               <small>{blockedReasonLabel}</small>
             </div>
@@ -341,15 +341,15 @@ export function TransferSection({
             <BankInput
               error={targetAccountError}
               inputMode="numeric"
-              label="입금계좌 ID"
+              label="입금계좌번호"
               onChange={(event) =>
                 updateTransferForm({
                   ...transferForm,
-                  targetAccountId: event.target.value,
+                  targetAccountNumber: event.target.value,
                 })
               }
               required
-              value={transferForm.targetAccountId}
+              value={transferForm.targetAccountNumber}
             />
             <BankInput
               error={amountError}
@@ -392,7 +392,7 @@ export function TransferSection({
               <strong>이체정보 확인</strong>
               <span>
                 출금계좌 {transferForm.sourceAccountId}에서 입금계좌{" "}
-                {transferForm.targetAccountId}로{" "}
+                {transferForm.targetAccountNumber}로{" "}
                 {formatMinorAmount(
                   Number(transferForm.amountMinor || 0),
                   transferForm.currencyCode,

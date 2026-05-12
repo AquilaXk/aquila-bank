@@ -130,25 +130,26 @@ export type AccountSummaryResponse = AccountItem;
 
 export type TransferRequest = {
   sourceAccountId: number;
-  targetAccountId: number;
+  targetAccountNumber: string;
   amountMinor: number;
   currencyCode: string;
   summary: string;
+  totpCode?: string;
 };
 
 export type TransferPreviewRequest = {
   sourceAccountId: number;
-  targetAccountId: number;
+  targetAccountNumber: string;
   amountMinor: number;
   currencyCode: string;
 };
 
 export type TransferPreviewAccount = {
-  accountId: number;
+  accountId?: number;
   maskedAccountNumber: string;
   displayName: string;
-  accountStatus: string;
-  currencyCode: string;
+  accountStatus?: string;
+  currencyCode?: string;
 };
 
 export type TransferPreviewResponse = {
