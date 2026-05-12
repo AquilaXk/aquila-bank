@@ -1,7 +1,7 @@
 import type { FormEvent } from 'react';
 import type { AuthSessionItem, BackupCodeIssueResponse, CustomerSession, LoginResponse, PasswordRecoveryRequestResult, TotpEnrollmentStartResponse } from '@/lib/api/types';
 import { formatDateTime } from '@/lib/customer-banking/format';
-import { BankNoticeStrip, WorkTabs } from '../common';
+import { BankNoticeStrip, WorkStateGrid, WorkTabs } from '../common';
 
 function stayOnCurrentWorkTab(): void {}
 
@@ -108,6 +108,18 @@ export function SecuritySection(props: {
           { label: "추가 인증", value: props.challenge ? "확인 필요" : "대기" },
           { label: "세션", value: formatDateTime(props.session?.refreshExpiresAt) },
           { label: "보안수단", value: "OTP / 복구코드" },
+        ]}
+      />
+      <WorkStateGrid
+        label="인증 업무 상태"
+        items={[
+          { label: "로그인", value: props.session ? "정상" : "필요" },
+          {
+            label: "추가인증",
+            value: props.challenge ? getChallengeLabel(props.challenge.challengeType) : "대기",
+          },
+          { label: "세션", value: props.sessions.length > 0 ? `${props.sessions.length}건` : "조회 전" },
+          { label: "보안수단", value: "OTP/복구코드" },
         ]}
       />
 

@@ -375,9 +375,9 @@ label span {
 
 .bank-layout {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr) 280px;
-  gap: 16px;
-  padding: 18px 0 48px;
+  grid-template-columns: 216px minmax(0, 1fr) 268px;
+  gap: 14px;
+  padding: 14px 0 42px;
 }
 
 .side-menu,
@@ -441,7 +441,7 @@ label span {
 }
 
 .task-section {
-  padding: 18px;
+  padding: 14px;
 }
 
 .section-title,
@@ -582,6 +582,13 @@ label span {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+}
+
+.login-required-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
 }
 
 .login-method-grid button {
@@ -737,6 +744,46 @@ label span {
   font-size: 12px;
   font-weight: 800;
   overflow-wrap: anywhere;
+}
+
+.work-state-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.work-state-grid div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--primary);
+  border-radius: 3px;
+  background: #fff;
+  padding: 9px 10px;
+}
+
+.work-state-grid span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.work-state-grid strong {
+  color: #102f55;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.work-state-grid .tone-warn {
+  border-left-color: #d97706;
+  background: #fffbeb;
+}
+
+.work-state-grid .tone-success {
+  border-left-color: var(--success);
+  background: var(--success-soft);
 }
 
 .enterprise-service-grid,
@@ -1503,6 +1550,28 @@ label span {
   line-height: 1.45;
 }
 
+.empty-state-panel {
+  display: grid;
+  gap: 4px;
+  min-height: 72px;
+  align-content: center;
+  border: 1px dashed var(--line-strong);
+  border-radius: 4px;
+  background: var(--surface-muted);
+  padding: 14px;
+  text-align: center;
+}
+
+.empty-state-panel strong {
+  color: #102f55;
+}
+
+.empty-state-panel span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .preference-actions {
   margin-top: 12px;
 }
@@ -1605,7 +1674,7 @@ label span {
 }
 
 .rail-panel {
-  padding: 14px;
+  padding: 12px;
 }
 
 .rail-heading {
@@ -1680,6 +1749,10 @@ label span {
   font-size: 12px;
 }
 
+.rail-auth-actions button {
+  flex: 1 1 0;
+}
+
 .recent-menu-list {
   display: grid;
   gap: 6px;
@@ -1722,6 +1795,18 @@ label span {
   }
 
   .side-menu {
+    order: 1;
+  }
+
+  .work-area {
+    order: 2;
+  }
+
+  .right-rail {
+    order: 3;
+  }
+
+  .side-menu {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -1733,6 +1818,7 @@ label span {
   .summary-grid,
   .bank-home-grid,
   .account-summary-panel,
+  .work-state-grid,
   .enterprise-service-grid,
   .security-hub-grid,
   .support-service-grid,
@@ -1832,6 +1918,7 @@ label span {
   }
 
   .session-required,
+  .login-required-actions,
   .stepper,
   .process-strip,
   .service-map-grid,

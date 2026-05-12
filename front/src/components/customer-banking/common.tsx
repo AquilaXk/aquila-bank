@@ -21,6 +21,40 @@ export function ResultPanel({ title, rows }: { title: string; rows: string[][] }
   );
 }
 
+export function WorkStateGrid({
+  label,
+  items,
+}: {
+  label: string;
+  items: Array<{ label: string; value: string; tone?: "normal" | "warn" | "success" }>;
+}) {
+  return (
+    <div className="work-state-grid" aria-label={label}>
+      {items.map((item) => (
+        <div className={item.tone ? `tone-${item.tone}` : undefined} key={item.label}>
+          <span>{item.label}</span>
+          <strong>{item.value}</strong>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function EmptyState({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="empty-state-panel" role="status">
+      <strong>{title}</strong>
+      <span>{description}</span>
+    </div>
+  );
+}
+
 export function WorkTabs({
   active,
   items,

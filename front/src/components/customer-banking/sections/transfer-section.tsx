@@ -2,7 +2,7 @@ import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
 import type { TransferPreviewResponse, TransferResponse, TransferReversalResponse } from '@/lib/api/types';
 import { formatDateTime, formatMinorAmount } from '@/lib/customer-banking/format';
-import { BankNoticeStrip, ResultPanel, WorkTabs } from '../common';
+import { BankNoticeStrip, ResultPanel, WorkStateGrid, WorkTabs } from '../common';
 
 type TransferStep =
   | "input"
@@ -205,6 +205,22 @@ export function TransferSection({
         <span>최종 확인 {transferStep === "confirm" ? "진행" : "대기"}</span>
         <span>처리 결과 {transferResult ? getTransferStatusLabel(transferResult.status) : "대기"}</span>
       </div>
+      <WorkStateGrid
+        label="이체 진행 상태"
+        items={[
+          { label: "받는 분", value: transferPreview ? "확인" : "대기" },
+          {
+            label: "수수료",
+            value: formatMinorAmount(transferFeeMinor, transferForm.currencyCode),
+          },
+          {
+            label: "한도",
+            value: isOverLimit ? "확인 필요" : "정상",
+            tone: isOverLimit ? "warn" : "success",
+          },
+          { label: "OTP", value: otpRequired ? "필요" : "생략" },
+        ]}
+      />
 
       <div className="two-column">
         <form className="bank-form" onSubmit={handleTransferSubmit}>

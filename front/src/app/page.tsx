@@ -143,24 +143,26 @@ export default function HomePage() {
             조회, 이체, 거래내역, 알림, 신청 업무는 로그인 후 이용하세요.
           </span>
         </div>
-        <div className="login-method-grid" aria-label="로그인 방식">
-          <button onClick={() => moveToSection("security")} type="button">
-            공동인증서 로그인
-          </button>
-          <button onClick={() => moveToSection("security")} type="button">
-            금융인증서 로그인
-          </button>
-          <button onClick={() => moveToSection("security")} type="button">
-            아이디 로그인
+        <div className="login-required-actions">
+          <div className="login-method-grid" aria-label="로그인 방식">
+            <button onClick={() => moveToSection("security")} type="button">
+              공동인증서 로그인
+            </button>
+            <button onClick={() => moveToSection("security")} type="button">
+              금융인증서 로그인
+            </button>
+            <button onClick={() => moveToSection("security")} type="button">
+              아이디 로그인
+            </button>
+          </div>
+          <button
+            className="primary-login-button"
+            onClick={() => moveToSection("security")}
+            type="button"
+          >
+            인증센터 로그인
           </button>
         </div>
-        <button
-          className="primary-login-button"
-          onClick={() => moveToSection("security")}
-          type="button"
-        >
-          인증센터 로그인
-        </button>
       </div>
     );
   }

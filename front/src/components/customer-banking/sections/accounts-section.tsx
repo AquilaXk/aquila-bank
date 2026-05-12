@@ -1,6 +1,6 @@
 import type { AccountItem, AccountSummaryResponse } from '@/lib/api/types';
 import { formatDateTime, formatMinorAmount } from '@/lib/customer-banking/format';
-import { BankNoticeStrip, WorkTabs } from '../common';
+import { BankNoticeStrip, EmptyState, WorkStateGrid, WorkTabs } from '../common';
 
 export function AccountsSection({
   accountCursor,
@@ -91,6 +91,18 @@ export function AccountsSection({
         <span>상세 {selectedAccount ? "선택" : "대기"}</span>
         <span>다음 조회 {accountCursor ? "가능" : "없음"}</span>
       </div>
+      <WorkStateGrid
+        label="조회 업무 상태"
+        items={[
+          { label: "계좌목록", value: accounts.length > 0 ? `${accounts.length}건` : "조회 전" },
+          {
+            label: "상세조회",
+            value: selectedAccount ? selectedAccount.accountStatus : "미선택",
+          },
+          { label: "다음조회", value: accountCursor ? "가능" : "없음" },
+          { label: "처리상태", value: isBusy ? "조회 중" : "대기" },
+        ]}
+      />
 
       <div className="account-summary-panel" aria-label="계좌 업무 요약">
         <div>
@@ -166,7 +178,12 @@ export function AccountsSection({
               <tbody>
                 {accounts.length === 0 ? (
                   <tr>
-                    <td colSpan={5}>조회 내역 없음</td>
+                    <td colSpan={5}>
+                      <EmptyState
+                        title="계좌 조회 전"
+                        description="전계좌조회 버튼으로 보유계좌를 확인하세요."
+                      />
+                    </td>
                   </tr>
                 ) : (
                   accounts.map((account) => (
@@ -241,7 +258,10 @@ export function AccountsSection({
               </dl>
             </>
           ) : (
-            <p className="rail-copy">계좌 선택 필요</p>
+            <EmptyState
+              title="계좌 미선택"
+              description="보유계좌 목록에서 상세 버튼을 선택하세요."
+            />
           )}
         </aside>
       </div>
