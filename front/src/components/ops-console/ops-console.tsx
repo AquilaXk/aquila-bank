@@ -134,11 +134,11 @@ export function OpsConsole() {
   ];
 
   return (
-    <main className="ops-shell">
+    <main className="ops-shell ops-control-room">
       <header className="ops-header">
         <div>
           <strong>Aquila Bank Ops Console</strong>
-          <span>read-only internal surface</span>
+          <span className="ops-readonly-badge">Read-only Surface</span>
         </div>
         <a href="/" aria-label="고객 웹뱅킹으로 이동">
           고객뱅킹

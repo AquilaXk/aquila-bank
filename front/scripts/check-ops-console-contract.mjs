@@ -42,6 +42,12 @@ const required = [
   ["account audit endpoint", files.client, "/internal/api/v1/accounts/status-change-audits/by-request-id"],
   ["GET-only request helper", files.client, 'method: "GET"'],
   ["ops styles", files.styles, ".ops-shell"],
+  ["ops gothic page token", files.styles, "--ops-gothic-page"],
+  ["ops gothic surface token", files.styles, "--ops-gothic-surface"],
+  ["ops gothic brass token", files.styles, "--ops-gothic-brass"],
+  ["ops read-only badge class", files.styles, ".ops-readonly-badge"],
+  ["ops dark result surface", files.styles, ".ops-result"],
+  ["ops control-room shell", files.styles, ".ops-control-room"],
 ];
 
 const forbidden = [

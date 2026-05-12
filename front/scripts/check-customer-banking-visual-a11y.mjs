@@ -86,6 +86,12 @@ const required = [
   ["security dashboard style", files.styles, ".security-dashboard"],
   ["work summary strip", files.styles, ".work-summary-strip"],
   ["process panel", files.styles, ".process-panel"],
+  ["gothic shell hook", files.styles, ".gothic-banking-shell"],
+  ["gothic focus outline token", files.styles, "--gothic-focus"],
+  ["gothic high contrast input", files.styles, ".gothic-banking-shell input"],
+  ["gothic high contrast select", files.styles, ".gothic-banking-shell select"],
+  ["gothic table hook", files.styles, ".gothic-bank-table"],
+  ["gothic mobile overflow guard", files.styles, "overflow-wrap: anywhere"],
 ];
 
 const missing = required.filter(([, content, expected]) => !content.includes(expected));

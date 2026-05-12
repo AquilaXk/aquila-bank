@@ -144,7 +144,7 @@ export function BankHeader({
           ))}
         </nav>
       </div>
-      <div className="bank-service-strip" aria-label="뱅킹 이용 상태">
+      <div className="bank-service-strip gothic-state-strip" aria-label="뱅킹 이용 상태">
         <span>
           보안등급 <strong>정상</strong>
         </span>
