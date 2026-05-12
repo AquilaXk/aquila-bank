@@ -1029,6 +1029,13 @@ label span {
   padding-top: 12px;
 }
 
+.enterprise-application-form {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--primary);
+  background: var(--surface-muted);
+  padding: 10px;
+}
+
 .application-submit-panel button {
   width: fit-content;
 }

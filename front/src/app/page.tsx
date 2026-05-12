@@ -125,7 +125,7 @@ export default function HomePage() {
       >
         <div>
           <strong>로그인이 필요한 업무</strong>
-          <small className="login-required-code">권한 만료/미로그인</small>
+          <small className="login-required-code">권한 만료 또는 미로그인</small>
           <span>
             조회, 이체, 거래내역, 알림, 신청 업무는 로그인 후 이용하세요.
           </span>
