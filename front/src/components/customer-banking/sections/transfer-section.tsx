@@ -6,6 +6,7 @@ import {
   BankForm,
   BankActionBar,
   BankDialog,
+  BankInput,
   BankNoticeStrip,
   FieldError,
   ReceiptPanel,
@@ -252,6 +253,7 @@ export function TransferSection({
 
       <div className="two-column">
         <BankForm
+          className="tight-work-form"
           meta={transferStep === "confirm" ? "최종 확인 후 실행" : "요청 단위 중복 방지"}
           onSubmit={handleTransferSubmit}
           title="이체정보 입력"
@@ -323,78 +325,68 @@ export function TransferSection({
             </div>
           </div>
           <div className="form-grid">
-            <label>
-              <span>출금계좌 ID</span>
-              <input
-                inputMode="numeric"
-                onChange={(event) =>
-                  updateTransferForm({
-                    ...transferForm,
-                    sourceAccountId: event.target.value,
-                  })
-                }
-                required
-                value={transferForm.sourceAccountId}
-              />
-              <FieldError message={sourceAccountError} />
-            </label>
-            <label>
-              <span>입금계좌 ID</span>
-              <input
-                inputMode="numeric"
-                onChange={(event) =>
-                  updateTransferForm({
-                    ...transferForm,
-                    targetAccountId: event.target.value,
-                  })
-                }
-                required
-                value={transferForm.targetAccountId}
-              />
-              <FieldError message={targetAccountError} />
-            </label>
-            <label>
-              <span>이체금액</span>
-              <input
-                inputMode="numeric"
-                onChange={(event) =>
-                  updateTransferForm({
-                    ...transferForm,
-                    amountMinor: event.target.value,
-                  })
-                }
-                required
-                value={transferForm.amountMinor}
-              />
-              <FieldError message={amountError} />
-            </label>
-            <label>
-              <span>통화</span>
-              <input
-                maxLength={3}
-                onChange={(event) =>
-                  updateTransferForm({
-                    ...transferForm,
-                    currencyCode: event.target.value.toUpperCase(),
-                  })
-                }
-                required
-                value={transferForm.currencyCode}
-              />
-            </label>
-          </div>
-          <label>
-            <span>받는 분 통장 표시</span>
-            <input
-              maxLength={120}
+            <BankInput
+              error={sourceAccountError}
+              inputMode="numeric"
+              label="출금계좌 ID"
               onChange={(event) =>
-                updateTransferForm({ ...transferForm, summary: event.target.value })
+                updateTransferForm({
+                  ...transferForm,
+                  sourceAccountId: event.target.value,
+                })
               }
               required
-              value={transferForm.summary}
+              value={transferForm.sourceAccountId}
             />
-            <FieldError message={summaryError} />
-          </label>
+            <BankInput
+              error={targetAccountError}
+              inputMode="numeric"
+              label="입금계좌 ID"
+              onChange={(event) =>
+                updateTransferForm({
+                  ...transferForm,
+                  targetAccountId: event.target.value,
+                })
+              }
+              required
+              value={transferForm.targetAccountId}
+            />
+            <BankInput
+              error={amountError}
+              inputMode="numeric"
+              label="이체금액"
+              onChange={(event) =>
+                updateTransferForm({
+                  ...transferForm,
+                  amountMinor: event.target.value,
+                })
+              }
+              required
+              value={transferForm.amountMinor}
+            />
+            <BankInput
+              label="통화"
+              maxLength={3}
+              onChange={(event) =>
+                updateTransferForm({
+                  ...transferForm,
+                  currencyCode: event.target.value.toUpperCase(),
+                })
+              }
+              required
+              value={transferForm.currencyCode}
+            />
+          </div>
+          <BankInput
+            error={summaryError}
+            label="받는 분 통장 표시"
+            maxLength={120}
+            onChange={(event) =>
+              updateTransferForm({ ...transferForm, summary: event.target.value })
+            }
+            required
+            value={transferForm.summary}
+          />
           {transferStep === "confirm" ? (
             <div className="confirm-box" role="status">
               <strong>이체정보 확인</strong>
@@ -490,6 +482,7 @@ export function TransferSection({
                         transferResult.currencyCode,
                       ),
                     ],
+                    ["출력구분", "이체 완료증 출력 전용"],
                     ["기장시각", formatDateTime(transferResult.bookedAt)],
                   ]
                 : []

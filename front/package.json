@@ -17,6 +17,7 @@
     "test:work-detail-ux": "node scripts/check-customer-banking-work-detail-ux.mjs",
     "test:density-polish-ux": "node scripts/check-customer-banking-density-polish-ux.mjs",
     "test:mobile-work-polish": "node scripts/check-customer-banking-mobile-work-polish.mjs",
+    "test:work-detail-polish": "node scripts/check-customer-banking-work-detail-polish.mjs",
     "test:e2e:authenticated": "playwright test --config=playwright.config.ts e2e/customer-banking-authenticated-workflow.spec.ts",
     "test:e2e:click-flow": "playwright test --config=playwright.config.ts e2e/customer-banking-click-flow.spec.ts",
     "test:e2e:visual": "playwright test --config=playwright.config.ts e2e/customer-banking-visual-layout.spec.ts",

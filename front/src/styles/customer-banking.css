@@ -1186,6 +1186,11 @@ label span {
   padding: 14px;
 }
 
+.account-detail-work-panel {
+  border-top: 3px solid var(--primary);
+  padding: 12px;
+}
+
 .balance-card {
   display: grid;
   gap: 4px;
@@ -1312,6 +1317,11 @@ label span {
   padding: 14px;
 }
 
+.bank-form.tight-work-form {
+  gap: 9px;
+  padding: 12px;
+}
+
 .bank-form.passive {
   background: #fff;
 }
@@ -1406,6 +1416,11 @@ label span {
 .receipt-panel {
   display: grid;
   align-content: start;
+}
+
+.receipt-print-view {
+  border: 1px solid var(--line);
+  background: #fff;
 }
 
 .receipt-action-row {
@@ -1777,6 +1792,11 @@ label span {
   width: 100%;
   border-collapse: collapse;
   background: #fff;
+}
+
+.bank-table.dense-bank-table th,
+.bank-table.dense-bank-table td {
+  padding: 8px 10px;
 }
 
 .bank-table caption {

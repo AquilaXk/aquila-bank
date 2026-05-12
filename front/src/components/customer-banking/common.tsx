@@ -79,13 +79,17 @@ export function BankForm({
 export function BankTable({
   caption,
   children,
+  className = "",
+  dense = false,
 }: {
   caption: string;
   children: ReactNode;
+  className?: string;
+  dense?: boolean;
 }) {
   return (
     <div className="bank-table-wrap">
-      <table className="bank-table">
+      <table className={`bank-table ${dense ? "dense-bank-table" : ""} ${className}`.trim()}>
         <caption>{caption}</caption>
         {children}
       </table>
@@ -119,6 +123,8 @@ export function BankSelect({
 }
 
 export function BankInput({
+  autoComplete,
+  error,
   inputMode,
   label,
   maxLength,
@@ -128,6 +134,8 @@ export function BankInput({
   type = "text",
   value,
 }: {
+  autoComplete?: string;
+  error?: string;
   inputMode?: "none" | "text" | "tel" | "url" | "email" | "numeric" | "decimal" | "search";
   label: string;
   maxLength?: number;
@@ -141,6 +149,7 @@ export function BankInput({
     <label className="form-field bank-input">
       <span>{label}</span>
       <input
+        autoComplete={autoComplete}
         inputMode={inputMode}
         maxLength={maxLength}
         onChange={onChange}
@@ -149,6 +158,7 @@ export function BankInput({
         type={type}
         value={value}
       />
+      <FieldError message={error} />
     </label>
   );
 }
@@ -191,11 +201,17 @@ export function BankDateRange({
 export function BankActionBar({
   children,
   align = "end",
+  label,
 }: {
   children: ReactNode;
   align?: "start" | "end" | "between";
+  label?: string;
 }) {
-  return <div className={`bank-action-bar align-${align}`}>{children}</div>;
+  return (
+    <div aria-label={label} className={`bank-action-bar align-${align}`}>
+      {children}
+    </div>
+  );
 }
 
 export function BankToolbar({
@@ -292,17 +308,22 @@ export function StatusBadge({
 
 export function ReceiptPanel({
   action,
+  className = "",
   label,
   rows,
   title,
 }: {
   action?: ReactNode;
+  className?: string;
   label: string;
   rows: string[][];
   title: string;
 }) {
   return (
-    <div aria-label={label} className="receipt-panel transfer-print-receipt">
+    <div
+      aria-label={label}
+      className={`receipt-panel transfer-print-receipt receipt-print-view ${className}`.trim()}
+    >
       {action ? <div className="receipt-action-row">{action}</div> : null}
       <ResultPanel rows={rows} title={title} />
     </div>
