@@ -196,15 +196,16 @@ label span {
 }
 
 .utility-link.active {
-  color: var(--primary);
+  color: var(--primary-dark);
+  box-shadow: inset 0 -2px 0 var(--primary);
 }
 
 .service-map {
   border: 1px solid var(--line);
   border-radius: 3px;
-  background: #f8fafc;
+  background: var(--primary-soft);
   padding: 0 10px;
-  color: #344054;
+  color: var(--primary-dark);
 }
 
 .mobile-search-toggle {
@@ -328,6 +329,12 @@ label span {
 
 .gothic-state-strip {
   border-color: var(--line-strong);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--primary-soft) 72%, transparent),
+    color-mix(in srgb, var(--surface) 72%, transparent)
+  );
+  color: var(--text);
 }
 
 .bank-service-strip strong,
@@ -351,7 +358,8 @@ label span {
 .layout-health-strip span {
   border: 1px solid var(--line);
   border-radius: 3px;
-  background: #f8fafc;
+  background: var(--surface-muted);
+  color: var(--text);
   padding: 5px 8px;
 }
 
@@ -367,8 +375,9 @@ label span {
   margin: 0 auto 12px;
   border: 1px solid var(--line-strong);
   border-top: 2px solid var(--primary);
-  background: #fff;
+  background: linear-gradient(180deg, var(--surface-muted), var(--surface));
   padding: 14px;
+  box-shadow: var(--shadow);
 }
 
 .service-map-title {
@@ -401,11 +410,15 @@ label span {
   align-content: start;
   gap: 6px;
   min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--surface);
+  padding: 10px;
 }
 
 .service-map-group > strong {
-  border-bottom: 1px solid #263b56;
-  color: #102f55;
+  border-bottom: 1px solid var(--line-strong);
+  color: var(--primary-dark);
   padding-bottom: 6px;
 }
 
@@ -413,7 +426,7 @@ label span {
   min-height: 30px;
   border: 0;
   background: transparent;
-  color: #344054;
+  color: var(--text);
   padding: 0;
   text-align: left;
   font-size: 13px;
@@ -455,8 +468,8 @@ label span {
 .side-title {
   padding: 16px;
   border-bottom: 1px solid var(--line);
-  background: var(--primary);
-  color: #fff;
+  background: linear-gradient(180deg, var(--primary-soft), var(--page));
+  color: var(--primary-dark);
   font-size: 17px;
   font-weight: 800;
 }
@@ -468,7 +481,7 @@ label span {
   border: 0;
   border-bottom: 1px solid var(--line);
   border-radius: 0;
-  background: #fff;
+  background: var(--surface);
   padding: 10px 14px;
   text-align: left;
 }
@@ -490,6 +503,14 @@ label span {
 .side-item.active {
   border-left: 4px solid var(--primary);
   background: var(--primary-soft);
+  color: var(--primary-dark);
+}
+
+.utility-link.active,
+.nav-tab.active,
+.side-item.active {
+  border-color: var(--primary);
+  color: var(--primary-dark);
 }
 
 .work-area {
@@ -501,10 +522,13 @@ label span {
 .task-section,
 .rail-panel,
 .table-panel,
+.bank-work-panel,
 .gothic-work-panel {
   border: 1px solid var(--line);
   border-radius: 3px;
-  background: var(--surface);
+  background: linear-gradient(180deg, var(--surface-muted), var(--surface));
+  color: var(--text);
+  box-shadow: none;
 }
 
 .task-section {
@@ -526,7 +550,7 @@ label span {
 
 .section-title {
   padding-bottom: 10px;
-  border-bottom: 2px solid #263b56;
+  border-bottom: 2px solid var(--line-strong);
 }
 
 .task-section.compact-work-section .section-title {
@@ -579,6 +603,7 @@ label span {
   border: 1px solid var(--line);
   border-radius: 4px;
   background: var(--warning-soft);
+  color: var(--text);
   padding: 10px 12px;
 }
 
@@ -587,12 +612,12 @@ label span {
 }
 
 .alert.success {
-  border-color: #b7e4ca;
+  border-color: var(--success);
   background: var(--success-soft);
 }
 
 .alert.error {
-  border-color: #f3b6ae;
+  border-color: var(--danger);
   background: var(--danger-soft);
 }
 
@@ -601,9 +626,9 @@ label span {
 }
 
 .busy-strip {
-  border: 1px solid #9dc7ff;
+  border: 1px solid var(--line-strong);
   border-radius: 4px;
-  background: #eef6ff;
+  background: var(--primary-soft);
   color: var(--primary-dark);
   padding: 9px 12px;
   font-weight: 800;
@@ -614,18 +639,19 @@ label span {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 6px 12px;
   align-items: center;
-  border: 1px solid #f7c580;
+  border: 1px solid var(--primary);
   border-radius: 4px;
-  background: #fff7ed;
+  background: var(--warning-soft);
+  color: var(--text);
   padding: 12px;
 }
 
 .session-required strong {
-  color: #9a3412;
+  color: var(--primary-dark);
 }
 
 .session-required span {
-  color: #62410f;
+  color: var(--muted);
 }
 
 .session-required button {
@@ -648,7 +674,7 @@ label span {
 }
 
 .login-required-code {
-  color: #9a3412;
+  color: var(--primary-dark);
   font-size: 12px;
   font-weight: 800;
 }
@@ -668,7 +694,7 @@ label span {
 
 .login-method-grid button {
   min-height: 42px;
-  background: #fff;
+  background: var(--surface-muted);
 }
 
 .primary-login-button {
@@ -676,13 +702,13 @@ label span {
   min-width: 180px;
   border-color: var(--primary-dark);
   background: var(--primary);
-  color: #fff;
+  color: var(--page);
 }
 
 .primary-login-button:hover:not(:disabled) {
   border-color: var(--primary-dark);
   background: var(--primary-dark);
-  color: #fff;
+  color: var(--page);
 }
 
 .summary-grid {
@@ -817,7 +843,7 @@ label span {
   min-height: 30px;
   border: 1px solid var(--line);
   border-radius: 4px;
-  background: var(--primary-soft);
+  background: linear-gradient(180deg, var(--primary-soft), var(--page));
   color: var(--primary-dark);
   padding: 7px 10px;
   font-size: 12px;
@@ -1096,7 +1122,8 @@ label span {
   gap: 10px;
   border: 1px solid var(--line);
   border-radius: 4px;
-  background: var(--surface-muted);
+  background: linear-gradient(180deg, var(--surface-muted), var(--surface));
+  color: var(--text);
   padding: 12px;
 }
 
@@ -1167,10 +1194,10 @@ label span {
   display: grid;
   gap: 4px;
   min-width: 0;
-  border: 1px solid #bcd3ef;
+  border: 1px solid var(--line);
   border-top: 3px solid var(--primary);
   border-radius: 3px;
-  background: #fff;
+  background: var(--surface-muted);
   padding: 12px;
 }
 
@@ -1195,7 +1222,7 @@ label span {
   margin-top: 12px;
   border: 1px solid var(--line);
   border-left: 4px solid var(--primary);
-  background: #fff;
+  background: var(--surface-muted);
   padding: 12px 14px;
 }
 
@@ -1205,7 +1232,7 @@ label span {
 }
 
 .work-command-panel strong {
-  color: #102f55;
+  color: var(--primary-dark);
 }
 
 .work-command-panel span {
@@ -1226,8 +1253,10 @@ label span {
 .result-panel {
   border: 1px solid var(--line);
   border-radius: 3px;
-  background: #fff;
+  background: linear-gradient(180deg, var(--surface-muted), var(--surface));
+  color: var(--text);
   padding: 14px;
+  box-shadow: none;
 }
 
 .account-detail-work-panel {
@@ -1239,7 +1268,7 @@ label span {
   display: grid;
   gap: 4px;
   margin: 12px 0;
-  border: 1px solid #bcd3ef;
+  border: 1px solid var(--line-strong);
   border-radius: 6px;
   background: var(--primary-soft);
   padding: 16px;
@@ -1274,7 +1303,7 @@ label span {
   display: inline-flex;
   align-items: center;
   min-height: 24px;
-  border: 1px solid #bfd3ea;
+  border: 1px solid var(--line-strong);
   border-radius: 4px;
   background: var(--primary-soft);
   color: var(--primary-dark);
@@ -1284,25 +1313,25 @@ label span {
 }
 
 .status-badge.unread {
-  border-color: #f7c580;
-  background: #fff7ed;
-  color: #9a3412;
+  border-color: var(--primary);
+  background: var(--warning-soft);
+  color: var(--primary-dark);
 }
 
 .status-badge.success {
-  border-color: #b7e4ca;
+  border-color: var(--success);
   background: var(--success-soft);
   color: var(--success);
 }
 
 .status-badge.warn {
-  border-color: #f7c580;
-  background: #fff7ed;
-  color: #9a3412;
+  border-color: var(--primary);
+  background: var(--warning-soft);
+  color: var(--primary-dark);
 }
 
 .status-badge.danger {
-  border-color: #f3b6ae;
+  border-color: var(--danger);
   background: var(--danger-soft);
   color: var(--danger);
 }
@@ -1314,7 +1343,7 @@ label span {
 }
 
 .selected-row {
-  background: #f8fbff;
+  background: var(--primary-soft);
   box-shadow: inset 3px 0 0 var(--primary);
 }
 
@@ -1357,8 +1386,10 @@ label span {
   gap: 12px;
   border: 1px solid var(--line);
   border-radius: 3px;
-  background: var(--surface-muted);
+  background: linear-gradient(180deg, var(--surface-muted), var(--surface));
+  color: var(--text);
   padding: 14px;
+  box-shadow: none;
 }
 
 .bank-form.tight-work-form {
@@ -1367,12 +1398,12 @@ label span {
 }
 
 .bank-form.passive {
-  background: #fff;
+  background: var(--surface-muted);
 }
 
 .bank-form > button {
   background: var(--primary);
-  color: #fff;
+  color: var(--page);
 }
 
 .field-error {
@@ -1389,7 +1420,7 @@ label span {
   align-items: center;
   justify-content: flex-end;
   border-top: 1px solid var(--line);
-  background: #fff;
+  background: var(--surface);
   padding: 10px 12px;
 }
 
@@ -1400,14 +1431,14 @@ label span {
 }
 
 .pagination-bar strong {
-  color: #102f55;
+  color: var(--primary-dark);
   font-size: 12px;
   overflow-wrap: anywhere;
 }
 
 .table-scroll-hint {
   border-bottom: 1px solid var(--line);
-  background: #fff;
+  background: var(--surface-muted);
   color: var(--muted);
   padding: 8px 12px;
   font-size: 12px;
@@ -1435,7 +1466,7 @@ label span {
 .filter-collapsed-line {
   border: 1px dashed var(--line-strong);
   border-radius: 4px;
-  background: #fff;
+  background: var(--surface-muted);
   color: var(--muted);
   padding: 10px 12px;
   font-size: 12px;
@@ -1450,7 +1481,7 @@ label span {
   display: grid;
   align-content: start;
   border-top: 3px solid var(--primary);
-  background: #fff;
+  background: linear-gradient(180deg, var(--surface-muted), var(--surface));
 }
 
 .transfer-print-receipt {
@@ -1474,7 +1505,7 @@ label span {
   gap: 10px;
   border: 1px solid var(--line);
   border-bottom: 0;
-  background: #f8fafc;
+  background: var(--surface-muted);
   padding: 10px 12px;
 }
 
@@ -1501,7 +1532,7 @@ label span {
 .mobile-sticky-actions button {
   min-width: 120px;
   background: var(--primary);
-  color: #fff;
+  color: var(--page);
 }
 
 .auth-method-grid,
@@ -1517,10 +1548,10 @@ label span {
   display: grid;
   gap: 4px;
   min-width: 0;
-  border: 1px solid #bcd3ef;
+  border: 1px solid var(--line);
   border-top: 3px solid var(--primary);
   border-radius: 3px;
-  background: #fff;
+  background: var(--surface-muted);
   padding: 12px;
 }
 
@@ -1551,7 +1582,7 @@ label span {
 .stepper li {
   min-height: 30px;
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--surface);
   color: var(--muted);
   padding: 6px 8px;
   text-align: center;
@@ -1562,7 +1593,7 @@ label span {
 .stepper li.active {
   border-color: var(--primary);
   background: var(--primary);
-  color: #fff;
+  color: var(--page);
 }
 
 .confirm-box,
@@ -1571,15 +1602,15 @@ label span {
   flex-wrap: wrap;
   gap: 8px 12px;
   align-items: center;
-  border: 1px solid #bcd3ef;
+  border: 1px solid var(--line-strong);
   border-radius: 4px;
   background: var(--primary-soft);
   padding: 10px 12px;
 }
 
 .confirm-box.warning {
-  border-color: #f7c580;
-  background: #fff7ed;
+  border-color: var(--primary);
+  background: var(--warning-soft);
 }
 
 .confirm-box strong,
@@ -1602,7 +1633,7 @@ label span {
   gap: 4px;
   border: 1px solid var(--line);
   border-radius: 4px;
-  background: #fff;
+  background: var(--surface-muted);
   padding: 10px;
 }
 
@@ -1615,7 +1646,7 @@ label span {
 
 .transfer-risk-grid strong {
   overflow-wrap: anywhere;
-  color: #102f55;
+  color: var(--primary-dark);
 }
 
 .transfer-receipt .result-panel {
@@ -1677,7 +1708,8 @@ label span {
   border: 1px solid var(--line);
   border-top: 3px solid var(--primary);
   border-radius: 3px;
-  background: #fff;
+  background: linear-gradient(180deg, var(--surface-muted), var(--surface));
+  color: var(--text);
   padding: 12px;
 }
 
@@ -1765,6 +1797,7 @@ label span {
   display: grid;
   grid-template-columns: 110px minmax(0, 1fr);
   gap: 8px;
+  border-top-color: var(--line);
 }
 
 .detail-list dt,
@@ -1793,7 +1826,8 @@ label span {
 .code-list code {
   border: 1px solid var(--line);
   border-radius: 4px;
-  background: #fff;
+  background: var(--surface-muted);
+  color: var(--text);
   padding: 5px 7px;
 }
 
@@ -1809,7 +1843,7 @@ label span {
 .panel-toolbar {
   padding: 12px 14px;
   border-bottom: 1px solid var(--line);
-  background: #f8fafc;
+  background: linear-gradient(180deg, var(--primary-soft), var(--surface));
 }
 
 .panel-toolbar strong {
@@ -1825,7 +1859,7 @@ label span {
   margin-top: 14px;
   overflow-x: auto;
   border: 1px solid var(--line-strong);
-  background: var(--surface);
+  background: linear-gradient(180deg, var(--surface-muted), var(--surface));
   color: var(--text);
 }
 
@@ -1862,7 +1896,7 @@ label span {
 .bank-table th,
 .bank-table td {
   border-bottom: 1px solid var(--line);
-  background: var(--surface);
+  background: transparent;
   color: var(--text);
   padding: 10px 12px;
   text-align: left;
@@ -1870,7 +1904,8 @@ label span {
 }
 
 .bank-table th {
-  background: var(--surface-muted);
+  border-bottom: 1px solid var(--line-strong);
+  background: var(--primary-soft);
   color: var(--primary-dark);
   font-size: 13px;
 }
@@ -1981,7 +2016,7 @@ label span {
 
 .tab-switch button.active {
   background: var(--primary);
-  color: #fff;
+  color: var(--page);
 }
 
 .work-tabs {
@@ -1990,7 +2025,7 @@ label span {
   overflow-x: auto;
   border: 1px solid var(--line-strong);
   border-radius: 3px;
-  background: #fff;
+  background: var(--surface);
   scrollbar-width: thin;
 }
 
@@ -2001,7 +2036,7 @@ label span {
   border: 0;
   border-radius: 0;
   border-right: 1px solid var(--line-strong);
-  background: #fff;
+  background: var(--surface);
   color: var(--muted);
   padding: 0 12px;
   font-size: 13px;
@@ -2014,7 +2049,7 @@ label span {
 
 .work-tabs button.active {
   background: var(--primary);
-  color: #fff;
+  color: var(--page);
 }
 
 .work-tabs button.active:disabled {
@@ -2092,7 +2127,7 @@ label span {
 .bank-notice-strip dd {
   min-width: 0;
   margin: 0;
-  color: #102f55;
+  color: var(--primary-dark);
   font-weight: 800;
   overflow-wrap: anywhere;
 }
@@ -2354,7 +2389,7 @@ label span {
     display: inline-flex;
     align-items: center;
     border-right: 1px solid var(--line);
-    background: #f8fafc;
+    background: var(--primary-soft);
     color: var(--primary-dark);
     padding: 0 12px;
     font-weight: 800;
@@ -2441,7 +2476,7 @@ label span {
     bottom: 0;
     margin: 0 -12px -12px;
     border-top: 1px solid var(--line-strong);
-    background: rgba(255, 255, 255, 0.96);
+    background: color-mix(in srgb, var(--surface) 96%, transparent);
     padding: 10px 12px;
   }
 
