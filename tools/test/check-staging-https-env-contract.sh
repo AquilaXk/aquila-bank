@@ -20,6 +20,17 @@ require_pattern() {
   fi
 }
 
+require_git_executable() {
+  local path="$1"
+  local mode
+
+  mode="$(git ls-files --stage -- "${path}" | awk '{print $1}')"
+  if [[ "${mode}" != "100755" ]]; then
+    echo "[staging-https-env-contract] ${path} must be tracked as executable, got mode=${mode:-missing}" >&2
+    exit 1
+  fi
+}
+
 require_pattern "${workflow_path}" 'NGINX_SERVER_NAME="${NGINX_SERVER_NAME:-bank.aquilaxk.site}"'
 require_pattern "${workflow_path}" 'NGINX_ENABLE_HTTPS="${NGINX_ENABLE_HTTPS:-auto}"'
 require_pattern "${workflow_path}" 'NGINX_SSL_CERTIFICATE_PATH="${NGINX_SSL_CERTIFICATE_PATH:-/etc/letsencrypt/live/${NGINX_SERVER_NAME}/fullchain.pem}"'
@@ -32,6 +43,8 @@ require_pattern "${workflow_path}" 'tools/test/check-public-edge-bot-guard-live.
 require_pattern "${workflow_path}" 'PUBLIC_FRONTEND_BASE_URL="${STAGING_PUBLIC_BASE_URL}"'
 require_pattern "${workflow_path}" 'PUBLIC_FRONTEND_EXPECT_HSTS=true'
 require_pattern "${workflow_path}" 'tools/test/check-public-frontend-live-smoke.sh'
+require_git_executable "tools/test/check-public-edge-bot-guard-live.sh"
+require_git_executable "tools/test/check-public-frontend-live-smoke.sh"
 
 require_pattern "${deploy_readme_path}" 'NGINX_SERVER_NAME=bank.aquilaxk.site'
 require_pattern "${deploy_readme_path}" 'NGINX_ENABLE_HTTPS=auto'
