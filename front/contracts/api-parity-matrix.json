@@ -1,0 +1,801 @@
+{
+  "version": 1,
+  "description": "Backend global/web endpoint to frontend implementation matrix. Keep intentional internal write/bootstrap/recovery APIs out of customer UI until permission, audit, and confirmation UX are designed.",
+  "endpoints": [
+    {
+      "id": "account.list",
+      "method": "GET",
+      "path": "/api/v1/accounts",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/accounts"]
+        }
+      ]
+    },
+    {
+      "id": "account.summary",
+      "method": "GET",
+      "path": "/api/v1/accounts/{accountId}",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/accounts/${accountId}"]
+        }
+      ]
+    },
+    {
+      "id": "auth.login",
+      "method": "POST",
+      "path": "/api/v1/auth/login",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/auth/login", "method: \"POST\""]
+        }
+      ]
+    },
+    {
+      "id": "auth.mfa.backup.challenge.verify",
+      "method": "POST",
+      "path": "/api/v1/auth/mfa/backup-codes/challenge/verify",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/auth/mfa/backup-codes/challenge/verify"]
+        }
+      ]
+    },
+    {
+      "id": "auth.mfa.backup.create",
+      "method": "POST",
+      "path": "/api/v1/auth/mfa/backup-codes",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/auth/mfa/backup-codes"]
+        }
+      ]
+    },
+    {
+      "id": "auth.mfa.totp.challenge.verify",
+      "method": "POST",
+      "path": "/api/v1/auth/mfa/totp/challenge/verify",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/auth/mfa/totp/challenge/verify"]
+        }
+      ]
+    },
+    {
+      "id": "auth.mfa.totp.disable",
+      "method": "POST",
+      "path": "/api/v1/auth/mfa/totp/disable",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/auth/mfa/totp/disable"]
+        }
+      ]
+    },
+    {
+      "id": "auth.mfa.totp.enroll",
+      "method": "POST",
+      "path": "/api/v1/auth/mfa/totp/enroll",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/auth/mfa/totp/enroll"]
+        }
+      ]
+    },
+    {
+      "id": "auth.mfa.totp.enroll.verify",
+      "method": "POST",
+      "path": "/api/v1/auth/mfa/totp/enroll/verify",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/auth/mfa/totp/enroll/verify"]
+        }
+      ]
+    },
+    {
+      "id": "auth.logout",
+      "method": "POST",
+      "path": "/api/v1/auth/logout",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/auth/logout"]
+        }
+      ]
+    },
+    {
+      "id": "auth.password.recovery.confirm",
+      "method": "POST",
+      "path": "/api/v1/auth/password-recovery/confirm",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/auth/password-recovery/confirm"]
+        }
+      ]
+    },
+    {
+      "id": "auth.password.recovery.request",
+      "method": "POST",
+      "path": "/api/v1/auth/password-recovery/request",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/auth/password-recovery/request"]
+        }
+      ]
+    },
+    {
+      "id": "auth.password.reset",
+      "method": "POST",
+      "path": "/api/v1/auth/password-reset",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/auth/password-reset"]
+        }
+      ]
+    },
+    {
+      "id": "auth.refresh",
+      "method": "POST",
+      "path": "/api/v1/auth/refresh",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/auth/refresh"]
+        }
+      ]
+    },
+    {
+      "id": "auth.session.list",
+      "method": "GET",
+      "path": "/api/v1/auth/sessions",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/auth/sessions"]
+        }
+      ]
+    },
+    {
+      "id": "auth.session.revoke",
+      "method": "DELETE",
+      "path": "/api/v1/auth/sessions/{sessionId}",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/auth/sessions/${sessionId}", "method: \"DELETE\""]
+        }
+      ]
+    },
+    {
+      "id": "auth.session.revoke.others",
+      "method": "DELETE",
+      "path": "/api/v1/auth/sessions",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/auth/sessions", "method: \"DELETE\""]
+        }
+      ]
+    },
+    {
+      "id": "customer.application.create",
+      "method": "POST",
+      "path": "/api/v1/customer-service/applications",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/customer-service/applications"]
+        }
+      ]
+    },
+    {
+      "id": "notification.archive.bulk",
+      "method": "POST",
+      "path": "/api/v1/notifications/archive",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/notifications/archive"]
+        }
+      ]
+    },
+    {
+      "id": "notification.delete.bulk",
+      "method": "POST",
+      "path": "/api/v1/notifications/delete",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/notifications/delete"]
+        }
+      ]
+    },
+    {
+      "id": "notification.list",
+      "method": "GET",
+      "path": "/api/v1/notifications",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/notifications"]
+        }
+      ]
+    },
+    {
+      "id": "notification.preferences.get",
+      "method": "GET",
+      "path": "/api/v1/notifications/preferences",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/notifications/preferences"]
+        }
+      ]
+    },
+    {
+      "id": "notification.preferences.update",
+      "method": "POST",
+      "path": "/api/v1/notifications/preferences",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/notifications/preferences", "method: \"POST\""]
+        }
+      ]
+    },
+    {
+      "id": "notification.read.bulk",
+      "method": "POST",
+      "path": "/api/v1/notifications/read",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/notifications/read"]
+        }
+      ]
+    },
+    {
+      "id": "notification.read.single",
+      "method": "POST",
+      "path": "/api/v1/notifications/{notificationId}/read",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/notifications/${notificationId}/read"]
+        }
+      ]
+    },
+    {
+      "id": "notification.search",
+      "method": "GET",
+      "path": "/api/v1/notifications/search",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/notifications/search"]
+        }
+      ]
+    },
+    {
+      "id": "notification.stream",
+      "method": "GET",
+      "path": "/api/v1/notifications/stream",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/hooks/use-customer-banking.ts",
+          "contains": ["/api/v1/notifications/stream"]
+        }
+      ]
+    },
+    {
+      "id": "notification.unread.count",
+      "method": "GET",
+      "path": "/api/v1/notifications/unread-count",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/notifications/unread-count"]
+        }
+      ]
+    },
+    {
+      "id": "transaction.archive.query",
+      "method": "GET",
+      "path": "/api/v1/transactions/archive",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/transactions/archive"]
+        }
+      ]
+    },
+    {
+      "id": "transaction.detail",
+      "method": "GET",
+      "path": "/api/v1/transactions/{transactionReference}",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/transactions/${transactionReference}"]
+        }
+      ]
+    },
+    {
+      "id": "transaction.query",
+      "method": "GET",
+      "path": "/api/v1/transactions",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/transactions"]
+        }
+      ]
+    },
+    {
+      "id": "transfer.create",
+      "method": "POST",
+      "path": "/api/v1/transfers",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/transfers", "method: \"POST\""]
+        }
+      ]
+    },
+    {
+      "id": "transfer.preview",
+      "method": "GET",
+      "path": "/api/v1/transfers/preview",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/transfers/preview"]
+        }
+      ]
+    },
+    {
+      "id": "transfer.reversal",
+      "method": "POST",
+      "path": "/api/v1/transfers/{transactionReference}/reversal",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/transfers/${transactionReference}/reversal"]
+        }
+      ]
+    },
+    {
+      "id": "ops.account.status.audit.by.request",
+      "method": "GET",
+      "path": "/internal/api/v1/accounts/status-change-audits/by-request-id",
+      "audience": "ops-readonly",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/ops-console/client.ts",
+          "contains": ["/internal/api/v1/accounts/status-change-audits/by-request-id"]
+        }
+      ]
+    },
+    {
+      "id": "ops.auth.status.audit.by.request",
+      "method": "GET",
+      "path": "/internal/api/v1/auth/status-change-audits/by-request-id",
+      "audience": "ops-readonly",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/ops-console/client.ts",
+          "contains": ["/internal/api/v1/auth/status-change-audits/by-request-id"]
+        }
+      ]
+    },
+    {
+      "id": "ops.auth.status.audit.search",
+      "method": "GET",
+      "path": "/internal/api/v1/auth/status-change-audits",
+      "audience": "ops-readonly",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/ops-console/client.ts",
+          "contains": ["/internal/api/v1/auth/status-change-audits"]
+        }
+      ]
+    },
+    {
+      "id": "ops.command.idempotency.stale.started",
+      "method": "GET",
+      "path": "/internal/api/v1/ledger/command-idempotency/stale-started",
+      "audience": "ops-readonly",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/ops-console/client.ts",
+          "contains": ["/internal/api/v1/ledger/command-idempotency/stale-started"]
+        }
+      ]
+    },
+    {
+      "id": "ops.command.idempotency.summary",
+      "method": "GET",
+      "path": "/internal/api/v1/ledger/command-idempotency/summary",
+      "audience": "ops-readonly",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/ops-console/client.ts",
+          "contains": ["/internal/api/v1/ledger/command-idempotency/summary"]
+        }
+      ]
+    },
+    {
+      "id": "ops.ledger.audit.by.request",
+      "method": "GET",
+      "path": "/internal/api/v1/ledger/audit/request-ids/{requestId}/entries",
+      "audience": "ops-readonly",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/ops-console/client.ts",
+          "contains": ["/internal/api/v1/ledger/audit/request-ids/${encodeURIComponent(requestId)}/entries"]
+        }
+      ]
+    },
+    {
+      "id": "ops.ledger.audit.by.transaction",
+      "method": "GET",
+      "path": "/internal/api/v1/ledger/audit/transactions/{transactionReference}/entries",
+      "audience": "ops-readonly",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/ops-console/client.ts",
+          "contains": ["/internal/api/v1/ledger/audit/transactions/${encodeURIComponent(", ")}/entries"]
+        }
+      ]
+    },
+    {
+      "id": "ops.notification.channel.quarantined.list",
+      "method": "GET",
+      "path": "/internal/api/v1/outbox/notification-channel/quarantined-events",
+      "audience": "ops-readonly",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/ops-console/client.ts",
+          "contains": ["/internal/api/v1/outbox/notification-channel/quarantined-events"]
+        }
+      ]
+    },
+    {
+      "id": "ops.notification.dlq.list",
+      "method": "GET",
+      "path": "/internal/api/v1/outbox/notification/dlq-events",
+      "audience": "ops-readonly",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/ops-console/client.ts",
+          "contains": ["/internal/api/v1/outbox/notification/dlq-events"]
+        }
+      ]
+    },
+    {
+      "id": "ops.notification.summary",
+      "method": "GET",
+      "path": "/internal/api/v1/outbox/notification/summary",
+      "audience": "ops-readonly",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/ops-console/client.ts",
+          "contains": ["/internal/api/v1/outbox/notification/summary"]
+        }
+      ]
+    },
+    {
+      "id": "ops.outbox.failed.list",
+      "method": "GET",
+      "path": "/internal/api/v1/outbox/failed-events",
+      "audience": "ops-readonly",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/ops-console/client.ts",
+          "contains": ["/internal/api/v1/outbox/failed-events"]
+        }
+      ]
+    },
+    {
+      "id": "ops.outbox.summary",
+      "method": "GET",
+      "path": "/internal/api/v1/outbox/summary",
+      "audience": "ops-readonly",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/ops-console/client.ts",
+          "contains": ["/internal/api/v1/outbox/summary"]
+        }
+      ]
+    },
+    {
+      "id": "ops.snapshot.reconciliation.drifts",
+      "method": "GET",
+      "path": "/internal/api/v1/ledger/snapshot-reconciliation/drifts",
+      "audience": "ops-readonly",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/ops-console/client.ts",
+          "contains": ["/internal/api/v1/ledger/snapshot-reconciliation/drifts"]
+        }
+      ]
+    },
+    {
+      "id": "internal.account.bootstrap.create",
+      "method": "POST",
+      "path": "/internal/api/v1/accounts/bootstrap",
+      "audience": "internal-bootstrap",
+      "frontendStatus": "intentional-no-ui",
+      "rationale": "초기 계좌 seed 전용 write API라 고객/ops 화면 노출 시 잔액·원장 정합성 감사 UX가 먼저 필요하다."
+    },
+    {
+      "id": "internal.account.status.update",
+      "method": "PUT",
+      "path": "/internal/api/v1/accounts/{accountId}/status",
+      "audience": "internal-admin",
+      "frontendStatus": "intentional-no-ui",
+      "rationale": "계좌 상태 write API는 권한, 사유 코드, 이중 확인, 감사 로그 UI가 설계된 별도 admin 작업으로 분리한다."
+    },
+    {
+      "id": "internal.auth.bootstrap.membership",
+      "method": "PUT",
+      "path": "/internal/api/v1/auth/users/{userId}/memberships/{accountId}",
+      "audience": "internal-bootstrap",
+      "frontendStatus": "intentional-no-ui",
+      "rationale": "사용자-계좌 membership bootstrap write API라 고객 웹뱅킹과 read-only ops 콘솔에 노출하지 않는다."
+    },
+    {
+      "id": "internal.auth.bootstrap.user",
+      "method": "POST",
+      "path": "/internal/api/v1/auth/users/bootstrap",
+      "audience": "internal-bootstrap",
+      "frontendStatus": "intentional-no-ui",
+      "rationale": "사용자 bootstrap write API는 운영 seed 경로이며 일반 프론트 화면 대신 제한된 운영 절차로만 다룬다."
+    },
+    {
+      "id": "internal.auth.external.identity.audit.by.request",
+      "method": "GET",
+      "path": "/internal/api/v1/auth/external-identity-audits/by-request-id",
+      "audience": "internal-admin",
+      "frontendStatus": "intentional-no-ui",
+      "rationale": "외부 인증 식별자 감사 조회는 개인정보/보안 맥락이 강해 별도 감사 화면과 권한 정책 확정 후 노출한다."
+    },
+    {
+      "id": "internal.auth.external.identity.create",
+      "method": "POST",
+      "path": "/internal/api/v1/auth/users/{userId}/external-identities",
+      "audience": "internal-admin",
+      "frontendStatus": "intentional-no-ui",
+      "rationale": "외부 인증 식별자 write API는 계정 탈취 위험이 있어 보안 승인 UX 없는 프론트 노출을 금지한다."
+    },
+    {
+      "id": "internal.auth.external.identity.delete",
+      "method": "DELETE",
+      "path": "/internal/api/v1/auth/users/{userId}/external-identities",
+      "audience": "internal-admin",
+      "frontendStatus": "intentional-no-ui",
+      "rationale": "외부 인증 식별자 삭제는 로그인 가능성에 직접 영향이 있어 별도 admin flow와 감사 로그가 필요하다."
+    },
+    {
+      "id": "internal.auth.membership.get",
+      "method": "GET",
+      "path": "/internal/api/v1/auth/users/{userId}/memberships/{accountId}",
+      "audience": "internal-admin",
+      "frontendStatus": "intentional-no-ui",
+      "rationale": "계정 membership 상세 조회는 운영 admin 화면 후보지만 현재 ops 콘솔 범위는 장애 관측 read-only로 제한한다."
+    },
+    {
+      "id": "internal.auth.membership.status.update",
+      "method": "PUT",
+      "path": "/internal/api/v1/auth/users/{userId}/memberships/{accountId}/status",
+      "audience": "internal-admin",
+      "frontendStatus": "intentional-no-ui",
+      "rationale": "membership 상태 변경은 계좌 접근 권한에 직접 영향이 있어 사유/승인/감사 UX를 갖춘 별도 작업으로 분리한다."
+    },
+    {
+      "id": "internal.auth.password.recovery.token.by.request",
+      "method": "GET",
+      "path": "/internal/api/v1/auth/password-recovery-tokens/by-request-id",
+      "audience": "internal-admin",
+      "frontendStatus": "intentional-no-ui",
+      "rationale": "비밀번호 복구 토큰 조회는 민감 보안 정보라 read-only ops 콘솔에 기본 노출하지 않는다."
+    },
+    {
+      "id": "internal.auth.user.by.login.id",
+      "method": "GET",
+      "path": "/internal/api/v1/auth/users/by-login-id",
+      "audience": "internal-admin",
+      "frontendStatus": "intentional-no-ui",
+      "rationale": "사용자 직접 조회는 개인정보 admin 화면 후보이며 현재 PR은 endpoint parity 가드에 한정한다."
+    },
+    {
+      "id": "internal.auth.user.get",
+      "method": "GET",
+      "path": "/internal/api/v1/auth/users/{userId}",
+      "audience": "internal-admin",
+      "frontendStatus": "intentional-no-ui",
+      "rationale": "사용자 상세 조회는 개인정보 admin 화면 후보이며 현재 ops 콘솔은 장애/감사 관측 read-only만 제공한다."
+    },
+    {
+      "id": "internal.auth.user.status.update",
+      "method": "PUT",
+      "path": "/internal/api/v1/auth/users/{userId}/status",
+      "audience": "internal-admin",
+      "frontendStatus": "intentional-no-ui",
+      "rationale": "사용자 상태 변경은 로그인 차단/복구 영향이 있어 권한, 사유, 이중 확인, 감사 표시가 필요하다."
+    },
+    {
+      "id": "internal.auth.verified.contact.delete",
+      "method": "DELETE",
+      "path": "/internal/api/v1/auth/users/{userId}/verified-contacts/{contactChannel}",
+      "audience": "internal-admin",
+      "frontendStatus": "intentional-no-ui",
+      "rationale": "인증 연락처 삭제는 본인확인/복구 흐름에 영향이 있어 별도 admin 권한 UX 전까지 비노출 유지한다."
+    },
+    {
+      "id": "internal.auth.verified.contact.list",
+      "method": "GET",
+      "path": "/internal/api/v1/auth/users/{userId}/verified-contacts",
+      "audience": "internal-admin",
+      "frontendStatus": "intentional-no-ui",
+      "rationale": "인증 연락처 조회는 개인정보 영역이라 admin 화면과 masking 정책이 확정된 후 노출한다."
+    },
+    {
+      "id": "internal.auth.verified.contact.update",
+      "method": "PUT",
+      "path": "/internal/api/v1/auth/users/{userId}/verified-contacts/{contactChannel}",
+      "audience": "internal-admin",
+      "frontendStatus": "intentional-no-ui",
+      "rationale": "인증 연락처 변경은 보안 복구 채널에 영향이 있어 감사/승인 UX 없이 프론트 노출하지 않는다."
+    },
+    {
+      "id": "internal.bootstrap.bulk.import",
+      "method": "POST",
+      "path": "/internal/api/v1/bootstrap/bulk-import",
+      "audience": "internal-bootstrap",
+      "frontendStatus": "intentional-no-ui",
+      "rationale": "bulk import는 대량 seed/운영 bootstrap API라 UI 노출보다 실행 환경과 리소스 제어가 우선이다."
+    },
+    {
+      "id": "internal.command.idempotency.recovery.stale.started",
+      "method": "POST",
+      "path": "/internal/api/v1/ledger/command-idempotency/recovery/stale-started",
+      "audience": "internal-recovery",
+      "frontendStatus": "intentional-no-ui",
+      "rationale": "idempotency recovery write API는 중복 처리 위험이 있어 별도 runbook 승인과 감사 UI 전까지 비노출한다."
+    },
+    {
+      "id": "internal.ledger.audit.by.entry",
+      "method": "GET",
+      "path": "/internal/api/v1/ledger/audit/entries/{entryReference}",
+      "audience": "internal-admin",
+      "frontendStatus": "intentional-no-ui",
+      "rationale": "entry reference 단건 조회는 감사 상세 화면 후보지만 현재 ops 콘솔은 request/transaction lookup만 제공한다."
+    },
+    {
+      "id": "internal.notification.channel.redrive",
+      "method": "POST",
+      "path": "/internal/api/v1/outbox/notification-channel/quarantined-events/{id}/redrive",
+      "audience": "internal-recovery",
+      "frontendStatus": "intentional-no-ui",
+      "rationale": "notification channel redrive는 재전송 부작용이 있어 권한, 확인, 결과 감사 UX 전까지 비노출한다."
+    },
+    {
+      "id": "internal.notification.dlq.redrive",
+      "method": "POST",
+      "path": "/internal/api/v1/outbox/notification/dlq-events/redrive",
+      "audience": "internal-recovery",
+      "frontendStatus": "intentional-no-ui",
+      "rationale": "DLQ redrive는 중복 알림 가능성이 있어 운영 승인 UX와 retry 결과 표시 전까지 프론트 노출하지 않는다."
+    },
+    {
+      "id": "internal.outbox.recovery.stale.sending",
+      "method": "POST",
+      "path": "/internal/api/v1/outbox/recovery/stale-sending",
+      "audience": "internal-recovery",
+      "frontendStatus": "intentional-no-ui",
+      "rationale": "outbox recovery write API는 이벤트 재처리 경로라 중복 방지/순서 보장 범위 문서화 후 별도 UI로 다룬다."
+    },
+    {
+      "id": "internal.snapshot.reconciliation.recovery",
+      "method": "POST",
+      "path": "/internal/api/v1/ledger/snapshot-reconciliation/accounts/{accountId}/recovery",
+      "audience": "internal-recovery",
+      "frontendStatus": "intentional-no-ui",
+      "rationale": "잔액 snapshot recovery는 원장 정합성에 직접 영향이 있어 별도 승인/감사/rollback UX 없이는 노출 금지한다."
+    }
+  ]
+}

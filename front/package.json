@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "next start -p ${PORT:-3000}",
     "lint": "next lint",
+    "test:api-parity": "node scripts/check-front-backend-api-parity.mjs",
     "test:ui-contract": "node scripts/check-customer-banking-ui-contract.mjs",
     "test:auth-session": "node scripts/check-auth-session-hardening-contract.mjs",
     "test:ops-console": "node scripts/check-ops-console-contract.mjs",
