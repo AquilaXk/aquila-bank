@@ -171,6 +171,12 @@ label span {
   color: #344054;
 }
 
+.mobile-search-toggle {
+  display: none;
+  min-height: 30px;
+  padding: 0 10px;
+}
+
 .search-field {
   display: grid;
   grid-template-columns: auto 220px;
@@ -1212,6 +1218,28 @@ label span {
   margin-top: 12px;
 }
 
+.quick-range-toolbar,
+.touch-action-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.quick-range-toolbar button {
+  min-width: 72px;
+}
+
+.filter-collapsed-line {
+  border: 1px dashed var(--line-strong);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--muted);
+  padding: 10px 12px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .transfer-process-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
@@ -1221,6 +1249,31 @@ label span {
   align-content: start;
   border-top: 3px solid var(--primary);
   background: #fff;
+}
+
+.transfer-print-receipt {
+  min-width: 0;
+}
+
+.receipt-action-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  background: #f8fafc;
+  padding: 10px 12px;
+}
+
+.receipt-action-row span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.print-receipt-button {
+  min-width: 72px;
 }
 
 .auth-method-grid,
@@ -1883,6 +1936,21 @@ label span {
     width: 100%;
   }
 
+  .mobile-search-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .utility-search {
+    display: none;
+    width: 100%;
+  }
+
+  .utility-search.open {
+    display: grid;
+  }
+
   .utility-right,
   .search-field {
     grid-template-columns: 1fr;
@@ -1964,8 +2032,50 @@ label span {
     min-height: 44px;
   }
 
+  .quick-range-toolbar button,
+  .touch-action-strip button {
+    flex: 1 1 calc(50% - 6px);
+  }
+
   .bank-table th,
   .bank-table td {
     padding: 9px 10px;
+  }
+}
+
+@media print {
+  body {
+    background: #fff;
+  }
+
+  .bank-header,
+  .side-menu,
+  .right-rail,
+  .alert,
+  .busy-strip,
+  .bank-form,
+  .work-tabs,
+  .work-summary-strip,
+  .work-state-grid,
+  .receipt-action-row,
+  .two-column + .two-column {
+    display: none !important;
+  }
+
+  .bank-shell,
+  .bank-layout,
+  .work-area,
+  .task-section,
+  .transfer-print-receipt {
+    display: block;
+    min-width: 0;
+    width: 100%;
+    border: 0;
+    box-shadow: none;
+    background: #fff;
+  }
+
+  .transfer-print-receipt .result-panel {
+    border: 1px solid #222;
   }
 }

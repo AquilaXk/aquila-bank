@@ -74,7 +74,7 @@ export function useCustomerBanking() {
   const [transactionMode, setTransactionMode] = useState<"active" | "archive">(
     "active",
   );
-  const [transactionFilters, setTransactionFilters] = useState({
+  const initialTransactionFilters = useMemo(() => ({
     accountId: "",
     from: toLocalInputValue(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)),
     to: toLocalInputValue(new Date()),
@@ -86,6 +86,9 @@ export function useCustomerBanking() {
     maxAmountMinor: "",
     transactionReference: "",
     responseShape: "full" as "full" | "slim",
+  }), []);
+  const [transactionFilters, setTransactionFilters] = useState({
+    ...initialTransactionFilters,
   });
   const [transactionSlice, setTransactionSlice] =
     useState<TransactionQueryResponse | null>(null);
@@ -532,6 +535,17 @@ export function useCustomerBanking() {
     });
   }
 
+  function handleResetTransactionFilters() {
+    setTransactionFilters({
+      ...initialTransactionFilters,
+      accountId: selectedAccount ? String(selectedAccount.accountId) : "",
+    });
+    setTransactionSlice(null);
+    setTransactions([]);
+    setTransactionDetail(null);
+    setAlert({ type: "info", text: "거래내역 조회 조건을 초기화했습니다." });
+  }
+
   async function handleLoadTransactionDetail(transactionReference: string) {
     if (!requireSession()) {
       return;
@@ -771,6 +785,7 @@ export function useCustomerBanking() {
     handleReversal,
     handleSubmitCustomerApplication,
     handleSearchTransactions,
+    handleResetTransactionFilters,
     handleLoadTransactionDetail,
     handleLoadNotifications,
     handleLoadUnreadCount,

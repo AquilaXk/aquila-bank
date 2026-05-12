@@ -13,7 +13,10 @@ function readOptional(path) {
 }
 
 const files = {
-  page: read("src/app/page.tsx"),
+  page: [
+    read("src/app/page.tsx"),
+    read("src/components/customer-banking/layout.tsx"),
+  ].join("\n"),
   layout: read("src/app/layout.tsx"),
   manifest: readOptional("src/app/manifest.ts"),
   constants: read("src/lib/customer-banking/constants.ts"),
