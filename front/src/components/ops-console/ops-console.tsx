@@ -3,7 +3,10 @@
 import { useMemo, useState } from "react";
 import {
   accountAuditByRequestIdPath,
+  accountStatusPath,
+  authMembershipStatusPath,
   authAuditByRequestIdPath,
+  authUserStatusPath,
   buildOpsRequests,
   commandIdempotencyRecoveryPath,
   getOpsJson,
@@ -14,6 +17,7 @@ import {
   notificationDlqRedrivePath,
   outboxStaleRecoveryPath,
   postOpsJson,
+  putOpsJson,
   resolveOpsBaseUrl,
 } from "@/lib/ops-console/client";
 import { initialOpsResult } from "@/lib/ops-console/types";
@@ -35,6 +39,11 @@ function toErrorMessage(error: unknown): string {
 function toNonNegativeNumber(value: string): number | null {
   const numberValue = Number(value);
   return Number.isInteger(numberValue) && numberValue >= 0 ? numberValue : null;
+}
+
+function toPositiveNumber(value: string): number | null {
+  const numberValue = Number(value);
+  return Number.isInteger(numberValue) && numberValue > 0 ? numberValue : null;
 }
 
 function ResultPanel({ result }: { result: OpsResult }) {
@@ -74,6 +83,25 @@ export function OpsConsole() {
     snapshotAccountId: "",
     snapshotReason: "",
     snapshotConfirmation: "",
+    authStatusUserId: "",
+    authStatusValue: "DISABLED",
+    authStatusReasonCode: "OPS_MANUAL",
+    authStatusReasonDetail: "",
+    authStatusRequestId: "",
+    authStatusConfirmation: "",
+    membershipStatusUserId: "",
+    membershipStatusAccountId: "",
+    membershipStatusValue: "REVOKED",
+    membershipStatusReasonCode: "OPS_MANUAL",
+    membershipStatusReasonDetail: "",
+    membershipStatusRequestId: "",
+    membershipStatusConfirmation: "",
+    accountStatusAccountId: "",
+    accountStatusValue: "LOCKED",
+    accountStatusReasonCode: "OPS_MANUAL",
+    accountStatusReasonDetail: "",
+    accountStatusRequestId: "",
+    accountStatusConfirmation: "",
   });
   const requests = useMemo(() => buildOpsRequests(form.limit), [form.limit]);
   const [results, setResults] = useState<ResultMap>(() => createInitialResults(requests));
@@ -172,6 +200,91 @@ export function OpsConsole() {
     }
   }
 
+  async function runStatusAction({
+    auditPath,
+    auditResultLabel,
+    body,
+    confirmation,
+    label,
+    path,
+    requestId,
+    requiredConfirmation,
+  }: {
+    auditPath: string;
+    auditResultLabel: string;
+    body: unknown;
+    confirmation: string;
+    label: string;
+    path: string;
+    requestId: string;
+    requiredConfirmation: string;
+  }): Promise<void> {
+    if (!form.baseUrl || !form.token) {
+      setResults((current) => ({
+        ...current,
+        [label]: {
+          status: "error",
+          data: null,
+          error: "base URL과 internal service token을 입력하세요.",
+        },
+      }));
+      return;
+    }
+    if (!requestId.trim()) {
+      setResults((current) => ({
+        ...current,
+        [label]: { status: "error", data: null, error: "requestId를 입력하세요." },
+      }));
+      return;
+    }
+    if (confirmation.trim() !== requiredConfirmation) {
+      setResults((current) => ({
+        ...current,
+        [label]: {
+          status: "error",
+          data: null,
+          error: `${requiredConfirmation} 확인 문구를 정확히 입력하세요.`,
+        },
+      }));
+      return;
+    }
+
+    setResults((current) => ({
+      ...current,
+      [label]: { status: "loading", data: null, error: "" },
+      [auditResultLabel]: { status: "loading", data: null, error: "" },
+    }));
+    try {
+      const data = await putOpsJson(form.baseUrl, form.token, path, requestId, body);
+      setResults((current) => ({
+        ...current,
+        [label]: { status: "success", data, error: "" },
+      }));
+      try {
+        const audit = await getOpsJson(form.baseUrl, form.token, auditPath);
+        setResults((current) => ({
+          ...current,
+          [auditResultLabel]: { status: "success", data: audit, error: "" },
+        }));
+      } catch (auditError) {
+        setResults((current) => ({
+          ...current,
+          [auditResultLabel]: {
+            status: "error",
+            data: null,
+            error: toErrorMessage(auditError),
+          },
+        }));
+      }
+    } catch (error) {
+      setResults((current) => ({
+        ...current,
+        [label]: { status: "error", data: null, error: toErrorMessage(error) },
+        [auditResultLabel]: { status: "idle", data: null, error: "" },
+      }));
+    }
+  }
+
   function runDlqRedrive(): void {
     const partition = toNonNegativeNumber(form.dlqPartition);
     const offset = toNonNegativeNumber(form.dlqOffset);
@@ -247,6 +360,111 @@ export function OpsConsole() {
       return;
     }
     void runRequest(label, path);
+  }
+
+  function runAuthUserStatusUpdate(): void {
+    const userId = toPositiveNumber(form.authStatusUserId);
+    if (
+      userId === null ||
+      !form.authStatusReasonDetail.trim() ||
+      !form.authStatusRequestId.trim()
+    ) {
+      setResults((current) => ({
+        ...current,
+        ["Auth user status update"]: {
+          status: "error",
+          data: null,
+          error: "userId, requestId, reasonDetail을 입력하세요.",
+        },
+      }));
+      return;
+    }
+    updateField("authRequestId", form.authStatusRequestId);
+    void runStatusAction({
+      auditPath: authAuditByRequestIdPath(form.authStatusRequestId),
+      auditResultLabel: "Auth audit by request",
+      body: {
+        userStatus: form.authStatusValue,
+        reasonCode: form.authStatusReasonCode,
+        reasonDetail: form.authStatusReasonDetail.trim(),
+      },
+      confirmation: form.authStatusConfirmation,
+      label: "Auth user status update",
+      path: authUserStatusPath(form.authStatusUserId),
+      requestId: form.authStatusRequestId,
+      requiredConfirmation: `CHANGE USER ${form.authStatusUserId}`,
+    });
+  }
+
+  function runMembershipStatusUpdate(): void {
+    const userId = toPositiveNumber(form.membershipStatusUserId);
+    const accountId = toPositiveNumber(form.membershipStatusAccountId);
+    if (
+      userId === null ||
+      accountId === null ||
+      !form.membershipStatusReasonDetail.trim() ||
+      !form.membershipStatusRequestId.trim()
+    ) {
+      setResults((current) => ({
+        ...current,
+        ["Auth membership status update"]: {
+          status: "error",
+          data: null,
+          error: "userId, accountId, requestId, reasonDetail을 입력하세요.",
+        },
+      }));
+      return;
+    }
+    updateField("authRequestId", form.membershipStatusRequestId);
+    void runStatusAction({
+      auditPath: authAuditByRequestIdPath(form.membershipStatusRequestId),
+      auditResultLabel: "Auth audit by request",
+      body: {
+        membershipStatus: form.membershipStatusValue,
+        reasonCode: form.membershipStatusReasonCode,
+        reasonDetail: form.membershipStatusReasonDetail.trim(),
+      },
+      confirmation: form.membershipStatusConfirmation,
+      label: "Auth membership status update",
+      path: authMembershipStatusPath(
+        form.membershipStatusUserId,
+        form.membershipStatusAccountId,
+      ),
+      requestId: form.membershipStatusRequestId,
+      requiredConfirmation: `CHANGE MEMBERSHIP ${form.membershipStatusUserId}/${form.membershipStatusAccountId}`,
+    });
+  }
+
+  function runAccountStatusUpdate(): void {
+    const accountId = toPositiveNumber(form.accountStatusAccountId);
+    if (
+      accountId === null ||
+      !form.accountStatusReasonDetail.trim() ||
+      !form.accountStatusRequestId.trim()
+    ) {
+      setResults((current) => ({
+        ...current,
+        ["Account status update"]: {
+          status: "error",
+          data: null,
+          error: "accountId, requestId, reasonDetail을 입력하세요.",
+        },
+      }));
+      return;
+    }
+    updateField("accountRequestId", form.accountStatusRequestId);
+    void runStatusAction({
+      auditPath: accountAuditByRequestIdPath(form.accountStatusRequestId),
+      auditResultLabel: "Account audit by request",
+      body: {
+        accountStatus: form.accountStatusValue,
+      },
+      confirmation: form.accountStatusConfirmation,
+      label: "Account status update",
+      path: accountStatusPath(form.accountStatusAccountId),
+      requestId: form.accountStatusRequestId,
+      requiredConfirmation: `CHANGE ACCOUNT ${form.accountStatusAccountId}`,
+    });
   }
 
   const lookupItems: OpsRequest[] = [
@@ -507,10 +725,272 @@ export function OpsConsole() {
         </div>
       </section>
 
+      <section className="ops-actions ops-status-actions" aria-label="Status Change Actions">
+        <div className="ops-lookup-title">
+          <strong>AUTH_ADMIN / ACCOUNT_ADMIN status changes</strong>
+          <span>requestId, reasonCode, reasonDetail, 확인 문구를 모두 입력한 뒤 실행합니다.</span>
+        </div>
+        <div className="ops-action-grid">
+          <article className="ops-action-card ops-status-card">
+            <div>
+              <strong>Auth user status update</strong>
+              <span>/internal/api/v1/auth/users/{"{userId}"}/status</span>
+            </div>
+            <div className="ops-action-fields">
+              <label>
+                User ID
+                <input
+                  inputMode="numeric"
+                  value={form.authStatusUserId}
+                  onChange={(event) => updateField("authStatusUserId", event.target.value)}
+                />
+              </label>
+              <label>
+                User status
+                <select
+                  value={form.authStatusValue}
+                  onChange={(event) => updateField("authStatusValue", event.target.value)}
+                >
+                  <option value="ACTIVE">ACTIVE</option>
+                  <option value="LOCKED">LOCKED</option>
+                  <option value="DISABLED">DISABLED</option>
+                </select>
+              </label>
+            </div>
+            <div className="ops-action-fields">
+              <label>
+                Reason code
+                <select
+                  value={form.authStatusReasonCode}
+                  onChange={(event) =>
+                    updateField("authStatusReasonCode", event.target.value)
+                  }
+                >
+                  <option value="OPS_MANUAL">OPS_MANUAL</option>
+                  <option value="FRAUD_REVIEW">FRAUD_REVIEW</option>
+                  <option value="USER_REQUEST">USER_REQUEST</option>
+                  <option value="ACCOUNT_CLOSURE">ACCOUNT_CLOSURE</option>
+                </select>
+              </label>
+              <label>
+                Request ID
+                <input
+                  value={form.authStatusRequestId}
+                  onChange={(event) => updateField("authStatusRequestId", event.target.value)}
+                  placeholder="auth-user-status-..."
+                />
+              </label>
+            </div>
+            <label>
+              Reason detail
+              <input
+                maxLength={200}
+                value={form.authStatusReasonDetail}
+                onChange={(event) =>
+                  updateField("authStatusReasonDetail", event.target.value)
+                }
+              />
+            </label>
+            <label>
+              Confirm phrase
+              <input
+                value={form.authStatusConfirmation}
+                onChange={(event) =>
+                  updateField("authStatusConfirmation", event.target.value)
+                }
+                placeholder={`CHANGE USER ${form.authStatusUserId || "{userId}"}`}
+              />
+            </label>
+            <button className="ops-danger-button" type="button" onClick={runAuthUserStatusUpdate}>
+              user status 변경
+            </button>
+            <ResultPanel result={results["Auth user status update"] ?? initialOpsResult} />
+          </article>
+
+          <article className="ops-action-card ops-status-card">
+            <div>
+              <strong>Auth membership status update</strong>
+              <span>
+                /internal/api/v1/auth/users/{"{userId}"}/memberships/{"{accountId}"}/status
+              </span>
+            </div>
+            <div className="ops-action-fields">
+              <label>
+                User ID
+                <input
+                  inputMode="numeric"
+                  value={form.membershipStatusUserId}
+                  onChange={(event) =>
+                    updateField("membershipStatusUserId", event.target.value)
+                  }
+                />
+              </label>
+              <label>
+                Account ID
+                <input
+                  inputMode="numeric"
+                  value={form.membershipStatusAccountId}
+                  onChange={(event) =>
+                    updateField("membershipStatusAccountId", event.target.value)
+                  }
+                />
+              </label>
+            </div>
+            <div className="ops-action-fields">
+              <label>
+                Membership status
+                <select
+                  value={form.membershipStatusValue}
+                  onChange={(event) =>
+                    updateField("membershipStatusValue", event.target.value)
+                  }
+                >
+                  <option value="ACTIVE">ACTIVE</option>
+                  <option value="REVOKED">REVOKED</option>
+                </select>
+              </label>
+              <label>
+                Reason code
+                <select
+                  value={form.membershipStatusReasonCode}
+                  onChange={(event) =>
+                    updateField("membershipStatusReasonCode", event.target.value)
+                  }
+                >
+                  <option value="OPS_MANUAL">OPS_MANUAL</option>
+                  <option value="FRAUD_REVIEW">FRAUD_REVIEW</option>
+                  <option value="USER_REQUEST">USER_REQUEST</option>
+                  <option value="ACCOUNT_CLOSURE">ACCOUNT_CLOSURE</option>
+                </select>
+              </label>
+            </div>
+            <label>
+              Request ID
+              <input
+                value={form.membershipStatusRequestId}
+                onChange={(event) =>
+                  updateField("membershipStatusRequestId", event.target.value)
+                }
+                placeholder="auth-membership-status-..."
+              />
+            </label>
+            <label>
+              Reason detail
+              <input
+                maxLength={200}
+                value={form.membershipStatusReasonDetail}
+                onChange={(event) =>
+                  updateField("membershipStatusReasonDetail", event.target.value)
+                }
+              />
+            </label>
+            <label>
+              Confirm phrase
+              <input
+                value={form.membershipStatusConfirmation}
+                onChange={(event) =>
+                  updateField("membershipStatusConfirmation", event.target.value)
+                }
+                placeholder={`CHANGE MEMBERSHIP ${form.membershipStatusUserId || "{userId}"}/${form.membershipStatusAccountId || "{accountId}"}`}
+              />
+            </label>
+            <button className="ops-danger-button" type="button" onClick={runMembershipStatusUpdate}>
+              membership status 변경
+            </button>
+            <ResultPanel
+              result={results["Auth membership status update"] ?? initialOpsResult}
+            />
+          </article>
+
+          <article className="ops-action-card ops-status-card">
+            <div>
+              <strong>Account status update</strong>
+              <span>/internal/api/v1/accounts/{"{accountId}"}/status</span>
+            </div>
+            <div className="ops-action-fields">
+              <label>
+                Account ID
+                <input
+                  inputMode="numeric"
+                  value={form.accountStatusAccountId}
+                  onChange={(event) =>
+                    updateField("accountStatusAccountId", event.target.value)
+                  }
+                />
+              </label>
+              <label>
+                Account status
+                <select
+                  value={form.accountStatusValue}
+                  onChange={(event) => updateField("accountStatusValue", event.target.value)}
+                >
+                  <option value="ACTIVE">ACTIVE</option>
+                  <option value="LOCKED">LOCKED</option>
+                  <option value="CLOSED">CLOSED</option>
+                </select>
+              </label>
+            </div>
+            <div className="ops-action-fields">
+              <label>
+                Reason code
+                <select
+                  value={form.accountStatusReasonCode}
+                  onChange={(event) =>
+                    updateField("accountStatusReasonCode", event.target.value)
+                  }
+                >
+                  <option value="OPS_MANUAL">OPS_MANUAL</option>
+                  <option value="FRAUD_REVIEW">FRAUD_REVIEW</option>
+                  <option value="USER_REQUEST">USER_REQUEST</option>
+                  <option value="ACCOUNT_CLOSURE">ACCOUNT_CLOSURE</option>
+                </select>
+              </label>
+              <label>
+                Request ID
+                <input
+                  value={form.accountStatusRequestId}
+                  onChange={(event) =>
+                    updateField("accountStatusRequestId", event.target.value)
+                  }
+                  placeholder="account-status-..."
+                />
+              </label>
+            </div>
+            <label>
+              Reason detail
+              <input
+                maxLength={200}
+                value={form.accountStatusReasonDetail}
+                onChange={(event) =>
+                  updateField("accountStatusReasonDetail", event.target.value)
+                }
+              />
+            </label>
+            <p className="ops-risk-note">
+              Account status API는 현재 requestId audit을 기준으로 추적합니다.
+            </p>
+            <label>
+              Confirm phrase
+              <input
+                value={form.accountStatusConfirmation}
+                onChange={(event) =>
+                  updateField("accountStatusConfirmation", event.target.value)
+                }
+                placeholder={`CHANGE ACCOUNT ${form.accountStatusAccountId || "{accountId}"}`}
+              />
+            </label>
+            <button className="ops-danger-button" type="button" onClick={runAccountStatusUpdate}>
+              account status 변경
+            </button>
+            <ResultPanel result={results["Account status update"] ?? initialOpsResult} />
+          </article>
+        </div>
+      </section>
+
       <section className="ops-lookups" aria-label="exact lookup">
         <div className="ops-lookup-title">
           <strong>Ledger / Snapshot / Auth / Account exact lookup</strong>
-          <span>destructive recovery와 status update는 이 MVP 범위에서 제외합니다.</span>
+          <span>write action 이후 같은 requestId로 감사 조회 결과를 확인합니다.</span>
         </div>
         <div className="ops-lookup-fields">
           <label>
