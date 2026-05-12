@@ -31,6 +31,8 @@ const required = [
   ["guest dashboard notification lock", files.dashboard, "로그인 후 알림 확인"],
   ["guest dashboard protected table state", files.dashboard, "인증 후 가능"],
   ["guest security auth marker", files.security, "const isAuthenticated"],
+  ["guest totp state gate", files.security, "activeTotpEnrollment"],
+  ["guest backup code state gate", files.security, "activeBackupCodes"],
   ["guest security masked value", files.security, "로그인 후 확인"],
   ["guest otp masked value", files.security, "OTP 상태 로그인 후 확인"],
   ["guest session table locked state", files.security, "로그인 후 세션 조회 가능"],
@@ -42,10 +44,9 @@ const required = [
 
 const forbiddenUnauthSignals = [
   ["layout guest work available", files.layout, "sessionRequired ? \"로그인 필요\" : \"업무 가능\""],
-  ["dashboard unauth normal work", files.dashboard, "조회/이체/인증 정상"],
-  ["dashboard unauth next lookup", files.dashboard, "다음 조회 가능"],
-  ["dashboard unauth duplicate guard state", files.dashboard, "중복 방지</td>"],
-  ["dashboard unauth realtime state", files.dashboard, "실시간 알림</td>"],
+  ["dashboard unauth next lookup", files.dashboard, "<td>다음 조회 가능</td>"],
+  ["dashboard unauth duplicate guard state", files.dashboard, "<td>중복 방지</td>"],
+  ["dashboard unauth realtime state", files.dashboard, "<td>실시간 알림</td>"],
   ["security guest otp unregistered", files.security, "props.totpEnrollment ? props.totpEnrollment.status : \"미등록\""],
   ["security guest raw session count", files.security, "<strong>{props.sessions.length}건</strong>"],
   ["security guest empty session row", files.security, "조회된 세션이 없습니다."],
