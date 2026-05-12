@@ -1,22 +1,40 @@
 :root {
-  color-scheme: light;
-  --page: #eef2f7;
-  --surface: #ffffff;
-  --surface-muted: #f6f8fb;
-  --line: #d8e0eb;
-  --line-strong: #aebbd0;
-  --text: #1d2733;
-  --muted: #66758a;
-  --primary: #1157a6;
-  --primary-dark: #073f83;
-  --primary-soft: #e7f0fb;
-  --accent: #0a7d8f;
-  --danger: #b42318;
-  --danger-soft: #fff1f0;
-  --success: #087443;
-  --success-soft: #ecfdf3;
-  --warning-soft: #fff8e1;
-  --shadow: 0 8px 24px rgba(29, 39, 51, 0.08);
+  color-scheme: dark;
+  --gothic-page: #101214;
+  --gothic-surface: #171a1d;
+  --gothic-surface-muted: #202328;
+  --gothic-iron: #2d3338;
+  --gothic-line: #3b3a32;
+  --gothic-line-strong: #6d5a35;
+  --gothic-parchment: #efe7d3;
+  --gothic-muted: #a8a195;
+  --gothic-brass: #c2a35b;
+  --gothic-brass-strong: #d2b46d;
+  --gothic-brass-soft: #2b2418;
+  --gothic-danger: #ef9a91;
+  --gothic-danger-soft: #2b1716;
+  --gothic-success: #6f9f7b;
+  --gothic-success-soft: #17251d;
+  --gothic-warning-soft: #2c2618;
+  --gothic-focus: #e5c76f;
+  --gothic-shadow: 0 14px 30px rgba(0, 0, 0, 0.32);
+  --page: var(--gothic-page);
+  --surface: var(--gothic-surface);
+  --surface-muted: var(--gothic-surface-muted);
+  --line: var(--gothic-line);
+  --line-strong: var(--gothic-line-strong);
+  --text: var(--gothic-parchment);
+  --muted: var(--gothic-muted);
+  --primary: var(--gothic-brass);
+  --primary-dark: var(--gothic-brass-strong);
+  --primary-soft: var(--gothic-brass-soft);
+  --accent: #8aa0a6;
+  --danger: var(--gothic-danger);
+  --danger-soft: var(--gothic-danger-soft);
+  --success: var(--gothic-success);
+  --success-soft: var(--gothic-success-soft);
+  --warning-soft: var(--gothic-warning-soft);
+  --shadow: var(--gothic-shadow);
 }
 
 * {
@@ -52,7 +70,7 @@ button {
   min-height: 34px;
   border: 1px solid var(--line-strong);
   border-radius: 4px;
-  background: var(--surface);
+  background: linear-gradient(180deg, #211f1a, #171a1d);
   color: var(--text);
   cursor: pointer;
   font-weight: 700;
@@ -62,14 +80,14 @@ button {
 
 button:hover:not(:disabled) {
   border-color: var(--primary);
-  color: var(--primary);
+  color: var(--primary-dark);
 }
 
 button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 a:focus-visible {
-  outline: 3px solid #79b8ff;
+  outline: 3px solid var(--gothic-focus);
   outline-offset: 2px;
 }
 
@@ -84,22 +102,31 @@ select {
   height: 36px;
   border: 1px solid var(--line-strong);
   border-radius: 3px;
-  background: #fff;
+  background: #0f1113;
   color: var(--text);
   padding: 0 10px;
+}
+
+.gothic-banking-shell input,
+.gothic-banking-shell select {
+  background: #0f1113;
+  color: var(--text);
 }
 
 label span {
   display: block;
   margin-bottom: 6px;
-  color: #344054;
+  color: var(--muted);
   font-size: 13px;
   font-weight: 700;
 }
 
-.bank-shell {
+.bank-shell,
+.gothic-banking-shell {
   min-width: 1180px;
-  background: var(--page);
+  background:
+    linear-gradient(180deg, rgba(28, 30, 31, 0.96), rgba(16, 18, 20, 1)),
+    var(--page);
 }
 
 .dense-banking-shell {
@@ -117,10 +144,10 @@ label span {
   top: 8px;
   left: 8px;
   transform: translateY(-140%);
-  border: 2px solid var(--primary);
+  border: 2px solid var(--primary-dark);
   border-radius: 4px;
-  background: #fff;
-  color: var(--primary-dark);
+  background: #0f1113;
+  color: var(--text);
   padding: 8px 12px;
   font-weight: 800;
   text-decoration: none;
@@ -131,8 +158,8 @@ label span {
 }
 
 .bank-header {
-  border-bottom: 1px solid #c9d5e4;
-  background: var(--surface);
+  border-bottom: 1px solid var(--line-strong);
+  background: linear-gradient(180deg, #1c1d1c, #121416);
   box-shadow: var(--shadow);
 }
 
@@ -242,7 +269,7 @@ label span {
   height: 42px;
   border-radius: 6px;
   border: 1px solid var(--line-strong);
-  background: #fff;
+  background: #121416;
   overflow: hidden;
 }
 
@@ -255,6 +282,7 @@ label span {
 
 .brand-mark strong {
   display: block;
+  color: var(--text);
   font-size: 22px;
   letter-spacing: 0;
 }
@@ -262,7 +290,7 @@ label span {
 .brand-mark small {
   display: block;
   margin-top: 2px;
-  color: var(--muted);
+  color: var(--primary);
   font-size: 12px;
 }
 
@@ -296,6 +324,10 @@ label span {
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
+}
+
+.gothic-state-strip {
+  border-color: var(--line-strong);
 }
 
 .bank-service-strip strong,
@@ -468,7 +500,8 @@ label span {
 
 .task-section,
 .rail-panel,
-.table-panel {
+.table-panel,
+.gothic-work-panel {
   border: 1px solid var(--line);
   border-radius: 3px;
   background: var(--surface);
@@ -748,6 +781,8 @@ label span {
   margin-top: 12px;
   border-collapse: collapse;
   table-layout: fixed;
+  background: var(--surface);
+  color: var(--text);
 }
 
 .service-hours-table caption {
@@ -760,13 +795,15 @@ label span {
 .service-hours-table th,
 .service-hours-table td {
   border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
   padding: 9px 10px;
   text-align: left;
 }
 
 .service-hours-table th {
   background: var(--surface-muted);
-  color: #102f55;
+  color: var(--primary-dark);
 }
 
 .work-summary-strip {
@@ -778,10 +815,10 @@ label span {
 
 .work-summary-strip span {
   min-height: 30px;
-  border: 1px solid #bcd3ef;
+  border: 1px solid var(--line);
   border-radius: 4px;
-  background: #fff;
-  color: #102f55;
+  background: var(--primary-soft);
+  color: var(--primary-dark);
   padding: 7px 10px;
   font-size: 12px;
   font-weight: 800;
@@ -802,7 +839,7 @@ label span {
   border: 1px solid var(--line);
   border-left: 3px solid var(--primary);
   border-radius: 3px;
-  background: #fff;
+  background: var(--surface-muted);
   padding: 9px 10px;
 }
 
@@ -813,14 +850,14 @@ label span {
 }
 
 .work-state-grid strong {
-  color: #102f55;
+  color: var(--text);
   font-size: 14px;
   overflow-wrap: anywhere;
 }
 
 .work-state-grid .tone-warn {
-  border-left-color: #d97706;
-  background: #fffbeb;
+  border-left-color: var(--primary);
+  background: var(--primary-soft);
 }
 
 .work-state-grid .tone-success {
@@ -850,7 +887,7 @@ label span {
   border: 1px solid var(--line);
   border-top: 3px solid var(--primary);
   border-radius: 3px;
-  background: #fff;
+  background: var(--surface-muted);
   padding: 10px;
 }
 
@@ -868,7 +905,7 @@ label span {
 .account-status-grid strong,
 .security-media-grid strong,
 .transfer-verification-panel strong {
-  color: #102f55;
+  color: var(--text);
   overflow-wrap: anywhere;
 }
 
@@ -903,7 +940,7 @@ label span {
 .enterprise-service-card strong,
 .security-hub-card strong,
 .support-service-card strong {
-  color: #102f55;
+  color: var(--text);
   font-size: 17px;
 }
 
@@ -944,7 +981,7 @@ label span {
   min-width: 0;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: #fff;
+  background: var(--surface-muted);
   padding: 14px;
 }
 
@@ -962,7 +999,7 @@ label span {
 
 .fulfillment-detail-head strong,
 .registration-flow-card strong {
-  color: #102f55;
+  color: var(--text);
   font-size: 17px;
 }
 
@@ -1010,10 +1047,10 @@ label span {
 }
 
 .process-strip li {
-  border: 1px solid #bcd3ef;
+  border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--primary-soft);
-  color: #184069;
+  color: var(--primary-dark);
   font-size: 12px;
   font-weight: 800;
   line-height: 1.35;
@@ -1046,7 +1083,7 @@ label span {
 
 .application-result-line {
   margin: 12px 0 0;
-  border: 1px solid #bcd3ef;
+  border: 1px solid var(--line);
   border-radius: 4px;
   background: var(--primary-soft);
   color: var(--primary-dark);
@@ -1057,9 +1094,9 @@ label span {
 .process-panel {
   display: grid;
   gap: 10px;
-  border: 1px solid #bcd3ef;
+  border: 1px solid var(--line);
   border-radius: 4px;
-  background: #fff;
+  background: var(--surface-muted);
   padding: 12px;
 }
 
@@ -1083,7 +1120,7 @@ label span {
 
 .faq-list summary {
   cursor: pointer;
-  color: #102f55;
+  color: var(--text);
   font-weight: 800;
 }
 
@@ -1787,7 +1824,9 @@ label span {
 .bank-table-wrap {
   margin-top: 14px;
   overflow-x: auto;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--text);
 }
 
 .table-panel .bank-table-wrap {
@@ -1798,7 +1837,13 @@ label span {
 .bank-table {
   width: 100%;
   border-collapse: collapse;
-  background: #fff;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.gothic-bank-table {
+  background: var(--surface);
+  color: var(--text);
 }
 
 .bank-table.dense-bank-table th,
@@ -1817,14 +1862,16 @@ label span {
 .bank-table th,
 .bank-table td {
   border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
   padding: 10px 12px;
   text-align: left;
   vertical-align: middle;
 }
 
 .bank-table th {
-  background: #f0f4f9;
-  color: #263b56;
+  background: var(--surface-muted);
+  color: var(--primary-dark);
   font-size: 13px;
 }
 
@@ -1871,7 +1918,7 @@ label span {
 }
 
 .empty-state-panel strong {
-  color: #102f55;
+  color: var(--text);
 }
 
 .empty-state-panel span {

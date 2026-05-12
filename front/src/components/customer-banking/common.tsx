@@ -35,7 +35,7 @@ export function WorkPanel({
   meta?: string;
 }) {
   return (
-    <section className={`table-panel bank-work-panel ${className}`.trim()}>
+    <section className={`table-panel bank-work-panel gothic-work-panel ${className}`.trim()}>
       <div className="panel-toolbar">
         <div>
           <strong>{title}</strong>
@@ -89,7 +89,7 @@ export function BankTable({
 }) {
   return (
     <div className="bank-table-wrap">
-      <table className={`bank-table ${dense ? "dense-bank-table" : ""} ${className}`.trim()}>
+      <table className={`bank-table gothic-bank-table ${dense ? "dense-bank-table" : ""} ${className}`.trim()}>
         <caption>{caption}</caption>
         {children}
       </table>
