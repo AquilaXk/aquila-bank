@@ -2,6 +2,9 @@ package com.aquilabank.global.web.ledger;
 
 import com.aquilabank.domain.account.model.AccountSummary;
 import com.aquilabank.domain.account.usecase.AccountSummaryQueryUseCase;
+import com.aquilabank.domain.auth.model.TotpOperationVerifyCommand;
+import com.aquilabank.domain.auth.usecase.TotpOperationRequirementUseCase;
+import com.aquilabank.domain.auth.usecase.TotpOperationVerifyUseCase;
 import com.aquilabank.domain.ledger.model.TransferCommand;
 import com.aquilabank.domain.ledger.model.TransferResult;
 import com.aquilabank.domain.ledger.model.TransferReversalCommand;
@@ -12,6 +15,7 @@ import com.aquilabank.domain.ledger.usecase.TransferCommandUseCase;
 import com.aquilabank.domain.ledger.usecase.TransferReversalUseCase;
 import com.aquilabank.global.config.TransferLimitPolicyProperties;
 import com.aquilabank.global.security.AuthenticatedRequestPrincipal;
+import com.aquilabank.global.security.AuthenticatedUserPrincipal;
 import com.aquilabank.global.web.security.CurrentAuthenticatedPrincipal;
 import com.aquilabank.global.web.security.RequestAccountAuthorizationService;
 import jakarta.validation.Valid;
@@ -46,6 +50,8 @@ public class TransferCommandController {
   private final RequestAccountAuthorizationService requestAccountAuthorizationService;
   private final AccountSummaryQueryUseCase accountSummaryQueryUseCase;
   private final TransferLimitUsageReadPort transferLimitUsageReadPort;
+  private final TotpOperationRequirementUseCase totpOperationRequirementUseCase;
+  private final TotpOperationVerifyUseCase totpOperationVerifyUseCase;
   private final TransferLimitPolicyProperties transferLimitPolicyProperties;
   private final Clock clock;
 
@@ -56,6 +62,8 @@ public class TransferCommandController {
       RequestAccountAuthorizationService requestAccountAuthorizationService,
       AccountSummaryQueryUseCase accountSummaryQueryUseCase,
       TransferLimitUsageReadPort transferLimitUsageReadPort,
+      TotpOperationRequirementUseCase totpOperationRequirementUseCase,
+      TotpOperationVerifyUseCase totpOperationVerifyUseCase,
       TransferLimitPolicyProperties transferLimitPolicyProperties) {
     this(
         transferCommandUseCase,
@@ -63,6 +71,8 @@ public class TransferCommandController {
         requestAccountAuthorizationService,
         accountSummaryQueryUseCase,
         transferLimitUsageReadPort,
+        totpOperationRequirementUseCase,
+        totpOperationVerifyUseCase,
         transferLimitPolicyProperties,
         Clock.systemUTC());
   }
@@ -73,6 +83,8 @@ public class TransferCommandController {
       RequestAccountAuthorizationService requestAccountAuthorizationService,
       AccountSummaryQueryUseCase accountSummaryQueryUseCase,
       TransferLimitUsageReadPort transferLimitUsageReadPort,
+      TotpOperationRequirementUseCase totpOperationRequirementUseCase,
+      TotpOperationVerifyUseCase totpOperationVerifyUseCase,
       TransferLimitPolicyProperties transferLimitPolicyProperties,
       Clock clock) {
     this.transferCommandUseCase = transferCommandUseCase;
@@ -80,6 +92,8 @@ public class TransferCommandController {
     this.requestAccountAuthorizationService = requestAccountAuthorizationService;
     this.accountSummaryQueryUseCase = accountSummaryQueryUseCase;
     this.transferLimitUsageReadPort = transferLimitUsageReadPort;
+    this.totpOperationRequirementUseCase = totpOperationRequirementUseCase;
+    this.totpOperationVerifyUseCase = totpOperationVerifyUseCase;
     this.transferLimitPolicyProperties = transferLimitPolicyProperties;
     this.clock = clock;
   }
@@ -129,7 +143,7 @@ public class TransferCommandController {
         dailyRemainingMinor,
         "OK".equals(blockedReason),
         blockedReason,
-        true);
+        resolveOtpRequired(principal));
   }
 
   @PostMapping
@@ -137,6 +151,7 @@ public class TransferCommandController {
       @CurrentAuthenticatedPrincipal AuthenticatedRequestPrincipal principal,
       @RequestHeader("Idempotency-Key") String idempotencyKey,
       @Valid @RequestBody TransferRequest request) {
+    verifyOperationTotpIfRequired(principal, request.totpCode());
     long sourceAccountId =
         requestAccountAuthorizationService.resolveTransferSourceAccountId(
             principal, request.sourceAccountId());
@@ -158,6 +173,7 @@ public class TransferCommandController {
       @PathVariable String transactionReference,
       @RequestHeader("Idempotency-Key") String idempotencyKey,
       @Valid @RequestBody TransferReversalRequest request) {
+    verifyOperationTotpIfRequired(principal, request.totpCode());
     long sourceAccountId =
         requestAccountAuthorizationService.resolveTransferSourceAccountId(
             principal, request.sourceAccountId());
@@ -171,6 +187,25 @@ public class TransferCommandController {
                 request.summary(),
                 idempotencyKey));
     return TransferReversalResponse.from(result);
+  }
+
+  private boolean resolveOtpRequired(AuthenticatedRequestPrincipal principal) {
+    if (principal instanceof AuthenticatedUserPrincipal userPrincipal) {
+      return totpOperationRequirementUseCase.requiresVerification(userPrincipal.userId());
+    }
+    return true;
+  }
+
+  private void verifyOperationTotpIfRequired(
+      AuthenticatedRequestPrincipal principal, String totpCode) {
+    if (!(principal instanceof AuthenticatedUserPrincipal userPrincipal)) {
+      return;
+    }
+    if (!totpOperationRequirementUseCase.requiresVerification(userPrincipal.userId())) {
+      return;
+    }
+    totpOperationVerifyUseCase.verify(
+        new TotpOperationVerifyCommand(userPrincipal.userId(), totpCode));
   }
 
   private String resolvePreviewBlockedReason(
@@ -250,14 +285,16 @@ public class TransferCommandController {
               regexp = "^[A-Z]{3}$",
               message = "currencyCode must be a 3-letter uppercase code")
           String currencyCode,
-      @NotBlank(message = "summary is required") @Size(max = 120, message = "summary must be 120 characters or less") String summary) {}
+      @NotBlank(message = "summary is required") @Size(max = 120, message = "summary must be 120 characters or less") String summary,
+      @Size(max = 12, message = "totpCode must be 12 characters or less") String totpCode) {}
 
   /** 송금 reversal 요청 body */
   public record TransferReversalRequest(
       @Positive(message = "sourceAccountId must be positive") long sourceAccountId,
       @Positive(message = "amountMinor must be positive") Long amountMinor,
       @NotNull(message = "reversalReason is required") TransferReversalReason reversalReason,
-      @NotBlank(message = "summary is required") @Size(max = 120, message = "summary must be 120 characters or less") String summary) {}
+      @NotBlank(message = "summary is required") @Size(max = 120, message = "summary must be 120 characters or less") String summary,
+      @Size(max = 12, message = "totpCode must be 12 characters or less") String totpCode) {}
 
   /** 송금 완료 응답 */
   public record TransferResponse(

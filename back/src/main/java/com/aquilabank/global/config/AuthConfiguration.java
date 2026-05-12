@@ -90,6 +90,8 @@ import com.aquilabank.domain.auth.usecase.TotpDisableService;
 import com.aquilabank.domain.auth.usecase.TotpDisableUseCase;
 import com.aquilabank.domain.auth.usecase.TotpEnrollmentService;
 import com.aquilabank.domain.auth.usecase.TotpEnrollmentUseCase;
+import com.aquilabank.domain.auth.usecase.TotpOperationRequirementService;
+import com.aquilabank.domain.auth.usecase.TotpOperationRequirementUseCase;
 import com.aquilabank.domain.auth.usecase.TotpOperationVerifyService;
 import com.aquilabank.domain.auth.usecase.TotpOperationVerifyUseCase;
 import com.aquilabank.domain.auth.usecase.UserAccountMembershipQueryService;
@@ -447,6 +449,12 @@ public class AuthConfiguration {
     TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
     return command ->
         transactionTemplate.executeWithoutResult(status -> totpDisableService.disable(command));
+  }
+
+  @Bean
+  TotpOperationRequirementUseCase totpOperationRequirementUseCase(
+      TotpCredentialLoadPort totpCredentialLoadPort) {
+    return new TotpOperationRequirementService(totpCredentialLoadPort);
   }
 
   @Bean
