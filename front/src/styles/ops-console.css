@@ -130,7 +130,8 @@
 
 .ops-guard input,
 .ops-lookup-fields input,
-.ops-action-card input {
+.ops-action-card input,
+.ops-action-card select {
   min-width: 0;
   border: 1px solid var(--ops-gothic-line-strong);
   background: var(--ops-gothic-page);
@@ -141,6 +142,7 @@
 .ops-guard input:focus-visible,
 .ops-lookup-fields input:focus-visible,
 .ops-action-card input:focus-visible,
+.ops-action-card select:focus-visible,
 .ops-header a:focus-visible,
 .ops-card-head button:focus-visible,
 .ops-lookup-fields button:focus-visible {
@@ -253,6 +255,10 @@
   background: rgba(43, 23, 22, 0.32);
 }
 
+.ops-status-actions {
+  background: rgba(43, 36, 24, 0.32);
+}
+
 .ops-action-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -266,6 +272,10 @@
   padding: 14px;
   border: 1px solid #6f3c35;
   background: var(--ops-gothic-surface);
+}
+
+.ops-status-card {
+  border-color: var(--ops-gothic-line-strong);
 }
 
 .ops-action-card > div:first-child {
@@ -287,6 +297,16 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+}
+
+.ops-risk-note {
+  margin: 0;
+  border-left: 3px solid var(--ops-gothic-brass);
+  background: var(--ops-gothic-brass-soft);
+  color: var(--ops-gothic-muted);
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .ops-lookup-title {

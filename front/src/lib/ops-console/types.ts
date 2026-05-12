@@ -27,6 +27,25 @@ export type OpsFormState = {
   snapshotAccountId: string;
   snapshotReason: string;
   snapshotConfirmation: string;
+  authStatusUserId: string;
+  authStatusValue: string;
+  authStatusReasonCode: string;
+  authStatusReasonDetail: string;
+  authStatusRequestId: string;
+  authStatusConfirmation: string;
+  membershipStatusUserId: string;
+  membershipStatusAccountId: string;
+  membershipStatusValue: string;
+  membershipStatusReasonCode: string;
+  membershipStatusReasonDetail: string;
+  membershipStatusRequestId: string;
+  membershipStatusConfirmation: string;
+  accountStatusAccountId: string;
+  accountStatusValue: string;
+  accountStatusReasonCode: string;
+  accountStatusReasonDetail: string;
+  accountStatusRequestId: string;
+  accountStatusConfirmation: string;
 };
 
 export const initialOpsResult: OpsResult = {

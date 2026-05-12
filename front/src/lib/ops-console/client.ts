@@ -79,6 +79,41 @@ export async function postOpsJson(
   return responseBody;
 }
 
+export async function putOpsJson(
+  baseUrl: string,
+  token: string,
+  path: string,
+  requestId: string,
+  body: unknown,
+): Promise<unknown> {
+  const response = await fetch(`${baseUrl.replace(/\/+$/, "")}${path}`, {
+    method: "PUT",
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      "X-Request-Id": requestId,
+    },
+    credentials: "include",
+    body: JSON.stringify(body),
+  });
+
+  const contentType = response.headers.get("content-type") ?? "";
+  const responseBody = contentType.includes("application/json")
+    ? await response.json()
+    : await response.text();
+
+  if (!response.ok) {
+    const message =
+      typeof responseBody === "object" && responseBody !== null && "message" in responseBody
+        ? String((responseBody as { message?: unknown }).message)
+        : response.statusText;
+    throw new Error(message);
+  }
+
+  return responseBody;
+}
+
 export function outboxStaleRecoveryPath(): string {
   return "/internal/api/v1/outbox/recovery/stale-sending";
 }
@@ -97,6 +132,20 @@ export function commandIdempotencyRecoveryPath(): string {
 
 export function ledgerSnapshotRecoveryPath(accountId: string): string {
   return `/internal/api/v1/ledger/snapshot-reconciliation/accounts/${accountId}/recovery`;
+}
+
+export function authUserStatusPath(userId: string): string {
+  return `/internal/api/v1/auth/users/${encodeURIComponent(userId)}/status`;
+}
+
+export function authMembershipStatusPath(userId: string, accountId: string): string {
+  return `/internal/api/v1/auth/users/${encodeURIComponent(
+    userId,
+  )}/memberships/${encodeURIComponent(accountId)}/status`;
+}
+
+export function accountStatusPath(accountId: string): string {
+  return `/internal/api/v1/accounts/${encodeURIComponent(accountId)}/status`;
 }
 
 export function buildOpsRequests(limit: string): OpsRequest[] {
