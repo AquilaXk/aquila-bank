@@ -17,6 +17,16 @@ export type OpsFormState = {
   transactionReference: string;
   accountRequestId: string;
   authRequestId: string;
+  outboxConfirmation: string;
+  dlqPartition: string;
+  dlqOffset: string;
+  dlqConfirmation: string;
+  channelEventId: string;
+  channelConfirmation: string;
+  idempotencyConfirmation: string;
+  snapshotAccountId: string;
+  snapshotReason: string;
+  snapshotConfirmation: string;
 };
 
 export const initialOpsResult: OpsResult = {

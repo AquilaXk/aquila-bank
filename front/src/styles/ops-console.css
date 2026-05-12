@@ -78,13 +78,20 @@
   font-weight: 800;
 }
 
+.ops-write-badge {
+  color: #f0b7ae;
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .ops-header .ops-readonly-badge {
   color: var(--ops-gothic-brass);
 }
 
 .ops-header a,
 .ops-card-head button,
-.ops-lookup-fields button {
+.ops-lookup-fields button,
+.ops-danger-button {
   border: 1px solid var(--ops-gothic-line-strong);
   background: var(--ops-gothic-brass-soft);
   color: var(--ops-gothic-brass);
@@ -96,7 +103,8 @@
 
 .ops-header a:hover,
 .ops-card-head button:hover,
-.ops-lookup-fields button:hover {
+.ops-lookup-fields button:hover,
+.ops-danger-button:hover {
   border-color: var(--ops-gothic-brass);
   color: var(--ops-gothic-parchment);
 }
@@ -111,7 +119,8 @@
 }
 
 .ops-guard label,
-.ops-lookup-fields label {
+.ops-lookup-fields label,
+.ops-action-card label {
   display: grid;
   gap: 6px;
   font-size: 12px;
@@ -120,7 +129,8 @@
 }
 
 .ops-guard input,
-.ops-lookup-fields input {
+.ops-lookup-fields input,
+.ops-action-card input {
   min-width: 0;
   border: 1px solid var(--ops-gothic-line-strong);
   background: var(--ops-gothic-page);
@@ -130,10 +140,22 @@
 
 .ops-guard input:focus-visible,
 .ops-lookup-fields input:focus-visible,
+.ops-action-card input:focus-visible,
 .ops-header a:focus-visible,
 .ops-card-head button:focus-visible,
 .ops-lookup-fields button:focus-visible {
   outline: 3px solid var(--ops-gothic-brass);
+  outline-offset: 2px;
+}
+
+.ops-danger-button {
+  border-color: #8b3f37;
+  background: var(--ops-gothic-danger-soft);
+  color: #f0b7ae;
+}
+
+.ops-danger-button:focus-visible {
+  outline: 3px solid #f0b7ae;
   outline-offset: 2px;
 }
 
@@ -222,6 +244,51 @@
   padding: 18px 32px 32px;
 }
 
+.ops-actions {
+  display: grid;
+  gap: 14px;
+  padding: 18px 32px;
+  border-top: 1px solid var(--ops-gothic-line);
+  border-bottom: 1px solid var(--ops-gothic-line);
+  background: rgba(43, 23, 22, 0.32);
+}
+
+.ops-action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.ops-action-card {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #6f3c35;
+  background: var(--ops-gothic-surface);
+}
+
+.ops-action-card > div:first-child {
+  display: grid;
+  gap: 5px;
+}
+
+.ops-action-card strong {
+  color: var(--ops-gothic-parchment);
+}
+
+.ops-action-card span {
+  color: var(--ops-gothic-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.ops-action-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
 .ops-lookup-title {
   display: grid;
   gap: 4px;
@@ -236,6 +303,8 @@
 @media (max-width: 980px) {
   .ops-guard,
   .ops-grid,
+  .ops-action-grid,
+  .ops-action-fields,
   .ops-lookup-fields {
     grid-template-columns: 1fr;
   }
@@ -243,6 +312,7 @@
   .ops-header,
   .ops-guard,
   .ops-grid,
+  .ops-actions,
   .ops-lookups {
     padding-left: 16px;
     padding-right: 16px;
