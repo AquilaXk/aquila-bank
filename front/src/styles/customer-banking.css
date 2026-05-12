@@ -288,6 +288,30 @@ label span {
   color: var(--success);
 }
 
+.layout-health-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: min(1440px, calc(100% - 48px));
+  margin: 0 auto;
+  padding: 0 0 10px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.layout-health-strip span {
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: #f8fafc;
+  padding: 5px 8px;
+}
+
+.bank-layout[data-auth-state="guest"] .login-panel {
+  border-top: 3px solid var(--primary);
+}
+
 .service-map-panel {
   display: grid;
   grid-template-columns: 150px minmax(0, 1fr);
@@ -1687,6 +1711,7 @@ label span {
   .brand-row,
   .bank-service-strip,
   .banking-status-bar,
+  .layout-health-strip,
   .service-map-panel,
   .bank-layout {
     width: min(100% - 24px, 960px);
@@ -1755,6 +1780,7 @@ label span {
   .brand-row,
   .bank-service-strip,
   .banking-status-bar,
+  .layout-health-strip,
   .service-map-panel,
   .bank-layout {
     width: calc(100% - 20px);

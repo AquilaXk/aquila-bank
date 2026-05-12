@@ -1,6 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const port = Number(process.env.PLAYWRIGHT_PORT ?? 3113);
+const hasExplicitBaseURL = Boolean(process.env.PLAYWRIGHT_BASE_URL);
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${port}`;
 
 export default defineConfig({
@@ -31,7 +32,7 @@ export default defineConfig({
       },
     },
   ],
-  webServer: {
+  webServer: hasExplicitBaseURL ? undefined : {
     command: `NEXT_TELEMETRY_DISABLED=1 NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:18080 ./node_modules/.bin/next dev -H 127.0.0.1 -p ${port}`,
     url: baseURL,
     reuseExistingServer: !process.env.CI,
