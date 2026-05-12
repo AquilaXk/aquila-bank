@@ -19,7 +19,6 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
-import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -36,6 +35,9 @@ import org.springframework.security.oauth2.server.resource.web.BearerTokenResolv
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.AnonymousAuthenticationFilter;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 /** bootstrap auth와 JWT resource server를 함께 조립하는 security 설정 */
 @Configuration
@@ -44,6 +46,7 @@ import org.springframework.security.web.authentication.HttpStatusEntryPoint;
   SecurityAuthCookieProperties.class,
   SecurityTotpProperties.class,
   SecurityRememberDeviceProperties.class,
+  SecurityCorsProperties.class,
   LoginProtectionProperties.class,
   LoginThrottlingProperties.class,
   PasswordRecoveryProperties.class,
@@ -64,11 +67,12 @@ public class SecurityConfiguration {
       ObjectProvider<ClientRegistrationRepository> clientRegistrationRepository,
       ObjectProvider<OidcLoginAuthenticationSuccessHandler> oidcLoginAuthenticationSuccessHandler,
       JwtDecoder jwtDecoder,
-      BearerTokenResolver publicApiBearerTokenResolver)
+      BearerTokenResolver publicApiBearerTokenResolver,
+      CorsConfigurationSource corsConfigurationSource)
       throws Exception {
     // stateless API 기본선
     http.csrf(AbstractHttpConfigurer::disable)
-        .cors(Customizer.withDefaults())
+        .cors(cors -> cors.configurationSource(corsConfigurationSource))
         .formLogin(AbstractHttpConfigurer::disable)
         .httpBasic(AbstractHttpConfigurer::disable)
         .logout(AbstractHttpConfigurer::disable)
@@ -197,6 +201,25 @@ public class SecurityConfiguration {
   @Bean
   PasswordEncoder passwordEncoder() {
     return new BCryptPasswordEncoder();
+  }
+
+  @Bean
+  CorsConfigurationSource corsConfigurationSource(SecurityCorsProperties securityCorsProperties) {
+    UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+    if (!securityCorsProperties.enabled()) {
+      return source;
+    }
+
+    // credential cookie 사용 API라 명시된 origin에서만 cross-origin 호출을 허용합니다.
+    CorsConfiguration configuration = new CorsConfiguration();
+    configuration.setAllowedOriginPatterns(securityCorsProperties.allowedOriginPatterns());
+    configuration.setAllowedMethods(securityCorsProperties.allowedMethods());
+    configuration.setAllowedHeaders(securityCorsProperties.allowedHeaders());
+    configuration.setExposedHeaders(securityCorsProperties.exposedHeaders());
+    configuration.setAllowCredentials(securityCorsProperties.allowCredentials());
+    configuration.setMaxAge(securityCorsProperties.maxAgeSeconds());
+    source.registerCorsConfiguration("/**", configuration);
+    return source;
   }
 
   @Bean

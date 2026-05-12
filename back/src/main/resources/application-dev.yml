@@ -30,6 +30,8 @@ security:
   auth-bootstrap-api:
     enabled: ${SECURITY_AUTH_BOOTSTRAP_API_ENABLED:true}
     token: ${SECURITY_AUTH_BOOTSTRAP_API_TOKEN:dev-auth-bootstrap-api-token}
+  cors:
+    allowed-origin-patterns: ${SECURITY_CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:3000,http://127.0.0.1:3000}
 
 outbox:
   kafka:

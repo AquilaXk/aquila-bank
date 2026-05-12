@@ -397,6 +397,8 @@ security:
     refresh-token-cookie-name: ${SECURITY_AUTH_COOKIE_REFRESH_TOKEN_NAME:ab_refresh_token}
     # TLS 종단 환경은 true를 유지하고, direct HTTP staging smoke만 env에서 false로 낮춥니다.
     secure: ${SECURITY_AUTH_COOKIE_SECURE:true}
+  cors:
+    allowed-origin-patterns: ${SECURITY_CORS_ALLOWED_ORIGIN_PATTERNS:}
   totp:
     issuer: ${SECURITY_TOTP_ISSUER:Aquila Bank}
     secret-encryption-key: ${SECURITY_TOTP_SECRET_ENCRYPTION_KEY:${SECURITY_JWT_SECRET:}}
