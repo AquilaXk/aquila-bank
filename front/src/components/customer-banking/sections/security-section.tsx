@@ -1,7 +1,7 @@
 import type { FormEvent } from 'react';
 import type { AuthSessionItem, BackupCodeIssueResponse, CustomerSession, LoginResponse, PasswordRecoveryRequestResult, TotpEnrollmentStartResponse } from '@/lib/api/types';
 import { formatDateTime } from '@/lib/customer-banking/format';
-import { BankNoticeStrip, WorkStateGrid, WorkTabs } from '../common';
+import { BankNoticeStrip, StatusBadge, WorkStateGrid, WorkTabs } from '../common';
 
 function stayOnCurrentWorkTab(): void {}
 
@@ -108,6 +108,7 @@ export function SecuritySection(props: {
           { label: "추가 인증", value: props.challenge ? "확인 필요" : "대기" },
           { label: "세션", value: formatDateTime(props.session?.refreshExpiresAt) },
           { label: "보안수단", value: "OTP / 복구코드" },
+          { label: "세션 해지 상태", value: props.session ? "개별/전체 해지 가능" : "로그인 필요" },
         ]}
       />
       <WorkStateGrid
@@ -138,6 +139,24 @@ export function SecuritySection(props: {
           <span>접속관리</span>
           <strong>{props.sessions.length}건</strong>
           <small>활성 세션</small>
+        </div>
+      </div>
+
+      <div className="security-media-grid" aria-label="보안매체 등록 상태">
+        <div>
+          <span>보안매체 등록</span>
+          <strong>{props.totpEnrollment ? "등록 진행" : props.session ? "대기" : "로그인 필요"}</strong>
+          <small>OTP / 보안매체</small>
+        </div>
+        <div>
+          <span>OTP 등록 상태</span>
+          <strong>{props.totpEnrollment ? props.totpEnrollment.status : "미등록"}</strong>
+          <small>등록 시작 후 인증번호 확인</small>
+        </div>
+        <div>
+          <span>세션 해지 상태</span>
+          <strong>{props.session ? "해지 가능" : "대기"}</strong>
+          <small>세션/기기 목록 기준</small>
         </div>
       </div>
 
@@ -474,7 +493,7 @@ export function SecuritySection(props: {
       <section className="table-panel">
         <div className="panel-toolbar">
           <div>
-            <strong>접속 세션</strong>
+            <strong>세션/기기 목록</strong>
             <span>현재 로그인 기기와 세션 상태</span>
           </div>
           <div className="button-row compact">
@@ -516,7 +535,11 @@ export function SecuritySection(props: {
                 props.sessions.map((item) => (
                   <tr key={item.sessionId}>
                     <td>{item.sessionId}</td>
-                    <td>{item.currentSession ? "현재 세션" : item.sessionStatus}</td>
+                    <td>
+                      <StatusBadge tone={item.currentSession ? "success" : "muted"}>
+                        {item.currentSession ? "현재 세션" : item.sessionStatus}
+                      </StatusBadge>
+                    </td>
                     <td>{item.deviceName ?? "-"}</td>
                     <td>{item.ipAddress ?? "-"}</td>
                     <td>{formatDateTime(item.lastUsedAt)}</td>

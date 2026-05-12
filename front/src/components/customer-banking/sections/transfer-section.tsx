@@ -2,7 +2,16 @@ import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
 import type { TransferPreviewResponse, TransferResponse, TransferReversalResponse } from '@/lib/api/types';
 import { formatDateTime, formatMinorAmount } from '@/lib/customer-banking/format';
-import { BankNoticeStrip, ResultPanel, WorkStateGrid, WorkTabs } from '../common';
+import {
+  BankForm,
+  BankNoticeStrip,
+  FieldError,
+  ReceiptPanel,
+  ResultPanel,
+  StatusBadge,
+  WorkStateGrid,
+  WorkTabs,
+} from '../common';
 
 type TransferStep =
   | "input"
@@ -180,6 +189,14 @@ export function TransferSection({
           : transferStep === "failed"
             ? "입력 다시 확인"
           : "받는 분 확인";
+  const sourceAccountError = transferForm.sourceAccountId ? "" : "출금계좌를 입력하세요.";
+  const targetAccountError = transferForm.targetAccountId ? "" : "입금계좌를 입력하세요.";
+  const amountError = amountMinor > 0 ? "" : "이체금액을 입력하세요.";
+  const summaryError = transferForm.summary ? "" : "받는 분 통장 표시를 입력하세요.";
+  const otpError =
+    transferStep === "otp" && otpRequired && otpCode.length < 6
+      ? "OTP 6자리를 입력하세요."
+      : "";
 
   return (
     <section className="task-section">
@@ -227,11 +244,11 @@ export function TransferSection({
       />
 
       <div className="two-column">
-        <form className="bank-form" onSubmit={handleTransferSubmit}>
-          <div className="form-heading">
-            <strong>이체정보 입력</strong>
-            <span>{transferStep === "confirm" ? "최종 확인 후 실행" : "요청 단위 중복 방지"}</span>
-          </div>
+        <BankForm
+          meta={transferStep === "confirm" ? "최종 확인 후 실행" : "요청 단위 중복 방지"}
+          onSubmit={handleTransferSubmit}
+          title="이체정보 입력"
+        >
           <div className="process-panel">
             <div className="form-heading">
               <strong>이체 절차</strong>
@@ -247,6 +264,20 @@ export function TransferSection({
                 </li>
               ))}
             </ol>
+          </div>
+          <div className="transfer-verification-panel" aria-label="받는 사람 검증 결과">
+            <div>
+              <span>받는 사람 검증 결과</span>
+              <strong>{transferPreview ? blockedReasonLabel : "검증 전"}</strong>
+            </div>
+            <div>
+              <span>OTP 검증 상태</span>
+              <strong>{transferStep === "complete" ? "확인 완료" : otpRequired ? "확인 필요" : "생략"}</strong>
+            </div>
+            <div>
+              <span>한도 확인</span>
+              <strong>{isOverLimit ? "초과" : "정상"}</strong>
+            </div>
           </div>
           <div className="transfer-risk-grid transfer-process-grid" aria-label="이체 사전 확인">
             <div>
@@ -274,7 +305,11 @@ export function TransferSection({
             </div>
             <div>
               <span>보안 확인</span>
-              <strong>{otpRequired ? "필요" : "미필요"}</strong>
+              <strong>
+                <StatusBadge tone={otpRequired ? "warn" : "success"}>
+                  {otpRequired ? "필요" : "미필요"}
+                </StatusBadge>
+              </strong>
               <small>OTP 또는 보안매체 확인</small>
             </div>
           </div>
@@ -292,6 +327,7 @@ export function TransferSection({
                 required
                 value={transferForm.sourceAccountId}
               />
+              <FieldError message={sourceAccountError} />
             </label>
             <label>
               <span>입금계좌 ID</span>
@@ -306,6 +342,7 @@ export function TransferSection({
                 required
                 value={transferForm.targetAccountId}
               />
+              <FieldError message={targetAccountError} />
             </label>
             <label>
               <span>이체금액</span>
@@ -320,6 +357,7 @@ export function TransferSection({
                 required
                 value={transferForm.amountMinor}
               />
+              <FieldError message={amountError} />
             </label>
             <label>
               <span>통화</span>
@@ -346,6 +384,7 @@ export function TransferSection({
               required
               value={transferForm.summary}
             />
+            <FieldError message={summaryError} />
           </label>
           {transferStep === "confirm" ? (
             <div className="confirm-box" role="status">
@@ -378,6 +417,7 @@ export function TransferSection({
                 required
                 value={otpCode}
               />
+              <FieldError message={otpError} />
             </label>
           ) : null}
           {isOverLimit ? (
@@ -386,17 +426,18 @@ export function TransferSection({
               <span>{blockedReasonLabel}. 고객센터의 이체한도 메뉴에서 보안등급과 한도를 확인하세요.</span>
             </div>
           ) : null}
-          <button disabled={isBusy || isOverLimit} type="submit">
-            {submitLabel}
-          </button>
-        </form>
+          <div className="mobile-sticky-actions">
+            <button disabled={isBusy || isOverLimit} type="submit">
+              {submitLabel}
+            </button>
+          </div>
+        </BankForm>
 
-        <div
-          aria-label="이체 완료증 인쇄"
-          className="transfer-receipt transfer-receipt-panel transfer-print-receipt"
-        >
-          <div className="receipt-action-row">
-            <span>완료증 출력</span>
+        <div className="transfer-receipt transfer-receipt-panel">
+          <ReceiptPanel
+            action={
+              <>
+                <span>완료증 출력</span>
             <button
               className="print-receipt-button"
               disabled={!transferResult}
@@ -405,9 +446,9 @@ export function TransferSection({
             >
               인쇄
             </button>
-          </div>
-          <ResultPanel
-            title="이체 완료증"
+              </>
+            }
+            label="이체 완료증 인쇄"
             rows={
               transferResult
                 ? [
@@ -442,6 +483,7 @@ export function TransferSection({
                   ]
                 : []
             }
+            title="이체 완료증"
           />
         </div>
       </div>

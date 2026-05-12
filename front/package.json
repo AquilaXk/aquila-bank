@@ -14,9 +14,11 @@
     "test:enterprise-ux": "node scripts/check-customer-banking-enterprise-ux.mjs",
     "test:fulfillment-ux": "node scripts/check-customer-banking-fulfillment-ux.mjs",
     "test:authenticated-ux": "node scripts/check-customer-banking-authenticated-ux.mjs",
+    "test:work-detail-ux": "node scripts/check-customer-banking-work-detail-ux.mjs",
     "test:e2e:authenticated": "playwright test --config=playwright.config.ts e2e/customer-banking-authenticated-workflow.spec.ts",
     "test:e2e:click-flow": "playwright test --config=playwright.config.ts e2e/customer-banking-click-flow.spec.ts",
     "test:e2e:visual": "playwright test --config=playwright.config.ts e2e/customer-banking-visual-layout.spec.ts",
+    "test:e2e:live-artifacts": "playwright test --config=playwright.config.ts e2e/customer-banking-live-artifacts.spec.ts",
     "test:e2e:a11y": "node scripts/check-customer-banking-visual-a11y.mjs"
   },
   "dependencies": {

@@ -57,6 +57,17 @@ test("로그인 후 계좌, 이체, 거래내역, 세션 관리 업무 화면을
             createdAt: "2026-05-01T00:00:00Z",
             balanceUpdatedAt: "2026-05-12T02:20:00Z",
           },
+          {
+            accountId: 202,
+            accountNumber: "110-987-654321",
+            displayName: "Aquila 거래제한통장",
+            accountStatus: "RESTRICTED",
+            currencyCode: "KRW",
+            availableBalanceMinor: 0,
+            pendingBalanceMinor: 5000000,
+            createdAt: "2026-05-02T00:00:00Z",
+            balanceUpdatedAt: "2026-05-12T02:20:00Z",
+          },
         ],
         nextCursor: null,
       },
@@ -160,7 +171,9 @@ test("로그인 후 계좌, 이체, 거래내역, 세션 관리 업무 화면을
     .click();
   await page.locator("#bank-work-area").getByRole("button", { exact: true, name: "조회" }).click();
   await expect(page.getByRole("cell", { name: "Aquila 주거래통장" })).toBeVisible();
-  await expect(page.getByLabel("조회 업무 상태")).toContainText("1건");
+  await expect(page.getByLabel("조회 업무 상태")).toContainText("2건");
+  await expect(page.getByLabel("계좌 상태 요약")).toContainText("거래제한");
+  await expect(page.getByText("선택됨")).toBeVisible();
 
   await page
     .getByRole("navigation", { name: "주요 메뉴" })
@@ -179,6 +192,8 @@ test("로그인 후 계좌, 이체, 거래내역, 세션 관리 업무 화면을
   await transferForm.getByRole("button", { name: "이체 실행" }).click();
   await expect(page.getByLabel("이체 완료증 인쇄")).toContainText("TRX-20260512-0001");
   await expect(page.locator(".print-receipt-button")).toBeVisible();
+  await expect(page.getByText("받는 사람 검증 결과")).toBeVisible();
+  await expect(page.getByText("OTP 검증 상태")).toBeVisible();
 
   await page
     .getByRole("navigation", { name: "주요 메뉴" })
@@ -188,6 +203,8 @@ test("로그인 후 계좌, 이체, 거래내역, 세션 관리 업무 화면을
   await page.getByRole("button", { name: "1개월" }).click();
   await page.locator("#bank-work-area").getByRole("button", { exact: true, name: "조회" }).click();
   await expect(page.getByText("TRX-20260512-0001")).toBeVisible();
+  await expect(page.getByText("Keyset 기준")).toBeVisible();
+  await expect(page.getByRole("button", { name: "이체확인증" })).toBeVisible();
   await page.getByRole("button", { name: "초기화" }).click();
   await expect(page.getByLabel("거래 조회 상태")).toContainText("조회 전");
 
@@ -197,4 +214,6 @@ test("로그인 후 계좌, 이체, 거래내역, 세션 관리 업무 화면을
     .click();
   await page.locator("#bank-work-area").getByRole("button", { exact: true, name: "조회" }).click();
   await expect(page.getByText("Chrome Desktop")).toBeVisible();
+  await expect(page.getByText("세션/기기 목록", { exact: true })).toBeVisible();
+  await expect(page.getByText("보안매체 등록", { exact: true })).toBeVisible();
 });

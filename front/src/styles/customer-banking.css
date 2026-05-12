@@ -792,6 +792,46 @@ label span {
   background: var(--success-soft);
 }
 
+.account-status-grid,
+.security-media-grid,
+.transfer-verification-panel {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.account-status-grid div,
+.security-media-grid div,
+.transfer-verification-panel div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--primary);
+  border-radius: 3px;
+  background: #fff;
+  padding: 10px;
+}
+
+.account-status-grid span,
+.account-status-grid small,
+.security-media-grid span,
+.security-media-grid small,
+.transfer-verification-panel span,
+.transfer-verification-panel small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.account-status-grid strong,
+.security-media-grid strong,
+.transfer-verification-panel strong {
+  color: #102f55;
+  overflow-wrap: anywhere;
+}
+
 .enterprise-service-grid,
 .security-hub-grid,
 .support-service-grid {
@@ -1160,6 +1200,35 @@ label span {
   color: #9a3412;
 }
 
+.status-badge.success {
+  border-color: #b7e4ca;
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.status-badge.warn {
+  border-color: #f7c580;
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.status-badge.danger {
+  border-color: #f3b6ae;
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.status-badge.muted {
+  border-color: var(--line);
+  background: var(--surface-muted);
+  color: var(--muted);
+}
+
+.selected-row {
+  background: #f8fbff;
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+
 .notification-status {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1212,6 +1281,45 @@ label span {
   color: #fff;
 }
 
+.field-error {
+  display: block;
+  color: var(--danger);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pagination-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  border-top: 1px solid var(--line);
+  background: #fff;
+  padding: 10px 12px;
+}
+
+.pagination-bar span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pagination-bar strong {
+  color: #102f55;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.table-scroll-hint {
+  border-bottom: 1px solid var(--line);
+  background: #fff;
+  color: var(--muted);
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .transaction-work-grid {
   display: grid;
   gap: 12px;
@@ -1255,6 +1363,11 @@ label span {
   min-width: 0;
 }
 
+.receipt-panel {
+  display: grid;
+  align-content: start;
+}
+
 .receipt-action-row {
   display: flex;
   align-items: center;
@@ -1274,6 +1387,22 @@ label span {
 
 .print-receipt-button {
   min-width: 72px;
+}
+
+.receipt-link-button {
+  margin-left: 6px;
+}
+
+.mobile-sticky-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.mobile-sticky-actions button {
+  min-width: 120px;
+  background: var(--primary);
+  color: #fff;
 }
 
 .auth-method-grid,
@@ -1871,6 +2000,7 @@ label span {
   .summary-grid,
   .bank-home-grid,
   .account-summary-panel,
+  .account-status-grid,
   .work-state-grid,
   .enterprise-service-grid,
   .security-hub-grid,
@@ -1880,6 +2010,7 @@ label span {
   .support-detail-grid,
   .certificate-list,
   .transfer-risk-grid,
+  .transfer-verification-panel,
   .account-grid,
   .split-work,
   .work-command-panel,
@@ -1889,6 +2020,7 @@ label span {
   .transfer-process-grid,
   .auth-method-grid,
   .security-dashboard,
+  .security-media-grid,
   .two-column {
     grid-template-columns: 1fr;
   }
@@ -2000,6 +2132,10 @@ label span {
     grid-row: auto;
     width: 100%;
   }
+
+  .mobile-filter-drawer {
+    border-top: 3px solid var(--primary);
+  }
 }
 
 @media (max-width: 480px) {
@@ -2035,6 +2171,21 @@ label span {
   .quick-range-toolbar button,
   .touch-action-strip button {
     flex: 1 1 calc(50% - 6px);
+  }
+
+  .mobile-sticky-actions {
+    position: sticky;
+    z-index: 20;
+    bottom: 0;
+    margin: 0 -12px -12px;
+    border-top: 1px solid var(--line-strong);
+    background: rgba(255, 255, 255, 0.96);
+    padding: 10px 12px;
+  }
+
+  .mobile-sticky-actions button {
+    width: 100%;
+    min-height: 48px;
   }
 
   .bank-table th,
