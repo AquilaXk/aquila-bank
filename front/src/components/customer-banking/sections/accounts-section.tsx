@@ -1,6 +1,43 @@
 import type { AccountItem, AccountSummaryResponse } from '@/lib/api/types';
 import { formatDateTime, formatMinorAmount } from '@/lib/customer-banking/format';
-import { BankNoticeStrip, EmptyState, WorkStateGrid, WorkTabs } from '../common';
+import {
+  BankNoticeStrip,
+  BankSelect,
+  BankTable,
+  EmptyState,
+  PaginationBar,
+  StatusBadge,
+  WorkStateGrid,
+  WorkTabs,
+} from '../common';
+
+function getAccountStatusLabel(status: string): string {
+  switch (status) {
+    case "ACTIVE":
+      return "정상";
+    case "SUSPENDED":
+      return "지급정지";
+    case "RESTRICTED":
+      return "거래제한";
+    case "CLOSED":
+      return "해지";
+    default:
+      return status;
+  }
+}
+
+function getAccountStatusTone(status: string): "success" | "warn" | "danger" | "muted" {
+  switch (status) {
+    case "ACTIVE":
+      return "success";
+    case "SUSPENDED":
+      return "danger";
+    case "RESTRICTED":
+      return "warn";
+    default:
+      return "muted";
+  }
+}
 
 export function AccountsSection({
   accountCursor,
@@ -23,6 +60,11 @@ export function AccountsSection({
   onLoadAccounts: () => void;
   onLoadNextAccounts: () => void;
 }) {
+  const selectedAccountId = selectedAccount?.accountId;
+  const activeCount = accounts.filter((account) => account.accountStatus === "ACTIVE").length;
+  const suspendedCount = accounts.filter((account) => account.accountStatus === "SUSPENDED").length;
+  const restrictedCount = accounts.filter((account) => account.accountStatus === "RESTRICTED").length;
+
   return (
     <section className="task-section">
       <WorkTabs
@@ -59,17 +101,16 @@ export function AccountsSection({
           <h1>계좌조회</h1>
         </div>
         <div className="button-row">
-          <label className="inline-control">
-            <span>건수</span>
-            <select
-              onChange={(event) => onAccountLimitChange(Number(event.target.value))}
-              value={accountLimit}
-            >
-              <option value={10}>10</option>
-              <option value={20}>20</option>
-              <option value={50}>50</option>
-            </select>
-          </label>
+          <BankSelect
+            label="건수"
+            onChange={(value) => onAccountLimitChange(Number(value))}
+            options={[
+              { label: "10", value: 10 },
+              { label: "20", value: 20 },
+              { label: "50", value: 50 },
+            ]}
+            value={accountLimit}
+          />
           <button disabled={isBusy} onClick={onLoadAccounts} type="button">
             조회
           </button>
@@ -129,6 +170,24 @@ export function AccountsSection({
         </div>
       </div>
 
+      <div className="account-status-grid" aria-label="계좌 상태 요약">
+        <div>
+          <span>출금가능</span>
+          <strong>{activeCount}건</strong>
+          <small>정상 계좌</small>
+        </div>
+        <div>
+          <span>지급정지</span>
+          <strong>{suspendedCount}건</strong>
+          <small>출금 제한</small>
+        </div>
+        <div>
+          <span>거래제한</span>
+          <strong>{restrictedCount}건</strong>
+          <small>업무 확인 필요</small>
+        </div>
+      </div>
+
       <section className="work-command-panel" aria-label="조회 업무">
         <div>
           <strong>조회 업무</strong>
@@ -163,22 +222,22 @@ export function AccountsSection({
               <span>계좌별 잔액과 상태 · {accounts.length}건</span>
             </div>
           </div>
-          <div className="bank-table-wrap">
-            <table className="bank-table">
-              <caption>계좌 목록</caption>
+          <div className="table-scroll-hint">표는 좌우로 스크롤해서 볼 수 있습니다.</div>
+          <BankTable caption="계좌 목록">
               <thead>
                 <tr>
                   <th>계좌번호</th>
                   <th>계좌명</th>
                   <th>상태</th>
                   <th>출금가능액</th>
+                  <th>선택</th>
                   <th>관리</th>
                 </tr>
               </thead>
               <tbody>
                 {accounts.length === 0 ? (
                   <tr>
-                    <td colSpan={5}>
+                    <td colSpan={6}>
                       <EmptyState
                         title="계좌 조회 전"
                         description="전계좌조회 버튼으로 보유계좌를 확인하세요."
@@ -187,11 +246,16 @@ export function AccountsSection({
                   </tr>
                 ) : (
                   accounts.map((account) => (
-                    <tr key={account.accountId}>
+                    <tr
+                      className={account.accountId === selectedAccountId ? "selected-row" : undefined}
+                      key={account.accountId}
+                    >
                       <td>{account.accountNumber}</td>
                       <td>{account.displayName}</td>
                       <td>
-                        <span className="status-badge">{account.accountStatus}</span>
+                        <StatusBadge tone={getAccountStatusTone(account.accountStatus)}>
+                          {getAccountStatusLabel(account.accountStatus)}
+                        </StatusBadge>
                       </td>
                       <td className="amount-cell">
                         {formatMinorAmount(
@@ -199,6 +263,7 @@ export function AccountsSection({
                           account.currencyCode,
                         )}
                       </td>
+                      <td>{account.accountId === selectedAccountId ? "선택됨" : "-"}</td>
                       <td>
                         <button
                           disabled={isBusy}
@@ -212,14 +277,22 @@ export function AccountsSection({
                   ))
                 )}
               </tbody>
-            </table>
-          </div>
+          </BankTable>
+          <PaginationBar
+            disabled={isBusy}
+            hasNext={Boolean(accountCursor)}
+            label="계좌 keyset pagination"
+            nextCursor={accountCursor}
+            onNext={onLoadNextAccounts}
+          />
         </section>
 
         <aside className="detail-panel">
           <div className="form-heading">
             <strong>계좌 상태</strong>
-            <span>{selectedAccount ? selectedAccount.accountStatus : "미선택"}</span>
+            <span>
+              {selectedAccount ? getAccountStatusLabel(selectedAccount.accountStatus) : "미선택"}
+            </span>
           </div>
           {selectedAccount ? (
             <>

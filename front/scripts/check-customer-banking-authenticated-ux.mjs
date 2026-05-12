@@ -19,6 +19,8 @@ const files = {
   e2e: read("e2e/customer-banking-authenticated-workflow.spec.ts"),
 };
 
+const transferReceiptContent = [files.transfer, files.common].join("\n");
+
 const required = [
   ["package authenticated ux script", files.packageJson, "test:e2e:authenticated"],
   ["layout file", files.layout, "BankHeader"],
@@ -31,8 +33,8 @@ const required = [
   ["work panel component", files.common, "export function WorkPanel"],
   ["bank table component", files.common, "export function BankTable"],
   ["form field component", files.common, "export function FormField"],
-  ["transfer print receipt aria", files.transfer, 'aria-label="이체 완료증 인쇄"'],
-  ["transfer print receipt class", files.transfer, "transfer-print-receipt"],
+  ["transfer print receipt aria", transferReceiptContent, 'aria-label={label}'],
+  ["transfer print receipt class", transferReceiptContent, "transfer-print-receipt"],
   ["transfer print button", files.transfer, "print-receipt-button"],
   ["transaction quick range toolbar", files.transactions, "quick-range-toolbar"],
   ["transaction quick today", files.transactions, "오늘"],

@@ -2,7 +2,14 @@ import type { FormEvent } from 'react';
 import { useState } from 'react';
 import type { TransactionDetailResponse, TransactionItem, TransactionQueryResponse } from '@/lib/api/types';
 import { formatDateTime, formatMinorAmount, toLocalInputValue } from '@/lib/customer-banking/format';
-import { BankNoticeStrip, EmptyState, WorkStateGrid, WorkTabs } from '../common';
+import {
+  BankNoticeStrip,
+  EmptyState,
+  PaginationBar,
+  StatusBadge,
+  WorkStateGrid,
+  WorkTabs,
+} from '../common';
 
 type TransactionFilters = {
   accountId: string;
@@ -158,7 +165,7 @@ export function TransactionsSection({
       />
 
       <div className="transaction-work-grid">
-        <form className="bank-form filter-form" onSubmit={onSearch}>
+        <form className="bank-form filter-form mobile-filter-drawer" onSubmit={onSearch}>
           <div className="filter-summary" aria-label="현재 조건">
             <strong>거래 조건</strong>
             <span>계좌 {filters.accountId || "미입력"}</span>
@@ -349,6 +356,7 @@ export function TransactionsSection({
               </span>
             </div>
           </div>
+          <div className="table-scroll-hint">거래내역 표는 좌우로 스크롤해서 볼 수 있습니다.</div>
           <div className="bank-table-wrap">
             <table className="bank-table">
               <caption>거래내역 목록</caption>
@@ -380,9 +388,9 @@ export function TransactionsSection({
                       <td>{item.transactionReference}</td>
                       <td>{getTransactionDirectionLabel(item.direction)}</td>
                       <td>
-                        <span className="status-badge">
+                        <StatusBadge tone={item.status === "BOOKED" ? "success" : "warn"}>
                           {getTransactionStatusLabel(item.status)}
-                        </span>
+                        </StatusBadge>
                       </td>
                       <td className={item.direction === "DEBIT" ? "amount debit" : "amount credit"}>
                         {formatMinorAmount(item.amountMinor, item.currencyCode)}
@@ -403,6 +411,14 @@ export function TransactionsSection({
                         >
                           상세
                         </button>
+                        <button
+                          className="receipt-link-button"
+                          disabled={item.direction !== "DEBIT"}
+                          onClick={() => onDetail(item.transactionReference)}
+                          type="button"
+                        >
+                          이체확인증
+                        </button>
                       </td>
                     </tr>
                   ))
@@ -410,6 +426,13 @@ export function TransactionsSection({
               </tbody>
             </table>
           </div>
+          <PaginationBar
+            disabled={isBusy}
+            hasNext={Boolean(slice?.hasNext)}
+            label="거래내역 Keyset 기준 pagination"
+            nextCursor={slice?.nextCursor}
+            onNext={onNext}
+          />
         </section>
 
         <aside className="detail-panel">
