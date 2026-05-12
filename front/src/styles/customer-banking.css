@@ -367,6 +367,17 @@ label span {
   border-top: 3px solid var(--primary);
 }
 
+.guest-protected .rail-panel,
+.bank-layout[data-auth-state="guest"] .security-section .security-dashboard > div,
+.bank-layout[data-auth-state="guest"] .security-section .security-media-grid > div {
+  border-color: var(--line-strong);
+}
+
+.sensitive-placeholder {
+  color: var(--muted);
+  font-weight: 800;
+}
+
 .service-map-panel {
   display: grid;
   grid-template-columns: 150px minmax(0, 1fr);
@@ -1399,6 +1410,15 @@ label span {
 
 .bank-form.passive {
   background: var(--surface-muted);
+}
+
+.authenticated-only-form[data-locked="true"] {
+  border-style: dashed;
+  background: linear-gradient(180deg, var(--surface-muted), var(--page));
+}
+
+.authenticated-only-form[data-locked="true"] input {
+  opacity: 0.56;
 }
 
 .bank-form > button {

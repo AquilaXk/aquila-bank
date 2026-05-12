@@ -17,6 +17,26 @@ export function DashboardSection({
   onMove: (section: MenuSection) => void;
   onRefresh: () => void;
 }) {
+  const workStatus = hasSession
+    ? {
+        notice: "조회/이체/인증 정상",
+        lookup: "조회 결과 대기",
+        transfer: "이체 처리 대기",
+        notification: "알림 수신 대기",
+        transactionState: "다음 조회 가능",
+        transferState: "중복 방지",
+        notificationState: "실시간 알림",
+      }
+    : {
+        notice: "로그인 후 업무 가능",
+        lookup: "로그인 후 조회",
+        transfer: "인증 후 이체",
+        notification: "로그인 후 알림 확인",
+        transactionState: "인증 후 가능",
+        transferState: "인증 후 가능",
+        notificationState: "로그인 후 알림 확인",
+      };
+
   return (
     <section className="task-section compact-work-section">
       <WorkTabs
@@ -63,15 +83,15 @@ export function DashboardSection({
       <BankNoticeStrip
         items={[
           { label: "이용시간", value: "00:30~23:30" },
-          { label: "보안등급", value: "개인 인증 완료 후 이체 가능" },
+          { label: "보안등급", value: hasSession ? "개인 인증 완료 후 이체 가능" : "로그인 후 확인" },
           { label: "상담", value: "평일 09:00~18:00" },
-          { label: "업무현황", value: "조회/이체/인증 정상" },
+          { label: "업무현황", value: workStatus.notice },
         ]}
       />
       <div className="work-summary-strip" aria-label="개인뱅킹 업무현황">
-        <span>조회 결과 대기</span>
-        <span>이체 처리 대기</span>
-        <span>알림 수신 대기</span>
+        <span>{workStatus.lookup}</span>
+        <span>{workStatus.transfer}</span>
+        <span>{workStatus.notification}</span>
         <span>인증서 관리</span>
       </div>
       <div className="bank-home-grid">
@@ -146,17 +166,17 @@ export function DashboardSection({
             <tr>
               <td>거래내역 조회</td>
               <td>계좌와 기간 조건 조회</td>
-              <td>다음 조회 가능</td>
+              <td>{workStatus.transactionState}</td>
             </tr>
             <tr>
               <td>이체</td>
               <td>요청 단위 중복 방지</td>
-              <td>중복 방지</td>
+              <td>{workStatus.transferState}</td>
             </tr>
             <tr>
               <td>알림</td>
               <td>실시간 알림과 알림함</td>
-              <td>실시간 알림</td>
+              <td>{workStatus.notificationState}</td>
             </tr>
           </tbody>
         </table>

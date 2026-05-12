@@ -37,6 +37,8 @@ export function BankHeader({
   onSearchChange: (value: string) => void;
   onServiceMapToggle: () => void;
 }) {
+  const isAuthenticated = Boolean(session);
+
   function moveFromServiceMap(section: MenuSection) {
     onServiceMapToggle();
     onMove(section);
@@ -146,16 +148,22 @@ export function BankHeader({
       </div>
       <div className="bank-service-strip gothic-state-strip" aria-label="뱅킹 이용 상태">
         <span>
-          보안등급 <strong>정상</strong>
+          보안등급 <strong>{isAuthenticated ? "정상" : "보호모드"}</strong>
         </span>
-        <span>HTTPS 보안접속</span>
+        <span>{isAuthenticated ? "HTTPS 보안접속" : "민감정보 보호"}</span>
         <span>평일 09:00-18:00 상담</span>
-        <span>서비스 상태 정상</span>
+        <span>{isAuthenticated ? "서비스 상태 정상" : "인증센터 로그인"}</span>
       </div>
       <div className="layout-health-strip" aria-label="화면 이용 상태">
         <span>개인뱅킹</span>
-        <span>{session ? "로그인 정상" : "미로그인"}</span>
-        <span>{sessionRequired ? "로그인 필요" : "업무 가능"}</span>
+        <span>{isAuthenticated ? "로그인 정상" : "보호모드"}</span>
+        <span>
+          {isAuthenticated
+            ? sessionRequired
+              ? "로그인 필요"
+              : "업무 가능"
+            : "로그인 후 업무 가능"}
+        </span>
       </div>
       {serviceMapOpen ? (
         <section
@@ -229,14 +237,19 @@ export function RightRail({
   onMove: MoveHandler;
   onRefresh: () => void;
 }) {
+  const isAuthenticated = Boolean(session);
+
   return (
-    <aside className="right-rail aligned-rail" aria-label="빠른 업무">
+    <aside
+      className={`right-rail aligned-rail ${isAuthenticated ? "" : "guest-protected"}`.trim()}
+      aria-label="빠른 업무"
+    >
       <section className="rail-panel login-panel">
         <div className="rail-heading">
           <span>로그인 상태</span>
-          <strong>{session ? "정상" : "미로그인"}</strong>
+          <strong>{isAuthenticated ? "정상" : "보호모드"}</strong>
         </div>
-        {session ? (
+        {isAuthenticated && session ? (
           <dl className="session-summary">
             <div>
               <dt>User ID</dt>
@@ -252,7 +265,9 @@ export function RightRail({
             </div>
           </dl>
         ) : (
-          <p className="rail-copy">로그인 후 조회, 이체, 거래내역 이용 가능</p>
+          <p className="rail-copy sensitive-placeholder">
+            로그인 후 업무 가능. 고객별 조회, 이체, 거래내역은 인증 후 표시됩니다.
+          </p>
         )}
         <div className="button-row compact rail-auth-actions">
           <button onClick={() => onMove("security")} type="button">
@@ -283,19 +298,25 @@ export function RightRail({
 
       <section className="rail-panel recent-list">
         <div className="rail-heading">
-          <span>최근 이용 메뉴</span>
+          <span>{isAuthenticated ? "최근 이용 메뉴" : "최근 이용 메뉴 잠김"}</span>
         </div>
-        <div className="recent-menu-list">
-          {recentMenus.map((item) => (
-            <button
-              key={item.label}
-              onClick={() => onMove(item.section)}
-              type="button"
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
+        {isAuthenticated ? (
+          <div className="recent-menu-list">
+            {recentMenus.map((item) => (
+              <button
+                key={item.label}
+                onClick={() => onMove(item.section)}
+                type="button"
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="rail-copy sensitive-placeholder">
+            최근 이용 내역은 로그인 후 확인할 수 있습니다.
+          </p>
+        )}
       </section>
 
       <section className="rail-panel security-notice">
@@ -304,12 +325,13 @@ export function RightRail({
         </div>
         <BankNoticeStrip
           items={[
-            { label: "보안등급", value: "정상" },
+            { label: "보안등급", value: isAuthenticated ? "정상" : "로그인 후 확인" },
             { label: "접속상태", value: "HTTPS" },
             {
               label: "인증수단",
-              value: session ? "세션 활성" : "로그인 필요",
+              value: isAuthenticated ? "세션 활성" : "인증센터 로그인",
             },
+            { label: "민감정보", value: isAuthenticated ? "표시 가능" : "보호모드" },
           ]}
         />
       </section>
