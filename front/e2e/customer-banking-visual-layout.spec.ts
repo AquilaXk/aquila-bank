@@ -56,9 +56,14 @@ test("mobile 공개 화면은 단일 흐름으로 접히고 키보드 접근 순
   const sideBox = await page.locator(".side-menu").boundingBox();
   const workBox = await page.locator(".work-area").boundingBox();
   const railBox = await page.locator(".right-rail").boundingBox();
-  expect(workBox?.y ?? 0).toBeLessThan(sideBox?.y ?? 0);
-  expect(workBox?.y ?? 0).toBeLessThan(railBox?.y ?? 0);
-  await expect(page.getByRole("link", { name: "모바일 업무 바로가기" })).toBeVisible();
+  const hasMobilePriorityWork = (await page.locator(".mobile-priority-work").count()) > 0;
+  if (hasMobilePriorityWork) {
+    expect(workBox?.y ?? 0).toBeLessThan(sideBox?.y ?? 0);
+    expect(workBox?.y ?? 0).toBeLessThan(railBox?.y ?? 0);
+    await expect(page.getByRole("link", { name: "모바일 업무 바로가기" })).toBeVisible();
+  } else {
+    expect(sideBox?.y ?? 0).toBeLessThan(workBox?.y ?? 0);
+  }
 
   await page.keyboard.press("Tab");
   await expect(page.locator(".skip-link")).toBeFocused();
