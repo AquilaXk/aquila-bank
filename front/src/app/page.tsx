@@ -131,7 +131,11 @@ export default function HomePage() {
 
   function renderLoginRequiredWork() {
     return (
-      <div className="session-required login-required-work" role="status">
+      <div
+        aria-label="로그인 필요 안내"
+        className="session-required login-required-work"
+        role="status"
+      >
         <div>
           <strong>로그인이 필요한 업무</strong>
           <small className="login-required-code">권한 만료/미로그인</small>
@@ -139,24 +143,26 @@ export default function HomePage() {
             조회, 이체, 거래내역, 알림, 신청 업무는 로그인 후 이용하세요.
           </span>
         </div>
-        <div className="login-method-grid" aria-label="로그인 방식">
-          <button onClick={() => moveToSection("security")} type="button">
-            공동인증서 로그인
-          </button>
-          <button onClick={() => moveToSection("security")} type="button">
-            금융인증서 로그인
-          </button>
-          <button onClick={() => moveToSection("security")} type="button">
-            아이디 로그인
+        <div className="login-required-actions">
+          <div className="login-method-grid" aria-label="로그인 방식">
+            <button onClick={() => moveToSection("security")} type="button">
+              공동인증서 로그인
+            </button>
+            <button onClick={() => moveToSection("security")} type="button">
+              금융인증서 로그인
+            </button>
+            <button onClick={() => moveToSection("security")} type="button">
+              아이디 로그인
+            </button>
+          </div>
+          <button
+            className="primary-login-button"
+            onClick={() => moveToSection("security")}
+            type="button"
+          >
+            인증센터 로그인
           </button>
         </div>
-        <button
-          className="primary-login-button"
-          onClick={() => moveToSection("security")}
-          type="button"
-        >
-          인증센터 로그인
-        </button>
       </div>
     );
   }
@@ -263,6 +269,11 @@ export default function HomePage() {
           <span>평일 09:00-18:00 상담</span>
           <span>서비스 상태 정상</span>
         </div>
+        <div className="layout-health-strip" aria-label="화면 이용 상태">
+          <span>개인뱅킹</span>
+          <span>{session ? "로그인 정상" : "미로그인"}</span>
+          <span>{sessionRequired ? "로그인 필요" : "업무 가능"}</span>
+        </div>
         {serviceMapOpen ? (
           <section
             aria-label="전체서비스 메뉴"
@@ -293,7 +304,11 @@ export default function HomePage() {
         ) : null}
       </header>
 
-      <div className="bank-layout">
+      <div
+        className="bank-layout"
+        data-active-section={activeSection}
+        data-auth-state={session ? "member" : "guest"}
+      >
         <aside className="side-menu" aria-label="개인뱅킹 메뉴">
           <div className="side-title">개인뱅킹</div>
           {mainMenus.map((item) => (
@@ -310,7 +325,12 @@ export default function HomePage() {
           ))}
         </aside>
 
-        <section className="work-area" id="bank-work-area" aria-live="polite">
+        <section
+          aria-live="polite"
+          className="work-area"
+          id="bank-work-area"
+          tabIndex={-1}
+        >
           <div className={`alert ${alert.type}`}>
             <strong>{alert.type === "error" ? "확인 필요" : "안내"}</strong>
             <span>{alert.text}</span>
@@ -504,7 +524,7 @@ export default function HomePage() {
             ) : (
               <p className="rail-copy">로그인 후 조회, 이체, 거래내역 이용 가능</p>
             )}
-            <div className="button-row compact">
+            <div className="button-row compact rail-auth-actions">
               <button onClick={() => moveToSection("security")} type="button">
                 인증센터
               </button>

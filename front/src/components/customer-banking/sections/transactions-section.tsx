@@ -1,7 +1,7 @@
 import type { FormEvent } from 'react';
 import type { TransactionDetailResponse, TransactionItem, TransactionQueryResponse } from '@/lib/api/types';
 import { formatDateTime, formatMinorAmount } from '@/lib/customer-banking/format';
-import { BankNoticeStrip, WorkTabs } from '../common';
+import { BankNoticeStrip, EmptyState, WorkStateGrid, WorkTabs } from '../common';
 
 const transactionStatusLabels: Record<string, string> = {
   PENDING: "처리중",
@@ -136,6 +136,15 @@ export function TransactionsSection({
         <span>상세 {transactionDetail ? "선택" : "대기"}</span>
         <span>다음 조회 {slice?.hasNext ? "가능" : "없음"}</span>
       </div>
+      <WorkStateGrid
+        label="거래 조회 상태"
+        items={[
+          { label: "조건", value: filters.accountId ? "입력" : "대기" },
+          { label: "결과", value: slice ? `${transactions.length}건` : "조회 전" },
+          { label: "상세", value: transactionDetail ? "선택" : "미선택" },
+          { label: "다음조회", value: slice?.hasNext ? "가능" : "없음" },
+        ]}
+      />
 
       <div className="transaction-work-grid">
         <form className="bank-form filter-form" onSubmit={onSearch}>
@@ -318,7 +327,12 @@ export function TransactionsSection({
               <tbody>
                 {transactions.length === 0 ? (
                   <tr>
-                    <td colSpan={7}>조회된 거래가 없습니다.</td>
+                    <td colSpan={7}>
+                      <EmptyState
+                        title="거래내역 없음"
+                        description="계좌와 기간을 입력한 뒤 조회하세요."
+                      />
+                    </td>
                   </tr>
                 ) : (
                   transactions.map((item) => (
@@ -414,7 +428,10 @@ export function TransactionsSection({
               </div>
             </dl>
           ) : (
-            <p className="rail-copy">거래내역에서 상세 버튼을 선택하세요.</p>
+            <EmptyState
+              title="거래 미선택"
+              description="입출금 내역에서 상세 버튼을 선택하세요."
+            />
           )}
         </aside>
         </div>
