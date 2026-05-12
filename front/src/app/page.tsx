@@ -173,7 +173,7 @@ export default function HomePage() {
       />
 
       <div
-        className="bank-layout"
+        className="bank-layout mobile-priority-work"
         data-active-section={activeSection}
         data-auth-state={session ? "member" : "guest"}
       >
