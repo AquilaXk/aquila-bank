@@ -70,7 +70,7 @@ export function NotificationsSection({
   onUpdatePreferences: () => void;
 }) {
   return (
-    <section className="task-section">
+    <section className="task-section compact-work-section">
       <WorkTabs
         active={mode === "inbox" ? "알림함" : "조건검색"}
         items={[

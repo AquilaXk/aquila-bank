@@ -2,8 +2,10 @@ import type { AccountItem, AccountSummaryResponse } from '@/lib/api/types';
 import { formatDateTime, formatMinorAmount } from '@/lib/customer-banking/format';
 import {
   BankNoticeStrip,
+  BankActionBar,
   BankSelect,
   BankTable,
+  BankToolbar,
   EmptyState,
   PaginationBar,
   StatusBadge,
@@ -64,9 +66,12 @@ export function AccountsSection({
   const activeCount = accounts.filter((account) => account.accountStatus === "ACTIVE").length;
   const suspendedCount = accounts.filter((account) => account.accountStatus === "SUSPENDED").length;
   const restrictedCount = accounts.filter((account) => account.accountStatus === "RESTRICTED").length;
+  const lowBalanceCount = accounts.filter(
+    (account) => account.availableBalanceMinor <= 0,
+  ).length;
 
   return (
-    <section className="task-section">
+    <section className="task-section compact-work-section">
       <WorkTabs
         active="전계좌조회"
         items={[
@@ -100,7 +105,7 @@ export function AccountsSection({
           <p>조회</p>
           <h1>계좌조회</h1>
         </div>
-        <div className="button-row">
+        <BankToolbar label="계좌조회 상단 업무 버튼">
           <BankSelect
             label="건수"
             onChange={(value) => onAccountLimitChange(Number(value))}
@@ -117,7 +122,7 @@ export function AccountsSection({
           <button disabled={!accountCursor || isBusy} onClick={onLoadNextAccounts} type="button">
             다음
           </button>
-        </div>
+        </BankToolbar>
       </div>
       <BankNoticeStrip
         items={[
@@ -186,6 +191,11 @@ export function AccountsSection({
           <strong>{restrictedCount}건</strong>
           <small>업무 확인 필요</small>
         </div>
+        <div>
+          <span>잔액부족</span>
+          <strong>{lowBalanceCount}건</strong>
+          <small>출금 가능액 확인</small>
+        </div>
       </div>
 
       <section className="work-command-panel" aria-label="조회 업무">
@@ -193,7 +203,7 @@ export function AccountsSection({
           <strong>조회 업무</strong>
           <span>계좌 목록을 조회하고 선택 계좌의 잔액과 보류금액을 확인합니다.</span>
         </div>
-        <div className="button-row compact">
+        <BankActionBar>
           <button disabled={isBusy} onClick={onLoadAccounts} type="button">
             전계좌조회
           </button>
@@ -211,7 +221,7 @@ export function AccountsSection({
           <button disabled={!accountCursor || isBusy} onClick={onLoadNextAccounts} type="button">
             다음 조회
           </button>
-        </div>
+        </BankActionBar>
       </section>
 
       <div className="account-grid">
@@ -263,7 +273,13 @@ export function AccountsSection({
                           account.currencyCode,
                         )}
                       </td>
-                      <td>{account.accountId === selectedAccountId ? "선택됨" : "-"}</td>
+                      <td>
+                        {account.accountId === selectedAccountId ? (
+                          <StatusBadge tone="success">선택계좌 선택됨</StatusBadge>
+                        ) : (
+                          "-"
+                        )}
+                      </td>
                       <td>
                         <button
                           disabled={isBusy}

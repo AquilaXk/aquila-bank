@@ -197,7 +197,7 @@ export function SideMenu({
   onMove: MoveHandler;
 }) {
   return (
-    <aside className="side-menu" aria-label="개인뱅킹 메뉴">
+    <aside className="side-menu compact-menu" aria-label="개인뱅킹 메뉴">
       <div className="side-title">개인뱅킹</div>
       {mainMenus.map((item) => (
         <button
@@ -227,7 +227,7 @@ export function RightRail({
   onRefresh: () => void;
 }) {
   return (
-    <aside className="right-rail" aria-label="빠른 업무">
+    <aside className="right-rail aligned-rail" aria-label="빠른 업무">
       <section className="rail-panel login-panel">
         <div className="rail-heading">
           <span>로그인 상태</span>

@@ -19,7 +19,7 @@ jobs:
   frontend-lint-build:
     name: Frontend Lint And Build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: front
@@ -42,3 +42,20 @@ jobs:
 
       - name: Run frontend build
         run: yarn build
+
+      - name: Install Playwright Chromium
+        run: yarn playwright install --with-deps chromium
+
+      - name: Run live artifact smoke
+        run: yarn test:e2e:live-artifacts
+
+      - name: Upload frontend visual artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: frontend-live-visual-artifacts
+          path: |
+            front/test-results/**/*.png
+            front/test-results/**/error-context.md
+            front/playwright-report/**
+          retention-days: 14

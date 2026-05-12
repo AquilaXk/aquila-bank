@@ -134,7 +134,7 @@ export function EnterpriseServicesSection({
   }
 
   return (
-    <section className="task-section">
+    <section className="task-section compact-work-section">
       <div className="section-title">
         <div>
           <p>부가업무</p>

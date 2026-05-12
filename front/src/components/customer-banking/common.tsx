@@ -1,5 +1,4 @@
-import type { ReactNode } from "react";
-import type { FormEventHandler } from "react";
+import type { ChangeEventHandler, FormEventHandler, ReactNode } from "react";
 
 export function ResultPanel({ title, rows }: { title: string; rows: string[][] }) {
   return (
@@ -116,6 +115,142 @@ export function BankSelect({
         ))}
       </select>
     </label>
+  );
+}
+
+export function BankInput({
+  inputMode,
+  label,
+  maxLength,
+  onChange,
+  placeholder,
+  required,
+  type = "text",
+  value,
+}: {
+  inputMode?: "none" | "text" | "tel" | "url" | "email" | "numeric" | "decimal" | "search";
+  label: string;
+  maxLength?: number;
+  onChange: ChangeEventHandler<HTMLInputElement>;
+  placeholder?: string;
+  required?: boolean;
+  type?: string;
+  value: string | number;
+}) {
+  return (
+    <label className="form-field bank-input">
+      <span>{label}</span>
+      <input
+        inputMode={inputMode}
+        maxLength={maxLength}
+        onChange={onChange}
+        placeholder={placeholder}
+        required={required}
+        type={type}
+        value={value}
+      />
+    </label>
+  );
+}
+
+export function BankDateRange({
+  from,
+  onFromChange,
+  onToChange,
+  to,
+}: {
+  from: string;
+  onFromChange: (value: string) => void;
+  onToChange: (value: string) => void;
+  to: string;
+}) {
+  return (
+    <div className="bank-date-range" aria-label="기간 선택">
+      <label>
+        <span>시작일시</span>
+        <input
+          onChange={(event) => onFromChange(event.target.value)}
+          required
+          type="datetime-local"
+          value={from}
+        />
+      </label>
+      <label>
+        <span>종료일시</span>
+        <input
+          onChange={(event) => onToChange(event.target.value)}
+          required
+          type="datetime-local"
+          value={to}
+        />
+      </label>
+    </div>
+  );
+}
+
+export function BankActionBar({
+  children,
+  align = "end",
+}: {
+  children: ReactNode;
+  align?: "start" | "end" | "between";
+}) {
+  return <div className={`bank-action-bar align-${align}`}>{children}</div>;
+}
+
+export function BankToolbar({
+  children,
+  label,
+}: {
+  children: ReactNode;
+  label: string;
+}) {
+  return (
+    <div className="bank-toolbar" aria-label={label}>
+      {children}
+    </div>
+  );
+}
+
+export function BankDrawer({
+  children,
+  open,
+  title,
+}: {
+  children: ReactNode;
+  open: boolean;
+  title: string;
+}) {
+  return (
+    <aside className={open ? "bank-drawer open" : "bank-drawer"} aria-label={title}>
+      <div className="form-heading">
+        <strong>{title}</strong>
+        <span>{open ? "열림" : "닫힘"}</span>
+      </div>
+      {children}
+    </aside>
+  );
+}
+
+export function BankDialog({
+  children,
+  open,
+  title,
+}: {
+  children: ReactNode;
+  open: boolean;
+  title: string;
+}) {
+  if (!open) {
+    return null;
+  }
+  return (
+    <section aria-label={title} className="bank-dialog" role="dialog">
+      <div className="form-heading">
+        <strong>{title}</strong>
+      </div>
+      {children}
+    </section>
   );
 }
 

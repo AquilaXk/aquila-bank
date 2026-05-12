@@ -204,7 +204,7 @@ test("로그인 후 계좌, 이체, 거래내역, 세션 관리 업무 화면을
   await page.locator("#bank-work-area").getByRole("button", { exact: true, name: "조회" }).click();
   await expect(page.getByText("TRX-20260512-0001")).toBeVisible();
   await expect(page.getByText("Keyset 기준")).toBeVisible();
-  await expect(page.getByRole("button", { name: "이체확인증" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "이체확인증 출력" })).toBeVisible();
   await page.getByRole("button", { name: "초기화" }).click();
   await expect(page.getByLabel("거래 조회 상태")).toContainText("조회 전");
 

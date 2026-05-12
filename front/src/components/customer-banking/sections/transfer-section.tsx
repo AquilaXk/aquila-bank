@@ -4,6 +4,8 @@ import type { TransferPreviewResponse, TransferResponse, TransferReversalRespons
 import { formatDateTime, formatMinorAmount } from '@/lib/customer-banking/format';
 import {
   BankForm,
+  BankActionBar,
+  BankDialog,
   BankNoticeStrip,
   FieldError,
   ReceiptPanel,
@@ -197,9 +199,14 @@ export function TransferSection({
     transferStep === "otp" && otpRequired && otpCode.length < 6
       ? "OTP 6자리를 입력하세요."
       : "";
+  const recipientMismatchLabel =
+    transferPreview && !transferPreview.allowed ? "수취계좌 불일치" : "수취계좌 확인";
+  const limitExceededLabel = isOverLimit ? "한도 초과" : "한도 정상";
+  const otpErrorLabel = otpError ? "OTP 오류" : "OTP 대기";
+  const showFailedReceipt = transferStep === "failed";
 
   return (
-    <section className="task-section">
+    <section className="task-section compact-work-section">
       <div className="section-title">
         <div>
           <p>이체</p>
@@ -269,14 +276,16 @@ export function TransferSection({
             <div>
               <span>받는 사람 검증 결과</span>
               <strong>{transferPreview ? blockedReasonLabel : "검증 전"}</strong>
+              <small>{recipientMismatchLabel}</small>
             </div>
             <div>
               <span>OTP 검증 상태</span>
               <strong>{transferStep === "complete" ? "확인 완료" : otpRequired ? "확인 필요" : "생략"}</strong>
+              <small>{otpErrorLabel}</small>
             </div>
             <div>
               <span>한도 확인</span>
-              <strong>{isOverLimit ? "초과" : "정상"}</strong>
+              <strong>{limitExceededLabel}</strong>
             </div>
           </div>
           <div className="transfer-risk-grid transfer-process-grid" aria-label="이체 사전 확인">
@@ -426,11 +435,13 @@ export function TransferSection({
               <span>{blockedReasonLabel}. 고객센터의 이체한도 메뉴에서 보안등급과 한도를 확인하세요.</span>
             </div>
           ) : null}
-          <div className="mobile-sticky-actions">
-            <button disabled={isBusy || isOverLimit} type="submit">
-              {submitLabel}
-            </button>
-          </div>
+          <BankActionBar>
+            <div className="mobile-sticky-actions">
+              <button disabled={isBusy || isOverLimit} type="submit">
+                {submitLabel}
+              </button>
+            </div>
+          </BankActionBar>
         </BankForm>
 
         <div className="transfer-receipt transfer-receipt-panel">
@@ -438,14 +449,14 @@ export function TransferSection({
             action={
               <>
                 <span>완료증 출력</span>
-            <button
-              className="print-receipt-button"
-              disabled={!transferResult}
-              onClick={printTransferReceipt}
-              type="button"
-            >
-              인쇄
-            </button>
+                <button
+                  className="print-receipt-button"
+                  disabled={!transferResult}
+                  onClick={printTransferReceipt}
+                  type="button"
+                >
+                  인쇄
+                </button>
               </>
             }
             label="이체 완료증 인쇄"
@@ -485,6 +496,18 @@ export function TransferSection({
             }
             title="이체 완료증"
           />
+          <BankDialog open={showFailedReceipt} title="실패 완료증">
+            <dl className="detail-list">
+              <div>
+                <dt>처리상태</dt>
+                <dd>실패 완료증</dd>
+              </div>
+              <div>
+                <dt>사유</dt>
+                <dd>{blockedReasonLabel}</dd>
+              </div>
+            </dl>
+          </BankDialog>
         </div>
       </div>
 

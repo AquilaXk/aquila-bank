@@ -85,7 +85,7 @@ export function SupportCenterSection({
   }
 
   return (
-    <section className="task-section">
+    <section className="task-section compact-work-section">
       <div className="section-title">
         <div>
           <p>고객센터</p>

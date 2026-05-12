@@ -155,7 +155,7 @@ export default function HomePage() {
   }
 
   return (
-    <main className="bank-shell">
+    <main className="bank-shell dense-banking-shell">
       <a className="skip-link" href="#bank-work-area">
         본문 바로가기
       </a>
