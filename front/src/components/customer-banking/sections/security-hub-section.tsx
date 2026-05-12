@@ -78,7 +78,7 @@ export function SecurityHubSection({
   }
 
   return (
-    <section className="task-section">
+    <section className="task-section compact-work-section">
       <div className="section-title">
         <div>
           <p>보안센터</p>

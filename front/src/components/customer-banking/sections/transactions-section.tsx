@@ -4,6 +4,9 @@ import type { TransactionDetailResponse, TransactionItem, TransactionQueryRespon
 import { formatDateTime, formatMinorAmount, toLocalInputValue } from '@/lib/customer-banking/format';
 import {
   BankNoticeStrip,
+  BankDateRange,
+  BankDrawer,
+  BankToolbar,
   EmptyState,
   PaginationBar,
   StatusBadge,
@@ -91,7 +94,7 @@ export function TransactionsSection({
   }
 
   return (
-    <section className="task-section">
+    <section className="task-section compact-work-section">
       <WorkTabs
         active="거래내역조회"
         items={[
@@ -177,265 +180,251 @@ export function TransactionsSection({
               다음 조회 {slice?.nextCursor ? "준비됨" : "첫 조회"}
             </span>
           </div>
-          <div className="quick-range-toolbar touch-action-strip" aria-label="기간 빠른 선택">
-            <button onClick={() => setQuickRange(0)} type="button">
-              오늘
+          <BankToolbar label="거래내역 기간 빠른 선택">
+            <div className="quick-range-toolbar touch-action-strip" aria-label="기간 빠른 선택">
+              <button onClick={() => setQuickRange(0)} type="button">
+                오늘
+              </button>
+              <button onClick={() => setQuickRange(30)} type="button">
+                1개월
+              </button>
+              <button onClick={() => setQuickRange(90)} type="button">
+                3개월
+              </button>
+              <button onClick={onReset} type="button">
+                초기화
+              </button>
+              <button
+                aria-controls="transaction-detail-filter"
+                aria-expanded={filterOpen}
+                onClick={() => setFilterOpen((value) => !value)}
+                type="button"
+              >
+                {filterOpen ? "상세조건 접기" : "상세조건 펼치기"}
+              </button>
+            </div>
+          </BankToolbar>
+          {filterOpen ? (
+            <div className="filter-grid" id="transaction-detail-filter">
+              <label>
+                <span>계좌 ID</span>
+                <input
+                  inputMode="numeric"
+                  onChange={(event) =>
+                    onFilterChange({ ...filters, accountId: event.target.value })
+                  }
+                  required
+                  value={filters.accountId}
+                />
+              </label>
+              <BankDateRange
+                from={filters.from}
+                onFromChange={(value) => onFilterChange({ ...filters, from: value })}
+                onToChange={(value) => onFilterChange({ ...filters, to: value })}
+                to={filters.to}
+              />
+              <label>
+                <span>건수</span>
+                <select
+                  onChange={(event) =>
+                    onFilterChange({ ...filters, limit: event.target.value })
+                  }
+                  value={filters.limit}
+                >
+                  <option value="20">20</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                </select>
+              </label>
+              <label>
+                <span>상태</span>
+                <select
+                  onChange={(event) =>
+                    onFilterChange({ ...filters, status: event.target.value })
+                  }
+                  value={filters.status}
+                >
+                  <option value="">전체</option>
+                  <option value="PENDING">처리중</option>
+                  <option value="BOOKED">처리완료</option>
+                  <option value="REVERSED">취소완료</option>
+                  <option value="FAILED">실패</option>
+                </select>
+              </label>
+              <label>
+                <span>입출금</span>
+                <select
+                  onChange={(event) =>
+                    onFilterChange({ ...filters, direction: event.target.value })
+                  }
+                  value={filters.direction}
+                >
+                  <option value="">전체</option>
+                  <option value="DEBIT">출금</option>
+                  <option value="CREDIT">입금</option>
+                </select>
+              </label>
+              <label>
+                <span>최소금액</span>
+                <input
+                  inputMode="numeric"
+                  onChange={(event) =>
+                    onFilterChange({
+                      ...filters,
+                      minAmountMinor: event.target.value,
+                    })
+                  }
+                  value={filters.minAmountMinor}
+                />
+              </label>
+              <label>
+                <span>최대금액</span>
+                <input
+                  inputMode="numeric"
+                  onChange={(event) =>
+                    onFilterChange({
+                      ...filters,
+                      maxAmountMinor: event.target.value,
+                    })
+                  }
+                  value={filters.maxAmountMinor}
+                />
+              </label>
+              <label>
+                <span>거래번호</span>
+                <input
+                  onChange={(event) =>
+                    onFilterChange({
+                      ...filters,
+                      transactionReference: event.target.value,
+                    })
+                  }
+                  value={filters.transactionReference}
+                />
+              </label>
+              <label>
+                <span>조회방식</span>
+                <select
+                  onChange={(event) =>
+                    onFilterChange({
+                      ...filters,
+                      responseShape: event.target.value as "full" | "slim",
+                    })
+                  }
+                  value={filters.responseShape}
+                >
+                  <option value="full">상세</option>
+                  <option value="slim">요약</option>
+                </select>
+              </label>
+            </div>
+          ) : (
+            <div className="filter-collapsed-line" id="transaction-detail-filter" role="status">
+              상세조건 접힘 · 계좌, 기간, 금액 조건은 현재 값으로 유지됩니다.
+            </div>
+          )}
+          <div className="button-row">
+            <button disabled={isBusy} type="submit">
+              조회
             </button>
-            <button onClick={() => setQuickRange(30)} type="button">
-              1개월
-            </button>
-            <button onClick={() => setQuickRange(90)} type="button">
-              3개월
-            </button>
-            <button onClick={onReset} type="button">
-              초기화
-            </button>
-            <button
-              aria-controls="transaction-detail-filter"
-              aria-expanded={filterOpen}
-              onClick={() => setFilterOpen((value) => !value)}
-              type="button"
-            >
-              {filterOpen ? "상세조건 접기" : "상세조건 펼치기"}
+            <button disabled={!slice?.nextCursor || isBusy} onClick={onNext} type="button">
+              다음 페이지
             </button>
           </div>
-        {filterOpen ? (
-        <div className="filter-grid" id="transaction-detail-filter">
-          <label>
-            <span>계좌 ID</span>
-            <input
-              inputMode="numeric"
-              onChange={(event) =>
-                onFilterChange({ ...filters, accountId: event.target.value })
-              }
-              required
-              value={filters.accountId}
-            />
-          </label>
-          <label>
-            <span>시작일시</span>
-            <input
-              onChange={(event) =>
-                onFilterChange({ ...filters, from: event.target.value })
-              }
-              required
-              type="datetime-local"
-              value={filters.from}
-            />
-          </label>
-          <label>
-            <span>종료일시</span>
-            <input
-              onChange={(event) =>
-                onFilterChange({ ...filters, to: event.target.value })
-              }
-              required
-              type="datetime-local"
-              value={filters.to}
-            />
-          </label>
-          <label>
-            <span>건수</span>
-            <select
-              onChange={(event) =>
-                onFilterChange({ ...filters, limit: event.target.value })
-              }
-              value={filters.limit}
-            >
-              <option value="20">20</option>
-              <option value="50">50</option>
-              <option value="100">100</option>
-            </select>
-          </label>
-          <label>
-            <span>상태</span>
-            <select
-              onChange={(event) =>
-                onFilterChange({ ...filters, status: event.target.value })
-              }
-              value={filters.status}
-            >
-              <option value="">전체</option>
-              <option value="PENDING">처리중</option>
-              <option value="BOOKED">처리완료</option>
-              <option value="REVERSED">취소완료</option>
-              <option value="FAILED">실패</option>
-            </select>
-          </label>
-          <label>
-            <span>입출금</span>
-            <select
-              onChange={(event) =>
-                onFilterChange({ ...filters, direction: event.target.value })
-              }
-              value={filters.direction}
-            >
-              <option value="">전체</option>
-              <option value="DEBIT">출금</option>
-              <option value="CREDIT">입금</option>
-            </select>
-          </label>
-          <label>
-            <span>최소금액</span>
-            <input
-              inputMode="numeric"
-              onChange={(event) =>
-                onFilterChange({
-                  ...filters,
-                  minAmountMinor: event.target.value,
-                })
-              }
-              value={filters.minAmountMinor}
-            />
-          </label>
-          <label>
-            <span>최대금액</span>
-            <input
-              inputMode="numeric"
-              onChange={(event) =>
-                onFilterChange({
-                  ...filters,
-                  maxAmountMinor: event.target.value,
-                })
-              }
-              value={filters.maxAmountMinor}
-            />
-          </label>
-          <label>
-            <span>거래번호</span>
-            <input
-              onChange={(event) =>
-                onFilterChange({
-                  ...filters,
-                  transactionReference: event.target.value,
-                })
-              }
-              value={filters.transactionReference}
-            />
-          </label>
-          <label>
-            <span>조회방식</span>
-            <select
-              onChange={(event) =>
-                onFilterChange({
-                  ...filters,
-                  responseShape: event.target.value as "full" | "slim",
-                })
-              }
-              value={filters.responseShape}
-            >
-              <option value="full">상세</option>
-              <option value="slim">요약</option>
-            </select>
-          </label>
-        </div>
-        ) : (
-          <div className="filter-collapsed-line" id="transaction-detail-filter" role="status">
-            상세조건 접힘 · 계좌, 기간, 금액 조건은 현재 값으로 유지됩니다.
-          </div>
-        )}
-        <div className="button-row">
-          <button disabled={isBusy} type="submit">
-            조회
-          </button>
-          <button disabled={!slice?.nextCursor || isBusy} onClick={onNext} type="button">
-            다음 페이지
-          </button>
-        </div>
         </form>
 
         <div className="split-work">
-        <section className="table-panel embedded">
-          <div className="panel-toolbar">
-            <div>
-              <strong>입출금 내역</strong>
-              <span>
-                {slice
-                  ? `${transactions.length}건 / 다음 조회 ${slice.hasNext ? "가능" : "없음"}`
-                  : "조회 전"}
-              </span>
+          <section className="table-panel embedded">
+            <div className="panel-toolbar">
+              <div>
+                <strong>입출금 내역</strong>
+                <span>
+                  {slice
+                    ? `${transactions.length}건 / 다음 조회 ${slice.hasNext ? "가능" : "없음"}`
+                    : "조회 전"}
+                </span>
+              </div>
             </div>
-          </div>
-          <div className="table-scroll-hint">거래내역 표는 좌우로 스크롤해서 볼 수 있습니다.</div>
-          <div className="bank-table-wrap">
-            <table className="bank-table">
-              <caption>거래내역 목록</caption>
-              <thead>
-                <tr>
-                  <th>기장일시</th>
-                  <th>거래번호</th>
-                  <th>입출금</th>
-                  <th>상태</th>
-                  <th>금액</th>
-                  <th>잔액</th>
-                  <th>상세</th>
-                </tr>
-              </thead>
-              <tbody>
-                {transactions.length === 0 ? (
+            <div className="table-scroll-hint">거래내역 표는 좌우로 스크롤해서 볼 수 있습니다.</div>
+            <div className="bank-table-wrap">
+              <table className="bank-table">
+                <caption>거래내역 목록</caption>
+                <thead>
                   <tr>
-                    <td colSpan={7}>
-                      <EmptyState
-                        title="거래내역 없음"
-                        description="계좌와 기간을 입력한 뒤 조회하세요."
-                      />
-                    </td>
+                    <th>기장일시</th>
+                    <th>거래번호</th>
+                    <th>입출금</th>
+                    <th>상태</th>
+                    <th>금액</th>
+                    <th>잔액</th>
+                    <th>상세</th>
                   </tr>
-                ) : (
-                  transactions.map((item) => (
-                    <tr key={`${item.id}-${item.transactionReference}`}>
-                      <td>{formatDateTime(item.bookedAt)}</td>
-                      <td>{item.transactionReference}</td>
-                      <td>{getTransactionDirectionLabel(item.direction)}</td>
-                      <td>
-                        <StatusBadge tone={item.status === "BOOKED" ? "success" : "warn"}>
-                          {getTransactionStatusLabel(item.status)}
-                        </StatusBadge>
-                      </td>
-                      <td className={item.direction === "DEBIT" ? "amount debit" : "amount credit"}>
-                        {formatMinorAmount(item.amountMinor, item.currencyCode)}
-                      </td>
-                      <td>
-                        {item.balanceAfterMinor == null
-                          ? "-"
-                          : formatMinorAmount(
-                              item.balanceAfterMinor,
-                              item.currencyCode,
-                            )}
-                      </td>
-                      <td>
-                        <button
-                          disabled={isBusy}
-                          onClick={() => onDetail(item.transactionReference)}
-                          type="button"
-                        >
-                          상세
-                        </button>
-                        <button
-                          className="receipt-link-button"
-                          disabled={item.direction !== "DEBIT"}
-                          onClick={() => onDetail(item.transactionReference)}
-                          type="button"
-                        >
-                          이체확인증
-                        </button>
+                </thead>
+                <tbody>
+                  {transactions.length === 0 ? (
+                    <tr>
+                      <td colSpan={7}>
+                        <EmptyState
+                          title="거래내역 없음"
+                          description="계좌와 기간을 입력한 뒤 조회하세요."
+                        />
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-          <PaginationBar
-            disabled={isBusy}
-            hasNext={Boolean(slice?.hasNext)}
-            label="거래내역 Keyset 기준 pagination"
-            nextCursor={slice?.nextCursor}
-            onNext={onNext}
-          />
-        </section>
+                  ) : (
+                    transactions.map((item) => (
+                      <tr key={`${item.id}-${item.transactionReference}`}>
+                        <td>{formatDateTime(item.bookedAt)}</td>
+                        <td>{item.transactionReference}</td>
+                        <td>{getTransactionDirectionLabel(item.direction)}</td>
+                        <td>
+                          <StatusBadge tone={item.status === "BOOKED" ? "success" : "warn"}>
+                            {getTransactionStatusLabel(item.status)}
+                          </StatusBadge>
+                        </td>
+                        <td className={item.direction === "DEBIT" ? "amount debit" : "amount credit"}>
+                          {formatMinorAmount(item.amountMinor, item.currencyCode)}
+                        </td>
+                        <td>
+                          {item.balanceAfterMinor == null
+                            ? "-"
+                            : formatMinorAmount(
+                                item.balanceAfterMinor,
+                                item.currencyCode,
+                              )}
+                        </td>
+                        <td>
+                          <button
+                            disabled={isBusy}
+                            onClick={() => onDetail(item.transactionReference)}
+                            type="button"
+                          >
+                            상세
+                          </button>
+                          <button
+                            className="receipt-link-button"
+                            disabled={item.direction !== "DEBIT"}
+                            onClick={() => onDetail(item.transactionReference)}
+                            type="button"
+                          >
+                            이체확인증 출력
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <PaginationBar
+              disabled={isBusy}
+              hasNext={Boolean(slice?.hasNext)}
+              label="거래내역 Keyset 기준 pagination"
+              nextCursor={slice?.nextCursor}
+              onNext={onNext}
+            />
+          </section>
 
-        <aside className="detail-panel">
+        <BankDrawer open={Boolean(transactionDetail)} title="거래 상세 drawer">
           <div className="form-heading">
             <strong>거래 상세정보</strong>
             <span>
@@ -488,6 +477,10 @@ export function TransactionsSection({
                 <dt>설명</dt>
                 <dd>{transactionDetail.description ?? "-"}</dd>
               </div>
+              <div>
+                <dt>출력</dt>
+                <dd>이체확인증 출력 전용 view</dd>
+              </div>
             </dl>
           ) : (
             <EmptyState
@@ -495,7 +488,7 @@ export function TransactionsSection({
               description="입출금 내역에서 상세 버튼을 선택하세요."
             />
           )}
-        </aside>
+        </BankDrawer>
         </div>
       </div>
     </section>

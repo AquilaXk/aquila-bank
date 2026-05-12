@@ -18,7 +18,7 @@ export function DashboardSection({
   onRefresh: () => void;
 }) {
   return (
-    <section className="task-section">
+    <section className="task-section compact-work-section">
       <WorkTabs
         active="개인뱅킹"
         items={["개인뱅킹", "조회", "이체", "인증센터", "고객센터"].map((label) => ({

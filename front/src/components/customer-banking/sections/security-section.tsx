@@ -1,7 +1,7 @@
 import type { FormEvent } from 'react';
 import type { AuthSessionItem, BackupCodeIssueResponse, CustomerSession, LoginResponse, PasswordRecoveryRequestResult, TotpEnrollmentStartResponse } from '@/lib/api/types';
 import { formatDateTime } from '@/lib/customer-banking/format';
-import { BankNoticeStrip, StatusBadge, WorkStateGrid, WorkTabs } from '../common';
+import { BankActionBar, BankNoticeStrip, StatusBadge, WorkStateGrid, WorkTabs } from '../common';
 
 function stayOnCurrentWorkTab(): void {}
 
@@ -78,8 +78,14 @@ export function SecuritySection(props: {
   onTotpCodeChange: (value: string) => void;
   onVerifyTotpEnrollment: () => void;
 }) {
+  const sessionExpiryState = props.session ? "만료 임박" : "로그인 필요";
+  const currentDeviceState = props.sessions.some((item) => item.currentSession)
+    ? "현재 기기"
+    : "조회 전";
+  const revokeState = props.session ? "해지 가능" : "해지 불가";
+
   return (
-    <section className="task-section security-section">
+    <section className="task-section compact-work-section security-section">
       <div className="section-title">
         <div>
           <p>인증센터</p>
@@ -155,8 +161,18 @@ export function SecuritySection(props: {
         </div>
         <div>
           <span>세션 해지 상태</span>
-          <strong>{props.session ? "해지 가능" : "대기"}</strong>
+          <strong>{revokeState}</strong>
           <small>세션/기기 목록 기준</small>
+        </div>
+        <div>
+          <span>세션 만료</span>
+          <strong>{sessionExpiryState}</strong>
+          <small>{formatDateTime(props.session?.expiresAt)}</small>
+        </div>
+        <div>
+          <span>현재 기기</span>
+          <strong>{currentDeviceState}</strong>
+          <small>세션 조회 기준</small>
         </div>
       </div>
 
@@ -496,7 +512,7 @@ export function SecuritySection(props: {
             <strong>세션/기기 목록</strong>
             <span>현재 로그인 기기와 세션 상태</span>
           </div>
-          <div className="button-row compact">
+          <BankActionBar>
             <button
               disabled={!props.session || props.isBusy}
               onClick={props.onLoadSessions}
@@ -511,7 +527,7 @@ export function SecuritySection(props: {
             >
               전체 해지
             </button>
-          </div>
+          </BankActionBar>
         </div>
         <div className="bank-table-wrap">
           <table className="bank-table">

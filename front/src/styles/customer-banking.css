@@ -102,6 +102,11 @@ label span {
   background: var(--page);
 }
 
+.dense-banking-shell {
+  --dense-section-gap: 10px;
+  --dense-panel-padding: 12px;
+}
+
 .skip-link {
   position: absolute;
   z-index: 100;
@@ -386,6 +391,12 @@ label span {
   padding: 14px 0 42px;
 }
 
+.dense-banking-shell .bank-layout {
+  align-items: start;
+  gap: var(--dense-section-gap);
+  padding-top: 10px;
+}
+
 .side-menu,
 .right-rail,
 .work-area {
@@ -395,6 +406,10 @@ label span {
 .side-menu {
   border: 1px solid var(--line);
   background: var(--surface);
+}
+
+.side-menu.compact-menu {
+  align-self: start;
 }
 
 .side-title {
@@ -416,6 +431,11 @@ label span {
   background: #fff;
   padding: 10px 14px;
   text-align: left;
+}
+
+.side-menu.compact-menu .side-item {
+  min-height: 50px;
+  padding: 8px 12px;
 }
 
 .side-item span {
@@ -450,6 +470,10 @@ label span {
   padding: 14px;
 }
 
+.task-section.compact-work-section {
+  padding: var(--dense-panel-padding);
+}
+
 .section-title,
 .panel-toolbar,
 .rail-heading {
@@ -462,6 +486,10 @@ label span {
 .section-title {
   padding-bottom: 10px;
   border-bottom: 2px solid #263b56;
+}
+
+.task-section.compact-work-section .section-title {
+  padding-bottom: 8px;
 }
 
 .section-title p {
@@ -799,6 +827,10 @@ label span {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   margin-top: 12px;
+}
+
+.account-status-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .account-status-grid div,
@@ -1533,6 +1565,65 @@ label span {
   gap: 12px;
 }
 
+.bank-input {
+  min-width: 0;
+}
+
+.bank-date-range {
+  display: grid;
+  grid-column: span 2;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+
+.bank-action-bar,
+.bank-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.bank-action-bar.align-start,
+.bank-toolbar {
+  justify-content: flex-start;
+}
+
+.bank-action-bar.align-end {
+  justify-content: flex-end;
+}
+
+.bank-action-bar.align-between {
+  justify-content: space-between;
+}
+
+.bank-toolbar {
+  width: 100%;
+}
+
+.bank-drawer,
+.bank-dialog {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--primary);
+  border-radius: 3px;
+  background: #fff;
+  padding: 12px;
+}
+
+.bank-drawer:not(.open) {
+  border-style: dashed;
+  background: var(--surface-muted);
+}
+
+.bank-dialog {
+  margin-top: 10px;
+  border-top-color: var(--danger);
+}
+
 .form-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -1855,8 +1946,17 @@ label span {
   gap: 12px;
 }
 
+.right-rail.aligned-rail {
+  align-self: start;
+  gap: var(--dense-section-gap);
+}
+
 .rail-panel {
   padding: 12px;
+}
+
+.right-rail.aligned-rail .rail-panel {
+  padding: var(--dense-panel-padding);
 }
 
 .rail-heading {
@@ -2016,6 +2116,7 @@ label span {
   .work-command-panel,
   .form-grid,
   .filter-grid,
+  .bank-date-range,
   .notification-status,
   .transfer-process-grid,
   .auth-method-grid,
