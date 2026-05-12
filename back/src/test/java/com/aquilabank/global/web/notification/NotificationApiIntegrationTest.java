@@ -21,6 +21,7 @@ import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.Date;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -1318,12 +1319,14 @@ class NotificationApiIntegrationTest extends PostgresContainerTestSupport {
 
   private String issueToken(String subject, long userId) throws JOSEException {
     Instant now = Instant.now();
+    long sessionId = insertActiveRefreshTokenSession(userId, now);
     JWTClaimsSet claimsSet =
         new JWTClaimsSet.Builder()
             .subject(subject)
             .issueTime(Date.from(now))
             .expirationTime(Date.from(now.plusSeconds(300)))
             .claim("user_id", userId)
+            .claim("session_id", sessionId)
             .build();
 
     SignedJWT signedJwt =
@@ -1331,5 +1334,48 @@ class NotificationApiIntegrationTest extends PostgresContainerTestSupport {
             new JWSHeader.Builder(JWSAlgorithm.HS256).type(JOSEObjectType.JWT).build(), claimsSet);
     signedJwt.sign(new MACSigner(TEST_SECRET.getBytes(StandardCharsets.UTF_8)));
     return signedJwt.serialize();
+  }
+
+  private long insertActiveRefreshTokenSession(long userId, Instant now) {
+    long[] sessionId = new long[1];
+    commit(
+        transactionManager,
+        () -> {
+          Long insertedId =
+              jdbcTemplate.queryForObject(
+                  """
+                  INSERT INTO auth_refresh_token_session (
+                      user_id,
+                      token_hash,
+                      session_status,
+                      expires_at,
+                      created_at,
+                      updated_at
+                  )
+                  VALUES (
+                      :userId,
+                      :tokenHash,
+                      'ACTIVE',
+                      :expiresAt,
+                      :now,
+                      :now
+                  )
+                  RETURNING id
+                  """,
+                  new MapSqlParameterSource()
+                      .addValue("userId", userId)
+                      .addValue("tokenHash", UUID.randomUUID().toString().replace("-", ""))
+                      .addValue("expiresAt", Timestamp.from(now.plusSeconds(600)))
+                      .addValue("now", Timestamp.from(now)),
+                  Long.class);
+          if (insertedId == null) {
+            throw new IllegalStateException("auth_refresh_token_session insert did not return id");
+          }
+          sessionId[0] = insertedId;
+        });
+    if (sessionId[0] <= 0) {
+      throw new IllegalStateException("auth_refresh_token_session insert did not return id");
+    }
+    return sessionId[0];
   }
 }
