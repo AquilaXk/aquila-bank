@@ -46,6 +46,59 @@ export async function getOpsJson(
   return body;
 }
 
+export async function postOpsJson(
+  baseUrl: string,
+  token: string,
+  path: string,
+  body?: unknown,
+): Promise<unknown> {
+  const response = await fetch(`${baseUrl.replace(/\/+$/, "")}${path}`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${token}`,
+      ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+    },
+    credentials: "include",
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+
+  const contentType = response.headers.get("content-type") ?? "";
+  const responseBody = contentType.includes("application/json")
+    ? await response.json()
+    : await response.text();
+
+  if (!response.ok) {
+    const message =
+      typeof responseBody === "object" && responseBody !== null && "message" in responseBody
+        ? String((responseBody as { message?: unknown }).message)
+        : response.statusText;
+    throw new Error(message);
+  }
+
+  return responseBody;
+}
+
+export function outboxStaleRecoveryPath(): string {
+  return "/internal/api/v1/outbox/recovery/stale-sending";
+}
+
+export function notificationDlqRedrivePath(): string {
+  return "/internal/api/v1/outbox/notification/dlq-events/redrive";
+}
+
+export function notificationChannelRedrivePath(id: string): string {
+  return `/internal/api/v1/outbox/notification-channel/quarantined-events/${id}/redrive`;
+}
+
+export function commandIdempotencyRecoveryPath(): string {
+  return "/internal/api/v1/ledger/command-idempotency/recovery/stale-started";
+}
+
+export function ledgerSnapshotRecoveryPath(accountId: string): string {
+  return `/internal/api/v1/ledger/snapshot-reconciliation/accounts/${accountId}/recovery`;
+}
+
 export function buildOpsRequests(limit: string): OpsRequest[] {
   return [
     {
