@@ -156,6 +156,15 @@ const checks = [
   ["productized final confirmation label", customerVisibleContent, "최종 확인"],
   ["productized work summary style", files.styles, ".work-summary-strip"],
   ["productized process panel style", files.styles, ".process-panel"],
+  ["gothic page token", files.styles, "--gothic-page"],
+  ["gothic surface token", files.styles, "--gothic-surface"],
+  ["gothic brass token", files.styles, "--gothic-brass"],
+  ["gothic parchment token", files.styles, "--gothic-parchment"],
+  ["gothic danger token", files.styles, "--gothic-danger"],
+  ["gothic shell class", files.styles, ".gothic-banking-shell"],
+  ["gothic work panel class", files.styles, ".gothic-work-panel"],
+  ["gothic state strip class", files.styles, ".gothic-state-strip"],
+  ["gothic bank table class", files.styles, ".gothic-bank-table"],
 ];
 
 const forbidden = [
