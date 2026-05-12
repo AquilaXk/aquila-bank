@@ -40,6 +40,9 @@ jobs:
       - name: Run frontend lint
         run: yarn lint
 
+      - name: Run frontend API parity contract
+        run: yarn test:api-parity
+
       - name: Run frontend build
         run: yarn build
 
