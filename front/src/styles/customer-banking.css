@@ -107,6 +107,10 @@ label span {
   --dense-panel-padding: 12px;
 }
 
+.mobile-work-jump {
+  display: none;
+}
+
 .skip-link {
   position: absolute;
   z-index: 100;
@@ -389,6 +393,10 @@ label span {
   grid-template-columns: 216px minmax(0, 1fr) 268px;
   gap: 14px;
   padding: 14px 0 42px;
+}
+
+.mobile-priority-work {
+  scroll-margin-top: 8px;
 }
 
 .dense-banking-shell .bank-layout {
@@ -1021,6 +1029,13 @@ label span {
   padding-top: 12px;
 }
 
+.enterprise-application-form {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--primary);
+  background: var(--surface-muted);
+  padding: 10px;
+}
+
 .application-submit-panel button {
   width: fit-content;
 }
@@ -1178,6 +1193,11 @@ label span {
   padding: 14px;
 }
 
+.account-detail-work-panel {
+  border-top: 3px solid var(--primary);
+  padding: 12px;
+}
+
 .balance-card {
   display: grid;
   gap: 4px;
@@ -1304,6 +1324,11 @@ label span {
   padding: 14px;
 }
 
+.bank-form.tight-work-form {
+  gap: 9px;
+  padding: 12px;
+}
+
 .bank-form.passive {
   background: #fff;
 }
@@ -1398,6 +1423,11 @@ label span {
 .receipt-panel {
   display: grid;
   align-content: start;
+}
+
+.receipt-print-view {
+  border: 1px solid var(--line);
+  background: #fff;
 }
 
 .receipt-action-row {
@@ -1769,6 +1799,11 @@ label span {
   width: 100%;
   border-collapse: collapse;
   background: #fff;
+}
+
+.bank-table.dense-bank-table th,
+.bank-table.dense-bank-table td {
+  padding: 8px 10px;
 }
 
 .bank-table caption {
@@ -2163,10 +2198,36 @@ label span {
     align-items: flex-start;
   }
 
+  .utility-bar.mobile-compact-utility {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 8px 0;
+  }
+
   .utility-left,
   .utility-right,
   .primary-nav {
     width: 100%;
+  }
+
+  .utility-left {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+
+  .utility-left .utility-link {
+    flex: 0 0 auto;
+    min-width: 58px;
+  }
+
+  .utility-right {
+    display: grid;
+    grid-template-columns: auto auto;
+    justify-content: end;
+    gap: 6px;
   }
 
   .mobile-search-toggle {
@@ -2182,6 +2243,7 @@ label span {
 
   .utility-search.open {
     display: grid;
+    grid-column: 1 / -1;
   }
 
   .utility-right,
@@ -2193,12 +2255,69 @@ label span {
     width: 100%;
   }
 
-  .side-menu {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .primary-nav.mobile-compact-primary-nav {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0;
+    overflow-x: auto;
+    border-top: 1px solid var(--line);
+    scrollbar-width: thin;
   }
 
-  .side-item {
-    min-height: 50px;
+  .primary-nav.mobile-compact-primary-nav .nav-tab {
+    flex: 0 0 auto;
+    min-width: 92px;
+    min-height: 44px;
+  }
+
+  .bank-layout.mobile-priority-work .work-area {
+    order: 1;
+  }
+
+  .bank-layout.mobile-priority-work .side-menu {
+    order: 2;
+  }
+
+  .bank-layout.mobile-priority-work .right-rail {
+    order: 3;
+  }
+
+  .side-menu.mobile-compact-side-menu {
+    display: flex;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+
+  .side-menu.mobile-compact-side-menu .side-title,
+  .side-menu.mobile-compact-side-menu .mobile-work-jump,
+  .side-menu.mobile-compact-side-menu .side-item {
+    flex: 0 0 132px;
+    min-height: 44px;
+  }
+
+  .side-menu.mobile-compact-side-menu .side-title {
+    display: inline-flex;
+    align-items: center;
+    border-bottom: 0;
+    padding: 0 12px;
+  }
+
+  .side-menu.mobile-compact-side-menu .mobile-work-jump {
+    display: inline-flex;
+    align-items: center;
+    border-right: 1px solid var(--line);
+    background: #f8fafc;
+    color: var(--primary-dark);
+    padding: 0 12px;
+    font-weight: 800;
+    text-decoration: none;
+  }
+
+  .side-menu.mobile-compact-side-menu .side-item {
+    border-bottom: 0;
+    border-left: 1px solid var(--line);
+    padding: 7px 10px;
   }
 
   .nav-tab {
@@ -2245,15 +2364,10 @@ label span {
     gap: 6px 10px;
   }
 
-  .utility-left {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .primary-nav,
-  .side-menu {
-    display: grid;
-    grid-template-columns: 1fr;
+  .primary-nav.mobile-compact-primary-nav,
+  .side-menu.mobile-compact-side-menu {
+    display: flex;
+    grid-template-columns: none;
   }
 
   .nav-tab,

@@ -1,7 +1,7 @@
 import type { FormEvent } from 'react';
 import type { AuthSessionItem, BackupCodeIssueResponse, CustomerSession, LoginResponse, PasswordRecoveryRequestResult, TotpEnrollmentStartResponse } from '@/lib/api/types';
 import { formatDateTime } from '@/lib/customer-banking/format';
-import { BankActionBar, BankNoticeStrip, StatusBadge, WorkStateGrid, WorkTabs } from '../common';
+import { BankActionBar, BankInput, BankNoticeStrip, StatusBadge, WorkStateGrid, WorkTabs } from '../common';
 
 function stayOnCurrentWorkTab(): void {}
 
@@ -91,14 +91,14 @@ export function SecuritySection(props: {
           <p>인증센터</p>
           <h1>로그인 및 보안관리</h1>
         </div>
-        <div className="button-row">
+        <BankActionBar label="인증 업무 action bar">
           <button disabled={!props.session || props.isBusy} onClick={props.onRefresh} type="button">
             토큰 재발급
           </button>
           <button disabled={!props.session || props.isBusy} onClick={props.onLogout} type="button">
             로그아웃
           </button>
-        </div>
+        </BankActionBar>
       </div>
       <WorkTabs
         active="login"
@@ -195,43 +195,41 @@ export function SecuritySection(props: {
       </section>
 
       <div className="two-column">
-        <form className="bank-form" onSubmit={props.onLogin}>
+        <form className="bank-form tight-work-form" onSubmit={props.onLogin}>
           <div className="form-heading">
             <strong>로그인</strong>
             <span>아이디와 비밀번호</span>
           </div>
-          <label>
-            <span>고객 ID</span>
-            <input
-              autoComplete="username"
-              onChange={(event) =>
-                props.onLoginChange({
-                  ...props.loginForm,
-                  loginId: event.target.value,
-                })
-              }
-              required
-              value={props.loginForm.loginId}
-            />
-          </label>
-          <label>
-            <span>비밀번호</span>
-            <input
-              autoComplete="current-password"
-              onChange={(event) =>
-                props.onLoginChange({
-                  ...props.loginForm,
-                  password: event.target.value,
-                })
-              }
-              required
-              type="password"
-              value={props.loginForm.password}
-            />
-          </label>
-          <button disabled={props.isBusy} type="submit">
-            로그인
-          </button>
+          <BankInput
+            autoComplete="username"
+            label="고객 ID"
+            onChange={(event) =>
+              props.onLoginChange({
+                ...props.loginForm,
+                loginId: event.target.value,
+              })
+            }
+            required
+            value={props.loginForm.loginId}
+          />
+          <BankInput
+            autoComplete="current-password"
+            label="비밀번호"
+            onChange={(event) =>
+              props.onLoginChange({
+                ...props.loginForm,
+                password: event.target.value,
+              })
+            }
+            required
+            type="password"
+            value={props.loginForm.password}
+          />
+          <BankActionBar>
+            <button disabled={props.isBusy} type="submit">
+              로그인
+            </button>
+          </BankActionBar>
         </form>
 
         <div className="bank-form passive">

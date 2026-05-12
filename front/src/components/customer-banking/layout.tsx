@@ -44,7 +44,7 @@ export function BankHeader({
 
   return (
     <header className="bank-header">
-      <div className="utility-bar" aria-label="상단 유틸리티">
+      <div className="utility-bar mobile-compact-utility" aria-label="상단 유틸리티">
         <div className="utility-left">
           <button className="utility-link active" type="button">
             개인
@@ -130,7 +130,7 @@ export function BankHeader({
             <small>Personal Internet Banking</small>
           </div>
         </div>
-        <nav className="primary-nav" aria-label="주요 메뉴">
+        <nav className="primary-nav mobile-compact-primary-nav" aria-label="주요 메뉴">
           {mainMenus.map((item) => (
             <button
               aria-current={activeSection === item.id ? "page" : undefined}
@@ -197,8 +197,11 @@ export function SideMenu({
   onMove: MoveHandler;
 }) {
   return (
-    <aside className="side-menu compact-menu" aria-label="개인뱅킹 메뉴">
+    <aside className="side-menu compact-menu mobile-compact-side-menu" aria-label="개인뱅킹 메뉴">
       <div className="side-title">개인뱅킹</div>
+      <a className="mobile-work-jump" href="#bank-work-area">
+        모바일 업무 바로가기
+      </a>
       {mainMenus.map((item) => (
         <button
           aria-current={activeSection === item.id ? "page" : undefined}

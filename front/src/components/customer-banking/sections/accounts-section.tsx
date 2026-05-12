@@ -233,7 +233,7 @@ export function AccountsSection({
             </div>
           </div>
           <div className="table-scroll-hint">표는 좌우로 스크롤해서 볼 수 있습니다.</div>
-          <BankTable caption="계좌 목록">
+          <BankTable caption="계좌 목록" className="dense-bank-table">
               <thead>
                 <tr>
                   <th>계좌번호</th>
@@ -303,7 +303,7 @@ export function AccountsSection({
           />
         </section>
 
-        <aside className="detail-panel">
+        <aside className="detail-panel account-detail-work-panel">
           <div className="form-heading">
             <strong>계좌 상태</strong>
             <span>

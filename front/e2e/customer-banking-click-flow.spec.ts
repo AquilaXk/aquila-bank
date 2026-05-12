@@ -48,6 +48,7 @@ test("고객 웹뱅킹 주요 공개 업무와 미로그인 이체 가드를 실
       .getByRole("button", { exact: true, name: menuName })
       .click();
     await expect(page.getByText("로그인이 필요한 업무")).toBeVisible();
+    await expect(page.getByText("권한 만료 또는 미로그인")).toBeVisible();
     await expect(page.getByText("공동인증서 로그인")).toBeVisible();
     await expect(page.getByText("금융인증서 로그인")).toBeVisible();
     await expect(page.getByText("아이디 로그인")).toBeVisible();
@@ -55,6 +56,7 @@ test("고객 웹뱅킹 주요 공개 업무와 미로그인 이체 가드를 실
     await expect(page.getByRole("heading", { name: "즉시이체" })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "거래내역 조회" })).toHaveCount(0);
     await expect(page.getByText("공과금 납부", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("신청 접수", { exact: true })).toHaveCount(0);
     await expect(page.getByText("사고신고 접수", { exact: true })).toHaveCount(0);
   }
 

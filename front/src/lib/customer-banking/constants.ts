@@ -38,7 +38,7 @@ export const recommendedKeywords = [
   "OTP",
   "이체한도",
   "공과금",
-  "환율",
+  "외환",
 ];
 
 export const serviceMapGroups: Array<{
@@ -51,7 +51,7 @@ export const serviceMapGroups: Array<{
       { label: "계좌조회", section: "accounts" },
       { label: "거래내역 조회", section: "transactions" },
       { label: "출금가능금액", section: "accounts" },
-      { label: "오픈뱅킹 조회", section: "enterpriseServices" },
+      { label: "오픈뱅킹 연결", section: "enterpriseServices" },
     ],
   },
   {
@@ -142,8 +142,8 @@ export const enterpriseServiceItems = [
   },
   {
     title: "오픈뱅킹",
-    category: "통합조회",
-    description: "타행 계좌 연결, 통합조회, 연결 해지",
+    category: "연결신청",
+    description: "타행 계좌 연결 신청, 동의 만료일 관리",
     status: "접수 가능",
   },
   {
@@ -155,13 +155,13 @@ export const enterpriseServiceItems = [
   {
     title: "대출",
     category: "여신",
-    description: "한도조회, 상담 신청, 상환 조회",
+    description: "희망 한도, 상환 방식, 서류 안내 신청",
     status: "접수 가능",
   },
   {
     title: "외환",
     category: "FX",
-    description: "환율 조회, 외화예금, 해외송금 신청",
+    description: "외화예금, 해외송금 신청 접수",
     status: "접수 가능",
   },
 ];

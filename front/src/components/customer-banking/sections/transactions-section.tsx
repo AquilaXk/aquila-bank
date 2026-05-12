@@ -347,7 +347,7 @@ export function TransactionsSection({
             </div>
             <div className="table-scroll-hint">거래내역 표는 좌우로 스크롤해서 볼 수 있습니다.</div>
             <div className="bank-table-wrap">
-              <table className="bank-table">
+              <table className="bank-table dense-bank-table">
                 <caption>거래내역 목록</caption>
                 <thead>
                   <tr>
@@ -479,7 +479,7 @@ export function TransactionsSection({
               </div>
               <div>
                 <dt>출력</dt>
-                <dd>이체확인증 출력 전용 view</dd>
+                <dd>거래 상세정보 출력 전용 · 이체확인증 출력 전용 view</dd>
               </div>
             </dl>
           ) : (
