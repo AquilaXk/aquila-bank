@@ -7,6 +7,9 @@ public enum InternalServiceScope {
   AUTH_BOOTSTRAP("internal:auth-bootstrap"),
   AUTH_ADMIN("internal:auth-admin"),
   CUSTOMER_APPLICATION_OPS("internal:customer-application-ops"),
+  CUSTOMER_APPLICATION_REVIEWER("internal:customer-application-reviewer"),
+  CUSTOMER_APPLICATION_APPROVER("internal:customer-application-approver"),
+  CUSTOMER_APPLICATION_EXECUTOR("internal:customer-application-executor"),
   OUTBOX_OPS("internal:outbox-ops"),
   LEDGER_OPS("internal:ledger-ops");
 
