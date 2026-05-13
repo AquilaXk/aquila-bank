@@ -57,7 +57,9 @@ public class NotificationChannelProviderWorkerConfiguration {
   NotificationChannelProviderWorkerUseCase notificationChannelProviderWorkerUseCase(
       NotificationChannelOutboxDispatchPort dispatchPort,
       NotificationChannelProviderPort providerPort,
-      NotificationChannelProviderWorkerProperties properties) {
+      NotificationChannelProviderWorkerProperties properties,
+      NotificationChannelProviderDeliveryProperties deliveryProperties) {
+    validateProviderWorkerDeliveryBoundary(properties, deliveryProperties);
     return new NotificationChannelProviderWorkerService(
         dispatchPort,
         providerPort,
@@ -66,6 +68,23 @@ public class NotificationChannelProviderWorkerConfiguration {
         Duration.ofSeconds(properties.retryBaseDelaySeconds()),
         Duration.ofSeconds(properties.maxRetryDelaySeconds()),
         properties.maxRetryAttempts());
+  }
+
+  private void validateProviderWorkerDeliveryBoundary(
+      NotificationChannelProviderWorkerProperties workerProperties,
+      NotificationChannelProviderDeliveryProperties deliveryProperties) {
+    if (!workerProperties.enabled()) {
+      return;
+    }
+    // 운영 worker가 logging/skip provider로 도는 misconfiguration을 시작 단계에서 차단합니다.
+    if (!deliveryProperties.enabled()) {
+      throw new IllegalStateException(
+          "notification channel provider worker requires delivery.enabled=true");
+    }
+    if (!deliveryProperties.email().configured() && !deliveryProperties.sms().configured()) {
+      throw new IllegalStateException(
+          "notification channel provider worker requires at least one provider URL");
+    }
   }
 
   @Bean

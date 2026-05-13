@@ -49,7 +49,7 @@ public final class CustomerApplicationOperationService
                     new CustomerApplicationNotFoundException("customer application was not found"));
     Instant now = Instant.now(clock);
     if (command.action() == CustomerApplicationAction.EXECUTE) {
-      validateTransition(application.status(), command.action());
+      validateOperationPolicy(application, command);
       CustomerApplicationExecutionResult result =
           executorPort.execute(application, command.actorSubject(), command.requestId());
       return operationPort.updateStatus(
@@ -62,7 +62,7 @@ public final class CustomerApplicationOperationService
               result.payload()));
     }
 
-    CustomerApplicationStatus status = targetStatus(application.status(), command.action());
+    CustomerApplicationStatus status = targetStatus(application, command);
     return operationPort.updateStatus(
         new CustomerApplicationStateUpdateCommand(
             command.applicationReference(),
@@ -74,9 +74,22 @@ public final class CustomerApplicationOperationService
   }
 
   private CustomerApplicationStatus targetStatus(
-      CustomerApplicationStatus currentStatus, CustomerApplicationAction action) {
-    validateTransition(currentStatus, action);
-    return TARGET_STATUSES.get(action);
+      CustomerApplicationDetails application, CustomerApplicationDecisionCommand command) {
+    validateOperationPolicy(application, command);
+    return TARGET_STATUSES.get(command.action());
+  }
+
+  private void validateOperationPolicy(
+      CustomerApplicationDetails application, CustomerApplicationDecisionCommand command) {
+    validateTransition(application.status(), command.action());
+    if (command.action() == CustomerApplicationAction.APPROVE
+        && sameActor(application.processedBy(), command.actorSubject())) {
+      throw makerCheckerViolation(application.status(), command.action());
+    }
+    if (command.action() == CustomerApplicationAction.EXECUTE
+        && sameActor(application.processedBy(), command.actorSubject())) {
+      throw makerCheckerViolation(application.status(), command.action());
+    }
   }
 
   private void validateTransition(
@@ -87,9 +100,7 @@ public final class CustomerApplicationOperationService
     boolean allowed =
         switch (action) {
           case START_REVIEW -> currentStatus == CustomerApplicationStatus.SUBMITTED;
-          case APPROVE ->
-              currentStatus == CustomerApplicationStatus.SUBMITTED
-                  || currentStatus.isReviewingState();
+          case APPROVE -> currentStatus.isReviewingState();
           case REJECT ->
               currentStatus == CustomerApplicationStatus.SUBMITTED
                   || currentStatus.isReviewingState()
@@ -108,6 +119,17 @@ public final class CustomerApplicationOperationService
       CustomerApplicationStatus currentStatus, CustomerApplicationAction action) {
     return new CustomerApplicationInvalidTransitionException(
         "cannot %s customer application from %s".formatted(action.name(), currentStatus.name()));
+  }
+
+  private CustomerApplicationInvalidTransitionException makerCheckerViolation(
+      CustomerApplicationStatus currentStatus, CustomerApplicationAction action) {
+    return new CustomerApplicationInvalidTransitionException(
+        "maker-checker violation: cannot %s customer application from %s with same actor"
+            .formatted(action.name(), currentStatus.name()));
+  }
+
+  private boolean sameActor(String processedBy, String actorSubject) {
+    return processedBy != null && processedBy.equals(actorSubject);
   }
 
   private String normalizeReason(String reason) {

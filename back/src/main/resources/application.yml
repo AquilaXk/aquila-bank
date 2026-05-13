@@ -312,6 +312,11 @@ transaction:
       batch-size: ${TRANSACTION_READ_MODEL_CLEANUP_BATCH_SIZE:500}
       retention-days: ${TRANSACTION_READ_MODEL_CLEANUP_RETENTION_DAYS:365}
 
+customer-application:
+  transfer-limit-change:
+    max-single-transfer-limit-minor: ${CUSTOMER_APPLICATION_TRANSFER_LIMIT_CHANGE_MAX_SINGLE_TRANSFER_LIMIT_MINOR:50000000}
+    max-daily-transfer-limit-minor: ${CUSTOMER_APPLICATION_TRANSFER_LIMIT_CHANGE_MAX_DAILY_TRANSFER_LIMIT_MINOR:200000000}
+
 notification:
   channel-provider:
     delivery:

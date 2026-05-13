@@ -8,13 +8,16 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.aquilabank.domain.customerapplication.model.CustomerApplicationDetails;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationStatus;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationSubmission;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationType;
+import com.aquilabank.domain.customerapplication.usecase.CustomerApplicationSelfServiceUseCase;
 import com.aquilabank.domain.customerapplication.usecase.CustomerApplicationSubmitUseCase;
 import com.aquilabank.global.security.AuthenticatedUserPrincipal;
 import com.aquilabank.global.security.BootstrapHeaderAuthenticationFilter;
@@ -37,17 +40,21 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 class CustomerApplicationControllerTest {
 
   private CustomerApplicationSubmitUseCase customerApplicationSubmitUseCase;
+  private CustomerApplicationSelfServiceUseCase customerApplicationSelfServiceUseCase;
   private RequestAccountAuthorizationService requestAccountAuthorizationService;
   private MockMvc mockMvc;
 
   @BeforeEach
   void setUp() {
     customerApplicationSubmitUseCase = mock(CustomerApplicationSubmitUseCase.class);
+    customerApplicationSelfServiceUseCase = mock(CustomerApplicationSelfServiceUseCase.class);
     requestAccountAuthorizationService = mock(RequestAccountAuthorizationService.class);
     mockMvc =
         MockMvcBuilders.standaloneSetup(
                 new CustomerApplicationController(
-                    customerApplicationSubmitUseCase, requestAccountAuthorizationService))
+                    customerApplicationSubmitUseCase,
+                    customerApplicationSelfServiceUseCase,
+                    requestAccountAuthorizationService))
             .setControllerAdvice(new ApiExceptionHandler())
             .addFilters(new BootstrapHeaderAuthenticationFilter("X-Account-Id", "X-Subject"))
             .setCustomArgumentResolvers(new CurrentAuthenticatedPrincipalArgumentResolver())
@@ -100,6 +107,93 @@ class CustomerApplicationControllerTest {
                         && Long.valueOf(101L).equals(command.accountId())
                         && "bill-001".equals(command.idempotencyKey())
                         && "123456".equals(command.totpCode())));
+  }
+
+  @Test
+  void submitsTransferLimitChangeWithTransferAccountAuthorization() throws Exception {
+    authenticateUser(7L);
+    when(requestAccountAuthorizationService.resolveTransferSourceAccountId(any(), eq(101L)))
+        .thenReturn(101L);
+    when(customerApplicationSubmitUseCase.submit(
+            argThat(
+                command ->
+                    command.applicationType() == CustomerApplicationType.TRANSFER_LIMIT_CHANGE)))
+        .thenReturn(transferLimitSubmission());
+
+    mockMvc
+        .perform(
+            post("/api/v1/customer-service/applications")
+                .header("Idempotency-Key", "limit-001")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "applicationType": "TRANSFER_LIMIT_CHANGE",
+                      "accountId": 101,
+                      "totpCode": "123456",
+                      "payload": {
+                        "requestedSingleTransferLimitMinor": 500000,
+                        "requestedDailyTransferLimitMinor": 2000000
+                      }
+                    }
+                    """))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.applicationType").value("TRANSFER_LIMIT_CHANGE"));
+
+    verify(requestAccountAuthorizationService).resolveTransferSourceAccountId(any(), eq(101L));
+  }
+
+  @Test
+  void listsOwnApplications() throws Exception {
+    authenticateUser(7L);
+    when(customerApplicationSelfServiceUseCase.findByUserId(7L, 20))
+        .thenReturn(List.of(details("CSA-20260511-001", CustomerApplicationStatus.SUBMITTED)));
+
+    mockMvc
+        .perform(get("/api/v1/customer-service/applications"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items[0].applicationReference").value("CSA-20260511-001"))
+        .andExpect(jsonPath("$.items[0].processingMode").value("EXTERNAL_PROVIDER_REQUIRED"))
+        .andExpect(jsonPath("$.items[0].automatedExecutionSupported").value(false));
+  }
+
+  @Test
+  void listsOwnApplicationsWithExplicitLimit() throws Exception {
+    authenticateUser(7L);
+    when(customerApplicationSelfServiceUseCase.findByUserId(7L, 10)).thenReturn(List.of());
+
+    mockMvc
+        .perform(get("/api/v1/customer-service/applications").param("limit", "10"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items").isArray());
+
+    verify(customerApplicationSelfServiceUseCase).findByUserId(7L, 10);
+  }
+
+  @Test
+  void getsOwnApplicationDetail() throws Exception {
+    authenticateUser(7L);
+    when(customerApplicationSelfServiceUseCase.getByUserIdAndReference(7L, "CSA-20260511-001"))
+        .thenReturn(details("CSA-20260511-001", CustomerApplicationStatus.FAILED));
+
+    mockMvc
+        .perform(get("/api/v1/customer-service/applications/CSA-20260511-001"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.applicationReference").value("CSA-20260511-001"))
+        .andExpect(jsonPath("$.status").value("FAILED"));
+  }
+
+  @Test
+  void cancelsOwnApplication() throws Exception {
+    authenticateUser(7L);
+    when(customerApplicationSelfServiceUseCase.cancel(
+            eq(7L), eq("CSA-20260511-001"), org.mockito.ArgumentMatchers.anyString()))
+        .thenReturn(details("CSA-20260511-001", CustomerApplicationStatus.CANCELLED));
+
+    mockMvc
+        .perform(post("/api/v1/customer-service/applications/CSA-20260511-001/cancel"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("CANCELLED"));
   }
 
   @Test
@@ -167,7 +261,9 @@ class CustomerApplicationControllerTest {
   void rejectsInvalidPayloadShapeDirectly() {
     CustomerApplicationController controller =
         new CustomerApplicationController(
-            customerApplicationSubmitUseCase, requestAccountAuthorizationService);
+            customerApplicationSubmitUseCase,
+            customerApplicationSelfServiceUseCase,
+            requestAccountAuthorizationService);
     AuthenticatedUserPrincipal principal = new AuthenticatedUserPrincipal(7L, "tester");
 
     assertThrows(
@@ -216,6 +312,42 @@ class CustomerApplicationControllerTest {
         7L,
         101L,
         CustomerApplicationType.BILL_PAYMENT,
+        CustomerApplicationStatus.SUBMITTED,
+        true,
+        now,
+        now,
+        now);
+  }
+
+  private static CustomerApplicationDetails details(
+      String applicationReference, CustomerApplicationStatus status) {
+    Instant now = Instant.parse("2026-05-11T03:00:00Z");
+    return new CustomerApplicationDetails(
+        applicationReference,
+        7L,
+        101L,
+        CustomerApplicationType.BILL_PAYMENT,
+        status,
+        true,
+        now,
+        Map.of("billerCode", "GIRO"),
+        now,
+        now,
+        status == CustomerApplicationStatus.FAILED ? "EXTERNAL_EXECUTION_NOT_CONFIGURED" : null,
+        status == CustomerApplicationStatus.FAILED ? "ops-executor" : null,
+        status == CustomerApplicationStatus.FAILED ? now : null,
+        status == CustomerApplicationStatus.FAILED
+            ? Map.of("applicationType", "BILL_PAYMENT")
+            : Map.of());
+  }
+
+  private static CustomerApplicationSubmission transferLimitSubmission() {
+    Instant now = Instant.parse("2026-05-11T03:00:00Z");
+    return new CustomerApplicationSubmission(
+        "CSA-20260511-002",
+        7L,
+        101L,
+        CustomerApplicationType.TRANSFER_LIMIT_CHANGE,
         CustomerApplicationStatus.SUBMITTED,
         true,
         now,
