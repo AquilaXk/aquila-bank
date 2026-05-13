@@ -50,7 +50,15 @@ class CustomerApplicationServiceTest {
             CustomerApplicationType.BILL_PAYMENT,
             "bill-001",
             "123456",
-            Map.of("billerCode", "GIRO", "paymentNumber", "1234567890")));
+            Map.of(
+                "billerCode",
+                "GIRO",
+                "paymentNumber",
+                "1234567890",
+                "amountMinor",
+                50_000L,
+                "currencyCode",
+                "KRW")));
 
     verify(securityVerificationPort).verifyTotp(7L, "123456");
     verify(writePort)
@@ -78,7 +86,32 @@ class CustomerApplicationServiceTest {
                     CustomerApplicationType.BILL_PAYMENT,
                     "bill-001",
                     "",
-                    Map.of("billerCode", "GIRO"))));
+                    Map.of(
+                        "billerCode",
+                        "GIRO",
+                        "paymentNumber",
+                        "1234567890",
+                        "amountMinor",
+                        50_000L,
+                        "currencyCode",
+                        "KRW"))));
+  }
+
+  @Test
+  void rejectsTypedApplicationPayloadBeforeTotp() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            service.submit(
+                new CustomerApplicationSubmitCommand(
+                    7L,
+                    101L,
+                    CustomerApplicationType.BILL_PAYMENT,
+                    "bill-invalid",
+                    "123456",
+                    Map.of("billerCode", "GIRO", "paymentNumber", "1234567890"))));
+
+    verifyNoInteractions(securityVerificationPort, writePort);
   }
 
   @Test
@@ -193,7 +226,15 @@ class CustomerApplicationServiceTest {
             CustomerApplicationType.OPEN_BANKING_CONNECTION,
             "open-001",
             "123456",
-            Map.of("banks", List.of("088", "020"))));
+            Map.of(
+                "institutionCode",
+                "088",
+                "externalAccountNumber",
+                "1234567890",
+                "consentId",
+                "CONSENT-001",
+                "banks",
+                List.of("088", "020"))));
 
     verify(writePort)
         .submit(

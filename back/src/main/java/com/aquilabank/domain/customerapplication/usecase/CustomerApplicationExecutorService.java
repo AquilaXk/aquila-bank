@@ -1,5 +1,6 @@
 package com.aquilabank.domain.customerapplication.usecase;
 
+import com.aquilabank.domain.customerapplication.model.CustomerApplicationAccountPolicyCheck;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationDetails;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationExecutionResult;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationProcessingMode;
@@ -7,6 +8,7 @@ import com.aquilabank.domain.customerapplication.model.CustomerApplicationType;
 import com.aquilabank.domain.customerapplication.model.CustomerTransferLimitChangePolicy;
 import com.aquilabank.domain.customerapplication.model.CustomerTransferLimitChangeRequest;
 import com.aquilabank.domain.customerapplication.model.CustomerTransferLimitPolicyCommand;
+import com.aquilabank.domain.customerapplication.port.CustomerApplicationAccountPolicyPort;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationExecutorPort;
 import com.aquilabank.domain.customerapplication.port.CustomerTransferLimitPolicyPort;
 import com.aquilabank.domain.ledger.model.TransferLimitPolicy;
@@ -18,12 +20,15 @@ import java.util.Objects;
 public final class CustomerApplicationExecutorService implements CustomerApplicationExecutorPort {
 
   private final CustomerTransferLimitPolicyPort transferLimitPolicyPort;
+  private final CustomerApplicationAccountPolicyPort accountPolicyPort;
   private final CustomerTransferLimitChangePolicy transferLimitChangePolicy;
 
   public CustomerApplicationExecutorService(
       CustomerTransferLimitPolicyPort transferLimitPolicyPort,
+      CustomerApplicationAccountPolicyPort accountPolicyPort,
       CustomerTransferLimitChangePolicy transferLimitChangePolicy) {
     this.transferLimitPolicyPort = Objects.requireNonNull(transferLimitPolicyPort);
+    this.accountPolicyPort = Objects.requireNonNull(accountPolicyPort);
     this.transferLimitChangePolicy = Objects.requireNonNull(transferLimitChangePolicy);
   }
 
@@ -72,6 +77,19 @@ public final class CustomerApplicationExecutorService implements CustomerApplica
               transferLimitChangePolicy.maxSingleTransferLimitMinor(),
               "maxDailyTransferLimitMinor",
               transferLimitChangePolicy.maxDailyTransferLimitMinor()));
+    }
+    CustomerApplicationAccountPolicyCheck accountPolicyCheck =
+        Objects.requireNonNull(
+            accountPolicyPort.checkTransferLimitChange(
+                application.userId(), application.accountId()));
+    if (!accountPolicyCheck.permitted()) {
+      return CustomerApplicationExecutionResult.failed(
+          accountPolicyCheck.rejectionReason(),
+          Map.of(
+              "applicationType",
+              application.applicationType().name(),
+              "accountId",
+              application.accountId()));
     }
 
     TransferLimitPolicy policy =
