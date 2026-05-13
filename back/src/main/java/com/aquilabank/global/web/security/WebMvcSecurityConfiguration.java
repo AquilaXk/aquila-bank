@@ -46,7 +46,13 @@ public class WebMvcSecurityConfiguration implements WebMvcConfigurer {
             "/api/v1/auth/mfa/totp/disable",
             "/api/v1/auth/mfa/backup-codes",
             "/api/v1/auth/sessions",
-            "/api/v1/auth/sessions/*");
+            "/api/v1/auth/sessions/*",
+            "/api/v1/customer-service/applications",
+            "/api/v1/notifications/preferences",
+            "/api/v1/notifications/*/read",
+            "/api/v1/notifications/read",
+            "/api/v1/notifications/archive",
+            "/api/v1/notifications/delete");
 
     registry
         .addInterceptor(internalServiceTokenAuthenticationInterceptor)

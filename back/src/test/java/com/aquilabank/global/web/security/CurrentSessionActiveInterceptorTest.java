@@ -63,7 +63,13 @@ class CurrentSessionActiveInterceptorTest {
             new RequestPath("POST", "/api/v1/auth/mfa/totp/disable"),
             new RequestPath("POST", "/api/v1/auth/mfa/backup-codes"),
             new RequestPath("DELETE", "/api/v1/auth/sessions"),
-            new RequestPath("DELETE", "/api/v1/auth/sessions/11"));
+            new RequestPath("DELETE", "/api/v1/auth/sessions/11"),
+            new RequestPath("POST", "/api/v1/customer-service/applications"),
+            new RequestPath("POST", "/api/v1/notifications/preferences"),
+            new RequestPath("POST", "/api/v1/notifications/10/read"),
+            new RequestPath("POST", "/api/v1/notifications/read"),
+            new RequestPath("POST", "/api/v1/notifications/archive"),
+            new RequestPath("POST", "/api/v1/notifications/delete"));
 
     for (RequestPath item : items) {
       assertTrue(interceptor.preHandle(request(item.method(), item.path()), response(), null));

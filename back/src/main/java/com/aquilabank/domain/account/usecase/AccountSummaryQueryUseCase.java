@@ -6,4 +6,6 @@ import com.aquilabank.domain.account.model.AccountSummary;
 public interface AccountSummaryQueryUseCase {
 
   AccountSummary getByAccountId(long accountId);
+
+  AccountSummary getByAccountNumber(String accountNumber);
 }

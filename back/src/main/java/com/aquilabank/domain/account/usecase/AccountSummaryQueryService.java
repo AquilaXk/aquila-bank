@@ -22,4 +22,14 @@ public final class AccountSummaryQueryService implements AccountSummaryQueryUseC
         .findByAccountId(accountId)
         .orElseThrow(() -> new AccountSummaryNotFoundException("account summary is not found"));
   }
+
+  @Override
+  public AccountSummary getByAccountNumber(String accountNumber) {
+    if (accountNumber == null || accountNumber.isBlank()) {
+      throw new IllegalArgumentException("accountNumber is required");
+    }
+    return accountSummaryReadPort
+        .findByAccountNumber(accountNumber.trim())
+        .orElseThrow(() -> new AccountSummaryNotFoundException("account summary is not found"));
+  }
 }

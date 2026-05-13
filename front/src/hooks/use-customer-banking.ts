@@ -50,7 +50,7 @@ export function useCustomerBanking() {
     useState<AccountSummaryResponse | null>(null);
   const [transferForm, setTransferForm] = useState({
     sourceAccountId: "",
-    targetAccountId: "",
+    targetAccountNumber: "",
     amountMinor: "",
     currencyCode: "KRW",
     summary: "",
@@ -403,7 +403,7 @@ export function useCustomerBanking() {
     });
   }
 
-  async function handleTransfer(event: FormEvent<HTMLFormElement>) {
+  async function handleTransfer(event: FormEvent<HTMLFormElement>, totpCode = "") {
     event.preventDefault();
     if (!requireSession()) {
       return false;
@@ -412,10 +412,11 @@ export function useCustomerBanking() {
       const result = await api.transfer(
         {
           sourceAccountId: Number(transferForm.sourceAccountId),
-          targetAccountId: Number(transferForm.targetAccountId),
+          targetAccountNumber: transferForm.targetAccountNumber,
           amountMinor: Number(transferForm.amountMinor),
           currencyCode: transferForm.currencyCode,
           summary: transferForm.summary,
+          totpCode: totpCode || undefined,
         },
       );
       setTransferResult(result);
@@ -439,7 +440,7 @@ export function useCustomerBanking() {
     return runAction("받는 사람 검증", async () => {
       const result = await api.previewTransfer({
         sourceAccountId: Number(transferForm.sourceAccountId),
-        targetAccountId: Number(transferForm.targetAccountId),
+        targetAccountNumber: transferForm.targetAccountNumber,
         amountMinor: Number(transferForm.amountMinor),
         currencyCode: transferForm.currencyCode,
       });

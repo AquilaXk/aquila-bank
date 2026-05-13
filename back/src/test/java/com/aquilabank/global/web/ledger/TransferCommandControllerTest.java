@@ -1,8 +1,10 @@
 package com.aquilabank.global.web.ledger;
 
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -11,12 +13,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.aquilabank.domain.account.model.AccountSummary;
 import com.aquilabank.domain.account.usecase.AccountSummaryQueryUseCase;
+import com.aquilabank.domain.auth.model.TotpOperationVerifyCommand;
+import com.aquilabank.domain.auth.usecase.TotpOperationRequirementUseCase;
+import com.aquilabank.domain.auth.usecase.TotpOperationVerifyUseCase;
 import com.aquilabank.domain.ledger.model.TransferResult;
 import com.aquilabank.domain.ledger.model.TransferReversalResult;
 import com.aquilabank.domain.ledger.port.TransferLimitUsageReadPort;
 import com.aquilabank.domain.ledger.usecase.TransferCommandUseCase;
 import com.aquilabank.domain.ledger.usecase.TransferReversalUseCase;
 import com.aquilabank.global.config.TransferLimitPolicyProperties;
+import com.aquilabank.global.security.AuthenticatedUserPrincipal;
 import com.aquilabank.global.security.BootstrapHeaderAuthenticationFilter;
 import com.aquilabank.global.web.ApiExceptionHandler;
 import com.aquilabank.global.web.security.CurrentAuthenticatedPrincipalArgumentResolver;
@@ -24,9 +30,13 @@ import com.aquilabank.global.web.security.RequestAccountAuthorizationService;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -38,6 +48,8 @@ class TransferCommandControllerTest {
   private RequestAccountAuthorizationService requestAccountAuthorizationService;
   private AccountSummaryQueryUseCase accountSummaryQueryUseCase;
   private TransferLimitUsageReadPort transferLimitUsageReadPort;
+  private TotpOperationRequirementUseCase totpOperationRequirementUseCase;
+  private TotpOperationVerifyUseCase totpOperationVerifyUseCase;
   private MockMvc mockMvc;
 
   @BeforeEach
@@ -47,6 +59,8 @@ class TransferCommandControllerTest {
     requestAccountAuthorizationService = mock(RequestAccountAuthorizationService.class);
     accountSummaryQueryUseCase = mock(AccountSummaryQueryUseCase.class);
     transferLimitUsageReadPort = mock(TransferLimitUsageReadPort.class);
+    totpOperationRequirementUseCase = mock(TotpOperationRequirementUseCase.class);
+    totpOperationVerifyUseCase = mock(TotpOperationVerifyUseCase.class);
     mockMvc =
         MockMvcBuilders.standaloneSetup(
                 new TransferCommandController(
@@ -55,12 +69,20 @@ class TransferCommandControllerTest {
                     requestAccountAuthorizationService,
                     accountSummaryQueryUseCase,
                     transferLimitUsageReadPort,
+                    totpOperationRequirementUseCase,
+                    totpOperationVerifyUseCase,
                     new TransferLimitPolicyProperties(2_000L, 3_000L, "Asia/Seoul"),
                     Clock.fixed(Instant.parse("2026-05-11T01:00:00Z"), ZoneOffset.UTC)))
             .addFilters(new BootstrapHeaderAuthenticationFilter("X-Account-Id", "X-Subject"))
             .setCustomArgumentResolvers(new CurrentAuthenticatedPrincipalArgumentResolver())
             .setControllerAdvice(new ApiExceptionHandler())
             .build();
+    SecurityContextHolder.clearContext();
+  }
+
+  @AfterEach
+  void tearDown() {
+    SecurityContextHolder.clearContext();
   }
 
   @Test
@@ -80,6 +102,51 @@ class TransferCommandControllerTest {
         .andExpect(jsonPath("$.dailyUsedMinor").value(1000))
         .andExpect(jsonPath("$.allowed").value(true))
         .andExpect(jsonPath("$.otpRequired").value(true));
+  }
+
+  @Test
+  void previewsOperationOtpRequirementForJwtUser() throws Exception {
+    authenticateUser(7L);
+    when(totpOperationRequirementUseCase.requiresVerification(7L)).thenReturn(true);
+    stubUserPreview(
+        account(101L, "111122223333", "생활비 계좌", "ACTIVE", 10_000L),
+        account(202L, "999900001234", "홍길동", "ACTIVE", 0L),
+        1_000L);
+
+    performUserPreview(1_500L, "KRW")
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.targetAccount.accountId").doesNotExist())
+        .andExpect(jsonPath("$.targetAccount.accountStatus").doesNotExist())
+        .andExpect(jsonPath("$.targetAccount.currencyCode").doesNotExist())
+        .andExpect(jsonPath("$.otpRequired").value(true));
+  }
+
+  @Test
+  void rejectsUserPreviewWithoutTargetAccountNumber() throws Exception {
+    authenticateUser(7L);
+
+    mockMvc
+        .perform(
+            get("/api/v1/transfers/preview")
+                .queryParam("sourceAccountId", "101")
+                .queryParam("targetAccountId", "202")
+                .queryParam("amountMinor", "1500")
+                .queryParam("currencyCode", "KRW"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message").value("targetAccountNumber is required"));
+  }
+
+  @Test
+  void rejectsBootstrapPreviewWithoutTargetAccountId() throws Exception {
+    mockMvc
+        .perform(
+            get("/api/v1/transfers/preview")
+                .header("X-Account-Id", "101")
+                .queryParam("sourceAccountId", "101")
+                .queryParam("amountMinor", "1500")
+                .queryParam("currencyCode", "KRW"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message").value("targetAccountId is required"));
   }
 
   @Test
@@ -192,6 +259,131 @@ class TransferCommandControllerTest {
   }
 
   @Test
+  void rejectsUserTransferWhenOperationTotpIsRequiredAndMissing() throws Exception {
+    authenticateUser(7L);
+    when(totpOperationRequirementUseCase.requiresVerification(7L)).thenReturn(true);
+
+    mockMvc
+        .perform(
+            post("/api/v1/transfers")
+                .header("Idempotency-Key", "transfer-user-001")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "sourceAccountId": 101,
+                      "targetAccountId": 202,
+                      "amountMinor": 1500,
+                      "currencyCode": "KRW",
+                      "summary": "rent"
+                    }
+                    """))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message").value("totpCode is required"));
+
+    verifyNoInteractions(totpOperationVerifyUseCase);
+    verifyNoInteractions(transferCommandUseCase);
+  }
+
+  @Test
+  void verifiesUserTransferOperationTotpBeforeCommandExecution() throws Exception {
+    authenticateUser(7L);
+    when(totpOperationRequirementUseCase.requiresVerification(7L)).thenReturn(true);
+    when(accountSummaryQueryUseCase.getByAccountNumber("999900001234"))
+        .thenReturn(account(202L, "999900001234", "홍길동", "ACTIVE", 0L));
+    when(transferCommandUseCase.transfer(argThat(command -> command.sourceAccountId() == 101L)))
+        .thenReturn(
+            new TransferResult(
+                "TRX-USER-1",
+                101L,
+                202L,
+                1500L,
+                "KRW",
+                8500L,
+                java.time.Instant.parse("2026-04-16T10:00:00Z"),
+                "BOOKED"));
+    when(requestAccountAuthorizationService.resolveTransferSourceAccountId(
+            org.mockito.ArgumentMatchers.any(), eq(101L)))
+        .thenReturn(101L);
+
+    mockMvc
+        .perform(
+            post("/api/v1/transfers")
+                .header("Idempotency-Key", "transfer-user-002")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "sourceAccountId": 101,
+                      "targetAccountNumber": "999900001234",
+                      "amountMinor": 1500,
+                      "currencyCode": "KRW",
+                      "summary": "rent",
+                      "totpCode": "123456"
+                    }
+                    """))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.transactionReference").value("TRX-USER-1"));
+
+    verify(totpOperationVerifyUseCase).verify(eq(new TotpOperationVerifyCommand(7L, "123456")));
+    verify(transferCommandUseCase)
+        .transfer(
+            argThat(
+                command ->
+                    "transfer-user-002".equals(command.idempotencyKey())
+                        && command.targetAccountId() == 202L));
+  }
+
+  @Test
+  void rejectsUserTransferWithoutTargetAccountNumber() throws Exception {
+    authenticateUser(7L);
+    when(totpOperationRequirementUseCase.requiresVerification(7L)).thenReturn(false);
+
+    mockMvc
+        .perform(
+            post("/api/v1/transfers")
+                .header("Idempotency-Key", "transfer-user-003")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "sourceAccountId": 101,
+                      "targetAccountId": 202,
+                      "amountMinor": 1500,
+                      "currencyCode": "KRW",
+                      "summary": "rent"
+                    }
+                    """))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message").value("targetAccountNumber is required"));
+
+    verifyNoInteractions(transferCommandUseCase);
+  }
+
+  @Test
+  void rejectsBootstrapTransferWithoutTargetAccountId() throws Exception {
+    mockMvc
+        .perform(
+            post("/api/v1/transfers")
+                .header("X-Account-Id", "101")
+                .header("Idempotency-Key", "transfer-bootstrap-missing-target")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "sourceAccountId": 101,
+                      "amountMinor": 1500,
+                      "currencyCode": "KRW",
+                      "summary": "rent"
+                    }
+                    """))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message").value("targetAccountId is required"));
+
+    verifyNoInteractions(transferCommandUseCase);
+  }
+
+  @Test
   void reversesTransferUsingAuthenticatedAccountAndIdempotencyKey() throws Exception {
     when(transferReversalUseCase.reverse(
             argThat(command -> "TRX-1".equals(command.originalTransactionReference()))))
@@ -236,6 +428,50 @@ class TransferCommandControllerTest {
                 command ->
                     "reversal-001".equals(command.idempotencyKey())
                         && Long.valueOf(700L).equals(command.amountMinor())));
+  }
+
+  @Test
+  void verifiesUserReversalOperationTotpBeforeCommandExecution() throws Exception {
+    authenticateUser(7L);
+    when(totpOperationRequirementUseCase.requiresVerification(7L)).thenReturn(true);
+    when(transferReversalUseCase.reverse(
+            argThat(command -> "TRX-1".equals(command.originalTransactionReference()))))
+        .thenReturn(
+            new TransferReversalResult(
+                "TRX-1",
+                "TRX-2",
+                101L,
+                202L,
+                1500L,
+                "KRW",
+                10_000L,
+                java.time.Instant.parse("2026-04-16T10:10:00Z"),
+                "REVERSED"));
+    when(requestAccountAuthorizationService.resolveTransferSourceAccountId(
+            org.mockito.ArgumentMatchers.any(), eq(101L)))
+        .thenReturn(101L);
+
+    mockMvc
+        .perform(
+            post("/api/v1/transfers/TRX-1/reversal")
+                .header("Idempotency-Key", "reversal-user-001")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "sourceAccountId": 101,
+                      "amountMinor": 700,
+                      "reversalReason": "CANCEL",
+                      "summary": "cancel transfer",
+                      "totpCode": "123456"
+                    }
+                    """))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.reversalTransactionReference").value("TRX-2"));
+
+    verify(totpOperationVerifyUseCase).verify(eq(new TotpOperationVerifyCommand(7L, "123456")));
+    verify(transferReversalUseCase)
+        .reverse(argThat(command -> "reversal-user-001".equals(command.idempotencyKey())));
   }
 
   @Test
@@ -322,6 +558,22 @@ class TransferCommandControllerTest {
         .thenReturn(dailyUsedMinor);
   }
 
+  private void stubUserPreview(
+      AccountSummary sourceAccount, AccountSummary targetAccount, long dailyUsedMinor) {
+    when(requestAccountAuthorizationService.resolveTransferSourceAccountId(
+            org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(101L)))
+        .thenReturn(101L);
+    when(accountSummaryQueryUseCase.getByAccountId(101L)).thenReturn(sourceAccount);
+    when(accountSummaryQueryUseCase.getByAccountNumber(targetAccount.accountNumber()))
+        .thenReturn(targetAccount);
+    when(transferLimitUsageReadPort.sumBookedDebitAmountMinor(
+            org.mockito.ArgumentMatchers.eq(101L),
+            org.mockito.ArgumentMatchers.eq("KRW"),
+            org.mockito.ArgumentMatchers.any(),
+            org.mockito.ArgumentMatchers.any()))
+        .thenReturn(dailyUsedMinor);
+  }
+
   private ResultActions performPreview(long amountMinor, String currencyCode) throws Exception {
     return mockMvc.perform(
         get("/api/v1/transfers/preview")
@@ -330,5 +582,21 @@ class TransferCommandControllerTest {
             .queryParam("targetAccountId", "202")
             .queryParam("amountMinor", String.valueOf(amountMinor))
             .queryParam("currencyCode", currencyCode));
+  }
+
+  private ResultActions performUserPreview(long amountMinor, String currencyCode) throws Exception {
+    return mockMvc.perform(
+        get("/api/v1/transfers/preview")
+            .queryParam("sourceAccountId", "101")
+            .queryParam("targetAccountNumber", "999900001234")
+            .queryParam("amountMinor", String.valueOf(amountMinor))
+            .queryParam("currencyCode", currencyCode));
+  }
+
+  private void authenticateUser(long userId) {
+    SecurityContextHolder.getContext()
+        .setAuthentication(
+            UsernamePasswordAuthenticationToken.authenticated(
+                new AuthenticatedUserPrincipal(userId, "tester"), null, List.of()));
   }
 }

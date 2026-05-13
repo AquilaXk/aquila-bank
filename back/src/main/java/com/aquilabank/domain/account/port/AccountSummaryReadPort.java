@@ -7,4 +7,6 @@ import java.util.Optional;
 public interface AccountSummaryReadPort {
 
   Optional<AccountSummary> findByAccountId(long accountId);
+
+  Optional<AccountSummary> findByAccountNumber(String accountNumber);
 }
