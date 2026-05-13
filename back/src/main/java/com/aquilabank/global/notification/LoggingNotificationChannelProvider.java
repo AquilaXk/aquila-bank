@@ -1,6 +1,7 @@
 package com.aquilabank.global.notification;
 
 import com.aquilabank.domain.notification.model.NotificationChannelDeliveryResult;
+import com.aquilabank.domain.notification.model.NotificationChannelDeliverySkipReason;
 import com.aquilabank.domain.notification.model.NotificationChannelOutboxItem;
 import com.aquilabank.domain.notification.port.NotificationChannelProviderPort;
 import org.slf4j.Logger;
@@ -14,13 +15,14 @@ public class LoggingNotificationChannelProvider implements NotificationChannelPr
 
   @Override
   public NotificationChannelDeliveryResult send(NotificationChannelOutboxItem item) {
-    // 외부 secret 없이 worker 상태 전이와 idempotency key 로그 형태를 먼저 검증합니다.
+    // 실제 provider가 없으면 SENT로 위장하지 않고 SKIPPED로 남겨 운영 지표 왜곡을 막습니다.
     log.info(
-        "sending notification channel delivery. id={}, channel={}, key={}, eventType={}",
+        "skipping notification channel delivery because provider is disabled. id={}, channel={}, key={}, eventType={}",
         item.id(),
         item.channel(),
         item.eventKey(),
         item.eventType());
-    return NotificationChannelDeliveryResult.delivered();
+    return NotificationChannelDeliveryResult.skipped(
+        NotificationChannelDeliverySkipReason.PROVIDER_DISABLED);
   }
 }

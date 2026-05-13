@@ -3,6 +3,7 @@ package com.aquilabank.global.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
+import com.aquilabank.domain.ledger.port.TransferLimitPolicyOverrideReadPort;
 import com.aquilabank.domain.ledger.port.TransferLimitUsageReadPort;
 import com.aquilabank.domain.ledger.usecase.TransferLimitPolicyUseCase;
 import org.junit.jupiter.api.Test;
@@ -14,6 +15,9 @@ class TransferLimitPolicyConfigurationTest {
       new ApplicationContextRunner()
           .withUserConfiguration(TransferLimitPolicyConfiguration.class)
           .withBean(TransferLimitUsageReadPort.class, () -> mock(TransferLimitUsageReadPort.class))
+          .withBean(
+              TransferLimitPolicyOverrideReadPort.class,
+              () -> mock(TransferLimitPolicyOverrideReadPort.class))
           .withPropertyValues(
               "ledger.transfer-limit.single-transfer-limit-minor=1000000",
               "ledger.transfer-limit.daily-transfer-limit-minor=5000000",

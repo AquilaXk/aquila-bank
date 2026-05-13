@@ -1,0 +1,123 @@
+package com.aquilabank.domain.customerapplication.usecase;
+
+import com.aquilabank.domain.customerapplication.exception.CustomerApplicationInvalidTransitionException;
+import com.aquilabank.domain.customerapplication.exception.CustomerApplicationNotFoundException;
+import com.aquilabank.domain.customerapplication.model.CustomerApplicationAction;
+import com.aquilabank.domain.customerapplication.model.CustomerApplicationDecisionCommand;
+import com.aquilabank.domain.customerapplication.model.CustomerApplicationDetails;
+import com.aquilabank.domain.customerapplication.model.CustomerApplicationExecutionResult;
+import com.aquilabank.domain.customerapplication.model.CustomerApplicationStateUpdateCommand;
+import com.aquilabank.domain.customerapplication.model.CustomerApplicationStatus;
+import com.aquilabank.domain.customerapplication.port.CustomerApplicationExecutorPort;
+import com.aquilabank.domain.customerapplication.port.CustomerApplicationOperationPort;
+import java.time.Clock;
+import java.time.Instant;
+import java.util.Map;
+import java.util.Objects;
+
+/** 고객 업무 상태전이는 row lock 안에서 검증해 중복 승인/실행을 차단합니다. */
+public final class CustomerApplicationOperationService
+    implements CustomerApplicationOperationUseCase {
+
+  private static final Map<CustomerApplicationAction, CustomerApplicationStatus> TARGET_STATUSES =
+      Map.of(
+          CustomerApplicationAction.START_REVIEW, CustomerApplicationStatus.REVIEWING,
+          CustomerApplicationAction.APPROVE, CustomerApplicationStatus.APPROVED,
+          CustomerApplicationAction.REJECT, CustomerApplicationStatus.REJECTED,
+          CustomerApplicationAction.CANCEL, CustomerApplicationStatus.CANCELLED);
+
+  private final CustomerApplicationOperationPort operationPort;
+  private final CustomerApplicationExecutorPort executorPort;
+  private final Clock clock;
+
+  public CustomerApplicationOperationService(
+      CustomerApplicationOperationPort operationPort,
+      CustomerApplicationExecutorPort executorPort,
+      Clock clock) {
+    this.operationPort = Objects.requireNonNull(operationPort);
+    this.executorPort = Objects.requireNonNull(executorPort);
+    this.clock = Objects.requireNonNull(clock);
+  }
+
+  @Override
+  public CustomerApplicationDetails apply(CustomerApplicationDecisionCommand command) {
+    CustomerApplicationDetails application =
+        operationPort
+            .findByReferenceForUpdate(command.applicationReference())
+            .orElseThrow(
+                () ->
+                    new CustomerApplicationNotFoundException("customer application was not found"));
+    Instant now = Instant.now(clock);
+    if (command.action() == CustomerApplicationAction.EXECUTE) {
+      validateTransition(application.status(), command.action());
+      CustomerApplicationExecutionResult result =
+          executorPort.execute(application, command.actorSubject(), command.requestId());
+      return operationPort.updateStatus(
+          new CustomerApplicationStateUpdateCommand(
+              command.applicationReference(),
+              result.status(),
+              result.reason(),
+              command.actorSubject(),
+              now,
+              result.payload()));
+    }
+
+    CustomerApplicationStatus status = targetStatus(application.status(), command.action());
+    return operationPort.updateStatus(
+        new CustomerApplicationStateUpdateCommand(
+            command.applicationReference(),
+            status,
+            normalizeReason(command.reason()),
+            command.actorSubject(),
+            now,
+            application.executionResult()));
+  }
+
+  private CustomerApplicationStatus targetStatus(
+      CustomerApplicationStatus currentStatus, CustomerApplicationAction action) {
+    validateTransition(currentStatus, action);
+    return TARGET_STATUSES.get(action);
+  }
+
+  private void validateTransition(
+      CustomerApplicationStatus currentStatus, CustomerApplicationAction action) {
+    if (currentStatus.isTerminal()) {
+      throw invalidTransition(currentStatus, action);
+    }
+    boolean allowed =
+        switch (action) {
+          case START_REVIEW -> currentStatus == CustomerApplicationStatus.SUBMITTED;
+          case APPROVE ->
+              currentStatus == CustomerApplicationStatus.SUBMITTED
+                  || currentStatus.isReviewingState();
+          case REJECT ->
+              currentStatus == CustomerApplicationStatus.SUBMITTED
+                  || currentStatus.isReviewingState()
+                  || currentStatus == CustomerApplicationStatus.APPROVED;
+          case CANCEL ->
+              currentStatus == CustomerApplicationStatus.SUBMITTED
+                  || currentStatus.isReviewingState();
+          case EXECUTE -> currentStatus == CustomerApplicationStatus.APPROVED;
+        };
+    if (!allowed) {
+      throw invalidTransition(currentStatus, action);
+    }
+  }
+
+  private CustomerApplicationInvalidTransitionException invalidTransition(
+      CustomerApplicationStatus currentStatus, CustomerApplicationAction action) {
+    return new CustomerApplicationInvalidTransitionException(
+        "cannot %s customer application from %s".formatted(action.name(), currentStatus.name()));
+  }
+
+  private String normalizeReason(String reason) {
+    return reason == null || reason.isBlank() ? null : reason;
+  }
+
+  public static CustomerApplicationExecutorPort unsupportedExecutor() {
+    return (application, actorSubject, requestId) ->
+        CustomerApplicationExecutionResult.failed(
+            "EXTERNAL_EXECUTION_NOT_CONFIGURED",
+            Map.of("applicationType", application.applicationType().name()));
+  }
+}

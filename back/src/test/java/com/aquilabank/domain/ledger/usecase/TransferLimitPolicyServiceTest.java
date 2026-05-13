@@ -9,11 +9,13 @@ import static org.mockito.Mockito.when;
 import com.aquilabank.domain.ledger.exception.TransferLimitExceededException;
 import com.aquilabank.domain.ledger.model.TransferCommand;
 import com.aquilabank.domain.ledger.model.TransferLimitPolicy;
+import com.aquilabank.domain.ledger.port.TransferLimitPolicyOverrideReadPort;
 import com.aquilabank.domain.ledger.port.TransferLimitUsageReadPort;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
@@ -24,12 +26,15 @@ class TransferLimitPolicyServiceTest {
 
   private final TransferLimitUsageReadPort usageReadPort =
       Mockito.mock(TransferLimitUsageReadPort.class);
+  private final TransferLimitPolicyOverrideReadPort overrideReadPort =
+      Mockito.mock(TransferLimitPolicyOverrideReadPort.class);
 
   @Test
   void rejectsWhenSingleTransferLimitIsExceededWithoutUsageLookup() {
     TransferLimitPolicyService service =
         new TransferLimitPolicyService(
             usageReadPort,
+            overrideReadPort,
             Clock.fixed(NOW, ZoneOffset.UTC),
             SEOUL,
             new TransferLimitPolicy(1_000L, 10_000L));
@@ -45,6 +50,7 @@ class TransferLimitPolicyServiceTest {
     TransferLimitPolicyService service =
         new TransferLimitPolicyService(
             usageReadPort,
+            overrideReadPort,
             Clock.fixed(NOW, ZoneOffset.UTC),
             SEOUL,
             new TransferLimitPolicy(1_000L, 5_000L));
@@ -64,6 +70,7 @@ class TransferLimitPolicyServiceTest {
     TransferLimitPolicyService service =
         new TransferLimitPolicyService(
             usageReadPort,
+            overrideReadPort,
             Clock.fixed(NOW, ZoneOffset.UTC),
             SEOUL,
             new TransferLimitPolicy(1_000L, 5_000L));
@@ -73,6 +80,27 @@ class TransferLimitPolicyServiceTest {
         .thenReturn(4_400L);
 
     assertThatCode(() -> service.validate(command(600L))).doesNotThrowAnyException();
+    verify(usageReadPort).sumBookedDebitAmountMinor(101L, "KRW", expectedFrom, expectedTo);
+  }
+
+  @Test
+  void usesAccountOverridePolicyBeforeDefaultPolicy() {
+    TransferLimitPolicyService service =
+        new TransferLimitPolicyService(
+            usageReadPort,
+            overrideReadPort,
+            Clock.fixed(NOW, ZoneOffset.UTC),
+            SEOUL,
+            new TransferLimitPolicy(1_000L, 5_000L));
+    Instant expectedFrom = Instant.parse("2026-04-20T15:00:00Z");
+    Instant expectedTo = Instant.parse("2026-04-21T15:00:00Z");
+    when(overrideReadPort.findByAccountId(101L))
+        .thenReturn(Optional.of(new TransferLimitPolicy(5_000L, 10_000L)));
+    when(usageReadPort.sumBookedDebitAmountMinor(101L, "KRW", expectedFrom, expectedTo))
+        .thenReturn(4_000L);
+
+    assertThatCode(() -> service.validate(command(3_000L))).doesNotThrowAnyException();
+    verify(overrideReadPort).findByAccountId(101L);
     verify(usageReadPort).sumBookedDebitAmountMinor(101L, "KRW", expectedFrom, expectedTo);
   }
 

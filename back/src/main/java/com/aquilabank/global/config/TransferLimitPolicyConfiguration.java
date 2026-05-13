@@ -1,6 +1,7 @@
 package com.aquilabank.global.config;
 
 import com.aquilabank.domain.ledger.model.TransferLimitPolicy;
+import com.aquilabank.domain.ledger.port.TransferLimitPolicyOverrideReadPort;
 import com.aquilabank.domain.ledger.port.TransferLimitUsageReadPort;
 import com.aquilabank.domain.ledger.usecase.TransferLimitPolicyService;
 import com.aquilabank.domain.ledger.usecase.TransferLimitPolicyUseCase;
@@ -17,9 +18,12 @@ public class TransferLimitPolicyConfiguration {
 
   @Bean
   TransferLimitPolicyUseCase transferLimitPolicyUseCase(
-      TransferLimitUsageReadPort usageReadPort, TransferLimitPolicyProperties properties) {
+      TransferLimitUsageReadPort usageReadPort,
+      TransferLimitPolicyOverrideReadPort overrideReadPort,
+      TransferLimitPolicyProperties properties) {
     return new TransferLimitPolicyService(
         usageReadPort,
+        overrideReadPort,
         Clock.systemUTC(),
         ZoneId.of(properties.businessZoneId()),
         new TransferLimitPolicy(

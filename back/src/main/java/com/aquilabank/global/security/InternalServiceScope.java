@@ -6,6 +6,7 @@ public enum InternalServiceScope {
   ACCOUNT_ADMIN("internal:account-admin"),
   AUTH_BOOTSTRAP("internal:auth-bootstrap"),
   AUTH_ADMIN("internal:auth-admin"),
+  CUSTOMER_APPLICATION_OPS("internal:customer-application-ops"),
   OUTBOX_OPS("internal:outbox-ops"),
   LEDGER_OPS("internal:ledger-ops");
 
