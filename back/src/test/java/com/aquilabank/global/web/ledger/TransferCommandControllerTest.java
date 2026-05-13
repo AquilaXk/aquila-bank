@@ -1,9 +1,11 @@
 package com.aquilabank.global.web.ledger;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -31,10 +33,13 @@ import com.aquilabank.global.security.BootstrapHeaderAuthenticationFilter;
 import com.aquilabank.global.web.ApiExceptionHandler;
 import com.aquilabank.global.web.security.CurrentAuthenticatedPrincipalArgumentResolver;
 import com.aquilabank.global.web.security.RequestAccountAuthorizationService;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.concurrent.ConcurrentMap;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -56,6 +61,7 @@ class TransferCommandControllerTest {
   private TransferLimitPolicyUseCase transferLimitPolicyUseCase;
   private TotpOperationRequirementUseCase totpOperationRequirementUseCase;
   private TotpOperationVerifyUseCase totpOperationVerifyUseCase;
+  private TransferCommandController controller;
   private MockMvc mockMvc;
 
   @BeforeEach
@@ -70,19 +76,20 @@ class TransferCommandControllerTest {
     totpOperationVerifyUseCase = mock(TotpOperationVerifyUseCase.class);
     when(transferLimitPolicyUseCase.resolvePolicy(101L))
         .thenReturn(new TransferLimitPolicy(2_000L, 3_000L));
+    controller =
+        new TransferCommandController(
+            transferCommandUseCase,
+            transferReversalUseCase,
+            requestAccountAuthorizationService,
+            accountSummaryQueryUseCase,
+            transferLimitUsageReadPort,
+            transferLimitPolicyUseCase,
+            totpOperationRequirementUseCase,
+            totpOperationVerifyUseCase,
+            new TransferLimitPolicyProperties(2_000L, 3_000L, "Asia/Seoul"),
+            Clock.fixed(Instant.parse("2026-05-11T01:00:00Z"), ZoneOffset.UTC));
     mockMvc =
-        MockMvcBuilders.standaloneSetup(
-                new TransferCommandController(
-                    transferCommandUseCase,
-                    transferReversalUseCase,
-                    requestAccountAuthorizationService,
-                    accountSummaryQueryUseCase,
-                    transferLimitUsageReadPort,
-                    transferLimitPolicyUseCase,
-                    totpOperationRequirementUseCase,
-                    totpOperationVerifyUseCase,
-                    new TransferLimitPolicyProperties(2_000L, 3_000L, "Asia/Seoul"),
-                    Clock.fixed(Instant.parse("2026-05-11T01:00:00Z"), ZoneOffset.UTC)))
+        MockMvcBuilders.standaloneSetup(controller)
             .addFilters(new BootstrapHeaderAuthenticationFilter("X-Account-Id", "X-Subject"))
             .setCustomArgumentResolvers(new CurrentAuthenticatedPrincipalArgumentResolver())
             .setControllerAdvice(new ApiExceptionHandler())
@@ -145,6 +152,41 @@ class TransferCommandControllerTest {
                 .queryParam("currencyCode", "KRW"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.message").value("targetAccountNumber is required"));
+  }
+
+  @Test
+  void throttlesUserRecipientPreviewBeforeRepeatedAccountNumberLookup() throws Exception {
+    authenticateUser(7L);
+    when(totpOperationRequirementUseCase.requiresVerification(7L)).thenReturn(false);
+    stubUserPreview(
+        account(101L, "111122223333", "생활비 계좌", "ACTIVE", 10_000L),
+        account(202L, "999900001234", "홍길동", "ACTIVE", 0L),
+        0L);
+
+    for (int i = 0; i < 20; i++) {
+      performUserPreview(1_000L, "KRW").andExpect(status().isOk());
+    }
+
+    performUserPreview(1_000L, "KRW")
+        .andExpect(status().isTooManyRequests())
+        .andExpect(jsonPath("$.message").value("too many recipient preview requests"));
+
+    verify(accountSummaryQueryUseCase, times(20)).getByAccountNumber("999900001234");
+  }
+
+  @Test
+  void prunesExpiredRecipientPreviewThrottleWindowsWhenTrackedUsersExceedCap() throws Exception {
+    authenticateUser(7L);
+    when(totpOperationRequirementUseCase.requiresVerification(7L)).thenReturn(false);
+    stubUserPreview(
+        account(101L, "111122223333", "생활비 계좌", "ACTIVE", 10_000L),
+        account(202L, "999900001234", "홍길동", "ACTIVE", 0L),
+        0L);
+    ConcurrentMap<Long, Object> windows = seedExpiredRecipientPreviewThrottleWindows(10_001);
+
+    performUserPreview(1_000L, "KRW").andExpect(status().isOk());
+
+    assertThat(windows).containsOnlyKeys(7L);
   }
 
   @Test
@@ -709,6 +751,27 @@ class TransferCommandControllerTest {
             .queryParam("targetAccountNumber", "999900001234")
             .queryParam("amountMinor", String.valueOf(amountMinor))
             .queryParam("currencyCode", currencyCode));
+  }
+
+  @SuppressWarnings("unchecked")
+  private ConcurrentMap<Long, Object> seedExpiredRecipientPreviewThrottleWindows(int count)
+      throws Exception {
+    Field windowsField =
+        TransferCommandController.class.getDeclaredField("recipientPreviewThrottleWindows");
+    windowsField.setAccessible(true);
+    ConcurrentMap<Long, Object> windows =
+        (ConcurrentMap<Long, Object>) windowsField.get(controller);
+    Class<?> windowType =
+        Class.forName(
+            "com.aquilabank.global.web.ledger.TransferCommandController$RecipientPreviewThrottleWindow");
+    Constructor<?> constructor = windowType.getDeclaredConstructor(long.class, int.class);
+    constructor.setAccessible(true);
+    Object expiredWindow =
+        constructor.newInstance(Instant.parse("2026-05-11T00:58:59Z").getEpochSecond(), 1);
+    for (long userId = 10_000L; userId < 10_000L + count; userId++) {
+      windows.put(userId, expiredWindow);
+    }
+    return windows;
   }
 
   private void authenticateUser(long userId) {

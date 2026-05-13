@@ -38,6 +38,7 @@ import com.aquilabank.global.security.InternalServiceRequestAuthorizer;
 import com.aquilabank.global.security.InternalServiceTokenClaims;
 import com.aquilabank.global.security.LoginThrottleScope;
 import com.aquilabank.global.security.LoginThrottledException;
+import com.aquilabank.global.web.ledger.TransferRecipientPreviewThrottledException;
 import com.aquilabank.global.web.transaction.TransactionReadAccountFairnessRejectedException;
 import com.aquilabank.global.web.transaction.TransactionReadUpstream429Metrics;
 import jakarta.servlet.http.HttpServletRequest;
@@ -176,6 +177,27 @@ public class ApiExceptionHandler {
         .header(
             RATE_LIMIT_RETRY_JITTER_MILLIS_HEADER,
             Integer.toString(retryJitterMillis(ex.retryAfterSeconds())))
+        .body(
+            new ApiErrorResponse(
+                Instant.now(),
+                HttpStatus.TOO_MANY_REQUESTS.value(),
+                HttpStatus.TOO_MANY_REQUESTS.getReasonPhrase(),
+                ex.getMessage(),
+                request.getRequestURI()));
+  }
+
+  @ExceptionHandler(TransferRecipientPreviewThrottledException.class)
+  ResponseEntity<ApiErrorResponse> handleTransferRecipientPreviewThrottled(
+      TransferRecipientPreviewThrottledException ex, HttpServletRequest request) {
+    logInternalAuthStatusFailure(HttpStatus.TOO_MANY_REQUESTS, request, ex.getMessage());
+    String source = "transfer-recipient-preview";
+    return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+        .header("Retry-After", Long.toString(ex.retryAfterSeconds()))
+        .header(UPSTREAM_429_SOURCE_HEADER, source)
+        .header(REJECT_SOURCE_HEADER, "security")
+        .header(REJECT_REASON_HEADER, source)
+        .header(RATE_LIMIT_SCOPE_HEADER, source)
+        .header(RATE_LIMIT_RETRY_AFTER_HEADER, Long.toString(ex.retryAfterSeconds()))
         .body(
             new ApiErrorResponse(
                 Instant.now(),
