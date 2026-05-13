@@ -4,6 +4,8 @@ import com.aquilabank.domain.customerapplication.model.CustomerApplicationStatus
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationSubmission;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationSubmitCommand;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationWriteCommand;
+import com.aquilabank.domain.customerapplication.model.CustomerTransferLimitChangePolicy;
+import com.aquilabank.domain.customerapplication.model.CustomerTransferLimitChangeRequest;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationReferencePort;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationSecurityVerificationPort;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationWritePort;
@@ -22,20 +24,24 @@ public final class CustomerApplicationService implements CustomerApplicationSubm
   private final CustomerApplicationSecurityVerificationPort securityVerificationPort;
   private final CustomerApplicationReferencePort referencePort;
   private final Clock clock;
+  private final CustomerTransferLimitChangePolicy transferLimitChangePolicy;
 
   public CustomerApplicationService(
       CustomerApplicationWritePort writePort,
       CustomerApplicationSecurityVerificationPort securityVerificationPort,
       CustomerApplicationReferencePort referencePort,
-      Clock clock) {
+      Clock clock,
+      CustomerTransferLimitChangePolicy transferLimitChangePolicy) {
     this.writePort = Objects.requireNonNull(writePort);
     this.securityVerificationPort = Objects.requireNonNull(securityVerificationPort);
     this.referencePort = Objects.requireNonNull(referencePort);
     this.clock = Objects.requireNonNull(clock);
+    this.transferLimitChangePolicy = Objects.requireNonNull(transferLimitChangePolicy);
   }
 
   @Override
   public CustomerApplicationSubmission submit(CustomerApplicationSubmitCommand command) {
+    validateCommand(command);
     Instant now = Instant.now(clock);
     boolean mfaVerified = false;
     Instant mfaVerifiedAt = null;
@@ -61,6 +67,24 @@ public final class CustomerApplicationService implements CustomerApplicationSubm
             mfaVerifiedAt,
             command.payload(),
             now));
+  }
+
+  private void validateCommand(CustomerApplicationSubmitCommand command) {
+    if (command.applicationType().supportsAutomatedExecution()) {
+      validateTransferLimitChange(command);
+    }
+  }
+
+  private void validateTransferLimitChange(CustomerApplicationSubmitCommand command) {
+    if (command.accountId() == null) {
+      throw new IllegalArgumentException("accountId is required for transfer limit change");
+    }
+    CustomerTransferLimitChangeRequest request =
+        CustomerTransferLimitChangeRequest.fromPayload(command.payload())
+            .orElseThrow(
+                () -> new IllegalArgumentException("transfer limit change payload is invalid"));
+    transferLimitChangePolicy.validate(
+        request.singleTransferLimitMinor(), request.dailyTransferLimitMinor());
   }
 
   private String fingerprint(CustomerApplicationSubmitCommand command) {

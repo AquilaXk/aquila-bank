@@ -103,6 +103,40 @@ class CustomerApplicationControllerTest {
   }
 
   @Test
+  void submitsTransferLimitChangeWithTransferAccountAuthorization() throws Exception {
+    authenticateUser(7L);
+    when(requestAccountAuthorizationService.resolveTransferSourceAccountId(any(), eq(101L)))
+        .thenReturn(101L);
+    when(customerApplicationSubmitUseCase.submit(
+            argThat(
+                command ->
+                    command.applicationType() == CustomerApplicationType.TRANSFER_LIMIT_CHANGE)))
+        .thenReturn(transferLimitSubmission());
+
+    mockMvc
+        .perform(
+            post("/api/v1/customer-service/applications")
+                .header("Idempotency-Key", "limit-001")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "applicationType": "TRANSFER_LIMIT_CHANGE",
+                      "accountId": 101,
+                      "totpCode": "123456",
+                      "payload": {
+                        "requestedSingleTransferLimitMinor": 500000,
+                        "requestedDailyTransferLimitMinor": 2000000
+                      }
+                    }
+                    """))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.applicationType").value("TRANSFER_LIMIT_CHANGE"));
+
+    verify(requestAccountAuthorizationService).resolveTransferSourceAccountId(any(), eq(101L));
+  }
+
+  @Test
   void rejectsSensitivePayloadKeysBeforeSubmit() throws Exception {
     authenticateUser(7L);
 
@@ -216,6 +250,20 @@ class CustomerApplicationControllerTest {
         7L,
         101L,
         CustomerApplicationType.BILL_PAYMENT,
+        CustomerApplicationStatus.SUBMITTED,
+        true,
+        now,
+        now,
+        now);
+  }
+
+  private static CustomerApplicationSubmission transferLimitSubmission() {
+    Instant now = Instant.parse("2026-05-11T03:00:00Z");
+    return new CustomerApplicationSubmission(
+        "CSA-20260511-002",
+        7L,
+        101L,
+        CustomerApplicationType.TRANSFER_LIMIT_CHANGE,
         CustomerApplicationStatus.SUBMITTED,
         true,
         now,

@@ -15,6 +15,7 @@ import com.aquilabank.domain.customerapplication.usecase.CustomerApplicationServ
 import com.aquilabank.domain.customerapplication.usecase.CustomerApplicationSubmitUseCase;
 import java.time.Clock;
 import java.util.UUID;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -22,6 +23,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 /** 고객 업무 신청 접수 use case와 인증 adapter를 조립합니다. */
 @Configuration
+@EnableConfigurationProperties(CustomerApplicationProperties.class)
 public class CustomerApplicationConfiguration {
 
   @Bean
@@ -42,10 +44,15 @@ public class CustomerApplicationConfiguration {
       CustomerApplicationSecurityVerificationPort securityVerificationPort,
       CustomerApplicationReferencePort referencePort,
       Clock authClock,
+      CustomerApplicationProperties properties,
       PlatformTransactionManager platformTransactionManager) {
     CustomerApplicationService service =
         new CustomerApplicationService(
-            writePort, securityVerificationPort, referencePort, authClock);
+            writePort,
+            securityVerificationPort,
+            referencePort,
+            authClock,
+            properties.transferLimitChangePolicy());
     TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
     return command -> {
       var result = transactionTemplate.execute(status -> service.submit(command));
@@ -58,8 +65,10 @@ public class CustomerApplicationConfiguration {
 
   @Bean
   CustomerApplicationExecutorPort customerApplicationExecutorPort(
-      CustomerTransferLimitPolicyPort transferLimitPolicyPort) {
-    return new CustomerApplicationExecutorService(transferLimitPolicyPort);
+      CustomerTransferLimitPolicyPort transferLimitPolicyPort,
+      CustomerApplicationProperties properties) {
+    return new CustomerApplicationExecutorService(
+        transferLimitPolicyPort, properties.transferLimitChangePolicy());
   }
 
   @Bean

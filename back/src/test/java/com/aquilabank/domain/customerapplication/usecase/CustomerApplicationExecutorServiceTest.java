@@ -10,6 +10,7 @@ import com.aquilabank.domain.customerapplication.model.CustomerApplicationDetail
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationExecutionResult;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationStatus;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationType;
+import com.aquilabank.domain.customerapplication.model.CustomerTransferLimitChangePolicy;
 import com.aquilabank.domain.customerapplication.port.CustomerTransferLimitPolicyPort;
 import com.aquilabank.domain.ledger.model.TransferLimitPolicy;
 import java.time.Instant;
@@ -20,8 +21,10 @@ class CustomerApplicationExecutorServiceTest {
 
   private final CustomerTransferLimitPolicyPort transferLimitPolicyPort =
       mock(CustomerTransferLimitPolicyPort.class);
+  private final CustomerTransferLimitChangePolicy transferLimitChangePolicy =
+      new CustomerTransferLimitChangePolicy(1_000_000L, 5_000_000L);
   private final CustomerApplicationExecutorService service =
-      new CustomerApplicationExecutorService(transferLimitPolicyPort);
+      new CustomerApplicationExecutorService(transferLimitPolicyPort, transferLimitChangePolicy);
 
   @Test
   void executesTransferLimitChangeApplication() {
@@ -116,6 +119,22 @@ class CustomerApplicationExecutorServiceTest {
   }
 
   @Test
+  void failsTransferLimitChangeAbovePolicyOnExecution() {
+    CustomerApplicationExecutionResult result =
+        service.execute(
+            details(
+                CustomerApplicationType.TRANSFER_LIMIT_CHANGE,
+                101L,
+                Map.of(
+                    "singleTransferLimitMinor", 1_500_000L, "dailyTransferLimitMinor", 6_000_000L)),
+            "ops-executor",
+            "req-policy-exceeded");
+
+    assertThat(result.status()).isEqualTo(CustomerApplicationStatus.FAILED);
+    assertThat(result.reason()).isEqualTo("TRANSFER_LIMIT_POLICY_EXCEEDED");
+  }
+
+  @Test
   void failsUnsupportedExternalApplicationExplicitly() {
     CustomerApplicationExecutionResult result =
         service.execute(
@@ -126,6 +145,20 @@ class CustomerApplicationExecutorServiceTest {
     assertThat(result.status()).isEqualTo(CustomerApplicationStatus.FAILED);
     assertThat(result.reason()).isEqualTo("EXTERNAL_EXECUTION_NOT_CONFIGURED");
     assertThat(result.payload()).containsEntry("applicationType", "LOAN_APPLICATION");
+    assertThat(result.payload()).containsEntry("processingMode", "EXTERNAL_PROVIDER_REQUIRED");
+  }
+
+  @Test
+  void failsManualReviewApplicationWithoutAutomatedExecution() {
+    CustomerApplicationExecutionResult result =
+        service.execute(
+            details(CustomerApplicationType.INCIDENT_REPORT, 101L, Map.of()),
+            "ops-executor",
+            "req-incident");
+
+    assertThat(result.status()).isEqualTo(CustomerApplicationStatus.FAILED);
+    assertThat(result.reason()).isEqualTo("MANUAL_REVIEW_REQUIRED");
+    assertThat(result.payload()).containsEntry("processingMode", "MANUAL_REVIEW_REQUIRED");
   }
 
   private static CustomerApplicationDetails details(

@@ -1,5 +1,6 @@
 package com.aquilabank.domain.customerapplication.model;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.time.Instant;
@@ -8,6 +9,37 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class CustomerApplicationModelTest {
+
+  @Test
+  void exposesApplicationProcessingMode() {
+    assertThat(CustomerApplicationType.TRANSFER_LIMIT_CHANGE.processingMode())
+        .isEqualTo(CustomerApplicationProcessingMode.INTERNAL_EXECUTION);
+    assertThat(CustomerApplicationType.TRANSFER_LIMIT_CHANGE.supportsAutomatedExecution()).isTrue();
+    assertThat(CustomerApplicationType.BILL_PAYMENT.processingMode())
+        .isEqualTo(CustomerApplicationProcessingMode.EXTERNAL_PROVIDER_REQUIRED);
+    assertThat(CustomerApplicationType.INCIDENT_REPORT.processingMode())
+        .isEqualTo(CustomerApplicationProcessingMode.MANUAL_REVIEW_REQUIRED);
+  }
+
+  @Test
+  void rejectsInvalidTransferLimitChangePolicy() {
+    assertThrows(
+        IllegalArgumentException.class, () -> new CustomerTransferLimitChangePolicy(0L, 1_000L));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new CustomerTransferLimitChangePolicy(2_000L, 1_000L));
+  }
+
+  @Test
+  void validatesTransferLimitChangePolicyRequestValues() {
+    CustomerTransferLimitChangePolicy policy =
+        new CustomerTransferLimitChangePolicy(1_000L, 5_000L);
+
+    assertThat(policy.allows(1_000L, 5_000L)).isTrue();
+    assertThat(policy.allows(2_000L, 5_000L)).isFalse();
+    assertThrows(IllegalArgumentException.class, () -> policy.validate(0L, 1_000L));
+    assertThrows(IllegalArgumentException.class, () -> policy.validate(2_000L, 1_000L));
+  }
 
   @Test
   void rejectsPayloadNullValues() {

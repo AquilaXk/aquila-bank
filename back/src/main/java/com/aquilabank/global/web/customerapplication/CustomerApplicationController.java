@@ -47,7 +47,7 @@ public class CustomerApplicationController {
       @RequestHeader("Idempotency-Key") @Size(max = 120) String idempotencyKey,
       @Valid @RequestBody CustomerApplicationRequest request) {
     AuthenticatedUserPrincipal userPrincipal = requireUserPrincipal(principal);
-    Long accountId = resolveAccountId(principal, request.accountId());
+    Long accountId = resolveAccountId(principal, request.applicationType(), request.accountId());
     validatePayload(request.payload());
     CustomerApplicationSubmission result =
         customerApplicationSubmitUseCase.submit(
@@ -61,9 +61,16 @@ public class CustomerApplicationController {
     return CustomerApplicationResponse.from(result);
   }
 
-  private Long resolveAccountId(AuthenticatedRequestPrincipal principal, Long accountId) {
+  private Long resolveAccountId(
+      AuthenticatedRequestPrincipal principal,
+      CustomerApplicationType applicationType,
+      Long accountId) {
     if (accountId == null) {
       return null;
+    }
+    if (applicationType == CustomerApplicationType.TRANSFER_LIMIT_CHANGE) {
+      return requestAccountAuthorizationService.resolveTransferSourceAccountId(
+          principal, accountId);
     }
     return requestAccountAuthorizationService.resolveReadableAccountId(principal, accountId);
   }
