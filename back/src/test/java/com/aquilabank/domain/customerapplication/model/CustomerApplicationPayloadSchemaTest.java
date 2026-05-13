@@ -88,6 +88,34 @@ class CustomerApplicationPayloadSchemaTest {
                     300_000L)));
   }
 
+  @Test
+  void rejectsUnsupportedReferenceLikeCodesAndEnums() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            CustomerApplicationPayloadSchema.validate(
+                CustomerApplicationType.OPEN_BANKING_CONNECTION,
+                Map.of(
+                    "institutionCode",
+                    "bank-088",
+                    "externalAccountNumber",
+                    "1234567890",
+                    "consentId",
+                    "CONSENT-001")));
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            CustomerApplicationPayloadSchema.validate(
+                CustomerApplicationType.SECURITY_MEDIA_APPLICATION,
+                Map.of("mediaType", "UNKNOWN", "deliveryMethod", "BRANCH")));
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            CustomerApplicationPayloadSchema.validate(
+                CustomerApplicationType.INCIDENT_REPORT,
+                Map.of("incidentType", "OTHER", "description", "lost card")));
+  }
+
   private static Map<CustomerApplicationType, Map<String, Object>> validPayloads() {
     return Map.ofEntries(
         Map.entry(
@@ -123,7 +151,7 @@ class CustomerApplicationPayloadSchemaTest {
                 "currencyCode",
                 "KRW",
                 "purpose",
-                "housing")),
+                "HOUSING")),
         Map.entry(
             CustomerApplicationType.FOREIGN_EXCHANGE_APPLICATION,
             Map.of(
