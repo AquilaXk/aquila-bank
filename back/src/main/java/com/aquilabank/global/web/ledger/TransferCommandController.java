@@ -162,13 +162,13 @@ public class TransferCommandController {
       @CurrentAuthenticatedPrincipal AuthenticatedRequestPrincipal principal,
       @RequestHeader("Idempotency-Key") String idempotencyKey,
       @Valid @RequestBody TransferRequest request) {
-    verifyOperationTotpIfRequired(principal, request.totpCode());
     long sourceAccountId =
         requestAccountAuthorizationService.resolveTransferSourceAccountId(
             principal, request.sourceAccountId());
     long targetAccountId =
         resolveTransferTargetAccountId(
             principal, request.targetAccountId(), request.targetAccountNumber());
+    verifyOperationTotpIfRequired(principal, request.totpCode());
     TransferResult result =
         transferCommandUseCase.transfer(
             new TransferCommand(
@@ -187,10 +187,10 @@ public class TransferCommandController {
       @PathVariable String transactionReference,
       @RequestHeader("Idempotency-Key") String idempotencyKey,
       @Valid @RequestBody TransferReversalRequest request) {
-    verifyOperationTotpIfRequired(principal, request.totpCode());
     long sourceAccountId =
         requestAccountAuthorizationService.resolveTransferSourceAccountId(
             principal, request.sourceAccountId());
+    verifyOperationTotpIfRequired(principal, request.totpCode());
     TransferReversalResult result =
         transferReversalUseCase.reverse(
             new TransferReversalCommand(
@@ -279,7 +279,7 @@ public class TransferCommandController {
     return "OK";
   }
 
-  /** 송금 preview target 계좌 요약. 계좌번호는 확인용 마지막 4자리만 노출합니다. */
+  /** 송금 preview target 계좌 요약. 공개 사용자 응답은 계좌번호 확인값만 노출합니다. */
   @JsonInclude(JsonInclude.Include.NON_NULL)
   public record TransferPreviewAccountResponse(
       Long accountId,
@@ -292,7 +292,7 @@ public class TransferCommandController {
       return new TransferPreviewAccountResponse(
           exposeInternal ? summary.accountId() : null,
           maskAccountNumber(summary.accountNumber()),
-          summary.displayName(),
+          exposeInternal ? summary.displayName() : null,
           exposeInternal ? summary.accountStatus() : null,
           exposeInternal ? summary.currencyCode() : null);
     }

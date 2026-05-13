@@ -2,6 +2,7 @@ package com.aquilabank.global.web.ledger;
 
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -13,6 +14,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.aquilabank.domain.account.model.AccountSummary;
 import com.aquilabank.domain.account.usecase.AccountSummaryQueryUseCase;
+import com.aquilabank.domain.auth.exception.AccountAccessDeniedException;
 import com.aquilabank.domain.auth.model.TotpOperationVerifyCommand;
 import com.aquilabank.domain.auth.usecase.TotpOperationRequirementUseCase;
 import com.aquilabank.domain.auth.usecase.TotpOperationVerifyUseCase;
@@ -36,6 +38,7 @@ import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -123,6 +126,7 @@ class TransferCommandControllerTest {
     performUserPreview(1_500L, "KRW")
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.targetAccount.accountId").doesNotExist())
+        .andExpect(jsonPath("$.targetAccount.displayName").doesNotExist())
         .andExpect(jsonPath("$.targetAccount.accountStatus").doesNotExist())
         .andExpect(jsonPath("$.targetAccount.currencyCode").doesNotExist())
         .andExpect(jsonPath("$.otpRequired").value(true));
@@ -286,6 +290,11 @@ class TransferCommandControllerTest {
   void rejectsUserTransferWhenOperationTotpIsRequiredAndMissing() throws Exception {
     authenticateUser(7L);
     when(totpOperationRequirementUseCase.requiresVerification(7L)).thenReturn(true);
+    when(requestAccountAuthorizationService.resolveTransferSourceAccountId(
+            org.mockito.ArgumentMatchers.any(), eq(101L)))
+        .thenReturn(101L);
+    when(accountSummaryQueryUseCase.getByAccountNumber("999900001234"))
+        .thenReturn(account(202L, "999900001234", "홍길동", "ACTIVE", 0L));
 
     mockMvc
         .perform(
@@ -296,7 +305,7 @@ class TransferCommandControllerTest {
                     """
                     {
                       "sourceAccountId": 101,
-                      "targetAccountId": 202,
+                      "targetAccountNumber": "999900001234",
                       "amountMinor": 1500,
                       "currencyCode": "KRW",
                       "summary": "rent"
@@ -310,7 +319,8 @@ class TransferCommandControllerTest {
   }
 
   @Test
-  void verifiesUserTransferOperationTotpBeforeCommandExecution() throws Exception {
+  void verifiesUserTransferOperationTotpAfterAccountResolutionBeforeCommandExecution()
+      throws Exception {
     authenticateUser(7L);
     when(totpOperationRequirementUseCase.requiresVerification(7L)).thenReturn(true);
     when(accountSummaryQueryUseCase.getByAccountNumber("999900001234"))
@@ -349,13 +359,56 @@ class TransferCommandControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.transactionReference").value("TRX-USER-1"));
 
-    verify(totpOperationVerifyUseCase).verify(eq(new TotpOperationVerifyCommand(7L, "123456")));
-    verify(transferCommandUseCase)
+    InOrder inOrder =
+        inOrder(
+            requestAccountAuthorizationService,
+            accountSummaryQueryUseCase,
+            totpOperationVerifyUseCase,
+            transferCommandUseCase);
+    inOrder
+        .verify(requestAccountAuthorizationService)
+        .resolveTransferSourceAccountId(org.mockito.ArgumentMatchers.any(), eq(101L));
+    inOrder.verify(accountSummaryQueryUseCase).getByAccountNumber("999900001234");
+    inOrder
+        .verify(totpOperationVerifyUseCase)
+        .verify(eq(new TotpOperationVerifyCommand(7L, "123456")));
+    inOrder
+        .verify(transferCommandUseCase)
         .transfer(
             argThat(
                 command ->
                     "transfer-user-002".equals(command.idempotencyKey())
                         && command.targetAccountId() == 202L));
+  }
+
+  @Test
+  void rejectsUserTransferWithoutConsumingTotpWhenSourceAccountIsDenied() throws Exception {
+    authenticateUser(7L);
+    when(requestAccountAuthorizationService.resolveTransferSourceAccountId(
+            org.mockito.ArgumentMatchers.any(), eq(101L)))
+        .thenThrow(new AccountAccessDeniedException("account access is denied"));
+
+    mockMvc
+        .perform(
+            post("/api/v1/transfers")
+                .header("Idempotency-Key", "transfer-user-denied")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "sourceAccountId": 101,
+                      "targetAccountNumber": "999900001234",
+                      "amountMinor": 1500,
+                      "currencyCode": "KRW",
+                      "summary": "rent",
+                      "totpCode": "123456"
+                    }
+                    """))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.message").value("account access is denied"));
+
+    verifyNoInteractions(totpOperationVerifyUseCase);
+    verifyNoInteractions(transferCommandUseCase);
   }
 
   @Test
@@ -455,7 +508,8 @@ class TransferCommandControllerTest {
   }
 
   @Test
-  void verifiesUserReversalOperationTotpBeforeCommandExecution() throws Exception {
+  void verifiesUserReversalOperationTotpAfterAccountAuthorizationBeforeCommandExecution()
+      throws Exception {
     authenticateUser(7L);
     when(totpOperationRequirementUseCase.requiresVerification(7L)).thenReturn(true);
     when(transferReversalUseCase.reverse(
@@ -493,9 +547,49 @@ class TransferCommandControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.reversalTransactionReference").value("TRX-2"));
 
-    verify(totpOperationVerifyUseCase).verify(eq(new TotpOperationVerifyCommand(7L, "123456")));
-    verify(transferReversalUseCase)
+    InOrder inOrder =
+        inOrder(
+            requestAccountAuthorizationService,
+            totpOperationVerifyUseCase,
+            transferReversalUseCase);
+    inOrder
+        .verify(requestAccountAuthorizationService)
+        .resolveTransferSourceAccountId(org.mockito.ArgumentMatchers.any(), eq(101L));
+    inOrder
+        .verify(totpOperationVerifyUseCase)
+        .verify(eq(new TotpOperationVerifyCommand(7L, "123456")));
+    inOrder
+        .verify(transferReversalUseCase)
         .reverse(argThat(command -> "reversal-user-001".equals(command.idempotencyKey())));
+  }
+
+  @Test
+  void rejectsUserReversalWithoutConsumingTotpWhenSourceAccountIsDenied() throws Exception {
+    authenticateUser(7L);
+    when(requestAccountAuthorizationService.resolveTransferSourceAccountId(
+            org.mockito.ArgumentMatchers.any(), eq(101L)))
+        .thenThrow(new AccountAccessDeniedException("account access is denied"));
+
+    mockMvc
+        .perform(
+            post("/api/v1/transfers/TRX-1/reversal")
+                .header("Idempotency-Key", "reversal-user-denied")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "sourceAccountId": 101,
+                      "amountMinor": 700,
+                      "reversalReason": "CANCEL",
+                      "summary": "cancel transfer",
+                      "totpCode": "123456"
+                    }
+                    """))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.message").value("account access is denied"));
+
+    verifyNoInteractions(totpOperationVerifyUseCase);
+    verifyNoInteractions(transferReversalUseCase);
   }
 
   @Test
