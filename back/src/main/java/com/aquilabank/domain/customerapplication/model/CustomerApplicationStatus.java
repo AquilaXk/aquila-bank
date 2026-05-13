@@ -4,6 +4,7 @@ public enum CustomerApplicationStatus {
   SUBMITTED,
   REVIEWING,
   APPROVED,
+  PENDING_EXTERNAL,
   EXECUTED,
   FAILED,
   REJECTED,

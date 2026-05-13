@@ -3,6 +3,8 @@ package com.aquilabank.global.web.customerapplication;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationAction;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationDecisionCommand;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationDetails;
+import com.aquilabank.domain.customerapplication.model.CustomerApplicationExternalCallbackCommand;
+import com.aquilabank.domain.customerapplication.usecase.CustomerApplicationExternalCallbackUseCase;
 import com.aquilabank.domain.customerapplication.usecase.CustomerApplicationOperationUseCase;
 import com.aquilabank.global.security.InternalServiceRequestAuthorizer;
 import com.aquilabank.global.security.InternalServiceScope;
@@ -27,12 +29,15 @@ import org.springframework.web.bind.annotation.RestController;
 public class InternalCustomerApplicationController {
 
   private final CustomerApplicationOperationUseCase operationUseCase;
+  private final CustomerApplicationExternalCallbackUseCase externalCallbackUseCase;
   private final InternalServiceRequestAuthorizer internalServiceRequestAuthorizer;
 
   public InternalCustomerApplicationController(
       CustomerApplicationOperationUseCase operationUseCase,
+      CustomerApplicationExternalCallbackUseCase externalCallbackUseCase,
       InternalServiceRequestAuthorizer internalServiceRequestAuthorizer) {
     this.operationUseCase = operationUseCase;
+    this.externalCallbackUseCase = externalCallbackUseCase;
     this.internalServiceRequestAuthorizer = internalServiceRequestAuthorizer;
   }
 
@@ -81,6 +86,26 @@ public class InternalCustomerApplicationController {
         httpServletRequest, applicationReference, CustomerApplicationAction.EXECUTE, request);
   }
 
+  @PostMapping("/{applicationReference}/external-callback")
+  public CustomerApplicationOperationResponse externalCallback(
+      HttpServletRequest httpServletRequest,
+      @PathVariable String applicationReference,
+      @Valid @RequestBody CustomerApplicationExternalCallbackRequest request) {
+    InternalServiceTokenClaims claims =
+        internalServiceRequestAuthorizer.requireScope(
+            httpServletRequest, InternalServiceScope.CUSTOMER_APPLICATION_EXECUTOR);
+    CustomerApplicationDetails result =
+        externalCallbackUseCase.apply(
+            new CustomerApplicationExternalCallbackCommand(
+                applicationReference,
+                request.success(),
+                request.reason(),
+                request.payload() == null ? Map.of() : request.payload(),
+                claims.subject(),
+                resolveRequestId(httpServletRequest)));
+    return CustomerApplicationOperationResponse.from(result);
+  }
+
   private CustomerApplicationOperationResponse apply(
       HttpServletRequest httpServletRequest,
       String applicationReference,
@@ -123,6 +148,11 @@ public class InternalCustomerApplicationController {
 
   public record CustomerApplicationOperationRequest(
       @Size(max = 300, message = "reason must be 300 characters or less") String reason) {}
+
+  public record CustomerApplicationExternalCallbackRequest(
+      boolean success,
+      @Size(max = 300, message = "reason must be 300 characters or less") String reason,
+      Map<String, Object> payload) {}
 
   public record CustomerApplicationOperationResponse(
       String applicationReference,
