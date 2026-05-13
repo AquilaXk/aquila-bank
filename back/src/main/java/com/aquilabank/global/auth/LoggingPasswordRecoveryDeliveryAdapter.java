@@ -2,6 +2,7 @@ package com.aquilabank.global.auth;
 
 import com.aquilabank.domain.auth.model.PasswordRecoveryDeliveryCommand;
 import com.aquilabank.domain.auth.model.PasswordRecoveryDeliveryResult;
+import com.aquilabank.domain.auth.model.PasswordRecoveryDeliverySkipReason;
 import com.aquilabank.domain.auth.port.PasswordRecoveryDeliveryPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,6 +20,7 @@ public final class LoggingPasswordRecoveryDeliveryAdapter implements PasswordRec
         command.requestId(),
         command.userId(),
         command.expiresAt());
-    return PasswordRecoveryDeliveryResult.delivered();
+    return PasswordRecoveryDeliveryResult.skipped(
+        PasswordRecoveryDeliverySkipReason.PROVIDER_DISABLED);
   }
 }

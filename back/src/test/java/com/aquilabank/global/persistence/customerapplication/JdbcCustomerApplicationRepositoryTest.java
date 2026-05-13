@@ -5,11 +5,14 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.aquilabank.domain.customerapplication.exception.CustomerApplicationConflictException;
 import com.aquilabank.domain.customerapplication.exception.CustomerApplicationNotFoundException;
+import com.aquilabank.domain.customerapplication.model.CustomerApplicationAction;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationDetails;
+import com.aquilabank.domain.customerapplication.model.CustomerApplicationOperationAuditEntry;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationStateUpdateCommand;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationStatus;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationSubmission;
@@ -205,6 +208,27 @@ class JdbcCustomerApplicationRepositoryTest {
                     "ops",
                     Instant.parse("2026-05-11T03:10:00Z"),
                     Map.of())));
+  }
+
+  @Test
+  void appendsOperationAuditEntry() {
+    NamedParameterJdbcTemplate jdbcTemplate = mock(NamedParameterJdbcTemplate.class);
+    JdbcCustomerApplicationRepository repository =
+        new JdbcCustomerApplicationRepository(jdbcTemplate, new ObjectMapper());
+
+    repository.append(
+        new CustomerApplicationOperationAuditEntry(
+            "CSA-20260511-001",
+            CustomerApplicationAction.EXECUTE,
+            CustomerApplicationStatus.APPROVED,
+            CustomerApplicationStatus.FAILED,
+            "ops-executor",
+            "EXTERNAL_EXECUTION_NOT_CONFIGURED",
+            "req-execute-001",
+            Instant.parse("2026-05-11T03:10:00Z"),
+            Map.of("applicationType", "BILL_PAYMENT")));
+
+    verify(jdbcTemplate).update(anyString(), any(MapSqlParameterSource.class));
   }
 
   @Test

@@ -2,9 +2,12 @@ package com.aquilabank.domain.customerapplication.usecase;
 
 import com.aquilabank.domain.customerapplication.exception.CustomerApplicationInvalidTransitionException;
 import com.aquilabank.domain.customerapplication.exception.CustomerApplicationNotFoundException;
+import com.aquilabank.domain.customerapplication.model.CustomerApplicationAction;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationDetails;
+import com.aquilabank.domain.customerapplication.model.CustomerApplicationOperationAuditEntry;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationStateUpdateCommand;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationStatus;
+import com.aquilabank.domain.customerapplication.port.CustomerApplicationOperationAuditPort;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationOperationPort;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationReadPort;
 import java.time.Clock;
@@ -21,14 +24,17 @@ public final class CustomerApplicationSelfService implements CustomerApplication
 
   private final CustomerApplicationReadPort readPort;
   private final CustomerApplicationOperationPort operationPort;
+  private final CustomerApplicationOperationAuditPort operationAuditPort;
   private final Clock clock;
 
   public CustomerApplicationSelfService(
       CustomerApplicationReadPort readPort,
       CustomerApplicationOperationPort operationPort,
+      CustomerApplicationOperationAuditPort operationAuditPort,
       Clock clock) {
     this.readPort = Objects.requireNonNull(readPort);
     this.operationPort = Objects.requireNonNull(operationPort);
+    this.operationAuditPort = Objects.requireNonNull(operationAuditPort);
     this.clock = Objects.requireNonNull(clock);
   }
 
@@ -70,14 +76,32 @@ public final class CustomerApplicationSelfService implements CustomerApplication
           "cannot CANCEL customer application from " + application.status().name());
     }
     Instant now = Instant.now(clock);
-    return operationPort.updateStatus(
-        new CustomerApplicationStateUpdateCommand(
+    String actorSubject = "customer:" + userId;
+    Map<String, Object> executionResult = Map.of("requestId", requestId);
+    CustomerApplicationDetails updated =
+        operationPort.updateStatus(
+            new CustomerApplicationStateUpdateCommand(
+                applicationReference,
+                CustomerApplicationStatus.CANCELLED,
+                null,
+                actorSubject,
+                now,
+                executionResult));
+    if (updated == null) {
+      throw new IllegalStateException("customer application status update returned null result");
+    }
+    operationAuditPort.append(
+        new CustomerApplicationOperationAuditEntry(
             applicationReference,
-            CustomerApplicationStatus.CANCELLED,
+            CustomerApplicationAction.CANCEL,
+            application.status(),
+            updated.status(),
+            actorSubject,
             null,
-            "customer:" + userId,
+            requestId,
             now,
-            Map.of("requestId", requestId)));
+            executionResult));
+    return updated;
   }
 
   private int normalizeLimit(int limit) {

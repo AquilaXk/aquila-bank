@@ -81,9 +81,13 @@ public class NotificationChannelProviderWorkerConfiguration {
       throw new IllegalStateException(
           "notification channel provider worker requires delivery.enabled=true");
     }
-    if (!deliveryProperties.email().configured() && !deliveryProperties.sms().configured()) {
+    if (!deliveryProperties.email().configured()) {
       throw new IllegalStateException(
-          "notification channel provider worker requires at least one provider URL");
+          "notification channel provider worker requires email provider URL");
+    }
+    if (!deliveryProperties.sms().configured()) {
+      throw new IllegalStateException(
+          "notification channel provider worker requires sms provider URL");
     }
   }
 

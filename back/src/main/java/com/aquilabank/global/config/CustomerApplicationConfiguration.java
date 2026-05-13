@@ -3,8 +3,12 @@ package com.aquilabank.global.config;
 import com.aquilabank.domain.auth.model.TotpOperationVerifyCommand;
 import com.aquilabank.domain.auth.usecase.TotpOperationVerifyUseCase;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationDetails;
+import com.aquilabank.domain.customerapplication.model.CustomerApplicationExecutionResult;
+import com.aquilabank.domain.customerapplication.model.CustomerApplicationProcessingMode;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationAccountPolicyPort;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationExecutorPort;
+import com.aquilabank.domain.customerapplication.port.CustomerApplicationExternalExecutionPort;
+import com.aquilabank.domain.customerapplication.port.CustomerApplicationOperationAuditPort;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationOperationPort;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationReadPort;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationReferencePort;
@@ -20,6 +24,7 @@ import com.aquilabank.domain.customerapplication.usecase.CustomerApplicationServ
 import com.aquilabank.domain.customerapplication.usecase.CustomerApplicationSubmitUseCase;
 import java.time.Clock;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -70,22 +75,40 @@ public class CustomerApplicationConfiguration {
   }
 
   @Bean
+  CustomerApplicationExternalExecutionPort customerApplicationExternalExecutionPort() {
+    return (application, actorSubject, requestId) ->
+        CustomerApplicationExecutionResult.failed(
+            "EXTERNAL_EXECUTION_NOT_CONFIGURED",
+            Map.of(
+                "applicationType",
+                application.applicationType().name(),
+                "processingMode",
+                CustomerApplicationProcessingMode.EXTERNAL_PROVIDER_REQUIRED.name()));
+  }
+
+  @Bean
   CustomerApplicationExecutorPort customerApplicationExecutorPort(
       CustomerTransferLimitPolicyPort transferLimitPolicyPort,
       CustomerApplicationAccountPolicyPort accountPolicyPort,
+      CustomerApplicationExternalExecutionPort externalExecutionPort,
       CustomerApplicationProperties properties) {
     return new CustomerApplicationExecutorService(
-        transferLimitPolicyPort, accountPolicyPort, properties.transferLimitChangePolicy());
+        transferLimitPolicyPort,
+        accountPolicyPort,
+        externalExecutionPort,
+        properties.transferLimitChangePolicy());
   }
 
   @Bean
   CustomerApplicationOperationUseCase customerApplicationOperationUseCase(
       CustomerApplicationOperationPort operationPort,
+      CustomerApplicationOperationAuditPort operationAuditPort,
       CustomerApplicationExecutorPort executorPort,
       Clock authClock,
       PlatformTransactionManager platformTransactionManager) {
     CustomerApplicationOperationService service =
-        new CustomerApplicationOperationService(operationPort, executorPort, authClock);
+        new CustomerApplicationOperationService(
+            operationPort, operationAuditPort, executorPort, authClock);
     TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
     return command -> {
       var result = transactionTemplate.execute(status -> service.apply(command));
@@ -101,10 +124,11 @@ public class CustomerApplicationConfiguration {
   CustomerApplicationSelfServiceUseCase customerApplicationSelfServiceUseCase(
       CustomerApplicationReadPort readPort,
       CustomerApplicationOperationPort operationPort,
+      CustomerApplicationOperationAuditPort operationAuditPort,
       Clock authClock,
       PlatformTransactionManager platformTransactionManager) {
     CustomerApplicationSelfService service =
-        new CustomerApplicationSelfService(readPort, operationPort, authClock);
+        new CustomerApplicationSelfService(readPort, operationPort, operationAuditPort, authClock);
     TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
     return new CustomerApplicationSelfServiceUseCase() {
       @Override
@@ -121,14 +145,8 @@ public class CustomerApplicationConfiguration {
       @Override
       public CustomerApplicationDetails cancel(
           long userId, String applicationReference, String requestId) {
-        var result =
-            transactionTemplate.execute(
-                status -> service.cancel(userId, applicationReference, requestId));
-        if (result == null) {
-          throw new IllegalStateException(
-              "customer application self-service transaction returned null result");
-        }
-        return result;
+        return transactionTemplate.execute(
+            status -> service.cancel(userId, applicationReference, requestId));
       }
     };
   }

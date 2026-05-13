@@ -3,11 +3,13 @@ package com.aquilabank.global.persistence.customerapplication;
 import com.aquilabank.domain.customerapplication.exception.CustomerApplicationConflictException;
 import com.aquilabank.domain.customerapplication.exception.CustomerApplicationNotFoundException;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationDetails;
+import com.aquilabank.domain.customerapplication.model.CustomerApplicationOperationAuditEntry;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationStateUpdateCommand;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationStatus;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationSubmission;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationType;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationWriteCommand;
+import com.aquilabank.domain.customerapplication.port.CustomerApplicationOperationAuditPort;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationOperationPort;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationReadPort;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationWritePort;
@@ -29,6 +31,7 @@ import org.springframework.stereotype.Repository;
 public class JdbcCustomerApplicationRepository
     implements CustomerApplicationWritePort,
         CustomerApplicationOperationPort,
+        CustomerApplicationOperationAuditPort,
         CustomerApplicationReadPort {
 
   private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
@@ -253,6 +256,47 @@ public class JdbcCustomerApplicationRepository
         .findFirst()
         .orElseThrow(
             () -> new CustomerApplicationNotFoundException("customer application was not found"));
+  }
+
+  @Override
+  public void append(CustomerApplicationOperationAuditEntry entry) {
+    MapSqlParameterSource params =
+        new MapSqlParameterSource()
+            .addValue("applicationReference", entry.applicationReference())
+            .addValue("action", entry.action().name())
+            .addValue("beforeStatus", entry.beforeStatus().name())
+            .addValue("afterStatus", entry.afterStatus().name())
+            .addValue("actorSubject", entry.actorSubject())
+            .addValue("reason", entry.reason())
+            .addValue("requestId", entry.requestId())
+            .addValue("processedAt", Timestamp.from(entry.processedAt()))
+            .addValue("executionResult", toJson(entry.executionResult()));
+    jdbcTemplate.update(
+        """
+        INSERT INTO customer_service_application_operation_audit (
+            application_reference,
+            action,
+            before_status,
+            after_status,
+            actor_subject,
+            reason,
+            request_id,
+            processed_at,
+            execution_result
+        )
+        VALUES (
+            :applicationReference,
+            :action,
+            :beforeStatus,
+            :afterStatus,
+            :actorSubject,
+            :reason,
+            :requestId,
+            :processedAt,
+            CAST(:executionResult AS jsonb)
+        )
+        """,
+        params);
   }
 
   private CustomerApplicationSubmission mapSubmission(ResultSet rs, int rowNum)

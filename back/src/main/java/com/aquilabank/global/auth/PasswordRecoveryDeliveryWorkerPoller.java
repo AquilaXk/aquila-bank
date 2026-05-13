@@ -14,8 +14,7 @@ import org.springframework.stereotype.Component;
 @Component
 @ConditionalOnProperty(
     name = "auth.password-recovery.delivery.worker.enabled",
-    havingValue = "true",
-    matchIfMissing = true)
+    havingValue = "true")
 public class PasswordRecoveryDeliveryWorkerPoller {
 
   private static final Logger log =

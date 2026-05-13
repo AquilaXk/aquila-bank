@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationDetails;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationStatus;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationType;
+import com.aquilabank.domain.customerapplication.port.CustomerApplicationOperationAuditPort;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationOperationPort;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationReadPort;
 import com.aquilabank.domain.customerapplication.usecase.CustomerApplicationSelfServiceUseCase;
@@ -30,13 +31,15 @@ class CustomerApplicationConfigurationTest {
   private final CustomerApplicationReadPort readPort = mock(CustomerApplicationReadPort.class);
   private final CustomerApplicationOperationPort operationPort =
       mock(CustomerApplicationOperationPort.class);
+  private final CustomerApplicationOperationAuditPort operationAuditPort =
+      mock(CustomerApplicationOperationAuditPort.class);
   private final Clock clock = Clock.fixed(Instant.parse("2026-05-13T03:00:00Z"), ZoneOffset.UTC);
 
   @Test
   void createsSelfServiceUseCaseForReadAndCancel() {
     CustomerApplicationSelfServiceUseCase useCase =
         configuration.customerApplicationSelfServiceUseCase(
-            readPort, operationPort, clock, new NoopTransactionManager());
+            readPort, operationPort, operationAuditPort, clock, new NoopTransactionManager());
     when(readPort.findByUserId(7L, 20))
         .thenReturn(List.of(details(CustomerApplicationStatus.SUBMITTED)));
     when(readPort.findByUserIdAndReference(7L, "CSA-001"))
@@ -57,7 +60,7 @@ class CustomerApplicationConfigurationTest {
   void rejectsNullSelfServiceTransactionResult() {
     CustomerApplicationSelfServiceUseCase useCase =
         configuration.customerApplicationSelfServiceUseCase(
-            readPort, operationPort, clock, new NoopTransactionManager());
+            readPort, operationPort, operationAuditPort, clock, new NoopTransactionManager());
     when(operationPort.findByReferenceForUpdate("CSA-001"))
         .thenReturn(java.util.Optional.of(details(CustomerApplicationStatus.SUBMITTED)));
 

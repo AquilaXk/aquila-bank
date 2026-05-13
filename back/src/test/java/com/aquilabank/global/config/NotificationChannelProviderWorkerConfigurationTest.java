@@ -83,7 +83,8 @@ class NotificationChannelProviderWorkerConfigurationTest {
         .withPropertyValues(
             "notification.channel-provider.worker.enabled=true",
             "notification.channel-provider.delivery.enabled=true",
-            "notification.channel-provider.delivery.email.url=https://email-provider.example/notifications")
+            "notification.channel-provider.delivery.email.url=https://email-provider.example/notifications",
+            "notification.channel-provider.delivery.sms.url=https://sms-provider.example/notifications")
         .run(
             context ->
                 assertThat(context).hasSingleBean(NotificationChannelProviderWorkerPoller.class));
@@ -117,7 +118,27 @@ class NotificationChannelProviderWorkerConfigurationTest {
               assertThat(context).hasFailed();
               assertThat(context.getStartupFailure())
                   .hasRootCauseMessage(
-                      "notification channel provider worker requires at least one provider URL");
+                      "notification channel provider worker requires email provider URL");
+            });
+  }
+
+  @Test
+  void rejectsWorkerEnabledWithoutSmsProviderUrl() {
+    contextRunner
+        .withBean(
+            NotificationChannelRecipientLookupPort.class,
+            () -> (userId, channel) -> java.util.Optional.of("alice@example.com"))
+        .withBean(ObjectMapper.class, () -> new ObjectMapper().findAndRegisterModules())
+        .withPropertyValues(
+            "notification.channel-provider.worker.enabled=true",
+            "notification.channel-provider.delivery.enabled=true",
+            "notification.channel-provider.delivery.email.url=https://email-provider.example/notifications")
+        .run(
+            context -> {
+              assertThat(context).hasFailed();
+              assertThat(context.getStartupFailure())
+                  .hasRootCauseMessage(
+                      "notification channel provider worker requires sms provider URL");
             });
   }
 

@@ -15,6 +15,7 @@ import com.aquilabank.domain.customerapplication.model.CustomerApplicationExecut
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationStatus;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationType;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationExecutorPort;
+import com.aquilabank.domain.customerapplication.port.CustomerApplicationOperationAuditPort;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationOperationPort;
 import java.time.Clock;
 import java.time.Instant;
@@ -29,9 +30,12 @@ class CustomerApplicationOperationServiceTest {
       mock(CustomerApplicationOperationPort.class);
   private final CustomerApplicationExecutorPort executorPort =
       mock(CustomerApplicationExecutorPort.class);
+  private final CustomerApplicationOperationAuditPort operationAuditPort =
+      mock(CustomerApplicationOperationAuditPort.class);
   private final Clock clock = Clock.fixed(Instant.parse("2026-05-13T03:00:00Z"), ZoneOffset.UTC);
   private final CustomerApplicationOperationService service =
-      new CustomerApplicationOperationService(operationPort, executorPort, clock);
+      new CustomerApplicationOperationService(
+          operationPort, operationAuditPort, executorPort, clock);
 
   @Test
   void approvesApplicationFromReviewingState() {
@@ -67,6 +71,42 @@ class CustomerApplicationOperationServiceTest {
                         && command.reason().equals("limit document checked")
                         && command.actorSubject().equals("ops-approver")
                         && command.processedAt().equals(Instant.parse("2026-05-13T03:00:00Z"))));
+    verify(operationAuditPort)
+        .append(
+            argThat(
+                audit ->
+                    audit != null
+                        && audit.applicationReference().equals("CSA-001")
+                        && audit.action() == CustomerApplicationAction.APPROVE
+                        && audit.beforeStatus() == CustomerApplicationStatus.REVIEWING
+                        && audit.afterStatus() == CustomerApplicationStatus.APPROVED
+                        && audit.actorSubject().equals("ops-approver")
+                        && audit.reason().equals("limit document checked")
+                        && audit.requestId().equals("req-approve-001")
+                        && audit.processedAt().equals(Instant.parse("2026-05-13T03:00:00Z"))));
+  }
+
+  @Test
+  void rejectsNullStatusUpdateResult() {
+    when(operationPort.findByReferenceForUpdate("CSA-null-update"))
+        .thenReturn(
+            Optional.of(
+                details(
+                    CustomerApplicationType.BILL_PAYMENT,
+                    CustomerApplicationStatus.REVIEWING,
+                    "ops-reviewer")));
+    when(operationPort.updateStatus(argThat(command -> command != null))).thenReturn(null);
+
+    assertThrows(
+        IllegalStateException.class,
+        () ->
+            service.apply(
+                new CustomerApplicationDecisionCommand(
+                    "CSA-null-update",
+                    CustomerApplicationAction.APPROVE,
+                    "ops-approver",
+                    "approved",
+                    "req-null-update")));
   }
 
   @Test
