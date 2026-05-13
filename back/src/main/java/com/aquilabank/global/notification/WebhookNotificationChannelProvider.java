@@ -64,6 +64,7 @@ public final class WebhookNotificationChannelProvider implements NotificationCha
 
     RestClient.RequestBodySpec requestSpec =
         restClient.post().uri(url).contentType(MediaType.APPLICATION_JSON);
+    requestSpec.header(properties.idempotencyHeaderName(), item.eventKey());
     if (StringUtils.hasText(properties.authHeaderValue())) {
       requestSpec.header(properties.authHeaderName(), properties.authHeaderValue());
     }
