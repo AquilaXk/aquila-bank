@@ -1,5 +1,6 @@
 package com.aquilabank.domain.customerapplication.usecase;
 
+import com.aquilabank.domain.customerapplication.model.CustomerApplicationPayloadSchema;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationStatus;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationSubmission;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationSubmitCommand;
@@ -72,7 +73,9 @@ public final class CustomerApplicationService implements CustomerApplicationSubm
   private void validateCommand(CustomerApplicationSubmitCommand command) {
     if (command.applicationType().supportsAutomatedExecution()) {
       validateTransferLimitChange(command);
+      return;
     }
+    CustomerApplicationPayloadSchema.validate(command.applicationType(), command.payload());
   }
 
   private void validateTransferLimitChange(CustomerApplicationSubmitCommand command) {

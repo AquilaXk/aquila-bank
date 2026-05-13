@@ -403,7 +403,8 @@ security:
     # TLS 종단 환경은 true를 유지하고, direct HTTP staging smoke만 env에서 false로 낮춥니다.
     secure: ${SECURITY_AUTH_COOKIE_SECURE:true}
   cors:
-    allowed-origin-patterns: ${SECURITY_CORS_ALLOWED_ORIGIN_PATTERNS:}
+    # 로컬 기본 실행(`bootRun`)에서 프론트 로그인 fetch가 CORS에 막히지 않도록 개발 origin만 허용합니다.
+    allowed-origin-patterns: ${SECURITY_CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:3000,http://127.0.0.1:3000}
   totp:
     issuer: ${SECURITY_TOTP_ISSUER:Aquila Bank}
     secret-encryption-key: ${SECURITY_TOTP_SECRET_ENCRYPTION_KEY:${SECURITY_JWT_SECRET:}}

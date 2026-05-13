@@ -87,8 +87,7 @@ public class InternalCustomerApplicationController {
       CustomerApplicationAction action,
       CustomerApplicationOperationRequest request) {
     InternalServiceTokenClaims claims =
-        internalServiceRequestAuthorizer.requireScope(
-            httpServletRequest, InternalServiceScope.CUSTOMER_APPLICATION_OPS);
+        internalServiceRequestAuthorizer.requireScope(httpServletRequest, requiredScope(action));
     CustomerApplicationDetails result =
         operationUseCase.apply(
             new CustomerApplicationDecisionCommand(
@@ -98,6 +97,15 @@ public class InternalCustomerApplicationController {
                 request == null ? null : request.reason(),
                 resolveRequestId(httpServletRequest)));
     return CustomerApplicationOperationResponse.from(result);
+  }
+
+  private InternalServiceScope requiredScope(CustomerApplicationAction action) {
+    // 민감 신청은 검토/승인/실행 JWT scope를 분리해 단일 운영 토큰 오남용 범위를 줄입니다.
+    return switch (action) {
+      case START_REVIEW -> InternalServiceScope.CUSTOMER_APPLICATION_REVIEWER;
+      case APPROVE, REJECT, CANCEL -> InternalServiceScope.CUSTOMER_APPLICATION_APPROVER;
+      case EXECUTE -> InternalServiceScope.CUSTOMER_APPLICATION_EXECUTOR;
+    };
   }
 
   private String resolveRequestId(HttpServletRequest httpServletRequest) {

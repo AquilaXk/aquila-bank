@@ -13,3 +13,8 @@ spring:
 logging:
   level:
     com.aquilabank: INFO
+
+security:
+  cors:
+    # production은 환경에서 명시한 origin만 허용합니다.
+    allowed-origin-patterns: ${SECURITY_CORS_ALLOWED_ORIGIN_PATTERNS:}

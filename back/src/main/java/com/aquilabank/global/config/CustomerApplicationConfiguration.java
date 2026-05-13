@@ -3,6 +3,7 @@ package com.aquilabank.global.config;
 import com.aquilabank.domain.auth.model.TotpOperationVerifyCommand;
 import com.aquilabank.domain.auth.usecase.TotpOperationVerifyUseCase;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationDetails;
+import com.aquilabank.domain.customerapplication.port.CustomerApplicationAccountPolicyPort;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationExecutorPort;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationOperationPort;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationReadPort;
@@ -71,9 +72,10 @@ public class CustomerApplicationConfiguration {
   @Bean
   CustomerApplicationExecutorPort customerApplicationExecutorPort(
       CustomerTransferLimitPolicyPort transferLimitPolicyPort,
+      CustomerApplicationAccountPolicyPort accountPolicyPort,
       CustomerApplicationProperties properties) {
     return new CustomerApplicationExecutorService(
-        transferLimitPolicyPort, properties.transferLimitChangePolicy());
+        transferLimitPolicyPort, accountPolicyPort, properties.transferLimitChangePolicy());
   }
 
   @Bean

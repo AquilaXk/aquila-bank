@@ -45,7 +45,7 @@ class InternalCustomerApplicationControllerTest {
   }
 
   @Test
-  void approvesApplicationWithInternalCustomerOpsScope() throws Exception {
+  void approvesApplicationWithInternalCustomerApproverScope() throws Exception {
     when(operationUseCase.apply(
             argThat(
                 command ->
@@ -58,7 +58,7 @@ class InternalCustomerApplicationControllerTest {
                 .header(
                     "Authorization",
                     InternalServiceTokenTestSupport.authorization(
-                        SUBJECT, InternalServiceScope.CUSTOMER_APPLICATION_OPS))
+                        SUBJECT, InternalServiceScope.CUSTOMER_APPLICATION_APPROVER))
                 .header(REQUEST_ID_HEADER, "customer-application-approve-request")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
@@ -84,6 +84,27 @@ class InternalCustomerApplicationControllerTest {
   }
 
   @Test
+  void rejectsLegacyCustomerOpsScopeForApproval() throws Exception {
+    mockMvc
+        .perform(
+            post("/internal/api/v1/customer-service/applications/CSA-001/approve")
+                .header(
+                    "Authorization",
+                    InternalServiceTokenTestSupport.authorization(
+                        SUBJECT, InternalServiceScope.CUSTOMER_APPLICATION_OPS))
+                .header(REQUEST_ID_HEADER, "customer-application-approve-request")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "reason": "documents checked"
+                    }
+                    """))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.message").value("internal service token is invalid"));
+  }
+
+  @Test
   void handlesReviewRejectCancelAndExecuteActions() throws Exception {
     when(operationUseCase.apply(any()))
         .thenAnswer(
@@ -103,9 +124,12 @@ class InternalCustomerApplicationControllerTest {
               return details(status);
             });
 
-    performOperation("review").andExpect(jsonPath("$.status").value("REVIEWING"));
-    performOperation("reject").andExpect(jsonPath("$.status").value("REJECTED"));
-    performOperation("cancel").andExpect(jsonPath("$.status").value("CANCELLED"));
+    performOperation("review", InternalServiceScope.CUSTOMER_APPLICATION_REVIEWER)
+        .andExpect(jsonPath("$.status").value("REVIEWING"));
+    performOperation("reject", InternalServiceScope.CUSTOMER_APPLICATION_APPROVER)
+        .andExpect(jsonPath("$.status").value("REJECTED"));
+    performOperation("cancel", InternalServiceScope.CUSTOMER_APPLICATION_APPROVER)
+        .andExpect(jsonPath("$.status").value("CANCELLED"));
 
     mockMvc
         .perform(
@@ -113,7 +137,7 @@ class InternalCustomerApplicationControllerTest {
                 .header(
                     "Authorization",
                     InternalServiceTokenTestSupport.authorization(
-                        SUBJECT, InternalServiceScope.CUSTOMER_APPLICATION_OPS))
+                        SUBJECT, InternalServiceScope.CUSTOMER_APPLICATION_EXECUTOR))
                 .header(REQUEST_ID_HEADER, "customer-application-execute-request")
                 .contentType(MediaType.APPLICATION_JSON))
         .andExpect(status().isOk())
@@ -128,7 +152,7 @@ class InternalCustomerApplicationControllerTest {
                 .header(
                     "Authorization",
                     InternalServiceTokenTestSupport.authorization(
-                        SUBJECT, InternalServiceScope.CUSTOMER_APPLICATION_OPS))
+                        SUBJECT, InternalServiceScope.CUSTOMER_APPLICATION_APPROVER))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     """
@@ -194,13 +218,16 @@ class InternalCustomerApplicationControllerTest {
 
   private org.springframework.test.web.servlet.ResultActions performOperation(String action)
       throws Exception {
+    return performOperation(action, InternalServiceScope.CUSTOMER_APPLICATION_APPROVER);
+  }
+
+  private org.springframework.test.web.servlet.ResultActions performOperation(
+      String action, InternalServiceScope scope) throws Exception {
     return mockMvc
         .perform(
             post("/internal/api/v1/customer-service/applications/CSA-001/" + action)
                 .header(
-                    "Authorization",
-                    InternalServiceTokenTestSupport.authorization(
-                        SUBJECT, InternalServiceScope.CUSTOMER_APPLICATION_OPS))
+                    "Authorization", InternalServiceTokenTestSupport.authorization(SUBJECT, scope))
                 .header(REQUEST_ID_HEADER, "customer-application-" + action + "-request")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(

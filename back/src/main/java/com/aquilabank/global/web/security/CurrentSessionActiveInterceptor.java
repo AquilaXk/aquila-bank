@@ -37,6 +37,8 @@ public class CurrentSessionActiveInterceptor implements HandlerInterceptor {
           new SensitiveMutationPath("DELETE", Pattern.compile("^/api/v1/auth/sessions/[^/]+$")),
           new SensitiveMutationPath(
               "POST", Pattern.compile("^/api/v1/customer-service/applications$")),
+          new SensitiveMutationPath(
+              "POST", Pattern.compile("^/api/v1/customer-service/applications/[^/]+/cancel$")),
           new SensitiveMutationPath("POST", Pattern.compile("^/api/v1/notifications/preferences$")),
           new SensitiveMutationPath("POST", Pattern.compile("^/api/v1/notifications/[^/]+/read$")),
           new SensitiveMutationPath("POST", Pattern.compile("^/api/v1/notifications/read$")),

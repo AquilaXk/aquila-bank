@@ -65,6 +65,8 @@ class CurrentSessionActiveInterceptorTest {
             new RequestPath("DELETE", "/api/v1/auth/sessions"),
             new RequestPath("DELETE", "/api/v1/auth/sessions/11"),
             new RequestPath("POST", "/api/v1/customer-service/applications"),
+            new RequestPath(
+                "POST", "/api/v1/customer-service/applications/CSA-20260513-001/cancel"),
             new RequestPath("POST", "/api/v1/notifications/preferences"),
             new RequestPath("POST", "/api/v1/notifications/10/read"),
             new RequestPath("POST", "/api/v1/notifications/read"),

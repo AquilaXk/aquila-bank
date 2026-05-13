@@ -4,13 +4,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.aquilabank.domain.customerapplication.model.CustomerApplicationAccountPolicyCheck;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationDetails;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationExecutionResult;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationStatus;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationType;
 import com.aquilabank.domain.customerapplication.model.CustomerTransferLimitChangePolicy;
+import com.aquilabank.domain.customerapplication.port.CustomerApplicationAccountPolicyPort;
 import com.aquilabank.domain.customerapplication.port.CustomerTransferLimitPolicyPort;
 import com.aquilabank.domain.ledger.model.TransferLimitPolicy;
 import java.time.Instant;
@@ -21,16 +24,21 @@ class CustomerApplicationExecutorServiceTest {
 
   private final CustomerTransferLimitPolicyPort transferLimitPolicyPort =
       mock(CustomerTransferLimitPolicyPort.class);
+  private final CustomerApplicationAccountPolicyPort accountPolicyPort =
+      mock(CustomerApplicationAccountPolicyPort.class);
   private final CustomerTransferLimitChangePolicy transferLimitChangePolicy =
       new CustomerTransferLimitChangePolicy(1_000_000L, 5_000_000L);
   private final CustomerApplicationExecutorService service =
-      new CustomerApplicationExecutorService(transferLimitPolicyPort, transferLimitChangePolicy);
+      new CustomerApplicationExecutorService(
+          transferLimitPolicyPort, accountPolicyPort, transferLimitChangePolicy);
 
   @Test
   void executesTransferLimitChangeApplication() {
     when(transferLimitPolicyPort.applyTransferLimitChange(
             argThat(command -> command != null && command.accountId() == 101L)))
         .thenReturn(new TransferLimitPolicy(500_000L, 2_000_000L));
+    when(accountPolicyPort.checkTransferLimitChange(7L, 101L))
+        .thenReturn(CustomerApplicationAccountPolicyCheck.allowed());
 
     CustomerApplicationExecutionResult result =
         service.execute(
@@ -105,6 +113,8 @@ class CustomerApplicationExecutorServiceTest {
     when(transferLimitPolicyPort.applyTransferLimitChange(
             argThat(command -> command != null && command.singleTransferLimitMinor() == 50_000L)))
         .thenReturn(new TransferLimitPolicy(50_000L, 200_000L));
+    when(accountPolicyPort.checkTransferLimitChange(7L, 101L))
+        .thenReturn(CustomerApplicationAccountPolicyCheck.allowed());
 
     CustomerApplicationExecutionResult result =
         service.execute(
@@ -132,6 +142,27 @@ class CustomerApplicationExecutorServiceTest {
 
     assertThat(result.status()).isEqualTo(CustomerApplicationStatus.FAILED);
     assertThat(result.reason()).isEqualTo("TRANSFER_LIMIT_POLICY_EXCEEDED");
+  }
+
+  @Test
+  void failsTransferLimitChangeWhenAccountPolicyRejectsAtExecution() {
+    when(accountPolicyPort.checkTransferLimitChange(7L, 101L))
+        .thenReturn(
+            CustomerApplicationAccountPolicyCheck.rejected("TRANSFER_LIMIT_ACCOUNT_NOT_ACTIVE"));
+
+    CustomerApplicationExecutionResult result =
+        service.execute(
+            details(
+                CustomerApplicationType.TRANSFER_LIMIT_CHANGE,
+                101L,
+                Map.of(
+                    "singleTransferLimitMinor", 500_000L, "dailyTransferLimitMinor", 2_000_000L)),
+            "ops-executor",
+            "req-account-inactive");
+
+    assertThat(result.status()).isEqualTo(CustomerApplicationStatus.FAILED);
+    assertThat(result.reason()).isEqualTo("TRANSFER_LIMIT_ACCOUNT_NOT_ACTIVE");
+    verifyNoInteractions(transferLimitPolicyPort);
   }
 
   @Test
