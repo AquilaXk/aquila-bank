@@ -51,7 +51,9 @@ public class PasswordRecoveryDeliveryConfiguration {
       PasswordRecoveryTokenQueryPort tokenQueryPort,
       PasswordRecoverySecretPort secretPort,
       PasswordRecoveryDeliveryPort deliveryPort,
+      PasswordRecoveryDeliveryProperties deliveryProperties,
       PasswordRecoveryDeliveryWorkerProperties workerProperties) {
+    validateDeliveryWorkerBoundary(workerProperties, deliveryProperties);
     return new PasswordRecoveryDeliveryWorkerService(
         dispatchPort,
         tokenQueryPort,
@@ -62,6 +64,23 @@ public class PasswordRecoveryDeliveryConfiguration {
         Duration.ofSeconds(workerProperties.retryBaseDelaySeconds()),
         Duration.ofSeconds(workerProperties.maxRetryDelaySeconds()),
         workerProperties.maxRetryAttempts());
+  }
+
+  private void validateDeliveryWorkerBoundary(
+      PasswordRecoveryDeliveryWorkerProperties workerProperties,
+      PasswordRecoveryDeliveryProperties deliveryProperties) {
+    if (!workerProperties.enabled()) {
+      return;
+    }
+    // password recovery token은 사용자 인증 복구 경로라 provider 없는 worker 실행을 금지합니다.
+    if (!deliveryProperties.enabled()) {
+      throw new IllegalStateException(
+          "password recovery delivery worker requires delivery.enabled=true");
+    }
+    if (!deliveryProperties.hasWebhookTarget()) {
+      throw new IllegalStateException(
+          "password recovery delivery worker requires at least one provider URL");
+    }
   }
 
   private RestClient passwordRecoveryRestClient(PasswordRecoveryDeliveryProperties properties) {

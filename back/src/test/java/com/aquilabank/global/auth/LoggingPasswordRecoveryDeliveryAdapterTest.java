@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.aquilabank.domain.auth.model.PasswordRecoveryDeliveryCommand;
 import com.aquilabank.domain.auth.model.PasswordRecoveryDeliveryResult;
+import com.aquilabank.domain.auth.model.PasswordRecoveryDeliverySkipReason;
 import com.aquilabank.domain.auth.model.VerifiedContactChannel;
 import java.time.Instant;
 import org.junit.jupiter.api.Test;
@@ -29,7 +30,8 @@ class LoggingPasswordRecoveryDeliveryAdapterTest {
                 Instant.parse("2026-04-22T00:15:00Z"),
                 Instant.parse("2026-04-22T00:00:00Z")));
 
-    assertThat(result.sent()).isTrue();
+    assertThat(result.sent()).isFalse();
+    assertThat(result.skipReason()).isEqualTo(PasswordRecoveryDeliverySkipReason.PROVIDER_DISABLED);
     assertThat(output).contains("request-1");
     assertThat(output).contains("userId=7");
     assertThat(output).doesNotContain("plain-recovery-token");

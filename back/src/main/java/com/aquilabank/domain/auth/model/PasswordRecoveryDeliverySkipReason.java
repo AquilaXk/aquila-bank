@@ -5,5 +5,6 @@ public enum PasswordRecoveryDeliverySkipReason {
   TOKEN_MISSING,
   TOKEN_NOT_PENDING,
   TOKEN_EXPIRED,
+  PROVIDER_DISABLED,
   PROVIDER_URL_MISSING
 }
