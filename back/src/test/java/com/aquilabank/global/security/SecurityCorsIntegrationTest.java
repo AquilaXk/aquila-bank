@@ -17,9 +17,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
 @ActiveProfiles("test")
-@SpringBootTest(
-    webEnvironment = SpringBootTest.WebEnvironment.MOCK,
-    properties = "security.cors.allowed-origin-patterns=http://localhost:3000")
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 class SecurityCorsIntegrationTest {
 
   @Autowired private WebApplicationContext context;
@@ -36,7 +34,7 @@ class SecurityCorsIntegrationTest {
   @Test
   void permitsConfiguredFrontendOriginForLoginPreflight() throws Exception {
     assertThat(securityCorsProperties.allowedOriginPatterns())
-        .containsExactly("http://localhost:3000");
+        .containsExactly("http://localhost:3000", "http://127.0.0.1:3000");
 
     mockMvc
         .perform(
