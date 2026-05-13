@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.aquilabank.domain.customerapplication.exception.CustomerApplicationConflictException;
@@ -248,6 +249,20 @@ class JdbcCustomerApplicationRepositoryTest {
             Set.of(CustomerApplicationAction.START_REVIEW, CustomerApplicationAction.APPROVE));
 
     assertEquals(true, result);
+  }
+
+  @Test
+  void skipsOperationAuditHistoryLookupWhenActionsAreEmpty() {
+    NamedParameterJdbcTemplate jdbcTemplate = mock(NamedParameterJdbcTemplate.class);
+    JdbcCustomerApplicationRepository repository =
+        new JdbcCustomerApplicationRepository(jdbcTemplate, new ObjectMapper());
+
+    boolean result =
+        repository.existsByReferenceAndActorAndActions(
+            "CSA-20260511-001", "ops-reviewer", Set.of());
+
+    assertEquals(false, result);
+    verifyNoInteractions(jdbcTemplate);
   }
 
   @Test

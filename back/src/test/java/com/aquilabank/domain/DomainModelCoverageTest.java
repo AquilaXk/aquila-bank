@@ -19,6 +19,7 @@ import com.aquilabank.domain.bootstrap.model.BootstrapBulkImportCommand;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationExecutionResult;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationStatus;
 import com.aquilabank.domain.customerapplication.model.CustomerTransferLimitChangeRequest;
+import com.aquilabank.domain.ledger.model.RecipientPreviewThrottleDecision;
 import com.aquilabank.domain.ledger.model.TransferLimitPolicy;
 import com.aquilabank.domain.notification.model.NotificationBulkActionCommand;
 import com.aquilabank.domain.notification.model.NotificationChannelDeliveryStatus;
@@ -906,6 +907,9 @@ class DomainModelCoverageTest {
       return new Object[] {
         100_000L + variant, 500_000L + variant, "PAYROLL", "DOC-20260514-" + variant
       };
+    }
+    if (type == RecipientPreviewThrottleDecision.class) {
+      return variant == 0 ? new Object[] {true, 0L} : new Object[] {false, 10L};
     }
     return null;
   }

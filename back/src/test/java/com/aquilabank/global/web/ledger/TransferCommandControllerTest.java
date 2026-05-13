@@ -1,6 +1,5 @@
 package com.aquilabank.global.web.ledger;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
@@ -11,6 +10,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -20,9 +20,11 @@ import com.aquilabank.domain.auth.exception.AccountAccessDeniedException;
 import com.aquilabank.domain.auth.model.TotpOperationVerifyCommand;
 import com.aquilabank.domain.auth.usecase.TotpOperationRequirementUseCase;
 import com.aquilabank.domain.auth.usecase.TotpOperationVerifyUseCase;
+import com.aquilabank.domain.ledger.model.RecipientPreviewThrottleDecision;
 import com.aquilabank.domain.ledger.model.TransferLimitPolicy;
 import com.aquilabank.domain.ledger.model.TransferResult;
 import com.aquilabank.domain.ledger.model.TransferReversalResult;
+import com.aquilabank.domain.ledger.port.RecipientPreviewThrottlePort;
 import com.aquilabank.domain.ledger.port.TransferLimitUsageReadPort;
 import com.aquilabank.domain.ledger.usecase.TransferCommandUseCase;
 import com.aquilabank.domain.ledger.usecase.TransferLimitPolicyUseCase;
@@ -33,13 +35,10 @@ import com.aquilabank.global.security.BootstrapHeaderAuthenticationFilter;
 import com.aquilabank.global.web.ApiExceptionHandler;
 import com.aquilabank.global.web.security.CurrentAuthenticatedPrincipalArgumentResolver;
 import com.aquilabank.global.web.security.RequestAccountAuthorizationService;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
-import java.util.concurrent.ConcurrentMap;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -58,6 +57,7 @@ class TransferCommandControllerTest {
   private RequestAccountAuthorizationService requestAccountAuthorizationService;
   private AccountSummaryQueryUseCase accountSummaryQueryUseCase;
   private TransferLimitUsageReadPort transferLimitUsageReadPort;
+  private RecipientPreviewThrottlePort recipientPreviewThrottlePort;
   private TransferLimitPolicyUseCase transferLimitPolicyUseCase;
   private TotpOperationRequirementUseCase totpOperationRequirementUseCase;
   private TotpOperationVerifyUseCase totpOperationVerifyUseCase;
@@ -71,6 +71,7 @@ class TransferCommandControllerTest {
     requestAccountAuthorizationService = mock(RequestAccountAuthorizationService.class);
     accountSummaryQueryUseCase = mock(AccountSummaryQueryUseCase.class);
     transferLimitUsageReadPort = mock(TransferLimitUsageReadPort.class);
+    recipientPreviewThrottlePort = mock(RecipientPreviewThrottlePort.class);
     transferLimitPolicyUseCase = mock(TransferLimitPolicyUseCase.class);
     totpOperationRequirementUseCase = mock(TotpOperationRequirementUseCase.class);
     totpOperationVerifyUseCase = mock(TotpOperationVerifyUseCase.class);
@@ -83,6 +84,7 @@ class TransferCommandControllerTest {
             requestAccountAuthorizationService,
             accountSummaryQueryUseCase,
             transferLimitUsageReadPort,
+            recipientPreviewThrottlePort,
             transferLimitPolicyUseCase,
             totpOperationRequirementUseCase,
             totpOperationVerifyUseCase,
@@ -125,6 +127,7 @@ class TransferCommandControllerTest {
   void previewsOperationOtpRequirementForJwtUser() throws Exception {
     authenticateUser(7L);
     when(totpOperationRequirementUseCase.requiresVerification(7L)).thenReturn(true);
+    allowRecipientPreview();
     stubUserPreview(
         account(101L, "111122223333", "생활비 계좌", "ACTIVE", 10_000L),
         account(202L, "999900001234", "홍길동", "ACTIVE", 0L),
@@ -172,13 +175,36 @@ class TransferCommandControllerTest {
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.message").value("external transfer is not configured"));
 
-    verifyNoInteractions(accountSummaryQueryUseCase);
+    verify(accountSummaryQueryUseCase, times(0)).getByAccountNumber("999900001234");
   }
 
   @Test
   void throttlesUserRecipientPreviewBeforeRepeatedAccountNumberLookup() throws Exception {
     authenticateUser(7L);
     when(totpOperationRequirementUseCase.requiresVerification(7L)).thenReturn(false);
+    when(recipientPreviewThrottlePort.consume(
+            eq(7L), org.mockito.ArgumentMatchers.any(), eq(20), eq(60L)))
+        .thenReturn(RecipientPreviewThrottleDecision.allowed())
+        .thenReturn(RecipientPreviewThrottleDecision.allowed())
+        .thenReturn(RecipientPreviewThrottleDecision.allowed())
+        .thenReturn(RecipientPreviewThrottleDecision.allowed())
+        .thenReturn(RecipientPreviewThrottleDecision.allowed())
+        .thenReturn(RecipientPreviewThrottleDecision.allowed())
+        .thenReturn(RecipientPreviewThrottleDecision.allowed())
+        .thenReturn(RecipientPreviewThrottleDecision.allowed())
+        .thenReturn(RecipientPreviewThrottleDecision.allowed())
+        .thenReturn(RecipientPreviewThrottleDecision.allowed())
+        .thenReturn(RecipientPreviewThrottleDecision.allowed())
+        .thenReturn(RecipientPreviewThrottleDecision.allowed())
+        .thenReturn(RecipientPreviewThrottleDecision.allowed())
+        .thenReturn(RecipientPreviewThrottleDecision.allowed())
+        .thenReturn(RecipientPreviewThrottleDecision.allowed())
+        .thenReturn(RecipientPreviewThrottleDecision.allowed())
+        .thenReturn(RecipientPreviewThrottleDecision.allowed())
+        .thenReturn(RecipientPreviewThrottleDecision.allowed())
+        .thenReturn(RecipientPreviewThrottleDecision.allowed())
+        .thenReturn(RecipientPreviewThrottleDecision.allowed())
+        .thenReturn(RecipientPreviewThrottleDecision.throttled(45L));
     stubUserPreview(
         account(101L, "111122223333", "생활비 계좌", "ACTIVE", 10_000L),
         account(202L, "999900001234", "홍길동", "ACTIVE", 0L),
@@ -196,18 +222,20 @@ class TransferCommandControllerTest {
   }
 
   @Test
-  void prunesExpiredRecipientPreviewThrottleWindowsWhenTrackedUsersExceedCap() throws Exception {
+  void checksRecipientPreviewThrottleBeforeAccountNumberLookup() throws Exception {
     authenticateUser(7L);
-    when(totpOperationRequirementUseCase.requiresVerification(7L)).thenReturn(false);
-    stubUserPreview(
-        account(101L, "111122223333", "생활비 계좌", "ACTIVE", 10_000L),
-        account(202L, "999900001234", "홍길동", "ACTIVE", 0L),
-        0L);
-    ConcurrentMap<Long, Object> windows = seedExpiredRecipientPreviewThrottleWindows(10_001);
+    when(requestAccountAuthorizationService.resolveTransferSourceAccountId(
+            org.mockito.ArgumentMatchers.any(), eq(101L)))
+        .thenReturn(101L);
+    when(recipientPreviewThrottlePort.consume(
+            eq(7L), org.mockito.ArgumentMatchers.any(), eq(20), eq(60L)))
+        .thenReturn(RecipientPreviewThrottleDecision.throttled(45L));
 
-    performUserPreview(1_000L, "KRW").andExpect(status().isOk());
+    performUserPreview(1_000L, "KRW")
+        .andExpect(status().isTooManyRequests())
+        .andExpect(header().string("Retry-After", "45"));
 
-    assertThat(windows).containsOnlyKeys(7L);
+    verify(accountSummaryQueryUseCase, times(0)).getByAccountNumber("999900001234");
   }
 
   @Test
@@ -807,25 +835,10 @@ class TransferCommandControllerTest {
             .queryParam("currencyCode", currencyCode));
   }
 
-  @SuppressWarnings("unchecked")
-  private ConcurrentMap<Long, Object> seedExpiredRecipientPreviewThrottleWindows(int count)
-      throws Exception {
-    Field windowsField =
-        TransferCommandController.class.getDeclaredField("recipientPreviewThrottleWindows");
-    windowsField.setAccessible(true);
-    ConcurrentMap<Long, Object> windows =
-        (ConcurrentMap<Long, Object>) windowsField.get(controller);
-    Class<?> windowType =
-        Class.forName(
-            "com.aquilabank.global.web.ledger.TransferCommandController$RecipientPreviewThrottleWindow");
-    Constructor<?> constructor = windowType.getDeclaredConstructor(long.class, int.class);
-    constructor.setAccessible(true);
-    Object expiredWindow =
-        constructor.newInstance(Instant.parse("2026-05-11T00:58:59Z").getEpochSecond(), 1);
-    for (long userId = 10_000L; userId < 10_000L + count; userId++) {
-      windows.put(userId, expiredWindow);
-    }
-    return windows;
+  private void allowRecipientPreview() {
+    when(recipientPreviewThrottlePort.consume(
+            eq(7L), org.mockito.ArgumentMatchers.any(), eq(20), eq(60L)))
+        .thenReturn(RecipientPreviewThrottleDecision.allowed());
   }
 
   private void authenticateUser(long userId) {

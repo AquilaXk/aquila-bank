@@ -5,12 +5,14 @@ import com.aquilabank.domain.account.usecase.AccountSummaryQueryUseCase;
 import com.aquilabank.domain.auth.model.TotpOperationVerifyCommand;
 import com.aquilabank.domain.auth.usecase.TotpOperationRequirementUseCase;
 import com.aquilabank.domain.auth.usecase.TotpOperationVerifyUseCase;
+import com.aquilabank.domain.ledger.model.RecipientPreviewThrottleDecision;
 import com.aquilabank.domain.ledger.model.TransferCommand;
 import com.aquilabank.domain.ledger.model.TransferLimitPolicy;
 import com.aquilabank.domain.ledger.model.TransferResult;
 import com.aquilabank.domain.ledger.model.TransferReversalCommand;
 import com.aquilabank.domain.ledger.model.TransferReversalReason;
 import com.aquilabank.domain.ledger.model.TransferReversalResult;
+import com.aquilabank.domain.ledger.port.RecipientPreviewThrottlePort;
 import com.aquilabank.domain.ledger.port.TransferLimitUsageReadPort;
 import com.aquilabank.domain.ledger.usecase.TransferCommandUseCase;
 import com.aquilabank.domain.ledger.usecase.TransferLimitPolicyUseCase;
@@ -31,8 +33,6 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -52,7 +52,6 @@ public class TransferCommandController {
 
   private static final int USER_RECIPIENT_PREVIEW_MAX_ATTEMPTS = 20;
   private static final long USER_RECIPIENT_PREVIEW_WINDOW_SECONDS = 60L;
-  private static final int USER_RECIPIENT_PREVIEW_MAX_TRACKED_USERS = 10_000;
   private static final String INTERNAL_INSTITUTION_CODE = "AQUILA";
 
   private final TransferCommandUseCase transferCommandUseCase;
@@ -60,13 +59,12 @@ public class TransferCommandController {
   private final RequestAccountAuthorizationService requestAccountAuthorizationService;
   private final AccountSummaryQueryUseCase accountSummaryQueryUseCase;
   private final TransferLimitUsageReadPort transferLimitUsageReadPort;
+  private final RecipientPreviewThrottlePort recipientPreviewThrottlePort;
   private final TransferLimitPolicyUseCase transferLimitPolicyUseCase;
   private final TotpOperationRequirementUseCase totpOperationRequirementUseCase;
   private final TotpOperationVerifyUseCase totpOperationVerifyUseCase;
   private final TransferLimitPolicyProperties transferLimitPolicyProperties;
   private final Clock clock;
-  private final ConcurrentMap<Long, RecipientPreviewThrottleWindow>
-      recipientPreviewThrottleWindows = new ConcurrentHashMap<>();
 
   @Autowired
   public TransferCommandController(
@@ -75,6 +73,7 @@ public class TransferCommandController {
       RequestAccountAuthorizationService requestAccountAuthorizationService,
       AccountSummaryQueryUseCase accountSummaryQueryUseCase,
       TransferLimitUsageReadPort transferLimitUsageReadPort,
+      RecipientPreviewThrottlePort recipientPreviewThrottlePort,
       TransferLimitPolicyUseCase transferLimitPolicyUseCase,
       TotpOperationRequirementUseCase totpOperationRequirementUseCase,
       TotpOperationVerifyUseCase totpOperationVerifyUseCase,
@@ -85,6 +84,7 @@ public class TransferCommandController {
         requestAccountAuthorizationService,
         accountSummaryQueryUseCase,
         transferLimitUsageReadPort,
+        recipientPreviewThrottlePort,
         transferLimitPolicyUseCase,
         totpOperationRequirementUseCase,
         totpOperationVerifyUseCase,
@@ -98,6 +98,7 @@ public class TransferCommandController {
       RequestAccountAuthorizationService requestAccountAuthorizationService,
       AccountSummaryQueryUseCase accountSummaryQueryUseCase,
       TransferLimitUsageReadPort transferLimitUsageReadPort,
+      RecipientPreviewThrottlePort recipientPreviewThrottlePort,
       TransferLimitPolicyUseCase transferLimitPolicyUseCase,
       TotpOperationRequirementUseCase totpOperationRequirementUseCase,
       TotpOperationVerifyUseCase totpOperationVerifyUseCase,
@@ -108,6 +109,7 @@ public class TransferCommandController {
     this.requestAccountAuthorizationService = requestAccountAuthorizationService;
     this.accountSummaryQueryUseCase = accountSummaryQueryUseCase;
     this.transferLimitUsageReadPort = transferLimitUsageReadPort;
+    this.recipientPreviewThrottlePort = recipientPreviewThrottlePort;
     this.transferLimitPolicyUseCase = transferLimitPolicyUseCase;
     this.totpOperationRequirementUseCase = totpOperationRequirementUseCase;
     this.totpOperationVerifyUseCase = totpOperationVerifyUseCase;
@@ -272,33 +274,15 @@ public class TransferCommandController {
   }
 
   private void checkRecipientPreviewThrottle(AuthenticatedUserPrincipal userPrincipal) {
-    long nowEpochSecond = clock.instant().getEpochSecond();
-    RecipientPreviewThrottleWindow window =
-        recipientPreviewThrottleWindows.compute(
+    RecipientPreviewThrottleDecision decision =
+        recipientPreviewThrottlePort.consume(
             userPrincipal.userId(),
-            (userId, current) -> {
-              if (current == null || current.expired(nowEpochSecond)) {
-                return new RecipientPreviewThrottleWindow(nowEpochSecond, 1);
-              }
-              int attempts =
-                  Math.min(current.attempts() + 1, USER_RECIPIENT_PREVIEW_MAX_ATTEMPTS + 1);
-              return new RecipientPreviewThrottleWindow(current.windowStartEpochSecond(), attempts);
-            });
-    pruneExpiredRecipientPreviewWindows(nowEpochSecond);
-    if (window.attempts() > USER_RECIPIENT_PREVIEW_MAX_ATTEMPTS) {
-      throw new TransferRecipientPreviewThrottledException(
-          window.retryAfterSeconds(nowEpochSecond));
+            clock.instant(),
+            USER_RECIPIENT_PREVIEW_MAX_ATTEMPTS,
+            USER_RECIPIENT_PREVIEW_WINDOW_SECONDS);
+    if (!decision.permitted()) {
+      throw new TransferRecipientPreviewThrottledException(decision.retryAfterSeconds());
     }
-  }
-
-  private void pruneExpiredRecipientPreviewWindows(long nowEpochSecond) {
-    if (recipientPreviewThrottleWindows.size() <= USER_RECIPIENT_PREVIEW_MAX_TRACKED_USERS) {
-      return;
-    }
-    // 사용자별 고정 window만 유지해 sequence 계좌번호 탐색 비용과 메모리 증가를 제한합니다.
-    recipientPreviewThrottleWindows
-        .entrySet()
-        .removeIf(entry -> entry.getValue().expired(nowEpochSecond));
   }
 
   private boolean shouldExposeInternalTarget(AuthenticatedRequestPrincipal principal) {
@@ -342,18 +326,6 @@ public class TransferCommandController {
       return "INSUFFICIENT_BALANCE";
     }
     return "OK";
-  }
-
-  private record RecipientPreviewThrottleWindow(long windowStartEpochSecond, int attempts) {
-
-    boolean expired(long nowEpochSecond) {
-      return nowEpochSecond - windowStartEpochSecond >= USER_RECIPIENT_PREVIEW_WINDOW_SECONDS;
-    }
-
-    long retryAfterSeconds(long nowEpochSecond) {
-      return Math.max(
-          1L, windowStartEpochSecond + USER_RECIPIENT_PREVIEW_WINDOW_SECONDS - nowEpochSecond);
-    }
   }
 
   /** 송금 preview target 계좌 요약. 공개 사용자 응답은 계좌번호 확인값만 노출합니다. */
