@@ -53,6 +53,7 @@ public class TransferCommandController {
   private static final int USER_RECIPIENT_PREVIEW_MAX_ATTEMPTS = 20;
   private static final long USER_RECIPIENT_PREVIEW_WINDOW_SECONDS = 60L;
   private static final int USER_RECIPIENT_PREVIEW_MAX_TRACKED_USERS = 10_000;
+  private static final String INTERNAL_INSTITUTION_CODE = "AQUILA";
 
   private final TransferCommandUseCase transferCommandUseCase;
   private final TransferReversalUseCase transferReversalUseCase;
@@ -121,6 +122,8 @@ public class TransferCommandController {
       @RequestParam(required = false) @Positive(message = "targetAccountId must be positive") Long targetAccountId,
       @RequestParam(required = false)
           @Size(max = 20, message = "targetAccountNumber must be 20 characters or less") String targetAccountNumber,
+      @RequestParam(required = false)
+          @Size(max = 20, message = "targetInstitutionCode must be 20 characters or less") String targetInstitutionCode,
       @RequestParam @Positive(message = "amountMinor must be positive") long amountMinor,
       @RequestParam
           @NotBlank(message = "currencyCode is required") @Pattern(
@@ -130,6 +133,7 @@ public class TransferCommandController {
     long resolvedSourceAccountId =
         requestAccountAuthorizationService.resolveTransferSourceAccountId(
             principal, sourceAccountId);
+    validateInternalTransferInstitution(targetInstitutionCode);
     AccountSummary source = accountSummaryQueryUseCase.getByAccountId(resolvedSourceAccountId);
     AccountSummary target =
         resolveTransferPreviewTargetAccount(principal, targetAccountId, targetAccountNumber);
@@ -173,6 +177,7 @@ public class TransferCommandController {
     long sourceAccountId =
         requestAccountAuthorizationService.resolveTransferSourceAccountId(
             principal, request.sourceAccountId());
+    validateInternalTransferInstitution(request.targetInstitutionCode());
     long targetAccountId =
         resolveTransferTargetAccountId(
             principal, request.targetAccountId(), request.targetAccountNumber());
@@ -216,6 +221,16 @@ public class TransferCommandController {
       return totpOperationRequirementUseCase.requiresVerification(userPrincipal.userId());
     }
     return true;
+  }
+
+  private void validateInternalTransferInstitution(String targetInstitutionCode) {
+    if (targetInstitutionCode == null || targetInstitutionCode.isBlank()) {
+      return;
+    }
+    // 외부 지급결제망 adapter가 붙기 전까지 타행 요청을 내부 계좌 exact lookup으로 처리하지 않습니다.
+    if (!INTERNAL_INSTITUTION_CODE.equals(targetInstitutionCode.trim())) {
+      throw new IllegalArgumentException("external transfer is not configured");
+    }
   }
 
   private AccountSummary resolveTransferTargetAccount(
@@ -387,6 +402,7 @@ public class TransferCommandController {
   /** 송금 요청 body */
   public record TransferRequest(
       @Positive(message = "sourceAccountId must be positive") long sourceAccountId,
+      @Size(max = 20, message = "targetInstitutionCode must be 20 characters or less") String targetInstitutionCode,
       @Positive(message = "targetAccountId must be positive") Long targetAccountId,
       @Size(max = 20, message = "targetAccountNumber must be 20 characters or less") String targetAccountNumber,
       @Positive(message = "amountMinor must be positive") long amountMinor,

@@ -155,6 +155,27 @@ class TransferCommandControllerTest {
   }
 
   @Test
+  void rejectsExternalInstitutionPreviewBeforeRecipientLookup() throws Exception {
+    authenticateUser(7L);
+    when(requestAccountAuthorizationService.resolveTransferSourceAccountId(
+            org.mockito.ArgumentMatchers.any(), eq(101L)))
+        .thenReturn(101L);
+
+    mockMvc
+        .perform(
+            get("/api/v1/transfers/preview")
+                .queryParam("sourceAccountId", "101")
+                .queryParam("targetInstitutionCode", "088")
+                .queryParam("targetAccountNumber", "999900001234")
+                .queryParam("amountMinor", "1500")
+                .queryParam("currencyCode", "KRW"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message").value("external transfer is not configured"));
+
+    verifyNoInteractions(accountSummaryQueryUseCase);
+  }
+
+  @Test
   void throttlesUserRecipientPreviewBeforeRepeatedAccountNumberLookup() throws Exception {
     authenticateUser(7L);
     when(totpOperationRequirementUseCase.requiresVerification(7L)).thenReturn(false);
@@ -480,6 +501,38 @@ class TransferCommandControllerTest {
   }
 
   @Test
+  void rejectsExternalInstitutionTransferBeforeRecipientLookupAndTotp() throws Exception {
+    authenticateUser(7L);
+    when(requestAccountAuthorizationService.resolveTransferSourceAccountId(
+            org.mockito.ArgumentMatchers.any(), eq(101L)))
+        .thenReturn(101L);
+
+    mockMvc
+        .perform(
+            post("/api/v1/transfers")
+                .header("Idempotency-Key", "transfer-external-001")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "sourceAccountId": 101,
+                      "targetInstitutionCode": "088",
+                      "targetAccountNumber": "999900001234",
+                      "amountMinor": 1500,
+                      "currencyCode": "KRW",
+                      "summary": "rent",
+                      "totpCode": "123456"
+                    }
+                    """))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message").value("external transfer is not configured"));
+
+    verifyNoInteractions(accountSummaryQueryUseCase);
+    verifyNoInteractions(totpOperationVerifyUseCase);
+    verifyNoInteractions(transferCommandUseCase);
+  }
+
+  @Test
   void rejectsBootstrapTransferWithoutTargetAccountId() throws Exception {
     mockMvc
         .perform(
@@ -739,6 +792,7 @@ class TransferCommandControllerTest {
         get("/api/v1/transfers/preview")
             .header("X-Account-Id", "101")
             .queryParam("sourceAccountId", "101")
+            .queryParam("targetInstitutionCode", "AQUILA")
             .queryParam("targetAccountId", "202")
             .queryParam("amountMinor", String.valueOf(amountMinor))
             .queryParam("currencyCode", currencyCode));
