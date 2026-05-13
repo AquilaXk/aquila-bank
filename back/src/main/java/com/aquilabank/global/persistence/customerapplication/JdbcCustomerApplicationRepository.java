@@ -9,6 +9,7 @@ import com.aquilabank.domain.customerapplication.model.CustomerApplicationSubmis
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationType;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationWriteCommand;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationOperationPort;
+import com.aquilabank.domain.customerapplication.port.CustomerApplicationReadPort;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationWritePort;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -16,6 +17,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -25,7 +27,9 @@ import org.springframework.stereotype.Repository;
 /** 고객 신청 접수 write 모델을 idempotency key 기준으로 한 번만 저장합니다. */
 @Repository
 public class JdbcCustomerApplicationRepository
-    implements CustomerApplicationWritePort, CustomerApplicationOperationPort {
+    implements CustomerApplicationWritePort,
+        CustomerApplicationOperationPort,
+        CustomerApplicationReadPort {
 
   private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
 
@@ -136,6 +140,69 @@ public class JdbcCustomerApplicationRepository
             FROM customer_service_application
             WHERE application_reference = :applicationReference
             FOR UPDATE
+            """,
+            params,
+            (rs, rowNum) -> mapDetails(rs))
+        .stream()
+        .findFirst();
+  }
+
+  @Override
+  public List<CustomerApplicationDetails> findByUserId(long userId, int limit) {
+    MapSqlParameterSource params =
+        new MapSqlParameterSource().addValue("userId", userId).addValue("limit", limit);
+    return jdbcTemplate.query(
+        """
+        SELECT application_reference,
+               user_id,
+               account_id,
+               application_type,
+               application_status,
+               mfa_verified,
+               mfa_verified_at,
+               payload,
+               submitted_at,
+               updated_at,
+               status_reason,
+               processed_by,
+               processed_at,
+               execution_result
+        FROM customer_service_application
+        WHERE user_id = :userId
+        ORDER BY submitted_at DESC, id DESC
+        LIMIT :limit
+        """,
+        params,
+        (rs, rowNum) -> mapDetails(rs));
+  }
+
+  @Override
+  public Optional<CustomerApplicationDetails> findByUserIdAndReference(
+      long userId, String applicationReference) {
+    MapSqlParameterSource params =
+        new MapSqlParameterSource()
+            .addValue("userId", userId)
+            .addValue("applicationReference", applicationReference);
+    return jdbcTemplate
+        .query(
+            """
+            SELECT application_reference,
+                   user_id,
+                   account_id,
+                   application_type,
+                   application_status,
+                   mfa_verified,
+                   mfa_verified_at,
+                   payload,
+                   submitted_at,
+                   updated_at,
+                   status_reason,
+                   processed_by,
+                   processed_at,
+                   execution_result
+            FROM customer_service_application
+            WHERE user_id = :userId
+              AND application_reference = :applicationReference
             """,
             params,
             (rs, rowNum) -> mapDetails(rs))

@@ -36,7 +36,10 @@ class CustomerApplicationOperationServiceTest {
   @Test
   void approvesApplicationFromReviewingState() {
     CustomerApplicationDetails reviewing =
-        details(CustomerApplicationType.BILL_PAYMENT, CustomerApplicationStatus.REVIEWING);
+        details(
+            CustomerApplicationType.BILL_PAYMENT,
+            CustomerApplicationStatus.REVIEWING,
+            "ops-reviewer");
     CustomerApplicationDetails approved =
         details(CustomerApplicationType.BILL_PAYMENT, CustomerApplicationStatus.APPROVED);
     when(operationPort.findByReferenceForUpdate("CSA-001")).thenReturn(Optional.of(reviewing));
@@ -51,7 +54,7 @@ class CustomerApplicationOperationServiceTest {
             new CustomerApplicationDecisionCommand(
                 "CSA-001",
                 CustomerApplicationAction.APPROVE,
-                "ops-reviewer",
+                "ops-approver",
                 "limit document checked",
                 "req-approve-001"));
 
@@ -62,8 +65,52 @@ class CustomerApplicationOperationServiceTest {
                 command ->
                     command.status() == CustomerApplicationStatus.APPROVED
                         && command.reason().equals("limit document checked")
-                        && command.actorSubject().equals("ops-reviewer")
+                        && command.actorSubject().equals("ops-approver")
                         && command.processedAt().equals(Instant.parse("2026-05-13T03:00:00Z"))));
+  }
+
+  @Test
+  void rejectsApproveBySameActorThatStartedReview() {
+    when(operationPort.findByReferenceForUpdate("CSA-005"))
+        .thenReturn(
+            Optional.of(
+                details(
+                    CustomerApplicationType.TRANSFER_LIMIT_CHANGE,
+                    CustomerApplicationStatus.REVIEWING,
+                    "ops-reviewer")));
+
+    assertThrows(
+        CustomerApplicationInvalidTransitionException.class,
+        () ->
+            service.apply(
+                new CustomerApplicationDecisionCommand(
+                    "CSA-005",
+                    CustomerApplicationAction.APPROVE,
+                    "ops-reviewer",
+                    "same actor",
+                    "req-maker-checker-approve")));
+  }
+
+  @Test
+  void rejectsExecuteBySameActorThatApprovedApplication() {
+    when(operationPort.findByReferenceForUpdate("CSA-006"))
+        .thenReturn(
+            Optional.of(
+                details(
+                    CustomerApplicationType.TRANSFER_LIMIT_CHANGE,
+                    CustomerApplicationStatus.APPROVED,
+                    "ops-approver")));
+
+    assertThrows(
+        CustomerApplicationInvalidTransitionException.class,
+        () ->
+            service.apply(
+                new CustomerApplicationDecisionCommand(
+                    "CSA-006",
+                    CustomerApplicationAction.EXECUTE,
+                    "ops-approver",
+                    "same actor",
+                    "req-maker-checker-execute")));
   }
 
   @Test
@@ -76,6 +123,14 @@ class CustomerApplicationOperationServiceTest {
         CustomerApplicationStatus.APPROVED,
         CustomerApplicationAction.REJECT,
         CustomerApplicationStatus.REJECTED);
+    assertStatusTransition(
+        CustomerApplicationStatus.REVIEWING,
+        CustomerApplicationAction.REJECT,
+        CustomerApplicationStatus.REJECTED);
+    assertStatusTransition(
+        CustomerApplicationStatus.SUBMITTED,
+        CustomerApplicationAction.CANCEL,
+        CustomerApplicationStatus.CANCELLED);
     assertStatusTransition(
         CustomerApplicationStatus.REVIEWING,
         CustomerApplicationAction.CANCEL,
@@ -159,6 +214,27 @@ class CustomerApplicationOperationServiceTest {
   }
 
   @Test
+  void rejectsApproveBeforeReviewStarts() {
+    when(operationPort.findByReferenceForUpdate("CSA-007"))
+        .thenReturn(
+            Optional.of(
+                details(
+                    CustomerApplicationType.TRANSFER_LIMIT_CHANGE,
+                    CustomerApplicationStatus.SUBMITTED)));
+
+    assertThrows(
+        CustomerApplicationInvalidTransitionException.class,
+        () ->
+            service.apply(
+                new CustomerApplicationDecisionCommand(
+                    "CSA-007",
+                    CustomerApplicationAction.APPROVE,
+                    "ops-approver",
+                    "review missing",
+                    "req-review-required")));
+  }
+
+  @Test
   void rejectsMissingApplicationReference() {
     when(operationPort.findByReferenceForUpdate("CSA-missing")).thenReturn(Optional.empty());
 
@@ -214,6 +290,11 @@ class CustomerApplicationOperationServiceTest {
 
   private static CustomerApplicationDetails details(
       CustomerApplicationType type, CustomerApplicationStatus status) {
+    return details(type, status, null);
+  }
+
+  private static CustomerApplicationDetails details(
+      CustomerApplicationType type, CustomerApplicationStatus status, String processedBy) {
     Instant now = Instant.parse("2026-05-13T02:00:00Z");
     return new CustomerApplicationDetails(
         "CSA-001",
@@ -227,7 +308,7 @@ class CustomerApplicationOperationServiceTest {
         now,
         now,
         null,
-        null,
+        processedBy,
         null,
         Map.of());
   }

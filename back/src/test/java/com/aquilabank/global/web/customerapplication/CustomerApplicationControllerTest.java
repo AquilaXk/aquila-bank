@@ -8,13 +8,16 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.aquilabank.domain.customerapplication.model.CustomerApplicationDetails;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationStatus;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationSubmission;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationType;
+import com.aquilabank.domain.customerapplication.usecase.CustomerApplicationSelfServiceUseCase;
 import com.aquilabank.domain.customerapplication.usecase.CustomerApplicationSubmitUseCase;
 import com.aquilabank.global.security.AuthenticatedUserPrincipal;
 import com.aquilabank.global.security.BootstrapHeaderAuthenticationFilter;
@@ -37,17 +40,21 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 class CustomerApplicationControllerTest {
 
   private CustomerApplicationSubmitUseCase customerApplicationSubmitUseCase;
+  private CustomerApplicationSelfServiceUseCase customerApplicationSelfServiceUseCase;
   private RequestAccountAuthorizationService requestAccountAuthorizationService;
   private MockMvc mockMvc;
 
   @BeforeEach
   void setUp() {
     customerApplicationSubmitUseCase = mock(CustomerApplicationSubmitUseCase.class);
+    customerApplicationSelfServiceUseCase = mock(CustomerApplicationSelfServiceUseCase.class);
     requestAccountAuthorizationService = mock(RequestAccountAuthorizationService.class);
     mockMvc =
         MockMvcBuilders.standaloneSetup(
                 new CustomerApplicationController(
-                    customerApplicationSubmitUseCase, requestAccountAuthorizationService))
+                    customerApplicationSubmitUseCase,
+                    customerApplicationSelfServiceUseCase,
+                    requestAccountAuthorizationService))
             .setControllerAdvice(new ApiExceptionHandler())
             .addFilters(new BootstrapHeaderAuthenticationFilter("X-Account-Id", "X-Subject"))
             .setCustomArgumentResolvers(new CurrentAuthenticatedPrincipalArgumentResolver())
@@ -137,6 +144,59 @@ class CustomerApplicationControllerTest {
   }
 
   @Test
+  void listsOwnApplications() throws Exception {
+    authenticateUser(7L);
+    when(customerApplicationSelfServiceUseCase.findByUserId(7L, 20))
+        .thenReturn(List.of(details("CSA-20260511-001", CustomerApplicationStatus.SUBMITTED)));
+
+    mockMvc
+        .perform(get("/api/v1/customer-service/applications"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items[0].applicationReference").value("CSA-20260511-001"))
+        .andExpect(jsonPath("$.items[0].processingMode").value("EXTERNAL_PROVIDER_REQUIRED"))
+        .andExpect(jsonPath("$.items[0].automatedExecutionSupported").value(false));
+  }
+
+  @Test
+  void listsOwnApplicationsWithExplicitLimit() throws Exception {
+    authenticateUser(7L);
+    when(customerApplicationSelfServiceUseCase.findByUserId(7L, 10)).thenReturn(List.of());
+
+    mockMvc
+        .perform(get("/api/v1/customer-service/applications").param("limit", "10"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items").isArray());
+
+    verify(customerApplicationSelfServiceUseCase).findByUserId(7L, 10);
+  }
+
+  @Test
+  void getsOwnApplicationDetail() throws Exception {
+    authenticateUser(7L);
+    when(customerApplicationSelfServiceUseCase.getByUserIdAndReference(7L, "CSA-20260511-001"))
+        .thenReturn(details("CSA-20260511-001", CustomerApplicationStatus.FAILED));
+
+    mockMvc
+        .perform(get("/api/v1/customer-service/applications/CSA-20260511-001"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.applicationReference").value("CSA-20260511-001"))
+        .andExpect(jsonPath("$.status").value("FAILED"));
+  }
+
+  @Test
+  void cancelsOwnApplication() throws Exception {
+    authenticateUser(7L);
+    when(customerApplicationSelfServiceUseCase.cancel(
+            eq(7L), eq("CSA-20260511-001"), org.mockito.ArgumentMatchers.anyString()))
+        .thenReturn(details("CSA-20260511-001", CustomerApplicationStatus.CANCELLED));
+
+    mockMvc
+        .perform(post("/api/v1/customer-service/applications/CSA-20260511-001/cancel"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("CANCELLED"));
+  }
+
+  @Test
   void rejectsSensitivePayloadKeysBeforeSubmit() throws Exception {
     authenticateUser(7L);
 
@@ -201,7 +261,9 @@ class CustomerApplicationControllerTest {
   void rejectsInvalidPayloadShapeDirectly() {
     CustomerApplicationController controller =
         new CustomerApplicationController(
-            customerApplicationSubmitUseCase, requestAccountAuthorizationService);
+            customerApplicationSubmitUseCase,
+            customerApplicationSelfServiceUseCase,
+            requestAccountAuthorizationService);
     AuthenticatedUserPrincipal principal = new AuthenticatedUserPrincipal(7L, "tester");
 
     assertThrows(
@@ -255,6 +317,28 @@ class CustomerApplicationControllerTest {
         now,
         now,
         now);
+  }
+
+  private static CustomerApplicationDetails details(
+      String applicationReference, CustomerApplicationStatus status) {
+    Instant now = Instant.parse("2026-05-11T03:00:00Z");
+    return new CustomerApplicationDetails(
+        applicationReference,
+        7L,
+        101L,
+        CustomerApplicationType.BILL_PAYMENT,
+        status,
+        true,
+        now,
+        Map.of("billerCode", "GIRO"),
+        now,
+        now,
+        status == CustomerApplicationStatus.FAILED ? "EXTERNAL_EXECUTION_NOT_CONFIGURED" : null,
+        status == CustomerApplicationStatus.FAILED ? "ops-executor" : null,
+        status == CustomerApplicationStatus.FAILED ? now : null,
+        status == CustomerApplicationStatus.FAILED
+            ? Map.of("applicationType", "BILL_PAYMENT")
+            : Map.of());
   }
 
   private static CustomerApplicationSubmission transferLimitSubmission() {

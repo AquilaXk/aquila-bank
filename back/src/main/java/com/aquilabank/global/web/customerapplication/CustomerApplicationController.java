@@ -1,11 +1,14 @@
 package com.aquilabank.global.web.customerapplication;
 
+import com.aquilabank.domain.customerapplication.model.CustomerApplicationDetails;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationSubmission;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationSubmitCommand;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationType;
+import com.aquilabank.domain.customerapplication.usecase.CustomerApplicationSelfServiceUseCase;
 import com.aquilabank.domain.customerapplication.usecase.CustomerApplicationSubmitUseCase;
 import com.aquilabank.global.security.AuthenticatedRequestPrincipal;
 import com.aquilabank.global.security.AuthenticatedUserPrincipal;
+import com.aquilabank.global.web.RequestTraceContext;
 import com.aquilabank.global.web.security.CurrentAuthenticatedPrincipal;
 import com.aquilabank.global.web.security.RequestAccountAuthorizationService;
 import jakarta.validation.Valid;
@@ -13,13 +16,17 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.time.Instant;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -32,13 +39,52 @@ public class CustomerApplicationController {
   private static final int MAX_PAYLOAD_FIELDS = 30;
 
   private final CustomerApplicationSubmitUseCase customerApplicationSubmitUseCase;
+  private final CustomerApplicationSelfServiceUseCase customerApplicationSelfServiceUseCase;
   private final RequestAccountAuthorizationService requestAccountAuthorizationService;
 
   public CustomerApplicationController(
       CustomerApplicationSubmitUseCase customerApplicationSubmitUseCase,
+      CustomerApplicationSelfServiceUseCase customerApplicationSelfServiceUseCase,
       RequestAccountAuthorizationService requestAccountAuthorizationService) {
     this.customerApplicationSubmitUseCase = customerApplicationSubmitUseCase;
+    this.customerApplicationSelfServiceUseCase = customerApplicationSelfServiceUseCase;
     this.requestAccountAuthorizationService = requestAccountAuthorizationService;
+  }
+
+  @GetMapping
+  public CustomerApplicationListResponse list(
+      @CurrentAuthenticatedPrincipal AuthenticatedRequestPrincipal principal,
+      @RequestParam(required = false) @Positive(message = "limit must be positive") Integer limit) {
+    AuthenticatedUserPrincipal userPrincipal = requireUserPrincipal(principal);
+    List<CustomerApplicationDetailsResponse> items =
+        customerApplicationSelfServiceUseCase
+            .findByUserId(userPrincipal.userId(), limit == null ? 20 : limit)
+            .stream()
+            .map(CustomerApplicationDetailsResponse::from)
+            .toList();
+    return new CustomerApplicationListResponse(items);
+  }
+
+  @GetMapping("/{applicationReference}")
+  public CustomerApplicationDetailsResponse get(
+      @CurrentAuthenticatedPrincipal AuthenticatedRequestPrincipal principal,
+      @PathVariable String applicationReference) {
+    AuthenticatedUserPrincipal userPrincipal = requireUserPrincipal(principal);
+    return CustomerApplicationDetailsResponse.from(
+        customerApplicationSelfServiceUseCase.getByUserIdAndReference(
+            userPrincipal.userId(), applicationReference));
+  }
+
+  @PostMapping("/{applicationReference}/cancel")
+  public CustomerApplicationDetailsResponse cancel(
+      @CurrentAuthenticatedPrincipal AuthenticatedRequestPrincipal principal,
+      @PathVariable String applicationReference) {
+    AuthenticatedUserPrincipal userPrincipal = requireUserPrincipal(principal);
+    return CustomerApplicationDetailsResponse.from(
+        customerApplicationSelfServiceUseCase.cancel(
+            userPrincipal.userId(),
+            applicationReference,
+            RequestTraceContext.currentRequestId().orElse("request-id-unavailable")));
   }
 
   @PostMapping
@@ -116,6 +162,8 @@ public class CustomerApplicationController {
       String applicationReference,
       Long accountId,
       String applicationType,
+      String processingMode,
+      boolean automatedExecutionSupported,
       String status,
       boolean mfaVerified,
       Instant mfaVerifiedAt,
@@ -127,11 +175,50 @@ public class CustomerApplicationController {
           result.applicationReference(),
           result.accountId(),
           result.applicationType().name(),
+          result.applicationType().processingMode().name(),
+          result.applicationType().supportsAutomatedExecution(),
           result.status().name(),
           result.mfaVerified(),
           result.mfaVerifiedAt(),
           result.submittedAt(),
           result.updatedAt());
+    }
+  }
+
+  public record CustomerApplicationListResponse(List<CustomerApplicationDetailsResponse> items) {}
+
+  public record CustomerApplicationDetailsResponse(
+      String applicationReference,
+      Long accountId,
+      String applicationType,
+      String processingMode,
+      boolean automatedExecutionSupported,
+      String status,
+      boolean mfaVerified,
+      Instant mfaVerifiedAt,
+      Instant submittedAt,
+      Instant updatedAt,
+      String reason,
+      String processedBy,
+      Instant processedAt,
+      Map<String, Object> executionResult) {
+
+    static CustomerApplicationDetailsResponse from(CustomerApplicationDetails result) {
+      return new CustomerApplicationDetailsResponse(
+          result.applicationReference(),
+          result.accountId(),
+          result.applicationType().name(),
+          result.applicationType().processingMode().name(),
+          result.applicationType().supportsAutomatedExecution(),
+          result.status().name(),
+          result.mfaVerified(),
+          result.mfaVerifiedAt(),
+          result.submittedAt(),
+          result.updatedAt(),
+          result.reason(),
+          result.processedBy(),
+          result.processedAt(),
+          result.executionResult());
     }
   }
 }

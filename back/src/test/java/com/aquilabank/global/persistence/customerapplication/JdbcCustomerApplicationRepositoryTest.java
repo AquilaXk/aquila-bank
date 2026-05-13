@@ -113,6 +113,48 @@ class JdbcCustomerApplicationRepositoryTest {
   }
 
   @Test
+  void findsApplicationsByUserIdWithLimit() {
+    NamedParameterJdbcTemplate jdbcTemplate = mock(NamedParameterJdbcTemplate.class);
+    JdbcCustomerApplicationRepository repository =
+        new JdbcCustomerApplicationRepository(jdbcTemplate, new ObjectMapper());
+    when(jdbcTemplate.query(
+            anyString(),
+            any(MapSqlParameterSource.class),
+            ArgumentMatchers.<RowMapper<CustomerApplicationDetails>>any()))
+        .thenAnswer(
+            invocation -> {
+              RowMapper<CustomerApplicationDetails> mapper = invocation.getArgument(2);
+              return List.of(mapper.mapRow(detailsResultSet("{}", false), 0));
+            });
+
+    List<CustomerApplicationDetails> result = repository.findByUserId(7L, 20);
+
+    assertEquals(1, result.size());
+    assertEquals("CSA-20260511-001", result.getFirst().applicationReference());
+  }
+
+  @Test
+  void findsApplicationByUserIdAndReference() {
+    NamedParameterJdbcTemplate jdbcTemplate = mock(NamedParameterJdbcTemplate.class);
+    JdbcCustomerApplicationRepository repository =
+        new JdbcCustomerApplicationRepository(jdbcTemplate, new ObjectMapper());
+    when(jdbcTemplate.query(
+            anyString(),
+            any(MapSqlParameterSource.class),
+            ArgumentMatchers.<RowMapper<CustomerApplicationDetails>>any()))
+        .thenAnswer(
+            invocation -> {
+              RowMapper<CustomerApplicationDetails> mapper = invocation.getArgument(2);
+              return List.of(mapper.mapRow(detailsResultSet("{}", false), 0));
+            });
+
+    CustomerApplicationDetails result =
+        repository.findByUserIdAndReference(7L, "CSA-20260511-001").orElseThrow();
+
+    assertEquals(7L, result.userId());
+  }
+
+  @Test
   void updatesApplicationStatusAndMapsExecutionResult() {
     NamedParameterJdbcTemplate jdbcTemplate = mock(NamedParameterJdbcTemplate.class);
     JdbcCustomerApplicationRepository repository =
