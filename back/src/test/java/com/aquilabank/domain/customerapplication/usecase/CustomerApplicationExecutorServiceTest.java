@@ -14,6 +14,7 @@ import com.aquilabank.domain.customerapplication.model.CustomerApplicationStatus
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationType;
 import com.aquilabank.domain.customerapplication.model.CustomerTransferLimitChangePolicy;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationAccountPolicyPort;
+import com.aquilabank.domain.customerapplication.port.CustomerApplicationExternalExecutionPort;
 import com.aquilabank.domain.customerapplication.port.CustomerTransferLimitPolicyPort;
 import com.aquilabank.domain.ledger.model.TransferLimitPolicy;
 import java.time.Instant;
@@ -26,11 +27,16 @@ class CustomerApplicationExecutorServiceTest {
       mock(CustomerTransferLimitPolicyPort.class);
   private final CustomerApplicationAccountPolicyPort accountPolicyPort =
       mock(CustomerApplicationAccountPolicyPort.class);
+  private final CustomerApplicationExternalExecutionPort externalExecutionPort =
+      mock(CustomerApplicationExternalExecutionPort.class);
   private final CustomerTransferLimitChangePolicy transferLimitChangePolicy =
       new CustomerTransferLimitChangePolicy(1_000_000L, 5_000_000L);
   private final CustomerApplicationExecutorService service =
       new CustomerApplicationExecutorService(
-          transferLimitPolicyPort, accountPolicyPort, transferLimitChangePolicy);
+          transferLimitPolicyPort,
+          accountPolicyPort,
+          externalExecutionPort,
+          transferLimitChangePolicy);
 
   @Test
   void executesTransferLimitChangeApplication() {
@@ -166,17 +172,22 @@ class CustomerApplicationExecutorServiceTest {
   }
 
   @Test
-  void failsUnsupportedExternalApplicationExplicitly() {
+  void delegatesExternalProviderRequiredApplicationToExternalPort() {
+    CustomerApplicationDetails application =
+        details(CustomerApplicationType.LOAN_APPLICATION, 101L, Map.of("productCode", "LOAN-A"));
+    when(externalExecutionPort.execute(application, "ops-executor", "req-loan"))
+        .thenReturn(
+            CustomerApplicationExecutionResult.failed(
+                "EXTERNAL_EXECUTION_NOT_CONFIGURED",
+                Map.of("applicationType", "LOAN_APPLICATION")));
+
     CustomerApplicationExecutionResult result =
-        service.execute(
-            details(CustomerApplicationType.LOAN_APPLICATION, 101L, Map.of()),
-            "ops-executor",
-            "req-loan");
+        service.execute(application, "ops-executor", "req-loan");
 
     assertThat(result.status()).isEqualTo(CustomerApplicationStatus.FAILED);
     assertThat(result.reason()).isEqualTo("EXTERNAL_EXECUTION_NOT_CONFIGURED");
     assertThat(result.payload()).containsEntry("applicationType", "LOAN_APPLICATION");
-    assertThat(result.payload()).containsEntry("processingMode", "EXTERNAL_PROVIDER_REQUIRED");
+    verify(externalExecutionPort).execute(application, "ops-executor", "req-loan");
   }
 
   @Test

@@ -9,9 +9,11 @@ import static org.mockito.Mockito.when;
 
 import com.aquilabank.domain.customerapplication.exception.CustomerApplicationInvalidTransitionException;
 import com.aquilabank.domain.customerapplication.exception.CustomerApplicationNotFoundException;
+import com.aquilabank.domain.customerapplication.model.CustomerApplicationAction;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationDetails;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationStatus;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationType;
+import com.aquilabank.domain.customerapplication.port.CustomerApplicationOperationAuditPort;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationOperationPort;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationReadPort;
 import java.time.Clock;
@@ -27,9 +29,11 @@ class CustomerApplicationSelfServiceTest {
   private final CustomerApplicationReadPort readPort = mock(CustomerApplicationReadPort.class);
   private final CustomerApplicationOperationPort operationPort =
       mock(CustomerApplicationOperationPort.class);
+  private final CustomerApplicationOperationAuditPort operationAuditPort =
+      mock(CustomerApplicationOperationAuditPort.class);
   private final Clock clock = Clock.fixed(Instant.parse("2026-05-13T03:00:00Z"), ZoneOffset.UTC);
   private final CustomerApplicationSelfService service =
-      new CustomerApplicationSelfService(readPort, operationPort, clock);
+      new CustomerApplicationSelfService(readPort, operationPort, operationAuditPort, clock);
 
   @Test
   void listsOwnApplicationsWithBoundedLimit() {
@@ -86,6 +90,17 @@ class CustomerApplicationSelfServiceTest {
     CustomerApplicationDetails result = service.cancel(7L, "CSA-001", "req-cancel");
 
     assertThat(result.status()).isEqualTo(CustomerApplicationStatus.CANCELLED);
+    verify(operationAuditPort)
+        .append(
+            argThat(
+                audit ->
+                    audit != null
+                        && audit.applicationReference().equals("CSA-001")
+                        && audit.action() == CustomerApplicationAction.CANCEL
+                        && audit.beforeStatus() == CustomerApplicationStatus.SUBMITTED
+                        && audit.afterStatus() == CustomerApplicationStatus.CANCELLED
+                        && audit.actorSubject().equals("customer:7")
+                        && audit.requestId().equals("req-cancel")));
   }
 
   @Test

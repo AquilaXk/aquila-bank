@@ -6,9 +6,11 @@ import com.aquilabank.domain.customerapplication.model.CustomerApplicationAction
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationDecisionCommand;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationDetails;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationExecutionResult;
+import com.aquilabank.domain.customerapplication.model.CustomerApplicationOperationAuditEntry;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationStateUpdateCommand;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationStatus;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationExecutorPort;
+import com.aquilabank.domain.customerapplication.port.CustomerApplicationOperationAuditPort;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationOperationPort;
 import java.time.Clock;
 import java.time.Instant;
@@ -27,14 +29,17 @@ public final class CustomerApplicationOperationService
           CustomerApplicationAction.CANCEL, CustomerApplicationStatus.CANCELLED);
 
   private final CustomerApplicationOperationPort operationPort;
+  private final CustomerApplicationOperationAuditPort operationAuditPort;
   private final CustomerApplicationExecutorPort executorPort;
   private final Clock clock;
 
   public CustomerApplicationOperationService(
       CustomerApplicationOperationPort operationPort,
+      CustomerApplicationOperationAuditPort operationAuditPort,
       CustomerApplicationExecutorPort executorPort,
       Clock clock) {
     this.operationPort = Objects.requireNonNull(operationPort);
+    this.operationAuditPort = Objects.requireNonNull(operationAuditPort);
     this.executorPort = Objects.requireNonNull(executorPort);
     this.clock = Objects.requireNonNull(clock);
   }
@@ -52,25 +57,66 @@ public final class CustomerApplicationOperationService
       validateOperationPolicy(application, command);
       CustomerApplicationExecutionResult result =
           executorPort.execute(application, command.actorSubject(), command.requestId());
-      return operationPort.updateStatus(
-          new CustomerApplicationStateUpdateCommand(
-              command.applicationReference(),
-              result.status(),
-              result.reason(),
-              command.actorSubject(),
-              now,
-              result.payload()));
+      CustomerApplicationDetails updated =
+          requireUpdated(
+              operationPort.updateStatus(
+                  new CustomerApplicationStateUpdateCommand(
+                      command.applicationReference(),
+                      result.status(),
+                      result.reason(),
+                      command.actorSubject(),
+                      now,
+                      result.payload())));
+      appendAudit(application, updated, command, result.reason(), result.payload(), now);
+      return updated;
     }
 
     CustomerApplicationStatus status = targetStatus(application, command);
-    return operationPort.updateStatus(
-        new CustomerApplicationStateUpdateCommand(
+    CustomerApplicationDetails updated =
+        requireUpdated(
+            operationPort.updateStatus(
+                new CustomerApplicationStateUpdateCommand(
+                    command.applicationReference(),
+                    status,
+                    normalizeReason(command.reason()),
+                    command.actorSubject(),
+                    now,
+                    application.executionResult())));
+    appendAudit(
+        application,
+        updated,
+        command,
+        normalizeReason(command.reason()),
+        application.executionResult(),
+        now);
+    return updated;
+  }
+
+  private CustomerApplicationDetails requireUpdated(CustomerApplicationDetails updated) {
+    if (updated == null) {
+      throw new IllegalStateException("customer application status update returned null result");
+    }
+    return updated;
+  }
+
+  private void appendAudit(
+      CustomerApplicationDetails before,
+      CustomerApplicationDetails after,
+      CustomerApplicationDecisionCommand command,
+      String auditReason,
+      Map<String, Object> executionResult,
+      Instant processedAt) {
+    operationAuditPort.append(
+        new CustomerApplicationOperationAuditEntry(
             command.applicationReference(),
-            status,
-            normalizeReason(command.reason()),
+            command.action(),
+            before.status(),
+            after.status(),
             command.actorSubject(),
-            now,
-            application.executionResult()));
+            auditReason,
+            command.requestId(),
+            processedAt,
+            executionResult));
   }
 
   private CustomerApplicationStatus targetStatus(

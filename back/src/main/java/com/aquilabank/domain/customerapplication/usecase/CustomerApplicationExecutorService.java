@@ -10,6 +10,7 @@ import com.aquilabank.domain.customerapplication.model.CustomerTransferLimitChan
 import com.aquilabank.domain.customerapplication.model.CustomerTransferLimitPolicyCommand;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationAccountPolicyPort;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationExecutorPort;
+import com.aquilabank.domain.customerapplication.port.CustomerApplicationExternalExecutionPort;
 import com.aquilabank.domain.customerapplication.port.CustomerTransferLimitPolicyPort;
 import com.aquilabank.domain.ledger.model.TransferLimitPolicy;
 import java.time.Instant;
@@ -21,14 +22,17 @@ public final class CustomerApplicationExecutorService implements CustomerApplica
 
   private final CustomerTransferLimitPolicyPort transferLimitPolicyPort;
   private final CustomerApplicationAccountPolicyPort accountPolicyPort;
+  private final CustomerApplicationExternalExecutionPort externalExecutionPort;
   private final CustomerTransferLimitChangePolicy transferLimitChangePolicy;
 
   public CustomerApplicationExecutorService(
       CustomerTransferLimitPolicyPort transferLimitPolicyPort,
       CustomerApplicationAccountPolicyPort accountPolicyPort,
+      CustomerApplicationExternalExecutionPort externalExecutionPort,
       CustomerTransferLimitChangePolicy transferLimitChangePolicy) {
     this.transferLimitPolicyPort = Objects.requireNonNull(transferLimitPolicyPort);
     this.accountPolicyPort = Objects.requireNonNull(accountPolicyPort);
+    this.externalExecutionPort = Objects.requireNonNull(externalExecutionPort);
     this.transferLimitChangePolicy = Objects.requireNonNull(transferLimitChangePolicy);
   }
 
@@ -37,6 +41,12 @@ public final class CustomerApplicationExecutorService implements CustomerApplica
       CustomerApplicationDetails application, String actorSubject, String requestId) {
     if (application.applicationType() == CustomerApplicationType.TRANSFER_LIMIT_CHANGE) {
       return executeTransferLimitChange(application, actorSubject, requestId);
+    }
+    if (application.applicationType().processingMode()
+        == CustomerApplicationProcessingMode.EXTERNAL_PROVIDER_REQUIRED) {
+      return Objects.requireNonNull(
+          externalExecutionPort.execute(application, actorSubject, requestId),
+          "external execution result");
     }
     String reason =
         application.applicationType().processingMode()
