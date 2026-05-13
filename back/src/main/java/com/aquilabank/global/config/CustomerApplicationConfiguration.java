@@ -7,6 +7,8 @@ import com.aquilabank.domain.customerapplication.port.CustomerApplicationOperati
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationReferencePort;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationSecurityVerificationPort;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationWritePort;
+import com.aquilabank.domain.customerapplication.port.CustomerTransferLimitPolicyPort;
+import com.aquilabank.domain.customerapplication.usecase.CustomerApplicationExecutorService;
 import com.aquilabank.domain.customerapplication.usecase.CustomerApplicationOperationService;
 import com.aquilabank.domain.customerapplication.usecase.CustomerApplicationOperationUseCase;
 import com.aquilabank.domain.customerapplication.usecase.CustomerApplicationService;
@@ -55,8 +57,9 @@ public class CustomerApplicationConfiguration {
   }
 
   @Bean
-  CustomerApplicationExecutorPort customerApplicationExecutorPort() {
-    return CustomerApplicationOperationService.unsupportedExecutor();
+  CustomerApplicationExecutorPort customerApplicationExecutorPort(
+      CustomerTransferLimitPolicyPort transferLimitPolicyPort) {
+    return new CustomerApplicationExecutorService(transferLimitPolicyPort);
   }
 
   @Bean

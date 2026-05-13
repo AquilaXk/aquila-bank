@@ -6,12 +6,14 @@ import com.aquilabank.domain.auth.model.TotpOperationVerifyCommand;
 import com.aquilabank.domain.auth.usecase.TotpOperationRequirementUseCase;
 import com.aquilabank.domain.auth.usecase.TotpOperationVerifyUseCase;
 import com.aquilabank.domain.ledger.model.TransferCommand;
+import com.aquilabank.domain.ledger.model.TransferLimitPolicy;
 import com.aquilabank.domain.ledger.model.TransferResult;
 import com.aquilabank.domain.ledger.model.TransferReversalCommand;
 import com.aquilabank.domain.ledger.model.TransferReversalReason;
 import com.aquilabank.domain.ledger.model.TransferReversalResult;
 import com.aquilabank.domain.ledger.port.TransferLimitUsageReadPort;
 import com.aquilabank.domain.ledger.usecase.TransferCommandUseCase;
+import com.aquilabank.domain.ledger.usecase.TransferLimitPolicyUseCase;
 import com.aquilabank.domain.ledger.usecase.TransferReversalUseCase;
 import com.aquilabank.global.config.TransferLimitPolicyProperties;
 import com.aquilabank.global.security.AuthenticatedRequestPrincipal;
@@ -51,6 +53,7 @@ public class TransferCommandController {
   private final RequestAccountAuthorizationService requestAccountAuthorizationService;
   private final AccountSummaryQueryUseCase accountSummaryQueryUseCase;
   private final TransferLimitUsageReadPort transferLimitUsageReadPort;
+  private final TransferLimitPolicyUseCase transferLimitPolicyUseCase;
   private final TotpOperationRequirementUseCase totpOperationRequirementUseCase;
   private final TotpOperationVerifyUseCase totpOperationVerifyUseCase;
   private final TransferLimitPolicyProperties transferLimitPolicyProperties;
@@ -63,6 +66,7 @@ public class TransferCommandController {
       RequestAccountAuthorizationService requestAccountAuthorizationService,
       AccountSummaryQueryUseCase accountSummaryQueryUseCase,
       TransferLimitUsageReadPort transferLimitUsageReadPort,
+      TransferLimitPolicyUseCase transferLimitPolicyUseCase,
       TotpOperationRequirementUseCase totpOperationRequirementUseCase,
       TotpOperationVerifyUseCase totpOperationVerifyUseCase,
       TransferLimitPolicyProperties transferLimitPolicyProperties) {
@@ -72,6 +76,7 @@ public class TransferCommandController {
         requestAccountAuthorizationService,
         accountSummaryQueryUseCase,
         transferLimitUsageReadPort,
+        transferLimitPolicyUseCase,
         totpOperationRequirementUseCase,
         totpOperationVerifyUseCase,
         transferLimitPolicyProperties,
@@ -84,6 +89,7 @@ public class TransferCommandController {
       RequestAccountAuthorizationService requestAccountAuthorizationService,
       AccountSummaryQueryUseCase accountSummaryQueryUseCase,
       TransferLimitUsageReadPort transferLimitUsageReadPort,
+      TransferLimitPolicyUseCase transferLimitPolicyUseCase,
       TotpOperationRequirementUseCase totpOperationRequirementUseCase,
       TotpOperationVerifyUseCase totpOperationVerifyUseCase,
       TransferLimitPolicyProperties transferLimitPolicyProperties,
@@ -93,6 +99,7 @@ public class TransferCommandController {
     this.requestAccountAuthorizationService = requestAccountAuthorizationService;
     this.accountSummaryQueryUseCase = accountSummaryQueryUseCase;
     this.transferLimitUsageReadPort = transferLimitUsageReadPort;
+    this.transferLimitPolicyUseCase = transferLimitPolicyUseCase;
     this.totpOperationRequirementUseCase = totpOperationRequirementUseCase;
     this.totpOperationVerifyUseCase = totpOperationVerifyUseCase;
     this.transferLimitPolicyProperties = transferLimitPolicyProperties;
@@ -126,13 +133,13 @@ public class TransferCommandController {
     long dailyUsedMinor =
         transferLimitUsageReadPort.sumBookedDebitAmountMinor(
             resolvedSourceAccountId, currencyCode, fromInclusive, toExclusive);
+    TransferLimitPolicy policy = transferLimitPolicyUseCase.resolvePolicy(resolvedSourceAccountId);
     long feeMinor = 0L;
     long totalDebitMinor = amountMinor + feeMinor;
-    long dailyRemainingMinor =
-        Math.max(0L, transferLimitPolicyProperties.dailyTransferLimitMinor() - dailyUsedMinor);
+    long dailyRemainingMinor = Math.max(0L, policy.dailyTransferLimitMinor() - dailyUsedMinor);
     String blockedReason =
         resolvePreviewBlockedReason(
-            source, target, amountMinor, totalDebitMinor, dailyUsedMinor, currencyCode);
+            source, target, amountMinor, totalDebitMinor, dailyUsedMinor, currencyCode, policy);
     return new TransferPreviewResponse(
         resolvedSourceAccountId,
         TransferPreviewAccountResponse.from(target, shouldExposeInternalTarget(principal)),
@@ -141,8 +148,8 @@ public class TransferCommandController {
         feeMinor,
         "INTERNAL_TRANSFER_WAIVED",
         totalDebitMinor,
-        transferLimitPolicyProperties.singleTransferLimitMinor(),
-        transferLimitPolicyProperties.dailyTransferLimitMinor(),
+        policy.singleTransferLimitMinor(),
+        policy.dailyTransferLimitMinor(),
         dailyUsedMinor,
         dailyRemainingMinor,
         "OK".equals(blockedReason),
@@ -251,7 +258,8 @@ public class TransferCommandController {
       long amountMinor,
       long totalDebitMinor,
       long dailyUsedMinor,
-      String currencyCode) {
+      String currencyCode,
+      TransferLimitPolicy policy) {
     if (!source.currencyCode().equals(currencyCode)
         || !target.currencyCode().equals(currencyCode)) {
       return "CURRENCY_MISMATCH";
@@ -259,10 +267,10 @@ public class TransferCommandController {
     if (!"ACTIVE".equals(target.accountStatus())) {
       return "TARGET_ACCOUNT_NOT_ACTIVE";
     }
-    if (amountMinor > transferLimitPolicyProperties.singleTransferLimitMinor()) {
+    if (amountMinor > policy.singleTransferLimitMinor()) {
       return "SINGLE_LIMIT_EXCEEDED";
     }
-    if (dailyUsedMinor + amountMinor > transferLimitPolicyProperties.dailyTransferLimitMinor()) {
+    if (dailyUsedMinor + amountMinor > policy.dailyTransferLimitMinor()) {
       return "DAILY_LIMIT_EXCEEDED";
     }
     if (totalDebitMinor > source.availableBalanceMinor()) {

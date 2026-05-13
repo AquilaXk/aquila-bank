@@ -16,10 +16,12 @@ import com.aquilabank.domain.account.usecase.AccountSummaryQueryUseCase;
 import com.aquilabank.domain.auth.model.TotpOperationVerifyCommand;
 import com.aquilabank.domain.auth.usecase.TotpOperationRequirementUseCase;
 import com.aquilabank.domain.auth.usecase.TotpOperationVerifyUseCase;
+import com.aquilabank.domain.ledger.model.TransferLimitPolicy;
 import com.aquilabank.domain.ledger.model.TransferResult;
 import com.aquilabank.domain.ledger.model.TransferReversalResult;
 import com.aquilabank.domain.ledger.port.TransferLimitUsageReadPort;
 import com.aquilabank.domain.ledger.usecase.TransferCommandUseCase;
+import com.aquilabank.domain.ledger.usecase.TransferLimitPolicyUseCase;
 import com.aquilabank.domain.ledger.usecase.TransferReversalUseCase;
 import com.aquilabank.global.config.TransferLimitPolicyProperties;
 import com.aquilabank.global.security.AuthenticatedUserPrincipal;
@@ -48,6 +50,7 @@ class TransferCommandControllerTest {
   private RequestAccountAuthorizationService requestAccountAuthorizationService;
   private AccountSummaryQueryUseCase accountSummaryQueryUseCase;
   private TransferLimitUsageReadPort transferLimitUsageReadPort;
+  private TransferLimitPolicyUseCase transferLimitPolicyUseCase;
   private TotpOperationRequirementUseCase totpOperationRequirementUseCase;
   private TotpOperationVerifyUseCase totpOperationVerifyUseCase;
   private MockMvc mockMvc;
@@ -59,8 +62,11 @@ class TransferCommandControllerTest {
     requestAccountAuthorizationService = mock(RequestAccountAuthorizationService.class);
     accountSummaryQueryUseCase = mock(AccountSummaryQueryUseCase.class);
     transferLimitUsageReadPort = mock(TransferLimitUsageReadPort.class);
+    transferLimitPolicyUseCase = mock(TransferLimitPolicyUseCase.class);
     totpOperationRequirementUseCase = mock(TotpOperationRequirementUseCase.class);
     totpOperationVerifyUseCase = mock(TotpOperationVerifyUseCase.class);
+    when(transferLimitPolicyUseCase.resolvePolicy(101L))
+        .thenReturn(new TransferLimitPolicy(2_000L, 3_000L));
     mockMvc =
         MockMvcBuilders.standaloneSetup(
                 new TransferCommandController(
@@ -69,6 +75,7 @@ class TransferCommandControllerTest {
                     requestAccountAuthorizationService,
                     accountSummaryQueryUseCase,
                     transferLimitUsageReadPort,
+                    transferLimitPolicyUseCase,
                     totpOperationRequirementUseCase,
                     totpOperationVerifyUseCase,
                     new TransferLimitPolicyProperties(2_000L, 3_000L, "Asia/Seoul"),
@@ -201,6 +208,23 @@ class TransferCommandControllerTest {
         .andExpect(jsonPath("$.dailyRemainingMinor").value(1_000))
         .andExpect(jsonPath("$.allowed").value(false))
         .andExpect(jsonPath("$.blockedReason").value("DAILY_LIMIT_EXCEEDED"));
+  }
+
+  @Test
+  void previewsEffectiveAccountTransferLimitOverride() throws Exception {
+    when(transferLimitPolicyUseCase.resolvePolicy(101L))
+        .thenReturn(new TransferLimitPolicy(5_000L, 10_000L));
+    stubPreview(
+        account(101L, "111122223333", "생활비 계좌", "ACTIVE", 10_000L),
+        account(202L, "999900001234", "홍길동", "ACTIVE", 0L),
+        4_000L);
+
+    performPreview(3_000L, "KRW")
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.singleTransferLimitMinor").value(5000))
+        .andExpect(jsonPath("$.dailyTransferLimitMinor").value(10000))
+        .andExpect(jsonPath("$.dailyRemainingMinor").value(6000))
+        .andExpect(jsonPath("$.allowed").value(true));
   }
 
   @Test
