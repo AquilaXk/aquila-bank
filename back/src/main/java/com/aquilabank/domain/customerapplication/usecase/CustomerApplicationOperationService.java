@@ -16,6 +16,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /** 고객 업무 상태전이는 row lock 안에서 검증해 중복 승인/실행을 차단합니다. */
 public final class CustomerApplicationOperationService
@@ -129,13 +130,31 @@ public final class CustomerApplicationOperationService
       CustomerApplicationDetails application, CustomerApplicationDecisionCommand command) {
     validateTransition(application.status(), command.action());
     if (command.action() == CustomerApplicationAction.APPROVE
-        && sameActor(application.processedBy(), command.actorSubject())) {
+        && (sameActor(application.processedBy(), command.actorSubject())
+            || participatedBefore(
+                application,
+                command.actorSubject(),
+                Set.of(CustomerApplicationAction.START_REVIEW)))) {
       throw makerCheckerViolation(application.status(), command.action());
     }
     if (command.action() == CustomerApplicationAction.EXECUTE
-        && sameActor(application.processedBy(), command.actorSubject())) {
+        && (sameActor(application.processedBy(), command.actorSubject())
+            || participatedBefore(
+                application,
+                command.actorSubject(),
+                Set.of(
+                    CustomerApplicationAction.START_REVIEW, CustomerApplicationAction.APPROVE)))) {
       throw makerCheckerViolation(application.status(), command.action());
     }
+  }
+
+  private boolean participatedBefore(
+      CustomerApplicationDetails application,
+      String actorSubject,
+      Set<CustomerApplicationAction> actions) {
+    // processed_by는 덮어쓰기 컬럼이라, 단계별 audit row까지 확인해야 동일 actor 우회를 막습니다.
+    return operationAuditPort.existsByReferenceAndActorAndActions(
+        application.applicationReference(), actorSubject, actions);
   }
 
   private void validateTransition(

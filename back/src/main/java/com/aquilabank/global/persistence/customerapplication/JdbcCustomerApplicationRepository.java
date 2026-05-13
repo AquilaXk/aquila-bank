@@ -2,6 +2,7 @@ package com.aquilabank.global.persistence.customerapplication;
 
 import com.aquilabank.domain.customerapplication.exception.CustomerApplicationConflictException;
 import com.aquilabank.domain.customerapplication.exception.CustomerApplicationNotFoundException;
+import com.aquilabank.domain.customerapplication.model.CustomerApplicationAction;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationDetails;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationOperationAuditEntry;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationStateUpdateCommand;
@@ -22,6 +23,7 @@ import java.sql.Timestamp;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -297,6 +299,33 @@ public class JdbcCustomerApplicationRepository
         )
         """,
         params);
+  }
+
+  @Override
+  public boolean existsByReferenceAndActorAndActions(
+      String applicationReference, String actorSubject, Set<CustomerApplicationAction> actions) {
+    if (actions == null || actions.isEmpty()) {
+      return false;
+    }
+    MapSqlParameterSource params =
+        new MapSqlParameterSource()
+            .addValue("applicationReference", applicationReference)
+            .addValue("actorSubject", actorSubject)
+            .addValue("actions", actions.stream().map(CustomerApplicationAction::name).toList());
+    Boolean result =
+        jdbcTemplate.queryForObject(
+            """
+            SELECT EXISTS (
+                SELECT 1
+                FROM customer_service_application_operation_audit
+                WHERE application_reference = :applicationReference
+                  AND actor_subject = :actorSubject
+                  AND action IN (:actions)
+            )
+            """,
+            params,
+            Boolean.class);
+    return Boolean.TRUE.equals(result);
   }
 
   private CustomerApplicationSubmission mapSubmission(ResultSet rs, int rowNum)

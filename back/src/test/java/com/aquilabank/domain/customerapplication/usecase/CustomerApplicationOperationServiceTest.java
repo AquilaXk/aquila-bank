@@ -154,6 +154,60 @@ class CustomerApplicationOperationServiceTest {
   }
 
   @Test
+  void rejectsApproveByActorFoundInReviewAuditHistory() {
+    when(operationPort.findByReferenceForUpdate("CSA-008"))
+        .thenReturn(
+            Optional.of(
+                details(
+                    CustomerApplicationType.TRANSFER_LIMIT_CHANGE,
+                    CustomerApplicationStatus.REVIEWING,
+                    "ops-other-reviewer")));
+    when(operationAuditPort.existsByReferenceAndActorAndActions(
+            argThat(reference -> reference.equals("CSA-001")),
+            argThat(actor -> actor.equals("ops-reviewer")),
+            argThat(actions -> actions.contains(CustomerApplicationAction.START_REVIEW))))
+        .thenReturn(true);
+
+    assertThrows(
+        CustomerApplicationInvalidTransitionException.class,
+        () ->
+            service.apply(
+                new CustomerApplicationDecisionCommand(
+                    "CSA-008",
+                    CustomerApplicationAction.APPROVE,
+                    "ops-reviewer",
+                    "same actor via audit",
+                    "req-maker-checker-audit-approve")));
+  }
+
+  @Test
+  void rejectsExecuteByActorFoundInPriorAuditHistory() {
+    when(operationPort.findByReferenceForUpdate("CSA-009"))
+        .thenReturn(
+            Optional.of(
+                details(
+                    CustomerApplicationType.TRANSFER_LIMIT_CHANGE,
+                    CustomerApplicationStatus.APPROVED,
+                    "ops-approver")));
+    when(operationAuditPort.existsByReferenceAndActorAndActions(
+            argThat(reference -> reference.equals("CSA-001")),
+            argThat(actor -> actor.equals("ops-reviewer")),
+            argThat(actions -> actions.contains(CustomerApplicationAction.START_REVIEW))))
+        .thenReturn(true);
+
+    assertThrows(
+        CustomerApplicationInvalidTransitionException.class,
+        () ->
+            service.apply(
+                new CustomerApplicationDecisionCommand(
+                    "CSA-009",
+                    CustomerApplicationAction.EXECUTE,
+                    "ops-reviewer",
+                    "same actor via audit",
+                    "req-maker-checker-audit-execute")));
+  }
+
+  @Test
   void startsReviewRejectsAndCancelsAllowedStates() {
     assertStatusTransition(
         CustomerApplicationStatus.SUBMITTED,

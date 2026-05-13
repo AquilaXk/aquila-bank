@@ -25,6 +25,7 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentMatchers;
 import org.springframework.jdbc.core.RowMapper;
@@ -229,6 +230,24 @@ class JdbcCustomerApplicationRepositoryTest {
             Map.of("applicationType", "BILL_PAYMENT")));
 
     verify(jdbcTemplate).update(anyString(), any(MapSqlParameterSource.class));
+  }
+
+  @Test
+  void checksOperationAuditHistoryByReferenceActorAndActions() {
+    NamedParameterJdbcTemplate jdbcTemplate = mock(NamedParameterJdbcTemplate.class);
+    JdbcCustomerApplicationRepository repository =
+        new JdbcCustomerApplicationRepository(jdbcTemplate, new ObjectMapper());
+    when(jdbcTemplate.queryForObject(
+            anyString(), any(MapSqlParameterSource.class), ArgumentMatchers.eq(Boolean.class)))
+        .thenReturn(true);
+
+    boolean result =
+        repository.existsByReferenceAndActorAndActions(
+            "CSA-20260511-001",
+            "ops-reviewer",
+            Set.of(CustomerApplicationAction.START_REVIEW, CustomerApplicationAction.APPROVE));
+
+    assertEquals(true, result);
   }
 
   @Test
