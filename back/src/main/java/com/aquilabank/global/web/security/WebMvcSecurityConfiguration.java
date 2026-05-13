@@ -61,6 +61,7 @@ public class WebMvcSecurityConfiguration implements WebMvcConfigurer {
             "/internal/api/v1/accounts/status-change-audits/**",
             "/internal/api/v1/accounts/*/status",
             "/internal/api/v1/bootstrap/bulk-import",
+            "/internal/api/v1/customer-service/applications/**",
             "/internal/api/v1/auth/**",
             "/internal/api/v1/ledger/**",
             "/internal/api/v1/outbox/**");

@@ -16,6 +16,8 @@ import com.aquilabank.domain.auth.model.LoginResultStatus;
 import com.aquilabank.domain.auth.model.MembershipRole;
 import com.aquilabank.domain.auth.model.MembershipStatus;
 import com.aquilabank.domain.bootstrap.model.BootstrapBulkImportCommand;
+import com.aquilabank.domain.customerapplication.model.CustomerApplicationExecutionResult;
+import com.aquilabank.domain.customerapplication.model.CustomerApplicationStatus;
 import com.aquilabank.domain.ledger.model.TransferLimitPolicy;
 import com.aquilabank.domain.notification.model.NotificationBulkActionCommand;
 import com.aquilabank.domain.notification.model.NotificationChannelDeliveryStatus;
@@ -891,6 +893,13 @@ class DomainModelCoverageTest {
           new BootstrapBulkImportCommand.MembershipItem(
               user.clientRef(), account.clientRef(), MembershipRole.OWNER, MembershipStatus.ACTIVE);
       return new Object[] {List.of(account), List.of(user), List.of(membership)};
+    }
+    if (type == CustomerApplicationExecutionResult.class) {
+      return new Object[] {
+        variant == 0 ? CustomerApplicationStatus.EXECUTED : CustomerApplicationStatus.FAILED,
+        "execution-result-" + variant,
+        Map.of("variant", variant)
+      };
     }
     return null;
   }

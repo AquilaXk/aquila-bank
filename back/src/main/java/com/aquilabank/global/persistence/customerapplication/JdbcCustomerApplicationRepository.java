@@ -1,23 +1,33 @@
 package com.aquilabank.global.persistence.customerapplication;
 
 import com.aquilabank.domain.customerapplication.exception.CustomerApplicationConflictException;
+import com.aquilabank.domain.customerapplication.exception.CustomerApplicationNotFoundException;
+import com.aquilabank.domain.customerapplication.model.CustomerApplicationDetails;
+import com.aquilabank.domain.customerapplication.model.CustomerApplicationStateUpdateCommand;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationStatus;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationSubmission;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationType;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationWriteCommand;
+import com.aquilabank.domain.customerapplication.port.CustomerApplicationOperationPort;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationWritePort;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.util.Map;
+import java.util.Optional;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 /** 고객 신청 접수 write 모델을 idempotency key 기준으로 한 번만 저장합니다. */
 @Repository
-public class JdbcCustomerApplicationRepository implements CustomerApplicationWritePort {
+public class JdbcCustomerApplicationRepository
+    implements CustomerApplicationWritePort, CustomerApplicationOperationPort {
+
+  private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
 
   private final NamedParameterJdbcTemplate jdbcTemplate;
   private final ObjectMapper objectMapper;
@@ -101,6 +111,83 @@ public class JdbcCustomerApplicationRepository implements CustomerApplicationWri
                     "idempotency key is already used by a different application request"));
   }
 
+  @Override
+  public Optional<CustomerApplicationDetails> findByReferenceForUpdate(
+      String applicationReference) {
+    MapSqlParameterSource params =
+        new MapSqlParameterSource().addValue("applicationReference", applicationReference);
+    return jdbcTemplate
+        .query(
+            """
+            SELECT application_reference,
+                   user_id,
+                   account_id,
+                   application_type,
+                   application_status,
+                   mfa_verified,
+                   mfa_verified_at,
+                   payload,
+                   submitted_at,
+                   updated_at,
+                   status_reason,
+                   processed_by,
+                   processed_at,
+                   execution_result
+            FROM customer_service_application
+            WHERE application_reference = :applicationReference
+            FOR UPDATE
+            """,
+            params,
+            (rs, rowNum) -> mapDetails(rs))
+        .stream()
+        .findFirst();
+  }
+
+  @Override
+  public CustomerApplicationDetails updateStatus(CustomerApplicationStateUpdateCommand command) {
+    MapSqlParameterSource params =
+        new MapSqlParameterSource()
+            .addValue("applicationReference", command.applicationReference())
+            .addValue("applicationStatus", command.status().name())
+            .addValue("statusReason", command.reason())
+            .addValue("processedBy", command.actorSubject())
+            .addValue("processedAt", Timestamp.from(command.processedAt()))
+            .addValue("executionResult", toJson(command.executionResult()));
+
+    return jdbcTemplate
+        .query(
+            """
+            UPDATE customer_service_application
+            SET application_status = :applicationStatus,
+                status_reason = :statusReason,
+                processed_by = :processedBy,
+                processed_at = :processedAt,
+                execution_result = CAST(:executionResult AS jsonb),
+                updated_at = :processedAt
+            WHERE application_reference = :applicationReference
+            RETURNING application_reference,
+                      user_id,
+                      account_id,
+                      application_type,
+                      application_status,
+                      mfa_verified,
+                      mfa_verified_at,
+                      payload,
+                      submitted_at,
+                      updated_at,
+                      status_reason,
+                      processed_by,
+                      processed_at,
+                      execution_result
+            """,
+            params,
+            (rs, rowNum) -> mapDetails(rs))
+        .stream()
+        .findFirst()
+        .orElseThrow(
+            () -> new CustomerApplicationNotFoundException("customer application was not found"));
+  }
+
   private CustomerApplicationSubmission mapSubmission(ResultSet rs, int rowNum)
       throws SQLException {
     long accountId = rs.getLong("account_id");
@@ -118,11 +205,44 @@ public class JdbcCustomerApplicationRepository implements CustomerApplicationWri
         rs.getTimestamp("updated_at").toInstant());
   }
 
+  private CustomerApplicationDetails mapDetails(ResultSet rs) throws SQLException {
+    long accountId = rs.getLong("account_id");
+    Long nullableAccountId = rs.wasNull() ? null : accountId;
+    Timestamp mfaVerifiedAt = rs.getTimestamp("mfa_verified_at");
+    Timestamp processedAt = rs.getTimestamp("processed_at");
+    return new CustomerApplicationDetails(
+        rs.getString("application_reference"),
+        rs.getLong("user_id"),
+        nullableAccountId,
+        CustomerApplicationType.valueOf(rs.getString("application_type")),
+        CustomerApplicationStatus.valueOf(rs.getString("application_status")),
+        rs.getBoolean("mfa_verified"),
+        mfaVerifiedAt == null ? null : mfaVerifiedAt.toInstant(),
+        fromJson(rs.getString("payload")),
+        rs.getTimestamp("submitted_at").toInstant(),
+        rs.getTimestamp("updated_at").toInstant(),
+        rs.getString("status_reason"),
+        rs.getString("processed_by"),
+        processedAt == null ? null : processedAt.toInstant(),
+        fromJson(rs.getString("execution_result")));
+  }
+
   private String toJson(Object value) {
     try {
       return objectMapper.writeValueAsString(value);
     } catch (JsonProcessingException ex) {
       throw new IllegalStateException("json serialization failed", ex);
+    }
+  }
+
+  private Map<String, Object> fromJson(String value) {
+    if (value == null || value.isBlank()) {
+      return Map.of();
+    }
+    try {
+      return objectMapper.readValue(value, MAP_TYPE);
+    } catch (JsonProcessingException ex) {
+      throw new IllegalStateException("json deserialization failed", ex);
     }
   }
 }

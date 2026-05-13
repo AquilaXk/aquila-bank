@@ -106,6 +106,8 @@ public class SecurityConfiguration {
                     .permitAll()
                     .requestMatchers("/internal/api/v1/bootstrap/bulk-import")
                     .permitAll()
+                    .requestMatchers("/internal/api/v1/customer-service/applications/**")
+                    .permitAll()
                     .requestMatchers("/internal/api/v1/outbox/**")
                     .permitAll()
                     .requestMatchers("/internal/api/v1/ledger/**")
