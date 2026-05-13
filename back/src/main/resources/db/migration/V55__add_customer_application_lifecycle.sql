@@ -1,3 +1,4 @@
+-- flyway:allow-breaking-change application_status CHECK constraint is widened for additive lifecycle states.
 ALTER TABLE customer_service_application
     DROP CONSTRAINT IF EXISTS customer_service_application_application_status_check;
 
