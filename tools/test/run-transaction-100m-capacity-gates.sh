@@ -35,6 +35,11 @@ Optional environment:
   CAPACITY_REMOTE_PREFLIGHT_TIMEOUT_SECONDS default 30
   CAPACITY_REMOTE_PREFLIGHT_IMAGE default curlimages/curl:8.11.1
   CAPACITY_REMOTE_READINESS_PATH default /actuator/health/readiness
+  CAPACITY_LOADTEST_KAFKA_ENABLED default false
+  CAPACITY_LOADTEST_NOTIFICATION_INBOX_CONSUMER_ENABLED default CAPACITY_LOADTEST_KAFKA_ENABLED
+  CAPACITY_LOADTEST_NOTIFICATION_INBOX_CONSUMER_OPS_ENABLED default false
+  CAPACITY_LOADTEST_KAFKA_TOPIC_PROVISIONING_ENABLED default CAPACITY_LOADTEST_KAFKA_ENABLED
+  CAPACITY_LOADTEST_KAFKA_TOPIC_STARTUP_VALIDATION_ENABLED default CAPACITY_LOADTEST_KAFKA_ENABLED
   CAPACITY_ADAPTIVE_ENABLED default true
   CAPACITY_HARD_THRESHOLD_ENABLED default true
   CAPACITY_HOT_P95_THRESHOLD_MS default 350
@@ -77,16 +82,48 @@ while [[ "$#" -gt 0 ]]; do
   shift
 done
 
+source_env_file_preserving_existing_values() {
+  local file="$1"
+  local names=()
+  local values=()
+  local name value index
+
+  while IFS= read -r name; do
+    if value="$(printenv "${name}" 2>/dev/null)"; then
+      names+=("${name}")
+      values+=("${value}")
+    fi
+  done < <(
+    awk '
+      /^[[:space:]]*(#|$)/ { next }
+      {
+        line = $0
+        sub(/^[[:space:]]*export[[:space:]]+/, "", line)
+        if (line ~ /^[A-Za-z_][A-Za-z0-9_]*=/) {
+          sub(/=.*/, "", line)
+          print line
+        }
+      }
+    ' "${file}" | sort -u
+  )
+
+  set -a
+  # env 파일은 로컬 기본값 공급용입니다. 명령행 override가 CI/재시도 제어권을 가져야 합니다.
+  source "${file}"
+  set +a
+
+  for ((index = 0; index < ${#names[@]}; index++)); do
+    export "${names[${index}]}=${values[${index}]}"
+  done
+}
+
 capacity_env_file="${CAPACITY_ENV_FILE:-}"
 if [[ -n "${capacity_env_file}" ]]; then
   if [[ ! -f "${capacity_env_file}" ]]; then
     echo "CAPACITY_ENV_FILE not found: ${capacity_env_file}" >&2
     exit 1
   fi
-  set -a
-  # 로컬 전용 원격 실행 값을 shell env로만 주입해 secret/URL 저장소 기록을 피합니다.
-  source "${capacity_env_file}"
-  set +a
+  source_env_file_preserving_existing_values "${capacity_env_file}"
 fi
 
 capacity_name="${CAPACITY_NAME:-transaction-100m-capacity-$(date +%Y-%m-%d-%H%M%S)}"
@@ -110,6 +147,13 @@ capacity_remote_preflight_timeout_seconds="${CAPACITY_REMOTE_PREFLIGHT_TIMEOUT_S
 capacity_remote_preflight_image="${CAPACITY_REMOTE_PREFLIGHT_IMAGE:-curlimages/curl:8.11.1}"
 capacity_remote_readiness_path="${CAPACITY_REMOTE_READINESS_PATH:-/actuator/health/readiness}"
 adaptive_enabled="${CAPACITY_ADAPTIVE_ENABLED:-${OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_ADAPTIVE_ENABLED:-true}}"
+adaptive_min="${CAPACITY_ADAPTIVE_MIN:-${OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_ADAPTIVE_MIN:-4}}"
+adaptive_max="${CAPACITY_ADAPTIVE_MAX:-${OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_ADAPTIVE_MAX:-12}}"
+loadtest_kafka_enabled="${CAPACITY_LOADTEST_KAFKA_ENABLED:-false}"
+loadtest_notification_consumer_enabled="${CAPACITY_LOADTEST_NOTIFICATION_INBOX_CONSUMER_ENABLED:-${loadtest_kafka_enabled}}"
+loadtest_notification_consumer_ops_enabled="${CAPACITY_LOADTEST_NOTIFICATION_INBOX_CONSUMER_OPS_ENABLED:-false}"
+loadtest_kafka_topic_provisioning_enabled="${CAPACITY_LOADTEST_KAFKA_TOPIC_PROVISIONING_ENABLED:-${loadtest_kafka_enabled}}"
+loadtest_kafka_topic_startup_validation_enabled="${CAPACITY_LOADTEST_KAFKA_TOPIC_STARTUP_VALIDATION_ENABLED:-${loadtest_kafka_enabled}}"
 hard_threshold_enabled="${CAPACITY_HARD_THRESHOLD_ENABLED:-true}"
 hot_p95_threshold_ms="${CAPACITY_HOT_P95_THRESHOLD_MS:-350}"
 cold_p95_threshold_ms="${CAPACITY_COLD_P95_THRESHOLD_MS:-750}"
@@ -118,9 +162,9 @@ overload_429_rate_threshold="${CAPACITY_OVERLOAD_429_RATE_THRESHOLD:-0.02}"
 backend_cpu_threshold_percent="${CAPACITY_BACKEND_CPU_THRESHOLD_PERCENT:-120}"
 postgres_cpu_threshold_percent="${CAPACITY_POSTGRES_CPU_THRESHOLD_PERCENT:-90}"
 hikari_pending_threshold="${CAPACITY_HIKARI_PENDING_THRESHOLD:-0}"
-prometheus_url="${PROMETHEUS_URL:-http://localhost:9090}"
+prometheus_url="${PROMETHEUS_URL:-http://localhost:${LOADTEST_PROMETHEUS_PORT:-19090}}"
 prometheus_base_url="${prometheus_url%/}"
-backend_health_url="${CAPACITY_BACKEND_HEALTH_URL:-http://localhost:${BACKEND_PORT:-8080}/actuator/health}"
+backend_health_url="${CAPACITY_BACKEND_HEALTH_URL:-http://localhost:${LOADTEST_BACKEND_PORT:-18080}/actuator/health}"
 report_dir="build/reports/k6/${capacity_name}"
 summary_tsv="${report_dir}/capacity-summary.tsv"
 run_context_path="${report_dir}/capacity-run-context.env"
@@ -130,7 +174,7 @@ compose_files=(-f compose.yml -f compose.t3micro.yml -f compose.loadtest.yml)
 CPU_SAMPLER_PID=""
 threshold_failed=false
 
-single_host_profiles="${CAPACITY_SINGLE_HOST_PROFILES:-single-host-default:3:8:0.40:512m:0.60:384m:4:true:1m,single-host-high-traffic:8:8:0.80:640m:0.60:384m:6:false:1m}"
+single_host_profiles="${CAPACITY_SINGLE_HOST_PROFILES:-single-host-default:4:8:0.40:512m:0.60:384m:4:true:1m,single-host-high-traffic:8:8:0.80:640m:0.60:384m:6:false:1m}"
 cpu_split_profiles="${CAPACITY_CPU_SPLIT_PROFILES:-cpu-backend040-postgres060:8:8:0.40:512m:0.60:384m:4:false:1m,cpu-backend100-postgres060:8:8:1.00:640m:0.60:384m:6:false:1m}"
 long_soak_profile="${CAPACITY_LONG_SOAK_PROFILE:-long-soak-high-traffic:8:8:0.80:640m:0.60:384m:6:false:${long_soak_duration}}"
 
@@ -284,6 +328,31 @@ assert_adaptive_strict_guards() {
   done
 }
 
+assert_adaptive_config_bounds() {
+  local group="$1"
+  local profile="$2"
+  local name admission
+  IFS=':' read -r name admission _rest <<<"${profile}"
+  if [[ "${adaptive_enabled}" != "true" ]]; then
+    return 0
+  fi
+  if ((admission < adaptive_min || admission > adaptive_max)); then
+    echo "${group} profile admission must be within adaptive bounds: profile=${name} admission=${admission} min=${adaptive_min} max=${adaptive_max}" >&2
+    echo "Set OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_ADAPTIVE_MIN/MAX or adjust the profile before starting loadtest backend." >&2
+    exit 1
+  fi
+}
+
+assert_adaptive_config_bounds_for_profiles() {
+  local group="$1"
+  local csv="$2"
+  IFS=',' read -r -a profiles <<<"${csv}"
+  local profile
+  for profile in "${profiles[@]}"; do
+    assert_adaptive_config_bounds "${group}" "${profile}"
+  done
+}
+
 profile_names() {
   local csv="$1"
   IFS=',' read -r -a profiles <<<"${csv}"
@@ -401,6 +470,17 @@ require_generator_mode_value "CAPACITY_K6_GENERATOR_MODE" "${capacity_k6_generat
 require_bool "CAPACITY_REMOTE_PREFLIGHT" "${capacity_remote_preflight}"
 require_positive_integer_value "CAPACITY_REMOTE_PREFLIGHT_TIMEOUT_SECONDS" "${capacity_remote_preflight_timeout_seconds}"
 require_bool "CAPACITY_ADAPTIVE_ENABLED" "${adaptive_enabled}"
+require_positive_integer_value "CAPACITY_ADAPTIVE_MIN" "${adaptive_min}"
+require_positive_integer_value "CAPACITY_ADAPTIVE_MAX" "${adaptive_max}"
+if ((adaptive_max < adaptive_min)); then
+  echo "CAPACITY_ADAPTIVE_MAX must be greater than or equal to CAPACITY_ADAPTIVE_MIN" >&2
+  exit 1
+fi
+require_bool "CAPACITY_LOADTEST_KAFKA_ENABLED" "${loadtest_kafka_enabled}"
+require_bool "CAPACITY_LOADTEST_NOTIFICATION_INBOX_CONSUMER_ENABLED" "${loadtest_notification_consumer_enabled}"
+require_bool "CAPACITY_LOADTEST_NOTIFICATION_INBOX_CONSUMER_OPS_ENABLED" "${loadtest_notification_consumer_ops_enabled}"
+require_bool "CAPACITY_LOADTEST_KAFKA_TOPIC_PROVISIONING_ENABLED" "${loadtest_kafka_topic_provisioning_enabled}"
+require_bool "CAPACITY_LOADTEST_KAFKA_TOPIC_STARTUP_VALIDATION_ENABLED" "${loadtest_kafka_topic_startup_validation_enabled}"
 require_bool "CAPACITY_HARD_THRESHOLD_ENABLED" "${hard_threshold_enabled}"
 require_duration_value "CAPACITY_LONG_SOAK_DURATION" "${long_soak_duration}"
 require_positive_integer_value "CAPACITY_READINESS_TIMEOUT_SECONDS" "${readiness_timeout_seconds}"
@@ -416,6 +496,9 @@ require_non_negative_integer_value "CAPACITY_HIKARI_PENDING_THRESHOLD" "${hikari
 validate_profiles "CAPACITY_SINGLE_HOST_PROFILES" "${single_host_profiles}"
 validate_profiles "CAPACITY_CPU_SPLIT_PROFILES" "${cpu_split_profiles}"
 validate_profile "CAPACITY_LONG_SOAK_PROFILE" "${long_soak_profile}"
+assert_adaptive_config_bounds_for_profiles "CAPACITY_SINGLE_HOST_PROFILES" "${single_host_profiles}"
+assert_adaptive_config_bounds_for_profiles "CAPACITY_CPU_SPLIT_PROFILES" "${cpu_split_profiles}"
+assert_adaptive_config_bounds "CAPACITY_LONG_SOAK_PROFILE" "${long_soak_profile}"
 assert_adaptive_strict_guards "CAPACITY_SINGLE_HOST_PROFILES" "${single_host_profiles}"
 assert_adaptive_strict_guards "CAPACITY_CPU_SPLIT_PROFILES" "${cpu_split_profiles}"
 assert_adaptive_strict_guard "CAPACITY_LONG_SOAK_PROFILE" "${long_soak_profile}"
@@ -470,6 +553,12 @@ print_plan() {
   echo "[transaction-100m-capacity] k6_remote_workdir=${capacity_k6_remote_workdir}"
   echo "[transaction-100m-capacity] capacity_remote_preflight=${capacity_remote_preflight} timeout=${capacity_remote_preflight_timeout_seconds} readiness_path=${capacity_remote_readiness_path} image=${capacity_remote_preflight_image}"
   echo "[transaction-100m-capacity] adaptive_enabled=${adaptive_enabled}"
+  echo "[transaction-100m-capacity] adaptive_bounds=min:${adaptive_min},max:${adaptive_max}"
+  echo "[transaction-100m-capacity] loadtest_kafka_enabled=${loadtest_kafka_enabled}"
+  echo "[transaction-100m-capacity] loadtest_notification_consumer_enabled=${loadtest_notification_consumer_enabled}"
+  echo "[transaction-100m-capacity] loadtest_notification_consumer_ops_enabled=${loadtest_notification_consumer_ops_enabled}"
+  echo "[transaction-100m-capacity] loadtest_kafka_topic_provisioning_enabled=${loadtest_kafka_topic_provisioning_enabled}"
+  echo "[transaction-100m-capacity] loadtest_kafka_topic_startup_validation_enabled=${loadtest_kafka_topic_startup_validation_enabled}"
   echo "[transaction-100m-capacity] hard_thresholds=${hard_threshold_enabled}"
   echo "[transaction-100m-capacity] hot_p95_threshold_ms=${hot_p95_threshold_ms}"
   echo "[transaction-100m-capacity] cold_p95_threshold_ms=${cold_p95_threshold_ms}"
@@ -591,15 +680,30 @@ assert_capacity_remote_preflight() {
 
   local readiness_url="${capacity_k6_remote_base_url%/}${capacity_remote_readiness_path}"
   echo "[transaction-100m-capacity] remote docker context preflight: ${capacity_k6_docker_context}"
-  docker --context "${capacity_k6_docker_context}" info >/dev/null
+  if ! docker --context "${capacity_k6_docker_context}" info >/dev/null; then
+    fail_capacity_prerequisite \
+      "remote-docker-context-unreachable" \
+      "" \
+      "remote docker context preflight failed"
+  fi
   echo "[transaction-100m-capacity] remote backend readiness preflight: ${readiness_url}"
-  docker --context "${capacity_k6_docker_context}" run --rm "${capacity_remote_preflight_image}" \
-    -fsS --max-time "${capacity_remote_preflight_timeout_seconds}" "${readiness_url}" >/dev/null
+  if ! docker --context "${capacity_k6_docker_context}" run --rm "${capacity_remote_preflight_image}" \
+    -fsS --max-time "${capacity_remote_preflight_timeout_seconds}" "${readiness_url}" >/dev/null; then
+    fail_capacity_prerequisite \
+      "remote-backend-readiness-unreachable" \
+      "" \
+      "remote backend readiness preflight failed"
+  fi
 
   echo "[transaction-100m-capacity] remote prometheus remote-write preflight: ${capacity_k6_remote_prometheus_rw_server_url}"
-  docker --context "${capacity_k6_docker_context}" run --rm --entrypoint sh "${capacity_remote_preflight_image}" \
+  if ! docker --context "${capacity_k6_docker_context}" run --rm --entrypoint sh "${capacity_remote_preflight_image}" \
     -c 'status="$(curl -sS -o /dev/null -w "%{http_code}" --max-time "$1" -X POST "$2" || echo 000)"; case "${status}" in 2*|3*|4*) exit 0 ;; *) echo "remote prometheus remote-write preflight failed: status=${status}" >&2; exit 1 ;; esac' \
-    sh "${capacity_remote_preflight_timeout_seconds}" "${capacity_k6_remote_prometheus_rw_server_url}"
+    sh "${capacity_remote_preflight_timeout_seconds}" "${capacity_k6_remote_prometheus_rw_server_url}"; then
+    fail_capacity_prerequisite \
+      "remote-prometheus-remote-write-unreachable" \
+      "" \
+      "remote prometheus remote-write preflight failed"
+  fi
 }
 
 start_cpu_sampler() {
@@ -756,6 +860,13 @@ run_profile() {
   T3MICRO_POSTGRES_MEMORY_SWAP="${postgres_memory}" \
   OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_MAX="${admission}" \
   OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_ADAPTIVE_ENABLED="${adaptive_enabled}" \
+  OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_ADAPTIVE_MIN="${adaptive_min}" \
+  OPS_API_ADMISSION_CONTROL_TRANSACTION_READ_ADAPTIVE_MAX="${adaptive_max}" \
+  OUTBOX_KAFKA_ENABLED="${loadtest_kafka_enabled}" \
+  NOTIFICATION_INBOX_CONSUMER_ENABLED="${loadtest_notification_consumer_enabled}" \
+  NOTIFICATION_INBOX_CONSUMER_OPS_ENABLED="${loadtest_notification_consumer_ops_enabled}" \
+  KAFKA_TOPIC_PROVISIONING_ENABLED="${loadtest_kafka_topic_provisioning_enabled}" \
+  KAFKA_TOPIC_STARTUP_VALIDATION_ENABLED="${loadtest_kafka_topic_startup_validation_enabled}" \
   DB_POOL_MAX_SIZE="${db_pool}" \
     docker compose "${compose_files[@]}" --profile loadtest up -d --force-recreate \
       postgres aquila-bank-backend prometheus grafana alertmanager postgres-exporter

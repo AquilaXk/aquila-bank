@@ -12,6 +12,8 @@ Environment:
   STEPPED_BURST_WARN_RATE     default 0.08
   STEPPED_BURST_FAIL_RATE     default 0.10
   STEPPED_BURST_RUN_K6        true|false, default false
+  STEPPED_BURST_DATASET_PREFLIGHT true|false, default true when STEPPED_BURST_RUN_K6=true
+  STEPPED_BURST_DATASET_PREFLIGHT_RUNNER default tools/test/run-transaction-100m-fixture-dataset-probe.sh
   STEPPED_BURST_SUMMARY_DIR   required when STEPPED_BURST_RUN_K6=false
   STEPPED_BURST_OUTPUT_DIR    default build/reports/k6/<gate>
 
@@ -48,10 +50,13 @@ burst_duration="${STEPPED_BURST_DURATION:-20s}"
 warn_rate="${STEPPED_BURST_WARN_RATE:-0.08}"
 fail_rate="${STEPPED_BURST_FAIL_RATE:-0.10}"
 run_k6="${STEPPED_BURST_RUN_K6:-false}"
+dataset_preflight="${STEPPED_BURST_DATASET_PREFLIGHT:-true}"
+dataset_preflight_runner="${STEPPED_BURST_DATASET_PREFLIGHT_RUNNER:-tools/test/run-transaction-100m-fixture-dataset-probe.sh}"
 summary_dir="${STEPPED_BURST_SUMMARY_DIR:-}"
 output_dir="${STEPPED_BURST_OUTPUT_DIR:-build/reports/k6/${gate_name}}"
 summary_tsv="${output_dir}/${gate_name}-stepped-burst.tsv"
 report_md="${output_dir}/${gate_name}-stepped-burst.md"
+preflight_failure_report="${output_dir}/${gate_name}-stepped-burst-preflight-failure.env"
 single_gate="tools/test/run-transaction-read-burst-429-budget-gate.sh"
 
 require_csv_positive_integers() {
@@ -109,6 +114,7 @@ require_csv_positive_integers "STEPPED_BURST_RATES" "${rates}"
 require_rate_value "STEPPED_BURST_WARN_RATE" "${warn_rate}"
 require_rate_value "STEPPED_BURST_FAIL_RATE" "${fail_rate}"
 require_bool_value "STEPPED_BURST_RUN_K6" "${run_k6}"
+require_bool_value "STEPPED_BURST_DATASET_PREFLIGHT" "${dataset_preflight}"
 if number_greater_than "${warn_rate}" "${fail_rate}"; then
   echo "STEPPED_BURST_WARN_RATE must be less than or equal to STEPPED_BURST_FAIL_RATE" >&2
   exit 1
@@ -125,12 +131,15 @@ print_plan() {
   echo "[transaction-read-stepped-burst] warn_rate=${warn_rate}"
   echo "[transaction-read-stepped-burst] fail_rate=${fail_rate}"
   echo "[transaction-read-stepped-burst] run_k6=${run_k6}"
+  echo "[transaction-read-stepped-burst] dataset_preflight=${dataset_preflight}"
+  echo "[transaction-read-stepped-burst] dataset_preflight_runner=${dataset_preflight_runner}"
   echo "[transaction-read-stepped-burst] summary_dir=${summary_dir:-missing}"
   echo "[transaction-read-stepped-burst] output_dir=${output_dir}"
   echo "[transaction-read-stepped-burst] k6_command=K6_SCENARIO_MODE=burst K6_BURST_RATE=<rate> ${single_gate}"
   echo "[transaction-read-stepped-burst] k6_headroom=K6_PRE_ALLOCATED_VUS=<rate> K6_MAX_VUS=<rate*2> K6_MAX_RETRY_AFTER_SLEEP_SECONDS=1"
   echo "[transaction-read-stepped-burst] summary_tsv=${summary_tsv}"
   echo "[transaction-read-stepped-burst] report_md=${report_md}"
+  echo "[transaction-read-stepped-burst] preflight_failure_report=${preflight_failure_report}"
 }
 
 print_plan
@@ -152,6 +161,47 @@ if ! command -v jq >/dev/null 2>&1; then
   echo "jq is required" >&2
   exit 1
 fi
+
+write_preflight_failure_report() {
+  local reason="$1"
+  local status="$2"
+  mkdir -p "${output_dir}"
+  {
+    echo "STEPPED_BURST_PREFLIGHT_STATUS=failed"
+    echo "STEPPED_BURST_GATE_NAME=${gate_name}"
+    echo "STEPPED_BURST_PREFLIGHT_FAILURE_REASON=${reason}"
+    echo "STEPPED_BURST_PREFLIGHT_EXIT_STATUS=${status}"
+    echo "STEPPED_BURST_DATASET_PREFLIGHT=${dataset_preflight}"
+    echo "STEPPED_BURST_DATASET_PREFLIGHT_RUNNER=${dataset_preflight_runner}"
+    echo "STEPPED_BURST_SUMMARY_TSV=${summary_tsv}"
+    echo "STEPPED_BURST_REPORT_MD=${report_md}"
+  } >"${preflight_failure_report}"
+  echo "[transaction-read-stepped-burst] preflight failure report written=${preflight_failure_report}" >&2
+}
+
+run_dataset_preflight() {
+  local status
+  if [[ "${run_k6}" != "true" || "${dataset_preflight}" != "true" ]]; then
+    echo "[transaction-read-stepped-burst] dataset preflight skipped"
+    return 0
+  fi
+  if [[ ! -x "${dataset_preflight_runner}" ]]; then
+    echo "stepped burst dataset preflight runner missing or not executable: ${dataset_preflight_runner}" >&2
+    exit 1
+  fi
+
+  echo "[transaction-read-stepped-burst] dataset preflight: ${dataset_preflight_runner}"
+  set +e
+  "${dataset_preflight_runner}"
+  status=$?
+  set -e
+  if [[ "${status}" -ne 0 ]]; then
+    write_preflight_failure_report "dataset-preflight-failed" "${status}"
+    exit "${status}"
+  fi
+}
+
+run_dataset_preflight
 
 mkdir -p "${output_dir}"
 printf "rate\tstatus\ttransaction_429_rate\ttransaction_503_rate\ttransaction_503_count\tdropped_iterations\tinterrupted_iterations\tgenerator_headroom_status\treport_md\tsummary_json\n" >"${summary_tsv}"
