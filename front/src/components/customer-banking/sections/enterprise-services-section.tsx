@@ -21,72 +21,74 @@ const fulfillmentDetails = [
   {
     title: "공과금 납부",
     applicationType: "BILL_PAYMENT",
-    headline: "지로/지방세/아파트관리비 납부",
-    description: "기관, 납부번호, 출금계좌, OTP 기준의 접수 업무",
-    fields: ["납부기관", "전자납부번호", "출금계좌", "납부예정일"],
+    headline: "공과금 납부 신청 접수",
+    description: "기관, 납부번호, 금액, OTP 기준의 mock 접수 업무",
+    fields: ["납부기관", "전자납부번호", "납부금액", "통화"],
     formFields: [
       { key: "billerCode", label: "납부기관", value: "GIRO" },
       { key: "paymentNumber", label: "전자납부번호", value: "1234567890" },
-      { key: "dueDate", label: "납부예정일", value: "2026-05-20" },
+      { key: "amountMinor", label: "납부금액", value: "12000" },
+      { key: "currencyCode", label: "통화", value: "KRW" },
     ],
-    steps: ["기관 선택", "납부번호 입력", "출금계좌 입력", "접수 완료"],
-    status: "OTP 확인 후 접수",
+    steps: ["기관 선택", "납부번호 입력", "금액 확인", "mock 대기"],
+    status: "OTP 확인 후 신청 접수",
   },
   {
     title: "오픈뱅킹 연결",
     applicationType: "OPEN_BANKING_CONNECTION",
-    headline: "타행 계좌 연결 신청",
-    description: "동의 만료일, 연결 은행, 계좌 별칭 기준의 접수 업무",
-    fields: ["은행", "계좌 별칭", "동의 만료일", "최근 동기화"],
+    headline: "외부 계좌 연결 접수 데모",
+    description: "기관코드, 외부 계좌번호, 동의 식별값 기준의 mock 접수 업무",
+    fields: ["기관코드", "외부 계좌번호", "동의 식별값", "OTP"],
     formFields: [
-      { key: "bankCode", label: "은행코드", value: "088" },
-      { key: "accountAlias", label: "계좌 별칭", value: "급여 타행" },
-      { key: "consentExpiresAt", label: "동의 만료일", value: "2027-05-11" },
+      { key: "institutionCode", label: "기관코드", value: "088" },
+      { key: "externalAccountNumber", label: "외부 계좌번호", value: "100-200-300" },
+      { key: "consentId", label: "동의 식별값", value: "CONSENT_202605" },
     ],
-    steps: ["은행 선택", "동의 정보 입력", "OTP 확인", "접수 완료"],
-    status: "OTP 확인 후 연결 신청",
+    steps: ["기관 입력", "동의 식별값 입력", "OTP 확인", "mock 대기"],
+    status: "OTP 확인 후 연결 접수",
   },
   {
     title: "예금 가입",
     applicationType: "DEPOSIT_PRODUCT_APPLICATION",
-    headline: "정기예금/입출금 상품 가입 신청",
-    description: "상품코드, 가입기간, 가입금액, OTP 기준의 접수 업무",
-    fields: ["상품코드", "가입기간", "가입금액", "출금계좌"],
+    headline: "예금 상품 가입 신청 접수",
+    description: "상품코드, 가입금액, 통화, OTP 기준의 신청 접수 업무",
+    fields: ["상품코드", "가입금액", "통화", "OTP"],
     formFields: [
       { key: "productCode", label: "상품코드", value: "DEP-12M" },
-      { key: "termMonths", label: "가입기간", value: "12" },
       { key: "amountMinor", label: "가입금액", value: "1000000" },
+      { key: "currencyCode", label: "통화", value: "KRW" },
     ],
-    steps: ["상품 선택", "가입정보 입력", "OTP 확인", "접수 완료"],
-    status: "OTP 확인 후 가입 신청",
+    steps: ["상품 선택", "금액 입력", "OTP 확인", "심사 대기"],
+    status: "OTP 확인 후 가입 접수",
   },
   {
     title: "대출 신청",
     applicationType: "LOAN_APPLICATION",
-    headline: "대출 한도 신청/서류 안내",
-    description: "대출 유형, 희망 한도, 상환 방식 기준의 접수 업무",
-    fields: ["대출 유형", "희망 한도", "상환 방식", "필요 서류"],
+    headline: "대출 신청 접수 데모",
+    description: "상품코드, 신청금액, 신청 목적 기준의 접수 업무",
+    fields: ["상품코드", "신청금액", "통화", "신청 목적"],
     formFields: [
-      { key: "loanType", label: "대출 유형", value: "credit" },
-      { key: "requestedLimitMinor", label: "희망 한도", value: "10000000" },
-      { key: "repaymentType", label: "상환 방식", value: "amortized" },
+      { key: "productCode", label: "상품코드", value: "LOAN-CREDIT" },
+      { key: "requestedAmountMinor", label: "신청금액", value: "10000000" },
+      { key: "currencyCode", label: "통화", value: "KRW" },
+      { key: "purpose", label: "신청 목적", value: "LIVING" },
     ],
-    steps: ["기본정보 확인", "희망 한도 입력", "서류 안내", "접수 완료"],
-    status: "OTP 확인 후 한도 신청",
+    steps: ["상품 선택", "신청금액 입력", "OTP 확인", "심사 대기"],
+    status: "OTP 확인 후 대출 접수",
   },
   {
     title: "외환 신청",
     applicationType: "FOREIGN_EXCHANGE_APPLICATION",
-    headline: "외화예금/해외송금 신청 접수",
-    description: "통화, 신청 목적, 우대 조건 기준의 접수 업무",
-    fields: ["통화", "신청 목적", "우대 조건", "출금계좌"],
+    headline: "외환 신청 접수 데모",
+    description: "출금 통화, 대상 통화, 금액 기준의 mock 접수 업무",
+    fields: ["출금 통화", "대상 통화", "신청금액", "OTP"],
     formFields: [
-      { key: "currencyCode", label: "통화", value: "USD" },
-      { key: "purpose", label: "신청 목적", value: "foreign-deposit" },
-      { key: "preferredRateCode", label: "우대 조건", value: "WEB" },
+      { key: "sourceCurrencyCode", label: "출금 통화", value: "KRW" },
+      { key: "targetCurrencyCode", label: "대상 통화", value: "USD" },
+      { key: "amountMinor", label: "신청금액", value: "100000" },
     ],
-    steps: ["통화 선택", "신청 목적 입력", "OTP 확인", "접수 완료"],
-    status: "OTP 확인 후 외환 신청",
+    steps: ["통화 선택", "금액 입력", "OTP 확인", "mock 대기"],
+    status: "OTP 확인 후 외환 접수",
   },
 ] as const satisfies ReadonlyArray<{
   title: string;
@@ -144,7 +146,7 @@ export function EnterpriseServicesSection({
       <div className="section-title">
         <div>
           <p>부가업무</p>
-          <h1>공과금 · 오픈뱅킹 · 금융상품</h1>
+          <h1>공과금 · 오픈뱅킹 · 상품신청</h1>
         </div>
       </div>
       <WorkTabs
@@ -157,11 +159,11 @@ export function EnterpriseServicesSection({
       />
       <BankNoticeStrip
         items={[
-          { label: "공과금", value: "납부 접수" },
-          { label: "오픈뱅킹", value: "연결 신청" },
-          { label: "예금상품", value: "가입 신청" },
-          { label: "대출", value: "한도 신청" },
-          { label: "외환", value: "외환 신청" },
+          { label: "공과금", value: "mock 접수" },
+          { label: "오픈뱅킹", value: "연결 접수" },
+          { label: "예금상품", value: "가입 접수" },
+          { label: "대출", value: "심사 접수" },
+          { label: "외환", value: "환전 접수" },
         ]}
       />
 
@@ -176,39 +178,39 @@ export function EnterpriseServicesSection({
         ))}
       </div>
 
-      <BankTable caption="부가업무 처리 기준" className="dense-bank-table">
+      <BankTable caption="부가업무 MVP 처리 기준" className="dense-bank-table">
           <thead>
             <tr>
               <th>업무</th>
-              <th>상용 화면 기준</th>
-              <th>현재 범위</th>
+              <th>MVP 입력 기준</th>
+              <th>처리 범위</th>
             </tr>
           </thead>
           <tbody>
             <tr>
               <td>공과금</td>
-              <td>기관, 납부번호, 출금계좌, OTP</td>
-              <td>접수 가능</td>
+              <td>기관, 납부번호, 금액, OTP</td>
+              <td>접수 + mock 대기</td>
             </tr>
             <tr>
               <td>오픈뱅킹</td>
-              <td>타행 계좌 연결 신청</td>
-              <td>연결 신청</td>
+              <td>기관코드, 외부 계좌번호, 동의 식별값</td>
+              <td>연결 접수</td>
             </tr>
             <tr>
               <td>예금상품</td>
-              <td>상품코드, 가입기간, 가입금액, OTP</td>
-              <td>가입 신청</td>
+              <td>상품코드, 가입금액, 통화, OTP</td>
+              <td>가입 접수</td>
             </tr>
             <tr>
               <td>대출</td>
-              <td>대출 유형, 희망 한도, 상환 방식, OTP</td>
-              <td>한도 신청</td>
+              <td>상품코드, 신청금액, 목적, OTP</td>
+              <td>심사 접수</td>
             </tr>
             <tr>
               <td>외환</td>
+              <td>출금 통화, 대상 통화, 금액</td>
               <td>외환 신청 접수</td>
-              <td>외환 신청</td>
             </tr>
           </tbody>
       </BankTable>

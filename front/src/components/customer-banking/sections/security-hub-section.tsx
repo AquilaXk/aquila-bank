@@ -11,36 +11,81 @@ import { BankNoticeStrip, WorkTabs } from "../common";
 
 function stayOnCurrentWorkTab(): void {}
 
+type SecurityApplicationForm = {
+  subject: string;
+  serial: string;
+  totpCode: string;
+};
+
+type SecurityMediaPayload = {
+  mediaType: "OTP" | "SECURITY_CARD" | "MOBILE_OTP";
+  deliveryMethod: "BRANCH" | "REGISTERED_MAIL";
+};
+
+type RegistrationFlow = {
+  title: string;
+  applicationType: CustomerApplicationType;
+  description: string;
+  steps: readonly string[];
+  checks: readonly string[];
+  initialSubject: string;
+  initialSerial: string;
+  securityMediaPayload?: SecurityMediaPayload;
+};
+
 const registrationFlows = [
   {
     title: "공동인증서 등록",
     applicationType: "CERTIFICATE_REGISTRATION" as CustomerApplicationType,
-    description: "인증서 선택, 비밀번호 확인, 타기관 등록, 만료일 확인",
-    steps: ["인증서 선택", "비밀번호 확인", "타기관 등록 확인", "등록 완료"],
-    checks: ["브라우저 저장소 저장 금지", "서명 원문 미보관", "만료일/발급기관 표시"],
+    description: "발급기관 DN과 인증서 일련번호 기준의 등록 신청 접수",
+    steps: ["인증서 선택", "식별값 입력", "OTP 확인", "접수 대기"],
+    checks: ["브라우저 저장소 저장 금지", "서명 원문 미보관", "만료일/발급기관 확인"],
+    initialSubject: "CN=AQUILA_DEMO_CA",
+    initialSerial: "CERT-20260514",
   },
   {
     title: "금융인증서 등록",
     applicationType: "CERTIFICATE_REGISTRATION" as CustomerApplicationType,
-    description: "클라우드 인증, 휴대폰 본인확인, 간편 비밀번호, 기기 등록",
-    steps: ["본인확인", "클라우드 인증", "기기 확인", "사용 등록"],
-    checks: ["요청번호 유지", "인증 완료 시각", "재등록 메뉴"],
+    description: "금융인증서 등록 요청을 식별값으로 접수",
+    steps: ["본인확인", "식별값 입력", "OTP 확인", "접수 대기"],
+    checks: ["요청번호 유지", "접수 시각 기록", "재등록 메뉴"],
+    initialSubject: "CN=AQUILA_FINANCIAL_CERT",
+    initialSerial: "FINCERT-20260514",
   },
   {
     title: "OTP 등록",
     applicationType: "SECURITY_MEDIA_APPLICATION" as CustomerApplicationType,
-    description: "실물 OTP와 모바일 OTP를 나눠 일련번호, 제조사, 보안등급, 이체한도 반영 상태를 확인합니다.",
-    steps: ["매체 선택", "일련번호 확인", "OTP 검증", "한도 반영"],
+    description: "모바일 OTP 신청 정보를 접수하고 보안매체 적용 대기 상태로 표시합니다.",
+    steps: ["매체 선택", "수령 방법 선택", "OTP 확인", "접수 대기"],
     checks: ["OTP 원문 저장 금지", "오류 횟수 안내", "분실 신고 연결"],
+    initialSubject: "MOBILE_OTP",
+    initialSerial: "BRANCH",
+    securityMediaPayload: { mediaType: "MOBILE_OTP", deliveryMethod: "BRANCH" },
   },
   {
     title: "보안매체 등록",
     applicationType: "SECURITY_MEDIA_APPLICATION" as CustomerApplicationType,
-    description: "보안카드, 모바일 OTP, 대체 인증수단",
-    steps: ["매체 종류 선택", "본인확인", "매체 상태 확인", "업무별 적용"],
-    checks: ["등급별 한도 표시", "해지/재발급 분리", "고위험 업무 안내"],
+    description: "보안카드와 모바일 OTP 발급 신청 접수",
+    steps: ["매체 종류 선택", "수령 방법 선택", "OTP 확인", "접수 대기"],
+    checks: ["등급별 한도 안내", "해지/재발급 분리", "고위험 업무 안내"],
+    initialSubject: "SECURITY_CARD",
+    initialSerial: "BRANCH",
+    securityMediaPayload: { mediaType: "SECURITY_CARD", deliveryMethod: "BRANCH" },
   },
-];
+] as const satisfies readonly RegistrationFlow[];
+
+function createSecurityApplicationPayload(
+  flow: RegistrationFlow,
+  form: SecurityApplicationForm,
+): Record<string, unknown> {
+  if (flow.applicationType === "CERTIFICATE_REGISTRATION") {
+    return {
+      certificateSerialNumber: form.serial,
+      issuerDn: form.subject,
+    };
+  }
+  return flow.securityMediaPayload ?? { mediaType: "MOBILE_OTP", deliveryMethod: "BRANCH" };
+}
 
 type SecurityHubSectionProps = {
   applicationResult: CustomerApplicationLatestResult;
@@ -53,14 +98,14 @@ export function SecurityHubSection({
   isBusy,
   onSubmitCustomerApplication,
 }: SecurityHubSectionProps) {
-  const [forms, setForms] = useState<Record<string, { subject: string; serial: string; totpCode: string }>>(
+  const [forms, setForms] = useState<Record<string, SecurityApplicationForm>>(
     () =>
       Object.fromEntries(
         registrationFlows.map((flow) => [
           flow.title,
           {
-            subject: flow.title.includes("OTP") ? "mobile-otp" : "browser-certificate",
-            serial: "",
+            subject: flow.initialSubject,
+            serial: flow.initialSerial,
             totpCode: "",
           },
         ]),
@@ -95,10 +140,10 @@ export function SecurityHubSection({
       />
       <BankNoticeStrip
         items={[
-          { label: "공동인증서", value: "고위험 이체" },
-          { label: "금융인증서", value: "로그인/조회" },
-          { label: "OTP", value: "이체 승인" },
-          { label: "보안매체", value: "업무별 한도" },
+          { label: "공동인증서", value: "신청 접수" },
+          { label: "금융인증서", value: "등록 접수" },
+          { label: "OTP", value: "OTP 확인" },
+          { label: "보안매체", value: "업무별 안내" },
         ]}
       />
 
@@ -115,8 +160,8 @@ export function SecurityHubSection({
       <section className="table-panel">
         <div className="panel-toolbar">
           <div>
-            <strong>보안매체별 적용 업무</strong>
-            <span>이체/인증 업무 적용 기준</span>
+            <strong>보안매체별 MVP 적용 업무</strong>
+            <span>이체/인증 신청 접수 기준</span>
           </div>
         </div>
         <div className="bank-table-wrap">
@@ -132,13 +177,13 @@ export function SecurityHubSection({
             <tbody>
               <tr>
                 <td>공동인증서</td>
-                <td>고위험 이체, 인증서 관리</td>
-                <td>비밀번호/전자서명</td>
+                <td>인증서 관리 접수</td>
+                <td>식별값/OTP</td>
               </tr>
               <tr>
                 <td>금융인증서</td>
-                <td>로그인, 조회, 일부 이체</td>
-                <td>클라우드 인증</td>
+                <td>로그인 보조, 등록 접수</td>
+                <td>식별값/OTP</td>
               </tr>
               <tr>
                 <td>OTP</td>
@@ -181,11 +226,7 @@ export function SecurityHubSection({
                 void onSubmitCustomerApplication({
                   applicationType: flow.applicationType,
                   totpCode: form.totpCode,
-                  payload: {
-                    flowTitle: flow.title,
-                    subject: form.subject,
-                    serial: form.serial,
-                  },
+                  payload: createSecurityApplicationPayload(flow, form),
                   successMessage: `${flow.title} 신청이 접수되었습니다.`,
                 });
               }}
