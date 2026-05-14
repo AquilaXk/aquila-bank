@@ -46,6 +46,13 @@ export type OpsFormState = {
   accountStatusReasonDetail: string;
   accountStatusRequestId: string;
   accountStatusConfirmation: string;
+  applicationReference: string;
+  applicationReason: string;
+  applicationConfirmation: string;
+  applicationCallbackSuccess: string;
+  applicationCallbackReason: string;
+  applicationCallbackPayload: string;
+  applicationCallbackConfirmation: string;
 };
 
 export const initialOpsResult: OpsResult = {

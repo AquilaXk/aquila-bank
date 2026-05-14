@@ -818,48 +818,102 @@
       "method": "POST",
       "path": "/internal/api/v1/customer-service/applications/{applicationReference}/review",
       "audience": "internal-admin",
-      "frontendStatus": "intentional-no-ui",
-      "rationale": "고객 신청 검토는 별도 운영자 권한과 사유 확인 UX가 필요한 write API라 현재 고객 웹뱅킹 화면 범위에서 제외한다."
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/ops-console/client.ts",
+          "contains": ["customerApplicationOperationPath"]
+        },
+        {
+          "file": "src/components/ops-console/ops-console.tsx",
+          "contains": ["Customer application review", "REVIEW APPLICATION"]
+        }
+      ]
     },
     {
       "id": "internal.customer.application.approve",
       "method": "POST",
       "path": "/internal/api/v1/customer-service/applications/{applicationReference}/approve",
       "audience": "internal-admin",
-      "frontendStatus": "intentional-no-ui",
-      "rationale": "고객 신청 승인은 maker-checker 운영 화면 후보이며 이번 PR은 개인 웹뱅킹 범위 정리에 한정한다."
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/ops-console/client.ts",
+          "contains": ["customerApplicationOperationPath"]
+        },
+        {
+          "file": "src/components/ops-console/ops-console.tsx",
+          "contains": ["Customer application approve", "APPROVE APPLICATION"]
+        }
+      ]
     },
     {
       "id": "internal.customer.application.reject",
       "method": "POST",
       "path": "/internal/api/v1/customer-service/applications/{applicationReference}/reject",
       "audience": "internal-admin",
-      "frontendStatus": "intentional-no-ui",
-      "rationale": "고객 신청 반려는 사유 입력과 감사 표시가 필요한 운영 write API라 고객 프론트에 노출하지 않는다."
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/ops-console/client.ts",
+          "contains": ["customerApplicationOperationPath"]
+        },
+        {
+          "file": "src/components/ops-console/ops-console.tsx",
+          "contains": ["Customer application reject", "REJECT APPLICATION"]
+        }
+      ]
     },
     {
       "id": "internal.customer.application.cancel",
       "method": "POST",
       "path": "/internal/api/v1/customer-service/applications/{applicationReference}/cancel",
       "audience": "internal-admin",
-      "frontendStatus": "intentional-no-ui",
-      "rationale": "내부 신청 취소는 운영자 권한과 처리 사유가 필요한 admin API라 고객 웹뱅킹 MVP 화면 범위 밖이다."
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/ops-console/client.ts",
+          "contains": ["customerApplicationOperationPath"]
+        },
+        {
+          "file": "src/components/ops-console/ops-console.tsx",
+          "contains": ["Customer application cancel", "CANCEL APPLICATION"]
+        }
+      ]
     },
     {
       "id": "internal.customer.application.execute",
       "method": "POST",
       "path": "/internal/api/v1/customer-service/applications/{applicationReference}/execute",
       "audience": "internal-admin",
-      "frontendStatus": "intentional-no-ui",
-      "rationale": "신청 실행은 외부 연동 mock boundary와 운영 권한이 필요한 단계라 별도 admin 도구에서 다룬다."
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/ops-console/client.ts",
+          "contains": ["customerApplicationOperationPath"]
+        },
+        {
+          "file": "src/components/ops-console/ops-console.tsx",
+          "contains": ["Customer application execute", "EXECUTE APPLICATION"]
+        }
+      ]
     },
     {
       "id": "internal.customer.application.external.callback",
       "method": "POST",
       "path": "/internal/api/v1/customer-service/applications/{applicationReference}/external-callback",
       "audience": "internal-admin",
-      "frontendStatus": "intentional-no-ui",
-      "rationale": "외부 callback 반영은 mock/webhook 경계의 서버 간 API라 브라우저 화면에서 직접 호출하지 않는다."
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/ops-console/client.ts",
+          "contains": ["customerApplicationExternalCallbackPath", "/external-callback"]
+        },
+        {
+          "file": "src/components/ops-console/ops-console.tsx",
+          "contains": ["Customer application external callback", "CALLBACK APPLICATION"]
+        }
+      ]
     },
     {
       "id": "internal.ledger.audit.by.entry",
