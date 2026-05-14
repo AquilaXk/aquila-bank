@@ -201,6 +201,65 @@ def assert_database_sequence_session_id_is_used_when_available() -> None:
             fail(f"issuer should query auth_refresh_token_session sequence: {psql_args!r}")
 
 
+def assert_auto_backend_env_prefers_live_docker_container() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = pathlib.Path(temp_dir)
+        fake_bin = temp_path / "bin"
+        fake_bin.mkdir()
+        docker = fake_bin / "docker"
+        docker.write_text(
+            "\n".join(
+                [
+                    "#!/usr/bin/env python3",
+                    "import sys",
+                    "if sys.argv[1:4] == ['ps', '--format', '{{.Names}}']:",
+                    "    print('aquila-backend')",
+                    "    raise SystemExit(0)",
+                    "if sys.argv[1:4] == ['exec', 'aquila-backend', 'env']:",
+                    "    print('SECURITY_JWT_SECRET=live-container-secret-with-enough-entropy')",
+                    "    print('SECURITY_JWT_ISSUER=https://live.staging.example.test')",
+                    "    raise SystemExit(0)",
+                    "raise SystemExit(1)",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        docker.chmod(0o700)
+
+        output_file = temp_path / "live-docker.jwt"
+        encoded_secret = "encoded-secret-must-not-sign-token"
+        env_b64 = encode_env(f"SECURITY_JWT_SECRET={encoded_secret}\n")
+        result = run_issuer(
+            {
+                "OCI_A1_BACKEND_ENV_B64": env_b64,
+                "STAGING_REPLAY_TOKEN_BACKEND_ENV_SOURCE": "auto",
+                "STAGING_REPLAY_TOKEN_OUTPUT_FILE": str(output_file),
+                "STAGING_REPLAY_SESSION_ID": "987654321",
+            },
+            path_prefix=fake_bin,
+        )
+
+        if result.returncode != 0:
+            fail(f"issuer should prefer live docker backend env, stderr={result.stderr!r}")
+        if "backend_env_source=live-docker" not in result.stdout:
+            fail(f"issuer should report live docker env source: {result.stdout!r}")
+
+        token = output_file.read_text(encoding="utf-8").strip()
+        parts = token.split(".")
+        payload = decode_segment(parts[1])
+        expected_signature = hmac.new(
+            b"live-container-secret-with-enough-entropy",
+            f"{parts[0]}.{parts[1]}".encode("ascii"),
+            hashlib.sha256,
+        ).digest()
+        actual_signature = base64.urlsafe_b64decode(parts[2] + ("=" * (-len(parts[2]) % 4)))
+        if not hmac.compare_digest(actual_signature, expected_signature):
+            fail("auto source should sign with live backend container secret")
+        if payload.get("iss") != "https://live.staging.example.test":
+            fail(f"auto source should use live backend issuer: {payload!r}")
+
+
 def assert_missing_secret_fails_without_token() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         output_file = pathlib.Path(temp_dir) / "missing-secret.jwt"
@@ -227,6 +286,8 @@ def main() -> None:
     assert_empty_session_id_uses_reserved_generated_range()
     print("[issue-staging-replay-token] database sequence contract")
     assert_database_sequence_session_id_is_used_when_available()
+    print("[issue-staging-replay-token] live docker env source contract")
+    assert_auto_backend_env_prefers_live_docker_container()
     print("[issue-staging-replay-token] missing secret contract")
     assert_missing_secret_fails_without_token()
     print("ok")

@@ -96,6 +96,11 @@ on:
       - "tools/test/run-transaction-read-nginx-access-aggregate-artifact.sh"
       - "tools/test/check-transaction-read-nginx-access-aggregate-artifact.sh"
       - "tools/test/run-k6-transaction-100m-loadtest.sh"
+      - "tools/test/check-k6-transaction-100m-loadtest.sh"
+      - "tools/ops/staging-fixture-principal-bootstrap.sh"
+      - "tools/test/run-staging-fixture-principal-bootstrap-contract.sh"
+      - "tools/ops/issue-staging-replay-token.py"
+      - "tools/test/check-issue-staging-replay-token.py"
 
 permissions:
   contents: read
@@ -112,6 +117,15 @@ jobs:
 
       - name: Validate workflow contract
         run: bash tools/test/check-oci-k6-burst-reject-curve-matrix-workflow.sh
+
+      - name: Validate k6 transaction loadtest contract
+        run: bash tools/test/check-k6-transaction-100m-loadtest.sh
+
+      - name: Validate staging fixture principal bootstrap
+        run: bash tools/test/run-staging-fixture-principal-bootstrap-contract.sh
+
+      - name: Validate staging replay token issuer
+        run: python3 tools/test/check-issue-staging-replay-token.py
 
   burst-matrix:
     name: Authenticated OCI k6 burst reject curve matrix
@@ -214,7 +228,9 @@ jobs:
           fi
 
           missing=()
-          [[ -z "${STAGING_REPLAY_TOKEN:-}" ]] && missing+=("STAGING_REPLAY_TOKEN")
+          if [[ -z "${STAGING_REPLAY_TOKEN:-}" && -z "${OCI_A1_BACKEND_ENV_B64:-${BACKEND_ENV_B64:-}}" ]]; then
+            missing+=("STAGING_REPLAY_TOKEN_OR_OCI_A1_BACKEND_ENV_B64")
+          fi
           [[ -z "${K6_DOCKER_CONTEXT}" ]] && missing+=("K6_DOCKER_CONTEXT")
           [[ -z "${K6_REMOTE_BASE_URL}" ]] && missing+=("K6_REMOTE_BASE_URL")
           [[ -z "${K6_REMOTE_PROMETHEUS_RW_SERVER_URL}" ]] && missing+=("K6_REMOTE_PROMETHEUS_RW_SERVER_URL")
@@ -231,6 +247,17 @@ jobs:
 
           env_names=(
             STAGING_REPLAY_TOKEN
+            STAGING_OCI_A1_DATABASE_URL
+            STAGING_RDS_DATABASE_URL
+            OCI_A1_BACKEND_ENV_B64
+            BACKEND_ENV_B64
+            POSTGRES_CONTAINER_NAME
+            POSTGRES_NETWORK_ALIAS
+            POSTGRES_HOST_BIND
+            STAGING_REPLAY_USER_ID
+            STAGING_REPLAY_LOGIN_ID
+            STAGING_REPLAY_USER_PASSWORD_HASH
+            STAGING_REPLAY_USER_DISPLAY_NAME
             K6_MATRIX_REPORT_NAME
             K6_BURST_RATES
             K6_RUN_PURPOSE
@@ -276,6 +303,54 @@ jobs:
               printf '%s=%s\n' "${name}" "${value}" >>"${GITHUB_ENV}"
             fi
           done
+
+      - name: Resolve OCI A1 staging database URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "build/reports/k6/${K6_MATRIX_REPORT_NAME}"
+          if ! resolved_database_url="$(tools/ops/resolve-oci-a1-staging-database-url.sh)"; then
+            echo "::error::Failed to resolve burst matrix staging database URL."
+            exit 1
+          fi
+          echo "::add-mask::${resolved_database_url}"
+          printf 'STAGING_OCI_A1_DATABASE_URL=%s\n' "${resolved_database_url}" >>"${GITHUB_ENV}"
+
+      - name: Issue burst matrix replay token
+        shell: bash
+        run: |
+          set -euo pipefail
+          replay_token_file="${RUNNER_TEMP}/staging-replay-token.jwt"
+          if [[ -n "${OCI_A1_BACKEND_ENV_B64:-${BACKEND_ENV_B64:-}}" ]]; then
+            STAGING_REPLAY_SESSION_ID="" \
+            STAGING_REPLAY_DATABASE_URL="${STAGING_OCI_A1_DATABASE_URL:-}" \
+            STAGING_REPLAY_TOKEN_OUTPUT_FILE="${replay_token_file}" \
+            STAGING_REPLAY_TOKEN_BACKEND_ENV_SOURCE=auto \
+            STAGING_REPLAY_TOKEN_TTL_SECONDS="${K6_REPLAY_TOKEN_TTL_SECONDS:-7200}" \
+              python3 tools/ops/issue-staging-replay-token.py
+            replay_token="$(<"${replay_token_file}")"
+            printf '::add-mask::%s\n' "${replay_token}"
+            printf 'STAGING_REPLAY_TOKEN=%s\n' "${replay_token}" >>"${GITHUB_ENV}"
+            printf 'STAGING_REPLAY_TOKEN_FILE=%s\n' "${replay_token_file}" >>"${GITHUB_ENV}"
+            printf 'STAGING_REPLAY_ALLOW_SESSION_REASSIGN=true\n' >>"${GITHUB_ENV}"
+            exit 0
+          fi
+          if [[ -z "${STAGING_REPLAY_TOKEN:-}" ]]; then
+            echo "::error::STAGING_REPLAY_TOKEN or OCI_A1_BACKEND_ENV_B64 is required for authenticated OCI k6."
+            exit 1
+          fi
+          umask 077
+          printf '%s' "${STAGING_REPLAY_TOKEN}" >"${replay_token_file}"
+          printf 'STAGING_REPLAY_TOKEN_FILE=%s\n' "${replay_token_file}" >>"${GITHUB_ENV}"
+
+      - name: Ensure service auth fixture principal
+        shell: bash
+        run: |
+          set -euo pipefail
+          HOT_ACCOUNT_ID="${K6_HOT_ACCOUNT_ID}" \
+          COLD_ACCOUNT_ID="${K6_COLD_ACCOUNT_ID}" \
+          STAGING_REPLAY_TOKEN_FILE="${STAGING_REPLAY_TOKEN_FILE}" \
+            tools/ops/staging-fixture-principal-bootstrap.sh
 
       - name: Run authenticated k6 burst matrix
         shell: bash

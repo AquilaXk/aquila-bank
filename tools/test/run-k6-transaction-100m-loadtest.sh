@@ -61,6 +61,7 @@ Optional environment:
   K6_AUTH_PREFLIGHT_BASE_URL default remote base URL or backend readiness base URL
   K6_AUTH_PREFLIGHT_EXPECTED_STATUS default 200
   K6_AUTH_PREFLIGHT_TIMEOUT_SECONDS default 5
+  K6_AUTH_PREFLIGHT_FOLLOW_REDIRECTS follow redirect and canonicalize base URL, default true
   K6_BASE_URL          optional backend base URL for local generator; default k6 script value
   K6_ARCHIVE_RESULTS   copy markdown summary to docs/performance-results, default true
   K6_ARCHIVE_FAILED_SUMMARY archive summary even when hard gate fails, default true
@@ -334,6 +335,82 @@ auth_preflight_url() {
   echo ""
 }
 
+url_origin() {
+  local url="$1"
+  if [[ "${url}" =~ ^([A-Za-z][A-Za-z0-9+.-]*://[^/?#]+) ]]; then
+    echo "${BASH_REMATCH[1]}"
+    return 0
+  fi
+  return 1
+}
+
+canonicalize_auth_preflight_base_url() {
+  local effective_url="$1"
+  local canonical_origin current_origin
+
+  if [[ "${K6_AUTH_PREFLIGHT_FOLLOW_REDIRECTS}" != "true" || -z "${effective_url}" ]]; then
+    return 0
+  fi
+  if ! canonical_origin="$(url_origin "${effective_url}")"; then
+    return 0
+  fi
+
+  # 명시 full URL은 호출자가 범위를 직접 정한 값이므로 k6 base URL 추론에 사용하지 않습니다.
+  if [[ -n "${K6_AUTH_PREFLIGHT_URL}" ]]; then
+    return 0
+  fi
+
+  if [[ -n "${K6_AUTH_PREFLIGHT_BASE_URL}" ]]; then
+    current_origin="$(url_origin "${K6_AUTH_PREFLIGHT_BASE_URL}")" || current_origin=""
+    if [[ "${canonical_origin}" != "${current_origin}" ]]; then
+      K6_AUTH_PREFLIGHT_BASE_URL="${canonical_origin}"
+      export K6_AUTH_PREFLIGHT_BASE_URL
+      echo "[k6-transaction-100m] auth preflight canonicalized base url=${K6_AUTH_PREFLIGHT_BASE_URL}"
+    fi
+    return 0
+  fi
+
+  if [[ "${K6_GENERATOR_MODE}" == "docker-context" ]]; then
+    current_origin="$(url_origin "${K6_REMOTE_BASE_URL}")" || current_origin=""
+    if [[ "${canonical_origin}" != "${current_origin}" ]]; then
+      K6_REMOTE_BASE_URL="${canonical_origin}"
+      export K6_REMOTE_BASE_URL
+      echo "[k6-transaction-100m] auth preflight canonicalized base url=${K6_REMOTE_BASE_URL}"
+    fi
+  fi
+}
+
+canonicalize_auth_preflight_redirect() {
+  local preflight_url curl_output effective_url
+
+  if [[ "${K6_AUTH_PREFLIGHT_FOLLOW_REDIRECTS}" != "true" ]]; then
+    return 0
+  fi
+  # 명시 full URL은 호출자가 canonical endpoint를 직접 고른 값으로 둡니다.
+  if [[ -n "${K6_AUTH_PREFLIGHT_URL}" ]]; then
+    return 0
+  fi
+
+  preflight_url="$(auth_preflight_url)"
+  if [[ -z "${preflight_url}" ]]; then
+    return 0
+  fi
+
+  require_command curl
+  # cross-host redirect에서는 curl이 Authorization을 제거하므로, token 없이 origin만 먼저 확정합니다.
+  curl_output="$(
+    curl -sS -o /dev/null -w "%{http_code}\t%{url_effective}" \
+      --location \
+      --max-time "${K6_AUTH_PREFLIGHT_TIMEOUT_SECONDS}" \
+      "${preflight_url}" 2>/dev/null || true
+  )"
+  effective_url=""
+  if [[ "${curl_output}" == *$'\t'* ]]; then
+    effective_url="${curl_output#*$'\t'}"
+  fi
+  canonicalize_auth_preflight_base_url "${effective_url}"
+}
+
 effective_auth_preflight_enabled() {
   case "${K6_AUTH_PREFLIGHT}" in
     true|false)
@@ -521,6 +598,7 @@ K6_AUTH_PREFLIGHT_PATH="${K6_AUTH_PREFLIGHT_PATH:-}"
 K6_AUTH_PREFLIGHT_BASE_URL="${K6_AUTH_PREFLIGHT_BASE_URL:-}"
 K6_AUTH_PREFLIGHT_EXPECTED_STATUS="${K6_AUTH_PREFLIGHT_EXPECTED_STATUS:-200}"
 K6_AUTH_PREFLIGHT_TIMEOUT_SECONDS="${K6_AUTH_PREFLIGHT_TIMEOUT_SECONDS:-5}"
+K6_AUTH_PREFLIGHT_FOLLOW_REDIRECTS="${K6_AUTH_PREFLIGHT_FOLLOW_REDIRECTS:-true}"
 K6_DOCKER_CONTEXT="${K6_DOCKER_CONTEXT:-}"
 K6_REMOTE_BASE_URL="${K6_REMOTE_BASE_URL:-}"
 K6_REMOTE_PROMETHEUS_RW_SERVER_URL="${K6_REMOTE_PROMETHEUS_RW_SERVER_URL:-}"
@@ -551,7 +629,7 @@ loadtest_postgres_exporter_memory="${LOADTEST_POSTGRES_EXPORTER_MEMORY:-128m}"
 loadtest_postgres_container="${LOADTEST_POSTGRES_CONTAINER_NAME:-aquila-bank-postgres-loadtest}"
 loadtest_backend_container="${LOADTEST_BACKEND_CONTAINER_NAME:-aquila-bank-backend-loadtest}"
 resolve_auth_token
-export K6_VUS K6_SCENARIO_MODE K6_RATE K6_TIME_UNIT K6_PRE_ALLOCATED_VUS K6_MAX_VUS K6_BURST_RATE K6_BURST_DURATION K6_BURST_HEADROOM_PREFLIGHT K6_BURST_MIN_HEADROOM_VUS K6_WARMUP_DURATION K6_WARMUP_MODE K6_WARMUP_RATE K6_WARMUP_TIME_UNIT K6_WARMUP_PRE_ALLOCATED_VUS K6_WARMUP_MAX_VUS K6_LIMIT K6_HOT_ACCOUNT_IDS K6_COLD_ACCOUNT_IDS K6_HOT_DEEP_CURSOR_BOOKED_AT K6_HOT_DEEP_CURSOR_ID K6_COLD_DEEP_CURSOR_BOOKED_AT K6_COLD_DEEP_CURSOR_ID K6_HOT_P95_THRESHOLD_MS K6_COLD_P95_THRESHOLD_MS K6_HOT_P99_THRESHOLD_MS K6_COLD_P99_THRESHOLD_MS K6_HOT_P999_THRESHOLD_MS K6_COLD_P999_THRESHOLD_MS K6_HOT_MAX_THRESHOLD_MS K6_COLD_MAX_THRESHOLD_MS K6_HOT_DEEP_P95_THRESHOLD_MS K6_COLD_DEEP_P95_THRESHOLD_MS K6_HOT_DEEP_P99_THRESHOLD_MS K6_COLD_DEEP_P99_THRESHOLD_MS K6_HOT_DEEP_P999_THRESHOLD_MS K6_COLD_DEEP_P999_THRESHOLD_MS K6_HOT_DEEP_MAX_THRESHOLD_MS K6_COLD_DEEP_MAX_THRESHOLD_MS K6_HTTP_FAILED_RATE K6_ARCHIVE_RESULTS K6_ARCHIVE_FAILED_SUMMARY K6_PREFLIGHT K6_POSTGRES_HEALTH_GATE K6_POSTGRES_RECOVERY_GATE K6_POSTGRES_RECOVERY_STABLE_SECONDS K6_POSTGRES_RECOVERY_NOISE_WINDOW_SECONDS K6_POSTGRES_EXPORTER_STABLE_GATE K6_POSTGRES_EXPORTER_STABLE_TIMEOUT_SECONDS K6_OUTBOX_PREFLIGHT K6_OUTBOX_PREFLIGHT_BASE_URL K6_EXPLAIN_SNAPSHOT K6_OBSERVABILITY_MODE K6_OVERLOAD_MODE K6_OVERLOAD_429_RATE_THRESHOLD K6_BURST_429_RATE_THRESHOLD K6_BACKEND_429_RATE_THRESHOLD K6_OVERLOAD_503_RATE_THRESHOLD K6_MAX_RETRY_AFTER_SLEEP_SECONDS K6_MAX_RETRY_AFTER_SLEEP_MS K6_RETRY_AFTER_ADAPTIVE_PACING K6_RETRY_AFTER_ADAPTIVE_MAX_MULTIPLIER K6_PREEMPTIVE_PACING K6_PREEMPTIVE_PACING_RPS K6_PREEMPTIVE_PACING_MAX_SLEEP_MS K6_PREEMPTIVE_PACING_JITTER_MS K6_CONSTANT_VUS_GATE_ROLE K6_WORKLOAD_SHAPE K6_WORKLOAD_SEED K6_WORKLOAD_WEIGHTS K6_RUN_PURPOSE K6_SUMMARY_GATE K6_BACKEND_READINESS_GATE K6_BACKEND_READINESS_BASE_URL K6_BACKEND_READINESS_PATH K6_BACKEND_READINESS_TIMEOUT_SECONDS K6_AUTH_TOKEN K6_AUTH_TOKEN_REQUIRED K6_AUTH_PREFLIGHT K6_AUTH_PREFLIGHT_URL K6_AUTH_PREFLIGHT_PATH K6_AUTH_PREFLIGHT_BASE_URL K6_AUTH_PREFLIGHT_EXPECTED_STATUS K6_AUTH_PREFLIGHT_TIMEOUT_SECONDS K6_GENERATOR_MODE K6_DOCKER_CONTEXT K6_REMOTE_BASE_URL K6_REMOTE_PROMETHEUS_RW_SERVER_URL K6_REMOTE_PROMETHEUS_RW_REQUIRED K6_REMOTE_WORKDIR K6_REMOTE_PREFLIGHT K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS K6_REMOTE_PREFLIGHT_IMAGE K6_REMOTE_READINESS_PATH K6_REMOTE_ARTIFACT_IMAGE K6_REMOTE_COLLECT_ARTIFACTS K6_REPORT_NAME K6_RUN_ID
+export K6_VUS K6_SCENARIO_MODE K6_RATE K6_TIME_UNIT K6_PRE_ALLOCATED_VUS K6_MAX_VUS K6_BURST_RATE K6_BURST_DURATION K6_BURST_HEADROOM_PREFLIGHT K6_BURST_MIN_HEADROOM_VUS K6_WARMUP_DURATION K6_WARMUP_MODE K6_WARMUP_RATE K6_WARMUP_TIME_UNIT K6_WARMUP_PRE_ALLOCATED_VUS K6_WARMUP_MAX_VUS K6_LIMIT K6_HOT_ACCOUNT_IDS K6_COLD_ACCOUNT_IDS K6_HOT_DEEP_CURSOR_BOOKED_AT K6_HOT_DEEP_CURSOR_ID K6_COLD_DEEP_CURSOR_BOOKED_AT K6_COLD_DEEP_CURSOR_ID K6_HOT_P95_THRESHOLD_MS K6_COLD_P95_THRESHOLD_MS K6_HOT_P99_THRESHOLD_MS K6_COLD_P99_THRESHOLD_MS K6_HOT_P999_THRESHOLD_MS K6_COLD_P999_THRESHOLD_MS K6_HOT_MAX_THRESHOLD_MS K6_COLD_MAX_THRESHOLD_MS K6_HOT_DEEP_P95_THRESHOLD_MS K6_COLD_DEEP_P95_THRESHOLD_MS K6_HOT_DEEP_P99_THRESHOLD_MS K6_COLD_DEEP_P99_THRESHOLD_MS K6_HOT_DEEP_P999_THRESHOLD_MS K6_COLD_DEEP_P999_THRESHOLD_MS K6_HOT_DEEP_MAX_THRESHOLD_MS K6_COLD_DEEP_MAX_THRESHOLD_MS K6_HTTP_FAILED_RATE K6_ARCHIVE_RESULTS K6_ARCHIVE_FAILED_SUMMARY K6_PREFLIGHT K6_POSTGRES_HEALTH_GATE K6_POSTGRES_RECOVERY_GATE K6_POSTGRES_RECOVERY_STABLE_SECONDS K6_POSTGRES_RECOVERY_NOISE_WINDOW_SECONDS K6_POSTGRES_EXPORTER_STABLE_GATE K6_POSTGRES_EXPORTER_STABLE_TIMEOUT_SECONDS K6_OUTBOX_PREFLIGHT K6_OUTBOX_PREFLIGHT_BASE_URL K6_EXPLAIN_SNAPSHOT K6_OBSERVABILITY_MODE K6_OVERLOAD_MODE K6_OVERLOAD_429_RATE_THRESHOLD K6_BURST_429_RATE_THRESHOLD K6_BACKEND_429_RATE_THRESHOLD K6_OVERLOAD_503_RATE_THRESHOLD K6_MAX_RETRY_AFTER_SLEEP_SECONDS K6_MAX_RETRY_AFTER_SLEEP_MS K6_RETRY_AFTER_ADAPTIVE_PACING K6_RETRY_AFTER_ADAPTIVE_MAX_MULTIPLIER K6_PREEMPTIVE_PACING K6_PREEMPTIVE_PACING_RPS K6_PREEMPTIVE_PACING_MAX_SLEEP_MS K6_PREEMPTIVE_PACING_JITTER_MS K6_CONSTANT_VUS_GATE_ROLE K6_WORKLOAD_SHAPE K6_WORKLOAD_SEED K6_WORKLOAD_WEIGHTS K6_RUN_PURPOSE K6_SUMMARY_GATE K6_BACKEND_READINESS_GATE K6_BACKEND_READINESS_BASE_URL K6_BACKEND_READINESS_PATH K6_BACKEND_READINESS_TIMEOUT_SECONDS K6_AUTH_TOKEN K6_AUTH_TOKEN_REQUIRED K6_AUTH_PREFLIGHT K6_AUTH_PREFLIGHT_URL K6_AUTH_PREFLIGHT_PATH K6_AUTH_PREFLIGHT_BASE_URL K6_AUTH_PREFLIGHT_EXPECTED_STATUS K6_AUTH_PREFLIGHT_TIMEOUT_SECONDS K6_AUTH_PREFLIGHT_FOLLOW_REDIRECTS K6_GENERATOR_MODE K6_DOCKER_CONTEXT K6_REMOTE_BASE_URL K6_REMOTE_PROMETHEUS_RW_SERVER_URL K6_REMOTE_PROMETHEUS_RW_REQUIRED K6_REMOTE_WORKDIR K6_REMOTE_PREFLIGHT K6_REMOTE_PREFLIGHT_TIMEOUT_SECONDS K6_REMOTE_PREFLIGHT_IMAGE K6_REMOTE_READINESS_PATH K6_REMOTE_ARTIFACT_IMAGE K6_REMOTE_COLLECT_ARTIFACTS K6_REPORT_NAME K6_RUN_ID
 
 require_positive_integer K6_VUS
 require_positive_integer K6_RATE
@@ -617,6 +695,7 @@ require_bool_value K6_ARCHIVE_FAILED_SUMMARY
 require_bool_value K6_SUMMARY_GATE
 require_bool_value K6_BURST_HEADROOM_PREFLIGHT
 require_bool_value K6_BACKEND_READINESS_GATE
+require_bool_value K6_AUTH_PREFLIGHT_FOLLOW_REDIRECTS
 require_auto_bool_value K6_AUTH_TOKEN_REQUIRED
 require_auto_bool_value K6_AUTH_PREFLIGHT
 require_bool_value K6_POSTGRES_HEALTH_GATE
@@ -831,9 +910,9 @@ print_plan() {
   fi
   echo "[k6-transaction-100m] auth token required=$(effective_auth_token_required) token=$(auth_token_presence) source=${auth_token_source}"
   if [[ -n "$(auth_preflight_url)" ]]; then
-    echo "[k6-transaction-100m] auth preflight=$(effective_auth_preflight_enabled) url=configured expected_status=${K6_AUTH_PREFLIGHT_EXPECTED_STATUS} timeout=${K6_AUTH_PREFLIGHT_TIMEOUT_SECONDS}"
+    echo "[k6-transaction-100m] auth preflight=$(effective_auth_preflight_enabled) url=configured expected_status=${K6_AUTH_PREFLIGHT_EXPECTED_STATUS} timeout=${K6_AUTH_PREFLIGHT_TIMEOUT_SECONDS} follow_redirects=${K6_AUTH_PREFLIGHT_FOLLOW_REDIRECTS}"
   else
-    echo "[k6-transaction-100m] auth preflight=$(effective_auth_preflight_enabled) url=not-configured expected_status=${K6_AUTH_PREFLIGHT_EXPECTED_STATUS} timeout=${K6_AUTH_PREFLIGHT_TIMEOUT_SECONDS}"
+    echo "[k6-transaction-100m] auth preflight=$(effective_auth_preflight_enabled) url=not-configured expected_status=${K6_AUTH_PREFLIGHT_EXPECTED_STATUS} timeout=${K6_AUTH_PREFLIGHT_TIMEOUT_SECONDS} follow_redirects=${K6_AUTH_PREFLIGHT_FOLLOW_REDIRECTS}"
   fi
   echo "[k6-transaction-100m] postgres health gate=${K6_POSTGRES_HEALTH_GATE} required_status=healthy"
   echo "[k6-transaction-100m] postgres recovery gate=${K6_POSTGRES_RECOVERY_GATE} stable_seconds=${K6_POSTGRES_RECOVERY_STABLE_SECONDS}"
@@ -883,7 +962,7 @@ print_plan() {
 }
 
 assert_auth_preflight() {
-  local token_required preflight_enabled preflight_url status
+  local token_required preflight_enabled preflight_url status curl_output effective_url
   token_required="$(effective_auth_token_required)"
   if [[ "${token_required}" == "true" && -z "${K6_AUTH_TOKEN}" ]]; then
     echo "K6_AUTH_TOKEN is required before OCI k6 run; set K6_AUTH_TOKEN or K6_AUTH_TOKEN_FILE" >&2
@@ -907,18 +986,36 @@ assert_auth_preflight() {
   fi
 
   require_command curl
-  echo "[k6-transaction-100m] auth status preflight: expected_status=${K6_AUTH_PREFLIGHT_EXPECTED_STATUS} timeout=${K6_AUTH_PREFLIGHT_TIMEOUT_SECONDS}"
-  status="$(
-    curl -sS -o /dev/null -w "%{http_code}" \
-      --max-time "${K6_AUTH_PREFLIGHT_TIMEOUT_SECONDS}" \
-      -H "Authorization: Bearer ${K6_AUTH_TOKEN}" \
-      "${preflight_url}" 2>/dev/null || true
-  )"
+  canonicalize_auth_preflight_redirect
+  preflight_url="$(auth_preflight_url)"
+  echo "[k6-transaction-100m] auth status preflight: expected_status=${K6_AUTH_PREFLIGHT_EXPECTED_STATUS} timeout=${K6_AUTH_PREFLIGHT_TIMEOUT_SECONDS} follow_redirects=${K6_AUTH_PREFLIGHT_FOLLOW_REDIRECTS}"
+  if [[ "${K6_AUTH_PREFLIGHT_FOLLOW_REDIRECTS}" == "true" ]]; then
+    curl_output="$(
+      curl -sS -o /dev/null -w "%{http_code}\t%{url_effective}" \
+        --location \
+        --max-time "${K6_AUTH_PREFLIGHT_TIMEOUT_SECONDS}" \
+        -H "Authorization: Bearer ${K6_AUTH_TOKEN}" \
+        "${preflight_url}" 2>/dev/null || true
+    )"
+  else
+    curl_output="$(
+      curl -sS -o /dev/null -w "%{http_code}" \
+        --max-time "${K6_AUTH_PREFLIGHT_TIMEOUT_SECONDS}" \
+        -H "Authorization: Bearer ${K6_AUTH_TOKEN}" \
+        "${preflight_url}" 2>/dev/null || true
+    )"
+  fi
+  status="${curl_output%%$'\t'*}"
+  effective_url=""
+  if [[ "${curl_output}" == *$'\t'* ]]; then
+    effective_url="${curl_output#*$'\t'}"
+  fi
   status="${status:0:3}"
   if [[ "${status}" != "${K6_AUTH_PREFLIGHT_EXPECTED_STATUS}" ]]; then
     echo "auth status preflight failed: expected=${K6_AUTH_PREFLIGHT_EXPECTED_STATUS} actual=${status:-000}" >&2
     exit 1
   fi
+  canonicalize_auth_preflight_base_url "${effective_url}"
 }
 
 print_plan
