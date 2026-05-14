@@ -9,6 +9,8 @@ import {
   authUserStatusPath,
   buildOpsRequests,
   commandIdempotencyRecoveryPath,
+  customerApplicationExternalCallbackPath,
+  customerApplicationOperationPath,
   getOpsJson,
   ledgerSnapshotRecoveryPath,
   ledgerAuditByRequestIdPath,
@@ -102,6 +104,13 @@ export function OpsConsole() {
     accountStatusReasonDetail: "",
     accountStatusRequestId: "",
     accountStatusConfirmation: "",
+    applicationReference: "",
+    applicationReason: "",
+    applicationConfirmation: "",
+    applicationCallbackSuccess: "true",
+    applicationCallbackReason: "",
+    applicationCallbackPayload: "{}",
+    applicationCallbackConfirmation: "",
   });
   const requests = useMemo(() => buildOpsRequests(form.limit), [form.limit]);
   const [results, setResults] = useState<ResultMap>(() => createInitialResults(requests));
@@ -465,6 +474,75 @@ export function OpsConsole() {
       requestId: form.accountStatusRequestId,
       requiredConfirmation: `CHANGE ACCOUNT ${form.accountStatusAccountId}`,
     });
+  }
+
+  function runCustomerApplicationAction(
+    action: "review" | "approve" | "reject" | "cancel" | "execute",
+    label: string,
+    requiredConfirmation: string,
+  ): void {
+    if (!form.applicationReference.trim()) {
+      setResults((current) => ({
+        ...current,
+        [label]: {
+          status: "error",
+          data: null,
+          error: "Application reference를 입력하세요.",
+        },
+      }));
+      return;
+    }
+    void runAction(
+      label,
+      customerApplicationOperationPath(form.applicationReference, action),
+      form.applicationConfirmation,
+      requiredConfirmation,
+      { reason: form.applicationReason.trim() || undefined },
+    );
+  }
+
+  function runCustomerApplicationCallback(): void {
+    const label = "Customer application external callback";
+    if (!form.applicationReference.trim()) {
+      setResults((current) => ({
+        ...current,
+        [label]: {
+          status: "error",
+          data: null,
+          error: "Application reference를 입력하세요.",
+        },
+      }));
+      return;
+    }
+
+    let payload: unknown;
+    try {
+      payload = form.applicationCallbackPayload.trim()
+        ? JSON.parse(form.applicationCallbackPayload)
+        : {};
+    } catch {
+      setResults((current) => ({
+        ...current,
+        [label]: {
+          status: "error",
+          data: null,
+          error: "Callback payload JSON 형식을 확인하세요.",
+        },
+      }));
+      return;
+    }
+
+    void runAction(
+      label,
+      customerApplicationExternalCallbackPath(form.applicationReference),
+      form.applicationCallbackConfirmation,
+      "CALLBACK APPLICATION",
+      {
+        success: form.applicationCallbackSuccess === "true",
+        reason: form.applicationCallbackReason.trim() || undefined,
+        payload,
+      },
+    );
   }
 
   const lookupItems: OpsRequest[] = [
@@ -983,6 +1061,189 @@ export function OpsConsole() {
               account status 변경
             </button>
             <ResultPanel result={results["Account status update"] ?? initialOpsResult} />
+          </article>
+        </div>
+      </section>
+
+      <section className="ops-actions" aria-label="Customer Application Actions">
+        <div className="ops-lookup-title">
+          <strong>Customer Application Actions</strong>
+          <span>신청 검토/승인/실행과 mock/webhook boundary callback을 수동 반영합니다.</span>
+        </div>
+        <div className="ops-action-grid">
+          <article className="ops-action-card">
+            <div>
+              <strong>Customer application operation</strong>
+              <span>
+                /internal/api/v1/customer-service/applications/{"{applicationReference}"}/
+                {"{action}"}
+              </span>
+            </div>
+            <label>
+              Application reference
+              <input
+                value={form.applicationReference}
+                onChange={(event) => updateField("applicationReference", event.target.value)}
+                placeholder="APP-..."
+              />
+            </label>
+            <label>
+              Application reason
+              <input
+                maxLength={300}
+                value={form.applicationReason}
+                onChange={(event) => updateField("applicationReason", event.target.value)}
+                placeholder="운영 처리 사유"
+              />
+            </label>
+            <label>
+              Confirm phrase
+              <input
+                value={form.applicationConfirmation}
+                onChange={(event) =>
+                  updateField("applicationConfirmation", event.target.value)
+                }
+                placeholder="REVIEW APPLICATION"
+              />
+            </label>
+            <div className="ops-action-fields">
+              <button
+                className="ops-danger-button"
+                type="button"
+                onClick={() =>
+                  runCustomerApplicationAction(
+                    "review",
+                    "Customer application review",
+                    "REVIEW APPLICATION",
+                  )
+                }
+              >
+                review
+              </button>
+              <button
+                className="ops-danger-button"
+                type="button"
+                onClick={() =>
+                  runCustomerApplicationAction(
+                    "approve",
+                    "Customer application approve",
+                    "APPROVE APPLICATION",
+                  )
+                }
+              >
+                approve
+              </button>
+              <button
+                className="ops-danger-button"
+                type="button"
+                onClick={() =>
+                  runCustomerApplicationAction(
+                    "reject",
+                    "Customer application reject",
+                    "REJECT APPLICATION",
+                  )
+                }
+              >
+                reject
+              </button>
+              <button
+                className="ops-danger-button"
+                type="button"
+                onClick={() =>
+                  runCustomerApplicationAction(
+                    "cancel",
+                    "Customer application cancel",
+                    "CANCEL APPLICATION",
+                  )
+                }
+              >
+                cancel
+              </button>
+              <button
+                className="ops-danger-button"
+                type="button"
+                onClick={() =>
+                  runCustomerApplicationAction(
+                    "execute",
+                    "Customer application execute",
+                    "EXECUTE APPLICATION",
+                  )
+                }
+              >
+                execute
+              </button>
+            </div>
+            <ResultPanel result={results["Customer application review"] ?? initialOpsResult} />
+            <ResultPanel result={results["Customer application approve"] ?? initialOpsResult} />
+            <ResultPanel result={results["Customer application reject"] ?? initialOpsResult} />
+            <ResultPanel result={results["Customer application cancel"] ?? initialOpsResult} />
+            <ResultPanel result={results["Customer application execute"] ?? initialOpsResult} />
+          </article>
+
+          <article className="ops-action-card">
+            <div>
+              <strong>Customer application external callback</strong>
+              <span>
+                {customerApplicationExternalCallbackPath(
+                  form.applicationReference || "{applicationReference}",
+                )}
+              </span>
+            </div>
+            <div className="ops-action-fields">
+              <label>
+                Callback success
+                <select
+                  value={form.applicationCallbackSuccess}
+                  onChange={(event) =>
+                    updateField("applicationCallbackSuccess", event.target.value)
+                  }
+                >
+                  <option value="true">true</option>
+                  <option value="false">false</option>
+                </select>
+              </label>
+              <label>
+                Callback reason
+                <input
+                  maxLength={300}
+                  value={form.applicationCallbackReason}
+                  onChange={(event) =>
+                    updateField("applicationCallbackReason", event.target.value)
+                  }
+                />
+              </label>
+            </div>
+            <label>
+              Callback payload JSON
+              <input
+                value={form.applicationCallbackPayload}
+                onChange={(event) =>
+                  updateField("applicationCallbackPayload", event.target.value)
+                }
+              />
+            </label>
+            <label>
+              Confirm phrase
+              <input
+                value={form.applicationCallbackConfirmation}
+                onChange={(event) =>
+                  updateField("applicationCallbackConfirmation", event.target.value)
+                }
+                placeholder="CALLBACK APPLICATION"
+              />
+            </label>
+            <button
+              className="ops-danger-button"
+              type="button"
+              onClick={runCustomerApplicationCallback}
+            >
+              callback 반영
+            </button>
+            <ResultPanel
+              result={
+                results["Customer application external callback"] ?? initialOpsResult
+              }
+            />
           </article>
         </div>
       </section>

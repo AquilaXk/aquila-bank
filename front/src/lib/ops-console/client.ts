@@ -148,6 +148,19 @@ export function accountStatusPath(accountId: string): string {
   return `/internal/api/v1/accounts/${encodeURIComponent(accountId)}/status`;
 }
 
+export function customerApplicationOperationPath(
+  applicationReference: string,
+  action: "review" | "approve" | "reject" | "cancel" | "execute",
+): string {
+  return `/internal/api/v1/customer-service/applications/${encodeURIComponent(applicationReference)}/${action}`;
+}
+
+export function customerApplicationExternalCallbackPath(
+  applicationReference: string,
+): string {
+  return `/internal/api/v1/customer-service/applications/${encodeURIComponent(applicationReference)}/external-callback`;
+}
+
 export function buildOpsRequests(limit: string): OpsRequest[] {
   return [
     {

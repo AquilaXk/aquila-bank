@@ -16,6 +16,7 @@ const files = {
   client: read("src/lib/ops-console/client.ts"),
   types: read("src/lib/ops-console/types.ts"),
   styles: read("src/styles/ops-console.css"),
+  mockWebhookDoc: read("../docs/customer-application-mock-webhook.md"),
 };
 
 const required = [
@@ -68,6 +69,23 @@ const required = [
   ["membership status action", files.component, "Auth membership status update"],
   ["account status action", files.component, "Account status update"],
   ["status action runner", files.component, "runStatusAction"],
+  ["customer application actions section", files.component, "Customer Application Actions"],
+  ["customer application reference field", files.component, "Application reference"],
+  ["customer application reason field", files.component, "Application reason"],
+  ["customer application callback success field", files.component, "Callback success"],
+  ["customer application callback payload field", files.component, "Callback payload JSON"],
+  ["customer application review phrase", files.component, "REVIEW APPLICATION"],
+  ["customer application approve phrase", files.component, "APPROVE APPLICATION"],
+  ["customer application reject phrase", files.component, "REJECT APPLICATION"],
+  ["customer application cancel phrase", files.component, "CANCEL APPLICATION"],
+  ["customer application execute phrase", files.component, "EXECUTE APPLICATION"],
+  ["customer application callback phrase", files.component, "CALLBACK APPLICATION"],
+  ["customer application action runner", files.component, "runCustomerApplicationAction"],
+  ["customer application callback runner", files.component, "runCustomerApplicationCallback"],
+  ["customer application path helper", files.client, "customerApplicationOperationPath"],
+  ["customer application callback path helper", files.client, "customerApplicationExternalCallbackPath"],
+  ["customer application review endpoint", files.client, "/internal/api/v1/customer-service/applications/${encodeURIComponent(applicationReference)}/${action}"],
+  ["customer application callback endpoint", files.client, "/external-callback"],
   ["user status confirmation phrase", files.component, "CHANGE USER"],
   ["membership confirmation phrase", files.component, "CHANGE MEMBERSHIP"],
   ["account confirmation phrase", files.component, "CHANGE ACCOUNT"],
@@ -93,6 +111,10 @@ const required = [
   ["ops risk note class", files.styles, ".ops-risk-note"],
   ["ops dark result surface", files.styles, ".ops-result"],
   ["ops control-room shell", files.styles, ".ops-control-room"],
+  ["mock webhook doc title", files.mockWebhookDoc, "Customer Application Mock Webhook"],
+  ["mock webhook callback endpoint", files.mockWebhookDoc, "/internal/api/v1/customer-service/applications/{applicationReference}/external-callback"],
+  ["mock webhook ops phrase", files.mockWebhookDoc, "CALLBACK APPLICATION"],
+  ["mock webhook no vendor", files.mockWebhookDoc, "vendor 연동을 구현하지 않습니다"],
 ];
 
 const forbidden = [
