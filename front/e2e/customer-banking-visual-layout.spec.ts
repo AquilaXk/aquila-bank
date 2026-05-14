@@ -8,6 +8,24 @@ async function expectNoHorizontalOverflow(page: import("@playwright/test").Page)
   expect(overflow).toBeLessThanOrEqual(1);
 }
 
+async function expectNoTextClipping(
+  page: import("@playwright/test").Page,
+  selector: string,
+) {
+  const clipped = await page.locator(selector).evaluateAll((items) =>
+    items
+      .filter((item) => {
+        const element = item as HTMLElement;
+        return (
+          element.scrollWidth > element.clientWidth + 1 ||
+          element.scrollHeight > element.clientHeight + 1
+        );
+      })
+      .map((item) => item.textContent?.trim() ?? ""),
+  );
+  expect(clipped).toEqual([]);
+}
+
 test("desktop 공개 화면은 3열 업무형 구조와 미로그인 보호 업무 가드를 유지한다", async ({
   page,
 }, testInfo) => {
@@ -80,5 +98,29 @@ test("mobile 공개 화면은 단일 흐름으로 접히고 키보드 접근 순
   await page.screenshot({
     fullPage: true,
     path: testInfo.outputPath("customer-banking-mobile-home.png"),
+  });
+});
+
+test("tablet compact 폭에서도 검색, 메뉴, 보안알림 텍스트가 컨테이너 안에 머문다", async ({
+  page,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.includes("desktop"), "tablet 폭 visual QA");
+
+  await page.setViewportSize({ width: 820, height: 900 });
+  await page.goto("/");
+  await expectNoHorizontalOverflow(page);
+  await expect(page.getByLabel("추천검색어")).toBeVisible();
+  await expect(page.getByLabel("개인뱅킹 메뉴")).toBeVisible();
+  await expect(page.getByText("보안알림")).toBeVisible();
+
+  await expectNoTextClipping(page, ".keyword-list button");
+  await expectNoTextClipping(page, ".side-menu .side-item span");
+  await expectNoTextClipping(page, ".side-menu .side-item strong");
+  await expectNoTextClipping(page, ".security-notice .bank-notice-strip dt");
+  await expectNoTextClipping(page, ".security-notice .bank-notice-strip dd");
+
+  await page.screenshot({
+    fullPage: true,
+    path: testInfo.outputPath("customer-banking-tablet-compact-home.png"),
   });
 });
