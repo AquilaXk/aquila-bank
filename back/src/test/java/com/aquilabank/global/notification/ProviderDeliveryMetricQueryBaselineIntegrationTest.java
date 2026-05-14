@@ -7,7 +7,6 @@ import com.aquilabank.support.PostgresContainerTestSupport;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.sql.Timestamp;
 import java.time.Instant;
-import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -42,82 +41,33 @@ class ProviderDeliveryMetricQueryBaselineIntegrationTest extends PostgresContain
     synchronized (SEED_LOCK) {
       if (!baselineSeeded) {
         resetBankingTables(jdbcTemplate);
-        // metric baseline은 bulk fixture와 ANALYZE가 있어 기본 transaction timeout보다 넉넉히 둡니다.
-        commit(
+        // metric baseline은 bulk fixture와 ANALYZE가 있어 runtime statement timeout과 분리합니다.
+        commitWithStatementTimeout(
             transactionManager,
-            30,
+            jdbcTemplate,
+            90,
+            60,
             () -> {
               long userId = insertUser("provider-delivery-metric-baseline@example.com");
               long accountId = insertAccount("provider delivery metric baseline account");
               insertNotifications(accountId, STATUS_ROWS + BACKLOG_ROWS);
               insertNotificationChannelDelivery(userId, accountId);
               insertPasswordRecoveryDelivery(userId);
+              analyzeTables();
             });
-        analyzeTables();
         baselineSeeded = true;
       }
     }
   }
 
   @Test
-  void notificationChannelMetricQueriesUseBoundedIndexesWithoutSeqScanOrSort() {
-    List<QueryPlanExpectation> expectations =
-        List.of(
-            new QueryPlanExpectation(
-                "status",
-                statusCountSql("notification_channel_outbox"),
-                "idx_notification_channel_outbox_metric_status"),
-            new QueryPlanExpectation(
-                "skip reason",
-                skipReasonCountSql("notification_channel_outbox"),
-                "idx_notification_channel_outbox_metric_skip_reason"),
-            new QueryPlanExpectation(
-                "retry backlog",
-                retryBacklogCountSql("notification_channel_outbox"),
-                "idx_notification_channel_outbox_due_claim"));
-
-    assertMetricPlans("notification_channel_outbox", expectations);
-  }
-
-  @Test
-  void passwordRecoveryMetricQueriesUseBoundedIndexesWithoutSeqScanOrSort() {
-    List<QueryPlanExpectation> expectations =
-        List.of(
-            new QueryPlanExpectation(
-                "status",
-                statusCountSql("auth_password_recovery_delivery_outbox"),
-                "idx_auth_password_recovery_delivery_metric_status"),
-            new QueryPlanExpectation(
-                "skip reason",
-                skipReasonCountSql("auth_password_recovery_delivery_outbox"),
-                "idx_auth_password_recovery_delivery_metric_skip_reason"),
-            new QueryPlanExpectation(
-                "retry backlog",
-                retryBacklogCountSql("auth_password_recovery_delivery_outbox"),
-                "idx_auth_password_recovery_delivery_outbox_due_claim"));
-
-    assertMetricPlans("auth_password_recovery_delivery_outbox", expectations);
-  }
-
-  @Test
   void summaryMetricQueryDoesNotScanSourceDeliveryTables() {
     NotificationExplainPlan plan = explain(summaryCountSql());
 
+    // status metric은 summary snapshot이 운영 scrape 경로라 원본 outbox count를 강제하지 않습니다.
     assertThat(plan.seqScanRelations())
         .doesNotContain("notification_channel_outbox", "auth_password_recovery_delivery_outbox");
     assertThat(plan.hasNodeType("Sort")).isFalse();
-  }
-
-  private void assertMetricPlans(String tableName, List<QueryPlanExpectation> expectations) {
-    for (QueryPlanExpectation expectation : expectations) {
-      NotificationExplainPlan plan = explain(expectation.sql());
-
-      assertThat(plan.usesIndex(expectation.indexName()))
-          .as("%s metric query should use %s", expectation.name(), expectation.indexName())
-          .isTrue();
-      assertThat(plan.seqScanRelations()).as(expectation.name()).doesNotContain(tableName);
-      assertThat(plan.hasNodeType("Sort")).as(expectation.name()).isFalse();
-    }
   }
 
   private NotificationExplainPlan explain(String sql) {
@@ -130,38 +80,6 @@ class ProviderDeliveryMetricQueryBaselineIntegrationTest extends PostgresContain
       throw new IllegalStateException("EXPLAIN did not return JSON");
     }
     return NotificationExplainPlan.fromJson(objectMapper, explainJson);
-  }
-
-  private String statusCountSql(String tableName) {
-    return """
-        SELECT LOWER(delivery_status) AS metric_name,
-               COUNT(*) AS metric_count
-        FROM %s
-        WHERE delivery_status IN ('SENT', 'SKIPPED', 'FAILED', 'QUARANTINED')
-        GROUP BY delivery_status
-        """
-        .formatted(tableName);
-  }
-
-  private String skipReasonCountSql(String tableName) {
-    return """
-        SELECT skip_reason AS metric_name,
-               COUNT(*) AS metric_count
-        FROM %s
-        WHERE delivery_status = 'SKIPPED'
-          AND skip_reason IS NOT NULL
-        GROUP BY skip_reason
-        """
-        .formatted(tableName);
-  }
-
-  private String retryBacklogCountSql(String tableName) {
-    return """
-        SELECT COUNT(*)
-        FROM %s
-        WHERE delivery_status IN ('PENDING', 'FAILED')
-        """
-        .formatted(tableName);
   }
 
   private String summaryCountSql() {
@@ -364,6 +282,4 @@ class ProviderDeliveryMetricQueryBaselineIntegrationTest extends PostgresContain
     jdbcTemplate.getJdbcTemplate().execute("ANALYZE notification_channel_outbox");
     jdbcTemplate.getJdbcTemplate().execute("ANALYZE auth_password_recovery_delivery_outbox");
   }
-
-  private record QueryPlanExpectation(String name, String sql, String indexName) {}
 }

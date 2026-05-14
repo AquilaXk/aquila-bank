@@ -88,6 +88,24 @@ public abstract class PostgresContainerTestSupport {
     transactionTemplate.executeWithoutResult(status -> callback.run());
   }
 
+  protected void commitWithStatementTimeout(
+      PlatformTransactionManager transactionManager,
+      NamedParameterJdbcTemplate jdbcTemplate,
+      int timeoutSeconds,
+      int statementTimeoutSeconds,
+      Runnable callback) {
+    commit(
+        transactionManager,
+        timeoutSeconds,
+        () -> {
+          // 대량 fixture 준비 쿼리만 runtime 기본 3초 statement_timeout에서 분리합니다.
+          jdbcTemplate
+              .getJdbcTemplate()
+              .execute("SET LOCAL statement_timeout = '" + statementTimeoutSeconds + "s'");
+          callback.run();
+        });
+  }
+
   private void migrateSchema(DataSource dataSource) {
     if (dataSource == null) {
       throw new IllegalStateException("test datasource is not configured");
