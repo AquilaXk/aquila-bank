@@ -1,7 +1,7 @@
 # Aquila Bank
 
-작은 cloud budget 안에서 거래 정합성, 대량 조회, 실시간 알림, 배포 운영을 함께 검증하는 웹뱅킹 프로젝트입니다.
-단순한 계좌/거래 CRUD보다 `1억 건 거래 read model`, `bounded query`, `outbox 기반 알림`, `OCI A1 운영 budget`, `회귀 방지 gate`에 더 큰 비중을 두고 설계했습니다.
+개인 프로젝트 기준의 웹뱅킹 MVP입니다. 내부 계좌 이체, 거래 정합성, 대량 조회, 알림 흐름을 작은 cloud budget 안에서 검증하는 데 초점을 둡니다.
+실제 은행 운영 서비스가 아니라 `1억 건 거래 read model`, `bounded query`, `outbox 기반 알림`, `OCI A1 운영 budget`, `회귀 방지 gate`를 포트폴리오 수준으로 보여주는 프로젝트입니다.
 
 ![Aquila Bank architecture](docs/assets/readme-architecture.png)
 
@@ -13,6 +13,28 @@ Aquila Bank는 제한된 인프라에서 무제한 트래픽을 처리하는 프
 - 데이터 기준은 `PostgreSQL 18`이고, 이벤트/알림 경로는 `Kafka 4.0`과 outbox 패턴으로 분리했습니다.
 - 운영 경로는 `Nginx reverse proxy`, GitHub Actions CI/CD, OCI A1 staging/production 승격 기준을 중심으로 정리했습니다.
 - Prometheus/Grafana/k6는 부하테스트와 선택 관측 자산으로 두고, 같은 host 상시 필수 운영 구성으로 보지 않습니다.
+
+## 개인 프로젝트 범위
+
+### In Scope
+
+- 로그인, refresh token session, MFA TOTP
+- 계좌/잔액/거래 내역 조회
+- 내부 계좌 이체, 이체 preview, 한도/잔액/상태 검증
+- command idempotency와 기본 감사 이력
+- 고객 신청 접수/조회/취소와 운영자 검토/승인/실행 상태 전이
+- 알림 inbox/outbox, SSE, logging/webhook 선택 발송 경계
+
+### Out of Scope
+
+- 타행 이체망 adapter와 실제 지급결제망 정산
+- 실제 공과금, 오픈뱅킹, 인증기관, SMS/EMAIL vendor 계약
+- 정산/보상/reconciliation을 포함한 은행권 운영 마감 업무
+- provider callback HMAC/signature 같은 상용 운영 계약
+- 고객 등급, 위험 등급, 승인 매트릭스, 사고 신고 즉시 계좌 잠금 자동화
+- 등록 수취인, 기기/IP 기반 고급 탐색 방어와 은행권 수준 통합 모니터링
+
+공과금, 오픈뱅킹, 인증서, 보안매체 같은 메뉴는 실제 기관 연동이 아니라 신청 접수와 mock/webhook boundary를 보여주는 데모 범위입니다.
 
 ## 왜 이 프로젝트가 차별점이 있는가
 
@@ -32,7 +54,7 @@ Aquila Bank는 제한된 인프라에서 무제한 트래픽을 처리하는 프
 - 계좌 생성 / 상태 관리 / 잔액 조회
 - 송금, 부분 취소, 한도 정책
 - 거래 상세 조회와 계좌별 거래 목록 조회
-- 원장 감사 추적과 snapshot/reconciliation 복구 경로
+- 원장 감사 추적과 snapshot 점검/복구 데모 경로
 
 ### Transaction Read Path
 
@@ -53,7 +75,7 @@ Aquila Bank는 제한된 인프라에서 무제한 트래픽을 처리하는 프
 - notification inbox / unread projection
 - SSE stream, replay, reconnect storm 방어
 - outbox dispatcher adaptive batch/backoff
-- provider delivery worker와 DLQ/redrive 운영 API
+- logging/webhook 선택 발송 worker와 DLQ/redrive 운영 API
 
 ### Operations
 
@@ -214,5 +236,5 @@ docker compose -f compose.yml -f compose.loadtest.yml --profile loadtest up -d
 
 ## 프로젝트에서 강조하고 싶은 점
 
-이 프로젝트는 "웹뱅킹 화면을 만들었다"보다 "정합성 있는 금융 도메인을 작은 인프라에서 어디까지 운영 가능하게 만들 수 있는지 검증했다"에 가깝습니다.
-대량 거래 조회, outbox/SSE 알림, admission control, 운영 evidence를 코드와 문서의 같은 레벨에서 관리하는 것을 프로젝트의 기본 규칙으로 삼았습니다.
+이 프로젝트는 실제 은행 서비스를 대체하려는 구현이 아니라, 개인 프로젝트 범위에서 웹뱅킹 핵심 흐름을 정합성 있게 구성한 포트폴리오입니다.
+대량 거래 조회, outbox/SSE 알림, admission control, 운영 evidence를 코드와 문서의 같은 레벨에서 관리하되, 외부기관 연동과 은행권 운영통제는 명시적으로 범위 밖에 둡니다.
