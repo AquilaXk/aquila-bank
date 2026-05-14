@@ -4,6 +4,8 @@ import type {
   AuthSessionListResponse,
   BackupCodeChallengeVerifyRequest,
   BackupCodeIssueResponse,
+  CustomerApplicationDetailsResponse,
+  CustomerApplicationListResponse,
   CustomerApplicationRequest,
   CustomerApplicationResponse,
   LoginRequest,
@@ -318,6 +320,33 @@ export class AquilaBankApiClient {
       body: request,
       headers: { "Idempotency-Key": idempotencyKey },
     });
+  }
+
+  listCustomerApplications(limit = 20): Promise<CustomerApplicationListResponse> {
+    return this.request(
+      appendSearchParams("/api/v1/customer-service/applications", { limit }),
+    );
+  }
+
+  getCustomerApplication(
+    applicationReference: string,
+  ): Promise<CustomerApplicationDetailsResponse> {
+    return this.request(
+      `/api/v1/customer-service/applications/${encodeURIComponent(applicationReference)}`,
+    );
+  }
+
+  cancelCustomerApplication(
+    applicationReference: string,
+  ): Promise<CustomerApplicationDetailsResponse> {
+    return this.request(
+      `/api/v1/customer-service/applications/${encodeURIComponent(
+        applicationReference,
+      )}/cancel`,
+      {
+        method: "POST",
+      },
+    );
   }
 
   getTransactions(params: TransactionQueryParams): Promise<TransactionQueryResponse> {

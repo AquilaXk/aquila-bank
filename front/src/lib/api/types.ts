@@ -230,11 +230,24 @@ export type CustomerApplicationResponse = {
   applicationReference: string;
   accountId: Nullable<number>;
   applicationType: CustomerApplicationType | string;
+  processingMode: string;
+  automatedExecutionSupported: boolean;
   status: string;
   mfaVerified: boolean;
   mfaVerifiedAt: Nullable<string>;
   submittedAt: string;
   updatedAt: string;
+};
+
+export type CustomerApplicationDetailsResponse = CustomerApplicationResponse & {
+  reason: Nullable<string>;
+  processedBy: Nullable<string>;
+  processedAt: Nullable<string>;
+  executionResult: Record<string, unknown>;
+};
+
+export type CustomerApplicationListResponse = {
+  items: CustomerApplicationDetailsResponse[];
 };
 
 export type TransactionStatus =
