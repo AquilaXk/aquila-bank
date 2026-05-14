@@ -1151,6 +1151,105 @@ label span {
   grid-template-columns: minmax(0, 1fr);
 }
 
+.application-status-panel {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+  padding: 12px;
+}
+
+.application-status-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.application-status-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface-muted);
+  padding: 8px;
+}
+
+.application-status-list li > button:first-child {
+  display: grid;
+  gap: 3px;
+  justify-items: start;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  padding: 0;
+  text-align: left;
+}
+
+.application-status-list li > span {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+  font-size: 12px;
+  font-weight: 800;
+  padding: 5px 8px;
+}
+
+.application-detail-card {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.application-detail-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.application-detail-list div {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface-muted);
+  padding: 8px;
+}
+
+.application-detail-list dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.application-detail-list dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+  font-weight: 800;
+}
+
+.execution-result-box {
+  display: grid;
+  gap: 6px;
+}
+
+.execution-result-box pre {
+  max-height: 160px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface-muted);
+  color: var(--text);
+  margin: 0;
+  padding: 10px;
+}
+
 .faq-list details {
   border-top: 1px solid var(--line);
   padding-top: 10px;

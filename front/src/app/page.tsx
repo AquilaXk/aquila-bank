@@ -44,6 +44,8 @@ export default function HomePage() {
     reversalForm,
     reversalResult,
     customerApplicationResult,
+    customerApplications,
+    selectedCustomerApplication,
     transactionMode,
     transactionFilters,
     transactionSlice,
@@ -78,6 +80,9 @@ export default function HomePage() {
     handlePreviewTransfer,
     handleReversal,
     handleSubmitCustomerApplication,
+    handleLoadCustomerApplications,
+    handleSelectCustomerApplication,
+    handleCancelCustomerApplication,
     handleSearchTransactions,
     handleResetTransactionFilters,
     handleLoadTransactionDetail,
@@ -306,7 +311,12 @@ export default function HomePage() {
           {canRenderWorkSection && activeSection === "supportCenter" ? (
             <SupportCenterSection
               applicationResult={customerApplicationResult}
+              customerApplications={customerApplications}
               isBusy={isBusy}
+              selectedCustomerApplication={selectedCustomerApplication}
+              onCancelCustomerApplication={handleCancelCustomerApplication}
+              onLoadCustomerApplications={handleLoadCustomerApplications}
+              onSelectCustomerApplication={handleSelectCustomerApplication}
               onSubmitCustomerApplication={handleSubmitCustomerApplication}
             />
           ) : null}

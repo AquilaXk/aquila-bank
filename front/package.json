@@ -12,6 +12,7 @@
     "test:ui-contract": "node scripts/check-customer-banking-ui-contract.mjs",
     "test:unauth-security": "node scripts/check-customer-banking-unauth-security.mjs",
     "test:auth-session": "node scripts/check-auth-session-hardening-contract.mjs",
+    "test:application-self-service": "node scripts/check-customer-application-self-service-ux.mjs",
     "test:ops-console": "node scripts/check-ops-console-contract.mjs",
     "test:enterprise-ux": "node scripts/check-customer-banking-enterprise-ux.mjs",
     "test:fulfillment-ux": "node scripts/check-customer-banking-fulfillment-ux.mjs",
