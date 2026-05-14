@@ -35,6 +35,7 @@ Aquila Bank는 제한된 인프라에서 무제한 트래픽을 처리하는 프
 - 등록 수취인, 기기/IP 기반 고급 탐색 방어와 은행권 수준 통합 모니터링
 
 공과금, 오픈뱅킹, 인증서, 보안매체 같은 메뉴는 실제 기관 연동이 아니라 신청 접수와 mock/webhook boundary를 보여주는 데모 범위입니다.
+운영자 처리와 callback 샘플은 [Customer Application Mock Webhook](docs/customer-application-mock-webhook.md)에 정리했습니다.
 
 ## 왜 이 프로젝트가 차별점이 있는가
 

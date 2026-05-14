@@ -4,6 +4,8 @@ Next.js 기반 개인 프로젝트 웹뱅킹 프런트엔드입니다.
 
 고객 화면은 로그인/계좌/거래/내부 이체/알림/고객 신청 접수 흐름을 보여주는 MVP입니다. 공과금, 오픈뱅킹, 인증서, 보안매체 화면은 실제 기관 또는 vendor 연동이 아니라 신청 접수와 mock/webhook boundary를 설명하는 데모 범위로 둡니다.
 
+운영자 신청 처리와 mock callback 샘플은 [`../docs/customer-application-mock-webhook.md`](../docs/customer-application-mock-webhook.md)를 기준으로 확인합니다.
+
 ## Run
 
 ```bash

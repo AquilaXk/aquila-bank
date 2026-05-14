@@ -16,6 +16,7 @@ const files = {
   client: read("src/lib/ops-console/client.ts"),
   types: read("src/lib/ops-console/types.ts"),
   styles: read("src/styles/ops-console.css"),
+  mockWebhookDoc: read("../docs/customer-application-mock-webhook.md"),
 };
 
 const required = [
@@ -110,6 +111,10 @@ const required = [
   ["ops risk note class", files.styles, ".ops-risk-note"],
   ["ops dark result surface", files.styles, ".ops-result"],
   ["ops control-room shell", files.styles, ".ops-control-room"],
+  ["mock webhook doc title", files.mockWebhookDoc, "Customer Application Mock Webhook"],
+  ["mock webhook callback endpoint", files.mockWebhookDoc, "/internal/api/v1/customer-service/applications/{applicationReference}/external-callback"],
+  ["mock webhook ops phrase", files.mockWebhookDoc, "CALLBACK APPLICATION"],
+  ["mock webhook no vendor", files.mockWebhookDoc, "vendor 연동을 구현하지 않습니다"],
 ];
 
 const forbidden = [
