@@ -169,10 +169,39 @@ docker compose up -d postgres kafka
 
 ```bash
 yarn --cwd front install
-yarn --cwd front dev
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8080 yarn --cwd front dev
+```
+
+다른 포트를 쓰려면 `PORT`를 함께 지정합니다.
+
+```bash
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8080 PORT=3001 yarn --cwd front dev
 ```
 
 - Front: `http://localhost:3000`
+
+로그인 시 `Failed to fetch` 또는 백엔드 연결 오류가 보이면 다음 순서로 확인합니다.
+
+```bash
+curl http://localhost:8080/actuator/health
+```
+
+1. `docker compose up -d postgres kafka`가 먼저 실행됐는지 확인합니다.
+2. `./back/gradlew -p back bootRun` 백엔드가 `http://localhost:8080`에서 떠 있는지 확인합니다.
+3. 프런트 실행 shell에 `NEXT_PUBLIC_API_BASE_URL=http://localhost:8080`이 들어갔는지 확인합니다.
+
+프런트만 실행한 상태에서는 로그인, 계좌, 이체, 고객 신청 API 호출이 동작하지 않습니다. 이 경우 화면에는 API 주소 미설정 또는 백엔드 연결 실패 안내가 표시됩니다.
+
+### 4. 프런트 단독 정적 검증
+
+```bash
+yarn --cwd front install
+yarn --cwd front lint
+yarn --cwd front test:login-runtime
+yarn --cwd front test:ui-contract
+```
+
+프런트 contract 검증은 서버가 없어도 실행할 수 있습니다. 실제 로그인 데모는 백엔드가 실행된 상태에서 확인합니다.
 
 ## 품질 게이트
 
