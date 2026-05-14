@@ -53,8 +53,13 @@ class JdbcTransactionArchiveReadRepositoryBaselineIntegrationTest
     synchronized (SEED_LOCK) {
       if (sharedBaselineWindow == null) {
         resetBankingTables(jdbcTemplate);
-        // archive baseline fixture는 cold table plan 검증용이라 기본 transaction timeout보다 길게 둡니다.
-        commit(transactionManager, 45, () -> sharedBaselineWindow = fixture.seed(jdbcTemplate));
+        // archive baseline fixture는 cold table plan 검증용이라 runtime statement timeout과 분리합니다.
+        commitWithStatementTimeout(
+            transactionManager,
+            jdbcTemplate,
+            90,
+            60,
+            () -> sharedBaselineWindow = fixture.seed(jdbcTemplate));
       }
       baselineWindow = sharedBaselineWindow;
     }
