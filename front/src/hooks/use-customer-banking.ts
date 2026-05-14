@@ -2,7 +2,7 @@ import type { FormEvent } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AquilaBankApiClient } from '@/lib/api/client';
 import { clearCustomerSession, toCustomerSession } from '@/lib/api/session';
-import type { AccountItem, AccountSummaryResponse, AuthSessionItem, BackupCodeIssueResponse, CustomerApplicationResponse, CustomerSession, LoginResponse, NotificationItem, NotificationPreferenceItem, NotificationQueryResponse, PasswordRecoveryRequestResult, TransactionDetailResponse, TransactionItem, TransactionQueryResponse, TotpEnrollmentStartResponse, TransferPreviewResponse, TransferResponse, TransferReversalResponse } from '@/lib/api/types';
+import type { AccountItem, AccountSummaryResponse, AuthSessionItem, BackupCodeIssueResponse, CustomerApplicationDetailsResponse, CustomerApplicationResponse, CustomerSession, LoginResponse, NotificationItem, NotificationPreferenceItem, NotificationQueryResponse, PasswordRecoveryRequestResult, TransactionDetailResponse, TransactionItem, TransactionQueryResponse, TotpEnrollmentStartResponse, TransferPreviewResponse, TransferResponse, TransferReversalResponse } from '@/lib/api/types';
 import { formatMinorAmount, toErrorMessage, toIsoDateTime, toLocalInputValue, toOptionalNumber } from '@/lib/customer-banking/format';
 import type { AlertMessage, CustomerApplicationSubmitInput, MenuSection } from '@/lib/customer-banking/types';
 
@@ -71,6 +71,11 @@ export function useCustomerBanking() {
     useState<TransferReversalResponse | null>(null);
   const [customerApplicationResult, setCustomerApplicationResult] =
     useState<CustomerApplicationResponse | null>(null);
+  const [customerApplications, setCustomerApplications] = useState<
+    CustomerApplicationDetailsResponse[]
+  >([]);
+  const [selectedCustomerApplication, setSelectedCustomerApplication] =
+    useState<CustomerApplicationDetailsResponse | null>(null);
   const [transactionMode, setTransactionMode] = useState<"active" | "archive">(
     "active",
   );
@@ -234,6 +239,8 @@ export function useCustomerBanking() {
       clearCustomerSession();
       setSession(null);
       setSessions([]);
+      setCustomerApplications([]);
+      setSelectedCustomerApplication(null);
       setAlert({ type: "success", text: "로그아웃되었습니다." });
     });
   }
@@ -272,6 +279,8 @@ export function useCustomerBanking() {
       await api.resetPassword(passwordResetForm);
       clearCustomerSession();
       setSession(null);
+      setCustomerApplications([]);
+      setSelectedCustomerApplication(null);
       setAlert({
         type: "success",
         text: "비밀번호가 변경되었습니다. 다시 로그인하세요.",
@@ -310,6 +319,8 @@ export function useCustomerBanking() {
       clearCustomerSession();
       setSession(null);
       setSessions([]);
+      setCustomerApplications([]);
+      setSelectedCustomerApplication(null);
       setAlert({ type: "success", text: "전체 세션을 해지했습니다." });
     });
   }
@@ -343,6 +354,8 @@ export function useCustomerBanking() {
       await api.disableTotp({ totpCode });
       clearCustomerSession();
       setSession(null);
+      setCustomerApplications([]);
+      setSelectedCustomerApplication(null);
       setAlert({ type: "success", text: "TOTP가 해지되었습니다." });
     });
   }
@@ -492,10 +505,60 @@ export function useCustomerBanking() {
         payload: input.payload,
       });
       setCustomerApplicationResult(result);
+      await refreshCustomerApplications();
       setAlert({
         type: "success",
         text: `${input.successMessage} 접수번호 ${result.applicationReference}`,
       });
+    });
+  }
+
+  async function refreshCustomerApplications(): Promise<void> {
+    const result = await api.listCustomerApplications(20);
+    setCustomerApplications(result.items);
+    if (selectedCustomerApplication) {
+      const selected = result.items.find(
+        (item) =>
+          item.applicationReference === selectedCustomerApplication.applicationReference,
+      );
+      setSelectedCustomerApplication(selected ?? selectedCustomerApplication);
+    }
+  }
+
+  async function handleLoadCustomerApplications(): Promise<void> {
+    if (!requireSession()) {
+      return;
+    }
+    await runAction("신청 목록 조회", async () => {
+      await refreshCustomerApplications();
+      setAlert({ type: "success", text: "신청 목록을 불러왔습니다." });
+    });
+  }
+
+  async function handleSelectCustomerApplication(
+    applicationReference: string,
+  ): Promise<void> {
+    if (!requireSession()) {
+      return;
+    }
+    await runAction("신청 상세 조회", async () => {
+      const result = await api.getCustomerApplication(applicationReference);
+      setSelectedCustomerApplication(result);
+      setAlert({ type: "success", text: "신청 상세를 불러왔습니다." });
+    });
+  }
+
+  async function handleCancelCustomerApplication(
+    applicationReference: string,
+  ): Promise<void> {
+    if (!requireSession()) {
+      return;
+    }
+    await runAction("신청 취소", async () => {
+      const result = await api.cancelCustomerApplication(applicationReference);
+      setSelectedCustomerApplication(result);
+      await refreshCustomerApplications();
+      setAlert({ type: "success", text: "신청 취소 요청이 처리되었습니다." });
     });
   }
 
@@ -751,6 +814,8 @@ export function useCustomerBanking() {
     reversalForm,
     reversalResult,
     customerApplicationResult,
+    customerApplications,
+    selectedCustomerApplication,
     transactionMode,
     transactionFilters,
     transactionSlice,
@@ -785,6 +850,9 @@ export function useCustomerBanking() {
     handlePreviewTransfer,
     handleReversal,
     handleSubmitCustomerApplication,
+    handleLoadCustomerApplications,
+    handleSelectCustomerApplication,
+    handleCancelCustomerApplication,
     handleSearchTransactions,
     handleResetTransactionFilters,
     handleLoadTransactionDetail,

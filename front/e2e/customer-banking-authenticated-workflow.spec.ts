@@ -157,6 +157,46 @@ test("로그인 후 계좌, 이체, 거래내역, 세션 관리 업무 화면을
     });
   });
 
+  let applicationStatus = "SUBMITTED";
+  await page.route("**/api/v1/customer-service/applications**", async (route) => {
+    const url = new URL(route.request().url());
+    const response = {
+      applicationReference: "APP-DEMO-1",
+      accountId: 101,
+      applicationType: "INCIDENT_REPORT",
+      processingMode: "MANUAL_REVIEW",
+      automatedExecutionSupported: false,
+      status: applicationStatus,
+      mfaVerified: true,
+      mfaVerifiedAt: "2026-05-12T02:30:00Z",
+      submittedAt: "2026-05-12T02:30:00Z",
+      updatedAt: "2026-05-12T02:31:00Z",
+      reason: applicationStatus === "CANCELLED" ? "고객 요청 취소" : null,
+      processedBy: applicationStatus === "CANCELLED" ? "customer" : null,
+      processedAt: applicationStatus === "CANCELLED" ? "2026-05-12T02:40:00Z" : null,
+      executionResult: applicationStatus === "CANCELLED" ? { cancelled: true } : {},
+    };
+
+    if (url.pathname.endsWith("/cancel")) {
+      applicationStatus = "CANCELLED";
+      await route.fulfill({
+        contentType: "application/json",
+        json: { ...response, status: "CANCELLED", reason: "고객 요청 취소" },
+      });
+      return;
+    }
+
+    if (url.pathname.endsWith("/APP-DEMO-1")) {
+      await route.fulfill({ contentType: "application/json", json: response });
+      return;
+    }
+
+    await route.fulfill({
+      contentType: "application/json",
+      json: { items: [response] },
+    });
+  });
+
   await page.goto("/");
   await page.getByRole("button", { name: "인증센터" }).first().click();
   const loginForm = page.locator("form").filter({ hasText: "아이디와 비밀번호" });
@@ -181,7 +221,7 @@ test("로그인 후 계좌, 이체, 거래내역, 세션 관리 업무 화면을
     .click();
   const transferForm = page.locator("form").filter({ hasText: "이체정보 입력" });
   await transferForm.getByLabel("출금계좌 ID").fill("101");
-  await transferForm.getByLabel("입금계좌 ID").fill("202");
+  await transferForm.getByLabel("입금계좌번호").fill("202");
   await transferForm.getByLabel("이체금액").fill("1200000");
   await transferForm.getByLabel("받는 분 통장 표시").fill("생활비");
   await transferForm.getByRole("button", { name: "받는 분 확인" }).click();
@@ -216,4 +256,18 @@ test("로그인 후 계좌, 이체, 거래내역, 세션 관리 업무 화면을
   await expect(page.getByText("Chrome Desktop")).toBeVisible();
   await expect(page.getByText("세션/기기 목록", { exact: true })).toBeVisible();
   await expect(page.getByText("보안매체 등록", { exact: true })).toBeVisible();
+
+  await page
+    .getByRole("navigation", { name: "주요 메뉴" })
+    .getByRole("button", { exact: true, name: "고객센터/사고신고" })
+    .click();
+  await page.getByRole("button", { name: "신청 목록 새로고침" }).click();
+  await expect(page.getByText("신청 현황")).toBeVisible();
+  await expect(page.getByText("APP-DEMO-1")).toBeVisible();
+  await page.getByRole("button", { name: /APP-DEMO-1/ }).click();
+  await expect(page.getByText("신청 상세", { exact: true })).toBeVisible();
+  await expect(page.getByText("처리 모드")).toBeVisible();
+  await expect(page.getByText("mock/webhook 경계")).toBeVisible();
+  await page.getByRole("button", { name: "취소 요청" }).click();
+  await expect(page.getByText("신청 취소 요청이 처리되었습니다.")).toBeVisible();
 });

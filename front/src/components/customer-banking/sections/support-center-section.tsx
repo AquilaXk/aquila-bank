@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import type { CustomerApplicationDetailsResponse } from "@/lib/api/types";
 import { supportCenterItems } from "@/lib/customer-banking/constants";
+import { formatDateTime } from "@/lib/customer-banking/format";
 import type {
   CustomerApplicationLatestResult,
   CustomerApplicationSubmitHandler,
@@ -48,13 +50,23 @@ const certificateItems = [
 
 type SupportCenterSectionProps = {
   applicationResult: CustomerApplicationLatestResult;
+  customerApplications: CustomerApplicationDetailsResponse[];
   isBusy: boolean;
+  selectedCustomerApplication: CustomerApplicationDetailsResponse | null;
+  onCancelCustomerApplication: (applicationReference: string) => void | Promise<void>;
+  onLoadCustomerApplications: () => void | Promise<void>;
+  onSelectCustomerApplication: (applicationReference: string) => void | Promise<void>;
   onSubmitCustomerApplication: CustomerApplicationSubmitHandler;
 };
 
 export function SupportCenterSection({
   applicationResult,
+  customerApplications,
   isBusy,
+  selectedCustomerApplication,
+  onCancelCustomerApplication,
+  onLoadCustomerApplications,
+  onSelectCustomerApplication,
   onSubmitCustomerApplication,
 }: SupportCenterSectionProps) {
   const [incidentForm, setIncidentForm] = useState({
@@ -85,6 +97,10 @@ export function SupportCenterSection({
         [key]: value,
       },
     }));
+  }
+
+  function formatExecutionResult(result: Record<string, unknown>): string {
+    return Object.keys(result).length === 0 ? "없음" : JSON.stringify(result, null, 2);
   }
 
   return (
@@ -161,6 +177,97 @@ export function SupportCenterSection({
       </section>
 
       <section className="support-detail-grid" aria-label="고객센터 상세 업무">
+        <article className="application-status-panel">
+          <div className="panel-toolbar">
+            <div>
+              <strong>신청 현황</strong>
+              <span>접수/심사/mock/webhook 경계 상태</span>
+            </div>
+            <button
+              type="button"
+              disabled={isBusy}
+              onClick={() => void onLoadCustomerApplications()}
+            >
+              신청 목록 새로고침
+            </button>
+          </div>
+          {customerApplications.length === 0 ? (
+            <p className="empty-state">조회된 신청이 없습니다.</p>
+          ) : (
+            <ul className="application-status-list">
+              {customerApplications.map((item) => (
+                <li key={item.applicationReference}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void onSelectCustomerApplication(item.applicationReference)
+                    }
+                  >
+                    <strong>{item.applicationReference}</strong>
+                    <span>{item.applicationType}</span>
+                  </button>
+                  <span>{item.status}</span>
+                  <button
+                    type="button"
+                    disabled={isBusy}
+                    onClick={() =>
+                      void onCancelCustomerApplication(item.applicationReference)
+                    }
+                  >
+                    취소 요청
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="application-detail-card">
+            <div className="panel-toolbar compact">
+              <div>
+                <strong>신청 상세</strong>
+                <span>선택한 신청의 처리 상태</span>
+              </div>
+            </div>
+            {selectedCustomerApplication ? (
+              <>
+                <dl className="application-detail-list">
+                  <div>
+                    <dt>접수번호</dt>
+                    <dd>{selectedCustomerApplication.applicationReference}</dd>
+                  </div>
+                  <div>
+                    <dt>상태</dt>
+                    <dd>{selectedCustomerApplication.status}</dd>
+                  </div>
+                  <div>
+                    <dt>처리 모드</dt>
+                    <dd>{selectedCustomerApplication.processingMode}</dd>
+                  </div>
+                  <div>
+                    <dt>사유</dt>
+                    <dd>{selectedCustomerApplication.reason ?? "없음"}</dd>
+                  </div>
+                  <div>
+                    <dt>처리자</dt>
+                    <dd>{selectedCustomerApplication.processedBy ?? "미처리"}</dd>
+                  </div>
+                  <div>
+                    <dt>처리 시각</dt>
+                    <dd>{formatDateTime(selectedCustomerApplication.processedAt)}</dd>
+                  </div>
+                </dl>
+                <div className="execution-result-box">
+                  <strong>실행 결과</strong>
+                  <pre>
+                    {formatExecutionResult(selectedCustomerApplication.executionResult)}
+                  </pre>
+                </div>
+              </>
+            ) : (
+              <p className="empty-state">신청을 선택하면 상세 상태가 표시됩니다.</p>
+            )}
+          </div>
+        </article>
+
         <article className="faq-list">
           <div className="panel-toolbar">
             <div>
