@@ -1,4 +1,4 @@
-import { ApiClientError, ApiConfigurationError } from "@/lib/api/client";
+import { ApiClientError, ApiConfigurationError, ApiNetworkError } from "@/lib/api/client";
 
 export function toLocalInputValue(date: Date): string {
   const offset = date.getTimezoneOffset();
@@ -28,6 +28,9 @@ export function formatMinorAmount(value: number, currencyCode = "KRW"): string {
 export function toErrorMessage(error: unknown): string {
   if (error instanceof ApiConfigurationError) {
     return "백엔드 API 주소가 설정되지 않았습니다. NEXT_PUBLIC_API_BASE_URL을 확인하세요.";
+  }
+  if (error instanceof ApiNetworkError) {
+    return "백엔드 서버에 연결하지 못했습니다. 백엔드 실행 상태와 API 주소를 확인하세요.";
   }
   if (error instanceof ApiClientError) {
     return `[${error.status}] ${error.message}`;

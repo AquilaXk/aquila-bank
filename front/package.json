@@ -9,6 +9,7 @@
     "start": "next start -p ${PORT:-3000}",
     "lint": "next lint",
     "test:api-parity": "node scripts/check-front-backend-api-parity.mjs",
+    "test:login-runtime": "node scripts/check-customer-banking-login-runtime.mjs",
     "test:ui-contract": "node scripts/check-customer-banking-ui-contract.mjs",
     "test:unauth-security": "node scripts/check-customer-banking-unauth-security.mjs",
     "test:auth-session": "node scripts/check-auth-session-hardening-contract.mjs",
