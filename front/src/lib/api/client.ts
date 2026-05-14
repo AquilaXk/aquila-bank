@@ -66,6 +66,13 @@ export class ApiConfigurationError extends Error {
   }
 }
 
+export class ApiNetworkError extends Error {
+  constructor(public readonly cause: unknown) {
+    super("Backend API network request failed.");
+    this.name = "ApiNetworkError";
+  }
+}
+
 export function resolveApiBaseUrl(): string {
   return (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").replace(/\/+$/, "");
 }
@@ -108,6 +115,15 @@ async function parseResponseBody(response: Response): Promise<unknown> {
   return response.text();
 }
 
+function isFetchNetworkError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  return ["Failed to fetch", "fetch failed", "Load failed"].some((message) =>
+    error.message.includes(message),
+  );
+}
+
 export function createIdempotencyKey(prefix = "web"): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return `${prefix}-${crypto.randomUUID()}`;
@@ -135,12 +151,20 @@ export class AquilaBankApiClient {
       throw new ApiConfigurationError();
     }
 
-    const response = await fetch(`${this.baseUrl}${path}`, {
-      method: options.method ?? "GET",
-      headers: defaultHeaders(options),
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
-      credentials: "include",
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}${path}`, {
+        method: options.method ?? "GET",
+        headers: defaultHeaders(options),
+        body: options.body === undefined ? undefined : JSON.stringify(options.body),
+        credentials: "include",
+      });
+    } catch (error) {
+      if (isFetchNetworkError(error)) {
+        throw new ApiNetworkError(error);
+      }
+      throw error;
+    }
     const body = await parseResponseBody(response);
 
     if (!response.ok) {
