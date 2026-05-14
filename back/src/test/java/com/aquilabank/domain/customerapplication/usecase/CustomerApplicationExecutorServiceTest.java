@@ -52,8 +52,14 @@ class CustomerApplicationExecutorServiceTest {
                 CustomerApplicationType.TRANSFER_LIMIT_CHANGE,
                 101L,
                 Map.of(
-                    "requestedSingleTransferLimitMinor", 500_000L,
-                    "requestedDailyTransferLimitMinor", 2_000_000L)),
+                    "requestedSingleTransferLimitMinor",
+                    500_000L,
+                    "requestedDailyTransferLimitMinor",
+                    2_000_000L,
+                    "changeReason",
+                    "PAYROLL",
+                    "evidenceReference",
+                    "DOC-20260511-001")),
             "ops-executor",
             "req-transfer-limit");
 
@@ -127,7 +133,15 @@ class CustomerApplicationExecutorServiceTest {
             details(
                 CustomerApplicationType.TRANSFER_LIMIT_CHANGE,
                 101L,
-                Map.of("singleTransferLimitMinor", "50000", "dailyTransferLimitMinor", "200000")),
+                Map.of(
+                    "singleTransferLimitMinor",
+                    "50000",
+                    "dailyTransferLimitMinor",
+                    "200000",
+                    "changeReason",
+                    "PAYROLL",
+                    "evidenceReference",
+                    "DOC-20260511-001")),
             "ops-executor",
             "req-string-payload");
 
@@ -142,7 +156,14 @@ class CustomerApplicationExecutorServiceTest {
                 CustomerApplicationType.TRANSFER_LIMIT_CHANGE,
                 101L,
                 Map.of(
-                    "singleTransferLimitMinor", 1_500_000L, "dailyTransferLimitMinor", 6_000_000L)),
+                    "singleTransferLimitMinor",
+                    1_500_000L,
+                    "dailyTransferLimitMinor",
+                    6_000_000L,
+                    "changeReason",
+                    "PAYROLL",
+                    "evidenceReference",
+                    "DOC-20260511-001")),
             "ops-executor",
             "req-policy-exceeded");
 
@@ -162,7 +183,14 @@ class CustomerApplicationExecutorServiceTest {
                 CustomerApplicationType.TRANSFER_LIMIT_CHANGE,
                 101L,
                 Map.of(
-                    "singleTransferLimitMinor", 500_000L, "dailyTransferLimitMinor", 2_000_000L)),
+                    "singleTransferLimitMinor",
+                    500_000L,
+                    "dailyTransferLimitMinor",
+                    2_000_000L,
+                    "changeReason",
+                    "PAYROLL",
+                    "evidenceReference",
+                    "DOC-20260511-001")),
             "ops-executor",
             "req-account-inactive");
 

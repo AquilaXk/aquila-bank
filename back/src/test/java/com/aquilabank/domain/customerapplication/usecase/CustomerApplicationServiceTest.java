@@ -174,6 +174,29 @@ class CustomerApplicationServiceTest {
   }
 
   @Test
+  void rejectsTransferLimitChangeWithoutReasonAndEvidenceBeforeTotp() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            service.submit(
+                new CustomerApplicationSubmitCommand(
+                    7L,
+                    101L,
+                    CustomerApplicationType.TRANSFER_LIMIT_CHANGE,
+                    "limit-no-evidence",
+                    "123456",
+                    Map.of(
+                        "requestedSingleTransferLimitMinor",
+                        500_000L,
+                        "requestedDailyTransferLimitMinor",
+                        2_000_000L,
+                        "changeReason",
+                        "PAYROLL"))));
+
+    verifyNoInteractions(securityVerificationPort, writePort);
+  }
+
+  @Test
   void submitsTransferLimitChangeWhenWithinPolicy() {
     when(referencePort.issueReference(CustomerApplicationType.TRANSFER_LIMIT_CHANGE))
         .thenReturn("CSA-20260511-003");
@@ -191,7 +214,11 @@ class CustomerApplicationServiceTest {
                 "requestedSingleTransferLimitMinor",
                 500_000L,
                 "requestedDailyTransferLimitMinor",
-                2_000_000L)));
+                2_000_000L,
+                "changeReason",
+                "PAYROLL",
+                "evidenceReference",
+                "DOC-20260511-001")));
 
     verify(securityVerificationPort).verifyTotp(7L, "123456");
     verify(writePort)

@@ -48,6 +48,7 @@ class NotificationChannelProviderDeliverySmokeTest {
             true,
             "Authorization",
             "Bearer smoke-secret",
+            "Idempotency-Key",
             500,
             50,
             new NotificationChannelProviderDeliveryProperties.ChannelProperties(

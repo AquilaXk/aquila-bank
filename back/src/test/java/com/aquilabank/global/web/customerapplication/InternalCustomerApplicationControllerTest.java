@@ -13,6 +13,7 @@ import com.aquilabank.domain.customerapplication.model.CustomerApplicationAction
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationDetails;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationStatus;
 import com.aquilabank.domain.customerapplication.model.CustomerApplicationType;
+import com.aquilabank.domain.customerapplication.usecase.CustomerApplicationExternalCallbackUseCase;
 import com.aquilabank.domain.customerapplication.usecase.CustomerApplicationOperationUseCase;
 import com.aquilabank.global.security.InternalServiceScope;
 import com.aquilabank.global.security.InternalServiceTokenTestSupport;
@@ -31,15 +32,19 @@ class InternalCustomerApplicationControllerTest {
   private static final String REQUEST_ID_HEADER = "X-Request-Id";
 
   private CustomerApplicationOperationUseCase operationUseCase;
+  private CustomerApplicationExternalCallbackUseCase externalCallbackUseCase;
   private MockMvc mockMvc;
 
   @BeforeEach
   void setUp() {
     operationUseCase = mock(CustomerApplicationOperationUseCase.class);
+    externalCallbackUseCase = mock(CustomerApplicationExternalCallbackUseCase.class);
     mockMvc =
         MockMvcBuilders.standaloneSetup(
                 new InternalCustomerApplicationController(
-                    operationUseCase, InternalServiceTokenTestSupport.authorizer()))
+                    operationUseCase,
+                    externalCallbackUseCase,
+                    InternalServiceTokenTestSupport.authorizer()))
             .setControllerAdvice(new ApiExceptionHandler())
             .build();
   }
@@ -162,6 +167,81 @@ class InternalCustomerApplicationControllerTest {
                     """))
         .andExpect(status().isInternalServerError())
         .andExpect(jsonPath("$.message").value("requestId is not initialized"));
+  }
+
+  @Test
+  void appliesExternalCallbackWithExecutorScope() throws Exception {
+    when(externalCallbackUseCase.apply(argThat(command -> command != null && command.success())))
+        .thenReturn(details(CustomerApplicationStatus.EXECUTED));
+
+    mockMvc
+        .perform(
+            post("/internal/api/v1/customer-service/applications/CSA-001/external-callback")
+                .header(
+                    "Authorization",
+                    InternalServiceTokenTestSupport.authorization(
+                        SUBJECT, InternalServiceScope.CUSTOMER_APPLICATION_EXECUTOR))
+                .header(REQUEST_ID_HEADER, "customer-application-callback-request")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "success": true,
+                      "reason": "PROVIDER_EXECUTED",
+                      "payload": {
+                        "providerReference": "EXT-1"
+                      }
+                    }
+                    """))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("EXECUTED"));
+
+    verify(externalCallbackUseCase)
+        .apply(
+            argThat(
+                command ->
+                    command.applicationReference().equals("CSA-001")
+                        && command.success()
+                        && command.reason().equals("PROVIDER_EXECUTED")
+                        && command.payload().get("providerReference").equals("EXT-1")
+                        && command.actorSubject().equals(SUBJECT)
+                        && command.requestId().equals("customer-application-callback-request")));
+  }
+
+  @Test
+  void appliesExternalCallbackWithEmptyPayloadWhenPayloadIsOmitted() throws Exception {
+    when(externalCallbackUseCase.apply(argThat(command -> command != null)))
+        .thenReturn(details(CustomerApplicationStatus.FAILED));
+
+    mockMvc
+        .perform(
+            post("/internal/api/v1/customer-service/applications/CSA-001/external-callback")
+                .header(
+                    "Authorization",
+                    InternalServiceTokenTestSupport.authorization(
+                        SUBJECT, InternalServiceScope.CUSTOMER_APPLICATION_EXECUTOR))
+                .header(REQUEST_ID_HEADER, "customer-application-callback-empty-payload")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "success": false,
+                      "reason": "PROVIDER_FAILED"
+                    }
+                    """))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("FAILED"));
+
+    verify(externalCallbackUseCase)
+        .apply(
+            argThat(
+                command ->
+                    command.applicationReference().equals("CSA-001")
+                        && !command.success()
+                        && command.payload().isEmpty()
+                        && command
+                            .requestId()
+                            .equals("customer-application-callback-empty-payload")));
   }
 
   @Test

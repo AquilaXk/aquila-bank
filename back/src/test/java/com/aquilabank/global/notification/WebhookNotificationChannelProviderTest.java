@@ -37,6 +37,7 @@ class WebhookNotificationChannelProviderTest {
         .expect(requestTo("https://email-provider.example/notifications"))
         .andExpect(method(HttpMethod.POST))
         .andExpect(header("Authorization", "Bearer notification-secret"))
+        .andExpect(header("Idempotency-Key", "evt-provider-1"))
         .andExpect(content().contentType(MediaType.APPLICATION_JSON))
         .andExpect(jsonPath("$.channel").value("EMAIL"))
         .andExpect(jsonPath("$.deliveryKey").value("evt-provider-1"))
@@ -120,6 +121,7 @@ class WebhookNotificationChannelProviderTest {
                 true,
                 "Authorization",
                 "Bearer notification-secret",
+                "Idempotency-Key",
                 3000,
                 5000,
                 new NotificationChannelProviderDeliveryProperties.ChannelProperties(null),
@@ -162,6 +164,7 @@ class WebhookNotificationChannelProviderTest {
         true,
         "Authorization",
         "Bearer notification-secret",
+        "Idempotency-Key",
         3000,
         5000,
         new NotificationChannelProviderDeliveryProperties.ChannelProperties(

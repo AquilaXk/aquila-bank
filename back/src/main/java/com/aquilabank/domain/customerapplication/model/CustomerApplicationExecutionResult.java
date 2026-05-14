@@ -8,8 +8,10 @@ public record CustomerApplicationExecutionResult(
 
   public CustomerApplicationExecutionResult {
     if (status != CustomerApplicationStatus.EXECUTED
+        && status != CustomerApplicationStatus.PENDING_EXTERNAL
         && status != CustomerApplicationStatus.FAILED) {
-      throw new IllegalArgumentException("execution status must be EXECUTED or FAILED");
+      throw new IllegalArgumentException(
+          "execution status must be PENDING_EXTERNAL, EXECUTED or FAILED");
     }
     if (reason == null || reason.isBlank()) {
       throw new IllegalArgumentException("reason is required");
@@ -27,6 +29,12 @@ public record CustomerApplicationExecutionResult(
       String reason, Map<String, Object> payload) {
     return new CustomerApplicationExecutionResult(
         CustomerApplicationStatus.EXECUTED, reason, payload);
+  }
+
+  public static CustomerApplicationExecutionResult pendingExternal(
+      String reason, Map<String, Object> payload) {
+    return new CustomerApplicationExecutionResult(
+        CustomerApplicationStatus.PENDING_EXTERNAL, reason, payload);
   }
 
   public static CustomerApplicationExecutionResult failed(

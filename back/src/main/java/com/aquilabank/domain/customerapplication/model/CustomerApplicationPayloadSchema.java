@@ -2,6 +2,7 @@ package com.aquilabank.domain.customerapplication.model;
 
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /** 신청 타입별 최소 payload 계약입니다. 외부 실행 전 단계에서도 잘못된 신청 접수를 줄입니다. */
@@ -9,6 +10,19 @@ public final class CustomerApplicationPayloadSchema {
 
   private static final Pattern CURRENCY_CODE = Pattern.compile("^[A-Z]{3}$");
   private static final Pattern POSITIVE_INTEGER = Pattern.compile("^[1-9][0-9]*$");
+  private static final Pattern REFERENCE_CODE = Pattern.compile("^[A-Z0-9][A-Z0-9_-]{1,79}$");
+  private static final Pattern INSTITUTION_CODE = Pattern.compile("^[0-9]{2,20}$");
+  private static final Pattern ACCOUNT_NUMBER = Pattern.compile("^[0-9-]{6,40}$");
+  private static final Set<String> LOAN_PURPOSES =
+      Set.of("HOUSING", "BUSINESS", "LIVING", "EDUCATION", "MEDICAL");
+  private static final Set<String> CERTIFICATE_TYPES =
+      Set.of("BANKING", "CORPORATE_BANKING", "JOINT_CERTIFICATE");
+  private static final Set<String> SECURITY_MEDIA_TYPES =
+      Set.of("OTP", "SECURITY_CARD", "MOBILE_OTP");
+  private static final Set<String> SECURITY_MEDIA_DELIVERY_METHODS =
+      Set.of("BRANCH", "REGISTERED_MAIL");
+  private static final Set<String> INCIDENT_TYPES =
+      Set.of("CARD_LOSS", "ACCOUNT_FRAUD", "CERTIFICATE_LEAK", "SECURITY_MEDIA_LOSS");
 
   private CustomerApplicationPayloadSchema() {}
 
@@ -34,29 +48,29 @@ public final class CustomerApplicationPayloadSchema {
   }
 
   private static void validateBillPayment(Map<String, Object> payload) {
-    requireText(payload, "billerCode", 40);
-    requireText(payload, "paymentNumber", 80);
+    requireReferenceCode(payload, "billerCode", 40);
+    requireReferenceCode(payload, "paymentNumber", 80);
     requirePositiveMinor(payload, "amountMinor");
     requireCurrencyCode(payload, "currencyCode");
   }
 
   private static void validateOpenBankingConnection(Map<String, Object> payload) {
-    requireText(payload, "institutionCode", 20);
-    requireText(payload, "externalAccountNumber", 40);
-    requireText(payload, "consentId", 80);
+    requirePattern(payload, "institutionCode", 20, INSTITUTION_CODE, "must be numeric");
+    requirePattern(payload, "externalAccountNumber", 40, ACCOUNT_NUMBER, "must be numeric");
+    requireReferenceCode(payload, "consentId", 80);
   }
 
   private static void validateDepositProductApplication(Map<String, Object> payload) {
-    requireText(payload, "productCode", 40);
+    requireReferenceCode(payload, "productCode", 40);
     requirePositiveMinor(payload, "amountMinor");
     requireCurrencyCode(payload, "currencyCode");
   }
 
   private static void validateLoanApplication(Map<String, Object> payload) {
-    requireText(payload, "productCode", 40);
+    requireReferenceCode(payload, "productCode", 40);
     requirePositiveMinor(payload, "requestedAmountMinor");
     requireCurrencyCode(payload, "currencyCode");
-    requireText(payload, "purpose", 120);
+    requireAllowedValue(payload, "purpose", LOAN_PURPOSES);
   }
 
   private static void validateForeignExchangeApplication(Map<String, Object> payload) {
@@ -69,7 +83,7 @@ public final class CustomerApplicationPayloadSchema {
   }
 
   private static void validateCertificateIssuance(Map<String, Object> payload) {
-    requireText(payload, "certificateType", 40);
+    requireAllowedValue(payload, "certificateType", CERTIFICATE_TYPES);
     requireText(payload, "subjectDn", 200);
   }
 
@@ -79,12 +93,12 @@ public final class CustomerApplicationPayloadSchema {
   }
 
   private static void validateSecurityMediaApplication(Map<String, Object> payload) {
-    requireText(payload, "mediaType", 40);
-    requireText(payload, "deliveryMethod", 40);
+    requireAllowedValue(payload, "mediaType", SECURITY_MEDIA_TYPES);
+    requireAllowedValue(payload, "deliveryMethod", SECURITY_MEDIA_DELIVERY_METHODS);
   }
 
   private static void validateIncidentReport(Map<String, Object> payload) {
-    requireText(payload, "incidentType", 40);
+    requireAllowedValue(payload, "incidentType", INCIDENT_TYPES);
     requireText(payload, "description", 500);
   }
 
@@ -92,6 +106,30 @@ public final class CustomerApplicationPayloadSchema {
     String value = requireText(payload, key, 3);
     if (!CURRENCY_CODE.matcher(value).matches()) {
       throw new IllegalArgumentException(key + " must be a 3-letter uppercase code");
+    }
+    return value;
+  }
+
+  private static String requireReferenceCode(
+      Map<String, Object> payload, String key, int maxLength) {
+    return requirePattern(
+        payload, key, maxLength, REFERENCE_CODE, "must be an uppercase reference code");
+  }
+
+  private static String requireAllowedValue(
+      Map<String, Object> payload, String key, Set<String> values) {
+    String value = requireText(payload, key, 80);
+    if (!values.contains(value)) {
+      throw new IllegalArgumentException(key + " is not supported");
+    }
+    return value;
+  }
+
+  private static String requirePattern(
+      Map<String, Object> payload, String key, int maxLength, Pattern pattern, String message) {
+    String value = requireText(payload, key, maxLength);
+    if (!pattern.matcher(value).matches()) {
+      throw new IllegalArgumentException(key + " " + message);
     }
     return value;
   }
