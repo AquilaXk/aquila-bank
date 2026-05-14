@@ -165,6 +165,12 @@ const checks = [
   ["gothic work panel class", files.styles, ".gothic-work-panel"],
   ["gothic state strip class", files.styles, ".gothic-state-strip"],
   ["gothic bank table class", files.styles, ".gothic-bank-table"],
+  ["visual polish keep korean words", files.styles, "word-break: keep-all"],
+  ["visual polish utility search min width", files.styles, ".utility-search"],
+  ["visual polish tablet utility wrap", files.styles, ".utility-bar.mobile-compact-utility"],
+  ["visual polish side item stable mobile height", files.styles, ".side-menu.mobile-compact-side-menu .side-item strong"],
+  ["visual polish notice stable columns", files.styles, ".bank-notice-strip div"],
+  ["visual polish notice value line height", files.styles, ".bank-notice-strip dd"],
 ];
 
 const forbidden = [
