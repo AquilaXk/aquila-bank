@@ -116,17 +116,25 @@ if OFFHOST_CAPACITY_ENV_FILE="${bad_required_env_file}" OFFHOST_CAPACITY_CHECK_C
   exit 1
 fi
 
-missing_metrics_env_file="${temp_dir}/missing-metrics.env"
-cat >"${missing_metrics_env_file}" <<'ENV'
+minimal_metrics_env_file="${temp_dir}/minimal-metrics.env"
+cat >"${minimal_metrics_env_file}" <<'ENV'
 CAPACITY_K6_DOCKER_CONTEXT=capacity-k6-remote
 CAPACITY_K6_REMOTE_BASE_URL=http://192.0.2.20:18080
 CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL=http://192.0.2.20:9090/api/v1/write
 ENV
-if OFFHOST_CAPACITY_ENV_FILE="${missing_metrics_env_file}" OFFHOST_CAPACITY_CHECK_CONNECTIVITY=false "${script}" --print-plan >"${temp_dir}/missing-metrics.log" 2>&1; then
-  echo "missing off-host host metrics unexpectedly passed" >&2
-  exit 1
-fi
-grep -F "CAPACITY_K6_GENERATOR_HOST_METRICS_TSV is required when CAPACITY_REQUIRE_HOST_METRICS=true" "${temp_dir}/missing-metrics.log" >/dev/null
+minimal_plan="$(
+  CAPACITY_NAME=offhost-default-metrics \
+  OFFHOST_CAPACITY_ENV_FILE="${minimal_metrics_env_file}" \
+  OFFHOST_CAPACITY_CHECK_CONNECTIVITY=false \
+    "${script}" --print-plan
+)"
+grep -F "host_metrics_timeline_tsv=build/reports/k6/offhost-default-metrics/host-metrics-timeline.tsv" <<<"${minimal_plan}" >/dev/null
+grep -F "generator_host_metrics_tsv=build/reports/k6/offhost-default-metrics/generator-host-metrics.tsv" <<<"${minimal_plan}" >/dev/null
+grep -F "target_host_metrics_tsv=build/reports/k6/offhost-default-metrics/target-host-metrics.tsv" <<<"${minimal_plan}" >/dev/null
+CAPACITY_NAME=offhost-default-metrics \
+OFFHOST_CAPACITY_ENV_FILE="${minimal_metrics_env_file}" \
+OFFHOST_CAPACITY_CHECK_CONNECTIVITY=false \
+  "${script}" --dry-run >/dev/null
 
 echo "[offhost-capacity-env-doctor] runner contract"
 grep -F "OFFHOST_CAPACITY_ENV_FILE" "${script}" >/dev/null

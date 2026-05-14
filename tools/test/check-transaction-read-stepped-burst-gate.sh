@@ -123,3 +123,32 @@ if STEPPED_BURST_WARN_RATE=0.12 STEPPED_BURST_FAIL_RATE=0.10 "${runner}" --print
   echo "warn greater than fail unexpectedly succeeded" >&2
   exit 1
 fi
+
+echo "[transaction-read-stepped-burst] dataset preflight fail fast"
+fake_dataset_preflight="${temp_dir}/fake-dataset-preflight.sh"
+cat >"${fake_dataset_preflight}" <<'SH'
+#!/usr/bin/env bash
+echo "dataset preflight called" >&2
+exit 23
+SH
+chmod +x "${fake_dataset_preflight}"
+set +e
+STEPPED_BURST_GATE_NAME=stepped-dataset-preflight-check \
+STEPPED_BURST_RUN_K6=true \
+STEPPED_BURST_DATASET_PREFLIGHT_RUNNER="${fake_dataset_preflight}" \
+STEPPED_BURST_OUTPUT_DIR="${output_dir}" \
+  "${runner}" >"${temp_dir}/dataset-preflight.log" 2>&1
+preflight_status=$?
+set -e
+if [[ "${preflight_status}" -eq 0 ]]; then
+  echo "stepped burst dataset preflight unexpectedly passed" >&2
+  exit 1
+fi
+grep -F "dataset preflight called" "${temp_dir}/dataset-preflight.log" >/dev/null
+preflight_report="${output_dir}/stepped-dataset-preflight-check-stepped-burst-preflight-failure.env"
+test -f "${preflight_report}"
+grep -F "STEPPED_BURST_PREFLIGHT_STATUS=failed" "${preflight_report}" >/dev/null
+grep -F "STEPPED_BURST_PREFLIGHT_FAILURE_REASON=dataset-preflight-failed" "${preflight_report}" >/dev/null
+grep -F "STEPPED_BURST_DATASET_PREFLIGHT_RUNNER=${fake_dataset_preflight}" "${preflight_report}" >/dev/null
+grep -F "STEPPED_BURST_DATASET_PREFLIGHT_RUNNER" "${runner}" >/dev/null
+grep -F "STEPPED_BURST_DATASET_PREFLIGHT" "${runner}" >/dev/null

@@ -160,3 +160,45 @@ fi
 test -f "${prereq}"
 grep -F "CAPACITY_PREREQUISITE_STATUS=failed" "${prereq}" >/dev/null
 grep -F "CAPACITY_PREREQUISITE_FAILURE_REASON=missing-required-env" "${prereq}" >/dev/null
+
+echo "[offhost-capacity-prerequisite] local loadtest defaults"
+capacity_plan="$(
+  CAPACITY_NAME=ci-offhost-default-check \
+  CAPACITY_K6_DOCKER_CONTEXT=capacity-k6-remote \
+  CAPACITY_K6_REMOTE_BASE_URL=http://192.0.2.20:18080 \
+  CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL=http://192.0.2.20:9090/api/v1/write \
+    tools/test/run-transaction-100m-capacity-gates.sh --print-plan
+)"
+grep -F "prometheus_url=http://localhost:19090" <<<"${capacity_plan}" >/dev/null
+grep -F "backend_health_url=http://localhost:18080/actuator/health" <<<"${capacity_plan}" >/dev/null
+grep -F "loadtest_kafka_enabled=false" <<<"${capacity_plan}" >/dev/null
+grep -F "loadtest_notification_consumer_enabled=false" <<<"${capacity_plan}" >/dev/null
+grep -F "loadtest_kafka_topic_startup_validation_enabled=false" <<<"${capacity_plan}" >/dev/null
+grep -F "single-host-default:4:8" tools/test/run-transaction-100m-capacity-gates.sh >/dev/null
+grep -F 'OUTBOX_KAFKA_ENABLED: ${OUTBOX_KAFKA_ENABLED:-false}' compose.loadtest.yml >/dev/null
+grep -F 'NOTIFICATION_INBOX_CONSUMER_ENABLED: ${NOTIFICATION_INBOX_CONSUMER_ENABLED:-false}' compose.loadtest.yml >/dev/null
+grep -F 'KAFKA_TOPIC_STARTUP_VALIDATION_ENABLED: ${KAFKA_TOPIC_STARTUP_VALIDATION_ENABLED:-false}' compose.loadtest.yml >/dev/null
+
+echo "[offhost-capacity-prerequisite] env file does not clobber explicit overrides"
+env_file="${temp_dir}/capacity-overrides.env"
+cat >"${env_file}" <<'ENV'
+CAPACITY_RUN_CPU_SPLIT=true
+CAPACITY_RUN_LONG_SOAK=true
+PROMETHEUS_URL=http://localhost:9090
+CAPACITY_BACKEND_HEALTH_URL=http://localhost:8080/actuator/health
+CAPACITY_K6_DOCKER_CONTEXT=capacity-k6-remote
+CAPACITY_K6_REMOTE_BASE_URL=http://192.0.2.20:18080
+CAPACITY_K6_REMOTE_PROMETHEUS_RW_SERVER_URL=http://192.0.2.20:9090/api/v1/write
+ENV
+override_plan="$(
+  CAPACITY_ENV_FILE="${env_file}" \
+  CAPACITY_RUN_CPU_SPLIT=false \
+  CAPACITY_RUN_LONG_SOAK=false \
+  PROMETHEUS_URL=http://localhost:19090 \
+  CAPACITY_BACKEND_HEALTH_URL=http://localhost:18080/actuator/health \
+    tools/test/run-transaction-100m-capacity-gates.sh --print-plan
+)"
+grep -F "run_cpu_split=false" <<<"${override_plan}" >/dev/null
+grep -F "run_long_soak=false" <<<"${override_plan}" >/dev/null
+grep -F "prometheus_url=http://localhost:19090" <<<"${override_plan}" >/dev/null
+grep -F "backend_health_url=http://localhost:18080/actuator/health" <<<"${override_plan}" >/dev/null
