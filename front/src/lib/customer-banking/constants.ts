@@ -117,7 +117,7 @@ export const favoriteServiceItems: Array<{
 export const serviceHourItems = [
   { task: "조회", time: "00:30~23:30", status: "정상" },
   { task: "이체", time: "00:30~23:30", status: "정상" },
-  { task: "공과금", time: "07:00~23:30", status: "정상" },
+  { task: "공과금", time: "07:00~23:30", status: "데모" },
   { task: "고객센터", time: "09:00~18:00", status: "상담" },
 ];
 
@@ -130,39 +130,39 @@ export const bankingNewsItems = [
 export const noticeItems = [
   "OTP/보안카드 전체 번호 입력 요구 시 거래를 중단하세요.",
   "거래내역은 계좌와 기간 조건으로 조회합니다.",
-  "공동인증서와 OTP 재발급은 인증센터에서 처리합니다.",
+  "공동인증서와 OTP 업무는 인증센터 신청 접수로 처리합니다.",
 ];
 
 export const enterpriseServiceItems = [
   {
     title: "공과금",
-    category: "납부",
-    description: "지로, 지방세, 아파트관리비, 전기/통신요금",
-    status: "접수 가능",
+    category: "납부 데모",
+    description: "지로, 지방세, 생활요금 신청 접수",
+    status: "mock 처리",
   },
   {
     title: "오픈뱅킹",
-    category: "연결신청",
-    description: "타행 계좌 연결 신청, 동의 만료일 관리",
-    status: "접수 가능",
+    category: "연결 데모",
+    description: "외부 계좌 연결 신청, 동의 식별값 관리",
+    status: "mock 처리",
   },
   {
     title: "예금상품",
-    category: "상품",
-    description: "입출금, 예금, 적금 상품 신청",
-    status: "접수 가능",
+    category: "상품 데모",
+    description: "예금 상품 가입 신청 접수",
+    status: "심사 대기",
   },
   {
     title: "대출",
-    category: "여신",
-    description: "희망 한도, 상환 방식, 서류 안내 신청",
-    status: "접수 가능",
+    category: "여신 데모",
+    description: "희망 금액, 신청 목적 접수",
+    status: "심사 대기",
   },
   {
     title: "외환",
     category: "FX",
-    description: "외화예금, 해외송금 신청 접수",
-    status: "접수 가능",
+    description: "통화 환전 신청 접수",
+    status: "mock 처리",
   },
 ];
 
@@ -174,8 +174,8 @@ export const supportCenterItems = [
   },
   {
     title: "사고신고",
-    description: "통장, 카드, 보안매체, 인증서 분실 신고",
-    action: "긴급 신고",
+    description: "카드, 보안매체, 인증서 분실 신고 접수",
+    action: "신고 접수",
   },
   {
     title: "이체한도",
@@ -192,22 +192,22 @@ export const supportCenterItems = [
 export const securityHubItems = [
   {
     title: "공동인증서",
-    description: "인증서 발급, 갱신, 타기관 등록, 폐기",
+    description: "인증서 발급/등록 신청 접수",
     status: "인증서 관리",
   },
   {
     title: "금융인증서",
-    description: "클라우드 인증서 로그인, 발급, 재등록",
+    description: "금융인증서 등록 신청 접수",
     status: "금융인증",
   },
   {
     title: "OTP",
-    description: "OTP 등록, 오류횟수 초기화, 보안매체 교체",
+    description: "OTP 등록, 오류횟수 초기화 신청",
     status: "보안매체",
   },
   {
     title: "보안매체",
-    description: "보안카드, 모바일 OTP, 생체 인증 적용 업무",
+    description: "보안카드, 모바일 OTP 신청 접수",
     status: "등급 안내",
   },
 ];

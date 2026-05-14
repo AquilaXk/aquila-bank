@@ -17,11 +17,11 @@ const faqItems = [
   },
   {
     question: "OTP 오류 횟수가 초과되면 어떻게 하나요?",
-    answer: "사고신고 접수에서 보안매체 오류 초기화를 선택하고 본인확인 후 재등록합니다.",
+    answer: "사고신고 접수에서 보안매체 분실/오류 유형을 선택하고 재등록 신청을 접수합니다.",
   },
   {
     question: "오픈뱅킹 연결 계좌가 보이지 않습니다.",
-    answer: "동의 만료일과 은행 점검 시간을 확인한 뒤 통합조회를 다시 실행합니다.",
+    answer: "동의 식별값과 은행 점검 시간을 확인한 뒤 연결 신청을 다시 접수합니다.",
   },
 ];
 
@@ -30,18 +30,21 @@ const certificateItems = [
     title: "이체확인증",
     description: "거래번호, 출금계좌, 입금계좌, 이체금액, 수수료, 처리시각",
     scope: "즉시이체 완료 거래",
+    subjectCode: "TRANSFER_RECEIPT",
   },
   {
     title: "잔액증명서",
-    description: "기준일, 계좌, 통화, 잔액, 발급 목적을 확인한 뒤 증명서 발급 화면으로 이어집니다.",
+    description: "기준일, 계좌, 통화, 잔액, 발급 목적 기준의 신청 접수",
     scope: "예금/입출금 계좌",
+    subjectCode: "BALANCE_CERTIFICATE",
   },
   {
     title: "거래내역확인서",
     description: "조회 기간, 거래 상태, 입출금 구분, 증명 대상 거래",
     scope: "거래내역 조회 결과",
+    subjectCode: "TRANSACTION_CERTIFICATE",
   },
-];
+] as const;
 
 type SupportCenterSectionProps = {
   applicationResult: CustomerApplicationLatestResult;
@@ -55,7 +58,7 @@ export function SupportCenterSection({
   onSubmitCustomerApplication,
 }: SupportCenterSectionProps) {
   const [incidentForm, setIncidentForm] = useState({
-    incidentType: "security-media",
+    incidentType: "SECURITY_MEDIA_LOSS",
     accountId: "",
     target: "",
     contact: "",
@@ -104,8 +107,8 @@ export function SupportCenterSection({
         items={[
           { label: "FAQ", value: "자주 찾는 문의" },
           { label: "사고신고", value: "분실/도용 접수" },
-          { label: "이체한도", value: "보안등급 확인" },
-          { label: "증명서 발급", value: "확인증/잔액/거래내역" },
+          { label: "이체한도", value: "변경 접수" },
+          { label: "증명서 발급", value: "접수 데모" },
         ]}
       />
 
@@ -140,12 +143,12 @@ export function SupportCenterSection({
               <tr>
                 <td>보안매체 분실</td>
                 <td>OTP, 보안카드</td>
-                <td>사용 정지 후 재발급</td>
+                <td>접수 후 운영자 확인</td>
               </tr>
               <tr>
                 <td>인증서 도용 의심</td>
                 <td>공동인증서, 금융인증서</td>
-                <td>폐기 및 재등록</td>
+                <td>접수 후 재등록 안내</td>
               </tr>
               <tr>
                 <td>이체한도 관리</td>
@@ -189,10 +192,10 @@ export function SupportCenterSection({
                   setIncidentForm((form) => ({ ...form, incidentType: event.target.value }))
                 }
               >
-                <option value="security-media">보안매체 분실</option>
-                <option value="certificate">인증서 도용 의심</option>
-                <option value="transfer">미확인 이체</option>
-                <option value="otp-error">OTP 오류 초과</option>
+                <option value="SECURITY_MEDIA_LOSS">보안매체 분실</option>
+                <option value="CERTIFICATE_LEAK">인증서 도용 의심</option>
+                <option value="ACCOUNT_FRAUD">미확인 이체</option>
+                <option value="CARD_LOSS">카드 분실</option>
               </select>
             </label>
             <label>
@@ -244,8 +247,9 @@ export function SupportCenterSection({
                 totpCode: incidentForm.totpCode,
                 payload: {
                   incidentType: incidentForm.incidentType,
-                  target: incidentForm.target,
-                  contact: incidentForm.contact,
+                  description: `대상: ${incidentForm.target || "미입력"} / 연락처: ${
+                    incidentForm.contact || "미입력"
+                  }`,
                 },
                 successMessage: "사고신고가 접수되었습니다.",
               })
@@ -307,9 +311,10 @@ export function SupportCenterSection({
                     accountId: certificateForms[item.title].accountId,
                     totpCode: certificateForms[item.title].totpCode,
                     payload: {
-                      certificateName: item.title,
-                      purpose: certificateForms[item.title].purpose,
-                      scope: item.scope,
+                      certificateType: "BANKING",
+                      subjectDn: `CN=${item.subjectCode};PURPOSE=${
+                        certificateForms[item.title].purpose
+                      }`,
                     },
                     successMessage: `${item.title} 발급이 접수되었습니다.`,
                   })
