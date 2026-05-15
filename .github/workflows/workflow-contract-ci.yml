@@ -8,6 +8,8 @@ on:
       - ".github/workflows/**"
       - "tools/test/check-ci-runtime-optimization-contract.sh"
       - "tools/test/check-flyway-backward-compatible-migrations.sh"
+      - "tools/test/check-transaction-read-model-staging-replay.sh"
+      - "tools/ops/transaction-read-model-staging-replay.sh"
       - "tools/test/run-transaction-query-plan-regression-gate.sh"
 
 permissions:
@@ -28,3 +30,6 @@ jobs:
 
       - name: Check CI runtime optimization contract
         run: bash tools/test/check-ci-runtime-optimization-contract.sh
+
+      - name: Check transaction staging replay contract
+        run: bash tools/test/check-transaction-read-model-staging-replay.sh

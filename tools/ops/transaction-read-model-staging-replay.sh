@@ -6,6 +6,10 @@ SUMMARY_JSON="${REPORT_DIR}/summary.json"
 SUMMARY_MD="${REPORT_DIR}/summary.md"
 
 STAGING_BASE_URL="${STAGING_BASE_URL:-}"
+STAGING_PUBLIC_API_BASE_URL="${STAGING_PUBLIC_API_BASE_URL:-}"
+STAGING_PUBLIC_BASE_URL="${STAGING_PUBLIC_BASE_URL:-}"
+STAGING_REPLAY_BASE_URL="${STAGING_REPLAY_BASE_URL:-}"
+STAGING_BASE_URL="${STAGING_REPLAY_BASE_URL:-${STAGING_PUBLIC_BASE_URL:-${STAGING_PUBLIC_API_BASE_URL:-${STAGING_BASE_URL:-}}}}"
 STAGING_REPLAY_TOKEN="${STAGING_REPLAY_TOKEN:-}"
 STAGING_OCI_A1_DATABASE_URL="${STAGING_OCI_A1_DATABASE_URL:-}"
 STAGING_RDS_DATABASE_URL="${STAGING_RDS_DATABASE_URL:-}"
@@ -223,7 +227,25 @@ validate_inputs() {
     [ -x "$PLANNER_STATS_ANALYZE_SCRIPT" ] || fail "Planner stats analyze script is not executable: ${PLANNER_STATS_ANALYZE_SCRIPT}"
   fi
 
+  canonicalize_staging_base_url
+}
+
+canonicalize_staging_base_url() {
   STAGING_BASE_URL="${STAGING_BASE_URL%/}"
+  case "${STAGING_BASE_URL}" in
+    https://*)
+      ;;
+    http://localhost|http://localhost:*|http://127.*|http://[[]::1[]]*)
+      ;;
+    http://*)
+      # 인증 replay는 token을 쓰므로 public HTTP는 요청 전에 HTTPS origin으로 고정합니다.
+      STAGING_BASE_URL="https://${STAGING_BASE_URL#http://}"
+      notice "Canonicalized STAGING_BASE_URL to HTTPS before authenticated replay request."
+      ;;
+    *)
+      fail "STAGING_BASE_URL must start with http:// or https://"
+      ;;
+  esac
 }
 
 planner_stats_analyze_targets() {
