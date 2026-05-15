@@ -29,6 +29,9 @@ grep -F "report_name:" "${workflow}" >/dev/null
 grep -F 'description: "Cold-labeled account id for k6; default must have fixture rows"' "${workflow}" >/dev/null
 grep -F 'description: "Cold-labeled range start for k6; default matches the fixture-backed range"' "${workflow}" >/dev/null
 grep -F 'description: "Cold-labeled range end for k6; default matches the fixture-backed range"' "${workflow}" >/dev/null
+grep -F 'default: "910000002"' "${workflow}" >/dev/null
+grep -F 'default: "2026-01-01T00:00:00Z"' "${workflow}" >/dev/null
+grep -F 'default: "2026-01-31T00:00:00Z"' "${workflow}" >/dev/null
 grep -F "docker_context:" "${workflow}" >/dev/null
 grep -F 'SOAK_30M_DOCKER_CONTEXT_INPUT: ${{ inputs.docker_context }}' "${workflow}" >/dev/null
 grep -F "workload_weights:" "${workflow}" >/dev/null
@@ -38,6 +41,15 @@ grep -F 'SOAK_30M_WORKLOAD_WEIGHTS_INPUT: ${{ inputs.workload_weights }}' "${wor
 grep -F "30m Soak Live Evidence Contract" "${workflow}" >/dev/null
 grep -F "tools/test/check-transaction-read-30m-soak-live-evidence-gate.sh" "${workflow}" >/dev/null
 grep -F "tools/test/check-transaction-read-30m-soak-live-evidence-workflow.sh" "${workflow}" >/dev/null
+grep -F "tools/test/run-k6-transaction-100m-loadtest.sh" "${workflow}" >/dev/null
+grep -F "tools/test/check-k6-transaction-100m-loadtest.sh" "${workflow}" >/dev/null
+grep -F "tools/ops/staging-fixture-principal-bootstrap.sh" "${workflow}" >/dev/null
+grep -F "tools/test/run-staging-fixture-principal-bootstrap-contract.sh" "${workflow}" >/dev/null
+grep -F "tools/ops/issue-staging-replay-token.py" "${workflow}" >/dev/null
+grep -F "tools/test/check-issue-staging-replay-token.py" "${workflow}" >/dev/null
+grep -F "Validate k6 transaction loadtest contract" "${workflow}" >/dev/null
+grep -F "Validate staging fixture principal bootstrap" "${workflow}" >/dev/null
+grep -F "Validate staging replay token issuer" "${workflow}" >/dev/null
 grep -F "tools/test/run-transaction-read-30m-soak-live-evidence-manifest.sh" "${workflow}" >/dev/null
 grep -F "tools/test/check-transaction-read-30m-soak-live-evidence-manifest.sh" "${workflow}" >/dev/null
 grep -F "tools/test/run-transaction-read-30m-soak-live-evidence-artifacts.sh" "${workflow}" >/dev/null
@@ -61,6 +73,7 @@ grep -F 'SOAK_30M_DURATION_INPUT: ${{ inputs.duration }}' "${workflow}" >/dev/nu
 grep -F "Prepare 30m soak evidence mode" "${workflow}" >/dev/null
 grep -F 'SOAK_30M_USE_EXISTING_MANIFEST=true' "${workflow}" >/dev/null
 grep -F "Load OCI A1 staging env" "${workflow}" >/dev/null
+grep -F "STAGING_REPLAY_TOKEN_OR_OCI_A1_BACKEND_ENV_B64" "${workflow}" >/dev/null
 grep -F 'K6_RUN_PURPOSE="capacity"' "${workflow}" >/dev/null
 grep -F 'K6_REMOTE_PROMETHEUS_RW_REQUIRED="false"' "${workflow}" >/dev/null
 grep -F 'remote-write optional' "${workflow}" >/dev/null
@@ -81,11 +94,23 @@ grep -F 'falling back to default self-hosted runner Docker context' "${workflow}
 grep -F "K6_DOCKER_CONTEXT=default" "${workflow}" >/dev/null
 grep -F 'printf '\''K6_REMOTE_WORKDIR=%s\n'\'' "${GITHUB_WORKSPACE}"' "${workflow}" >/dev/null
 grep -F "Capture 30m soak evidence window" "${workflow}" >/dev/null
+grep -F "Issue 30m soak replay token" "${workflow}" >/dev/null
+grep -F 'STAGING_REPLAY_TOKEN_OUTPUT_FILE="${replay_token_file}" \' "${workflow}" >/dev/null
+grep -F 'STAGING_REPLAY_TOKEN_BACKEND_ENV_SOURCE=auto \' "${workflow}" >/dev/null
+grep -F 'python3 tools/ops/issue-staging-replay-token.py' "${workflow}" >/dev/null
+grep -F 'STAGING_REPLAY_TOKEN_FILE=%s\n' "${workflow}" >/dev/null
 grep -F "Capture PostgreSQL baseline counters" "${workflow}" >/dev/null
 grep -F 'SOAK_30M_POSTGRES_CHECKPOINT_START_COUNT=%s' "${workflow}" >/dev/null
 grep -F 'SOAK_30M_POSTGRES_TEMP_FILE_START_COUNT=%s' "${workflow}" >/dev/null
 grep -F "Run 30m authenticated k6 soak" "${workflow}" >/dev/null
-grep -F 'local endpoint="$5"' "${workflow}" >/dev/null
+grep -F 'replay_token_file="${RUNNER_TEMP}/staging-replay-token.jwt"' "${workflow}" >/dev/null
+grep -F 'STAGING_REPLAY_TOKEN_FILE="${STAGING_REPLAY_TOKEN_FILE}" \' "${workflow}" >/dev/null
+grep -F 'endpoint="$5"' "${workflow}" >/dev/null
+grep -F 'local account_group account_id from to endpoint canonical_base preflight_base preflight_url preflight_body status item_count' "${workflow}" >/dev/null
+grep -F "awk -F= '/auth preflight canonicalized base url=/{value=\$2} END{print value}'" "${workflow}" >/dev/null
+grep -F 'preflight_base="${canonical_base:-${K6_REMOTE_BASE_URL}}"' "${workflow}" >/dev/null
+grep -F 'preflight_url="${preflight_base%/}/${endpoint}?accountId=${account_id}&from=${from}&to=${to}&limit=1"' "${workflow}" >/dev/null
+grep -F -- '--location' "${workflow}" >/dev/null
 grep -F 'if [[ "${K6_WORKLOAD_WEIGHTS}" == *cold_* ]]; then' "${workflow}" >/dev/null
 grep -F 'api/v1/transactions/archive' "${workflow}" >/dev/null
 grep -F 'K6_DURATION="${SOAK_30M_DURATION}"' "${workflow}" >/dev/null

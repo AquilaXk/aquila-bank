@@ -63,6 +63,8 @@ on:
     paths:
       - ".github/workflows/offhost-100m-capacity-prerequisite.yml"
       - "tools/test/run-transaction-100m-capacity-gates.sh"
+      - "tools/test/run-k6-transaction-100m-loadtest.sh"
+      - "tools/test/check-k6-transaction-100m-loadtest.sh"
       - "tools/test/run-offhost-capacity-env-doctor.sh"
       - "tools/test/check-offhost-capacity-env-doctor.sh"
       - "tools/test/offhost-capacity.env.example"
@@ -79,6 +81,10 @@ on:
       - "tools/test/check-oci-offhost-host-metrics-snapshot.sh"
       - "tools/test/run-transaction-100m-offhost-capacity-baseline-report.sh"
       - "tools/test/run-t3micro-defensive-gates-aggregate-report.sh"
+      - "tools/ops/staging-fixture-principal-bootstrap.sh"
+      - "tools/test/run-staging-fixture-principal-bootstrap-contract.sh"
+      - "tools/ops/issue-staging-replay-token.py"
+      - "tools/test/check-issue-staging-replay-token.py"
 
 permissions:
   contents: read
@@ -94,6 +100,15 @@ jobs:
 
       - name: Validate workflow contract
         run: tools/test/check-offhost-capacity-prerequisite-required-gate.sh
+
+      - name: Validate k6 transaction loadtest contract
+        run: tools/test/check-k6-transaction-100m-loadtest.sh
+
+      - name: Validate staging fixture principal bootstrap
+        run: tools/test/run-staging-fixture-principal-bootstrap-contract.sh
+
+      - name: Validate staging replay token issuer
+        run: python3 tools/test/check-issue-staging-replay-token.py
 
       - name: Check off-host host metrics timeline
         run: tools/test/check-oci-offhost-host-metrics-timeline.sh
@@ -198,6 +213,36 @@ jobs:
           CAPACITY_K6_COLD_ACCOUNT_ID="${CAPACITY_K6_COLD_ACCOUNT_ID:-${K6_COLD_ACCOUNT_ID:-910000002}}"
           CAPACITY_K6_COLD_FROM="${CAPACITY_K6_COLD_FROM:-${K6_COLD_FROM:-2026-01-01T00:00:00Z}}"
           CAPACITY_K6_COLD_TO="${CAPACITY_K6_COLD_TO:-${K6_COLD_TO:-2026-01-31T00:00:00Z}}"
+          if [[ -z "${STAGING_REPLAY_TOKEN:-}" && -z "${OCI_A1_BACKEND_ENV_B64:-${BACKEND_ENV_B64:-}}" ]]; then
+            echo "::error::STAGING_REPLAY_TOKEN or OCI_A1_BACKEND_ENV_B64 is required for authenticated off-host capacity gates."
+            exit 1
+          fi
+          if ! resolved_database_url="$(tools/ops/resolve-oci-a1-staging-database-url.sh)"; then
+            echo "::error::Failed to resolve off-host capacity staging database URL."
+            exit 1
+          fi
+          echo "::add-mask::${resolved_database_url}"
+          export STAGING_OCI_A1_DATABASE_URL="${resolved_database_url}"
+          replay_token_file="${RUNNER_TEMP}/staging-replay-token.jwt"
+          if [[ -n "${OCI_A1_BACKEND_ENV_B64:-${BACKEND_ENV_B64:-}}" ]]; then
+            STAGING_REPLAY_SESSION_ID="" \
+            STAGING_REPLAY_DATABASE_URL="${STAGING_OCI_A1_DATABASE_URL}" \
+            STAGING_REPLAY_TOKEN_OUTPUT_FILE="${replay_token_file}" \
+            STAGING_REPLAY_TOKEN_BACKEND_ENV_SOURCE=auto \
+            STAGING_REPLAY_TOKEN_TTL_SECONDS="${CAPACITY_K6_REPLAY_TOKEN_TTL_SECONDS:-7200}" \
+              python3 tools/ops/issue-staging-replay-token.py
+            STAGING_REPLAY_TOKEN="$(<"${replay_token_file}")"
+            export STAGING_REPLAY_TOKEN
+            export STAGING_REPLAY_ALLOW_SESSION_REASSIGN=true
+            echo "::add-mask::${STAGING_REPLAY_TOKEN}"
+          else
+            umask 077
+            printf '%s' "${STAGING_REPLAY_TOKEN}" >"${replay_token_file}"
+          fi
+          HOT_ACCOUNT_ID="${CAPACITY_K6_HOT_ACCOUNT_ID}" \
+          COLD_ACCOUNT_ID="${CAPACITY_K6_COLD_ACCOUNT_ID}" \
+          STAGING_REPLAY_TOKEN_FILE="${replay_token_file}" \
+            tools/ops/staging-fixture-principal-bootstrap.sh
           host_metrics_snapshot_dir="${report_dir}/offhost-host-metrics-snapshot"
           snapshot_generator_tsv="${host_metrics_snapshot_dir}/${CAPACITY_NAME}-generator-host-metrics.tsv"
           snapshot_target_tsv="${host_metrics_snapshot_dir}/${CAPACITY_NAME}-target-host-metrics.tsv"

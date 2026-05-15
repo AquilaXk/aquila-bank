@@ -23,21 +23,42 @@ if [[ "${dispatch_input_count}" -gt 25 ]]; then
 fi
 grep -F "OCI k6 burst reject curve matrix contract" "${workflow}" >/dev/null
 grep -F "tools/test/check-oci-k6-burst-reject-curve-matrix-workflow.sh" "${workflow}" >/dev/null
+grep -F "tools/test/check-k6-transaction-100m-loadtest.sh" "${workflow}" >/dev/null
+grep -F "Validate k6 transaction loadtest contract" "${workflow}" >/dev/null
 grep -F "tools/test/run-oci-k6-burst-reject-curve-matrix.sh" "${workflow}" >/dev/null
 grep -F "tools/test/run-transaction-read-nginx-access-aggregate-artifact.sh" "${workflow}" >/dev/null
 grep -F "tools/test/check-transaction-read-nginx-access-aggregate-artifact.sh" "${workflow}" >/dev/null
+grep -F "tools/ops/staging-fixture-principal-bootstrap.sh" "${workflow}" >/dev/null
+grep -F "tools/test/run-staging-fixture-principal-bootstrap-contract.sh" "${workflow}" >/dev/null
+grep -F "tools/ops/issue-staging-replay-token.py" "${workflow}" >/dev/null
+grep -F "tools/test/check-issue-staging-replay-token.py" "${workflow}" >/dev/null
 grep -F "tools/test/run-k6-transaction-100m-loadtest.sh" "${workflow}" >/dev/null
+grep -F "Validate staging fixture principal bootstrap" "${workflow}" >/dev/null
+grep -F "Validate staging replay token issuer" "${workflow}" >/dev/null
 grep -F "if: github.event_name == 'workflow_dispatch'" "${workflow}" >/dev/null
 grep -F "runs-on: [self-hosted, oci-a1-staging]" "${workflow}" >/dev/null
 grep -F "environment:" "${workflow}" >/dev/null
 grep -F "name: staging" "${workflow}" >/dev/null
 grep -F 'OCI_A1_STAGING_ENV: ${{ secrets.OCI_A1_STAGING_ENV }}' "${workflow}" >/dev/null
 grep -F "Load OCI k6 burst matrix env" "${workflow}" >/dev/null
+grep -F "Resolve OCI A1 staging database URL" "${workflow}" >/dev/null
+grep -F "Issue burst matrix replay token" "${workflow}" >/dev/null
+grep -F "Ensure service auth fixture principal" "${workflow}" >/dev/null
+grep -F 'replay_token_file="${RUNNER_TEMP}/staging-replay-token.jwt"' "${workflow}" >/dev/null
+grep -F 'STAGING_REPLAY_TOKEN_OUTPUT_FILE="${replay_token_file}" \' "${workflow}" >/dev/null
+grep -F 'STAGING_REPLAY_TOKEN_BACKEND_ENV_SOURCE=auto \' "${workflow}" >/dev/null
+grep -F 'python3 tools/ops/issue-staging-replay-token.py' "${workflow}" >/dev/null
+grep -F 'STAGING_REPLAY_TOKEN_FILE="${STAGING_REPLAY_TOKEN_FILE}" \' "${workflow}" >/dev/null
+grep -F "STAGING_REPLAY_TOKEN_OR_OCI_A1_BACKEND_ENV_B64" "${workflow}" >/dev/null
 grep -F 'DEFAULT_K6_DOCKER_CONTEXT="default"' "${workflow}" >/dev/null
 grep -F 'DEFAULT_K6_REMOTE_BASE_URL="${STAGING_BASE_URL:-}"' "${workflow}" >/dev/null
 grep -F 'DEFAULT_K6_REMOTE_PROMETHEUS_RW_SERVER_URL="http://172.17.0.2:9090/api/v1/write"' "${workflow}" >/dev/null
 grep -F 'DEFAULT_K6_NGINX_ACCESS_LOG="/var/log/nginx/access.log"' "${workflow}" >/dev/null
 grep -F "STAGING_REPLAY_TOKEN" "${workflow}" >/dev/null
+grep -F "STAGING_OCI_A1_DATABASE_URL" "${workflow}" >/dev/null
+grep -F "OCI_A1_BACKEND_ENV_B64" "${workflow}" >/dev/null
+grep -F "POSTGRES_CONTAINER_NAME" "${workflow}" >/dev/null
+grep -F "POSTGRES_HOST_BIND" "${workflow}" >/dev/null
 grep -F 'K6_AUTH_TOKEN_ENV_NAME="STAGING_REPLAY_TOKEN"' "${workflow}" >/dev/null
 grep -F 'K6_AUTH_PREFLIGHT="true"' "${workflow}" >/dev/null
 grep -F 'K6_RUN_PURPOSE="capacity"' "${workflow}" >/dev/null
@@ -108,11 +129,16 @@ grep -F 'Authorization: Bearer ${GH_TOKEN}' "${workflow}" >/dev/null
 grep -F 'description "transaction read burst matrix target ${K6_BURST_MATRIX_PROMOTION_TARGET_RATE} passed"' "${workflow}" >/dev/null
 grep -F '"state": "success"' "${workflow}" >/dev/null
 
+resolver_line="$(grep -n "Resolve OCI A1 staging database URL" "${workflow}" | head -1 | cut -d: -f1)"
+issuer_line="$(grep -n "Issue burst matrix replay token" "${workflow}" | head -1 | cut -d: -f1)"
+fixture_principal_line="$(grep -n "Ensure service auth fixture principal" "${workflow}" | head -1 | cut -d: -f1)"
 preflight_line="$(grep -n -- "--auth-preflight-only" "${workflow}" | head -1 | cut -d: -f1)"
 k6_run_line="$(grep -n -- "--no-up --no-deps" "${workflow}" | head -1 | cut -d: -f1)"
 matrix_line="$(grep -n -- "run-oci-k6-burst-reject-curve-matrix.sh" "${workflow}" | tail -1 | cut -d: -f1)"
 admission_deployment_line="$(grep -n -- "Record transaction read admission profile evidence deployment" "${workflow}" | head -1 | cut -d: -f1)"
-if [[ -z "${preflight_line}" || -z "${k6_run_line}" || "${preflight_line}" -ge "${k6_run_line}" ]]; then
+if [[ -z "${resolver_line}" || -z "${issuer_line}" || -z "${fixture_principal_line}" || -z "${preflight_line}" || -z "${k6_run_line}" ||
+  "${resolver_line}" -ge "${issuer_line}" || "${issuer_line}" -ge "${fixture_principal_line}" ||
+  "${fixture_principal_line}" -ge "${preflight_line}" || "${preflight_line}" -ge "${k6_run_line}" ]]; then
   echo "auth preflight must run before authenticated k6 burst run" >&2
   exit 1
 fi

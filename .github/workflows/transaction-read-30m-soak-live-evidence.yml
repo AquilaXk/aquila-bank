@@ -29,7 +29,7 @@ on:
       cold_account_id:
         description: "Cold-labeled account id for k6; default must have fixture rows"
         required: false
-        default: "910000001"
+        default: "910000002"
         type: string
       hot_from:
         description: "Hot range start"
@@ -44,12 +44,12 @@ on:
       cold_from:
         description: "Cold-labeled range start for k6; default matches the fixture-backed range"
         required: false
-        default: "2026-04-01T00:00:00Z"
+        default: "2026-01-01T00:00:00Z"
         type: string
       cold_to:
         description: "Cold-labeled range end for k6; default matches the fixture-backed range"
         required: false
-        default: "2026-04-30T00:00:00Z"
+        default: "2026-01-31T00:00:00Z"
         type: string
       nginx_access_log:
         description: "Optional Nginx access log path on the self-hosted runner"
@@ -78,6 +78,12 @@ on:
       - "tools/test/check-transaction-read-30m-soak-live-evidence-workflow.sh"
       - "tools/test/run-transaction-read-oci-evidence-execution-gate.sh"
       - "tools/test/check-transaction-read-oci-evidence-execution-gate.sh"
+      - "tools/test/run-k6-transaction-100m-loadtest.sh"
+      - "tools/test/check-k6-transaction-100m-loadtest.sh"
+      - "tools/ops/staging-fixture-principal-bootstrap.sh"
+      - "tools/test/run-staging-fixture-principal-bootstrap-contract.sh"
+      - "tools/ops/issue-staging-replay-token.py"
+      - "tools/test/check-issue-staging-replay-token.py"
 
 permissions:
   contents: read
@@ -104,6 +110,15 @@ jobs:
 
       - name: Check 30m soak live evidence workflow
         run: bash tools/test/check-transaction-read-30m-soak-live-evidence-workflow.sh
+
+      - name: Validate k6 transaction loadtest contract
+        run: bash tools/test/check-k6-transaction-100m-loadtest.sh
+
+      - name: Validate staging fixture principal bootstrap
+        run: bash tools/test/run-staging-fixture-principal-bootstrap-contract.sh
+
+      - name: Validate staging replay token issuer
+        run: python3 tools/test/check-issue-staging-replay-token.py
 
   live-evidence:
     name: 30m Soak Live Evidence Gate
@@ -236,7 +251,9 @@ jobs:
           K6_NGINX_ACCESS_LOG="${SOAK_30M_NGINX_ACCESS_LOG_INPUT:-${CAPACITY_K6_NGINX_ACCESS_LOG:-/var/log/nginx/access.log}}"
 
           missing=()
-          [[ -z "${STAGING_REPLAY_TOKEN:-}" ]] && missing+=("STAGING_REPLAY_TOKEN")
+          if [[ -z "${STAGING_REPLAY_TOKEN:-}" && -z "${OCI_A1_BACKEND_ENV_B64:-${BACKEND_ENV_B64:-}}" ]]; then
+            missing+=("STAGING_REPLAY_TOKEN_OR_OCI_A1_BACKEND_ENV_B64")
+          fi
           if [[ -z "${STAGING_OCI_A1_DATABASE_URL:-}" && -z "${STAGING_RDS_DATABASE_URL:-}" ]]; then
             missing+=("STAGING_OCI_A1_DATABASE_URL")
           fi
@@ -249,6 +266,7 @@ jobs:
 
           env_names=(
             OCI_A1_BACKEND_ENV_B64
+            BACKEND_ENV_B64
             POSTGRES_CONTAINER_NAME
             POSTGRES_NETWORK_ALIAS
             POSTGRES_HOST_BIND
@@ -364,6 +382,34 @@ jobs:
           echo "::add-mask::${resolved_database_url}"
           printf 'STAGING_OCI_A1_DATABASE_URL=%s\n' "${resolved_database_url}" >>"${GITHUB_ENV}"
 
+      - name: Issue 30m soak replay token
+        if: env.SOAK_30M_USE_EXISTING_MANIFEST != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          replay_token_file="${RUNNER_TEMP}/staging-replay-token.jwt"
+          if [[ -n "${OCI_A1_BACKEND_ENV_B64:-${BACKEND_ENV_B64:-}}" ]]; then
+            STAGING_REPLAY_SESSION_ID="" \
+            STAGING_REPLAY_DATABASE_URL="${STAGING_OCI_A1_DATABASE_URL:-}" \
+            STAGING_REPLAY_TOKEN_OUTPUT_FILE="${replay_token_file}" \
+            STAGING_REPLAY_TOKEN_BACKEND_ENV_SOURCE=auto \
+            STAGING_REPLAY_TOKEN_TTL_SECONDS="${SOAK_30M_REPLAY_TOKEN_TTL_SECONDS:-7200}" \
+              python3 tools/ops/issue-staging-replay-token.py
+            replay_token="$(<"${replay_token_file}")"
+            printf '::add-mask::%s\n' "${replay_token}"
+            printf 'STAGING_REPLAY_TOKEN=%s\n' "${replay_token}" >>"${GITHUB_ENV}"
+            printf 'STAGING_REPLAY_TOKEN_FILE=%s\n' "${replay_token_file}" >>"${GITHUB_ENV}"
+            printf 'STAGING_REPLAY_ALLOW_SESSION_REASSIGN=true\n' >>"${GITHUB_ENV}"
+            exit 0
+          fi
+          if [[ -z "${STAGING_REPLAY_TOKEN:-}" ]]; then
+            echo "::error::STAGING_REPLAY_TOKEN or OCI_A1_BACKEND_ENV_B64 is required for authenticated OCI k6."
+            exit 1
+          fi
+          umask 077
+          printf '%s' "${STAGING_REPLAY_TOKEN}" >"${replay_token_file}"
+          printf 'STAGING_REPLAY_TOKEN_FILE=%s\n' "${replay_token_file}" >>"${GITHUB_ENV}"
+
       - name: Ensure service auth fixture principal
         if: env.SOAK_30M_USE_EXISTING_MANIFEST != 'true'
         shell: bash
@@ -371,6 +417,7 @@ jobs:
           set -euo pipefail
           HOT_ACCOUNT_ID="${K6_HOT_ACCOUNT_ID}" \
           COLD_ACCOUNT_ID="${K6_COLD_ACCOUNT_ID}" \
+          STAGING_REPLAY_TOKEN_FILE="${STAGING_REPLAY_TOKEN_FILE}" \
             tools/ops/staging-fixture-principal-bootstrap.sh
 
       - name: Capture 30m soak evidence window
@@ -447,18 +494,24 @@ jobs:
           : >"${auth_preflight_log}"
 
           run_account_auth_preflight() {
-            local account_group="$1"
-            local account_id="$2"
-            local from="$3"
-            local to="$4"
-            local endpoint="$5"
+            local account_group account_id from to endpoint canonical_base preflight_base preflight_url preflight_body status item_count
+            account_group="$1"
+            account_id="$2"
+            from="$3"
+            to="$4"
+            endpoint="$5"
             echo "[transaction-read-30m-soak] auth preflight ${account_group} account=${account_id}" >>"${auth_preflight_log}"
             K6_AUTH_PREFLIGHT_PATH="${endpoint}?accountId=${account_id}&from=${from}&to=${to}&limit=1" \
               tools/test/run-k6-transaction-100m-loadtest.sh --auth-preflight-only >>"${auth_preflight_log}" 2>&1
-            preflight_url="${K6_REMOTE_BASE_URL%/}/${endpoint}?accountId=${account_id}&from=${from}&to=${to}&limit=1"
+            canonical_base="$(
+              awk -F= '/auth preflight canonicalized base url=/{value=$2} END{print value}' "${auth_preflight_log}"
+            )"
+            preflight_base="${canonical_base:-${K6_REMOTE_BASE_URL}}"
+            preflight_url="${preflight_base%/}/${endpoint}?accountId=${account_id}&from=${from}&to=${to}&limit=1"
             preflight_body="${report_dir}/auth-preflight-${account_group}-${account_id}.json"
             status="$(
               curl -sS -o "${preflight_body}" -w "%{http_code}" \
+                --location \
                 --max-time 5 \
                 -H "Authorization: Bearer ${STAGING_REPLAY_TOKEN}" \
                 "${preflight_url}" 2>>"${auth_preflight_log}" || true

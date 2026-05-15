@@ -13,6 +13,22 @@ grep -F "pull_request:" "${workflow}" >/dev/null
 grep -F "off-host capacity prerequisite contract" "${workflow}" >/dev/null
 grep -F "if: github.event_name == 'pull_request'" "${workflow}" >/dev/null
 grep -F "tools/test/check-offhost-capacity-prerequisite-required-gate.sh" "${workflow}" >/dev/null
+grep -F "tools/test/run-k6-transaction-100m-loadtest.sh" "${workflow}" >/dev/null
+grep -F "tools/test/check-k6-transaction-100m-loadtest.sh" "${workflow}" >/dev/null
+grep -F "Validate k6 transaction loadtest contract" "${workflow}" >/dev/null
+grep -F "tools/ops/staging-fixture-principal-bootstrap.sh" "${workflow}" >/dev/null
+grep -F "tools/test/run-staging-fixture-principal-bootstrap-contract.sh" "${workflow}" >/dev/null
+grep -F "tools/ops/issue-staging-replay-token.py" "${workflow}" >/dev/null
+grep -F "tools/test/check-issue-staging-replay-token.py" "${workflow}" >/dev/null
+grep -F "Validate staging fixture principal bootstrap" "${workflow}" >/dev/null
+grep -F "Validate staging replay token issuer" "${workflow}" >/dev/null
+grep -F "STAGING_REPLAY_TOKEN or OCI_A1_BACKEND_ENV_B64 is required for authenticated off-host capacity gates." "${workflow}" >/dev/null
+grep -F "Failed to resolve off-host capacity staging database URL." "${workflow}" >/dev/null
+grep -F 'replay_token_file="${RUNNER_TEMP}/staging-replay-token.jwt"' "${workflow}" >/dev/null
+grep -F 'STAGING_REPLAY_TOKEN_OUTPUT_FILE="${replay_token_file}" \' "${workflow}" >/dev/null
+grep -F 'STAGING_REPLAY_TOKEN_BACKEND_ENV_SOURCE=auto \' "${workflow}" >/dev/null
+grep -F 'python3 tools/ops/issue-staging-replay-token.py' "${workflow}" >/dev/null
+grep -F 'STAGING_REPLAY_TOKEN_FILE="${replay_token_file}" \' "${workflow}" >/dev/null
 grep -F "tools/test/check-oci-offhost-host-metrics-snapshot.sh" "${workflow}" >/dev/null
 grep -F "tools/test/run-oci-offhost-host-metrics-timeline.sh" "${workflow}" >/dev/null
 grep -F "tools/test/check-oci-offhost-host-metrics-timeline.sh" "${workflow}" >/dev/null

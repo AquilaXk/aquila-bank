@@ -16,6 +16,12 @@ MIN_RUN_LOCAL_SESSION_ID = 9_000_000_000_000_000_000
 DEFAULT_USER_ID = 55
 DEFAULT_LOGIN_ID = "staging-fixture-user"
 DEFAULT_TTL_SECONDS = 7200
+DEFAULT_BACKEND_CONTAINER_CANDIDATES = (
+    "aquila-bank-backend",
+    "aquila-backend",
+    "aquila-bank-backend-staging",
+    "backend",
+)
 
 
 def fail(message: str) -> None:
@@ -38,7 +44,7 @@ def base64url(value: bytes) -> str:
     return base64.urlsafe_b64encode(value).decode("ascii").rstrip("=")
 
 
-def decode_backend_env() -> str:
+def decode_backend_env() -> tuple[str, str]:
     encoded = os.environ.get("OCI_A1_BACKEND_ENV_B64") or os.environ.get("BACKEND_ENV_B64")
     if not encoded:
         fail("OCI_A1_BACKEND_ENV_B64 is required")
@@ -50,7 +56,7 @@ def decode_backend_env() -> str:
         base64.urlsafe_b64decode,
     ):
         try:
-            return decoder(padded).decode("utf-8")
+            return decoder(padded).decode("utf-8"), "encoded"
         except Exception:
             continue
     fail("Failed to decode OCI_A1_BACKEND_ENV_B64")
@@ -82,6 +88,75 @@ def require_backend_value(values: dict[str, str], name: str) -> str:
     if not value:
         fail(f"{name} is required in OCI_A1_BACKEND_ENV_B64")
     return value
+
+
+def docker_container_candidates() -> list[str]:
+    candidates: list[str] = []
+    explicit = os.environ.get("STAGING_REPLAY_BACKEND_CONTAINER") or os.environ.get(
+        "BACKEND_CONTAINER_NAME", ""
+    )
+    if explicit:
+        candidates.append(explicit)
+    candidates.extend(DEFAULT_BACKEND_CONTAINER_CANDIDATES)
+
+    try:
+        result = subprocess.run(
+            ["docker", "ps", "--format", "{{.Names}}"],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+    except FileNotFoundError:
+        result = None
+    if result is not None and result.returncode == 0:
+        for line in result.stdout.splitlines():
+            name = line.strip()
+            if name and "backend" in name and name not in candidates:
+                candidates.append(name)
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        if candidate and candidate not in seen:
+            seen.add(candidate)
+            deduped.append(candidate)
+    return deduped
+
+
+def live_docker_backend_env() -> tuple[str, str] | None:
+    for container in docker_container_candidates():
+        try:
+            result = subprocess.run(
+                ["docker", "exec", container, "env"],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+        except FileNotFoundError:
+            return None
+        if result.returncode != 0:
+            continue
+        values = parse_backend_env(result.stdout)
+        if values.get("SECURITY_JWT_SECRET"):
+            return result.stdout, f"live-docker:{container}"
+    return None
+
+
+def resolve_backend_env() -> tuple[str, str]:
+    source = os.environ.get("STAGING_REPLAY_TOKEN_BACKEND_ENV_SOURCE", "encoded").strip().lower()
+    if source not in {"encoded", "live-docker", "auto"}:
+        fail("STAGING_REPLAY_TOKEN_BACKEND_ENV_SOURCE must be encoded, live-docker, or auto")
+
+    if source in {"live-docker", "auto"}:
+        live = live_docker_backend_env()
+        if live is not None:
+            return live
+        if source == "live-docker":
+            fail("Failed to read SECURITY_JWT_SECRET from live backend Docker container")
+
+    return decode_backend_env()
 
 
 def random_session_id() -> int:
@@ -178,7 +253,8 @@ def main() -> None:
     if not output_path.parent.is_dir():
         fail("STAGING_REPLAY_TOKEN_OUTPUT_FILE parent directory must exist")
 
-    backend_values = parse_backend_env(decode_backend_env())
+    backend_env_text, backend_env_source = resolve_backend_env()
+    backend_values = parse_backend_env(backend_env_text)
     secret = require_backend_value(backend_values, "SECURITY_JWT_SECRET")
     issuer = backend_values.get("SECURITY_JWT_ISSUER", "")
     user_id = positive_int("STAGING_REPLAY_USER_ID", DEFAULT_USER_ID)
@@ -194,6 +270,7 @@ def main() -> None:
     print(
         "[issue-staging-replay-token] wrote "
         f"token_file={output_path} user_id={user_id} "
+        f"backend_env_source={backend_env_source} "
         f"session_id_source={session_id_source} ttl_seconds={ttl_seconds}"
     )
 

@@ -26,6 +26,8 @@ if [[ "${dispatch_input_count}" -gt 25 ]]; then
 fi
 grep -F "OCI k6 service auth token contract" "${workflow}" >/dev/null
 grep -F "tools/test/check-oci-k6-service-auth-token-workflow.sh" "${workflow}" >/dev/null
+grep -F "tools/test/check-k6-transaction-100m-loadtest.sh" "${workflow}" >/dev/null
+grep -F "Validate k6 transaction loadtest contract" "${workflow}" >/dev/null
 grep -F "tools/test/check-transaction-read-429-source-gate.sh" "${workflow}" >/dev/null
 grep -F "tools/test/run-transaction-read-429-source-gate.sh" "${workflow}" >/dev/null
 grep -F "tools/test/check-oci-k6-service-auth-arrival16-evidence-gate.sh" "${workflow}" >/dev/null
@@ -34,9 +36,12 @@ grep -F "tools/test/check-transaction-read-promotion-pacing-contract.sh" "${work
 grep -F "tools/test/run-transaction-read-promotion-pacing-contract.sh" "${workflow}" >/dev/null
 grep -F "tools/ops/staging-fixture-principal-bootstrap.sh" "${workflow}" >/dev/null
 grep -F "tools/test/run-staging-fixture-principal-bootstrap-contract.sh" "${workflow}" >/dev/null
+grep -F "tools/ops/issue-staging-replay-token.py" "${workflow}" >/dev/null
+grep -F "tools/test/check-issue-staging-replay-token.py" "${workflow}" >/dev/null
 grep -F "Validate promotion pacing contract" "${workflow}" >/dev/null
 grep -F "Validate transaction read 429 source gate" "${workflow}" >/dev/null
 grep -F "Validate service auth arrival16 evidence gate" "${workflow}" >/dev/null
+grep -F "Validate staging replay token issuer" "${workflow}" >/dev/null
 grep -F "if: github.event_name == 'workflow_dispatch'" "${workflow}" >/dev/null
 grep -F "runs-on: [self-hosted, oci-a1-staging]" "${workflow}" >/dev/null
 grep -F "environment:" "${workflow}" >/dev/null
@@ -56,6 +61,7 @@ grep -F 'if [[ "${K6_DOCKER_CONTEXT}" == "default" ]]; then' "${workflow}" >/dev
 grep -F 'K6_REMOTE_WORKDIR="${GITHUB_WORKSPACE}"' "${workflow}" >/dev/null
 grep -F 'K6_REMOTE_WORKDIR="${CAPACITY_K6_REMOTE_WORKDIR:-${GITHUB_WORKSPACE}}"' "${workflow}" >/dev/null
 grep -F "STAGING_REPLAY_TOKEN" "${workflow}" >/dev/null
+grep -F "STAGING_REPLAY_TOKEN_OR_OCI_A1_BACKEND_ENV_B64" "${workflow}" >/dev/null
 grep -F 'K6_AUTH_TOKEN_ENV_NAME="STAGING_REPLAY_TOKEN"' "${workflow}" >/dev/null
 grep -F 'K6_AUTH_PREFLIGHT="true"' "${workflow}" >/dev/null
 grep -F "OCI_A1_BACKEND_ENV_B64" "${workflow}" >/dev/null
@@ -131,8 +137,15 @@ grep -F 'K6_NGINX_LOG_SINCE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"' "${workflow}" >/
 grep -F "Resolve OCI A1 staging database URL" "${workflow}" >/dev/null
 grep -F 'resolved_database_url="$(tools/ops/resolve-oci-a1-staging-database-url.sh)"' "${workflow}" >/dev/null
 grep -F 'printf '\''STAGING_OCI_A1_DATABASE_URL=%s\n'\'' "${resolved_database_url}" >>"${GITHUB_ENV}"' "${workflow}" >/dev/null
+grep -F "Issue service auth replay token" "${workflow}" >/dev/null
+grep -F 'STAGING_REPLAY_TOKEN_OUTPUT_FILE="${replay_token_file}" \' "${workflow}" >/dev/null
+grep -F 'STAGING_REPLAY_TOKEN_BACKEND_ENV_SOURCE=auto \' "${workflow}" >/dev/null
+grep -F 'python3 tools/ops/issue-staging-replay-token.py' "${workflow}" >/dev/null
+grep -F 'STAGING_REPLAY_TOKEN_FILE=%s\n' "${workflow}" >/dev/null
 grep -F "Ensure service auth fixture principal" "${workflow}" >/dev/null
 grep -F 'STAGING_OCI_A1_DATABASE_URL' "${workflow}" >/dev/null
+grep -F 'replay_token_file="${RUNNER_TEMP}/staging-replay-token.jwt"' "${workflow}" >/dev/null
+grep -F 'STAGING_REPLAY_TOKEN_FILE="${STAGING_REPLAY_TOKEN_FILE}" \' "${workflow}" >/dev/null
 grep -F 'HOT_ACCOUNT_IDS="${K6_HOT_ACCOUNT_IDS:-${K6_HOT_ACCOUNT_ID}}" \' "${workflow}" >/dev/null
 grep -F 'COLD_ACCOUNT_IDS="${K6_COLD_ACCOUNT_IDS:-${K6_COLD_ACCOUNT_ID}}" \' "${workflow}" >/dev/null
 grep -F "tools/ops/staging-fixture-principal-bootstrap.sh" "${workflow}" >/dev/null
@@ -146,9 +159,12 @@ grep -F 'K6_AUTH_PREFLIGHT_PATH="${endpoint}?accountId=${account_id}&from=${from
 grep -F 'run_account_auth_preflight hot "${K6_HOT_ACCOUNT_IDS:-${K6_HOT_ACCOUNT_ID}}" "${K6_HOT_FROM}" "${K6_HOT_TO}" "api/v1/transactions"' "${workflow}" >/dev/null
 grep -F 'run_account_auth_preflight cold "${K6_COLD_ACCOUNT_IDS:-${K6_COLD_ACCOUNT_ID}}" "${K6_COLD_FROM}" "${K6_COLD_TO}" "api/v1/transactions/archive"' "${workflow}" >/dev/null
 grep -F "tools/test/run-k6-transaction-100m-loadtest.sh --auth-preflight-only" "${workflow}" >/dev/null
-grep -F 'preflight_url="${K6_REMOTE_BASE_URL%/}/${endpoint}?accountId=${account_id}&from=${from}&to=${to}&limit=1"' "${workflow}" >/dev/null
+grep -F "auth preflight canonicalized base url=" "${workflow}" >/dev/null
+grep -F 'preflight_base="${canonical_base:-${K6_REMOTE_BASE_URL}}"' "${workflow}" >/dev/null
+grep -F 'preflight_url="${preflight_base%/}/${endpoint}?accountId=${account_id}&from=${from}&to=${to}&limit=1"' "${workflow}" >/dev/null
 grep -F 'preflight_body="${report_dir}/auth-preflight-${account_group}-${account_id}.json"' "${workflow}" >/dev/null
 grep -F 'curl -sS -o "${preflight_body}" -w "%{http_code}"' "${workflow}" >/dev/null
+grep -F -- '--location' "${workflow}" >/dev/null
 grep -F -- '-H "Authorization: Bearer ${STAGING_REPLAY_TOKEN}"' "${workflow}" >/dev/null
 grep -F 'items = data.get("items")' "${workflow}" >/dev/null
 grep -F 'auth item preflight failed' "${workflow}" >/dev/null
@@ -207,12 +223,14 @@ grep -F "tools/test/run-oci-k6-service-auth-arrival16-evidence-gate.sh" "${workf
 grep -F "actions/upload-artifact@" "${workflow}" >/dev/null
 grep -F "oci-k6-service-auth-token" "${workflow}" >/dev/null
 
-fixture_principal_line="$(grep -n "Ensure service auth fixture principal" "${workflow}" | head -1 | cut -d: -f1)"
 resolver_line="$(grep -n "Resolve OCI A1 staging database URL" "${workflow}" | head -1 | cut -d: -f1)"
+issuer_line="$(grep -n "Issue service auth replay token" "${workflow}" | head -1 | cut -d: -f1)"
+fixture_principal_line="$(grep -n "Ensure service auth fixture principal" "${workflow}" | head -1 | cut -d: -f1)"
 auth_preflight_line="$(grep -n -- "--auth-preflight-only" "${workflow}" | head -1 | cut -d: -f1)"
 k6_run_line="$(grep -n -- "--no-up --no-deps" "${workflow}" | head -1 | cut -d: -f1)"
-if [[ -z "${resolver_line}" || -z "${fixture_principal_line}" || -z "${auth_preflight_line}" || -z "${k6_run_line}" ||
-  "${resolver_line}" -ge "${fixture_principal_line}" || "${fixture_principal_line}" -ge "${auth_preflight_line}" || "${auth_preflight_line}" -ge "${k6_run_line}" ]]; then
+if [[ -z "${resolver_line}" || -z "${issuer_line}" || -z "${fixture_principal_line}" || -z "${auth_preflight_line}" || -z "${k6_run_line}" ||
+  "${resolver_line}" -ge "${issuer_line}" || "${issuer_line}" -ge "${fixture_principal_line}" ||
+  "${fixture_principal_line}" -ge "${auth_preflight_line}" || "${auth_preflight_line}" -ge "${k6_run_line}" ]]; then
   echo "auth preflight must run before authenticated k6 capacity" >&2
   exit 1
 fi
