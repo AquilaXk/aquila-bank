@@ -78,7 +78,7 @@ export function BankHeader({
           <button
             aria-controls="service-map-panel"
             aria-expanded={serviceMapOpen}
-            className="utility-link service-map"
+            className="utility-link service-map spacing-safe-service-map"
             onClick={onServiceMapToggle}
             type="button"
           >
@@ -94,7 +94,11 @@ export function BankHeader({
             검색
           </button>
           <div
-            className={mobileSearchOpen ? "utility-search open" : "utility-search"}
+            className={
+              mobileSearchOpen
+                ? "utility-search spacing-safe-search open"
+                : "utility-search spacing-safe-search"
+            }
             id="utility-search-panel"
           >
             <label className="search-field">
@@ -235,7 +239,10 @@ export function SideMenu({
   onMove: MoveHandler;
 }) {
   return (
-    <aside className="side-menu compact-menu mobile-compact-side-menu" aria-label="개인뱅킹 메뉴">
+    <aside
+      className="side-menu compact-menu mobile-compact-side-menu spacing-safe-side-menu"
+      aria-label="개인뱅킹 메뉴"
+    >
       <div className="side-title">개인뱅킹</div>
       <a className="mobile-work-jump" href="#bank-work-area">
         모바일 업무 바로가기
