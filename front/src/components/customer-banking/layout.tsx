@@ -43,6 +43,40 @@ export function BankHeader({
 }) {
   const isAuthenticated = Boolean(session);
   const hasSearchQuery = searchQuery.trim().length > 0;
+  const topNavItems: Array<{
+    id: string;
+    label: string;
+    section: MenuSection;
+    activeSections: MenuSection[];
+  }> = [
+    {
+      id: "personal",
+      label: "개인",
+      section: "dashboard",
+      activeSections: ["dashboard", "accounts", "transfer", "transactions"],
+    },
+    {
+      id: "business",
+      label: "기업",
+      section: "enterpriseServices",
+      activeSections: ["enterpriseServices"],
+    },
+    {
+      id: "certificate",
+      label: "인증센터",
+      section: "security",
+      activeSections: ["security", "securityHub"],
+    },
+    {
+      id: "support",
+      label: "고객센터",
+      section: "supportCenter",
+      activeSections: ["supportCenter", "notifications"],
+    },
+  ];
+  const activeTopNavId =
+    topNavItems.find((item) => item.activeSections.includes(activeSection))?.id ??
+    "personal";
 
   function moveFromServiceMap(section: MenuSection) {
     onServiceMapToggle();
@@ -52,27 +86,26 @@ export function BankHeader({
   return (
     <header className="bank-header">
       <div className="utility-bar mobile-compact-utility" aria-label="상단 유틸리티">
-        <div className="utility-left">
-          <button className="utility-link active" type="button">
-            개인
-          </button>
-          <button className="utility-link" type="button">
-            기업
-          </button>
-          <button
-            className="utility-link"
-            onClick={() => onMove("security")}
-            type="button"
-          >
-            인증센터
-          </button>
-          <button
-            className="utility-link"
-            onClick={() => onMove("supportCenter")}
-            type="button"
-          >
-            고객센터
-          </button>
+        <div className="utility-left top-channel-nav">
+          {topNavItems.map((item) => {
+            const isActive = activeTopNavId === item.id;
+
+            return (
+              <button
+                aria-current={isActive ? "page" : undefined}
+                className={
+                  isActive
+                    ? "utility-link top-channel-link active"
+                    : "utility-link top-channel-link"
+                }
+                key={item.id}
+                onClick={() => onMove(item.section)}
+                type="button"
+              >
+                {item.label}
+              </button>
+            );
+          })}
         </div>
         <div className="utility-right">
           <button
