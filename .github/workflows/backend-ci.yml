@@ -8,8 +8,10 @@ on:
       - "back/**"
       - "tools/ci/**"
       - "tools/test/check-flyway-backward-compatible-migrations.sh"
+      - "tools/test/check-transaction-read-model-chunk-lifecycle.sh"
       - "tools/test/run-transaction-query-plan-regression-gate.sh"
       - "tools/test/with-resource-lock.sh"
+      - "tools/ops/transaction-read-model-chunk-lifecycle.sh"
       - ".github/workflows/backend-ci.yml"
 
 permissions:
@@ -68,6 +70,11 @@ jobs:
         working-directory: ${{ github.workspace }}
         shell: bash
         run: tools/test/check-flyway-backward-compatible-migrations.sh
+
+      - name: Run transaction read model chunk lifecycle contract
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        run: bash tools/test/check-transaction-read-model-chunk-lifecycle.sh
 
       - name: Run backend fast check
         run: ./gradlew ciFastCheck --no-daemon --stacktrace
