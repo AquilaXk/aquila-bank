@@ -16,6 +16,16 @@ export type AlertMessage = {
   text: string;
 };
 
+export type ServiceSearchItem = {
+  id: string;
+  label: string;
+  group: string;
+  section: MenuSection;
+  description: string;
+  keywords: string[];
+  requiresSession: boolean;
+};
+
 export type CustomerApplicationSubmitInput = {
   applicationType: CustomerApplicationType;
   accountId?: string;

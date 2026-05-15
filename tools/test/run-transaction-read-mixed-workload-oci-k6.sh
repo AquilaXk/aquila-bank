@@ -89,6 +89,7 @@ read_429_source_ref="${generated_dir}/${name}-read-429-source.tsv"
 read_bucket_ref="${generated_dir}/${name}-read-buckets.tsv"
 write_status_ref="${generated_dir}/${name}-write-status.tsv"
 write_429_source_ref="${generated_dir}/${name}-write-429-source.tsv"
+idempotency_evidence_ref="${generated_dir}/${name}-idempotency.tsv"
 runner_log_ref="${generated_dir}/${name}-runner.log"
 failure_env="${output_dir}/${name}-oci-mixed-failure.env"
 failure_md="${output_dir}/${name}-oci-mixed-failure.md"
@@ -271,6 +272,8 @@ write_fixture_summary() {
     "aquila_mixed_write_other_unexpected_count": {"values": {"count": 0}},
     "aquila_mixed_write_429_rate": {"values": {"rate": 0.01}},
     "aquila_mixed_write_accepted_ratio": {"values": {"rate": 0.875}},
+    "aquila_mixed_write_idempotency_replay_count": {"values": {"count": 3}},
+    "aquila_mixed_write_idempotency_conflict_count": {"values": {"count": 0}},
     "aquila_mixed_auth_count": {"values": {"count": 16}},
     "aquila_mixed_auth_duration_ms": {"values": {"p(95)": 42, "p(99)": 60, "p(99.9)": 70, "max": 75}},
     "aquila_mixed_notification_count": {"values": {"count": 16}},
@@ -318,7 +321,7 @@ write_component_artifacts() {
   local cold_count cold_p95 cold_p999 cold_edge_429_rate cold_backend_429_count cold_unknown_429_count
   local archive_count archive_p95 archive_p999 archive_edge_429_rate archive_backend_429_count archive_unknown_429_count
   local write_p95 write_2xx_count write_429_count write_edge_429_count write_backend_429_count write_unknown_429_count write_unexpected_status_count
-  local write_accepted_ratio
+  local write_accepted_ratio idempotency_replay_count idempotency_conflict_count
   local write_401_count write_403_count write_409_count write_422_count write_other_unexpected_count
   local auth_p95 notification_p95 outbox_lag_max
 
@@ -365,6 +368,8 @@ write_component_artifacts() {
   write_409_count="$(metric_count aquila_mixed_write_409_count)"
   write_422_count="$(metric_count aquila_mixed_write_422_count)"
   write_other_unexpected_count="$(metric_count aquila_mixed_write_other_unexpected_count)"
+  idempotency_replay_count="$(metric_count aquila_mixed_write_idempotency_replay_count)"
+  idempotency_conflict_count="$(metric_count aquila_mixed_write_idempotency_conflict_count)"
   auth_p95="$(metric_value aquila_mixed_auth_duration_ms "p(95)" "0")"
   notification_p95="$(metric_value aquila_mixed_notification_duration_ms "p(95)" "0")"
   edge_429_rate="$(metric_value aquila_mixed_read_edge_429_rate "rate" "0")"
@@ -455,6 +460,10 @@ TSV
   printf "%s\tedge\t%s\n" "${run_id}" "${write_edge_429_count}" >>"${write_429_source_ref}"
   printf "%s\tbackend\t%s\n" "${run_id}" "${write_backend_429_count}" >>"${write_429_source_ref}"
   printf "%s\tunknown\t%s\n" "${run_id}" "${write_unknown_429_count}" >>"${write_429_source_ref}"
+  cat >"${idempotency_evidence_ref}" <<'TSV'
+run_id	replay_count	conflict_count
+TSV
+  printf "%s\t%s\t%s\n" "${run_id}" "${idempotency_replay_count}" "${idempotency_conflict_count}" >>"${idempotency_evidence_ref}"
 
   {
     printf "MIXED_WORKLOAD_RUNNER_ENV_FORMAT=%q\n" "oci-mixed-v1"
@@ -474,6 +483,7 @@ TSV
     printf "MIXED_WORKLOAD_RUNNER_READ_BUCKET_REF=%q\n" "${read_bucket_ref}"
     printf "MIXED_WORKLOAD_RUNNER_WRITE_STATUS_REF=%q\n" "${write_status_ref}"
     printf "MIXED_WORKLOAD_RUNNER_WRITE_429_SOURCE_REF=%q\n" "${write_429_source_ref}"
+    printf "MIXED_WORKLOAD_RUNNER_IDEMPOTENCY_EVIDENCE_REF=%q\n" "${idempotency_evidence_ref}"
     printf "MIXED_WORKLOAD_RUNNER_EDGE_429_RATE=%q\n" "${edge_429_rate}"
     printf "MIXED_WORKLOAD_RUNNER_BACKEND_429_COUNT=%q\n" "${backend_429_count}"
     printf "MIXED_WORKLOAD_RUNNER_UNKNOWN_429_COUNT=%q\n" "${unknown_429_count}"
@@ -485,6 +495,8 @@ TSV
     printf "MIXED_WORKLOAD_RUNNER_WRITE_UNEXPECTED_STATUS_COUNT=%q\n" "${write_unexpected_status_count}"
     printf "MIXED_WORKLOAD_RUNNER_WRITE_ACCEPTED_RATIO=%q\n" "${write_accepted_ratio}"
     printf "MIXED_WORKLOAD_RUNNER_MIN_WRITE_ACCEPTED_RATIO=%q\n" "${write_accepted_ratio_threshold}"
+    printf "MIXED_WORKLOAD_RUNNER_IDEMPOTENCY_REPLAY_COUNT=%q\n" "${idempotency_replay_count}"
+    printf "MIXED_WORKLOAD_RUNNER_IDEMPOTENCY_CONFLICT_COUNT=%q\n" "${idempotency_conflict_count}"
     printf "MIXED_WORKLOAD_RUNNER_READ_BUCKETS=%q\n" "hot,cold,archive"
     printf "MIXED_WORKLOAD_RUNNER_READ_HOT_P999_MS=%q\n" "${hot_p999}"
     printf "MIXED_WORKLOAD_RUNNER_READ_COLD_P999_MS=%q\n" "${cold_p999}"

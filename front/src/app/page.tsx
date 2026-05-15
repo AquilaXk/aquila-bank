@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { AccountsSection } from "@/components/customer-banking/sections/accounts-section";
 import { BankHeader, RightRail, SideMenu } from "@/components/customer-banking/layout";
 import { DashboardSection } from "@/components/customer-banking/sections/dashboard-section";
@@ -12,7 +12,8 @@ import { SupportCenterSection } from "@/components/customer-banking/sections/sup
 import { TransactionsSection } from "@/components/customer-banking/sections/transactions-section";
 import { TransferSection } from "@/components/customer-banking/sections/transfer-section";
 import { useCustomerBanking } from "@/hooks/use-customer-banking";
-import type { MenuSection } from "@/lib/customer-banking/types";
+import { searchCustomerBankingServices } from "@/lib/customer-banking/search";
+import type { MenuSection, ServiceSearchItem } from "@/lib/customer-banking/types";
 
 const publicSections: MenuSection[] = ["dashboard", "security"];
 
@@ -116,9 +117,20 @@ export default function HomePage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [serviceMapOpen, setServiceMapOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  const searchResults = useMemo(
+    () => searchCustomerBankingServices(searchQuery),
+    [searchQuery],
+  );
 
   function moveToSection(section: MenuSection) {
     setActiveSection(section);
+  }
+
+  function selectSearchResult(item: ServiceSearchItem) {
+    setSearchQuery("");
+    setServiceMapOpen(false);
+    setMobileSearchOpen(false);
+    moveToSection(item.section);
   }
 
   function renderLoginRequiredWork() {
@@ -174,7 +186,9 @@ export default function HomePage() {
         onMobileSearchToggle={() => setMobileSearchOpen((value) => !value)}
         onMove={moveToSection}
         onSearchChange={setSearchQuery}
+        onSearchSelect={selectSearchResult}
         onServiceMapToggle={() => setServiceMapOpen((value) => !value)}
+        searchResults={searchResults}
       />
 
       <div

@@ -65,6 +65,12 @@ export const mixedWrite422Count = new Counter("aquila_mixed_write_422_count");
 export const mixedWriteOtherUnexpectedCount = new Counter("aquila_mixed_write_other_unexpected_count");
 export const mixedWrite429Rate = new Rate("aquila_mixed_write_429_rate");
 export const mixedWriteAcceptedRatio = new Rate("aquila_mixed_write_accepted_ratio");
+export const mixedWriteIdempotencyReplayCount = new Counter(
+  "aquila_mixed_write_idempotency_replay_count",
+);
+export const mixedWriteIdempotencyConflictCount = new Counter(
+  "aquila_mixed_write_idempotency_conflict_count",
+);
 export const mixedAuthCount = new Counter("aquila_mixed_auth_count");
 export const mixedAuthDurationMs = new Trend("aquila_mixed_auth_duration_ms", true);
 export const mixedNotificationCount = new Counter("aquila_mixed_notification_count");
@@ -127,6 +133,7 @@ export const options = {
     checks: ["rate==1"],
     aquila_mixed_5xx_count: ["count==0"],
     aquila_mixed_write_accepted_ratio: [`rate>=${writeAcceptedRatioThreshold}`],
+    aquila_mixed_write_idempotency_replay_count: ["count>0"],
   },
 };
 
@@ -337,12 +344,14 @@ export function transferWrite() {
     currencyCode: writeCurrencyCode,
     summary: "mixed workload write pressure",
   });
+  const idempotencyKey = mixedWriteIdempotencyKey(__VU, __ITER);
+  const writeHeaders = {
+    ...headers(writeSourceAccountId, "k6-mixed-write"),
+    "Content-Type": "application/json",
+    "Idempotency-Key": idempotencyKey,
+  };
   const response = http.post(`${baseUrl}/api/v1/transfers`, body, {
-    headers: {
-      ...headers(writeSourceAccountId, "k6-mixed-write"),
-      "Content-Type": "application/json",
-      "Idempotency-Key": mixedWriteIdempotencyKey(__VU, __ITER),
-    },
+    headers: writeHeaders,
   });
 
   const accepted = response.status >= 200 && response.status < 300;
@@ -380,6 +389,19 @@ export function transferWrite() {
   }
   mixedWrite429Rate.add(boundedRejected);
   recordFiveXx(response);
+
+  if (accepted) {
+    const replayResponse = http.post(`${baseUrl}/api/v1/transfers`, body, {
+      headers: writeHeaders,
+    });
+    if (replayResponse.status >= 200 && replayResponse.status < 300) {
+      mixedWriteIdempotencyReplayCount.add(1);
+    }
+    if (replayResponse.status === 409) {
+      mixedWriteIdempotencyConflictCount.add(1);
+    }
+    recordFiveXx(replayResponse);
+  }
 
   check(response, {
     "transfer write status is 2xx or bounded 429": (r) =>
@@ -480,6 +502,8 @@ function markdownSummary(data) {
 | write 2xx count | ${metricValue(data, "aquila_mixed_write_2xx_count", "count")} |
 | write 429 count | ${metricValue(data, "aquila_mixed_write_429_count", "count")} |
 | write accepted ratio | ${metricValue(data, "aquila_mixed_write_accepted_ratio", "rate")} |
+| write idempotency replay count | ${metricValue(data, "aquila_mixed_write_idempotency_replay_count", "count")} |
+| write idempotency conflict count | ${metricValue(data, "aquila_mixed_write_idempotency_conflict_count", "count")} |
 | write edge 429 count | ${metricValue(data, "aquila_mixed_write_edge_429_count", "count")} |
 | write backend 429 count | ${metricValue(data, "aquila_mixed_write_backend_429_count", "count")} |
 | write unknown 429 count | ${metricValue(data, "aquila_mixed_write_unknown_429_count", "count")} |

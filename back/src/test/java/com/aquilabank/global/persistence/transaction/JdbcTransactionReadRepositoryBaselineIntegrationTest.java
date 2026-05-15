@@ -248,6 +248,51 @@ class JdbcTransactionReadRepositoryBaselineIntegrationTest extends PostgresConta
   }
 
   @Test
+  void mixedFilterCursorPageKeepsStatusCursorIndexWithoutSeqScanOrSort() {
+    TransactionQuery firstPageQuery =
+        new TransactionQuery(
+            baselineWindow.hotAccountId(),
+            baselineWindow.from(),
+            baselineWindow.to(),
+            50,
+            null,
+            TransactionStatus.BOOKED,
+            TransactionDirection.DEBIT,
+            1300L,
+            1300L,
+            null);
+    TransactionSlice firstSlice = repository.fetch(firstPageQuery);
+
+    TransactionQuery nextPageQuery =
+        new TransactionQuery(
+            baselineWindow.hotAccountId(),
+            baselineWindow.from(),
+            baselineWindow.to(),
+            50,
+            firstSlice.nextCursor(),
+            TransactionStatus.BOOKED,
+            TransactionDirection.DEBIT,
+            1300L,
+            1300L,
+            null);
+
+    TransactionSlice nextSlice = repository.fetch(nextPageQuery);
+    TransactionExplainPlan plan = explain(nextPageQuery);
+
+    assertThat(firstSlice.nextCursor()).isNotNull();
+    assertThat(nextSlice.items()).hasSize(50);
+    assertThat(nextSlice.items())
+        .allMatch(
+            item ->
+                item.status() == TransactionStatus.BOOKED
+                    && item.direction() == TransactionDirection.DEBIT
+                    && item.amountMinor() == 1300L);
+    assertThat(plan.usesIndex("idx_transaction_read_model_account_status_cursor")).isTrue();
+    assertThat(plan.hasNodeType("Seq Scan")).isFalse();
+    assertThat(plan.hasNodeType("Sort")).isFalse();
+  }
+
+  @Test
   void transactionReferenceExactLookupUsesReferenceCursorIndex() {
     TransactionQuery query =
         new TransactionQuery(

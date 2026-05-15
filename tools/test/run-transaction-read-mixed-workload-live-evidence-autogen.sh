@@ -71,6 +71,8 @@ write_2xx_count="1"
 write_unexpected_status_count="0"
 write_accepted_ratio="1"
 min_write_accepted_ratio="0.80"
+idempotency_replay_count="1"
+idempotency_conflict_count="0"
 runner_evidence_applied="false"
 
 k6_summary_ref="${generated_dir}/${name}-k6-summary.json"
@@ -85,6 +87,7 @@ outbox_lag_ref="${generated_dir}/${name}-outbox-lag.tsv"
 read_429_source_ref="${generated_dir}/${name}-read-429-source.tsv"
 read_bucket_ref="${generated_dir}/${name}-read-buckets.tsv"
 write_status_ref="${generated_dir}/${name}-write-status.tsv"
+idempotency_evidence_ref="${generated_dir}/${name}-idempotency.tsv"
 runner_log_ref="${generated_dir}/${name}-runner.log"
 
 case "${autogen_mode}" in
@@ -193,6 +196,7 @@ apply_runner_evidence_env() {
   read_429_source_ref="${MIXED_WORKLOAD_RUNNER_READ_429_SOURCE_REF:-${read_429_source_ref}}"
   read_bucket_ref="${MIXED_WORKLOAD_RUNNER_READ_BUCKET_REF:-${read_bucket_ref}}"
   write_status_ref="${MIXED_WORKLOAD_RUNNER_WRITE_STATUS_REF:-${write_status_ref}}"
+  idempotency_evidence_ref="${MIXED_WORKLOAD_RUNNER_IDEMPOTENCY_EVIDENCE_REF:-${idempotency_evidence_ref}}"
   edge_429_rate="${MIXED_WORKLOAD_RUNNER_EDGE_429_RATE:-${edge_429_rate}}"
   backend_429_count="${MIXED_WORKLOAD_RUNNER_BACKEND_429_COUNT:-${backend_429_count}}"
   unknown_429_count="${MIXED_WORKLOAD_RUNNER_UNKNOWN_429_COUNT:-${unknown_429_count}}"
@@ -214,6 +218,8 @@ apply_runner_evidence_env() {
   write_unexpected_status_count="${MIXED_WORKLOAD_RUNNER_WRITE_UNEXPECTED_STATUS_COUNT:-${write_unexpected_status_count}}"
   write_accepted_ratio="${MIXED_WORKLOAD_RUNNER_WRITE_ACCEPTED_RATIO:-${write_accepted_ratio}}"
   min_write_accepted_ratio="${MIXED_WORKLOAD_RUNNER_MIN_WRITE_ACCEPTED_RATIO:-${min_write_accepted_ratio}}"
+  idempotency_replay_count="${MIXED_WORKLOAD_RUNNER_IDEMPOTENCY_REPLAY_COUNT:-${idempotency_replay_count}}"
+  idempotency_conflict_count="${MIXED_WORKLOAD_RUNNER_IDEMPOTENCY_CONFLICT_COUNT:-${idempotency_conflict_count}}"
   outbox_lag_max="${MIXED_WORKLOAD_RUNNER_OUTBOX_LAG_MAX:-${outbox_lag_max}}"
   runner_evidence_applied="true"
 }
@@ -307,6 +313,10 @@ status	count
 422	0
 other_unexpected	0
 TSV
+  cat >"${idempotency_evidence_ref}" <<'TSV'
+run_id	replay_count	conflict_count
+TSV
+  printf "%s\t%s\t%s\n" "${run_id}" "${idempotency_replay_count}" "${idempotency_conflict_count}" >>"${idempotency_evidence_ref}"
   if [[ ! -f "${runner_log_ref}" ]]; then
     printf "runner=%s\nmode=%s\n" "${runner}" "${autogen_mode}" >"${runner_log_ref}"
   fi
@@ -314,8 +324,8 @@ TSV
 
 write_manifest() {
   cat >"${manifest_tsv}" <<TSV
-scenario	run_id	executed_at_utc	duration_min	source_ips	run_script	k6_summary_ref	nginx_access_ref	spring_metrics_ref	hikari_log_ref	postgres_wait_ref	deploy_event_ref	cache_state_ref	timeline_ref	edge_429_rate	backend_429_count	unknown_429_count	five_xx_count	nginx_499_count	hikari_validation_warnings	db_pool_pending_max	p999_ms	postgres_checkpoint_ref	postgres_temp_file_ref	nginx_upstream_latency_ref	workload_mix_ref	workload_component_ref	outbox_lag_ref	outbox_lag_max	deploy_retry_contract_ref	deploy_reconnect_success_count	deploy_499_budget_ref	p95_ms	p99_ms	max_ms	postgres_checkpoint_count	postgres_temp_file_count	nginx_upstream_p95_ms	hikari_config_ref	hikari_max_lifetime_ms	hikari_keepalive_time_ms	postgres_idle_timeout_ms	oci_nat_idle_timeout_ms	hikari_zero_warning_soak_ref	workload_components	read_p999_ms	read_429_source_ref	read_buckets	read_bucket_ref	write_2xx_count	write_unexpected_status_count	write_status_ref	write_accepted_ratio	min_write_accepted_ratio
-mixed-workload-30m	${run_id}	${executed_at_utc}	${duration_min}	${source_ips}	${manifest_runner_ref}	${k6_summary_ref}	${nginx_access_ref}	${spring_metrics_ref}	${hikari_log_ref}	${postgres_wait_ref}	n/a	n/a	${timeline_ref}	${edge_429_rate}	${backend_429_count}	${unknown_429_count}	${five_xx_count}	${nginx_499_count}	${hikari_validation_warnings}	${db_pool_pending_max}	${p999_ms}	n/a	n/a	n/a	${workload_mix_ref}	${workload_component_ref}	${outbox_lag_ref}	${outbox_lag_max}	n/a	0	n/a	${p95_ms}	${p99_ms}	${max_ms}	${postgres_checkpoint_count}	${postgres_temp_file_count}	${nginx_upstream_p95_ms}	n/a	0	0	0	0	n/a	${workload_components}	${read_p999_ms}	${read_429_source_ref}	${read_buckets}	${read_bucket_ref}	${write_2xx_count}	${write_unexpected_status_count}	${write_status_ref}	${write_accepted_ratio}	${min_write_accepted_ratio}
+scenario	run_id	executed_at_utc	duration_min	source_ips	run_script	k6_summary_ref	nginx_access_ref	spring_metrics_ref	hikari_log_ref	postgres_wait_ref	deploy_event_ref	cache_state_ref	timeline_ref	edge_429_rate	backend_429_count	unknown_429_count	five_xx_count	nginx_499_count	hikari_validation_warnings	db_pool_pending_max	p999_ms	postgres_checkpoint_ref	postgres_temp_file_ref	nginx_upstream_latency_ref	workload_mix_ref	workload_component_ref	outbox_lag_ref	outbox_lag_max	deploy_retry_contract_ref	deploy_reconnect_success_count	deploy_499_budget_ref	p95_ms	p99_ms	max_ms	postgres_checkpoint_count	postgres_temp_file_count	nginx_upstream_p95_ms	hikari_config_ref	hikari_max_lifetime_ms	hikari_keepalive_time_ms	postgres_idle_timeout_ms	oci_nat_idle_timeout_ms	hikari_zero_warning_soak_ref	workload_components	read_p999_ms	read_429_source_ref	read_buckets	read_bucket_ref	write_2xx_count	write_unexpected_status_count	write_status_ref	idempotency_replay_count	idempotency_conflict_count	idempotency_evidence_ref	write_accepted_ratio	min_write_accepted_ratio
+mixed-workload-30m	${run_id}	${executed_at_utc}	${duration_min}	${source_ips}	${manifest_runner_ref}	${k6_summary_ref}	${nginx_access_ref}	${spring_metrics_ref}	${hikari_log_ref}	${postgres_wait_ref}	n/a	n/a	${timeline_ref}	${edge_429_rate}	${backend_429_count}	${unknown_429_count}	${five_xx_count}	${nginx_499_count}	${hikari_validation_warnings}	${db_pool_pending_max}	${p999_ms}	n/a	n/a	n/a	${workload_mix_ref}	${workload_component_ref}	${outbox_lag_ref}	${outbox_lag_max}	n/a	0	n/a	${p95_ms}	${p99_ms}	${max_ms}	${postgres_checkpoint_count}	${postgres_temp_file_count}	${nginx_upstream_p95_ms}	n/a	0	0	0	0	n/a	${workload_components}	${read_p999_ms}	${read_429_source_ref}	${read_buckets}	${read_bucket_ref}	${write_2xx_count}	${write_unexpected_status_count}	${write_status_ref}	${idempotency_replay_count}	${idempotency_conflict_count}	${idempotency_evidence_ref}	${write_accepted_ratio}	${min_write_accepted_ratio}
 TSV
 }
 

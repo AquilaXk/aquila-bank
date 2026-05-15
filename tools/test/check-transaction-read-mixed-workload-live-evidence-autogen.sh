@@ -62,8 +62,10 @@ grep -F "outbox-lag.tsv" "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
 grep -F "read-429-source.tsv" "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
 grep -F "read-buckets.tsv" "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
 grep -F "write-status.tsv" "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
+grep -F "idempotency.tsv" "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
 grep -F $'\thot,cold,archive\t' "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
 grep -F $'\t1\t0\t' "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
+grep -F $'\tidempotency_replay_count\tidempotency_conflict_count\tidempotency_evidence_ref\twrite_accepted_ratio\tmin_write_accepted_ratio' "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
 grep -F $'\twrite_accepted_ratio\tmin_write_accepted_ratio' "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
 grep -F $'\t1\t0.80' "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
 
@@ -77,6 +79,7 @@ gate_output="$(
 report_md="$(tail -1 <<<"${gate_output}")"
 grep -F "gate_status=pass" "${report_md}" >/dev/null
 grep -F "workload mix/component and outbox lag artifact: required" "${report_md}" >/dev/null
+grep -F "idempotency replay/conflict artifact: required" "${report_md}" >/dev/null
 
 echo "[transaction-read-mixed-workload-live-evidence-autogen] live stub generation"
 stub_runner="${temp_dir}/mixed-runner-stub.sh"
@@ -99,7 +102,8 @@ for file in \
   runner-outbox-lag.tsv \
   runner-read-429-source.tsv \
   runner-read-buckets.tsv \
-  runner-write-status.tsv; do
+  runner-write-status.tsv \
+  runner-idempotency.tsv; do
   printf "stub\n" >"${artifact_dir}/${file}"
 done
 {
@@ -119,6 +123,7 @@ done
   printf "MIXED_WORKLOAD_RUNNER_READ_429_SOURCE_REF=%q\n" "${artifact_dir}/runner-read-429-source.tsv"
   printf "MIXED_WORKLOAD_RUNNER_READ_BUCKET_REF=%q\n" "${artifact_dir}/runner-read-buckets.tsv"
   printf "MIXED_WORKLOAD_RUNNER_WRITE_STATUS_REF=%q\n" "${artifact_dir}/runner-write-status.tsv"
+  printf "MIXED_WORKLOAD_RUNNER_IDEMPOTENCY_EVIDENCE_REF=%q\n" "${artifact_dir}/runner-idempotency.tsv"
   printf "MIXED_WORKLOAD_RUNNER_EDGE_429_RATE=%q\n" "0.03"
   printf "MIXED_WORKLOAD_RUNNER_BACKEND_429_COUNT=%q\n" "0"
   printf "MIXED_WORKLOAD_RUNNER_UNKNOWN_429_COUNT=%q\n" "0"
@@ -140,6 +145,8 @@ done
   printf "MIXED_WORKLOAD_RUNNER_WRITE_UNEXPECTED_STATUS_COUNT=%q\n" "2"
   printf "MIXED_WORKLOAD_RUNNER_WRITE_ACCEPTED_RATIO=%q\n" "0.875"
   printf "MIXED_WORKLOAD_RUNNER_MIN_WRITE_ACCEPTED_RATIO=%q\n" "0.80"
+  printf "MIXED_WORKLOAD_RUNNER_IDEMPOTENCY_REPLAY_COUNT=%q\n" "4"
+  printf "MIXED_WORKLOAD_RUNNER_IDEMPOTENCY_CONFLICT_COUNT=%q\n" "0"
   printf "MIXED_WORKLOAD_RUNNER_OUTBOX_LAG_MAX=%q\n" "0"
 } >"${MIXED_WORKLOAD_STUB_ENV}"
 echo "${MIXED_WORKLOAD_STUB_ENV}"
@@ -168,10 +175,12 @@ grep -F "runner-k6-summary.json" "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev
 grep -F "runner-workload-components.tsv" "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
 grep -F "runner-read-buckets.tsv" "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
 grep -F "runner-write-status.tsv" "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
+grep -F "runner-idempotency.tsv" "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
 grep -F $'\t0.03\t0\t0\t0\t0\t0\t0\t333\t' "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
 grep -F $'\t101\t222\t444\t1\t0\t12.5\t' "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
 grep -F $'\thot,cold,archive\t' "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
 grep -F $'\t7\t2\t' "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
+grep -F $'\t7\t2\t' "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" | grep -F $'\t4\t0\t' >/dev/null
 grep -F $'\t0.875\t0.80' "${MIXED_WORKLOAD_EVIDENCE_MANIFEST_TSV}" >/dev/null
 live_gate_output="$(
   MIXED_30M_TIMELINE_NAME="${name}-live" \
