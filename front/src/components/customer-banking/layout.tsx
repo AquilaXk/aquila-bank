@@ -9,7 +9,7 @@ import {
   serviceMapGroups,
 } from "@/lib/customer-banking/constants";
 import { formatDateTime } from "@/lib/customer-banking/format";
-import type { MenuSection } from "@/lib/customer-banking/types";
+import type { MenuSection, ServiceSearchItem } from "@/lib/customer-banking/types";
 import { BankNoticeStrip } from "./common";
 
 type MoveHandler = (section: MenuSection) => void;
@@ -18,26 +18,31 @@ export function BankHeader({
   activeSection,
   mobileSearchOpen,
   searchQuery,
+  searchResults,
   serviceMapOpen,
   session,
   sessionRequired,
   onMobileSearchToggle,
   onMove,
   onSearchChange,
+  onSearchSelect,
   onServiceMapToggle,
 }: {
   activeSection: MenuSection;
   mobileSearchOpen: boolean;
   searchQuery: string;
+  searchResults: ServiceSearchItem[];
   serviceMapOpen: boolean;
   session: CustomerSession | null;
   sessionRequired: boolean;
   onMobileSearchToggle: () => void;
   onMove: MoveHandler;
   onSearchChange: (value: string) => void;
+  onSearchSelect: (item: ServiceSearchItem) => void;
   onServiceMapToggle: () => void;
 }) {
   const isAuthenticated = Boolean(session);
+  const hasSearchQuery = searchQuery.trim().length > 0;
 
   function moveFromServiceMap(section: MenuSection) {
     onServiceMapToggle();
@@ -113,6 +118,31 @@ export function BankHeader({
                 </button>
               ))}
             </div>
+            {hasSearchQuery ? (
+              <div className="service-search-panel" aria-label="통합검색 결과">
+                {searchResults.length > 0 ? (
+                  searchResults.map((item) => (
+                    <button
+                      className="service-search-item"
+                      key={item.id}
+                      onClick={() => onSearchSelect(item)}
+                      type="button"
+                    >
+                      <span>
+                        {item.group}
+                        {item.requiresSession ? (
+                          <em className="service-search-badge">로그인 필요</em>
+                        ) : null}
+                      </span>
+                      <strong>{item.label}</strong>
+                      <small>{item.description}</small>
+                    </button>
+                  ))
+                ) : (
+                  <div className="service-search-empty">검색 결과 없음</div>
+                )}
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
