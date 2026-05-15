@@ -26,6 +26,9 @@ require_pattern "$script" 'http://localhost|http://localhost:*|http://127.*|http
 require_pattern "$script" 'canonicalize_staging_base_url'
 
 require_pattern "$workflow" 'STAGING_REPLAY_BASE_URL="${STAGING_REPLAY_BASE_URL:-${STAGING_PUBLIC_API_BASE_URL:-${STAGING_PUBLIC_BASE_URL:-${STAGING_BASE_URL:-}}}}"'
+require_pattern "$workflow" 'NGINX_SERVER_NAME="${NGINX_SERVER_NAME:-bank.aquilaxk.site}"'
+require_pattern "$workflow" 'STAGING_PUBLIC_BASE_URL="${STAGING_PUBLIC_BASE_URL:-https://${NGINX_SERVER_NAME}}"'
+require_pattern "$workflow" 'STAGING_PUBLIC_API_BASE_URL="${STAGING_PUBLIC_API_BASE_URL:-${STAGING_PUBLIC_BASE_URL}}"'
 require_pattern "$workflow" 'STAGING_REPLAY_BASE_URL'
 require_pattern "$workflow" 'STAGING_PUBLIC_API_BASE_URL'
 require_pattern "$workflow" 'STAGING_PUBLIC_BASE_URL'
