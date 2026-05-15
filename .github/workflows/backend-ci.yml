@@ -8,6 +8,7 @@ on:
       - "back/**"
       - "tools/ci/**"
       - "tools/test/check-flyway-backward-compatible-migrations.sh"
+      - "tools/test/check-transaction-query-plan-regression-gate.sh"
       - "tools/test/check-transaction-read-model-chunk-lifecycle.sh"
       - "tools/test/run-transaction-query-plan-regression-gate.sh"
       - "tools/test/with-resource-lock.sh"
@@ -59,7 +60,7 @@ jobs:
           git diff --name-only "origin/${GITHUB_BASE_REF}...HEAD" > "${changed_files}"
 
           query_plan_required=false
-          if grep -Eq '^(back/build\.gradle\.kts|back/src/main/resources/db/migration/|back/src/(main|test)/(java|resources)/com/aquilabank/(domain/transaction|global/persistence/transaction|global/web/transaction|global/config/Transaction|support/Postgres)|tools/test/(run-transaction-query-plan-regression-gate\.sh|with-resource-lock\.sh))' "${changed_files}"; then
+          if grep -Eq '^(back/build\.gradle\.kts|back/src/main/resources/db/migration/|back/src/(main|test)/(java|resources)/com/aquilabank/(domain/transaction|global/persistence/transaction|global/web/transaction|global/config/Transaction|support/Postgres)|tools/test/(check-transaction-query-plan-regression-gate\.sh|run-transaction-query-plan-regression-gate\.sh|with-resource-lock\.sh))' "${changed_files}"; then
             query_plan_required=true
           fi
 
@@ -75,6 +76,11 @@ jobs:
         working-directory: ${{ github.workspace }}
         shell: bash
         run: bash tools/test/check-transaction-read-model-chunk-lifecycle.sh
+
+      - name: Run transaction query plan gate contract
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        run: bash tools/test/check-transaction-query-plan-regression-gate.sh
 
       - name: Run backend fast check
         run: ./gradlew ciFastCheck --no-daemon --stacktrace

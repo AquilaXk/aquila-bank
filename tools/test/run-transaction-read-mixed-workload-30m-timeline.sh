@@ -51,8 +51,80 @@ print_plan() {
   echo "[transaction-read-mixed-30m-timeline] output_dir=${output_dir}"
   echo "[transaction-read-mixed-30m-timeline] min_duration_min=30"
   echo "[transaction-read-mixed-30m-timeline] workload=read,write,auth,notification,sse"
+  echo "[transaction-read-mixed-30m-timeline] write_evidence=idempotency replay/conflict + outbox lag"
   echo "[transaction-read-mixed-30m-timeline] execution_gate=${execution_gate}"
   echo "[transaction-read-mixed-30m-timeline] report_md=${report_md}"
+}
+
+mixed_value() {
+  local key="$1"
+  awk -F '\t' -v key="${key}" '
+    NR == 1 {
+      for (i = 1; i <= NF; i++) {
+        if ($i == key) {
+          col = i
+        }
+      }
+      next
+    }
+    $1 == "mixed-workload-30m" {
+      if (col == 0) {
+        exit 2
+      }
+      print $col
+      found = 1
+      exit
+    }
+    END {
+      if (col == 0) {
+        exit 2
+      }
+      if (found != 1) {
+        exit 3
+      }
+    }
+  ' "${input_tsv}"
+}
+
+require_non_negative_integer() {
+  local key="$1"
+  local value="$2"
+  if ! [[ "${value}" =~ ^[0-9]+$ ]]; then
+    echo "${key} must be a non-negative integer: ${value:-missing}" >&2
+    exit 1
+  fi
+}
+
+validate_idempotency_evidence() {
+  local replay_count
+  local conflict_count
+  local evidence_ref
+
+  if ! replay_count="$(mixed_value "idempotency_replay_count")"; then
+    echo "idempotency_replay_count column is required for mixed-workload-30m evidence" >&2
+    exit 1
+  fi
+  if ! conflict_count="$(mixed_value "idempotency_conflict_count")"; then
+    echo "idempotency_conflict_count column is required for mixed-workload-30m evidence" >&2
+    exit 1
+  fi
+  if ! evidence_ref="$(mixed_value "idempotency_evidence_ref")"; then
+    echo "idempotency_evidence_ref column is required for mixed-workload-30m evidence" >&2
+    exit 1
+  fi
+
+  require_non_negative_integer "idempotency_replay_count" "${replay_count}"
+  require_non_negative_integer "idempotency_conflict_count" "${conflict_count}"
+  require_file "idempotency_evidence_ref" "${evidence_ref}"
+
+  if (( replay_count <= 0 )); then
+    echo "idempotency_replay_count must be greater than 0 for mixed-workload-30m evidence" >&2
+    exit 1
+  fi
+  if (( conflict_count != 0 )); then
+    echo "idempotency_conflict_count must be 0 for mixed-workload-30m evidence" >&2
+    exit 1
+  fi
 }
 
 print_plan
@@ -62,6 +134,7 @@ if [[ "${mode}" == "print-plan" ]]; then
 fi
 
 require_file "MIXED_30M_TIMELINE_INPUT_TSV" "${input_tsv}"
+validate_idempotency_evidence
 mkdir -p "${output_dir}"
 
 gate_output="$(
@@ -87,6 +160,7 @@ cat >"${report_md}" <<REPORT
 - read p99.9 and 429 source artifact: required
 - hot/cold/archive read bucket artifact: required
 - write 2xx and status classification artifact: required
+- idempotency replay/conflict artifact: required
 - write accepted ratio guardrail: required
 - workload mix/component and outbox lag artifact: required
 - execution gate report: ${execution_report}
@@ -96,6 +170,7 @@ cat >"${report_md}" <<REPORT
 - read-only capacity와 운영 혼합 부하는 분리해서 본다.
 - mixed workload는 read/write/auth/notification/SSE component가 모두 있어야 운영 간섭 증거로 인정한다.
 - mixed workload는 hot/cold/archive read bucket과 write status classification을 같이 남겨야 한다.
+- idempotency evidence는 중복 요청 replay가 실제 관측되고 다른 요청 충돌은 없어야 통과한다.
 - unknown 429, 499, 5xx, Hikari warning, Hikari pending은 execution gate에서 hard-zero로 검증한다.
 - outbox lag는 혼합 부하에서 write/notification 간섭을 닫는 hard-zero evidence로 본다.
 - timeline ref는 k6, Nginx upstream, Spring metric, Hikari, PostgreSQL wait를 같은 run id로 묶는 기준이다.
