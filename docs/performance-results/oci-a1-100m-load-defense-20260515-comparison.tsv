@@ -1,0 +1,8 @@
+metric	baseline_source	baseline_value	current_source	current_value	improvement_percent	note
+burst80_total_429_rate	docs/performance-results/oci-a1-100m-bottleneck-20260501-rerun1.md burst-80-20s	0.5999	run 25904269739 burst matrix burst80	0	100.000	동일 burst80 계열 429 rate 감소
+burst96_total_429_rate	docs/performance-results/oci-a1-100m-bottleneck-20260501-rerun1.md burst-96-20s	0.6435	run 25904269739 burst matrix burst96	0.015365	97.612	목표 초과 observe 구간 edge-only 429 감소
+burst80_latency_p95_ms	docs/performance-results/oci-a1-100m-bottleneck-20260501-rerun1.md burst-80 hot first p95	405.74	run 25904269739 burst matrix burst80 accepted p95	5.050	98.755	과거 query-shape p95와 현재 accepted p95라 직접 SLO 비교보다 개선 추세로 해석
+burst96_latency_p95_ms	docs/performance-results/oci-a1-100m-bottleneck-20260501-rerun1.md burst-96 hot first p95	408.71	run 25904269739 burst matrix burst96 accepted p95	6.740	98.351	목표 초과 observe 구간에서도 accepted latency 감소
+vu16_soak_latency_p95_ms	docs/performance-results/oci-a1-100m-bottleneck-20260501-rerun1.md vu16-soak-2m hot first p95	392.76	run 25903215403 30m soak live evidence p95	7.28765	98.145	2m 고정순서 soak와 30m live evidence라 exact A/B는 아니며 장시간 안정성 방향 지표
+latest_soak_p95_regression_check	docs/performance-results/oci-a1-100m-bottleneck-20260511-mainf5e53-rerun19.md 30m evidence p95	6.866	run 25903215403 30m soak live evidence p95	7.28765	-6.141	최신 안정 baseline 대비 약간 느리지만 gate pass, 429/5xx/Hikari hard-zero 유지
+replay_row_estimate	current failed replay artifact 25904478347	NA	run 25904478347 planner/distribution pre-replay	100075688	NA	HTTP 308으로 replay latency는 미확정, row estimate와 planner stats freshness는 확인
