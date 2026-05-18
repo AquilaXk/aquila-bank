@@ -85,6 +85,7 @@ test("desktop 통합검색 결과는 상단 네비를 하단으로 밀어내지 
   expect(topNavAfter).not.toBeNull();
   expect(searchPanel).not.toBeNull();
   expect(utilitySearch).not.toBeNull();
+  expect(headerBefore?.height ?? 0).toBeLessThanOrEqual(190);
   expect((headerAfter?.height ?? 0) - (headerBefore?.height ?? 0)).toBeLessThanOrEqual(
     24,
   );
