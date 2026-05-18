@@ -29,6 +29,8 @@ test("고객 웹뱅킹 주요 공개 업무와 미로그인 이체 가드를 실
     .click();
   const searchInput = page.getByRole("textbox", { name: "통합검색" });
   await expect(searchInput).toHaveValue("이체한도");
+  const searchResults = page.getByLabel("통합검색 결과");
+  await expect(searchResults.getByText("로그인 필요")).toHaveCount(0);
   await page.getByRole("button", { name: "전체서비스" }).click();
   await expect(page.getByText("전체서비스 메뉴")).toHaveCount(0);
   await searchInput.fill("");
