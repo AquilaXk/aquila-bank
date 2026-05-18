@@ -165,12 +165,7 @@ export function BankHeader({
                       onClick={() => onSearchSelect(item)}
                       type="button"
                     >
-                      <span>
-                        {item.group}
-                        {item.requiresSession ? (
-                          <em className="service-search-badge">로그인 필요</em>
-                        ) : null}
-                      </span>
+                      <span>{item.group}</span>
                       <strong>{item.label}</strong>
                       <small>{item.description}</small>
                     </button>
