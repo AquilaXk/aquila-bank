@@ -108,7 +108,6 @@ const checks = [
   ["bank search results label", files.page, "통합검색 결과"],
   ["bank search result selection", files.page, "onSearchSelect"],
   ["bank search catalog function", files.search, "searchCustomerBankingServices"],
-  ["bank search login required badge", files.page, "로그인 필요"],
   ["bank search result style", files.styles, ".service-search-panel"],
   ["spacing safe service map hook", files.page, "spacing-safe-service-map"],
   ["spacing safe service map style", files.styles, ".spacing-safe-service-map"],
@@ -203,6 +202,8 @@ const checks = [
 ];
 
 const forbidden = [
+  ["search result login badge markup", files.page, "service-search-badge"],
+  ["search result login badge style", files.styles, ".service-search-badge"],
   ["customer visible read-only", customerVisibleContent, "read-only"],
   ["customer visible backend preview", customerVisibleContent, "backend preview"],
   ["customer visible backend", customerVisibleContent, "backend"],
