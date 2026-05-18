@@ -275,6 +275,8 @@ label span {
   flex: 1 1 520px;
   min-width: min(100%, 520px);
   max-width: 100%;
+  position: relative;
+  z-index: 20;
 }
 
 .spacing-safe-search {
@@ -308,10 +310,18 @@ label span {
 .service-search-panel {
   display: grid;
   gap: 6px;
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  z-index: 30;
+  max-height: min(390px, calc(100vh - 150px));
+  overflow: auto;
   border: 1px solid var(--line);
   border-radius: 4px;
   background: #101214;
   padding: 8px;
+  box-shadow: var(--shadow);
 }
 
 .service-search-item {
@@ -414,6 +424,8 @@ label span {
 
 .primary-nav {
   gap: 2px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .nav-tab {
@@ -2547,7 +2559,8 @@ label span {
   .layout-health-strip,
   .service-map-panel,
   .bank-layout {
-    width: calc(100% - 20px);
+    width: calc(100vw - 20px);
+    max-width: calc(100vw - 20px);
   }
 
   .utility-bar,
@@ -2603,6 +2616,12 @@ label span {
     grid-column: 1 / -1;
   }
 
+  .utility-search.open .service-search-panel {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+
   .utility-right,
   .search-field {
     grid-template-columns: 1fr;
@@ -2621,6 +2640,8 @@ label span {
     display: flex;
     flex-wrap: nowrap;
     gap: 0;
+    min-width: 0;
+    max-width: 100%;
     overflow-x: auto;
     border-top: 1px solid var(--line);
     scrollbar-width: thin;
@@ -2752,6 +2773,10 @@ label span {
   .quick-grid button,
   .recent-menu-list button {
     width: 100%;
+  }
+
+  .primary-nav.mobile-compact-primary-nav .nav-tab {
+    width: auto;
   }
 
   .side-menu.mobile-compact-side-menu .side-title,
