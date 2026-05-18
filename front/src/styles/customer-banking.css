@@ -672,6 +672,18 @@ label span {
   color: var(--primary-dark);
 }
 
+.top-channel-nav .top-channel-link.active {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--page);
+}
+
+.top-channel-nav .top-channel-link.active:hover:not(:disabled) {
+  border-color: var(--primary-dark);
+  background: var(--primary-dark);
+  color: var(--page);
+}
+
 .work-area {
   display: flex;
   flex-direction: column;
