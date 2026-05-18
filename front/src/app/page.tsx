@@ -142,23 +142,12 @@ export default function HomePage() {
       >
         <div>
           <strong>로그인이 필요한 업무</strong>
-          <small className="login-required-code">권한 만료 또는 미로그인</small>
+          <small className="login-required-code">로그인 필요</small>
           <span>
-            조회, 이체, 거래내역, 알림, 신청 업무는 로그인 후 이용하세요.
+            본인 인증 후 이용할 수 있는 업무입니다.
           </span>
         </div>
         <div className="login-required-actions">
-          <div className="login-method-grid" aria-label="로그인 방식">
-            <button onClick={() => moveToSection("security")} type="button">
-              공동인증서 로그인
-            </button>
-            <button onClick={() => moveToSection("security")} type="button">
-              금융인증서 로그인
-            </button>
-            <button onClick={() => moveToSection("security")} type="button">
-              아이디 로그인
-            </button>
-          </div>
           <button
             className="primary-login-button"
             onClick={() => moveToSection("security")}

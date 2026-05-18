@@ -31,13 +31,13 @@ const required = [
   ["guest dashboard notification lock", files.dashboard, "로그인 후 알림 확인"],
   ["guest dashboard protected table state", files.dashboard, "인증 후 가능"],
   ["guest security auth marker", files.security, "const isAuthenticated"],
+  ["guest security renderer", files.security, "renderGuestSecurityCenter"],
+  ["authenticated security renderer", files.security, "renderAuthenticatedSecurityCenter"],
   ["guest totp state gate", files.security, "activeTotpEnrollment"],
   ["guest backup code state gate", files.security, "activeBackupCodes"],
-  ["guest security masked value", files.security, "로그인 후 확인"],
-  ["guest otp masked value", files.security, "OTP 상태 로그인 후 확인"],
-  ["guest session table locked state", files.security, "로그인 후 세션 조회 가능"],
-  ["guest session detail placeholder", files.security, "인증 후 표시"],
+  ["guest security public heading", files.security, "로그인 및 인증"],
   ["guest recovery public scope", files.security, "비로그인 복구 가능"],
+  ["authenticated security heading", files.security, "인증 후 보안관리"],
   ["authenticated-only form class", files.security, "authenticated-only-form"],
   ["masked form class", files.styles, ".authenticated-only-form"],
 ];
@@ -50,6 +50,10 @@ const forbiddenUnauthSignals = [
   ["security guest otp unregistered", files.security, "props.totpEnrollment ? props.totpEnrollment.status : \"미등록\""],
   ["security guest raw session count", files.security, "<strong>{props.sessions.length}건</strong>"],
   ["security guest empty session row", files.security, "조회된 세션이 없습니다."],
+  ["security guest masked dashboard value", files.security, "OTP 상태 로그인 후 확인"],
+  ["security guest session table placeholder", files.security, "로그인 후 세션 조회 가능"],
+  ["security guest session detail placeholder", files.security, "인증 후 표시"],
+  ["security guest locked management form", files.security, "data-locked={!isAuthenticated}"],
 ];
 
 const missing = required.filter(([, content, expected]) => !content.includes(expected));
