@@ -9,7 +9,6 @@ test("고객 웹뱅킹 주요 공개 업무와 미로그인 이체 가드를 실
   await expect(page.getByText("보안등급").first()).toBeVisible();
   await expect(page.getByText("이용시간", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("업무현황")).toBeVisible();
-  await expect(page.getByText("알림 수신 설정")).toBeVisible();
   if (testInfo.project.name.includes("mobile")) {
     await expect(page.getByText("추천검색어")).toBeHidden();
     await page.getByRole("button", { exact: true, name: "검색" }).click();
@@ -28,9 +27,11 @@ test("고객 웹뱅킹 주요 공개 업무와 미로그인 이체 가드를 실
     .getByLabel("추천검색어")
     .getByRole("button", { exact: true, name: "이체한도" })
     .click();
-  await expect(page.getByLabel("통합검색")).toHaveValue("이체한도");
+  const searchInput = page.getByRole("textbox", { name: "통합검색" });
+  await expect(searchInput).toHaveValue("이체한도");
   await page.getByRole("button", { name: "전체서비스" }).click();
   await expect(page.getByText("전체서비스 메뉴")).toHaveCount(0);
+  await searchInput.fill("");
 
   const protectedMenuNames = [
     "조회",
@@ -47,11 +48,14 @@ test("고객 웹뱅킹 주요 공개 업무와 미로그인 이체 가드를 실
       .getByRole("navigation", { name: "주요 메뉴" })
       .getByRole("button", { exact: true, name: menuName })
       .click();
-    await expect(page.getByText("로그인이 필요한 업무")).toBeVisible();
-    await expect(page.getByText("권한 만료 또는 미로그인")).toBeVisible();
-    await expect(page.getByText("공동인증서 로그인")).toBeVisible();
-    await expect(page.getByText("금융인증서 로그인")).toBeVisible();
-    await expect(page.getByText("아이디 로그인")).toBeVisible();
+    const loginRequiredGate = page.getByLabel("로그인 필요 안내");
+    await expect(loginRequiredGate.getByText("로그인이 필요한 업무")).toBeVisible();
+    await expect(loginRequiredGate.getByText("로그인 필요", { exact: true })).toBeVisible();
+    await expect(page.getByText("권한 만료 또는 미로그인")).toHaveCount(0);
+    await expect(page.getByText("공동인증서 로그인")).toHaveCount(0);
+    await expect(page.getByText("금융인증서 로그인")).toHaveCount(0);
+    await expect(page.getByText("아이디 로그인")).toHaveCount(0);
+    await expect(loginRequiredGate.getByRole("button", { name: "인증센터 로그인" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "계좌조회" })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "즉시이체" })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "거래내역 조회" })).toHaveCount(0);
@@ -61,8 +65,19 @@ test("고객 웹뱅킹 주요 공개 업무와 미로그인 이체 가드를 실
   }
 
   await page.getByRole("button", { name: "인증센터 로그인" }).click();
-  await expect(page.getByRole("heading", { name: "로그인 및 보안관리" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "로그인 및 인증" })).toBeVisible();
+  await expect(page.getByLabel("로그인 방식")).toBeVisible();
+  await expect(page.getByText("아이디와 비밀번호")).toBeVisible();
+  await expect(page.getByText("비밀번호 찾기", { exact: true })).toBeVisible();
+  await expect(page.getByText("복구 확정")).toBeVisible();
+  await expect(page.getByLabel("보안관리")).toHaveCount(0);
+  await expect(page.getByLabel("보안매체 등록 상태")).toHaveCount(0);
+  await expect(page.getByText("현재 세션")).toHaveCount(0);
+  await expect(page.getByText("비밀번호 변경")).toHaveCount(0);
+  await expect(page.getByText("추가 인증 관리")).toHaveCount(0);
+  await expect(page.getByText("세션/기기 목록", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("OTP 상태 로그인 후 확인")).toHaveCount(0);
 
-  await page.getByLabel("통합검색").fill("OTP");
-  await expect(page.getByLabel("통합검색")).toHaveValue("OTP");
+  await searchInput.fill("OTP");
+  await expect(searchInput).toHaveValue("OTP");
 });
