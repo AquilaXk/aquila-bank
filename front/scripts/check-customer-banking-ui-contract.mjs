@@ -130,6 +130,8 @@ const checks = [
   ["top channel aria current", files.page, "aria-current"],
   ["top channel active style", files.styles, ".top-channel-link.active"],
   ["top channel active hover style", files.styles, ".top-channel-link.active:hover"],
+  ["top channel active contrast guard", files.styles, ".top-channel-nav .top-channel-link.active"],
+  ["top channel active readable text", files.styles, "color: var(--page)"],
   ["compact brand row wrap gap", files.styles, "gap: 8px 18px"],
   ["spacing safe mobile utility single column", files.styles, "grid-template-columns: 1fr"],
   ["bank dashboard favorite services", files.dashboard, "자주찾는서비스"],
