@@ -14,6 +14,12 @@ Aquila Bank는 제한된 인프라에서 무제한 트래픽을 처리하는 프
 - 운영 경로는 `Nginx reverse proxy`, GitHub Actions CI/CD, OCI A1 staging/production 승격 기준을 중심으로 정리했습니다.
 - Prometheus/Grafana/k6는 부하테스트와 선택 관측 자산으로 두고, 같은 host 상시 필수 운영 구성으로 보지 않습니다.
 
+### 실제 고객뱅킹 화면
+
+미로그인 상태에서도 메뉴와 통합검색 흐름을 먼저 확인할 수 있고, 계좌/이체/거래내역 같은 보호 업무는 화면 이동 후 인증 안내로 분리합니다.
+
+![Aquila Bank customer banking search](docs/assets/readme-customer-banking-search.jpg)
+
 ## 개인 프로젝트 범위
 
 ### In Scope
