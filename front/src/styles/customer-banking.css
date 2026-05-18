@@ -160,11 +160,11 @@ label span {
 
 .bank-header {
   display: grid;
-  gap: 8px;
+  gap: 4px;
   border-bottom: 1px solid var(--line-strong);
   background: linear-gradient(180deg, #1c1d1c, #121416);
   box-shadow: var(--shadow);
-  padding-bottom: 10px;
+  padding-bottom: 6px;
 }
 
 .utility-bar,
@@ -178,9 +178,9 @@ label span {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 44px;
+  min-height: 38px;
   border-bottom: 1px solid var(--line);
-  padding-block: 4px;
+  padding-block: 3px;
 }
 
 .utility-left,
@@ -193,19 +193,20 @@ label span {
 }
 
 .utility-right {
+  flex: 1 1 auto;
   min-width: 0;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: flex-end;
 }
 
 .utility-link {
-  min-height: 32px;
+  min-height: 28px;
   border: 1px solid transparent;
   border-radius: 3px;
   background: transparent;
   color: var(--muted);
-  padding: 5px 10px;
-  font-size: 13px;
+  padding: 3px 8px;
+  font-size: 12px;
   line-height: 1.35;
 }
 
@@ -241,9 +242,9 @@ label span {
 }
 
 .spacing-safe-service-map {
-  min-height: 36px;
-  margin-block: 6px;
-  padding: 6px 14px;
+  min-height: 30px;
+  margin-block: 0;
+  padding: 4px 12px;
   line-height: 1.35;
 }
 
@@ -255,9 +256,9 @@ label span {
 
 .search-field {
   display: grid;
-  grid-template-columns: max-content minmax(220px, 1fr);
+  grid-template-columns: max-content minmax(180px, 1fr);
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
 }
 
@@ -270,22 +271,25 @@ label span {
 }
 
 .utility-search {
-  display: grid;
-  gap: 5px;
-  flex: 1 1 520px;
-  min-width: min(100%, 520px);
-  max-width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 1 660px;
+  min-width: 0;
+  max-width: 660px;
+  position: relative;
+  z-index: 20;
 }
 
 .spacing-safe-search {
-  gap: 8px;
-  padding-block: 4px;
+  padding-block: 0;
 }
 
 .keyword-list {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex: 0 1 auto;
+  flex-wrap: nowrap;
   gap: 4px;
   color: var(--muted);
   font-size: 12px;
@@ -308,10 +312,18 @@ label span {
 .service-search-panel {
   display: grid;
   gap: 6px;
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  z-index: 30;
+  max-height: min(390px, calc(100vh - 150px));
+  overflow: auto;
   border: 1px solid var(--line);
   border-radius: 4px;
   background: #101214;
   padding: 8px;
+  box-shadow: var(--shadow);
 }
 
 .service-search-item {
@@ -369,8 +381,8 @@ label span {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px 20px;
-  min-height: 78px;
+  gap: 8px 18px;
+  min-height: 58px;
 }
 
 .brand-mark {
@@ -383,8 +395,8 @@ label span {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 42px;
-  height: 42px;
+  width: 36px;
+  height: 36px;
   border-radius: 6px;
   border: 1px solid var(--line-strong);
   background: #121416;
@@ -393,15 +405,15 @@ label span {
 
 .brand-symbol img {
   display: block;
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   object-fit: contain;
 }
 
 .brand-mark strong {
   display: block;
   color: var(--text);
-  font-size: 22px;
+  font-size: 20px;
   letter-spacing: 0;
 }
 
@@ -414,13 +426,17 @@ label span {
 
 .primary-nav {
   gap: 2px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .nav-tab {
-  min-width: 104px;
+  min-width: 88px;
+  min-height: 38px;
   border: 0;
   border-radius: 0;
   background: transparent;
+  padding-inline: 8px;
 }
 
 .nav-tab.active {
@@ -435,9 +451,9 @@ label span {
   flex-wrap: wrap;
   gap: 8px 18px;
   width: min(1440px, calc(100% - 48px));
-  min-height: 36px;
+  min-height: 28px;
   margin: 0 auto;
-  padding: 8px 0 10px;
+  padding: 5px 0 6px;
   border-top: 1px solid var(--line);
   color: var(--muted);
   font-size: 12px;
@@ -460,7 +476,7 @@ label span {
 }
 
 .layout-health-strip {
-  display: flex;
+  display: none;
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
@@ -2547,7 +2563,8 @@ label span {
   .layout-health-strip,
   .service-map-panel,
   .bank-layout {
-    width: calc(100% - 20px);
+    width: calc(100vw - 20px);
+    max-width: calc(100vw - 20px);
   }
 
   .utility-bar,
@@ -2603,6 +2620,12 @@ label span {
     grid-column: 1 / -1;
   }
 
+  .utility-search.open .service-search-panel {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+
   .utility-right,
   .search-field {
     grid-template-columns: 1fr;
@@ -2621,6 +2644,8 @@ label span {
     display: flex;
     flex-wrap: nowrap;
     gap: 0;
+    min-width: 0;
+    max-width: 100%;
     overflow-x: auto;
     border-top: 1px solid var(--line);
     scrollbar-width: thin;
@@ -2752,6 +2777,10 @@ label span {
   .quick-grid button,
   .recent-menu-list button {
     width: 100%;
+  }
+
+  .primary-nav.mobile-compact-primary-nav .nav-tab {
+    width: auto;
   }
 
   .side-menu.mobile-compact-side-menu .side-title,

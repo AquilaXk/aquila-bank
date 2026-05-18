@@ -62,6 +62,41 @@ test("desktop 공개 화면은 3열 업무형 구조와 미로그인 보호 업�
   await expect(page.locator(".bank-form").filter({ hasText: "이체정보 입력" })).toHaveCount(0);
 });
 
+test("desktop 통합검색 결과는 상단 네비를 하단으로 밀어내지 않는다", async ({
+  page,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.includes("desktop"), "desktop 전용 visual QA");
+
+  await page.goto("/");
+  const headerBefore = await page.locator(".bank-header").boundingBox();
+  const topNavBefore = await page.locator(".top-channel-nav").boundingBox();
+
+  await page.getByLabel("통합검색").fill("공과금");
+  await expect(page.getByLabel("통합검색 결과")).toBeVisible();
+
+  const headerAfter = await page.locator(".bank-header").boundingBox();
+  const topNavAfter = await page.locator(".top-channel-nav").boundingBox();
+  const searchPanel = await page.getByLabel("통합검색 결과").boundingBox();
+  const utilitySearch = await page.locator(".utility-search").boundingBox();
+
+  expect(headerBefore).not.toBeNull();
+  expect(topNavBefore).not.toBeNull();
+  expect(headerAfter).not.toBeNull();
+  expect(topNavAfter).not.toBeNull();
+  expect(searchPanel).not.toBeNull();
+  expect(utilitySearch).not.toBeNull();
+  expect(headerBefore?.height ?? 0).toBeLessThanOrEqual(190);
+  expect((headerAfter?.height ?? 0) - (headerBefore?.height ?? 0)).toBeLessThanOrEqual(
+    24,
+  );
+  expect((topNavAfter?.y ?? 0) - (topNavBefore?.y ?? 0)).toBeLessThanOrEqual(12);
+  expect(searchPanel?.x ?? 0).toBeGreaterThanOrEqual((utilitySearch?.x ?? 0) - 1);
+  expect((searchPanel?.x ?? 0) + (searchPanel?.width ?? 0)).toBeLessThanOrEqual(
+    (utilitySearch?.x ?? 0) + (utilitySearch?.width ?? 0) + 1,
+  );
+  await expectNoHorizontalOverflow(page);
+});
+
 test("mobile 공개 화면은 단일 흐름으로 접히고 키보드 접근 순서를 제공한다", async ({
   page,
 }, testInfo) => {
