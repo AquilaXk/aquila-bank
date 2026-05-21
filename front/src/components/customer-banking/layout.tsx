@@ -120,6 +120,7 @@ export function BankHeader({
           <button
             aria-controls="utility-search-panel"
             aria-expanded={mobileSearchOpen}
+            aria-label={mobileSearchOpen ? "검색 닫기" : "검색 열기"}
             className="mobile-search-toggle"
             onClick={onMobileSearchToggle}
             type="button"
@@ -134,15 +135,28 @@ export function BankHeader({
             }
             id="utility-search-panel"
           >
-            <label className="search-field">
-              <span>통합검색</span>
-              <input
-                aria-label="통합검색"
-                onChange={(event) => onSearchChange(event.target.value)}
-                placeholder="업무명 또는 메뉴 검색"
-                value={searchQuery}
-              />
-            </label>
+            <div className="search-field">
+              <label htmlFor="utility-search-input">통합검색</label>
+              <div className="search-input-row">
+                <input
+                  aria-label="통합검색"
+                  id="utility-search-input"
+                  onChange={(event) => onSearchChange(event.target.value)}
+                  placeholder="업무명 또는 메뉴 검색"
+                  value={searchQuery}
+                />
+                {hasSearchQuery ? (
+                  <button
+                    aria-label="검색어 지우기"
+                    className="search-clear-button"
+                    onClick={() => onSearchChange("")}
+                    type="button"
+                  >
+                    지우기
+                  </button>
+                ) : null}
+              </div>
+            </div>
             <div className="keyword-list" aria-label="추천검색어">
               <span>추천검색어</span>
               {recommendedKeywords.map((keyword) => (

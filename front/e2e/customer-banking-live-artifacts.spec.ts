@@ -33,8 +33,8 @@ test("live mobile 화면은 접힌 업무 구조 screenshot artifact를 남긴�
   await page.goto("/");
   await expect(page.locator(".bank-layout")).toHaveAttribute("data-auth-state", "guest");
   await expectVisibleBox(page, ".bank-header");
-  await expect(page.getByRole("button", { exact: true, name: "검색" })).toBeVisible();
-  await page.getByRole("button", { exact: true, name: "검색" }).click();
+  await expect(page.getByRole("button", { exact: true, name: "검색 열기" })).toBeVisible();
+  await page.getByRole("button", { exact: true, name: "검색 열기" }).click();
   await expect(page.getByText("추천검색어")).toBeVisible();
 
   await page.screenshot({

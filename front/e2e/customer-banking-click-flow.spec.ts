@@ -11,7 +11,7 @@ test("고객 웹뱅킹 주요 공개 업무와 미로그인 이체 가드를 실
   await expect(page.getByText("업무현황")).toBeVisible();
   if (testInfo.project.name.includes("mobile")) {
     await expect(page.getByText("추천검색어")).toBeHidden();
-    await page.getByRole("button", { exact: true, name: "검색" }).click();
+    await page.getByRole("button", { exact: true, name: "검색 열기" }).click();
   }
   await expect(page.getByText("추천검색어")).toBeVisible();
   await expect(page.getByText("자주찾는서비스")).toBeVisible();

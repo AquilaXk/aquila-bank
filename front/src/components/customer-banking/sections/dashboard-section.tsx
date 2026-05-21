@@ -70,10 +70,10 @@ export function DashboardSection({
         </div>
         <div className="button-row">
           <button onClick={() => onMove("accounts")} type="button">
-            계좌조회
+            {hasSession ? "계좌조회" : "로그인 후 계좌조회"}
           </button>
           <button onClick={() => onMove("transfer")} type="button">
-            이체
+            {hasSession ? "이체" : "로그인 후 이체"}
           </button>
           <button disabled={!hasSession || isBusy} onClick={onRefresh} type="button">
             토큰 재발급
