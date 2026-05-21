@@ -86,7 +86,7 @@ export function BankHeader({
   return (
     <header className="bank-header">
       <div className="utility-bar mobile-compact-utility" aria-label="상단 유틸리티">
-        <div className="utility-left top-channel-nav">
+        <div className="utility-left top-channel-nav scroll-affordance-x">
           {topNavItems.map((item) => {
             const isActive = activeTopNavId === item.id;
 
@@ -208,7 +208,10 @@ export function BankHeader({
             <small>Personal Internet Banking</small>
           </div>
         </div>
-        <nav className="primary-nav mobile-compact-primary-nav" aria-label="주요 메뉴">
+        <nav
+          className="primary-nav mobile-compact-primary-nav scroll-affordance-x"
+          aria-label="주요 메뉴"
+        >
           {mainMenus.map((item) => (
             <button
               aria-current={activeSection === item.id ? "page" : undefined}
@@ -282,7 +285,7 @@ export function SideMenu({
 }) {
   return (
     <aside
-      className="side-menu compact-menu mobile-compact-side-menu spacing-safe-side-menu"
+      className="side-menu compact-menu mobile-compact-side-menu spacing-safe-side-menu scroll-affordance-x"
       aria-label="개인뱅킹 메뉴"
     >
       <div className="side-title">개인뱅킹</div>

@@ -111,7 +111,7 @@ const checks = [
   ["bank search result style", files.styles, ".service-search-panel"],
   ["spacing safe service map hook", files.page, "spacing-safe-service-map"],
   ["spacing safe service map style", files.styles, ".spacing-safe-service-map"],
-  ["compact service map breathing", files.styles, "padding: 4px 12px"],
+  ["compact service map breathing", files.styles, "padding: 8px 12px"],
   ["spacing safe utility search hook", files.page, "spacing-safe-search"],
   ["compact utility search block padding", files.styles, "padding-block: 0"],
   ["spacing safe side menu hook", files.page, "spacing-safe-side-menu"],
@@ -199,6 +199,18 @@ const checks = [
   ["visual polish side item stable mobile height", files.styles, ".side-menu.mobile-compact-side-menu .side-item strong"],
   ["visual polish notice stable columns", files.styles, ".bank-notice-strip div"],
   ["visual polish notice value line height", files.styles, ".bank-notice-strip dd"],
+  ["customer banking scroll affordance hook", files.page, "scroll-affordance-x"],
+  ["customer banking scroll affordance style", files.styles, ".scroll-affordance-x"],
+  ["customer banking utility touch target", files.styles, ".utility-link {\n  min-height: 44px"],
+  ["customer banking base button touch target", files.styles, "\nbutton {\n  min-height: 44px;\n  min-width: 44px"],
+  ["customer banking base input touch target", files.styles, "\ninput,\nselect {\n  width: 100%;\n  height: 44px"],
+  ["customer banking compact button touch target", files.styles, ".button-row.compact button {\n  min-height: 44px"],
+  ["customer banking work tab touch target", files.styles, ".work-tabs button {\n  flex: 0 0 auto;\n  min-width: 96px;\n  min-height: 44px"],
+  ["customer banking news touch target", files.styles, ".bank-news-list button {\n  width: 100%;\n  min-height: 44px"],
+  ["customer banking quick rail touch target", files.styles, ".quick-grid button {\n  min-height: 44px"],
+  ["customer banking keyword touch target", files.styles, ".keyword-list button {\n  min-height: 44px"],
+  ["customer banking nav touch target", files.styles, ".nav-tab {\n  min-width: 96px;\n  min-height: 44px"],
+  ["customer banking full mobile menu visibility", files.styles, "scroll-snap-type: x proximity"],
 ];
 
 const forbidden = [
@@ -222,6 +234,7 @@ const forbidden = [
   ["customer visible bank-like explanation", customerVisibleContent, "처럼"],
   ["customer visible actual implementation explanation", customerVisibleContent, "실제"],
   ["customer visible customer explanation", customerVisibleContent, "고객이"],
+  ["customer hidden mobile side menu items", files.styles, ".side-menu.mobile-compact-side-menu .side-item:nth-of-type(n + 5) {\n    display: none;"],
 ];
 
 const missing = checks.filter(([, content, expected]) => !content.includes(expected));
