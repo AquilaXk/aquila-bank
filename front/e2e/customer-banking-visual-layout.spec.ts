@@ -136,6 +136,44 @@ test("mobile 공개 화면은 단일 흐름으로 접히고 키보드 접근 순
   });
 });
 
+test("mobile 검색과 비로그인 홈 CTA는 첫 화면 업무 흐름을 가리지 않는다", async ({
+  page,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.includes("mobile"), "mobile 전용 visual QA");
+
+  await page.goto("/");
+  await expect(page.getByRole("button", { exact: true, name: "로그인 후 계좌조회" })).toBeVisible();
+  await expect(page.getByRole("button", { exact: true, name: "로그인 후 이체" })).toBeVisible();
+
+  await page.getByRole("button", { exact: true, name: "검색 열기" }).click();
+  await page.getByLabel("통합검색").fill("공과금");
+  await expect(page.getByLabel("통합검색 결과")).toBeVisible();
+  await expect(page.getByRole("button", { exact: true, name: "검색어 지우기" })).toBeVisible();
+
+  const metrics = await page.evaluate(() => {
+    const header = document.querySelector(".bank-header");
+    const panel = document.querySelector(".service-search-panel");
+    const workArea = document.querySelector("#bank-work-area");
+
+    return {
+      headerHeight: Math.round(header?.getBoundingClientRect().height ?? 0),
+      panelHeight: Math.round(panel?.getBoundingClientRect().height ?? 0),
+      viewportHeight: window.innerHeight,
+      workTop: Math.round(workArea?.getBoundingClientRect().top ?? 0),
+    };
+  });
+
+  expect(metrics.headerHeight).toBeLessThanOrEqual(Math.round(metrics.viewportHeight * 0.58));
+  expect(metrics.panelHeight).toBeLessThanOrEqual(280);
+  expect(metrics.workTop).toBeLessThan(metrics.viewportHeight);
+  await expectNoHorizontalOverflow(page);
+
+  await page.screenshot({
+    fullPage: true,
+    path: testInfo.outputPath("customer-banking-mobile-search-bounded.png"),
+  });
+});
+
 test("tablet compact 폭에서도 검색, 메뉴, 보안알림 텍스트가 컨테이너 안에 머문다", async ({
   page,
 }, testInfo) => {
