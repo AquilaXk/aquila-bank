@@ -90,6 +90,38 @@
 
 ![Aquila Bank customer banking search](docs/assets/readme-customer-banking-search.jpg)
 
+로그인 후에는 전계좌조회, 즉시이체, 거래내역 keyset 조회, 인증센터 세션 관리, 고객센터 신청 상태를 같은 고객뱅킹 shell 안에서 처리합니다.
+
+#### 계좌조회
+
+보유 계좌 목록, 계좌 상태, 출금 가능 금액을 한 화면에서 확인하고 선택 계좌 기준으로 상세 조회를 이어갈 수 있습니다.
+
+![Aquila Bank customer banking account list](docs/assets/readme-customer-banking-accounts.jpg)
+
+#### 즉시이체
+
+받는 분 확인, 이체 확인, OTP 확인, 완료증 출력까지 이어지는 내부 이체 흐름을 보여줍니다.
+
+![Aquila Bank customer banking transfer receipt](docs/assets/readme-customer-banking-transfer.jpg)
+
+#### 거래내역 조회
+
+계좌, 기간, 상태, 금액 조건을 입력하고 keyset cursor 기준으로 다음 페이지를 이어 조회하는 대량 조회 UX입니다.
+
+![Aquila Bank customer banking transaction search](docs/assets/readme-customer-banking-transactions.jpg)
+
+#### 인증센터
+
+로그인 세션, 보안매체, OTP/복구코드, 기기별 세션 해지 같은 인증 후 보안 관리 화면입니다.
+
+![Aquila Bank customer banking security center](docs/assets/readme-customer-banking-security.jpg)
+
+#### 고객센터/사고신고
+
+사고신고와 고객 신청 접수 상태를 조회하고, 운영자 검토와 mock/webhook boundary를 확인하는 화면입니다.
+
+![Aquila Bank customer banking application status](docs/assets/readme-customer-banking-application.jpg)
+
 ## 시스템 아키텍처
 
 ![Aquila Bank architecture](docs/assets/readme-architecture.png)
