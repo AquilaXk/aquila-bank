@@ -60,9 +60,11 @@
   gap: 3px;
 }
 
-.ops-header strong {
+.ops-title {
+  margin: 0;
   font-size: 22px;
   color: var(--ops-gothic-parchment);
+  line-height: 1.2;
 }
 
 .ops-header span,
@@ -89,6 +91,8 @@
 }
 
 .ops-header a,
+.ops-section-nav a,
+.ops-section-map a,
 .ops-card-head button,
 .ops-lookup-fields button,
 .ops-danger-button {
@@ -102,11 +106,32 @@
 }
 
 .ops-header a:hover,
+.ops-section-nav a:hover,
+.ops-section-map a:hover,
 .ops-card-head button:hover,
 .ops-lookup-fields button:hover,
 .ops-danger-button:hover {
   border-color: var(--ops-gothic-brass);
   color: var(--ops-gothic-parchment);
+}
+
+.ops-section-nav {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 32px;
+  border-bottom: 1px solid var(--ops-gothic-line);
+  background: rgba(18, 21, 24, 0.96);
+}
+
+.ops-section-nav a,
+.ops-section-map a {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
 }
 
 .ops-guard {
@@ -175,13 +200,19 @@
   gap: 8px;
 }
 
-.ops-section-map span {
+.ops-section-map a {
   border: 1px solid var(--ops-gothic-line);
   background: var(--ops-gothic-surface);
   padding: 6px 10px;
   color: var(--ops-gothic-muted);
   font-size: 12px;
   font-weight: 700;
+}
+
+.ops-card,
+.ops-actions,
+.ops-lookups {
+  scroll-margin-top: 68px;
 }
 
 .ops-grid.compact {
@@ -253,6 +284,41 @@
   border-top: 1px solid var(--ops-gothic-line);
   border-bottom: 1px solid var(--ops-gothic-line);
   background: rgba(43, 23, 22, 0.32);
+}
+
+.ops-write-zone {
+  border-left: 4px solid var(--ops-gothic-danger);
+}
+
+.ops-write-zone > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 2px 0;
+}
+
+.ops-write-zone > summary::-webkit-details-marker {
+  display: none;
+}
+
+.ops-write-zone > summary::after {
+  content: "펼치기";
+  width: max-content;
+  border: 1px solid var(--ops-gothic-line-strong);
+  background: var(--ops-gothic-danger-soft);
+  color: #f0b7ae;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.ops-write-zone[open] > summary {
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--ops-gothic-line);
+  padding-bottom: 12px;
+}
+
+.ops-write-zone[open] > summary::after {
+  content: "접기";
 }
 
 .ops-status-actions {
@@ -330,6 +396,7 @@
   }
 
   .ops-header,
+  .ops-section-nav,
   .ops-guard,
   .ops-grid,
   .ops-actions,

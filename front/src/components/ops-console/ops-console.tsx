@@ -27,6 +27,23 @@ import type { OpsFormState, OpsRequest, OpsResult } from "@/lib/ops-console/type
 
 type ResultMap = Record<string, OpsResult>;
 
+const opsSectionLinks = [
+  { label: "Read-only", href: "#ops-readonly" },
+  { label: "Recovery", href: "#ops-recovery-actions" },
+  { label: "Status", href: "#ops-status-actions" },
+  { label: "Application", href: "#ops-application-actions" },
+  { label: "Lookup", href: "#ops-exact-lookup" },
+];
+
+const readOnlyCoverageLinks = [
+  { label: "Outbox", href: "#ops-outbox-summary" },
+  { label: "DLQ", href: "#ops-notification-dlq" },
+  { label: "Ledger", href: "#ops-ledger-audit-by-request" },
+  { label: "Snapshot", href: "#ops-snapshot-drift" },
+  { label: "Auth", href: "#ops-auth-audit-search" },
+  { label: "Account", href: "#ops-account-audit-by-request" },
+];
+
 function createInitialResults(items: OpsRequest[]): ResultMap {
   return items.reduce<ResultMap>((result, item) => {
     result[item.label] = initialOpsResult;
@@ -46,6 +63,10 @@ function toNonNegativeNumber(value: string): number | null {
 function toPositiveNumber(value: string): number | null {
   const numberValue = Number(value);
   return Number.isInteger(numberValue) && numberValue > 0 ? numberValue : null;
+}
+
+function toOpsAnchorId(label: string): string {
+  return `ops-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
 }
 
 function ResultPanel({ result }: { result: OpsResult }) {
@@ -568,7 +589,7 @@ export function OpsConsole() {
     <main className="ops-shell ops-control-room">
       <header className="ops-header">
         <div>
-          <strong>Aquila Bank Ops Console</strong>
+          <h1 className="ops-title">Aquila Bank Ops Console</h1>
           <span className="ops-readonly-badge">Read-only Surface</span>
           <span className="ops-write-badge">Guarded Recovery Actions</span>
         </div>
@@ -576,6 +597,14 @@ export function OpsConsole() {
           고객뱅킹
         </a>
       </header>
+
+      <nav className="ops-section-nav" aria-label="운영 콘솔 섹션 바로가기">
+        {opsSectionLinks.map((item) => (
+          <a href={item.href} key={item.href}>
+            {item.label}
+          </a>
+        ))}
+      </nav>
 
       <section className="ops-guard">
         <label>
@@ -607,17 +636,16 @@ export function OpsConsole() {
         </label>
       </section>
 
-      <section className="ops-grid" aria-label="운영 조회">
+      <section className="ops-grid" id="ops-readonly" aria-label="운영 조회">
         <div className="ops-section-map" aria-label="read-only coverage">
-          <span>Outbox</span>
-          <span>DLQ</span>
-          <span>Ledger</span>
-          <span>Snapshot</span>
-          <span>Auth</span>
-          <span>Account</span>
+          {readOnlyCoverageLinks.map((item) => (
+            <a href={item.href} key={item.href}>
+              {item.label}
+            </a>
+          ))}
         </div>
         {requests.map((item) => (
-          <article className="ops-card" key={item.label}>
+          <article className="ops-card" id={toOpsAnchorId(item.label)} key={item.label}>
             <div className="ops-card-head">
               <div>
                 <strong>{item.label}</strong>
@@ -632,11 +660,11 @@ export function OpsConsole() {
         ))}
       </section>
 
-      <section className="ops-actions" aria-label="Recovery Actions">
-        <div className="ops-lookup-title">
+      <details className="ops-actions ops-write-zone" id="ops-recovery-actions">
+        <summary className="ops-lookup-title">
           <strong>Recovery Actions</strong>
           <span>권한은 internal service token scope로 검증되며 token은 저장하지 않습니다.</span>
-        </div>
+        </summary>
         <div className="ops-action-grid">
           <article className="ops-action-card">
             <div>
@@ -801,13 +829,13 @@ export function OpsConsole() {
             <ResultPanel result={results["Ledger snapshot recovery"] ?? initialOpsResult} />
           </article>
         </div>
-      </section>
+      </details>
 
-      <section className="ops-actions ops-status-actions" aria-label="Status Change Actions">
-        <div className="ops-lookup-title">
+      <details className="ops-actions ops-status-actions ops-write-zone" id="ops-status-actions">
+        <summary className="ops-lookup-title">
           <strong>AUTH_ADMIN / ACCOUNT_ADMIN status changes</strong>
           <span>requestId, reasonCode, reasonDetail, 확인 문구를 모두 입력한 뒤 실행합니다.</span>
-        </div>
+        </summary>
         <div className="ops-action-grid">
           <article className="ops-action-card ops-status-card">
             <div>
@@ -1063,13 +1091,13 @@ export function OpsConsole() {
             <ResultPanel result={results["Account status update"] ?? initialOpsResult} />
           </article>
         </div>
-      </section>
+      </details>
 
-      <section className="ops-actions" aria-label="Customer Application Actions">
-        <div className="ops-lookup-title">
+      <details className="ops-actions ops-write-zone" id="ops-application-actions">
+        <summary className="ops-lookup-title">
           <strong>Customer Application Actions</strong>
           <span>신청 검토/승인/실행과 mock/webhook boundary callback을 수동 반영합니다.</span>
-        </div>
+        </summary>
         <div className="ops-action-grid">
           <article className="ops-action-card">
             <div>
@@ -1246,9 +1274,9 @@ export function OpsConsole() {
             />
           </article>
         </div>
-      </section>
+      </details>
 
-      <section className="ops-lookups" aria-label="exact lookup">
+      <section className="ops-lookups" id="ops-exact-lookup" aria-label="exact lookup">
         <div className="ops-lookup-title">
           <strong>Ledger / Snapshot / Auth / Account exact lookup</strong>
           <span>write action 이후 같은 requestId로 감사 조회 결과를 확인합니다.</span>
@@ -1327,7 +1355,7 @@ export function OpsConsole() {
         </div>
         <div className="ops-grid compact">
           {lookupItems.map((item) => (
-            <article className="ops-card" key={item.label}>
+            <article className="ops-card" id={toOpsAnchorId(item.label)} key={item.label}>
               <div className="ops-card-head">
                 <div>
                   <strong>{item.label}</strong>
