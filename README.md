@@ -1,7 +1,13 @@
-# Aquila Bank
+<p align="center">
+  <img src="front/public/brand-mascot.png" width="112" alt="Aquila Bank brand logo" />
+</p>
 
-> 개인 프로젝트 기준의 웹뱅킹 MVP
-> 내부 계좌 이체, 거래 정합성, 대량 거래 조회, 알림 흐름을 작은 cloud budget 안에서 검증합니다.
+<h1 align="center">Aquila Bank</h1>
+
+<p align="center">
+  <strong>개인 프로젝트 기준의 웹뱅킹 MVP</strong><br>
+  내부 계좌 이체, 거래 정합성, 대량 거래 조회, 알림 흐름을 작은 cloud budget 안에서 검증합니다.
+</p>
 
 <p align="center">
   <a href="https://github.com/AquilaXk/aquila-bank">
@@ -86,7 +92,7 @@
 
 ### 실제 고객뱅킹 화면
 
-미로그인 상태에서도 메뉴와 통합검색 흐름을 먼저 확인할 수 있고, 계좌/이체/거래내역 같은 보호 업무는 화면 이동 후 인증 안내로 분리합니다.
+메인 화면에서 메뉴와 통합검색 흐름을 먼저 확인할 수 있고, 계좌/이체/거래내역 같은 보호 업무는 인증 상태에 맞춰 분리합니다.
 
 ![Aquila Bank customer banking search](docs/assets/readme-customer-banking-search.jpg)
 
