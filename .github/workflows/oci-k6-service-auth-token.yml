@@ -757,3 +757,4 @@ jobs:
             build/reports/k6/${{ env.K6_REPORT_NAME }}/
             build/reports/k6/${{ env.K6_REPORT_NAME }}*
           if-no-files-found: ignore
+          retention-days: 3

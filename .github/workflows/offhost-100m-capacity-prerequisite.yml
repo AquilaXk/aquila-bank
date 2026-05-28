@@ -570,3 +570,4 @@ jobs:
           name: offhost-capacity-prerequisite
           path: build/reports/k6/ci-offhost-100m-capacity-prerequisite/
           if-no-files-found: ignore
+          retention-days: 3

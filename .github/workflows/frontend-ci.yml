@@ -61,4 +61,4 @@ jobs:
             front/test-results/**/*.png
             front/test-results/**/error-context.md
             front/playwright-report/**
-          retention-days: 14
+          retention-days: 3

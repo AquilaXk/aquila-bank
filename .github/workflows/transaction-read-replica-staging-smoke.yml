@@ -143,3 +143,4 @@ jobs:
           name: transaction-read-replica-staging-smoke
           path: build/reports/transaction-read-replica-staging-smoke/
           if-no-files-found: ignore
+          retention-days: 3

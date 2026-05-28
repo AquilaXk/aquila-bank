@@ -739,6 +739,7 @@ jobs:
           name: transaction-read-model-staging-replay
           path: build/reports/transaction-staging-replay/
           if-no-files-found: ignore
+          retention-days: 3
 
   finalize-deployment:
     name: Finalize Staging Deployment

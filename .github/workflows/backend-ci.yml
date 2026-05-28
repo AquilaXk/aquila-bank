@@ -131,3 +131,4 @@ jobs:
             back/build/reports/jacoco/pr/jacocoPrReport.xml
             back/build/reports/jacoco/pr/html
           if-no-files-found: error
+          retention-days: 3

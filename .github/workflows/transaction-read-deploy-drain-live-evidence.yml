@@ -212,3 +212,4 @@ jobs:
           name: transaction-read-deploy-drain-live-evidence-${{ github.run_id }}
           path: build/reports/k6/${{ env.DEPLOY_DRAIN_LIVE_NAME }}/
           if-no-files-found: ignore
+          retention-days: 3

@@ -296,3 +296,4 @@ jobs:
           name: transaction-read-mixed-workload-live-evidence-${{ github.run_id }}
           path: build/reports/k6/${{ env.MIXED_WORKLOAD_LIVE_NAME }}/
           if-no-files-found: ignore
+          retention-days: 3

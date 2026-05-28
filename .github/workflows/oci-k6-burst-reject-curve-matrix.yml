@@ -536,6 +536,7 @@ jobs:
             build/reports/k6/${{ env.K6_MATRIX_REPORT_NAME }}/
             build/reports/k6/${{ env.K6_MATRIX_REPORT_NAME }}*
           if-no-files-found: error
+          retention-days: 3
 
       - name: Record transaction read admission profile evidence deployment
         env:

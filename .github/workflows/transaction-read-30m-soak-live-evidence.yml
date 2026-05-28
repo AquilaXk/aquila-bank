@@ -885,3 +885,4 @@ jobs:
           name: transaction-read-30m-soak-live-evidence
           path: build/reports/k6/${{ env.SOAK_30M_REPORT_NAME }}
           if-no-files-found: ignore
+          retention-days: 3

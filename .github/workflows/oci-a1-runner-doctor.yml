@@ -38,3 +38,4 @@ jobs:
           name: oci-a1-direct-observability-${{ github.run_id }}
           path: build/reports/oci-a1-direct-observability/
           if-no-files-found: ignore
+          retention-days: 3
