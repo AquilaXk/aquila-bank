@@ -32,6 +32,7 @@
 - [프로젝트 개요](#프로젝트-개요)
 - [주요 기능](#주요-기능)
 - [시스템 아키텍처](#시스템-아키텍처)
+  - [데이터 모델 (ERD)](#데이터-모델-erd)
 - [주요 프로세스](#주요-프로세스)
 - [기술 스택](#기술-스택)
 - [프로젝트 구조](#프로젝트-구조)
@@ -139,33 +140,163 @@
 
 ## 시스템 아키텍처
 
-![Aquila Bank architecture](docs/assets/readme-architecture.png)
+```mermaid
+flowchart TD
+    subgraph Client["Client Layer (Next.js 14 / React 18)"]
+        UI["고객 뱅킹 웹 UI<br/>(Tailwind CSS / Signature Lavender)"]
+        OpsUI["운영 콘솔 대시보드<br/>(실시간 메트릭 & 배치 감시)"]
+    end
 
-```text
-[Client]
-  Next.js 14 / React 18
-        |
-        v
-[Edge]
-  Nginx reverse proxy
-  rate limit / admission gate
-        |
-        v
-[Backend]
-  Spring Boot 4 / Java 21
-  domain use case / adapter boundary
-        |
-        +--> PostgreSQL 18
-        |    ledger / account / transaction read model
-        |
-        +--> Outbox worker
-             Kafka 4.0 optional publish
-             notification inbox / SSE fan-out
+    subgraph Edge["Edge / Reverse Proxy Layer"]
+        Nginx["Nginx Reverse Proxy"]
+        RateLimit["Rate Limiting & Admission Gate"]
+    end
 
-[Ops]
-  GitHub Actions
-  OCI A1 staging / production promotion
-  k6 / Prometheus / Grafana optional evidence assets
+    subgraph Backend["Core Banking Backend (Spring Boot 4 / Java 21)"]
+        Security["인증 및 보안 필터<br/>(JWT / TOTP MFA / Session Revoke)"]
+        Domain["순수 헥사고날 도메인<br/>(Account, Ledger, Transfer Invariants)"]
+        LockMgr["Ordered Row Locking<br/>(교차 송금 데드락 방지)"]
+        OutboxWorker["Outbox Relay Worker"]
+        NotificationEngine["Notification Inbox & SSE Fan-Out"]
+    end
+
+    subgraph Storage["Persistence & Messaging Layer"]
+        DB[("PostgreSQL 18<br/>Core DB & Read Model")]
+        Kafka[("Apache Kafka 4.0<br/>Optional Event Bus")]
+    end
+
+    subgraph DevOps["CI/CD & Infrastructure"]
+        CI["GitHub Actions CI Gate"]
+        OCI["OCI Always Free A1 Flex<br/>(4 OCPU / 24GB RAM / 200GB Volume)"]
+    end
+
+    UI --> Nginx
+    OpsUI --> Nginx
+    Nginx --> RateLimit
+    RateLimit --> Security
+    Security --> Domain
+    Domain --> LockMgr
+    LockMgr --> DB
+    Domain --> OutboxWorker
+    OutboxWorker --> DB
+    OutboxWorker -.->|Optional Publish| Kafka
+    OutboxWorker --> NotificationEngine
+    NotificationEngine -->|SSE Stream| UI
+    CI -->|Automated Promotion| OCI
+```
+
+### 데이터 모델 (ERD)
+
+```mermaid
+erDiagram
+    BANK_USER ||--o{ USER_ACCOUNT_MEMBERSHIP : "holds"
+    BANK_ACCOUNT ||--o{ USER_ACCOUNT_MEMBERSHIP : "belongs to"
+    BANK_ACCOUNT ||--|| ACCOUNT_BALANCE_SNAPSHOT : "tracks current"
+    BANK_ACCOUNT ||--o{ LEDGER_ENTRY : "records"
+    LEDGER_ENTRY ||--|| TRANSACTION_READ_MODEL : "projects"
+    BANK_USER ||--o{ AUTH_REFRESH_TOKEN_SESSION : "authenticates"
+    BANK_USER ||--o{ NOTIFICATION_INBOX : "receives"
+    BANK_USER ||--o{ CUSTOMER_SERVICE_APPLICATION : "submits"
+    BANK_ACCOUNT ||--o{ CUSTOMER_SERVICE_APPLICATION : "targets"
+
+    BANK_USER {
+        bigint id PK
+        varchar login_id UK
+        varchar password_hash
+        varchar display_name
+        varchar user_status
+        timestamptz created_at
+    }
+
+    BANK_ACCOUNT {
+        bigint id PK
+        varchar account_number UK
+        varchar display_name
+        varchar account_status
+        varchar currency_code
+        timestamptz created_at
+    }
+
+    USER_ACCOUNT_MEMBERSHIP {
+        bigint user_id PK, FK
+        bigint account_id PK, FK
+        varchar membership_role
+        varchar membership_status
+        timestamptz created_at
+    }
+
+    ACCOUNT_BALANCE_SNAPSHOT {
+        bigint account_id PK, FK
+        bigint last_applied_ledger_entry_id
+        bigint available_balance_minor
+        bigint pending_balance_minor
+        varchar currency_code
+        timestamptz updated_at
+    }
+
+    LEDGER_ENTRY {
+        bigint id PK
+        bigint account_id FK
+        varchar transaction_reference
+        varchar entry_reference UK
+        varchar direction
+        varchar entry_status
+        bigint amount_minor
+        varchar currency_code
+        timestamptz booked_at
+    }
+
+    TRANSACTION_READ_MODEL {
+        bigint id PK
+        bigint ledger_entry_id FK, UK
+        bigint account_id FK
+        varchar transaction_reference
+        varchar direction
+        varchar transaction_status
+        bigint amount_minor
+        bigint balance_after_minor
+        timestamptz booked_at
+    }
+
+    OUTBOX_EVENT {
+        bigint id PK
+        varchar aggregate_type
+        varchar aggregate_id
+        varchar event_type
+        varchar event_key UK
+        jsonb payload
+        varchar publish_status
+        timestamptz available_at
+        int retry_count
+    }
+
+    COMMAND_IDEMPOTENCY {
+        varchar idempotency_key PK
+        varchar request_fingerprint
+        varchar processing_status
+        int response_code
+        jsonb response_payload
+        timestamptz locked_until
+    }
+
+    NOTIFICATION_INBOX {
+        bigint id PK
+        bigint user_id FK
+        varchar title
+        varchar message
+        varchar read_state
+        timestamptz created_at
+    }
+
+    CUSTOMER_SERVICE_APPLICATION {
+        bigint id PK
+        bigint user_id FK
+        bigint account_id FK
+        varchar application_type
+        varchar status
+        varchar reason
+        timestamptz created_at
+    }
 ```
 
 ## 주요 프로세스
