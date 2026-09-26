@@ -243,7 +243,7 @@ export type CustomerApplicationDetailsResponse = CustomerApplicationResponse & {
   reason: Nullable<string>;
   processedBy: Nullable<string>;
   processedAt: Nullable<string>;
-  executionResult: Record<string, unknown>;
+  executionResult: Nullable<Record<string, unknown>>;
 };
 
 export type CustomerApplicationListResponse = {

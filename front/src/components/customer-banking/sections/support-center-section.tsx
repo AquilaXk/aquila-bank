@@ -99,7 +99,10 @@ export function SupportCenterSection({
     }));
   }
 
-  function formatExecutionResult(result: Record<string, unknown>): string {
+  function formatExecutionResult(result?: Record<string, unknown> | null): string {
+    if (!result || typeof result !== "object") {
+      return "없음";
+    }
     return Object.keys(result).length === 0 ? "없음" : JSON.stringify(result, null, 2);
   }
 
