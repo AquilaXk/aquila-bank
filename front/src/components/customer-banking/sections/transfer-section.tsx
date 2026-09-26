@@ -131,9 +131,24 @@ export function TransferSection({
     onTransferChange(value);
   }
 
-  function handleQuickAmount(addAmount: number): void {
+  function handleSwapAccounts(): void {
+    const prevSource = transferForm.sourceAccountId;
+    const prevTarget = transferForm.targetAccountNumber;
+    if (!prevSource && !prevTarget) return;
+    updateTransferForm({
+      ...transferForm,
+      sourceAccountId: prevTarget.replace(/[^0-9]/g, ""),
+      targetAccountNumber: prevSource,
+    });
+  }
+
+  function handleQuickAmount(addAmountMinor: number): void {
+    if (addAmountMinor === 0) {
+      updateTransferForm({ ...transferForm, amountMinor: "" });
+      return;
+    }
     const current = Number(transferForm.amountMinor) || 0;
-    const next = current + addAmount;
+    const next = current + addAmountMinor;
     updateTransferForm({ ...transferForm, amountMinor: String(next) });
   }
 
@@ -335,10 +350,11 @@ export function TransferSection({
               <span className="text-xs font-bold uppercase tracking-wider text-purple-300">스왑 송금</span>
               <div className="flex gap-1.5">
                 {[
-                  { label: "+1만", value: 10000 },
-                  { label: "+5만", value: 50000 },
-                  { label: "+10만", value: 100000 },
-                  { label: "+100만", value: 1000000 },
+                  { label: "+1만", value: 1_000_000 },
+                  { label: "+5만", value: 5_000_000 },
+                  { label: "+10만", value: 10_000_000 },
+                  { label: "+100만", value: 100_000_000 },
+                  { label: "정정", value: 0 },
                 ].map((item) => (
                   <button
                     className="px-2 py-0.5 rounded text-xs font-semibold bg-white/5 text-purple-200 border border-purple-500/20 hover:bg-purple-500/20 hover:border-purple-500/40 transition-all font-mono"
@@ -365,14 +381,27 @@ export function TransferSection({
                 </div>
               </div>
               <div className="flex justify-center">
-                <div
-                  className="w-9 h-9 rounded-full bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-300 shadow-[0_0_12px_rgba(168,85,247,0.2)]"
-                  title="이체 방향"
+                <button
+                  type="button"
+                  onClick={handleSwapAccounts}
+                  className="w-9 h-9 rounded-full bg-purple-500/10 hover:bg-purple-500/25 border border-purple-500/30 hover:border-purple-500/60 flex items-center justify-center text-purple-300 hover:text-purple-100 shadow-[0_0_12px_rgba(168,85,247,0.25)] transition-all duration-300 group cursor-pointer active:scale-95"
+                  title="출금 계좌와 입금 계좌 교환"
+                  aria-label="출금 계좌와 입금 계좌 교환"
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                  <svg
+                    className="w-4 h-4 rotate-90 md:rotate-0 transition-transform duration-300 group-hover:scale-110"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2.2"
+                      d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"
+                    />
                   </svg>
-                </div>
+                </button>
               </div>
               <div className="p-3.5 rounded-xl bg-[#141824] border border-white/[0.08] hover:border-purple-500/30 transition-colors">
                 <div className="text-[11px] font-semibold text-slate-400 mb-1 flex items-center justify-between">
