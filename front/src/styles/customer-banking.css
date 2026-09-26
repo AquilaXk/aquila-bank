@@ -2752,7 +2752,10 @@ label span {
     overflow: auto;
   }
 
-  .utility-right,
+  .header-user-chip {
+    display: none;
+  }
+
   .search-field {
     grid-template-columns: 1fr;
   }
@@ -2778,7 +2781,10 @@ label span {
     max-width: 100%;
     overflow-x: auto;
     scroll-snap-type: x proximity;
+    border: 0;
     border-top: 1px solid var(--line);
+    border-radius: 0;
+    padding: 0;
     scrollbar-width: thin;
   }
 
