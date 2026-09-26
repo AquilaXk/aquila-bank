@@ -70,9 +70,15 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
       refreshIdempotencyLock(command.idempotencyKey(), now);
     }
 
-    // source/target snapshot과 계좌 row를 함께 잠가 상태 변경과 잔액 쓰기가 엇갈리지 않게 합니다.
-    LockedBalanceSnapshot source = loadBalanceSnapshot(command.sourceAccountId());
-    LockedBalanceSnapshot target = loadBalanceSnapshot(command.targetAccountId());
+    // 교차 이체 시 교착상태(Deadlock)를 방지하기 위해 계좌 ID 오름차순으로 락을 획득합니다.
+    long firstLockId = Math.min(command.sourceAccountId(), command.targetAccountId());
+    long secondLockId = Math.max(command.sourceAccountId(), command.targetAccountId());
+    LockedBalanceSnapshot firstSnapshot = loadBalanceSnapshot(firstLockId);
+    LockedBalanceSnapshot secondSnapshot = loadBalanceSnapshot(secondLockId);
+    LockedBalanceSnapshot source =
+        command.sourceAccountId() == firstLockId ? firstSnapshot : secondSnapshot;
+    LockedBalanceSnapshot target =
+        command.targetAccountId() == firstLockId ? firstSnapshot : secondSnapshot;
     verifyTransferableAccount(source);
     verifyTransferableAccount(target);
 
@@ -192,8 +198,15 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
       throw new CommandConflictException("reversal amount exceeds remaining amount");
     }
 
-    LockedBalanceSnapshot source = loadBalanceSnapshot(original.sourceAccountId());
-    LockedBalanceSnapshot target = loadBalanceSnapshot(original.targetAccountId());
+    // 교차 환불 및 동시 이체 시 교착상태(Deadlock)를 방지하기 위해 계좌 ID 오름차순으로 락을 획득합니다.
+    long firstLockId = Math.min(original.sourceAccountId(), original.targetAccountId());
+    long secondLockId = Math.max(original.sourceAccountId(), original.targetAccountId());
+    LockedBalanceSnapshot firstSnapshot = loadBalanceSnapshot(firstLockId);
+    LockedBalanceSnapshot secondSnapshot = loadBalanceSnapshot(secondLockId);
+    LockedBalanceSnapshot source =
+        original.sourceAccountId() == firstLockId ? firstSnapshot : secondSnapshot;
+    LockedBalanceSnapshot target =
+        original.targetAccountId() == firstLockId ? firstSnapshot : secondSnapshot;
     verifyTransferableAccount(source);
     verifyTransferableAccount(target);
     if (!source.currencyCode().equals(original.currencyCode())

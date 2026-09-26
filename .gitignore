@@ -75,6 +75,11 @@ docs/
 customer-banking-*-desktop.png
 customer-banking-*-mobile.png
 
+# Local current-task helpers and hooks
+tools/guards/current-task-*.sh
+tools/guards/setup-git-hooks.sh
+.githooks/prepare-commit-msg
+
 # Terraform local state
 **/.terraform/
 *.tfstate
