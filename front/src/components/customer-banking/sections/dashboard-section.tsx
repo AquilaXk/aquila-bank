@@ -7,16 +7,33 @@ import {
 } from '@/lib/customer-banking/constants';
 
 export function DashboardSection({
+  accounts,
   hasSession,
   isBusy,
   onMove,
   onRefresh,
 }: {
+  accounts?: Array<{
+    accountId: number;
+    accountNumber: string;
+    displayName: string;
+    accountStatus: string;
+    currencyCode: string;
+    availableBalanceMinor: number;
+  }>;
   hasSession: boolean;
   isBusy: boolean;
   onMove: (section: MenuSection) => void;
   onRefresh: () => void;
 }) {
+  const primaryAccount = hasSession && accounts && accounts.length > 0 ? accounts[0] : null;
+  const primaryDisplayName = primaryAccount?.displayName || "Aquila 입출금 통장";
+  const primaryAccountNumber = primaryAccount?.accountNumber || "102-840-****** (KRW)";
+  const primaryBalanceDisplay = hasSession
+    ? primaryAccount
+      ? `${(primaryAccount.availableBalanceMinor / 100).toLocaleString("ko-KR")} ${primaryAccount.currencyCode}`
+      : "1,250,000 KRW"
+    : "로그인 후 확인";
   const workStatus = hasSession
     ? {
         notice: "조회/이체/인증 정상",
@@ -103,13 +120,13 @@ export function DashboardSection({
               <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400" />
               <span className="text-xs text-slate-400">{hasSession ? "정상 이용중" : "로그인 필요"}</span>
             </div>
-            <div className="text-lg font-bold text-slate-100">Aquila 입출금 통장</div>
-            <div className="text-xs text-slate-400 font-mono mt-0.5">102-840-****** (KRW)</div>
+            <div className="text-lg font-bold text-slate-100">{primaryDisplayName}</div>
+            <div className="text-xs text-slate-400 font-mono mt-0.5">{primaryAccountNumber}</div>
           </div>
           <div className="text-left sm:text-right">
             <span className="text-xs text-slate-400 block mb-0.5">출금가능 잔액</span>
             <div className="text-2xl sm:text-3xl font-extrabold text-white font-mono tracking-tight">
-              {hasSession ? "1,250,000 KRW" : "로그인 후 확인"}
+              {primaryBalanceDisplay}
             </div>
             <div className="mt-2 flex gap-2 sm:justify-end">
               <button

@@ -205,6 +205,7 @@ export default function HomePage() {
           {sessionRequired ? renderLoginRequiredWork() : null}
           {activeSection === "dashboard" ? (
             <DashboardSection
+              accounts={accounts}
               hasSession={Boolean(session)}
               onMove={moveToSection}
               onRefresh={handleRefresh}

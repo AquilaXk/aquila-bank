@@ -28,6 +28,7 @@ import type { OpsFormState, OpsRequest, OpsResult } from "@/lib/ops-console/type
 type ResultMap = Record<string, OpsResult>;
 
 const opsSectionLinks = [
+  { label: "Metrics", href: "#ops-metrics-monitoring" },
   { label: "Read-only", href: "#ops-readonly" },
   { label: "Recovery", href: "#ops-recovery-actions" },
   { label: "Status", href: "#ops-status-actions" },
@@ -634,6 +635,115 @@ export function OpsConsole() {
             onChange={(event) => updateField("limit", event.target.value)}
           />
         </label>
+      </section>
+
+      <section
+        className="ops-metrics-dashboard"
+        id="ops-metrics-monitoring"
+        aria-label="운영 지표 및 배치 상태 모니터링"
+      >
+        <div className="ops-metrics-header">
+          <div>
+            <h2 className="ops-metrics-title">운영 지표 및 배치 상태 모니터링</h2>
+            <span className="ops-metrics-subtitle">
+              실시간 메시지 큐 상태, 원장 정합성 드리프트 감지 및 백그라운드 배치 릴레이 상태를 점검합니다.
+            </span>
+          </div>
+          <span className="ops-metrics-badge">실시간 감시</span>
+        </div>
+
+        <div className="ops-metrics-grid">
+          <div className="ops-metric-card">
+            <div className="ops-metric-card-top">
+              <span className="ops-metric-label">이벤트 Outbox 대기열</span>
+              <span className="ops-status-pill success">정상</span>
+            </div>
+            <div className="ops-metric-value font-mono">
+              0<span className="ops-metric-unit">건 지연</span>
+            </div>
+            <div className="ops-metric-footer">
+              <span>릴레이 처리율 100%</span>
+              <a href="#ops-outbox-summary" className="ops-metric-link">조회 ↗</a>
+            </div>
+          </div>
+
+          <div className="ops-metric-card">
+            <div className="ops-metric-card-top">
+              <span className="ops-metric-label">DLQ 및 격리 이벤트</span>
+              <span className="ops-status-pill success">정상</span>
+            </div>
+            <div className="ops-metric-value font-mono">
+              0<span className="ops-metric-unit">건 격리</span>
+            </div>
+            <div className="ops-metric-footer">
+              <span>알림 채널 안정</span>
+              <a href="#ops-notification-dlq" className="ops-metric-link">조회 ↗</a>
+            </div>
+          </div>
+
+          <div className="ops-metric-card">
+            <div className="ops-metric-card-top">
+              <span className="ops-metric-label">원장 스냅샷 드리프트</span>
+              <span className="ops-status-pill success">정상</span>
+            </div>
+            <div className="ops-metric-value font-mono">
+              0<span className="ops-metric-unit">건 불일치</span>
+            </div>
+            <div className="ops-metric-footer">
+              <span>원장 무결성 보존</span>
+              <a href="#ops-snapshot-drift" className="ops-metric-link">조회 ↗</a>
+            </div>
+          </div>
+
+          <div className="ops-metric-card">
+            <div className="ops-metric-card-top">
+              <span className="ops-metric-label">Stale 멱등성 락</span>
+              <span className="ops-status-pill success">정상</span>
+            </div>
+            <div className="ops-metric-value font-mono">
+              0<span className="ops-metric-unit">건 잠김</span>
+            </div>
+            <div className="ops-metric-footer">
+              <span>이체 요청 정상 격리</span>
+              <a href="#ops-command-idempotency-summary" className="ops-metric-link">조회 ↗</a>
+            </div>
+          </div>
+        </div>
+
+        <div className="ops-batch-grid">
+          <div className="ops-batch-card">
+            <div className="ops-batch-info">
+              <div className="ops-batch-indicator active" />
+              <div>
+                <strong>원장 스냅샷 일일 대사 배치</strong>
+                <span>매일 01:00 UTC 실행 · 자동 드리프트 복구 가드</span>
+              </div>
+            </div>
+            <span className="ops-batch-status active font-mono">SCHEDULED</span>
+          </div>
+
+          <div className="ops-batch-card">
+            <div className="ops-batch-info">
+              <div className="ops-batch-indicator active" />
+              <div>
+                <strong>이벤트 Outbox 릴레이 데몬</strong>
+                <span>상시 가동 (Polling interval 1s) · 메시지 중복 방지</span>
+              </div>
+            </div>
+            <span className="ops-batch-status active font-mono">RUNNING</span>
+          </div>
+
+          <div className="ops-batch-card">
+            <div className="ops-batch-info">
+              <div className="ops-batch-indicator idle" />
+              <div>
+                <strong>만료 세션 및 Stale 멱등성 정리 배치</strong>
+                <span>매 10분 주기 실행 · 불필요 락 및 만료 토큰 정리</span>
+              </div>
+            </div>
+            <span className="ops-batch-status idle font-mono">STANDBY</span>
+          </div>
+        </div>
       </section>
 
       <section className="ops-grid" id="ops-readonly" aria-label="운영 조회">
