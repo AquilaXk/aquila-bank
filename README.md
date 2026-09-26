@@ -19,6 +19,7 @@
   <img src="https://img.shields.io/badge/Java-21-f89820?style=flat-square&logo=openjdk&logoColor=white" alt="Java 21" />
   <img src="https://img.shields.io/badge/Spring_Boot-4.x-6DB33F?style=flat-square&logo=springboot&logoColor=white" alt="Spring Boot 4" />
   <img src="https://img.shields.io/badge/Next.js-14-000000?style=flat-square&logo=next.js&logoColor=white" alt="Next.js 14" />
+  <img src="https://img.shields.io/badge/Tailwind_CSS-3.4-38B2AC?style=flat-square&logo=tailwind-css&logoColor=white" alt="Tailwind CSS 3.4" />
   <img src="https://img.shields.io/badge/PostgreSQL-18-4169E1?style=flat-square&logo=postgresql&logoColor=white" alt="PostgreSQL 18" />
   <img src="https://img.shields.io/badge/Kafka-4.0-231F20?style=flat-square&logo=apachekafka&logoColor=white" alt="Kafka 4.0" />
   <img src="https://img.shields.io/badge/OCI-A1_Flex-F80000?style=flat-square&logo=oracle&logoColor=white" alt="OCI A1 Flex" />
@@ -31,6 +32,7 @@
 - [프로젝트 개요](#프로젝트-개요)
 - [주요 기능](#주요-기능)
 - [시스템 아키텍처](#시스템-아키텍처)
+  - [데이터 모델 (ERD)](#데이터-모델-erd)
 - [주요 프로세스](#주요-프로세스)
 - [기술 스택](#기술-스택)
 - [프로젝트 구조](#프로젝트-구조)
@@ -82,37 +84,39 @@
 
 | 기능 | 설명 | 기술 포인트 |
 | --- | --- | --- |
-| 계좌 관리 | 계좌 생성, 상태 관리, 잔액 조회 | 계좌 상태 정책, snapshot 점검/복구 데모 |
-| 내부 이체 | 송금, preview, 부분 취소, 한도/잔액/상태 검증 | command idempotency, 원장 감사 추적 |
-| 거래 조회 | 계좌별 거래 목록과 상세 조회 | keyset pagination, covering index, timeout |
+| 계좌 관리 | 계좌 생성, 상태 관리, 잔액 조회 | 계좌 상태 정책, snapshot 점검/복구 데모, 대표 계좌 글로우 카드 |
+| 내부 이체 | 송금, preview, 부분 취소, 한도/잔액/상태 검증, **동시 양방향 교차 이체 데드락 방지** | command idempotency, 원장 감사 추적, **Ordered Row Locking** |
+| 거래 조회 | 계좌별 거래 목록과 상세 조회 | keyset pagination, covering index, card-based table, timeout |
 | 인증/보안 | JWT access token, refresh token session, MFA TOTP | session revoke, backup code, remember device |
 | 고객 신청 | 신청 접수, 조회, 취소, 운영자 검토/승인/실행 | 상태 전이 감사, mock webhook boundary |
 | 알림 | 알림 inbox, unread projection, SSE stream | outbox retry, Kafka 선택 publish, replay |
-| 운영 도구 | 내부 admin API, recovery action, metric/exporter | audit search, admission control, DLQ/redrive |
+| 운영 도구 | 내부 admin API, recovery action, **실시간 운영 지표 및 배치 모니터링 대시보드** | audit search, admission control, DLQ/redrive, **Outbox·원장 실시간 감시** |
 
-### 실제 고객뱅킹 화면
+### 실제 화면 (UI Refresh)
 
-메인 화면에서 메뉴와 통합검색 흐름을 먼저 확인할 수 있고, 계좌/이체/거래내역 같은 보호 업무는 인증 상태에 맞춰 분리합니다.
+프런트엔드는 다크 뉴트럴 차콜(`--bg-page: #0B0D13`) 배경, 시그니처 라벤더(`--accent-lavender: #A78BFA`) 글로우 하이라이트, 마이크로그리드 패턴(`bg-micro-grid`) 및 고정폭 모노스페이스 숫자(`JetBrains Mono`, `tabular-nums`)가 적용된 모던 뱅킹 디자인 시스템으로 구성되어 있습니다.
+
+메인 화면에서 대표 계좌 요약 카드와 메뉴 통합검색 흐름을 먼저 확인할 수 있고, 계좌/이체/거래내역 같은 보호 업무는 세션 상태에 맞춰 분리합니다.
 
 ![Aquila Bank customer banking search](docs/assets/readme-customer-banking-search.jpg)
 
-로그인 후에는 전계좌조회, 즉시이체, 거래내역 keyset 조회, 인증센터 세션 관리, 고객센터 신청 상태를 같은 고객뱅킹 shell 안에서 처리합니다.
+로그인 후에는 전계좌조회, 즉시이체, 거래내역 keyset 조회, 인증센터 세션 관리, 고객센터 신청 상태를 통일된 디자인 시스템 shell 안에서 처리합니다.
 
 #### 계좌조회
 
-보유 계좌 목록, 계좌 상태, 출금 가능 금액을 한 화면에서 확인하고 선택 계좌 기준으로 상세 조회를 이어갈 수 있습니다.
+보유 계좌 목록, 계좌 상태, 출금 가능 금액을 한 화면에서 확인하고 선택 계좌 기준으로 상세 조회를 이어갈 수 있습니다. 출금 가능 잔액 카드에는 시그니처 라벤더 글로우와 모노스페이스 숫자가 적용되어 금액 식별성을 높였습니다.
 
 ![Aquila Bank customer banking account list](docs/assets/readme-customer-banking-accounts.jpg)
 
 #### 즉시이체
 
-받는 분 확인, 이체 확인, OTP 확인, 완료증 출력까지 이어지는 내부 이체 흐름을 보여줍니다.
+받는 분 확인, 이체 확인, OTP 확인, 완료증 출력까지 이어지는 내부 이체 흐름을 보여줍니다. 반응형 인터랙티브 계좌 스왑(맞바꿈) 버튼과 퀵 금액 선택 위젯(+1만, +5만, +10만, +100만, 정정)을 통해 빠르고 직관적인 송금 경험을 제공합니다.
 
 ![Aquila Bank customer banking transfer receipt](docs/assets/readme-customer-banking-transfer.jpg)
 
 #### 거래내역 조회
 
-계좌, 기간, 상태, 금액 조건을 입력하고 keyset cursor 기준으로 다음 페이지를 이어 조회하는 대량 조회 UX입니다.
+계좌, 기간, 상태, 금액 조건을 입력하고 keyset cursor 기준으로 다음 페이지를 이어 조회하는 대량 조회 UX입니다. 카드 기반 Keyset 테이블과 행 호버 트랜지션, 소프트 시맨틱 상태 뱃지를 제공합니다.
 
 ![Aquila Bank customer banking transaction search](docs/assets/readme-customer-banking-transactions.jpg)
 
@@ -128,40 +132,176 @@
 
 ![Aquila Bank customer banking application status](docs/assets/readme-customer-banking-application.jpg)
 
+#### 운영 지표 및 배치 상태 모니터링 대시보드
+
+실시간 이벤트 Outbox 대기열(지연 건수 및 릴레이 처리율), DLQ/격리 이벤트, 원장 스냅샷 드리프트 감지, Stale 멱등성 락 상태 및 일일 원장 대사/릴레이 배치 데몬 상태를 점검하는 운영 콘솔 모니터링 대시보드입니다.
+
+![Aquila Bank operations metrics dashboard](docs/assets/readme-ops-monitoring.jpg)
+
 ## 시스템 아키텍처
 
-![Aquila Bank architecture](docs/assets/readme-architecture.png)
+```mermaid
+flowchart TD
+    subgraph Client["Client Layer (Next.js 14 / React 18)"]
+        UI["고객 뱅킹 웹 UI<br/>(Tailwind CSS / Signature Lavender)"]
+        OpsUI["운영 콘솔 대시보드<br/>(실시간 메트릭 & 배치 감시)"]
+    end
 
-```text
-[Client]
-  Next.js 14 / React 18
-        |
-        v
-[Edge]
-  Nginx reverse proxy
-  rate limit / admission gate
-        |
-        v
-[Backend]
-  Spring Boot 4 / Java 21
-  domain use case / adapter boundary
-        |
-        +--> PostgreSQL 18
-        |    ledger / account / transaction read model
-        |
-        +--> Outbox worker
-             Kafka 4.0 optional publish
-             notification inbox / SSE fan-out
+    subgraph Edge["Edge / Reverse Proxy Layer"]
+        Nginx["Nginx Reverse Proxy"]
+        RateLimit["Rate Limiting & Admission Gate"]
+    end
 
-[Ops]
-  GitHub Actions
-  OCI A1 staging / production promotion
-  k6 / Prometheus / Grafana optional evidence assets
+    subgraph Backend["Core Banking Backend (Spring Boot 4 / Java 21)"]
+        Security["인증 및 보안 필터<br/>(JWT / TOTP MFA / Session Revoke)"]
+        Domain["순수 헥사고날 도메인<br/>(Account, Ledger, Transfer Invariants)"]
+        LockMgr["Ordered Row Locking<br/>(교차 송금 데드락 방지)"]
+        OutboxWorker["Outbox Relay Worker"]
+        NotificationEngine["Notification Inbox & SSE Fan-Out"]
+    end
+
+    subgraph Storage["Persistence & Messaging Layer"]
+        DB[("PostgreSQL 18<br/>Core DB & Read Model")]
+        Kafka[("Apache Kafka 4.0<br/>Optional Event Bus")]
+    end
+
+    subgraph DevOps["CI/CD & Infrastructure"]
+        CI["GitHub Actions CI Gate"]
+        OCI["OCI Always Free A1 Flex<br/>(4 OCPU / 24GB RAM / 200GB Volume)"]
+    end
+
+    UI --> Nginx
+    OpsUI --> Nginx
+    Nginx --> RateLimit
+    RateLimit --> Security
+    Security --> Domain
+    Domain --> LockMgr
+    LockMgr --> DB
+    Domain --> OutboxWorker
+    OutboxWorker --> DB
+    OutboxWorker -.->|Optional Publish| Kafka
+    OutboxWorker --> NotificationEngine
+    NotificationEngine -->|SSE Stream| UI
+    CI -->|Automated Promotion| OCI
+```
+
+### 데이터 모델 (ERD)
+
+```mermaid
+erDiagram
+    BANK_USER ||--o{ USER_ACCOUNT_MEMBERSHIP : "holds"
+    BANK_ACCOUNT ||--o{ USER_ACCOUNT_MEMBERSHIP : "belongs to"
+    BANK_ACCOUNT ||--|| ACCOUNT_BALANCE_SNAPSHOT : "tracks current"
+    BANK_ACCOUNT ||--o{ LEDGER_ENTRY : "records"
+    LEDGER_ENTRY ||--|| TRANSACTION_READ_MODEL : "projects"
+    BANK_USER ||--o{ AUTH_REFRESH_TOKEN_SESSION : "authenticates"
+    BANK_USER ||--o{ NOTIFICATION_INBOX : "receives"
+    BANK_USER ||--o{ CUSTOMER_SERVICE_APPLICATION : "submits"
+    BANK_ACCOUNT ||--o{ CUSTOMER_SERVICE_APPLICATION : "targets"
+
+    BANK_USER {
+        bigint id PK
+        varchar login_id UK
+        varchar password_hash
+        varchar display_name
+        varchar user_status
+        timestamptz created_at
+    }
+
+    BANK_ACCOUNT {
+        bigint id PK
+        varchar account_number UK
+        varchar display_name
+        varchar account_status
+        varchar currency_code
+        timestamptz created_at
+    }
+
+    USER_ACCOUNT_MEMBERSHIP {
+        bigint user_id PK, FK
+        bigint account_id PK, FK
+        varchar membership_role
+        varchar membership_status
+        timestamptz created_at
+    }
+
+    ACCOUNT_BALANCE_SNAPSHOT {
+        bigint account_id PK, FK
+        bigint last_applied_ledger_entry_id
+        bigint available_balance_minor
+        bigint pending_balance_minor
+        varchar currency_code
+        timestamptz updated_at
+    }
+
+    LEDGER_ENTRY {
+        bigint id PK
+        bigint account_id FK
+        varchar transaction_reference
+        varchar entry_reference UK
+        varchar direction
+        varchar entry_status
+        bigint amount_minor
+        varchar currency_code
+        timestamptz booked_at
+    }
+
+    TRANSACTION_READ_MODEL {
+        bigint id PK
+        bigint ledger_entry_id FK, UK
+        bigint account_id FK
+        varchar transaction_reference
+        varchar direction
+        varchar transaction_status
+        bigint amount_minor
+        bigint balance_after_minor
+        timestamptz booked_at
+    }
+
+    OUTBOX_EVENT {
+        bigint id PK
+        varchar aggregate_type
+        varchar aggregate_id
+        varchar event_type
+        varchar event_key UK
+        jsonb payload
+        varchar publish_status
+        timestamptz available_at
+        int retry_count
+    }
+
+    COMMAND_IDEMPOTENCY {
+        varchar idempotency_key PK
+        varchar request_fingerprint
+        varchar processing_status
+        int response_code
+        jsonb response_payload
+        timestamptz locked_until
+    }
+
+    NOTIFICATION_INBOX {
+        bigint id PK
+        bigint user_id FK
+        varchar title
+        varchar message
+        varchar read_state
+        timestamptz created_at
+    }
+
+    CUSTOMER_SERVICE_APPLICATION {
+        bigint id PK
+        bigint user_id FK
+        bigint account_id FK
+        varchar application_type
+        varchar status
+        varchar reason
+        timestamptz created_at
+    }
 ```
 
 ## 주요 프로세스
 
-### 1. 거래 정합성 경계
+### 1. 거래 정합성 경계 및 동시성 제어
 
 도메인은 Spring, JPA, web, SDK 구현에 의존하지 않습니다. 송금 흐름은 잔액 검증, 한도 정책, 원장 기록, 감사 추적을 같은 업무 경계로 보고, inbound/outbound adapter는 `global`에 둡니다.
 
@@ -171,6 +311,7 @@
 | 원장 우선 | 송금 결과는 잔액 변경뿐 아니라 감사 가능한 원장 흐름으로 설명합니다. |
 | idempotency | 재시도 상황에서 같은 command가 중복 실행되지 않도록 경계를 둡니다. |
 | audit trail | 상태 변경과 운영자 조작은 추적 가능한 기록으로 남깁니다. |
+| **데드락 방지 (Ordered Row Locking)** | **동시 양방향 교차 송금(A→B, B→A) 시 계좌 ID를 오름차순(Natural Order)으로 정렬하여 balance snapshot 및 계좌 행 락(SELECT FOR UPDATE)을 순차 획득함으로써 순환 대기(Circular Wait) 데드락을 원천 차단합니다.** |
 
 ### 2. 1억 건 거래 조회 경로
 
@@ -202,7 +343,16 @@ small page response / timeout / admission control
 | SSE fan-out | reconnect gap은 bounded replay와 pull API 재동기화로 보완합니다. |
 | DLQ/redrive | 실패 event는 운영 API로 확인하고 재처리 경로를 둡니다. |
 
-### 4. Evidence 기반 성능 판단
+### 4. 실시간 운영 지표 및 배치 상태 감시
+
+운영 콘솔은 금융 시스템의 건전성을 실시간으로 확인하고 자동화된 배치 상태를 점검합니다.
+
+- **이벤트 Outbox 대기열**: 지연 건수 및 릴레이 처리율을 실시간 추적하여 메시지 큐 적체를 사전에 감지합니다.
+- **DLQ 및 격리 이벤트**: 재시도 상한을 초과한 이벤트를 격리 보관하고 운영자가 즉시 재처리(Redrive)할 수 있습니다.
+- **원장 스냅샷 일일 대사**: 원장 잔액과 snapshot drift 불일치를 실시간 점검하며, 매일 일일 대사 배치가 자동 동기화 가드를 수행합니다.
+- **멱등성 락 관리**: 비정상 중단된 Stale 멱등성 락을 주기적인 정리 배치를 통해 해제하여 연속 이체 차단을 방지합니다.
+
+### 5. Evidence 기반 성능 판단
 
 성능 개선 PR은 live artifact를 기준으로 판단합니다.
 
@@ -210,7 +360,7 @@ small page response / timeout / admission control
 - synthetic fixture pass, mock evidence, harness-only pass는 성능 개선 증거로 보지 않습니다.
 - shell script, workflow, evidence harness 수정은 병목 확인을 막는 차단 사유가 있을 때만 최소 범위로 진행합니다.
 
-### 5. Delivery flow
+### 6. Delivery flow
 
 ```text
 issue -> docs/agent brief -> branch from main -> commit plan -> push -> PR to main
@@ -228,13 +378,13 @@ GitHub Actions CI -> main merge -> staging auto deploy -> production manual prom
 
 | 영역 | 스택 |
 | --- | --- |
-| Frontend | Next.js 14, React 18, TypeScript |
+| Frontend | Next.js 14, React 18, TypeScript, Tailwind CSS, PostCSS, Lucide Icons |
 | Backend | Spring Boot 4, Java 21, Spring Security, JDBC, Flyway |
 | Data | PostgreSQL 18 |
-| Event / Async | Kafka 4.0, Outbox, SSE |
+| Event / Async | Kafka 4.0 (KRaft), Outbox, SSE |
 | Edge / Ops | Nginx, Docker Compose, OCI A1 Flex, GitHub Actions |
-| Observability / Load Test | Prometheus, Grafana, k6, Postgres exporter |
-| Quality | Gradle check, Spotless, JaCoCo, Testcontainers, Next lint |
+| Observability / Load Test | Prometheus, Grafana, k6, Postgres exporter, Ops Console Dashboard |
+| Quality | Gradle check, Spotless, SpotBugs, JaCoCo, Testcontainers, Playwright E2E, UI Contract Tests, Next lint |
 
 ## 프로젝트 구조
 
@@ -339,23 +489,27 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8080 PORT=3001 yarn --cwd front dev
 ./back/gradlew -p back check
 ```
 
-- unit/slice test, Testcontainers integration test, query plan gate, JaCoCo coverage verification, Spotless check를 포함합니다.
+- 단위/슬라이스 테스트, Testcontainers 통합 테스트, 동시 교차 이체 데드락 방지 검증(`JdbcTransferConcurrencyDeadlockIntegrationTest`), 쿼리 플랜 회귀 게이트, JaCoCo 커버리지, SpotBugs, Spotless 포맷 체크를 포함합니다.
 - 같은 워크트리에서 backend 검증을 병렬 실행할 때는 `tools/test/with-resource-lock.sh`로 직렬화합니다.
 
 ### Frontend
 
 ```bash
 yarn --cwd front lint
+yarn --cwd front build
 ```
 
-### Frontend contract
+### Frontend Contract & Visual E2E
 
 ```bash
-yarn --cwd front test:login-runtime
 yarn --cwd front test:ui-contract
+yarn --cwd front test:login-runtime
+yarn --cwd front test:e2e:visual
+yarn --cwd front test:e2e:live-artifacts
+yarn --cwd front test:e2e:authenticated
 ```
 
-프런트 contract 검증은 서버가 없어도 실행할 수 있습니다. 실제 로그인 데모는 백엔드가 실행된 상태에서 확인합니다.
+- 프런트 contract 및 정적 검증은 독립 실행 가능하며, Playwright 기반 E2E 및 Visual QA를 통해 모바일/데스크톱 반응형 3열 구조, 레이아웃 바운더리, 접근성 및 라이브 아티팩트 생성을 결정론적으로 검증합니다.
 
 ### Load / Evidence
 
