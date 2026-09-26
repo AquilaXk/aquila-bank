@@ -224,6 +224,18 @@ export function BankHeader({
             </button>
           ))}
         </nav>
+        <div className="header-user-chip" aria-label="사용자 칩">
+          <span
+            className={isAuthenticated ? "chip-dot active" : "chip-dot idle"}
+            aria-hidden="true"
+          />
+          <strong>
+            {isAuthenticated
+              ? (session?.userId ? `회원 ID: ${session.userId}` : "인증 회원")
+              : "보호모드"}
+          </strong>
+          <span>{isAuthenticated ? "세션 연결" : "인증 필요"}</span>
+        </div>
       </div>
       <div className="bank-service-strip gothic-state-strip" aria-label="뱅킹 이용 상태">
         <span>

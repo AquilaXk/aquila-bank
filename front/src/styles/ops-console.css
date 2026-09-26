@@ -1,15 +1,15 @@
 :root {
-  --ops-gothic-page: var(--gothic-page, #101214);
-  --ops-gothic-surface: var(--gothic-surface, #171a1d);
-  --ops-gothic-surface-muted: var(--gothic-surface-muted, #202328);
-  --ops-gothic-line: var(--gothic-line, #3b3a32);
-  --ops-gothic-line-strong: var(--gothic-line-strong, #6d5a35);
-  --ops-gothic-parchment: var(--gothic-parchment, #efe7d3);
-  --ops-gothic-muted: var(--gothic-muted, #a8a195);
-  --ops-gothic-brass: var(--gothic-brass, #c2a35b);
-  --ops-gothic-brass-soft: var(--gothic-brass-soft, #2b2418);
-  --ops-gothic-danger: var(--gothic-danger, #b45a4f);
-  --ops-gothic-danger-soft: var(--gothic-danger-soft, #2b1716);
+  --ops-gothic-page: var(--gothic-page, #0B0D13);
+  --ops-gothic-surface: var(--gothic-surface, #121622);
+  --ops-gothic-surface-muted: var(--gothic-surface-muted, #181D2D);
+  --ops-gothic-line: var(--gothic-line, rgba(255, 255, 255, 0.08));
+  --ops-gothic-line-strong: var(--gothic-line-strong, rgba(167, 139, 250, 0.28));
+  --ops-gothic-parchment: var(--gothic-parchment, #F8FAFC);
+  --ops-gothic-muted: var(--gothic-muted, #94A3B8);
+  --ops-gothic-brass: var(--gothic-brass, #A78BFA);
+  --ops-gothic-brass-soft: var(--gothic-brass-soft, rgba(139, 92, 246, 0.15));
+  --ops-gothic-danger: var(--gothic-danger, #F87171);
+  --ops-gothic-danger-soft: var(--gothic-danger-soft, rgba(239, 68, 68, 0.15));
 }
 
 .ops-shell {

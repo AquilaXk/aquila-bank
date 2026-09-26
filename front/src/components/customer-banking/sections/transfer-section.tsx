@@ -131,6 +131,12 @@ export function TransferSection({
     onTransferChange(value);
   }
 
+  function handleQuickAmount(addAmount: number): void {
+    const current = Number(transferForm.amountMinor) || 0;
+    const next = current + addAmount;
+    updateTransferForm({ ...transferForm, amountMinor: String(next) });
+  }
+
   async function handleTransferSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (transferStep === "input") {
@@ -322,6 +328,68 @@ export function TransferSection({
                 </StatusBadge>
               </strong>
               <small>OTP 또는 보안매체 확인</small>
+            </div>
+          </div>
+          <div className="transfer-swap-widget my-3 p-4 rounded-xl bg-white/[0.02] border border-white/[0.08] backdrop-blur-sm">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-bold uppercase tracking-wider text-purple-300">스왑 송금</span>
+              <div className="flex gap-1.5">
+                {[
+                  { label: "+1만", value: 10000 },
+                  { label: "+5만", value: 50000 },
+                  { label: "+10만", value: 100000 },
+                  { label: "+100만", value: 1000000 },
+                ].map((item) => (
+                  <button
+                    className="px-2 py-0.5 rounded text-xs font-semibold bg-white/5 text-purple-200 border border-purple-500/20 hover:bg-purple-500/20 hover:border-purple-500/40 transition-all font-mono"
+                    key={item.label}
+                    onClick={() => handleQuickAmount(item.value)}
+                    type="button"
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-[1fr,auto,1fr] items-center gap-3">
+              <div className="p-3.5 rounded-xl bg-[#141824] border border-purple-500/20 hover:border-purple-500/40 transition-colors">
+                <div className="text-[11px] font-semibold text-slate-400 mb-1 flex items-center justify-between">
+                  <span>출금 계좌</span>
+                  <span className="text-emerald-400 font-mono text-[10px]">출금가능</span>
+                </div>
+                <div className="text-sm font-bold text-white font-mono">
+                  {transferForm.sourceAccountId ? `ID #${transferForm.sourceAccountId}` : "출금계좌 입력"}
+                </div>
+                <div className="text-xs text-slate-400 mt-1">
+                  Aquila 입출금 통장
+                </div>
+              </div>
+              <div className="flex justify-center">
+                <div
+                  className="w-9 h-9 rounded-full bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-300 shadow-[0_0_12px_rgba(168,85,247,0.2)]"
+                  title="이체 방향"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                  </svg>
+                </div>
+              </div>
+              <div className="p-3.5 rounded-xl bg-[#141824] border border-white/[0.08] hover:border-purple-500/30 transition-colors">
+                <div className="text-[11px] font-semibold text-slate-400 mb-1 flex items-center justify-between">
+                  <span>입금 대상</span>
+                  <span className="text-purple-300 text-[10px]">수취 확인</span>
+                </div>
+                <div className="text-sm font-bold text-white font-mono truncate">
+                  {transferPreview
+                    ? `${transferPreview.targetAccount.displayName}`
+                    : transferForm.targetAccountNumber
+                    ? transferForm.targetAccountNumber
+                    : "입금계좌 입력"}
+                </div>
+                <div className="text-xs text-slate-400 mt-1 truncate">
+                  {transferPreview?.targetAccount.maskedAccountNumber || "계좌 검증 대기"}
+                </div>
+              </div>
             </div>
           </div>
           <div className="form-grid">

@@ -298,12 +298,14 @@ export function FieldError({ message }: { message?: string }) {
 
 export function StatusBadge({
   children,
+  className = "",
   tone = "normal",
 }: {
   children: ReactNode;
-  tone?: "normal" | "success" | "warn" | "danger" | "muted";
+  className?: string;
+  tone?: "normal" | "success" | "warn" | "danger" | "muted" | "reversed";
 }) {
-  return <span className={`status-badge ${tone}`.trim()}>{children}</span>;
+  return <span className={`status-badge ${tone} ${className}`.trim()}>{children}</span>;
 }
 
 export function ReceiptPanel({

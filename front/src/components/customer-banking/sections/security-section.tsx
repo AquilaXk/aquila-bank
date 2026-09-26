@@ -415,7 +415,7 @@ export function SecuritySection(props: {
           </div>
           <div>
             <span>세션 해지 상태</span>
-            <strong>해지 가능</strong>
+            <strong>{props.session ? "해지 가능" : "해지 불가"}</strong>
             <small>세션/기기 목록 기준</small>
           </div>
           <div>

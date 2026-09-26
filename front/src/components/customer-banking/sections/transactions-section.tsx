@@ -48,6 +48,21 @@ function getTransactionDirectionLabel(direction: string) {
   return transactionDirectionLabels[direction] ?? direction;
 }
 
+function getTransactionStatusTone(status: string): "success" | "warn" | "danger" | "reversed" {
+  switch (status) {
+    case "BOOKED":
+      return "success";
+    case "PENDING":
+      return "warn";
+    case "FAILED":
+      return "danger";
+    case "REVERSED":
+      return "reversed";
+    default:
+      return "warn";
+  }
+}
+
 export function TransactionsSection({
   filters,
   isBusy,
@@ -377,14 +392,14 @@ export function TransactionsSection({
                         <td>{item.transactionReference}</td>
                         <td>{getTransactionDirectionLabel(item.direction)}</td>
                         <td>
-                          <StatusBadge tone={item.status === "BOOKED" ? "success" : "warn"}>
+                          <StatusBadge tone={getTransactionStatusTone(item.status)}>
                             {getTransactionStatusLabel(item.status)}
                           </StatusBadge>
                         </td>
-                        <td className={item.direction === "DEBIT" ? "amount debit" : "amount credit"}>
+                        <td className={item.direction === "DEBIT" ? "amount debit font-mono" : "amount credit font-mono"}>
                           {formatMinorAmount(item.amountMinor, item.currencyCode)}
                         </td>
-                        <td>
+                        <td className="font-mono">
                           {item.balanceAfterMinor == null
                             ? "-"
                             : formatMinorAmount(
@@ -445,7 +460,7 @@ export function TransactionsSection({
               </div>
               <div>
                 <dt>금액</dt>
-                <dd>
+                <dd className="font-mono">
                   {formatMinorAmount(
                     transactionDetail.amountMinor,
                     transactionDetail.currencyCode,
@@ -454,7 +469,7 @@ export function TransactionsSection({
               </div>
               <div>
                 <dt>잔액</dt>
-                <dd>
+                <dd className="font-mono">
                   {formatMinorAmount(
                     transactionDetail.balanceAfterMinor,
                     transactionDetail.currencyCode,
