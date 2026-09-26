@@ -1,23 +1,23 @@
 :root {
   color-scheme: dark;
-  --gothic-page: #121518;
-  --gothic-surface: #1a1f24;
-  --gothic-surface-muted: #222932;
-  --gothic-iron: #303943;
-  --gothic-line: #39434d;
-  --gothic-line-strong: #687480;
-  --gothic-parchment: #f1f4f7;
-  --gothic-muted: #aeb8c2;
-  --gothic-brass: #8eb8a8;
-  --gothic-brass-strong: #c2ddd3;
-  --gothic-brass-soft: #1d312a;
-  --gothic-danger: #ef9a91;
-  --gothic-danger-soft: #2b1716;
-  --gothic-success: #6f9f7b;
-  --gothic-success-soft: #17251d;
-  --gothic-warning-soft: #2c2618;
-  --gothic-focus: #e5c76f;
-  --gothic-shadow: 0 14px 30px rgba(0, 0, 0, 0.32);
+  --gothic-page: #0B0D13;
+  --gothic-surface: #121622;
+  --gothic-surface-muted: #181D2D;
+  --gothic-iron: #22293C;
+  --gothic-line: rgba(255, 255, 255, 0.08);
+  --gothic-line-strong: rgba(167, 139, 250, 0.28);
+  --gothic-parchment: #F8FAFC;
+  --gothic-muted: #94A3B8;
+  --gothic-brass: #A78BFA;
+  --gothic-brass-strong: #DDD6FE;
+  --gothic-brass-soft: rgba(139, 92, 246, 0.15);
+  --gothic-danger: #F87171;
+  --gothic-danger-soft: rgba(239, 68, 68, 0.15);
+  --gothic-success: #34D399;
+  --gothic-success-soft: rgba(16, 185, 129, 0.15);
+  --gothic-warning-soft: rgba(245, 158, 11, 0.15);
+  --gothic-focus: #C084FC;
+  --gothic-shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.5), 0 0 20px -2px rgba(139, 92, 246, 0.15);
   --page: var(--gothic-page);
   --surface: var(--gothic-surface);
   --surface-muted: var(--gothic-surface-muted);
@@ -28,13 +28,14 @@
   --primary: var(--gothic-brass);
   --primary-dark: var(--gothic-brass-strong);
   --primary-soft: var(--gothic-brass-soft);
-  --accent: #8aa0a6;
+  --accent: #C084FC;
   --danger: var(--gothic-danger);
   --danger-soft: var(--gothic-danger-soft);
   --success: var(--gothic-success);
   --success-soft: var(--gothic-success-soft);
   --warning-soft: var(--gothic-warning-soft);
   --shadow: var(--gothic-shadow);
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 * {
@@ -433,23 +434,77 @@ label span {
 }
 
 .primary-nav {
-  gap: 2px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
   min-width: 0;
   max-width: 100%;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 4px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(12px);
 }
 
 .nav-tab {
   min-width: 96px;
   min-height: 44px;
-  border: 0;
-  border-radius: 0;
+  border: 1px solid transparent;
+  border-bottom: 3px solid transparent;
+  border-radius: 8px;
   background: transparent;
-  padding-inline: 8px;
+  padding-inline: 14px;
+  font-weight: 600;
+  color: var(--muted);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.nav-tab:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .nav-tab.active {
+  border: 1px solid rgba(167, 139, 250, 0.35);
   border-bottom: 3px solid var(--primary);
-  color: var(--primary);
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.2) 0%, rgba(124, 58, 237, 0.28) 100%);
+  color: #FFFFFF;
+  box-shadow: 0 0 16px -2px rgba(139, 92, 246, 0.25);
+}
+
+.header-user-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(8px);
+  font-size: 12px;
+  color: var(--muted);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.header-user-chip .chip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+}
+
+.header-user-chip .chip-dot.active {
+  background: var(--success);
+  box-shadow: 0 0 8px var(--success);
+}
+
+.header-user-chip .chip-dot.idle {
+  background: var(--primary);
+  box-shadow: 0 0 6px var(--primary);
+}
+
+.header-user-chip strong {
+  color: var(--text);
+  font-weight: 700;
 }
 
 .bank-service-strip,
@@ -1544,12 +1599,32 @@ label span {
 
 .balance-card {
   display: grid;
-  gap: 4px;
+  gap: 6px;
   margin: 12px 0;
-  border: 1px solid var(--line-strong);
-  border-radius: 6px;
-  background: var(--primary-soft);
-  padding: 16px;
+  border: 1px solid rgba(167, 139, 250, 0.28);
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(24, 29, 45, 0.95) 0%, rgba(18, 22, 34, 0.98) 100%);
+  padding: 20px;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.5), 0 0 15px -3px rgba(167, 139, 250, 0.15);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.balance-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 140px;
+  height: 140px;
+  background: radial-gradient(circle, rgba(167, 139, 250, 0.12) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.balance-card:hover {
+  border-color: rgba(167, 139, 250, 0.5);
+  box-shadow: 0 8px 30px -4px rgba(0, 0, 0, 0.6), 0 0 25px -2px rgba(167, 139, 250, 0.28);
 }
 
 .balance-card span,
@@ -1560,13 +1635,20 @@ label span {
 
 .balance-card strong {
   color: var(--primary-dark);
-  font-size: 26px;
+  font-size: 28px;
+  font-family: var(--font-mono);
+  font-feature-settings: "tnum";
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
 }
 
 .amount-cell,
 .amount {
   text-align: right;
   font-weight: 800;
+  font-family: var(--font-mono);
+  font-feature-settings: "tnum";
+  font-variant-numeric: tabular-nums;
 }
 
 .amount.debit {
@@ -1587,7 +1669,8 @@ label span {
   color: var(--primary-dark);
   padding: 0 8px;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 .status-badge.unread {
@@ -1597,21 +1680,28 @@ label span {
 }
 
 .status-badge.success {
-  border-color: var(--success);
-  background: var(--success-soft);
-  color: var(--success);
+  border-color: rgba(52, 211, 153, 0.4);
+  background: rgba(52, 211, 153, 0.12);
+  color: #6ee7b7;
 }
 
 .status-badge.warn {
-  border-color: var(--primary);
-  background: var(--warning-soft);
-  color: var(--primary-dark);
+  border-color: rgba(251, 191, 36, 0.4);
+  background: rgba(251, 191, 36, 0.12);
+  color: #fde047;
 }
 
 .status-badge.danger {
-  border-color: var(--danger);
-  background: var(--danger-soft);
-  color: var(--danger);
+  border-color: rgba(248, 113, 113, 0.4);
+  background: rgba(248, 113, 113, 0.12);
+  color: #fca5a5;
+}
+
+.status-badge.reversed,
+.status-badge.purple {
+  border-color: rgba(167, 139, 250, 0.4);
+  background: rgba(167, 139, 250, 0.12);
+  color: #DDD6FE;
 }
 
 .status-badge.muted {
@@ -2203,6 +2293,14 @@ label span {
 
 .bank-table td {
   font-size: 13px;
+}
+
+.bank-table tbody tr {
+  transition: background-color 0.15s ease;
+}
+
+.bank-table tbody tr:hover {
+  background: rgba(167, 139, 250, 0.06);
 }
 
 .empty-business {

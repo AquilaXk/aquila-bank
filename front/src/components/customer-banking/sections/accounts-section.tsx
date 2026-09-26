@@ -163,7 +163,7 @@ export function AccountsSection({
         </div>
         <div>
           <span>출금가능금액</span>
-          <strong>
+          <strong className="font-mono">
             {selectedAccount
               ? formatMinorAmount(
                   selectedAccount.availableBalanceMinor,
@@ -267,7 +267,7 @@ export function AccountsSection({
                           {getAccountStatusLabel(account.accountStatus)}
                         </StatusBadge>
                       </td>
-                      <td className="amount-cell">
+                      <td className="amount-cell font-mono">
                         {formatMinorAmount(
                           account.availableBalanceMinor,
                           account.currencyCode,
@@ -314,7 +314,7 @@ export function AccountsSection({
             <>
               <div className="balance-card">
                 <span>{selectedAccount.displayName}</span>
-                <strong>
+                <strong className="font-mono">
                   {formatMinorAmount(
                     selectedAccount.availableBalanceMinor,
                     selectedAccount.currencyCode,

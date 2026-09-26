@@ -94,6 +94,42 @@ export function DashboardSection({
         <span>{workStatus.notification}</span>
         <span>인증서 관리</span>
       </div>
+      <div className="dashboard-account-glow-card my-4 p-5 rounded-2xl bg-gradient-to-br from-[#161B29] to-[#101420] border border-purple-500/20 shadow-glow-card relative overflow-hidden group hover:border-purple-500/40 transition-all">
+        <div className="absolute top-0 right-0 w-48 h-48 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative z-10">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-xs font-semibold uppercase tracking-wider text-purple-300">대표 계좌</span>
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              <span className="text-xs text-slate-400">{hasSession ? "정상 이용중" : "로그인 필요"}</span>
+            </div>
+            <div className="text-lg font-bold text-slate-100">Aquila 입출금 통장</div>
+            <div className="text-xs text-slate-400 font-mono mt-0.5">102-840-****** (KRW)</div>
+          </div>
+          <div className="text-left sm:text-right">
+            <span className="text-xs text-slate-400 block mb-0.5">출금가능 잔액</span>
+            <div className="text-2xl sm:text-3xl font-extrabold text-white font-mono tracking-tight">
+              {hasSession ? "1,250,000 KRW" : "로그인 후 확인"}
+            </div>
+            <div className="mt-2 flex gap-2 sm:justify-end">
+              <button
+                className="px-3 py-1 rounded-lg text-xs font-semibold bg-purple-500/20 text-purple-200 border border-purple-500/30 hover:bg-purple-500/30 transition-colors"
+                onClick={() => onMove("transfer")}
+                type="button"
+              >
+                즉시이체
+              </button>
+              <button
+                className="px-3 py-1 rounded-lg text-xs font-semibold bg-white/5 text-slate-200 border border-white/10 hover:bg-white/10 transition-colors"
+                onClick={() => onMove("accounts")}
+                type="button"
+              >
+                계좌관리
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
       <div className="bank-home-grid">
         <section className="table-panel bank-home-panel">
           <div className="panel-toolbar">
