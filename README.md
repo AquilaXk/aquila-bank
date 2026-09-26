@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="front/public/brand-mascot.png" width="112" alt="Aquila Bank brand logo" />
+</p>
+
 <h1 align="center">Aquila Bank</h1>
 
 <p align="center">
@@ -87,21 +91,55 @@
 | 알림 | 알림 inbox, unread projection, SSE stream | outbox retry, Kafka 선택 publish, replay |
 | 운영 도구 | 내부 admin API, recovery action, **실시간 운영 지표 및 배치 모니터링 대시보드** | audit search, admission control, DLQ/redrive, **Outbox·원장 실시간 감시** |
 
-### 주요 화면 구성 및 사용자 경험 (UI/UX)
+### 실제 화면 (UI Refresh)
 
-프런트엔드는 다크 뉴트럴 차콜(`--bg-page: #0B0D13`) 배경, 시그니처 라벤더(`--accent-lavender: #A78BFA`) 글로우 하이라이트, 미세 그리드 패턴(`bg-micro-grid`) 및 고정폭 모노스페이스 숫자(`JetBrains Mono`, `tabular-nums`)가 적용된 모던 뱅킹 디자인 시스템으로 구축되어 있습니다.
+프런트엔드는 다크 뉴트럴 차콜(`--bg-page: #0B0D13`) 배경, 시그니처 라벤더(`--accent-lavender: #A78BFA`) 글로우 하이라이트, 마이크로그리드 패턴(`bg-micro-grid`) 및 고정폭 모노스페이스 숫자(`JetBrains Mono`, `tabular-nums`)가 적용된 모던 뱅킹 디자인 시스템으로 구성되어 있습니다.
 
-| 화면 구분 | 주요 역할 | 세부 인터랙션 및 UX 특징 |
-| --- | --- | --- |
-| **통합 검색 & 대시보드** | 메인 허브 및 바로가기 | 대표 계좌 요약 카드, 빠른 이체 금액 바로가기, 메뉴 및 업무 키워드 실시간 통합 검색 |
-| **계좌 조회 (Accounts)** | 전계좌 및 잔액 관리 | 보유 계좌 목록, 계좌 상태(정상/거래중지/해지), 출금 가능 금액 시그니처 라벤더 글로우 강조 및 상세 조회 연동 |
-| **즉시 이체 (Transfer)** | 내부 송금 프로세스 | 반응형 출금/입금 계좌 맞바꿈(Swap) 버튼, 퀵 금액 증분 선택(+1만, +5만, +10만, +100만, 정정), 실명 조회, OTP 검증 및 영수증 모달 |
-| **거래내역 (Transactions)** | 대량 거래 조회 | 기간/상태/금액 필터, Keyset Pagination(커서 기반) 다음 페이지 조회, 카드형 테이블, 행 호버 트랜지션 및 시맨틱 상태 배지 |
-| **인증센터 (Security)** | 보안 및 세션 제어 | 활성 로그인 세션 목록, 접속 기기/IP 조회 및 원격 세션 즉시 해지, TOTP MFA 등록 및 일회용 복구 코드 관리 |
-| **고객센터 (Support)** | 사고신고 및 고객 신청 | 사고신고 접수 및 처리 상태 추적, 고객 서비스 신청 접수 및 운영자 검토/승인/실행 워크플로우 연계 |
-| **운영 콘솔 (Ops Console)** | 실시간 모니터링 | 이벤트 Outbox 대기열 및 릴레이 처리율, DLQ 격리 이벤트, 원장 스냅샷 드리프트 감지, Stale 멱등성 락 실시간 감시 |
+메인 화면에서 대표 계좌 요약 카드와 메뉴 통합검색 흐름을 먼저 확인할 수 있고, 계좌/이체/거래내역 같은 보호 업무는 세션 상태에 맞춰 분리합니다.
+
+![Aquila Bank customer banking search](docs/assets/readme-customer-banking-search.jpg)
+
+로그인 후에는 전계좌조회, 즉시이체, 거래내역 keyset 조회, 인증센터 세션 관리, 고객센터 신청 상태를 통일된 디자인 시스템 shell 안에서 처리합니다.
+
+#### 계좌조회
+
+보유 계좌 목록, 계좌 상태, 출금 가능 금액을 한 화면에서 확인하고 선택 계좌 기준으로 상세 조회를 이어갈 수 있습니다. 출금 가능 잔액 카드에는 시그니처 라벤더 글로우와 모노스페이스 숫자가 적용되어 금액 식별성을 높였습니다.
+
+![Aquila Bank customer banking account list](docs/assets/readme-customer-banking-accounts.jpg)
+
+#### 즉시이체
+
+받는 분 확인, 이체 확인, OTP 확인, 완료증 출력까지 이어지는 내부 이체 흐름을 보여줍니다. 반응형 인터랙티브 계좌 스왑(맞바꿈) 버튼과 퀵 금액 선택 위젯(+1만, +5만, +10만, +100만, 정정)을 통해 빠르고 직관적인 송금 경험을 제공합니다.
+
+![Aquila Bank customer banking transfer receipt](docs/assets/readme-customer-banking-transfer.jpg)
+
+#### 거래내역 조회
+
+계좌, 기간, 상태, 금액 조건을 입력하고 keyset cursor 기준으로 다음 페이지를 이어 조회하는 대량 조회 UX입니다. 카드 기반 Keyset 테이블과 행 호버 트랜지션, 소프트 시맨틱 상태 뱃지를 제공합니다.
+
+![Aquila Bank customer banking transaction search](docs/assets/readme-customer-banking-transactions.jpg)
+
+#### 인증센터
+
+로그인 세션, 보안매체, OTP/복구코드, 기기별 세션 해지 같은 인증 후 보안 관리 화면입니다.
+
+![Aquila Bank customer banking security center](docs/assets/readme-customer-banking-security.jpg)
+
+#### 고객센터/사고신고
+
+사고신고와 고객 신청 접수 상태를 조회하고, 운영자 검토와 mock/webhook boundary를 확인하는 화면입니다.
+
+![Aquila Bank customer banking application status](docs/assets/readme-customer-banking-application.jpg)
+
+#### 운영 지표 및 배치 상태 모니터링 대시보드
+
+실시간 이벤트 Outbox 대기열(지연 건수 및 릴레이 처리율), DLQ/격리 이벤트, 원장 스냅샷 드리프트 감지, Stale 멱등성 락 상태 및 일일 원장 대사/릴레이 배치 데몬 상태를 점검하는 운영 콘솔 모니터링 대시보드입니다.
+
+![Aquila Bank operations metrics dashboard](docs/assets/readme-ops-monitoring.jpg)
 
 ## 시스템 아키텍처
+
+![Aquila Bank architecture](docs/assets/readme-architecture.png)
 
 ```text
 [Client]
