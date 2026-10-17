@@ -127,7 +127,8 @@ public class T3MicroSaturationGuard {
     boolean poolSaturated = pool.saturated(properties.pool());
     boolean readReplicaPoolSaturated =
         properties.readReplicaPool().enabled() && readReplicaPool.saturated(properties.pool());
-    boolean servletThreadsSaturated = servletThreads.saturated(properties.servletThreads());
+    boolean servletThreadsSaturated =
+        servletThreads.maxThreads() <= 0 || servletThreads.saturated(properties.servletThreads());
     boolean queryTimeoutSaturated = timeoutCount >= properties.queryTimeout().threshold();
     boolean jvmPressureSaturated = jvmPressure.saturated(properties.jvmPressure());
     return new T3MicroSaturationSnapshot(

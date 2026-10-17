@@ -330,12 +330,55 @@ public class JdbcNotificationInboxRepository
         jdbcTemplate.queryForObject(
             """
             WITH expired AS (
-                SELECT id
+                SELECT id, account_id, read_at, archived_at
                 FROM notification_inbox
                 WHERE created_at < :cutoff
                 ORDER BY created_at ASC, id ASC
                 FOR UPDATE SKIP LOCKED
                 LIMIT :batchSize
+            ),
+            account_deltas AS (
+                SELECT :accountScope AS scope_type,
+                       e.account_id AS scope_id,
+                       COUNT(*) AS unread_delta
+                FROM expired e
+                WHERE e.archived_at IS NULL
+                  AND e.read_at IS NULL
+                GROUP BY e.account_id
+            ),
+            user_deltas AS (
+                SELECT :userScope AS scope_type,
+                       m.user_id AS scope_id,
+                       COUNT(*) AS unread_delta
+                FROM expired e
+                JOIN user_account_membership m
+                  ON m.account_id = e.account_id
+                JOIN bank_user u
+                  ON u.id = m.user_id
+                LEFT JOIN notification_user_read_state r
+                  ON r.user_id = m.user_id
+                 AND r.notification_id = e.id
+                WHERE e.archived_at IS NULL
+                  AND m.membership_status = 'ACTIVE'
+                  AND u.user_status = 'ACTIVE'
+                  AND (r.notification_id IS NULL
+                       OR (r.read_at IS NULL
+                           AND r.archived_at IS NULL
+                           AND r.deleted_at IS NULL))
+                GROUP BY m.user_id
+            ),
+            all_deltas AS (
+                SELECT scope_type, scope_id, unread_delta FROM account_deltas
+                UNION ALL
+                SELECT scope_type, scope_id, unread_delta FROM user_deltas
+            ),
+            updated_projections AS (
+                UPDATE notification_unread_count_projection p
+                SET unread_count = GREATEST(p.unread_count - d.unread_delta, 0),
+                    updated_at = CURRENT_TIMESTAMP
+                FROM all_deltas d
+                WHERE p.scope_type = d.scope_type
+                  AND p.scope_id = d.scope_id
             ),
             deleted AS (
                 DELETE FROM notification_inbox n
@@ -348,7 +391,9 @@ public class JdbcNotificationInboxRepository
             """,
             new MapSqlParameterSource()
                 .addValue("cutoff", Timestamp.from(cutoff))
-                .addValue("batchSize", batchSize),
+                .addValue("batchSize", batchSize)
+                .addValue("accountScope", ACCOUNT_SCOPE)
+                .addValue("userScope", USER_SCOPE),
             Integer.class);
     return deleted == null ? 0 : deleted;
   }

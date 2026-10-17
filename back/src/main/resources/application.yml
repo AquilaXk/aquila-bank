@@ -137,7 +137,7 @@ ops:
         max-concurrency: ${OPS_API_ADMISSION_CONTROL_NOTIFICATION_READ_MAX:4}
         path-prefixes:
           - /api/v1/notifications
-          - /api/v1/notification-preferences
+          - /api/v1/notifications/preferences
       - group: internal-ops
         max-concurrency: ${OPS_API_ADMISSION_CONTROL_INTERNAL_OPS_MAX:2}
         path-prefixes:

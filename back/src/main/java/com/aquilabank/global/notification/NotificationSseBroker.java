@@ -181,7 +181,6 @@ public class NotificationSseBroker {
       session.sendLock().lock();
       try {
         if (!registerSession(sessionsByPrincipalId, principalId, session, maxPrincipalSessions)) {
-          releaseSessionSlot();
           rejectSubscription(
               sessionsByPrincipalId,
               principalId,

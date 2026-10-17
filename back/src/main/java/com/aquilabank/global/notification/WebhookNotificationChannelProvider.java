@@ -104,12 +104,17 @@ public final class WebhookNotificationChannelProvider implements NotificationCha
   }
 
   private String validatePayloadJson(String rawPayload) {
+    if (rawPayload == null || rawPayload.isBlank()) {
+      throw new IllegalArgumentException("notification channel payload must be valid JSON");
+    }
     try (var parser = objectMapper.getFactory().createParser(rawPayload)) {
       if (parser.nextToken() == null) {
         throw new IllegalArgumentException("notification channel payload must be valid JSON");
       }
-      while (parser.nextToken() != null) {
-        // payload JSON 문법만 스트리밍으로 확인하고 중간 객체 트리는 만들지 않습니다.
+      // 첫 번째 루트 JSON 토큰의 하위 구조를 건너뛴 뒤 후속 루트 토큰이 없는지 검증합니다.
+      parser.skipChildren();
+      if (parser.nextToken() != null) {
+        throw new IllegalArgumentException("notification channel payload must be valid JSON");
       }
       return rawPayload;
     } catch (IOException ex) {

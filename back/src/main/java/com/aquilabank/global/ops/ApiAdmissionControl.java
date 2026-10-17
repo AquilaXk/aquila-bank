@@ -94,7 +94,7 @@ public class ApiAdmissionControl {
     private int rejectionWindowIndex;
     private int rejectionWindowSamples;
     private int rejectionWindowRejected;
-    private long decreaseCooldownUntilNanos;
+    private volatile long decreaseCooldownUntilNanos;
 
     private EndpointState(
         ApiAdmissionControlProperties.EndpointLimit endpoint,

@@ -40,7 +40,7 @@ public record ApiAdmissionControlProperties(
             "notification-read",
             4,
             0,
-            List.of("/api/v1/notifications", "/api/v1/notification-preferences"),
+            List.of("/api/v1/notifications", "/api/v1/notifications/preferences"),
             null),
         new EndpointLimit(
             "internal-ops",

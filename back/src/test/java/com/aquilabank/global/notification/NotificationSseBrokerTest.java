@@ -158,9 +158,11 @@ class NotificationSseBrokerTest {
         .isInstanceOf(NotificationSseOverloadException.class)
         .hasMessage("notification SSE stream is temporarily overloaded");
     assertThat(notificationSseBroker.rejectedSubscriptionCount()).isEqualTo(1L);
+    assertThat(notificationSseBroker.totalSessionCount()).isEqualTo(2);
 
     SseEmitter otherUserEmitter = notificationSseBroker.subscribeUser(303L, "other-user-session");
     assertThat(otherUserEmitter).isNotNull();
+    assertThat(notificationSseBroker.totalSessionCount()).isEqualTo(3);
 
     firstEmitter.complete();
     secondEmitter.complete();
@@ -181,6 +183,7 @@ class NotificationSseBrokerTest {
         .isInstanceOf(NotificationSseOverloadException.class)
         .hasMessage("notification SSE stream is temporarily overloaded");
     assertThat(notificationSseBroker.rejectedSubscriptionCount()).isEqualTo(1L);
+    assertThat(notificationSseBroker.totalSessionCount()).isEqualTo(2);
 
     notificationSseBroker.publishInsertedItems(List.of(notification(1L, 101L, "ordered")));
     assertThat(emitterFactory.emitter(0).eventNames()).containsExactly("connected", "notification");

@@ -178,6 +178,14 @@ class WebhookNotificationChannelProviderTest {
     assertThatThrownBy(() -> provider.send(item(4L, NotificationPreferenceChannel.EMAIL, "   ")))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("notification channel payload must be valid JSON");
+    assertThatThrownBy(() -> provider.send(item(5L, NotificationPreferenceChannel.EMAIL, null)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("notification channel payload must be valid JSON");
+    assertThatThrownBy(
+            () ->
+                provider.send(item(6L, NotificationPreferenceChannel.EMAIL, "{\"a\":1} {\"b\":2}")))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("notification channel payload must be valid JSON");
   }
 
   private NotificationChannelProviderDeliveryProperties properties() {

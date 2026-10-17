@@ -100,6 +100,29 @@ class T3MicroSaturationGuardTest {
   }
 
   @Test
+  void rejectsWhenPoolAndTimeoutAreSaturatedEvenIfServletThreadMetricsAreUnavailable() {
+    SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+    MutableClock clock = new MutableClock(Instant.parse("2026-05-03T00:00:00Z"));
+    T3MicroQueryTimeoutSignal timeoutSignal = new T3MicroQueryTimeoutSignal(clock, meterRegistry);
+    timeoutSignal.record();
+    T3MicroSaturationGuard guard =
+        new T3MicroSaturationGuard(
+            properties(),
+            new MutableDbPoolProbe(new DbPoolSaturationSnapshot(4, 4, 1)),
+            new MutableServletThreadProbe(ServletThreadSaturationSnapshot.empty()),
+            new MutableJvmPressureProbe(JvmPressureSnapshot.empty()),
+            timeoutSignal,
+            meterRegistry);
+
+    T3MicroSaturationDecision decision = guard.check("/api/v1/transactions");
+
+    assertThat(decision.allowed()).isFalse();
+    assertThat(decision.snapshot().poolSaturated()).isTrue();
+    assertThat(decision.snapshot().servletThreadsSaturated()).isTrue();
+    assertThat(decision.snapshot().queryTimeoutSaturated()).isTrue();
+  }
+
+  @Test
   void allowsRequestWhenQueryTimeoutSignalExpires() {
     SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
     MutableClock clock = new MutableClock(Instant.parse("2026-04-22T00:00:00Z"));
