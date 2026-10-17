@@ -111,7 +111,26 @@ class LoginThrottleGuardAndMemoryStoreTest {
     assertThat(store.check("203.0.113.3").trackedIpCount()).isEqualTo(2);
 
     clock.plusSeconds(11);
+    // Repeated lookup of an existing expired IP lazily removes it before re-adding.
+    assertThat(store.check("203.0.113.2").trackedIpCount()).isEqualTo(2);
+    clock.plusSeconds(11);
     assertThat(store.check("203.0.113.4").trackedIpCount()).isEqualTo(1);
+    assertThat(store.check(null).throttled()).isFalse();
+
+    // Password-recovery global window is isolated from the login global window.
+    LoginThrottlingProperties strictGlobalProps =
+        new LoginThrottlingProperties(
+            10,
+            new LoginThrottlingProperties.ScopeProperties(5, 60),
+            new LoginThrottlingProperties.ScopeProperties(1, 60),
+            LoginThrottlingProperties.StoreType.MEMORY,
+            false,
+            new LoginThrottlingProperties.RedisProperties("auth:login:throttle:"));
+    MemoryLoginThrottleStore isolatedStore = new MemoryLoginThrottleStore(strictGlobalProps, clock);
+    assertThat(isolatedStore.check("password_recovery:203.0.113.1").throttled()).isFalse();
+    assertThat(isolatedStore.check("password_recovery:203.0.113.2").scope())
+        .isEqualTo(LoginThrottleScope.GLOBAL);
+    assertThat(isolatedStore.check("203.0.113.1").throttled()).isFalse();
   }
 
   private static final class MutableClock extends Clock {

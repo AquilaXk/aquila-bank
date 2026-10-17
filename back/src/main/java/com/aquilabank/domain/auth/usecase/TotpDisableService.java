@@ -58,6 +58,11 @@ public final class TotpDisableService implements TotpDisableUseCase {
     if (credential.credentialStatus() != TotpCredentialStatus.ACTIVE) {
       throw invalidDisable();
     }
+    if (credential.lastUsedAt() != null
+        && Math.floorDiv(now.getEpochSecond(), 30L)
+            < Math.floorDiv(credential.lastUsedAt().getEpochSecond(), 30L)) {
+      throw invalidDisable();
+    }
     if (!totpSecretPort.matches(
         credential.secretCiphertext(), credential.secretNonce(), command.totpCode(), now)) {
       throw invalidDisable();

@@ -18,7 +18,7 @@ class TokenIssuerAndVerifierTest {
   private static final String VALID_SECRET = "test-secret-with-at-least-32-bytes-length";
 
   @Test
-  void hmacAccessTokenIssuerIssuesValidTokenAndRejectsInvalidInputs() {
+  void hmacAccessTokenIssuerIssuesValidTokenAndRejectsInvalidInputs() throws Exception {
     SecretKeySpec keySpec =
         new SecretKeySpec(VALID_SECRET.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
     HmacAccessTokenIssuer issuerWithIssuer = new HmacAccessTokenIssuer(keySpec, "aquila-bank", 300);
@@ -30,9 +30,23 @@ class TokenIssuerAndVerifierTest {
     IssuedAccessToken token2 = issuerWithoutIssuer.issue(7L, "alice", 11L, now);
     IssuedAccessToken token3 = issuerWithNullIssuer.issue(7L, "alice", 11L, now);
 
-    assertThat(token1.accessToken()).isNotBlank();
-    assertThat(token2.accessToken()).isNotBlank();
-    assertThat(token3.accessToken()).isNotBlank();
+    com.nimbusds.jose.crypto.MACVerifier macVerifier =
+        new com.nimbusds.jose.crypto.MACVerifier(keySpec);
+    com.nimbusds.jwt.SignedJWT parsed1 = com.nimbusds.jwt.SignedJWT.parse(token1.accessToken());
+    com.nimbusds.jwt.SignedJWT parsed2 = com.nimbusds.jwt.SignedJWT.parse(token2.accessToken());
+    com.nimbusds.jwt.SignedJWT parsed3 = com.nimbusds.jwt.SignedJWT.parse(token3.accessToken());
+
+    assertThat(parsed1.verify(macVerifier)).isTrue();
+    assertThat(parsed2.verify(macVerifier)).isTrue();
+    assertThat(parsed3.verify(macVerifier)).isTrue();
+    assertThat(parsed1.getJWTClaimsSet().getSubject()).isEqualTo("alice");
+    assertThat(parsed1.getJWTClaimsSet().getLongClaim("user_id")).isEqualTo(7L);
+    assertThat(parsed1.getJWTClaimsSet().getLongClaim("session_id")).isEqualTo(11L);
+    assertThat(parsed1.getJWTClaimsSet().getIssuer()).isEqualTo("aquila-bank");
+    assertThat(parsed1.getJWTClaimsSet().getExpirationTime().toInstant())
+        .isEqualTo(now.plusSeconds(300));
+    assertThat(parsed2.getJWTClaimsSet().getIssuer()).isNull();
+    assertThat(parsed3.getJWTClaimsSet().getIssuer()).isNull();
     assertThrows(
         IllegalArgumentException.class, () -> issuerWithIssuer.issue(7L, "alice", 0L, now));
     assertThrows(

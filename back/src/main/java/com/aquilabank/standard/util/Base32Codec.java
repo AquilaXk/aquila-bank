@@ -82,6 +82,9 @@ public final class Base32Codec {
         bitsLeft -= 8;
       }
     }
+    if (bitsLeft >= 5 || (buffer & ((1 << bitsLeft) - 1)) != 0) {
+      throw new IllegalArgumentException("invalid Base32 trailing bits");
+    }
     return output;
   }
 

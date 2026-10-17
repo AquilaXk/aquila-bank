@@ -808,6 +808,18 @@ public class JdbcAuthWriteRepository
 
   @Override
   @Transactional
+  public void deletePendingByUserId(long userId) {
+    jdbcTemplate.update(
+        """
+        DELETE FROM auth_totp_credential
+        WHERE user_id = :userId
+          AND credential_status = 'PENDING'
+        """,
+        new MapSqlParameterSource().addValue("userId", userId));
+  }
+
+  @Override
+  @Transactional
   public void upsert(TotpLoginChallengeUpsertCommand command) {
     jdbcTemplate.update(
         """
@@ -839,7 +851,12 @@ public class JdbcAuthWriteRepository
         DO UPDATE
         SET challenge_id = EXCLUDED.challenge_id,
             challenge_status = EXCLUDED.challenge_status,
-            attempt_count = EXCLUDED.attempt_count,
+            attempt_count = CASE
+                WHEN auth_totp_login_challenge.challenge_status = 'PENDING'
+                 AND auth_totp_login_challenge.expires_at > EXCLUDED.created_at
+                THEN auth_totp_login_challenge.attempt_count
+                ELSE EXCLUDED.attempt_count
+            END,
             device_name = EXCLUDED.device_name,
             ip_address = EXCLUDED.ip_address,
             expires_at = EXCLUDED.expires_at,

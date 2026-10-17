@@ -183,6 +183,37 @@ class BackupCodeGenerateServiceTest {
     assertThrows(
         InvalidCredentialsException.class,
         () -> service.issue(new BackupCodeGenerateCommand(7L, "123456")));
+
+    when(totpCredentialLoadPort.findCredentialByUserIdForUpdate(7L))
+        .thenReturn(
+            Optional.of(
+                new TotpCredential(
+                    7L,
+                    TotpCredentialStatus.ACTIVE,
+                    "cipher",
+                    "nonce",
+                    null,
+                    NOW.minus(Duration.ofMinutes(10)),
+                    NOW.plusSeconds(30))));
+    assertThrows(
+        InvalidCredentialsException.class,
+        () -> service.issue(new BackupCodeGenerateCommand(7L, "123456")));
+
+    when(totpCredentialLoadPort.findCredentialByUserIdForUpdate(7L))
+        .thenReturn(
+            Optional.of(
+                new TotpCredential(
+                    7L,
+                    TotpCredentialStatus.ACTIVE,
+                    "cipher",
+                    "nonce",
+                    null,
+                    NOW.minus(Duration.ofMinutes(10)),
+                    null)));
+    when(totpSecretPort.matches("cipher", "nonce", "123456", NOW)).thenReturn(true);
+    when(backupCodeSecretPort.generate(3))
+        .thenReturn(java.util.List.of(new GeneratedBackupCode("ABCD-EFGH", "hash-1")));
+    assertEquals(1, service.issue(new BackupCodeGenerateCommand(7L, "123456")).codeCount());
   }
 
   private LoginUser activeUser() {

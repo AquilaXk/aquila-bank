@@ -12,9 +12,12 @@ import java.util.Map;
 /** memory 기본 경로에서 login burst 상태를 bounded하게 유지합니다. */
 public final class MemoryLoginThrottleStore implements LoginThrottleStore {
 
+  private static final String PASSWORD_RECOVERY_PREFIX = "password_recovery:";
+
   private final LoginThrottlingProperties properties;
   private final Clock clock;
   private final Deque<Instant> globalWindow = new ArrayDeque<>();
+  private final Deque<Instant> passwordRecoveryGlobalWindow = new ArrayDeque<>();
   private final LinkedHashMap<String, AttemptWindow> ipWindows =
       new LinkedHashMap<>(16, 0.75f, true);
 
@@ -26,22 +29,22 @@ public final class MemoryLoginThrottleStore implements LoginThrottleStore {
   @Override
   public synchronized ThrottleDecision check(String ipAddress) {
     Instant now = Instant.now(clock);
+    Deque<Instant> activeGlobalWindow = selectGlobalWindow(ipAddress);
 
-    pruneWindow(globalWindow, now, properties.global().windowSeconds());
-    pruneIpWindows(now);
+    pruneWindow(activeGlobalWindow, now, properties.global().windowSeconds());
 
     ThrottleDecision ipDecision = evaluateIpWindow(ipAddress, now);
     if (ipDecision.throttled()) {
       return ipDecision;
     }
 
-    ThrottleDecision globalDecision = evaluateGlobalWindow(now);
+    ThrottleDecision globalDecision = evaluateGlobalWindow(activeGlobalWindow, now);
     if (globalDecision.throttled()) {
       return globalDecision;
     }
 
-    ipWindow(ipAddress).attempts().addLast(now);
-    globalWindow.addLast(now);
+    ipWindow(ipAddress, now).attempts().addLast(now);
+    activeGlobalWindow.addLast(now);
     return ThrottleDecision.allowed(
         properties.ip().maxAttempts(), properties.ip().windowSeconds(), ipWindows.size());
   }
@@ -49,7 +52,14 @@ public final class MemoryLoginThrottleStore implements LoginThrottleStore {
   @Override
   public synchronized void clear() {
     globalWindow.clear();
+    passwordRecoveryGlobalWindow.clear();
     ipWindows.clear();
+  }
+
+  private Deque<Instant> selectGlobalWindow(String ipAddress) {
+    return ipAddress != null && ipAddress.startsWith(PASSWORD_RECOVERY_PREFIX)
+        ? passwordRecoveryGlobalWindow
+        : globalWindow;
   }
 
   private ThrottleDecision evaluateIpWindow(String ipAddress, Instant now) {
@@ -59,6 +69,11 @@ public final class MemoryLoginThrottleStore implements LoginThrottleStore {
           properties.ip().maxAttempts(), properties.ip().windowSeconds(), ipWindows.size());
     }
     pruneWindow(window.attempts(), now, properties.ip().windowSeconds());
+    if (window.attempts().isEmpty()) {
+      ipWindows.remove(ipAddress);
+      return ThrottleDecision.allowed(
+          properties.ip().maxAttempts(), properties.ip().windowSeconds(), ipWindows.size());
+    }
     if (window.attempts().size() >= properties.ip().maxAttempts()) {
       return ThrottleDecision.blocked(
           LoginThrottleScope.IP,
@@ -71,11 +86,11 @@ public final class MemoryLoginThrottleStore implements LoginThrottleStore {
         properties.ip().maxAttempts(), properties.ip().windowSeconds(), ipWindows.size());
   }
 
-  private ThrottleDecision evaluateGlobalWindow(Instant now) {
-    if (globalWindow.size() >= properties.global().maxAttempts()) {
+  private ThrottleDecision evaluateGlobalWindow(Deque<Instant> activeGlobalWindow, Instant now) {
+    if (activeGlobalWindow.size() >= properties.global().maxAttempts()) {
       return ThrottleDecision.blocked(
           LoginThrottleScope.GLOBAL,
-          retryAfterSeconds(globalWindow, properties.global().windowSeconds(), now),
+          retryAfterSeconds(activeGlobalWindow, properties.global().windowSeconds(), now),
           properties.global().maxAttempts(),
           properties.global().windowSeconds(),
           ipWindows.size());
@@ -84,10 +99,13 @@ public final class MemoryLoginThrottleStore implements LoginThrottleStore {
         properties.global().maxAttempts(), properties.global().windowSeconds(), ipWindows.size());
   }
 
-  private AttemptWindow ipWindow(String ipAddress) {
+  private AttemptWindow ipWindow(String ipAddress, Instant now) {
     AttemptWindow window = ipWindows.get(ipAddress);
     if (window != null) {
       return window;
+    }
+    if (ipWindows.size() >= properties.maxTrackedIps()) {
+      pruneIpWindows(now);
     }
     while (ipWindows.size() >= properties.maxTrackedIps()) {
       Iterator<Map.Entry<String, AttemptWindow>> iterator = ipWindows.entrySet().iterator();

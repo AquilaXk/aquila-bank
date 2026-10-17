@@ -98,6 +98,78 @@ class TotpEnrollmentServiceTest {
         () -> service.verify(new TotpEnrollmentVerifyCommand(7L, "123456")));
 
     verify(totpCredentialWritePort, never()).activate(any());
+
+    when(totpSecretPort.matches("cipher", "nonce", "123456", NOW)).thenReturn(true);
+    assertEquals(
+        TotpCredentialStatus.ACTIVE,
+        service.verify(new TotpEnrollmentVerifyCommand(7L, "123456")).credentialStatus());
+    verify(totpCredentialWritePort).activate(any());
+
+    when(totpCredentialLoadPort.findCredentialByUserIdForUpdate(7L))
+        .thenReturn(
+            Optional.of(
+                new TotpCredential(
+                    7L, TotpCredentialStatus.PENDING, "cipher", "nonce", NOW, null, null)));
+    assertThrows(
+        InvalidCredentialsException.class,
+        () -> service.verify(new TotpEnrollmentVerifyCommand(7L, "123456")));
+    verify(totpCredentialWritePort).deletePendingByUserId(7L);
+
+    when(totpCredentialLoadPort.findCredentialByUserIdForUpdate(7L))
+        .thenReturn(
+            Optional.of(
+                new TotpCredential(
+                    7L, TotpCredentialStatus.PENDING, "cipher", "nonce", null, null, null)));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> service.verify(new TotpEnrollmentVerifyCommand(7L, "123456")));
+
+    when(totpCredentialLoadPort.findCredentialByUserIdForUpdate(7L))
+        .thenReturn(
+            Optional.of(
+                new TotpCredential(
+                    7L, TotpCredentialStatus.ACTIVE, "cipher", "nonce", null, NOW, null)));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> service.verify(new TotpEnrollmentVerifyCommand(7L, "123456")));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> service.start(new TotpEnrollmentStartCommand(7L, "alice")));
+
+    when(totpCredentialLoadPort.findCredentialByUserIdForUpdate(7L)).thenReturn(Optional.empty());
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> service.verify(new TotpEnrollmentVerifyCommand(7L, "123456")));
+
+    when(userCredentialLoadPort.findByUserIdForUpdate(7L))
+        .thenReturn(
+            Optional.of(
+                new LoginUser(7L, "alice", "pw", UserStatus.DISABLED, 0, null, null, null)));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> service.verify(new TotpEnrollmentVerifyCommand(7L, "123456")));
+
+    when(userCredentialLoadPort.findByUserIdForUpdate(7L)).thenReturn(Optional.empty());
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> service.verify(new TotpEnrollmentVerifyCommand(7L, "123456")));
+
+    new TotpCredentialWritePort() {
+      @Override
+      public void upsertPending(
+          com.aquilabank.domain.auth.model.TotpCredentialUpsertCommand command) {}
+
+      @Override
+      public void activate(
+          com.aquilabank.domain.auth.model.TotpCredentialActivateCommand command) {}
+
+      @Override
+      public void touchLastUsed(
+          com.aquilabank.domain.auth.model.TotpCredentialTouchCommand command) {}
+
+      @Override
+      public void deleteByUserId(long userId) {}
+    }.deletePendingByUserId(7L);
   }
 
   private LoginUser activeUser() {

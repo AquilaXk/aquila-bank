@@ -72,7 +72,38 @@ class TotpOperationVerifyServiceTest {
         InvalidCredentialsException.class,
         () -> service.verify(new TotpOperationVerifyCommand(7L, "000000")));
 
+    when(totpCredentialLoadPort.findCredentialByUserIdForUpdate(7L))
+        .thenReturn(
+            Optional.of(
+                new TotpCredential(
+                    7L,
+                    TotpCredentialStatus.ACTIVE,
+                    "ciphertext",
+                    "nonce",
+                    null,
+                    Instant.parse("2026-05-10T02:00:00Z"),
+                    Instant.parse("2026-05-11T02:00:30Z"))));
+    assertThrows(
+        InvalidCredentialsException.class,
+        () -> service.verify(new TotpOperationVerifyCommand(7L, "123456")));
+
     verifyNoInteractions(totpCredentialWritePort);
+
+    when(totpCredentialLoadPort.findCredentialByUserIdForUpdate(7L))
+        .thenReturn(
+            Optional.of(
+                new TotpCredential(
+                    7L,
+                    TotpCredentialStatus.ACTIVE,
+                    "ciphertext",
+                    "nonce",
+                    null,
+                    Instant.parse("2026-05-10T02:00:00Z"),
+                    Instant.parse("2026-05-11T01:59:30Z"))));
+    when(totpSecretPort.matches(
+            "ciphertext", "nonce", "123456", Instant.parse("2026-05-11T02:00:00Z")))
+        .thenReturn(true);
+    service.verify(new TotpOperationVerifyCommand(7L, "123456"));
   }
 
   @Test

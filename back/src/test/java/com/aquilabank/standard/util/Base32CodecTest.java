@@ -48,6 +48,11 @@ class Base32CodecTest {
     assertThrows(IllegalArgumentException.class, () -> Base32Codec.decode("JBSWY3D0"));
     assertThrows(IllegalArgumentException.class, () -> Base32Codec.decode("JBSWY3D8"));
     assertThrows(IllegalArgumentException.class, () -> Base32Codec.decode("JBSWY3D\u0100"));
+    assertThrows(IllegalArgumentException.class, () -> Base32Codec.decode("A"));
+    assertThrows(IllegalArgumentException.class, () -> Base32Codec.decode("AAA"));
+    assertThrows(IllegalArgumentException.class, () -> Base32Codec.decode("AAAAAA"));
+    assertThrows(IllegalArgumentException.class, () -> Base32Codec.decode("75"));
+    assertThrows(IllegalArgumentException.class, () -> Base32Codec.decode("77"));
     assertThat(Base32Codec.encode(new byte[] {(byte) 0xff})).isEqualTo("74");
   }
 }

@@ -81,6 +81,11 @@ public final class BackupCodeGenerateService implements BackupCodeGenerateUseCas
     if (credential.credentialStatus() != TotpCredentialStatus.ACTIVE) {
       throw invalidIssue();
     }
+    if (credential.lastUsedAt() != null
+        && Math.floorDiv(now.getEpochSecond(), 30L)
+            < Math.floorDiv(credential.lastUsedAt().getEpochSecond(), 30L)) {
+      throw invalidIssue();
+    }
     if (!totpSecretPort.matches(
         credential.secretCiphertext(), credential.secretNonce(), command.totpCode(), now)) {
       throw invalidIssue();

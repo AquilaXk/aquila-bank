@@ -16,6 +16,8 @@ class Sha256RefreshTokenManagerTest {
 
     assertThat(token).isNotBlank().doesNotContain("=");
     assertThat(hash).hasSize(64).isEqualTo(manager.hash(token));
+    assertThat(manager.hash("abc"))
+        .isEqualTo("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
     assertThat(manager.generateOpaqueToken(16)).isNotBlank();
   }
 
