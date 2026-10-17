@@ -9,7 +9,11 @@ public final class Base32Codec {
   static {
     java.util.Arrays.fill(LOOKUP, -1);
     for (int index = 0; index < ALPHABET.length; index++) {
-      LOOKUP[ALPHABET[index]] = index;
+      char upper = ALPHABET[index];
+      LOOKUP[upper] = index;
+      if (upper >= 'A' && upper <= 'Z') {
+        LOOKUP[upper - 'A' + 'a'] = index;
+      }
     }
   }
 
@@ -43,30 +47,48 @@ public final class Base32Codec {
   }
 
   public static byte[] decode(String value) {
-    if (value == null || value.isBlank()) {
+    if (value == null) {
       throw new IllegalArgumentException("value is required");
     }
-    String normalized =
-        value.replace(" ", "").replace("-", "").trim().toUpperCase(java.util.Locale.ROOT);
-    if (normalized.isEmpty()) {
-      throw new IllegalArgumentException("value is required");
-    }
-    java.io.ByteArrayOutputStream outputStream = new java.io.ByteArrayOutputStream();
-    int buffer = 0;
-    int bitsLeft = 0;
-    for (int index = 0; index < normalized.length(); index++) {
-      char current = normalized.charAt(index);
+    int validCharCount = 0;
+    for (int index = 0; index < value.length(); index++) {
+      char current = value.charAt(index);
+      if (isIgnorableSeparator(current)) {
+        continue;
+      }
       if (current >= LOOKUP.length || LOOKUP[current] < 0) {
         throw new IllegalArgumentException("invalid Base32 character");
       }
-      buffer <<= 5;
-      buffer |= LOOKUP[current];
+      validCharCount++;
+    }
+    if (validCharCount == 0) {
+      throw new IllegalArgumentException("value is required");
+    }
+
+    // 유효 문자 수로 출력 바이트 배열 크기를 한 번에 계산해 중간 스트림/문자열 할당 없이 비트 패킹합니다.
+    byte[] output = new byte[(validCharCount * 5) >>> 3];
+    int outIndex = 0;
+    int buffer = 0;
+    int bitsLeft = 0;
+    for (int index = 0; index < value.length(); index++) {
+      char current = value.charAt(index);
+      if (isIgnorableSeparator(current)) {
+        continue;
+      }
+      buffer = (buffer << 5) | LOOKUP[current];
       bitsLeft += 5;
       if (bitsLeft >= 8) {
-        outputStream.write((buffer >> (bitsLeft - 8)) & 0xff);
+        output[outIndex++] = (byte) ((buffer >> (bitsLeft - 8)) & 0xff);
         bitsLeft -= 8;
       }
     }
-    return outputStream.toByteArray();
+    if (bitsLeft >= 5 || (buffer & ((1 << bitsLeft) - 1)) != 0) {
+      throw new IllegalArgumentException("invalid Base32 trailing bits");
+    }
+    return output;
+  }
+
+  private static boolean isIgnorableSeparator(char current) {
+    return current == '-' || Character.isWhitespace(current);
   }
 }

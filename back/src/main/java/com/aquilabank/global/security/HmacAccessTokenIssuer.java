@@ -19,15 +19,19 @@ public class HmacAccessTokenIssuer implements AuthTokenIssuePort {
   private static final String USER_ID_CLAIM = "user_id";
   private static final String SESSION_ID_CLAIM = "session_id";
 
-  private final SecretKeySpec secretKeySpec;
+  private final MACSigner macSigner;
   private final String issuer;
   private final long accessTokenTtlSeconds;
 
   public HmacAccessTokenIssuer(
       SecretKeySpec secretKeySpec, String issuer, long accessTokenTtlSeconds) {
-    this.secretKeySpec = secretKeySpec;
     this.issuer = issuer;
     this.accessTokenTtlSeconds = accessTokenTtlSeconds;
+    try {
+      this.macSigner = new MACSigner(secretKeySpec.getEncoded());
+    } catch (JOSEException ex) {
+      throw new IllegalStateException("access token signer initialization failed", ex);
+    }
   }
 
   @Override
@@ -53,7 +57,7 @@ public class HmacAccessTokenIssuer implements AuthTokenIssuePort {
             new JWSHeader.Builder(JWSAlgorithm.HS256).type(JOSEObjectType.JWT).build(),
             claims.build());
     try {
-      signedJwt.sign(new MACSigner(secretKeySpec.getEncoded()));
+      signedJwt.sign(macSigner);
     } catch (JOSEException ex) {
       throw new IllegalStateException("access token signing failed", ex);
     }

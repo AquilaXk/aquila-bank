@@ -109,8 +109,11 @@ public final class TotpChallengeVerifyService implements TotpChallengeVerifyUseC
       throw invalidChallenge();
     }
 
-    if (!totpSecretPort.matches(
-        credential.secretCiphertext(), credential.secretNonce(), command.totpCode(), now)) {
+    if ((credential.lastUsedAt() != null
+            && Math.floorDiv(now.getEpochSecond(), 30L)
+                < Math.floorDiv(credential.lastUsedAt().getEpochSecond(), 30L))
+        || !totpSecretPort.matches(
+            credential.secretCiphertext(), credential.secretNonce(), command.totpCode(), now)) {
       int nextAttemptCount = challenge.attemptCount() + 1;
       TotpLoginChallengeStatus nextStatus =
           nextAttemptCount >= challengeMaxAttempts

@@ -355,8 +355,20 @@ public class AuthConfiguration {
       @Override
       public com.aquilabank.domain.auth.model.TotpEnrollmentVerifyResult verify(
           com.aquilabank.domain.auth.model.TotpEnrollmentVerifyCommand command) {
+        InvalidCredentialsException[] failureHolder = new InvalidCredentialsException[1];
         com.aquilabank.domain.auth.model.TotpEnrollmentVerifyResult result =
-            transactionTemplate.execute(status -> totpEnrollmentService.verify(command));
+            transactionTemplate.execute(
+                status -> {
+                  try {
+                    return totpEnrollmentService.verify(command);
+                  } catch (InvalidCredentialsException ex) {
+                    failureHolder[0] = ex;
+                    return null;
+                  }
+                });
+        if (failureHolder[0] != null) {
+          throw failureHolder[0];
+        }
         if (result == null) {
           throw new IllegalStateException(
               "totp enrollment verify transaction returned null result");
@@ -482,6 +494,7 @@ public class AuthConfiguration {
   BackupCodeGenerateUseCase backupCodeGenerateUseCase(
       UserCredentialLoadPort userCredentialLoadPort,
       TotpCredentialLoadPort totpCredentialLoadPort,
+      TotpCredentialWritePort totpCredentialWritePort,
       TotpSecretPort totpSecretPort,
       BackupCodeSecretPort backupCodeSecretPort,
       BackupCodeWritePort backupCodeWritePort,
@@ -495,7 +508,8 @@ public class AuthConfiguration {
             backupCodeSecretPort,
             backupCodeWritePort,
             10,
-            authClock);
+            authClock,
+            totpCredentialWritePort);
     TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
     return command -> {
       com.aquilabank.domain.auth.model.BackupCodeIssueResult result =
@@ -658,6 +672,7 @@ public class AuthConfiguration {
       UserCredentialUpdatePort userCredentialUpdatePort,
       PasswordHashPort passwordHashPort,
       RefreshTokenSessionWritePort refreshTokenSessionWritePort,
+      RememberDeviceWritePort rememberDeviceWritePort,
       Clock authClock,
       PlatformTransactionManager platformTransactionManager) {
     PasswordRecoveryConfirmService passwordRecoveryConfirmService =
@@ -669,11 +684,24 @@ public class AuthConfiguration {
             userCredentialUpdatePort,
             passwordHashPort,
             refreshTokenSessionWritePort,
+            rememberDeviceWritePort,
             authClock);
     TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
-    return command ->
-        transactionTemplate.executeWithoutResult(
-            status -> passwordRecoveryConfirmService.confirm(command));
+    return command -> {
+      InvalidCredentialsException failure =
+          transactionTemplate.execute(
+              status -> {
+                try {
+                  passwordRecoveryConfirmService.confirm(command);
+                  return null;
+                } catch (InvalidCredentialsException ex) {
+                  return ex;
+                }
+              });
+      if (failure != null) {
+        throw failure;
+      }
+    };
   }
 
   @Bean

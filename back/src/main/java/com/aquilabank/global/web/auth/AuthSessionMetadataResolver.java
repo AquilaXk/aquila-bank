@@ -79,20 +79,53 @@ public class AuthSessionMetadataResolver {
   }
 
   private String resolveIpAddress(HttpServletRequest request) {
-    // reverse proxy 뒤 실제 client IP를 우선 잡으려고 forwarded 계열 헤더부터 확인합니다.
-    String ipAddress = firstIpToken(request.getHeader("X-Forwarded-For"));
-    if (ipAddress != null) {
-      return trimToLength(ipAddress, IP_ADDRESS_MAX_LENGTH);
+    String remoteAddr = normalizeIpToken(request.getRemoteAddr());
+    if (isTrustedProxy(remoteAddr)) {
+      // 신뢰 가능한 로컬/사설 리버스 프록시에서 온 요청일 때만 forwarded 계열 헤더를 신뢰합니다.
+      String ipAddress = firstIpToken(request.getHeader("X-Forwarded-For"));
+      if (ipAddress != null) {
+        return trimToLength(ipAddress, IP_ADDRESS_MAX_LENGTH);
+      }
+      ipAddress = forwardedHeaderIp(request.getHeader("Forwarded"));
+      if (ipAddress != null) {
+        return trimToLength(ipAddress, IP_ADDRESS_MAX_LENGTH);
+      }
+      ipAddress = normalizeIpToken(request.getHeader("X-Real-IP"));
+      if (ipAddress != null) {
+        return trimToLength(ipAddress, IP_ADDRESS_MAX_LENGTH);
+      }
     }
-    ipAddress = forwardedHeaderIp(request.getHeader("Forwarded"));
-    if (ipAddress != null) {
-      return trimToLength(ipAddress, IP_ADDRESS_MAX_LENGTH);
+    return trimToLength(remoteAddr, IP_ADDRESS_MAX_LENGTH);
+  }
+
+  private boolean isTrustedProxy(String remoteAddr) {
+    if (remoteAddr == null || remoteAddr.isBlank()) {
+      return true;
     }
-    ipAddress = normalizeIpToken(request.getHeader("X-Real-IP"));
-    if (ipAddress != null) {
-      return trimToLength(ipAddress, IP_ADDRESS_MAX_LENGTH);
+    String normalized = remoteAddr.toLowerCase(Locale.ROOT);
+    if ("localhost".equals(normalized)
+        || "::1".equals(normalized)
+        || "0:0:0:0:0:0:0:1".equals(normalized)
+        || normalized.startsWith("127.")
+        || normalized.startsWith("10.")
+        || normalized.startsWith("192.168.")
+        || normalized.startsWith("fc")
+        || normalized.startsWith("fd")
+        || normalized.startsWith("fe80:")) {
+      return true;
     }
-    return trimToLength(normalizeIpToken(request.getRemoteAddr()), IP_ADDRESS_MAX_LENGTH);
+    if (normalized.startsWith("172.")) {
+      int secondDot = normalized.indexOf('.', 4);
+      if (secondDot > 4) {
+        try {
+          int secondOctet = Integer.parseInt(normalized.substring(4, secondDot));
+          return secondOctet >= 16 && secondOctet <= 31;
+        } catch (NumberFormatException ignored) {
+          return false;
+        }
+      }
+    }
+    return false;
   }
 
   private String firstIpToken(String headerValue) {

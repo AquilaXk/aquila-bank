@@ -8,10 +8,12 @@ import com.aquilabank.domain.auth.model.GeneratedBackupCode;
 import com.aquilabank.domain.auth.model.LoginUser;
 import com.aquilabank.domain.auth.model.TotpCredential;
 import com.aquilabank.domain.auth.model.TotpCredentialStatus;
+import com.aquilabank.domain.auth.model.TotpCredentialTouchCommand;
 import com.aquilabank.domain.auth.model.UserStatus;
 import com.aquilabank.domain.auth.port.BackupCodeSecretPort;
 import com.aquilabank.domain.auth.port.BackupCodeWritePort;
 import com.aquilabank.domain.auth.port.TotpCredentialLoadPort;
+import com.aquilabank.domain.auth.port.TotpCredentialWritePort;
 import com.aquilabank.domain.auth.port.TotpSecretPort;
 import com.aquilabank.domain.auth.port.UserCredentialLoadPort;
 import java.time.Clock;
@@ -28,6 +30,7 @@ public final class BackupCodeGenerateService implements BackupCodeGenerateUseCas
   private final BackupCodeWritePort backupCodeWritePort;
   private final int backupCodeCount;
   private final Clock clock;
+  private final TotpCredentialWritePort totpCredentialWritePort;
 
   public BackupCodeGenerateService(
       UserCredentialLoadPort userCredentialLoadPort,
@@ -37,6 +40,26 @@ public final class BackupCodeGenerateService implements BackupCodeGenerateUseCas
       BackupCodeWritePort backupCodeWritePort,
       int backupCodeCount,
       Clock clock) {
+    this(
+        userCredentialLoadPort,
+        totpCredentialLoadPort,
+        totpSecretPort,
+        backupCodeSecretPort,
+        backupCodeWritePort,
+        backupCodeCount,
+        clock,
+        null);
+  }
+
+  public BackupCodeGenerateService(
+      UserCredentialLoadPort userCredentialLoadPort,
+      TotpCredentialLoadPort totpCredentialLoadPort,
+      TotpSecretPort totpSecretPort,
+      BackupCodeSecretPort backupCodeSecretPort,
+      BackupCodeWritePort backupCodeWritePort,
+      int backupCodeCount,
+      Clock clock,
+      TotpCredentialWritePort totpCredentialWritePort) {
     this.userCredentialLoadPort = userCredentialLoadPort;
     this.totpCredentialLoadPort = totpCredentialLoadPort;
     this.totpSecretPort = totpSecretPort;
@@ -44,6 +67,7 @@ public final class BackupCodeGenerateService implements BackupCodeGenerateUseCas
     this.backupCodeWritePort = backupCodeWritePort;
     this.backupCodeCount = backupCodeCount;
     this.clock = clock;
+    this.totpCredentialWritePort = totpCredentialWritePort;
   }
 
   @Override
@@ -57,9 +81,17 @@ public final class BackupCodeGenerateService implements BackupCodeGenerateUseCas
     if (credential.credentialStatus() != TotpCredentialStatus.ACTIVE) {
       throw invalidIssue();
     }
+    if (credential.lastUsedAt() != null
+        && Math.floorDiv(now.getEpochSecond(), 30L)
+            < Math.floorDiv(credential.lastUsedAt().getEpochSecond(), 30L)) {
+      throw invalidIssue();
+    }
     if (!totpSecretPort.matches(
         credential.secretCiphertext(), credential.secretNonce(), command.totpCode(), now)) {
       throw invalidIssue();
+    }
+    if (totpCredentialWritePort != null) {
+      totpCredentialWritePort.touchLastUsed(new TotpCredentialTouchCommand(command.userId(), now));
     }
 
     List<GeneratedBackupCode> generatedItems = backupCodeSecretPort.generate(backupCodeCount);

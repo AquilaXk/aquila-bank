@@ -11,7 +11,9 @@ import java.nio.charset.StandardCharsets;
 import java.text.ParseException;
 import java.time.Instant;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /** 내부 운영 API는 public JWT와 분리된 service JWT로만 접근시키는 검증기입니다. */
@@ -20,6 +22,7 @@ public class InternalServiceTokenVerifier {
   private static final String BEARER_PREFIX = "Bearer ";
 
   private final InternalServiceTokenProperties properties;
+  private final Map<String, MACVerifier> verifiersByKeyId;
 
   public InternalServiceTokenVerifier(
       InternalServiceTokenProperties properties,
@@ -31,6 +34,7 @@ public class InternalServiceTokenVerifier {
         accountBootstrapApiProperties.enabled()
             || authBootstrapApiProperties.enabled()
             || outboxOpsProperties.enabled());
+    this.verifiersByKeyId = buildVerifiers(properties);
   }
 
   public InternalServiceTokenClaims verify(HttpServletRequest request) {
@@ -39,8 +43,8 @@ public class InternalServiceTokenVerifier {
       SignedJWT signedJwt = SignedJWT.parse(token);
       validateHeader(signedJwt);
       String keyId = signedJwt.getHeader().getKeyID();
-      if (!signedJwt.verify(
-          new MACVerifier(properties.secretOf(keyId).getBytes(StandardCharsets.UTF_8)))) {
+      MACVerifier verifier = verifiersByKeyId.get(keyId);
+      if (verifier == null || !signedJwt.verify(verifier)) {
         throw invalid();
       }
       JWTClaimsSet claimsSet = signedJwt.getJWTClaimsSet();
@@ -58,6 +62,28 @@ public class InternalServiceTokenVerifier {
     } catch (IllegalStateException | IllegalArgumentException ex) {
       throw invalid();
     }
+  }
+
+  private static Map<String, MACVerifier> buildVerifiers(
+      InternalServiceTokenProperties properties) {
+    if (properties.keys() == null || properties.keys().isEmpty()) {
+      return Map.of();
+    }
+    Map<String, MACVerifier> verifiers = new HashMap<>();
+    for (Map.Entry<String, String> entry : properties.keys().entrySet()) {
+      String keyId = entry.getKey();
+      String secret = entry.getValue();
+      if (keyId == null || keyId.isBlank() || secret == null || secret.isBlank()) {
+        continue;
+      }
+      try {
+        verifiers.put(keyId, new MACVerifier(secret.getBytes(StandardCharsets.UTF_8)));
+      } catch (com.nimbusds.jose.JOSEException ex) {
+        throw new IllegalStateException(
+            "internal service token verifier initialization failed for keyId=" + keyId, ex);
+      }
+    }
+    return Map.copyOf(verifiers);
   }
 
   private String extractBearerToken(HttpServletRequest request) {

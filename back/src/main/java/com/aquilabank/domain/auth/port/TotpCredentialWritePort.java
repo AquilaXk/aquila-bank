@@ -13,4 +13,6 @@ public interface TotpCredentialWritePort {
   void touchLastUsed(TotpCredentialTouchCommand command);
 
   void deleteByUserId(long userId);
+
+  default void deletePendingByUserId(long userId) {}
 }

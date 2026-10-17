@@ -13,6 +13,7 @@ import com.aquilabank.domain.auth.port.PasswordRecoverySecretPort;
 import com.aquilabank.domain.auth.port.PasswordRecoveryTokenLoadPort;
 import com.aquilabank.domain.auth.port.PasswordRecoveryTokenWritePort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionWritePort;
+import com.aquilabank.domain.auth.port.RememberDeviceWritePort;
 import com.aquilabank.domain.auth.port.UserCredentialLoadPort;
 import com.aquilabank.domain.auth.port.UserCredentialUpdatePort;
 import java.time.Clock;
@@ -30,6 +31,7 @@ public final class PasswordRecoveryConfirmService implements PasswordRecoveryCon
   private final UserCredentialUpdatePort userCredentialUpdatePort;
   private final PasswordHashPort passwordHashPort;
   private final RefreshTokenSessionWritePort refreshTokenSessionWritePort;
+  private final RememberDeviceWritePort rememberDeviceWritePort;
   private final Clock clock;
 
   public PasswordRecoveryConfirmService(
@@ -41,6 +43,28 @@ public final class PasswordRecoveryConfirmService implements PasswordRecoveryCon
       PasswordHashPort passwordHashPort,
       RefreshTokenSessionWritePort refreshTokenSessionWritePort,
       Clock clock) {
+    this(
+        passwordRecoverySecretPort,
+        passwordRecoveryTokenLoadPort,
+        passwordRecoveryTokenWritePort,
+        userCredentialLoadPort,
+        userCredentialUpdatePort,
+        passwordHashPort,
+        refreshTokenSessionWritePort,
+        null,
+        clock);
+  }
+
+  public PasswordRecoveryConfirmService(
+      PasswordRecoverySecretPort passwordRecoverySecretPort,
+      PasswordRecoveryTokenLoadPort passwordRecoveryTokenLoadPort,
+      PasswordRecoveryTokenWritePort passwordRecoveryTokenWritePort,
+      UserCredentialLoadPort userCredentialLoadPort,
+      UserCredentialUpdatePort userCredentialUpdatePort,
+      PasswordHashPort passwordHashPort,
+      RefreshTokenSessionWritePort refreshTokenSessionWritePort,
+      RememberDeviceWritePort rememberDeviceWritePort,
+      Clock clock) {
     this.passwordRecoverySecretPort = passwordRecoverySecretPort;
     this.passwordRecoveryTokenLoadPort = passwordRecoveryTokenLoadPort;
     this.passwordRecoveryTokenWritePort = passwordRecoveryTokenWritePort;
@@ -48,6 +72,7 @@ public final class PasswordRecoveryConfirmService implements PasswordRecoveryCon
     this.userCredentialUpdatePort = userCredentialUpdatePort;
     this.passwordHashPort = passwordHashPort;
     this.refreshTokenSessionWritePort = refreshTokenSessionWritePort;
+    this.rememberDeviceWritePort = rememberDeviceWritePort;
     this.clock = clock;
   }
 
@@ -81,7 +106,10 @@ public final class PasswordRecoveryConfirmService implements PasswordRecoveryCon
             user.userId(), passwordHashPort.encode(command.newPassword()), now));
     passwordRecoveryTokenWritePort.markUsed(
         new PasswordRecoveryTokenUseCommand(token.tokenId(), now));
-    // recovery 완료 뒤 기존 refresh session 전체 revoke로 이전 세션 재사용을 막습니다.
+    // recovery 완료 뒤 기존 refresh session 및 remember-device 전체 revoke로 이전 세션/기기 신뢰 재사용을 막습니다.
     refreshTokenSessionWritePort.revokeActiveSessionsByUserId(user.userId(), now);
+    if (rememberDeviceWritePort != null) {
+      rememberDeviceWritePort.revokeActiveByUserId(user.userId(), now);
+    }
   }
 }

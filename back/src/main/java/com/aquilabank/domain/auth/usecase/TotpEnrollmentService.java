@@ -74,9 +74,12 @@ public final class TotpEnrollmentService implements TotpEnrollmentUseCase {
 
     Instant now = Instant.now(clock);
     if (credential.credentialStatus() != TotpCredentialStatus.PENDING
-        || credential.pendingExpiresAt() == null
-        || !credential.pendingExpiresAt().isAfter(now)) {
+        || credential.pendingExpiresAt() == null) {
       throw new IllegalArgumentException("pending totp enrollment is not available");
+    }
+    if (!credential.pendingExpiresAt().isAfter(now)) {
+      totpCredentialWritePort.deletePendingByUserId(command.userId());
+      throw new InvalidCredentialsException("pending totp enrollment is expired");
     }
     if (!totpSecretPort.matches(
         credential.secretCiphertext(), credential.secretNonce(), command.totpCode(), now)) {

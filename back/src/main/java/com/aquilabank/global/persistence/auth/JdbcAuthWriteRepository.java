@@ -808,6 +808,18 @@ public class JdbcAuthWriteRepository
 
   @Override
   @Transactional
+  public void deletePendingByUserId(long userId) {
+    jdbcTemplate.update(
+        """
+        DELETE FROM auth_totp_credential
+        WHERE user_id = :userId
+          AND credential_status = 'PENDING'
+        """,
+        new MapSqlParameterSource().addValue("userId", userId));
+  }
+
+  @Override
+  @Transactional
   public void upsert(TotpLoginChallengeUpsertCommand command) {
     jdbcTemplate.update(
         """
@@ -839,7 +851,12 @@ public class JdbcAuthWriteRepository
         DO UPDATE
         SET challenge_id = EXCLUDED.challenge_id,
             challenge_status = EXCLUDED.challenge_status,
-            attempt_count = EXCLUDED.attempt_count,
+            attempt_count = CASE
+                WHEN auth_totp_login_challenge.challenge_status = 'PENDING'
+                 AND auth_totp_login_challenge.expires_at > EXCLUDED.created_at
+                THEN auth_totp_login_challenge.attempt_count
+                ELSE EXCLUDED.attempt_count
+            END,
             device_name = EXCLUDED.device_name,
             ip_address = EXCLUDED.ip_address,
             expires_at = EXCLUDED.expires_at,
@@ -1059,9 +1076,10 @@ public class JdbcAuthWriteRepository
             .stream()
             .findFirst()
             .orElseThrow(() -> new AuthUserNotFoundException("user is not found"));
-    // disable 직후 옛 refresh token이 재활성화와 함께 되살아나는 경로를 막으려고 ACTIVE session만 같이 정리합니다.
+    // disable 직후 옛 refresh token 및 remember-device가 재활성화와 함께 되살아나는 경로를 막으려고 ACTIVE 항목만 같이 정리합니다.
     if (shouldRevokeActiveRefreshTokenSessions(beforeStatus, summary.status())) {
       revokeActiveRefreshTokenSessions(command.userId(), now);
+      revokeActiveByUserId(command.userId(), now);
     }
     insertStatusChangeAudit(
         new AuthStatusChangeAuditEntry(

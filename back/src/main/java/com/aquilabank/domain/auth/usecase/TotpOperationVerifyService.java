@@ -47,6 +47,11 @@ public final class TotpOperationVerifyService implements TotpOperationVerifyUseC
     if (credential.credentialStatus() != TotpCredentialStatus.ACTIVE) {
       throw invalidVerification();
     }
+    if (credential.lastUsedAt() != null
+        && Math.floorDiv(now.getEpochSecond(), 30L)
+            < Math.floorDiv(credential.lastUsedAt().getEpochSecond(), 30L)) {
+      throw invalidVerification();
+    }
     if (!totpSecretPort.matches(
         credential.secretCiphertext(), credential.secretNonce(), command.totpCode(), now)) {
       throw invalidVerification();

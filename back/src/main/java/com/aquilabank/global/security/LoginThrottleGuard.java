@@ -34,7 +34,11 @@ public class LoginThrottleGuard {
 
   private void check(String ipAddress, LoginThrottleEntryPoint entryPoint) {
     String normalizedIpAddress = normalizeIpAddress(ipAddress);
-    LoginThrottleStore.ThrottleDecision decision = loginThrottleStore.check(normalizedIpAddress);
+    String throttleKey =
+        entryPoint == LoginThrottleEntryPoint.PASSWORD_RECOVERY
+            ? "password_recovery:" + normalizedIpAddress
+            : normalizedIpAddress;
+    LoginThrottleStore.ThrottleDecision decision = loginThrottleStore.check(throttleKey);
     if (decision.throttled()) {
       metricsRecorder.recordReject(entryPoint.metricTagValue(), decision.scope());
       logThrottle(

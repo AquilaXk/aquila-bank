@@ -212,6 +212,34 @@ class TotpChallengeVerifyServiceTest {
     assertEquals("remember-device-token", result.rememberDeviceToken());
     verify(authTokenIssuePort).issue(7L, "alice", 42L, NOW);
     verify(rememberDeviceWritePort).issue(any());
+
+    when(totpCredentialLoadPort.findCredentialByUserIdForUpdate(7L))
+        .thenReturn(
+            Optional.of(
+                new TotpCredential(
+                    7L,
+                    TotpCredentialStatus.ACTIVE,
+                    "cipher",
+                    "nonce",
+                    null,
+                    NOW.minus(Duration.ofMinutes(10)),
+                    NOW.minusSeconds(30))));
+    service.verify(new TotpChallengeVerifyCommand("challenge-1", "123456", false));
+
+    when(totpCredentialLoadPort.findCredentialByUserIdForUpdate(7L))
+        .thenReturn(
+            Optional.of(
+                new TotpCredential(
+                    7L,
+                    TotpCredentialStatus.ACTIVE,
+                    "cipher",
+                    "nonce",
+                    null,
+                    NOW.minus(Duration.ofMinutes(10)),
+                    NOW.plusSeconds(30))));
+    org.junit.jupiter.api.Assertions.assertThrows(
+        InvalidCredentialsException.class,
+        () -> service.verify(new TotpChallengeVerifyCommand("challenge-1", "123456", false)));
   }
 
   private TotpLoginChallenge activeChallenge() {

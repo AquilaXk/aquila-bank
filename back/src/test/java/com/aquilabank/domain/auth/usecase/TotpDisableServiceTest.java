@@ -103,6 +103,36 @@ class TotpDisableServiceTest {
     verify(rememberDeviceWritePort, never()).revokeActiveByUserId(anyLong(), any(Instant.class));
     verify(refreshTokenSessionWritePort, never())
         .revokeActiveSessionsByUserId(anyLong(), any(Instant.class));
+
+    when(totpCredentialLoadPort.findCredentialByUserIdForUpdate(7L))
+        .thenReturn(
+            Optional.of(
+                new TotpCredential(
+                    7L,
+                    TotpCredentialStatus.ACTIVE,
+                    "cipher",
+                    "nonce",
+                    null,
+                    NOW.minus(Duration.ofMinutes(10)),
+                    NOW.plusSeconds(30))));
+    assertThrows(
+        InvalidCredentialsException.class,
+        () -> service.disable(new TotpDisableCommand(7L, "123456")));
+
+    when(totpCredentialLoadPort.findCredentialByUserIdForUpdate(7L))
+        .thenReturn(
+            Optional.of(
+                new TotpCredential(
+                    7L,
+                    TotpCredentialStatus.ACTIVE,
+                    "cipher",
+                    "nonce",
+                    null,
+                    NOW.minus(Duration.ofMinutes(10)),
+                    null)));
+    when(totpSecretPort.matches("cipher", "nonce", "123456", NOW)).thenReturn(true);
+    service.disable(new TotpDisableCommand(7L, "123456"));
+    verify(totpCredentialWritePort).deleteByUserId(7L);
   }
 
   private LoginUser activeUser() {

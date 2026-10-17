@@ -20,9 +20,11 @@ public class InternalServiceTokenIssuer {
   private static final String SCOPE_CLAIM = "scope";
 
   private final InternalServiceTokenProperties properties;
+  private final MACSigner activeSigner;
 
   public InternalServiceTokenIssuer(InternalServiceTokenProperties properties) {
     this.properties = properties;
+    this.activeSigner = initActiveSigner(properties);
   }
 
   public String issue(String subject, Set<InternalServiceScope> scopes) {
@@ -69,11 +71,33 @@ public class InternalServiceTokenIssuer {
             claimsSet);
 
     try {
-      signedJwt.sign(new MACSigner(properties.activeSecret().getBytes(StandardCharsets.UTF_8)));
+      MACSigner signer =
+          activeSigner != null ? activeSigner : createSigner(properties.activeSecret());
+      signedJwt.sign(signer);
     } catch (JOSEException ex) {
       throw new IllegalStateException("internal service token signing failed", ex);
     }
     return signedJwt.serialize();
+  }
+
+  private static MACSigner initActiveSigner(InternalServiceTokenProperties properties) {
+    String activeKeyId = properties.activeKeyId();
+    if (activeKeyId == null || activeKeyId.isBlank() || properties.keys() == null) {
+      return null;
+    }
+    String secret = properties.keys().get(activeKeyId);
+    if (secret == null || secret.isBlank()) {
+      return null;
+    }
+    return createSigner(secret);
+  }
+
+  private static MACSigner createSigner(String secret) {
+    try {
+      return new MACSigner(secret.getBytes(StandardCharsets.UTF_8));
+    } catch (JOSEException ex) {
+      throw new IllegalStateException("internal service token signing failed", ex);
+    }
   }
 
   static Set<String> parseScopes(String rawScope) {

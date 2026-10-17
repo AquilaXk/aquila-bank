@@ -23,6 +23,7 @@ import com.aquilabank.domain.auth.port.PasswordRecoverySecretPort;
 import com.aquilabank.domain.auth.port.PasswordRecoveryTokenLoadPort;
 import com.aquilabank.domain.auth.port.PasswordRecoveryTokenWritePort;
 import com.aquilabank.domain.auth.port.RefreshTokenSessionWritePort;
+import com.aquilabank.domain.auth.port.RememberDeviceWritePort;
 import com.aquilabank.domain.auth.port.UserCredentialLoadPort;
 import com.aquilabank.domain.auth.port.UserCredentialUpdatePort;
 import java.time.Clock;
@@ -72,6 +73,47 @@ class PasswordRecoveryConfirmServiceTest {
         .resetPassword(new PasswordResetWriteCommand(7L, "new-password-hash", NOW));
     verify(passwordRecoveryTokenWritePort).markUsed(new PasswordRecoveryTokenUseCommand(11L, NOW));
     verify(refreshTokenSessionWritePort).revokeActiveSessionsByUserId(7L, NOW);
+  }
+
+  @Test
+  void resetsPasswordAndRevokesRememberDeviceSessionsWhenPortConfigured() {
+    PasswordRecoverySecretPort passwordRecoverySecretPort = mock(PasswordRecoverySecretPort.class);
+    PasswordRecoveryTokenLoadPort passwordRecoveryTokenLoadPort =
+        mock(PasswordRecoveryTokenLoadPort.class);
+    PasswordRecoveryTokenWritePort passwordRecoveryTokenWritePort =
+        mock(PasswordRecoveryTokenWritePort.class);
+    UserCredentialLoadPort userCredentialLoadPort = mock(UserCredentialLoadPort.class);
+    UserCredentialUpdatePort userCredentialUpdatePort = mock(UserCredentialUpdatePort.class);
+    PasswordHashPort passwordHashPort = mock(PasswordHashPort.class);
+    RefreshTokenSessionWritePort refreshTokenSessionWritePort =
+        mock(RefreshTokenSessionWritePort.class);
+    RememberDeviceWritePort rememberDeviceWritePort = mock(RememberDeviceWritePort.class);
+
+    when(passwordRecoverySecretPort.hash("recovery-token")).thenReturn("token-hash");
+    when(passwordRecoveryTokenLoadPort.findByTokenHashForUpdate("token-hash"))
+        .thenReturn(Optional.of(pendingToken()));
+    when(userCredentialLoadPort.findByUserIdForUpdate(7L)).thenReturn(Optional.of(activeUser()));
+    when(passwordHashPort.encode("newPassword456!")).thenReturn("new-password-hash");
+
+    PasswordRecoveryConfirmService service =
+        new PasswordRecoveryConfirmService(
+            passwordRecoverySecretPort,
+            passwordRecoveryTokenLoadPort,
+            passwordRecoveryTokenWritePort,
+            userCredentialLoadPort,
+            userCredentialUpdatePort,
+            passwordHashPort,
+            refreshTokenSessionWritePort,
+            rememberDeviceWritePort,
+            CLOCK);
+
+    service.confirm(new PasswordRecoveryConfirmCommand("recovery-token", "newPassword456!"));
+
+    verify(userCredentialUpdatePort)
+        .resetPassword(new PasswordResetWriteCommand(7L, "new-password-hash", NOW));
+    verify(passwordRecoveryTokenWritePort).markUsed(new PasswordRecoveryTokenUseCommand(11L, NOW));
+    verify(refreshTokenSessionWritePort).revokeActiveSessionsByUserId(7L, NOW);
+    verify(rememberDeviceWritePort).revokeActiveByUserId(7L, NOW);
   }
 
   @Test
@@ -198,7 +240,7 @@ class PasswordRecoveryConfirmServiceTest {
   }
 
   @Test
-  void rejectsInactiveUserWithGenericFailure() {
+  void rejectsInactiveOrMissingUserWithGenericFailure() {
     PasswordRecoverySecretPort passwordRecoverySecretPort = mock(PasswordRecoverySecretPort.class);
     PasswordRecoveryTokenLoadPort passwordRecoveryTokenLoadPort =
         mock(PasswordRecoveryTokenLoadPort.class);
@@ -234,6 +276,14 @@ class PasswordRecoveryConfirmServiceTest {
                     new PasswordRecoveryConfirmCommand("recovery-token", "newPassword456!")));
 
     assertThat(ex).hasMessage("password recovery failed");
+
+    when(userCredentialLoadPort.findByUserIdForUpdate(7L)).thenReturn(Optional.empty());
+    assertThrows(
+        InvalidCredentialsException.class,
+        () ->
+            service.confirm(
+                new PasswordRecoveryConfirmCommand("recovery-token", "newPassword456!")));
+
     verify(passwordRecoveryTokenWritePort, never()).markUsed(any());
     verifyNoInteractions(userCredentialUpdatePort, refreshTokenSessionWritePort);
   }
