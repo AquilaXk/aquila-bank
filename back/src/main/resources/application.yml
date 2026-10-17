@@ -37,6 +37,10 @@ spring:
   mvc:
     async:
       request-timeout: 5000ms
+  task:
+    scheduling:
+      pool:
+        size: ${SPRING_TASK_SCHEDULING_POOL_SIZE:4}
   transaction:
     default-timeout: ${DB_TRANSACTION_TIMEOUT_SECONDS:5}
 

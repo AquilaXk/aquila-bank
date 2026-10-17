@@ -52,6 +52,62 @@ class ApiAdmissionControlInterceptorTest {
     interceptor.afterCompletion(secondRequest, new MockHttpServletResponse(), null, null);
   }
 
+  @Test
+  void doesNotRaiseAdaptiveLimitWhenRequestCompletesWithServerErrorOrException() {
+    SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+    ApiAdmissionControl control =
+        new ApiAdmissionControl(
+            new ApiAdmissionControlProperties(
+                true,
+                1,
+                List.of(
+                    new ApiAdmissionControlProperties.EndpointLimit(
+                        "transaction-read",
+                        1,
+                        0,
+                        List.of("/api/v1/transactions"),
+                        new ApiAdmissionControlProperties.AdaptiveLimit(
+                            true, 1, 2, 1, 1, 1, 1.0, 0, 1, 0, 0, 0)))),
+            meterRegistry);
+    ApiAdmissionControlInterceptor interceptor = new ApiAdmissionControlInterceptor(control);
+
+    MockHttpServletRequest errorStatusRequest =
+        new MockHttpServletRequest("GET", "/api/v1/transactions");
+    MockHttpServletResponse errorStatusResponse = new MockHttpServletResponse();
+    errorStatusResponse.setStatus(503);
+    assertThat(interceptor.preHandle(errorStatusRequest, errorStatusResponse, null)).isTrue();
+    interceptor.afterCompletion(errorStatusRequest, errorStatusResponse, null, null);
+    assertThat(
+            meterRegistry
+                .find("aquila.api.admission.limit")
+                .tag("group", "transaction-read")
+                .gauge()
+                .value())
+        .isEqualTo(1.0);
+
+    MockHttpServletRequest exceptionRequest =
+        new MockHttpServletRequest("GET", "/api/v1/transactions");
+    assertThat(interceptor.preHandle(exceptionRequest, new MockHttpServletResponse(), null))
+        .isTrue();
+    interceptor.afterCompletion(
+        exceptionRequest,
+        new MockHttpServletResponse(),
+        null,
+        new IllegalStateException("downstream failure"));
+    assertThat(
+            meterRegistry
+                .find("aquila.api.admission.limit")
+                .tag("group", "transaction-read")
+                .gauge()
+                .value())
+        .isEqualTo(1.0);
+
+    MockHttpServletRequest unmatchedRequest = new MockHttpServletRequest("GET", "/actuator/health");
+    assertThat(interceptor.preHandle(unmatchedRequest, new MockHttpServletResponse(), null))
+        .isTrue();
+    interceptor.afterCompletion(unmatchedRequest, new MockHttpServletResponse(), null, null);
+  }
+
   private ApiAdmissionControl admissionControl() {
     return new ApiAdmissionControl(
         new ApiAdmissionControlProperties(

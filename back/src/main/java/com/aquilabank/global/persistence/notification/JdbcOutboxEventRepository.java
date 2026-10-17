@@ -90,6 +90,7 @@ public class JdbcOutboxEventRepository implements OutboxEventStore, OutboxCleanu
             last_error = NULL,
             updated_at = :publishedAt
         WHERE id = :id
+          AND publish_status = 'SENDING'
         """,
         params);
   }
@@ -113,6 +114,7 @@ public class JdbcOutboxEventRepository implements OutboxEventStore, OutboxCleanu
             last_error = :errorMessage,
             updated_at = :failedAt
         WHERE id = :id
+          AND publish_status = 'SENDING'
         """,
         params);
   }
@@ -134,6 +136,7 @@ public class JdbcOutboxEventRepository implements OutboxEventStore, OutboxCleanu
             last_error = :errorMessage,
             updated_at = :quarantinedAt
         WHERE id = :id
+          AND publish_status = 'SENDING'
         """,
         params);
   }

@@ -41,7 +41,9 @@ class T3MicroSaturationGuardTest {
     assertThat(decision.snapshot().pool().activeConnections()).isEqualTo(4);
     assertThat(decision.snapshot().servletThreads().busyThreads()).isEqualTo(16);
     assertThat(decision.snapshot().recentQueryTimeoutCount()).isEqualTo(1);
-    assertThat(guard.check("/actuator/health").allowed()).isTrue();
+    T3MicroSaturationDecision healthDecision = guard.check("/actuator/health");
+    assertThat(healthDecision.allowed()).isTrue();
+    assertThat(healthDecision.snapshot()).isEqualTo(T3MicroSaturationSnapshot.empty());
     assertThat(
             meterRegistry
                 .find("aquila.t3micro.saturation.guard.requests")

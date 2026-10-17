@@ -156,6 +156,13 @@ class JdbcNotificationChannelOutboxRepositoryIntegrationTest extends PostgresCon
 
     NotificationChannelOutboxItem retryClaim = repository.claimPending(1, nextAttemptAt).getFirst();
     repository.markSent(retryClaim.id(), nextAttemptAt.plusSeconds(1));
+    repository.markFailed(
+        retryClaim.id(), nextAttemptAt.plusSeconds(30), nextAttemptAt.plusSeconds(2), "stale");
+    repository.markQuarantined(retryClaim.id(), nextAttemptAt.plusSeconds(2), "stale");
+    repository.markSkipped(
+        retryClaim.id(),
+        nextAttemptAt.plusSeconds(2),
+        NotificationChannelDeliverySkipReason.VERIFIED_CONTACT_MISSING);
 
     DeliveryRow sentRow = findDeliveryRow(claimed.id());
     assertThat(sentRow.deliveryStatus()).isEqualTo(NotificationChannelDeliveryStatus.SENT);

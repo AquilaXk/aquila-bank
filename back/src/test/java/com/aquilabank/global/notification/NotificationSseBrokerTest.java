@@ -168,6 +168,29 @@ class NotificationSseBrokerTest {
   }
 
   @Test
+  void rejectsAccountSubscriptionWhenPerPrincipalSessionLimitIsReachedAndSendsConnectedFirst()
+      throws Exception {
+    RecordingSseEmitterFactory emitterFactory = new RecordingSseEmitterFactory();
+    NotificationSseBroker notificationSseBroker = createBroker(4, 2, 2, emitterFactory);
+
+    SseEmitter firstEmitter = notificationSseBroker.subscribeAccount(101L, "first-account-session");
+    SseEmitter secondEmitter =
+        notificationSseBroker.subscribeAccount(101L, "second-account-session");
+
+    assertThatThrownBy(() -> notificationSseBroker.subscribeAccount(101L, "third-account-session"))
+        .isInstanceOf(NotificationSseOverloadException.class)
+        .hasMessage("notification SSE stream is temporarily overloaded");
+    assertThat(notificationSseBroker.rejectedSubscriptionCount()).isEqualTo(1L);
+
+    notificationSseBroker.publishInsertedItems(List.of(notification(1L, 101L, "ordered")));
+    assertThat(emitterFactory.emitter(0).eventNames()).containsExactly("connected", "notification");
+    assertThat(emitterFactory.emitter(1).eventNames()).containsExactly("connected", "notification");
+
+    firstEmitter.complete();
+    secondEmitter.complete();
+  }
+
+  @Test
   void rejectsConfigurationWhenUserSessionLimitExceedsTotalLimit() {
     assertThatThrownBy(
             () ->
@@ -297,6 +320,10 @@ class NotificationSseBrokerTest {
           .filter(event -> "notification".equals(event.name()))
           .map(event -> Long.parseLong(event.id()))
           .toList();
+    }
+
+    private List<String> eventNames() {
+      return events.stream().map(RecordedSseEvent::name).toList();
     }
 
     private int completedCount() {

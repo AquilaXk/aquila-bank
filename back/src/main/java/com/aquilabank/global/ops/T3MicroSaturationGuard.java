@@ -73,11 +73,11 @@ public class T3MicroSaturationGuard {
     if (!properties.enabled()) {
       return T3MicroSaturationDecision.allowed(T3MicroSaturationSnapshot.empty());
     }
-    T3MicroSaturationSnapshot snapshot = snapshot();
     String protectedPathPrefix = protectedPathPrefix(path);
     if (protectedPathPrefix == null) {
-      return T3MicroSaturationDecision.allowed(snapshot);
+      return T3MicroSaturationDecision.allowed(T3MicroSaturationSnapshot.empty());
     }
+    T3MicroSaturationSnapshot snapshot = snapshot();
     if (snapshot.saturated() || readReplicaPoolSaturated(path, snapshot)) {
       int streak =
           protectedSaturationStreaks

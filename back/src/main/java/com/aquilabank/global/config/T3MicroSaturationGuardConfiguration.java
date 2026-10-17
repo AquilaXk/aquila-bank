@@ -181,14 +181,14 @@ public class T3MicroSaturationGuardConfiguration {
     }
   }
 
-  private static final class JmxJvmPressureProbe implements JvmPressureProbe {
+  static final class JmxJvmPressureProbe implements JvmPressureProbe {
 
     private final MemoryMXBean memoryMXBean;
     private final List<GarbageCollectorMXBean> garbageCollectors;
     private final Clock clock;
     private volatile GcSample previousSample;
 
-    private JmxJvmPressureProbe(
+    JmxJvmPressureProbe(
         MemoryMXBean memoryMXBean, List<GarbageCollectorMXBean> garbageCollectors, Clock clock) {
       this.memoryMXBean = memoryMXBean;
       this.garbageCollectors = List.copyOf(garbageCollectors);
@@ -202,16 +202,16 @@ public class T3MicroSaturationGuardConfiguration {
       long heapMax = Math.max(heap.getMax(), 0L);
       GcSample currentSample = sampleGc();
       GcSample previous = previousSample;
-      previousSample = currentSample;
       if (previous == null
           || currentSample.observedAt().minus(gcWindow).isAfter(previous.observedAt())) {
+        previousSample = currentSample;
         return new JvmPressureSnapshot(heapUsed, heapMax, 0L, 0L);
       }
       return new JvmPressureSnapshot(
           heapUsed,
           heapMax,
-          currentSample.collectionCount() - previous.collectionCount(),
-          currentSample.collectionTimeMs() - previous.collectionTimeMs());
+          Math.max(currentSample.collectionCount() - previous.collectionCount(), 0L),
+          Math.max(currentSample.collectionTimeMs() - previous.collectionTimeMs(), 0L));
     }
 
     private GcSample sampleGc() {

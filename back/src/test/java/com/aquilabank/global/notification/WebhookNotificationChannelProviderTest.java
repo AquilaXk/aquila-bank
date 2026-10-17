@@ -159,6 +159,27 @@ class WebhookNotificationChannelProviderTest {
     server.verify();
   }
 
+  @Test
+  void rejectsMalformedPayloadJsonBeforeHttpDispatch() {
+    RestClient.Builder builder = RestClient.builder();
+    NotificationChannelRecipientLookupPort recipientLookupPort =
+        (userId, channel) -> Optional.of("alice@example.com");
+    WebhookNotificationChannelProvider provider =
+        new WebhookNotificationChannelProvider(
+            builder.build(),
+            recipientLookupPort,
+            properties(),
+            new ObjectMapper().findAndRegisterModules());
+
+    assertThatThrownBy(
+            () -> provider.send(item(3L, NotificationPreferenceChannel.EMAIL, "{invalid")))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("notification channel payload must be valid JSON");
+    assertThatThrownBy(() -> provider.send(item(4L, NotificationPreferenceChannel.EMAIL, "   ")))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("notification channel payload must be valid JSON");
+  }
+
   private NotificationChannelProviderDeliveryProperties properties() {
     return new NotificationChannelProviderDeliveryProperties(
         true,

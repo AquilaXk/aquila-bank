@@ -587,6 +587,12 @@ class JdbcNotificationInboxRepositoryIntegrationTest extends PostgresContainerTe
         .isEqualTo(1);
     assertThat(findNotificationEventKeys())
         .containsExactlyInAnyOrder("evt-bulk-hide-1", "evt-bulk-hide-3");
+
+    assertThat(
+            repository.deleteByUserId(
+                userIds[0], List.of(notificationIds[0], notificationIds[2]), base.plusSeconds(50)))
+        .isEqualTo(2);
+    assertThat(repository.countUnreadByUserId(userIds[0])).isEqualTo(0L);
   }
 
   @Test
