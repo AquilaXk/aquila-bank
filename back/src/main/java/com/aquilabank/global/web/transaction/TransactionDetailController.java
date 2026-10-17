@@ -6,9 +6,7 @@ import com.aquilabank.domain.transaction.usecase.TransactionDetailQueryUseCase;
 import com.aquilabank.global.security.AuthenticatedRequestPrincipal;
 import com.aquilabank.global.web.security.CurrentAuthenticatedPrincipal;
 import com.aquilabank.global.web.security.RequestAccountAuthorizationService;
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import jakarta.validation.constraints.Positive;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -30,18 +28,6 @@ public class TransactionDetailController {
   private final TransactionReadSingleFlight singleFlight;
   private final TransactionReadAccountFairnessLimiter accountFairnessLimiter;
 
-  public TransactionDetailController(
-      TransactionDetailQueryUseCase transactionDetailQueryUseCase,
-      RequestAccountAuthorizationService requestAccountAuthorizationService) {
-    this(
-        transactionDetailQueryUseCase,
-        requestAccountAuthorizationService,
-        new TransactionReadHotPathMetrics(new SimpleMeterRegistry()),
-        new TransactionReadSingleFlight(),
-        new TransactionReadAccountFairnessLimiter(2));
-  }
-
-  @Autowired
   public TransactionDetailController(
       TransactionDetailQueryUseCase transactionDetailQueryUseCase,
       RequestAccountAuthorizationService requestAccountAuthorizationService,

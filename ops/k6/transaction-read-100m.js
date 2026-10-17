@@ -1,4 +1,5 @@
 import http from "k6/http";
+import crypto from "k6/crypto";
 import encoding from "k6/encoding";
 import {check, fail, sleep} from "k6";
 import {Counter, Rate, Trend} from "k6/metrics";
@@ -490,9 +491,43 @@ function preemptivePace() {
   sleep(sleepMs / 1000);
 }
 
+const cursorHmacSecret =
+  __ENV.AQUILA_TRANSACTION_CURSOR_HMAC_SECRET || "aquila-bank-transaction-cursor-hmac-v1";
+
+function writeBigInt64BE(view, byteOffset, value) {
+  const high = Number((value >> 32n) & 0xffffffffn);
+  const low = Number(value & 0xffffffffn);
+  view.setUint32(byteOffset, high, false);
+  view.setUint32(byteOffset + 4, low, false);
+}
+
+function parseInstantEpochAndNano(isoString) {
+  const text = String(isoString);
+  const dotIndex = text.indexOf(".");
+  const zIndex = text.endsWith("Z") ? text.length - 1 : text.length;
+  const wholeIso = (dotIndex >= 0 ? text.slice(0, dotIndex) : text.slice(0, zIndex)) + "Z";
+  const epochSecond = BigInt(Math.floor(Date.parse(wholeIso) / 1000));
+  let nano = 0;
+  if (dotIndex >= 0 && dotIndex + 1 < zIndex) {
+    const frac = text.slice(dotIndex + 1, zIndex).padEnd(9, "0").slice(0, 9);
+    nano = Number(frac);
+  }
+  return {epochSecond, nano};
+}
+
 function encodeCursor(bookedAt, id) {
-  const payload = `${bookedAt}|${id}`;
-  return encoding.b64encode(payload, "rawurl");
+  const {epochSecond, nano} = parseInstantEpochAndNano(bookedAt);
+  const entryId = BigInt(String(id));
+  const payload = new Uint8Array(20);
+  const payloadView = new DataView(payload.buffer);
+  writeBigInt64BE(payloadView, 0, epochSecond);
+  payloadView.setInt32(8, nano, false);
+  writeBigInt64BE(payloadView, 12, entryId);
+  const macBuffer = crypto.hmac("sha256", cursorHmacSecret, payload.buffer, "binary");
+  const combined = new Uint8Array(52);
+  combined.set(payload, 0);
+  combined.set(new Uint8Array(macBuffer), 20);
+  return encoding.b64encode(combined.buffer, "rawurl");
 }
 
 function pickAccount(accountIds) {

@@ -36,7 +36,12 @@ class TransactionDetailControllerTest {
     mockMvc =
         MockMvcBuilders.standaloneSetup(
                 new TransactionDetailController(
-                    transactionDetailQueryUseCase, requestAccountAuthorizationService))
+                    transactionDetailQueryUseCase,
+                    requestAccountAuthorizationService,
+                    new TransactionReadHotPathMetrics(
+                        new io.micrometer.core.instrument.simple.SimpleMeterRegistry()),
+                    new TransactionReadSingleFlight(),
+                    new TransactionReadAccountFairnessLimiter(2)))
             .setControllerAdvice(new ApiExceptionHandler())
             .addFilters(new BootstrapHeaderAuthenticationFilter("X-Account-Id", "X-Subject"))
             .setCustomArgumentResolvers(new CurrentAuthenticatedPrincipalArgumentResolver())
@@ -104,13 +109,15 @@ class TransactionDetailControllerTest {
     io.micrometer.core.instrument.simple.SimpleMeterRegistry meterRegistry =
         new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
     TransactionReadAccountFairnessLimiter limiter = new TransactionReadAccountFairnessLimiter(1);
+    TransactionReadSingleFlight singleFlight =
+        org.mockito.Mockito.spy(new TransactionReadSingleFlight());
     MockMvc measuredMockMvc =
         MockMvcBuilders.standaloneSetup(
                 new TransactionDetailController(
                     transactionDetailQueryUseCase,
                     requestAccountAuthorizationService,
                     new TransactionReadHotPathMetrics(meterRegistry),
-                    new TransactionReadSingleFlight(),
+                    singleFlight,
                     limiter))
             .setControllerAdvice(new ApiExceptionHandler())
             .addFilters(new BootstrapHeaderAuthenticationFilter("X-Account-Id", "X-Subject"))
@@ -144,14 +151,49 @@ class TransactionDetailControllerTest {
                 .param("accountId", "101"))
         .andExpect(status().isOk());
 
-    org.assertj.core.api.Assertions.assertThat(
-            meterRegistry
-                .find("aquila.transaction.read.http.stage")
-                .tag("endpoint", "detail")
-                .tag("stage", "total")
-                .tag("outcome", "success")
-                .timer()
-                .count())
-        .isEqualTo(1L);
+    for (String stage :
+        java.util.List.of("authorization", "usecase", "response_mapping", "total")) {
+      org.assertj.core.api.Assertions.assertThat(
+              meterRegistry
+                  .find("aquila.transaction.read.http.stage")
+                  .tag("endpoint", "detail")
+                  .tag("stage", stage)
+                  .tag("outcome", "success")
+                  .timer()
+                  .count())
+          .isEqualTo(1L);
+    }
+
+    org.mockito.Mockito.clearInvocations(singleFlight);
+    java.util.concurrent.CountDownLatch enteredLimiter = new java.util.concurrent.CountDownLatch(1);
+    java.util.concurrent.CountDownLatch releaseLimiter = new java.util.concurrent.CountDownLatch(1);
+    Thread holder =
+        new Thread(
+            () ->
+                limiter.execute(
+                    101L,
+                    () -> {
+                      enteredLimiter.countDown();
+                      try {
+                        releaseLimiter.await();
+                      } catch (InterruptedException ex) {
+                        Thread.currentThread().interrupt();
+                      }
+                      return null;
+                    }));
+    holder.start();
+    enteredLimiter.await();
+    try {
+      measuredMockMvc
+          .perform(
+              get("/api/v1/transactions/TX-101")
+                  .header("X-Account-Id", "101")
+                  .param("accountId", "101"))
+          .andExpect(status().isTooManyRequests());
+      org.mockito.Mockito.verifyNoInteractions(singleFlight);
+    } finally {
+      releaseLimiter.countDown();
+      holder.join();
+    }
   }
 }

@@ -15,20 +15,29 @@ import javax.crypto.spec.SecretKeySpec;
 public final class TransactionCursorCodec {
 
   private static final String HMAC_ALGORITHM = "HmacSHA256";
+  private static final String DEFAULT_HMAC_SECRET = "aquila-bank-transaction-cursor-hmac-v1";
   private static final int PAYLOAD_BYTES = Long.BYTES + Integer.BYTES + Long.BYTES;
   private static final int HMAC_BYTES = 32;
   private static final int TOTAL_BYTES = PAYLOAD_BYTES + HMAC_BYTES;
   private static final int MAX_NANO = 999_999_999;
   private static final SecretKeySpec HMAC_KEY =
-      new SecretKeySpec(
-          "aquila-bank-transaction-cursor-hmac-v1".getBytes(StandardCharsets.UTF_8),
-          HMAC_ALGORITHM);
+      resolveHmacKey(
+          System.getProperty("aquila.transaction.cursor.hmac-secret"),
+          System.getenv("AQUILA_TRANSACTION_CURSOR_HMAC_SECRET"));
   private static final ThreadLocal<Mac> THREAD_LOCAL_MAC =
       ThreadLocal.withInitial(TransactionCursorCodec::createInitializedMac);
   private static final Base64.Encoder URL_ENCODER = Base64.getUrlEncoder().withoutPadding();
   private static final Base64.Decoder URL_DECODER = Base64.getUrlDecoder();
 
   private TransactionCursorCodec() {}
+
+  static SecretKeySpec resolveHmacKey(String propertySecret, String envSecret) {
+    String resolved =
+        propertySecret != null && !propertySecret.isBlank()
+            ? propertySecret
+            : (envSecret != null && !envSecret.isBlank() ? envSecret : DEFAULT_HMAC_SECRET);
+    return new SecretKeySpec(resolved.getBytes(StandardCharsets.UTF_8), HMAC_ALGORITHM);
+  }
 
   public static String encode(TransactionCursor cursor) {
     ByteBuffer buffer = ByteBuffer.allocate(TOTAL_BYTES);

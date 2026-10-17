@@ -55,4 +55,28 @@ class TransactionCursorCodecTest {
     assertThrows(
         IllegalArgumentException.class, () -> TransactionCursorCodec.decode(tamperedMacCursor));
   }
+
+  @Test
+  void resolvesHmacKeyFromPropertyOrEnvironmentWithFallback() {
+    assertEquals(
+        "prop-secret",
+        new String(
+            TransactionCursorCodec.resolveHmacKey("prop-secret", "env-secret").getEncoded(),
+            java.nio.charset.StandardCharsets.UTF_8));
+    assertEquals(
+        "env-secret",
+        new String(
+            TransactionCursorCodec.resolveHmacKey(" ", "env-secret").getEncoded(),
+            java.nio.charset.StandardCharsets.UTF_8));
+    assertEquals(
+        "aquila-bank-transaction-cursor-hmac-v1",
+        new String(
+            TransactionCursorCodec.resolveHmacKey(null, " ").getEncoded(),
+            java.nio.charset.StandardCharsets.UTF_8));
+    assertEquals(
+        "aquila-bank-transaction-cursor-hmac-v1",
+        new String(
+            TransactionCursorCodec.resolveHmacKey(null, null).getEncoded(),
+            java.nio.charset.StandardCharsets.UTF_8));
+  }
 }
