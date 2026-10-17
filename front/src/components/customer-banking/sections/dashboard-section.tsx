@@ -6,6 +6,71 @@ import {
   serviceHourItems,
 } from '@/lib/customer-banking/constants';
 
+type DashboardAccountItem = {
+  accountId: number;
+  accountNumber: string;
+  displayName: string;
+  accountStatus: string;
+  currencyCode: string;
+  availableBalanceMinor: number;
+};
+
+const DASHBOARD_WORK_TABS: Array<{ label: string; section: MenuSection }> = [
+  { label: "개인뱅킹", section: "dashboard" },
+  { label: "조회", section: "accounts" },
+  { label: "이체", section: "transfer" },
+  { label: "인증센터", section: "security" },
+  { label: "고객센터", section: "supportCenter" },
+];
+
+function resolvePrimaryAccountDisplay(
+  primaryAccount: DashboardAccountItem | null,
+  hasSession: boolean,
+) {
+  if (primaryAccount) {
+    return {
+      displayName: primaryAccount.displayName,
+      accountNumber: primaryAccount.accountNumber,
+      balanceDisplay: `${(primaryAccount.availableBalanceMinor / 100).toLocaleString("ko-KR")} ${primaryAccount.currencyCode}`,
+    };
+  }
+  if (hasSession) {
+    return {
+      displayName: "보유계좌 조회 대기",
+      accountNumber: "계좌조회 메뉴에서 보유계좌를 확인하세요",
+      balanceDisplay: "조회 전",
+    };
+  }
+  return {
+    displayName: "로그인 후 계좌 확인",
+    accountNumber: "로그인 후 대표계좌 번호가 표시됩니다",
+    balanceDisplay: "로그인 후 확인",
+  };
+}
+
+function resolveDashboardWorkStatus(hasSession: boolean) {
+  if (hasSession) {
+    return {
+      notice: "조회/이체/인증 정상",
+      lookup: "조회 결과 대기",
+      transfer: "이체 처리 대기",
+      notification: "알림 수신 대기",
+      transactionState: "다음 조회 가능",
+      transferState: "중복 방지",
+      notificationState: "실시간 알림",
+    };
+  }
+  return {
+    notice: "로그인 후 업무 가능",
+    lookup: "로그인 후 조회",
+    transfer: "인증 후 이체",
+    notification: "로그인 후 알림 확인",
+    transactionState: "인증 후 가능",
+    transferState: "인증 후 가능",
+    notificationState: "로그인 후 알림 확인",
+  };
+}
+
 export function DashboardSection({
   accounts,
   hasSession,
@@ -13,79 +78,28 @@ export function DashboardSection({
   onMove,
   onRefresh,
 }: {
-  accounts?: Array<{
-    accountId: number;
-    accountNumber: string;
-    displayName: string;
-    accountStatus: string;
-    currencyCode: string;
-    availableBalanceMinor: number;
-  }>;
+  accounts?: DashboardAccountItem[];
   hasSession: boolean;
   isBusy: boolean;
   onMove: (section: MenuSection) => void;
   onRefresh: () => void;
 }) {
   const primaryAccount = hasSession && accounts && accounts.length > 0 ? accounts[0] : null;
-  const primaryDisplayName = primaryAccount
-    ? primaryAccount.displayName
-    : hasSession
-      ? "보유계좌 조회 대기"
-      : "로그인 후 계좌 확인";
-  const primaryAccountNumber = primaryAccount
-    ? primaryAccount.accountNumber
-    : hasSession
-      ? "계좌조회 메뉴에서 보유계좌를 확인하세요"
-      : "로그인 후 대표계좌 번호가 표시됩니다";
-  const primaryBalanceDisplay = primaryAccount
-    ? `${(primaryAccount.availableBalanceMinor / 100).toLocaleString("ko-KR")} ${primaryAccount.currencyCode}`
-    : hasSession
-      ? "조회 전"
-      : "로그인 후 확인";
-  const workStatus = hasSession
-    ? {
-        notice: "조회/이체/인증 정상",
-        lookup: "조회 결과 대기",
-        transfer: "이체 처리 대기",
-        notification: "알림 수신 대기",
-        transactionState: "다음 조회 가능",
-        transferState: "중복 방지",
-        notificationState: "실시간 알림",
-      }
-    : {
-        notice: "로그인 후 업무 가능",
-        lookup: "로그인 후 조회",
-        transfer: "인증 후 이체",
-        notification: "로그인 후 알림 확인",
-        transactionState: "인증 후 가능",
-        transferState: "인증 후 가능",
-        notificationState: "로그인 후 알림 확인",
-      };
+  const {
+    displayName: primaryDisplayName,
+    accountNumber: primaryAccountNumber,
+    balanceDisplay: primaryBalanceDisplay,
+  } = resolvePrimaryAccountDisplay(primaryAccount, hasSession);
+  const workStatus = resolveDashboardWorkStatus(hasSession);
 
   return (
     <section className="task-section compact-work-section">
       <WorkTabs
         active="개인뱅킹"
-        items={["개인뱅킹", "조회", "이체", "인증센터", "고객센터"].map((label) => ({
+        items={DASHBOARD_WORK_TABS.map(({ label, section }) => ({
           id: label,
           label,
-          onClick: () => {
-            if (label === "개인뱅킹") {
-              onMove("dashboard");
-            }
-            if (label === "조회") {
-              onMove("accounts");
-            }
-            if (label === "이체") {
-              onMove("transfer");
-            }
-            if (label === "인증센터") {
-              onMove("security");
-            }
-            if (label === "고객센터") {
-              onMove("supportCenter");
-            }
-          },
+          onClick: () => onMove(section),
         }))}
       />
       <div className="section-title">

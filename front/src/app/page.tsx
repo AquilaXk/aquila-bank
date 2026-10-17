@@ -171,7 +171,6 @@ export default function HomePage() {
         searchQuery={searchQuery}
         serviceMapOpen={serviceMapOpen}
         session={session}
-        sessionRequired={sessionRequired}
         onMobileSearchToggle={() => setMobileSearchOpen((value) => !value)}
         onMove={moveToSection}
         onSearchChange={setSearchQuery}
@@ -221,8 +220,8 @@ export default function HomePage() {
               selectedAccount={selectedAccount}
               onAccountLimitChange={setAccountLimit}
               onLoadAccountDetail={handleLoadAccountDetail}
-              onLoadAccounts={() => handleLoadAccounts()}
-              onLoadNextAccounts={() => handleLoadAccounts(accountCursor, true)}
+              onLoadAccounts={() => void handleLoadAccounts()}
+              onLoadNextAccounts={() => void handleLoadAccounts(accountCursor, true)}
             />
           ) : null}
           {canRenderWorkSection && activeSection === "transfer" ? (
@@ -253,18 +252,18 @@ export default function HomePage() {
               onDetail={handleLoadTransactionDetail}
               onFilterChange={setTransactionFilters}
               onModeChange={setTransactionMode}
-              onNext={() =>
-                transactionSlice?.nextCursor
-                  ? handleSearchTransactions(
-                      transactionMode,
-                      transactionSlice.nextCursor,
-                      true,
-                    )
-                  : undefined
-              }
+              onNext={() => {
+                if (transactionSlice?.nextCursor) {
+                  void handleSearchTransactions(
+                    transactionMode,
+                    transactionSlice.nextCursor,
+                    true,
+                  );
+                }
+              }}
               onSearch={(event) => {
                 event.preventDefault();
-                handleSearchTransactions(transactionMode);
+                void handleSearchTransactions(transactionMode);
               }}
               onReset={handleResetTransactionFilters}
             />
@@ -351,19 +350,19 @@ export default function HomePage() {
               onLoadPreferences={handleLoadPreferences}
               onLoadUnreadCount={handleLoadUnreadCount}
               onModeChange={setNotificationMode}
-              onNext={() =>
-                notificationSlice?.nextCursor
-                  ? handleLoadNotifications(
-                      notificationMode,
-                      notificationSlice.nextCursor,
-                      true,
-                    )
-                  : undefined
-              }
+              onNext={() => {
+                if (notificationSlice?.nextCursor) {
+                  void handleLoadNotifications(
+                    notificationMode,
+                    notificationSlice.nextCursor,
+                    true,
+                  );
+                }
+              }}
               onPreferenceChange={setPreferences}
               onSearch={(event) => {
                 event.preventDefault();
-                handleLoadNotifications(notificationMode);
+                void handleLoadNotifications(notificationMode);
               }}
               onToggleId={toggleNotificationId}
               onUpdatePreferences={handleUpdatePreferences}

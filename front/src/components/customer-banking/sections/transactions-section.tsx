@@ -451,7 +451,6 @@ export function TransactionsSection({
               disabled={isBusy}
               hasNext={Boolean(slice?.hasNext)}
               label="거래내역 페이지 탐색"
-              nextCursor={slice?.nextCursor}
               onNext={onNext}
             />
           </section>

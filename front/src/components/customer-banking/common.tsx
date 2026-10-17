@@ -341,7 +341,6 @@ export function PaginationBar({
   disabled?: boolean;
   hasNext: boolean;
   label: string;
-  nextCursor?: string | null;
   onNext: () => void;
 }) {
   return (

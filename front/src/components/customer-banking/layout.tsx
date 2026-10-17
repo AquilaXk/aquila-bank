@@ -34,7 +34,6 @@ export function BankHeader({
   searchResults: ServiceSearchItem[];
   serviceMapOpen: boolean;
   session: CustomerSession | null;
-  sessionRequired: boolean;
   onMobileSearchToggle: () => void;
   onMove: MoveHandler;
   onSearchChange: (value: string) => void;
@@ -60,7 +59,7 @@ export function BankHeader({
         document.documentElement.dataset.theme = stored;
       } else {
         if (meta) meta.content = "light dark";
-        document.documentElement.removeAttribute("data-theme");
+        delete document.documentElement.dataset.theme;
       }
       setColorScheme(resolveScheme(stored));
     };
@@ -105,7 +104,7 @@ export function BankHeader({
       if (matchesSystem) {
         localStorage.removeItem("color-scheme");
         if (meta) meta.content = "light dark";
-        document.documentElement.removeAttribute("data-theme");
+        delete document.documentElement.dataset.theme;
       } else {
         localStorage.setItem("color-scheme", nextScheme);
         if (meta) meta.content = nextScheme;

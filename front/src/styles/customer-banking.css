@@ -3123,18 +3123,18 @@ label span {
     background: #fff;
   }
 
-  .bank-header,
-  .side-menu,
-  .right-rail,
-  .alert,
-  .busy-strip,
-  .bank-form,
-  .work-tabs,
-  .work-summary-strip,
-  .work-state-grid,
-  .receipt-action-row,
-  .two-column + .two-column {
-    display: none !important;
+  .bank-shell > .bank-header,
+  .bank-layout > .side-menu,
+  .bank-layout > .right-rail,
+  .work-area .alert,
+  .work-area .busy-strip,
+  .work-area .bank-form,
+  .work-area .work-tabs,
+  .work-area .work-summary-strip,
+  .work-area .work-state-grid,
+  .work-area .receipt-action-row,
+  .work-area .two-column + .two-column {
+    display: none;
   }
 
   .bank-shell,

@@ -57,6 +57,34 @@ type SupportCenterSectionProps = {
   onSubmitCustomerApplication: CustomerApplicationSubmitHandler;
 };
 
+function formatExecutionValue(value: unknown): string {
+  if (typeof value === "boolean") {
+    return value ? "처리됨" : "미처리";
+  }
+  if (value === null || value === undefined) {
+    return "-";
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "bigint") {
+    return value.toString();
+  }
+  return JSON.stringify(value);
+}
+
+function formatExecutionEntries(
+  result?: Record<string, unknown> | null,
+): Array<[string, string]> {
+  if (!result || typeof result !== "object") {
+    return [];
+  }
+  return Object.entries(result).map(([key, value]) => [
+    key,
+    formatExecutionValue(value),
+  ]);
+}
+
 export function SupportCenterSection({
   applicationResult,
   customerApplications,
@@ -95,24 +123,6 @@ export function SupportCenterSection({
         [key]: value,
       },
     }));
-  }
-
-  function formatExecutionEntries(
-    result?: Record<string, unknown> | null,
-  ): Array<[string, string]> {
-    if (!result || typeof result !== "object") {
-      return [];
-    }
-    return Object.entries(result).map(([key, value]) => [
-      key,
-      typeof value === "boolean"
-        ? value
-          ? "처리됨"
-          : "미처리"
-        : value == null
-          ? "-"
-          : String(value),
-    ]);
   }
 
   return (

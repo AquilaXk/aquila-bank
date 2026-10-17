@@ -220,6 +220,9 @@ export function TransferSection({
     transferPreview && !transferPreview.allowed ? "수취계좌 불일치" : "수취계좌 확인";
   const limitExceededLabel = isOverLimit ? "한도 초과" : "한도 정상";
   const otpErrorLabel = otpError ? "OTP 오류" : "OTP 대기";
+  const otpRequiredLabel = otpRequired ? "필요" : "미필요";
+  const securityCheckBadgeLabel =
+    transferStep === "complete" ? "확인 완료" : otpRequiredLabel;
   const showFailedReceipt = transferStep === "failed";
 
   return (
@@ -316,7 +319,7 @@ export function TransferSection({
               <span>보안 확인</span>
               <strong>
                 <StatusBadge tone={otpRequired ? "warn" : "success"}>
-                  {transferStep === "complete" ? "확인 완료" : otpRequired ? "필요" : "미필요"}
+                  {securityCheckBadgeLabel}
                 </StatusBadge>
               </strong>
               <small>{otpErrorLabel}</small>

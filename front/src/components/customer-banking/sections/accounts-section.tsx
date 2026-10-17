@@ -232,7 +232,6 @@ export function AccountsSection({
             disabled={isBusy}
             hasNext={Boolean(accountCursor)}
             label="계좌 목록 페이지 탐색"
-            nextCursor={accountCursor}
             onNext={onLoadNextAccounts}
           />
         </section>
