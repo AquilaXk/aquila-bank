@@ -1,41 +1,76 @@
 :root {
-  color-scheme: dark;
-  --gothic-page: #0B0D13;
-  --gothic-surface: #121622;
-  --gothic-surface-muted: #181D2D;
-  --gothic-iron: #22293C;
-  --gothic-line: rgba(255, 255, 255, 0.08);
-  --gothic-line-strong: rgba(167, 139, 250, 0.28);
-  --gothic-parchment: #F8FAFC;
-  --gothic-muted: #94A3B8;
-  --gothic-brass: #A78BFA;
-  --gothic-brass-strong: #DDD6FE;
-  --gothic-brass-soft: rgba(139, 92, 246, 0.15);
-  --gothic-danger: #F87171;
-  --gothic-danger-soft: rgba(239, 68, 68, 0.15);
-  --gothic-success: #34D399;
-  --gothic-success-soft: rgba(16, 185, 129, 0.15);
-  --gothic-warning-soft: rgba(245, 158, 11, 0.15);
-  --gothic-focus: #C084FC;
-  --gothic-shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.5), 0 0 20px -2px rgba(139, 92, 246, 0.15);
-  --page: var(--gothic-page);
-  --surface: var(--gothic-surface);
-  --surface-muted: var(--gothic-surface-muted);
-  --line: var(--gothic-line);
-  --line-strong: var(--gothic-line-strong);
-  --text: var(--gothic-parchment);
-  --muted: var(--gothic-muted);
-  --primary: var(--gothic-brass);
-  --primary-dark: var(--gothic-brass-strong);
-  --primary-soft: var(--gothic-brass-soft);
-  --accent: #C084FC;
-  --danger: var(--gothic-danger);
-  --danger-soft: var(--gothic-danger-soft);
-  --success: var(--gothic-success);
-  --success-soft: var(--gothic-success-soft);
-  --warning-soft: var(--gothic-warning-soft);
-  --shadow: var(--gothic-shadow);
+  color-scheme: light dark;
+  --palette-grey-0: #ffffff;
+  --palette-grey-10: #f8f9fc;
+  --palette-grey-15: #f0f1f5;
+  --palette-grey-20: #eff2f7;
+  --palette-grey-50: #e6eaf0;
+  --palette-grey-100: #e1e6ec;
+  --palette-grey-200: #cdd4dc;
+  --palette-grey-300: #b2bbc5;
+  --palette-grey-800: #45474d;
+  --palette-grey-900: #2f3034;
+  --palette-grey-1000: #212226;
+  --palette-grey-1100: #18191d;
+  --palette-grey-1200: #121317;
+  --palette-blue-600: #3279f9;
+  --palette-blue-700: #1a63e0;
+  --palette-blue-400: #5b9bff;
+
+  --page: light-dark(var(--palette-grey-10), var(--palette-grey-1200));
+  --surface: light-dark(var(--palette-grey-0), var(--palette-grey-1100));
+  --surface-muted: light-dark(var(--palette-grey-15), var(--palette-grey-1000));
+  --line: light-dark(var(--palette-grey-100), rgba(255, 255, 255, 0.1));
+  --line-strong: light-dark(var(--palette-grey-200), rgba(255, 255, 255, 0.18));
+  --text: light-dark(var(--palette-grey-1200), var(--palette-grey-10));
+  --muted: light-dark(var(--palette-grey-800), var(--palette-grey-300));
+  --primary: light-dark(var(--palette-blue-700), var(--palette-blue-400));
+  --primary-dark: light-dark(#124bb5, #8ab8ff);
+  --primary-soft: light-dark(rgba(50, 121, 249, 0.08), rgba(91, 155, 255, 0.14));
+  --accent: var(--palette-blue-600);
+  --danger: light-dark(#c81e1e, #f87171);
+  --danger-soft: light-dark(rgba(200, 30, 30, 0.08), rgba(248, 113, 113, 0.14));
+  --success: light-dark(#0e7452, #34d399);
+  --success-soft: light-dark(rgba(14, 116, 82, 0.08), rgba(52, 211, 153, 0.14));
+  --warning: light-dark(#9a5b00, #fbbf24);
+  --warning-soft: light-dark(rgba(217, 119, 6, 0.1), rgba(245, 158, 11, 0.14));
+  --shadow: light-dark(
+    0 4px 16px -2px rgba(18, 19, 23, 0.06),
+    0 8px 24px -4px rgba(0, 0, 0, 0.45)
+  );
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  --gothic-page: var(--page);
+  --gothic-surface: var(--surface);
+  --gothic-surface-muted: var(--surface-muted);
+  --gothic-iron: var(--surface-muted);
+  --gothic-line: var(--line);
+  --gothic-line-strong: var(--line-strong);
+  --gothic-parchment: var(--text);
+  --gothic-muted: var(--muted);
+  --gothic-brass: var(--primary);
+  --gothic-brass-strong: var(--primary-dark);
+  --gothic-brass-soft: var(--primary-soft);
+  --gothic-danger: var(--danger);
+  --gothic-danger-soft: var(--danger-soft);
+  --gothic-success: var(--success);
+  --gothic-success-soft: var(--success-soft);
+  --gothic-warning-soft: var(--warning-soft);
+  --gothic-focus: var(--primary);
+  --gothic-shadow: var(--shadow);
+
+  accent-color: var(--primary);
+  scrollbar-color: light-dark(var(--palette-grey-200), var(--palette-grey-800)) transparent;
+}
+
+:root:has(> head > meta[name="color-scheme"][content="dark"]),
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+:root:has(> head > meta[name="color-scheme"][content="light"]),
+:root[data-theme="light"] {
+  color-scheme: light;
 }
 
 * {
@@ -59,6 +94,7 @@ body {
     Arial,
     sans-serif;
   font-size: 14px;
+  line-height: 1.5;
 }
 
 button,
@@ -71,11 +107,11 @@ button {
   min-height: 44px;
   min-width: 44px;
   border: 1px solid var(--line-strong);
-  border-radius: 4px;
-  background: linear-gradient(180deg, #20262d, #161a1f);
+  border-radius: 6px;
+  background: var(--surface);
   color: var(--text);
   cursor: pointer;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.25;
   word-break: keep-all;
   overflow-wrap: anywhere;
@@ -104,15 +140,20 @@ select {
   width: 100%;
   height: 44px;
   border: 1px solid var(--line-strong);
-  border-radius: 3px;
-  background: #101418;
+  border-radius: 6px;
+  background: var(--surface);
   color: var(--text);
   padding: 0 10px;
 }
 
+input:user-invalid,
+select:user-invalid {
+  border-color: var(--danger);
+}
+
 .gothic-banking-shell input,
 .gothic-banking-shell select {
-  background: #101418;
+  background: var(--surface);
   color: var(--text);
 }
 
@@ -121,15 +162,13 @@ label span {
   margin-bottom: 6px;
   color: var(--muted);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .bank-shell,
 .gothic-banking-shell {
   min-width: 1180px;
-  background:
-    linear-gradient(180deg, rgba(25, 30, 35, 0.96), rgba(18, 21, 24, 1)),
-    var(--page);
+  background: var(--page);
 }
 
 .dense-banking-shell {
@@ -149,10 +188,10 @@ label span {
   transform: translateY(-140%);
   border: 2px solid var(--primary-dark);
   border-radius: 4px;
-  background: #101418;
+  background: var(--surface);
   color: var(--text);
   padding: 8px 12px;
-  font-weight: 800;
+  font-weight: 600;
   text-decoration: none;
 }
 
@@ -163,8 +202,8 @@ label span {
 .bank-header {
   display: grid;
   gap: 4px;
-  border-bottom: 1px solid var(--line-strong);
-  background: linear-gradient(180deg, #1d2329, #14181d);
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
   box-shadow: var(--shadow);
   padding-bottom: 6px;
 }
@@ -204,12 +243,20 @@ label span {
 .utility-link {
   min-height: 44px;
   border: 1px solid transparent;
-  border-radius: 3px;
+  border-radius: 6px;
   background: transparent;
   color: var(--muted);
   padding: 8px 10px;
   font-size: 12px;
+  font-weight: 500;
   line-height: 1.35;
+}
+
+.theme-toggle-button {
+  border-color: var(--line);
+  background: var(--surface-muted);
+  color: var(--text);
+  white-space: nowrap;
 }
 
 .utility-link.active {
@@ -237,7 +284,7 @@ label span {
 
 .service-map {
   border: 1px solid var(--line);
-  border-radius: 3px;
+  border-radius: 6px;
   background: var(--primary-soft);
   padding: 0 10px;
   color: var(--primary-dark);
@@ -268,7 +315,7 @@ label span {
   margin: 0;
   color: var(--muted);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .search-field input {
@@ -311,7 +358,7 @@ label span {
   gap: 4px;
   color: var(--muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 500;
   min-width: 0;
   line-height: 1.45;
   word-break: keep-all;
@@ -324,6 +371,7 @@ label span {
   color: var(--primary-dark);
   padding: 0 6px;
   font-size: 12px;
+  font-weight: 500;
   white-space: nowrap;
 }
 
@@ -341,9 +389,9 @@ label span {
   z-index: 30;
   max-height: min(390px, calc(100vh - 150px));
   overflow: auto;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: #101214;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
   padding: 8px;
   box-shadow: var(--shadow);
 }
@@ -366,24 +414,25 @@ label span {
   color: var(--muted);
   font-size: 12px;
   font-style: normal;
-  font-weight: 800;
+  font-weight: 500;
   line-height: 1.3;
 }
 
 .service-search-item strong {
   color: var(--text);
   font-size: 14px;
+  font-weight: 600;
   line-height: 1.3;
 }
 
 .service-search-empty {
   min-height: 34px;
   border: 1px dashed var(--line);
-  border-radius: 4px;
+  border-radius: 6px;
   color: var(--muted);
   padding: 8px 10px;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 500;
 }
 
 .brand-row {
@@ -406,9 +455,9 @@ label span {
   justify-content: center;
   width: 36px;
   height: 36px;
-  border-radius: 6px;
-  border: 1px solid var(--line-strong);
-  background: #121416;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface-muted);
   overflow: hidden;
 }
 
@@ -423,7 +472,8 @@ label span {
   display: block;
   color: var(--text);
   font-size: 20px;
-  letter-spacing: 0;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .brand-mark small {
@@ -431,6 +481,7 @@ label span {
   margin-top: 2px;
   color: var(--primary);
   font-size: 12px;
+  font-weight: 500;
 }
 
 .primary-nav {
@@ -439,37 +490,35 @@ label span {
   gap: 4px;
   min-width: 0;
   max-width: 100%;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-muted);
   padding: 4px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  backdrop-filter: blur(12px);
+  border-radius: 10px;
+  border: 1px solid var(--line);
 }
 
 .nav-tab {
   min-width: 96px;
   min-height: 44px;
   border: 1px solid transparent;
-  border-bottom: 3px solid transparent;
-  border-radius: 8px;
+  border-radius: 6px;
   background: transparent;
   padding-inline: 14px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--muted);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
 .nav-tab:hover {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface);
 }
 
 .nav-tab.active {
-  border: 1px solid rgba(167, 139, 250, 0.35);
-  border-bottom: 3px solid var(--primary);
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.2) 0%, rgba(124, 58, 237, 0.28) 100%);
-  color: #FFFFFF;
-  box-shadow: 0 0 16px -2px rgba(139, 92, 246, 0.25);
+  border: 1px solid var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+  font-weight: 600;
+  box-shadow: none;
 }
 
 .header-user-chip {
@@ -478,12 +527,10 @@ label span {
   gap: 8px;
   padding: 6px 14px;
   border-radius: 9999px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.04);
-  backdrop-filter: blur(8px);
+  border: 1px solid var(--line);
+  background: var(--surface-muted);
   font-size: 12px;
   color: var(--muted);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -496,17 +543,15 @@ label span {
 
 .header-user-chip .chip-dot.active {
   background: var(--success);
-  box-shadow: 0 0 8px var(--success);
 }
 
 .header-user-chip .chip-dot.idle {
   background: var(--primary);
-  box-shadow: 0 0 6px var(--primary);
 }
 
 .header-user-chip strong {
   color: var(--text);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .bank-service-strip,
@@ -522,47 +567,27 @@ label span {
   border-top: 1px solid var(--line);
   color: var(--muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .gothic-state-strip {
-  border-color: var(--line-strong);
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--primary-soft) 72%, transparent),
-    color-mix(in srgb, var(--surface) 72%, transparent)
-  );
+  border-color: var(--line);
+  background: var(--surface-muted);
   color: var(--text);
 }
 
 .bank-service-strip strong,
 .banking-status-bar strong {
   color: var(--success);
+  font-weight: 600;
 }
 
 .layout-health-strip {
   display: none;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  width: min(1440px, calc(100% - 48px));
-  margin: 0 auto;
-  padding: 0;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.layout-health-strip span {
-  border: 1px solid var(--line);
-  border-radius: 3px;
-  background: var(--surface-muted);
-  color: var(--text);
-  padding: 5px 8px;
 }
 
 .bank-layout[data-auth-state="guest"] .login-panel {
-  border-top: 3px solid var(--primary);
+  border-color: var(--line-strong);
 }
 
 .guest-protected .rail-panel,
@@ -573,7 +598,7 @@ label span {
 
 .sensitive-placeholder {
   color: var(--muted);
-  font-weight: 800;
+  font-weight: 500;
 }
 
 .service-map-panel {
@@ -583,8 +608,8 @@ label span {
   width: min(1440px, calc(100% - 48px));
   margin: 0 auto 12px;
   border: 1px solid var(--line-strong);
-  border-top: 2px solid var(--primary);
-  background: linear-gradient(180deg, var(--surface-muted), var(--surface));
+  border-radius: 8px;
+  background: var(--surface);
   padding: 14px;
   box-shadow: var(--shadow);
 }
@@ -600,12 +625,13 @@ label span {
 .service-map-title strong {
   color: var(--primary-dark);
   font-size: 17px;
+  font-weight: 600;
 }
 
 .service-map-title span {
   color: var(--muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 500;
 }
 
 .service-map-grid {
@@ -620,14 +646,15 @@ label span {
   gap: 6px;
   min-width: 0;
   border: 1px solid var(--line);
-  border-radius: 3px;
-  background: var(--surface);
+  border-radius: 6px;
+  background: var(--surface-muted);
   padding: 10px;
 }
 
 .service-map-group > strong {
-  border-bottom: 1px solid var(--line-strong);
+  border-bottom: 1px solid var(--line);
   color: var(--primary-dark);
+  font-weight: 600;
   padding-bottom: 6px;
 }
 
@@ -639,7 +666,7 @@ label span {
   padding: 0;
   text-align: left;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .bank-layout {
@@ -667,7 +694,9 @@ label span {
 
 .side-menu {
   border: 1px solid var(--line);
+  border-radius: 8px;
   background: var(--surface);
+  overflow: hidden;
 }
 
 .side-menu.compact-menu {
@@ -677,13 +706,13 @@ label span {
 .side-title {
   display: flex;
   align-items: center;
-  min-height: 58px;
-  padding: 14px 16px 16px;
+  min-height: 54px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--line);
-  background: linear-gradient(180deg, var(--primary-soft), var(--page));
-  color: var(--primary-dark);
-  font-size: 17px;
-  font-weight: 800;
+  background: var(--surface-muted);
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 600;
   line-height: 1.35;
 }
 
@@ -709,18 +738,19 @@ label span {
 .side-item span {
   color: var(--muted);
   font-size: 12px;
+  font-weight: 500;
   line-height: 1.25;
   word-break: keep-all;
 }
 
 .side-item strong {
   font-size: 15px;
+  font-weight: 600;
   line-height: 1.28;
   word-break: keep-all;
 }
 
 .side-item.active {
-  border-left: 4px solid var(--primary);
   background: var(--primary-soft);
   color: var(--primary-dark);
   padding-left: 16px;
@@ -761,8 +791,8 @@ label span {
 .bank-work-panel,
 .gothic-work-panel {
   border: 1px solid var(--line);
-  border-radius: 3px;
-  background: linear-gradient(180deg, var(--surface-muted), var(--surface));
+  border-radius: 8px;
+  background: var(--surface);
   color: var(--text);
   box-shadow: none;
 }
@@ -786,7 +816,7 @@ label span {
 
 .section-title {
   padding-bottom: 10px;
-  border-bottom: 2px solid var(--line-strong);
+  border-bottom: 1px solid var(--line);
 }
 
 .task-section.compact-work-section .section-title {
@@ -797,7 +827,7 @@ label span {
   margin: 0 0 4px;
   color: var(--primary);
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .section-title > div:first-child {
@@ -833,7 +863,7 @@ label span {
   align-self: center;
   color: var(--muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 500;
 }
 
 .alert {
@@ -872,7 +902,7 @@ label span {
   background: var(--primary-soft);
   color: var(--primary-dark);
   padding: 9px 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .session-required {
@@ -917,7 +947,7 @@ label span {
 .login-required-code {
   color: var(--primary-dark);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .login-method-grid {
@@ -969,7 +999,7 @@ label span {
 .summary-box span {
   color: var(--primary);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 500;
 }
 
 .summary-box strong {
@@ -980,6 +1010,123 @@ label span {
 
 .summary-box button {
   width: 100%;
+}
+
+.dashboard-primary-account-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: linear-gradient(180deg, var(--surface-muted), var(--surface));
+  color: var(--text);
+  padding: 18px 20px;
+}
+
+.dashboard-primary-account-meta {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.dashboard-primary-account-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.account-badge-label {
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.account-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+  background: var(--muted);
+}
+
+.account-status-dot.active {
+  background: var(--success);
+}
+
+.account-status-text {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.dashboard-primary-account-name {
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.dashboard-primary-account-number {
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboard-primary-account-balance {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+  text-align: right;
+}
+
+.dashboard-primary-account-balance .balance-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.dashboard-primary-account-balance .balance-value {
+  color: var(--primary-dark);
+  font-family: var(--font-sans);
+  font-size: 24px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.quick-amount-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-muted);
+  padding: 10px 12px;
+}
+
+.quick-amount-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.quick-amount-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.quick-amount-buttons button {
+  min-width: 60px;
+  min-height: 44px;
+  padding: 0 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
 .bank-home-grid {
@@ -1000,7 +1147,7 @@ label span {
 .bank-home-panel .panel-toolbar span {
   color: var(--muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 500;
 }
 
 .bank-service-list {
@@ -1040,7 +1187,7 @@ label span {
   background: transparent;
   padding: 0;
   text-align: left;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .service-hours-table {
@@ -1088,7 +1235,7 @@ label span {
   color: var(--primary-dark);
   padding: 7px 10px;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 
@@ -1104,8 +1251,7 @@ label span {
   gap: 3px;
   min-width: 0;
   border: 1px solid var(--line);
-  border-left: 3px solid var(--primary);
-  border-radius: 3px;
+  border-radius: 6px;
   background: var(--surface-muted);
   padding: 9px 10px;
 }
@@ -1113,7 +1259,7 @@ label span {
 .work-state-grid span {
   color: var(--muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 500;
 }
 
 .work-state-grid strong {
@@ -1123,12 +1269,12 @@ label span {
 }
 
 .work-state-grid .tone-warn {
-  border-left-color: var(--primary);
+  border-color: var(--primary);
   background: var(--primary-soft);
 }
 
 .work-state-grid .tone-success {
-  border-left-color: var(--success);
+  border-color: var(--success);
   background: var(--success-soft);
 }
 
@@ -1152,8 +1298,7 @@ label span {
   gap: 4px;
   min-width: 0;
   border: 1px solid var(--line);
-  border-top: 3px solid var(--primary);
-  border-radius: 3px;
+  border-radius: 6px;
   background: var(--surface-muted);
   padding: 10px;
 }
@@ -1166,7 +1311,7 @@ label span {
 .transfer-verification-panel small {
   color: var(--muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 500;
 }
 
 .account-status-grid strong,
@@ -1201,7 +1346,7 @@ label span {
 .security-hub-card span {
   color: var(--primary);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .enterprise-service-card strong,
@@ -1221,7 +1366,7 @@ label span {
 
 .enterprise-service-card small {
   color: var(--success);
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .support-service-card button {
@@ -1261,7 +1406,7 @@ label span {
 .registration-flow-card span {
   color: var(--primary);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .fulfillment-detail-head strong,
@@ -1295,7 +1440,7 @@ label span {
 
 .detail-list dt {
   color: var(--muted);
-  font-weight: 800;
+  font-weight: 500;
 }
 
 .detail-list dd {
@@ -1319,7 +1464,7 @@ label span {
   background: var(--primary-soft);
   color: var(--primary-dark);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.35;
   min-height: 36px;
   padding: 8px;
@@ -1335,7 +1480,7 @@ label span {
 
 .enterprise-application-form {
   border: 1px solid var(--line);
-  border-left: 3px solid var(--primary);
+  border-radius: 6px;
   background: var(--surface-muted);
   padding: 10px;
 }
@@ -1355,7 +1500,7 @@ label span {
   background: var(--primary-soft);
   color: var(--primary-dark);
   padding: 10px 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .process-panel {
@@ -1427,7 +1572,7 @@ label span {
   background: var(--primary-soft);
   color: var(--primary-dark);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   padding: 5px 8px;
 }
 
@@ -1455,13 +1600,13 @@ label span {
 .application-detail-list dt {
   color: var(--muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 500;
 }
 
 .application-detail-list dd {
   margin: 4px 0 0;
   overflow-wrap: anywhere;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .execution-result-box {
@@ -1488,7 +1633,7 @@ label span {
 .faq-list summary {
   cursor: pointer;
   color: var(--text);
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .incident-form button {
@@ -1516,7 +1661,7 @@ label span {
 .certificate-item span {
   color: var(--primary);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .certificate-item button {
@@ -1535,8 +1680,7 @@ label span {
   gap: 4px;
   min-width: 0;
   border: 1px solid var(--line);
-  border-top: 3px solid var(--primary);
-  border-radius: 3px;
+  border-radius: 6px;
   background: var(--surface-muted);
   padding: 12px;
 }
@@ -1545,7 +1689,7 @@ label span {
 .account-summary-panel small {
   color: var(--muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 500;
 }
 
 .account-summary-panel strong {
@@ -1561,7 +1705,7 @@ label span {
   gap: 12px;
   margin-top: 12px;
   border: 1px solid var(--line);
-  border-left: 4px solid var(--primary);
+  border-radius: 6px;
   background: var(--surface-muted);
   padding: 12px 14px;
 }
@@ -1578,7 +1722,7 @@ label span {
 .work-command-panel span {
   color: var(--muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .account-grid,
@@ -1592,7 +1736,7 @@ label span {
 .detail-panel,
 .result-panel {
   border: 1px solid var(--line);
-  border-radius: 3px;
+  border-radius: 6px;
   background: linear-gradient(180deg, var(--surface-muted), var(--surface));
   color: var(--text);
   padding: 14px;
@@ -1600,7 +1744,6 @@ label span {
 }
 
 .account-detail-work-panel {
-  border-top: 3px solid var(--primary);
   padding: 12px;
 }
 
@@ -1608,36 +1751,24 @@ label span {
   display: grid;
   gap: 6px;
   margin: 12px 0;
-  border: 1px solid rgba(167, 139, 250, 0.28);
+  border: 1px solid var(--line-strong);
   border-radius: 12px;
-  background: linear-gradient(135deg, rgba(24, 29, 45, 0.95) 0%, rgba(18, 22, 34, 0.98) 100%);
+  background: var(--surface-muted);
   padding: 20px;
-  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.5), 0 0 15px -3px rgba(167, 139, 250, 0.15);
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: var(--shadow-soft);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
   position: relative;
   overflow: hidden;
 }
 
-.balance-card::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 140px;
-  height: 140px;
-  background: radial-gradient(circle, rgba(167, 139, 250, 0.12) 0%, transparent 70%);
-  pointer-events: none;
-}
-
 .balance-card:hover {
-  border-color: rgba(167, 139, 250, 0.5);
-  box-shadow: 0 8px 30px -4px rgba(0, 0, 0, 0.6), 0 0 25px -2px rgba(167, 139, 250, 0.28);
+  border-color: var(--primary);
 }
 
 .balance-card span,
 .balance-card small {
   color: var(--muted);
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .balance-card strong {
@@ -1652,7 +1783,7 @@ label span {
 .amount-cell,
 .amount {
   text-align: right;
-  font-weight: 800;
+  font-weight: 600;
   font-family: var(--font-mono);
   font-feature-settings: "tnum";
   font-variant-numeric: tabular-nums;
@@ -1676,7 +1807,7 @@ label span {
   color: var(--primary-dark);
   padding: 0 8px;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: -0.01em;
 }
 
@@ -1687,28 +1818,28 @@ label span {
 }
 
 .status-badge.success {
-  border-color: rgba(52, 211, 153, 0.4);
-  background: rgba(52, 211, 153, 0.12);
-  color: #6ee7b7;
+  border-color: var(--success);
+  background: var(--success-soft);
+  color: var(--success);
 }
 
 .status-badge.warn {
-  border-color: rgba(251, 191, 36, 0.4);
-  background: rgba(251, 191, 36, 0.12);
-  color: #fde047;
+  border-color: var(--warning);
+  background: var(--warning-soft);
+  color: var(--warning);
 }
 
 .status-badge.danger {
-  border-color: rgba(248, 113, 113, 0.4);
-  background: rgba(248, 113, 113, 0.12);
-  color: #fca5a5;
+  border-color: var(--danger);
+  background: var(--danger-soft);
+  color: var(--danger);
 }
 
 .status-badge.reversed,
 .status-badge.purple {
-  border-color: rgba(167, 139, 250, 0.4);
-  background: rgba(167, 139, 250, 0.12);
-  color: #DDD6FE;
+  border-color: var(--line-strong);
+  background: var(--primary-soft);
+  color: var(--primary-dark);
 }
 
 .status-badge.muted {
@@ -1741,7 +1872,7 @@ label span {
 .notification-status span {
   color: var(--muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 500;
 }
 
 .notification-status strong {
@@ -1764,7 +1895,7 @@ label span {
   display: grid;
   gap: 12px;
   border: 1px solid var(--line);
-  border-radius: 3px;
+  border-radius: 6px;
   background: linear-gradient(180deg, var(--surface-muted), var(--surface));
   color: var(--text);
   padding: 14px;
@@ -1798,7 +1929,7 @@ label span {
   display: block;
   color: var(--danger);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .pagination-bar {
@@ -1815,7 +1946,7 @@ label span {
 .pagination-bar span {
   color: var(--muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 500;
 }
 
 .pagination-bar strong {
@@ -1830,7 +1961,7 @@ label span {
   color: var(--muted);
   padding: 8px 12px;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 500;
 }
 
 .transaction-work-grid {
@@ -1858,7 +1989,7 @@ label span {
   color: var(--muted);
   padding: 10px 12px;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 500;
 }
 
 .transfer-process-grid {
@@ -1868,7 +1999,6 @@ label span {
 .transfer-receipt-panel {
   display: grid;
   align-content: start;
-  border-top: 3px solid var(--primary);
   background: linear-gradient(180deg, var(--surface-muted), var(--surface));
 }
 
@@ -1883,7 +2013,7 @@ label span {
 
 .receipt-print-view {
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--surface);
 }
 
 .receipt-action-row {
@@ -1900,7 +2030,7 @@ label span {
 .receipt-action-row span {
   color: var(--muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 500;
 }
 
 .print-receipt-button {
@@ -1937,8 +2067,7 @@ label span {
   gap: 4px;
   min-width: 0;
   border: 1px solid var(--line);
-  border-top: 3px solid var(--primary);
-  border-radius: 3px;
+  border-radius: 6px;
   background: var(--surface-muted);
   padding: 12px;
 }
@@ -1949,7 +2078,7 @@ label span {
 .security-dashboard small {
   color: var(--muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 500;
 }
 
 .auth-method-grid strong,
@@ -1975,7 +2104,7 @@ label span {
   padding: 6px 8px;
   text-align: center;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .stepper li.active {
@@ -2029,7 +2158,7 @@ label span {
   margin: 0;
   color: var(--muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 500;
 }
 
 .transfer-risk-grid strong {
@@ -2094,8 +2223,7 @@ label span {
   gap: 10px;
   min-width: 0;
   border: 1px solid var(--line);
-  border-top: 3px solid var(--primary);
-  border-radius: 3px;
+  border-radius: 6px;
   background: linear-gradient(180deg, var(--surface-muted), var(--surface));
   color: var(--text);
   padding: 12px;
@@ -2108,7 +2236,7 @@ label span {
 
 .bank-dialog {
   margin-top: 10px;
-  border-top-color: var(--danger);
+  border-color: var(--danger);
 }
 
 .form-grid {
@@ -2192,7 +2320,7 @@ label span {
 .detail-list dt,
 .session-summary dt {
   color: var(--muted);
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .detail-list dd,
@@ -2308,7 +2436,7 @@ label span {
 }
 
 .bank-table tbody tr:hover {
-  background: rgba(167, 139, 250, 0.06);
+  background: var(--primary-soft);
 }
 
 .empty-business {
@@ -2356,7 +2484,7 @@ label span {
 .empty-state-panel span {
   color: var(--muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .preference-actions {
@@ -2421,7 +2549,7 @@ label span {
   max-width: 100%;
   overflow-x: auto;
   border: 1px solid var(--line-strong);
-  border-radius: 3px;
+  border-radius: 6px;
   background: var(--surface);
   scrollbar-width: thin;
 }
@@ -2486,7 +2614,7 @@ label span {
 .rail-heading span {
   color: var(--muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 500;
 }
 
 .rail-heading strong {
@@ -2524,7 +2652,7 @@ label span {
 
 .bank-notice-strip dt {
   color: var(--muted);
-  font-weight: 800;
+  font-weight: 500;
   line-height: 1.35;
   word-break: keep-all;
 }
@@ -2533,7 +2661,7 @@ label span {
   min-width: 0;
   margin: 0;
   color: var(--primary-dark);
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.35;
   word-break: keep-all;
   overflow-wrap: anywhere;
@@ -2730,7 +2858,7 @@ label span {
 
   .utility-right {
     display: grid;
-    grid-template-columns: auto auto;
+    grid-template-columns: repeat(3, auto);
     justify-content: start;
     gap: 6px;
   }
@@ -2842,7 +2970,7 @@ label span {
     background: var(--primary-soft);
     color: var(--primary-dark);
     padding: 8px 14px;
-    font-weight: 800;
+    font-weight: 600;
     text-decoration: none;
   }
 
@@ -2910,7 +3038,7 @@ label span {
   }
 
   .mobile-filter-drawer {
-    border-top: 3px solid var(--primary);
+    border-color: var(--primary);
   }
 }
 
@@ -2976,23 +3104,37 @@ label span {
   }
 }
 
+@media (forced-colors: active) {
+  .task-section,
+  .rail-panel,
+  .side-menu,
+  .table-panel,
+  .bank-form,
+  .detail-panel,
+  .result-panel,
+  .balance-card,
+  .status-badge {
+    border: 1px solid CanvasText;
+  }
+}
+
 @media print {
   body {
     background: #fff;
   }
 
-  .bank-header,
-  .side-menu,
-  .right-rail,
-  .alert,
-  .busy-strip,
-  .bank-form,
-  .work-tabs,
-  .work-summary-strip,
-  .work-state-grid,
-  .receipt-action-row,
-  .two-column + .two-column {
-    display: none !important;
+  .bank-shell > .bank-header,
+  .bank-layout > .side-menu,
+  .bank-layout > .right-rail,
+  .work-area .alert,
+  .work-area .busy-strip,
+  .work-area .bank-form,
+  .work-area .work-tabs,
+  .work-area .work-summary-strip,
+  .work-area .work-state-grid,
+  .work-area .receipt-action-row,
+  .work-area .two-column + .two-column {
+    display: none;
   }
 
   .bank-shell,

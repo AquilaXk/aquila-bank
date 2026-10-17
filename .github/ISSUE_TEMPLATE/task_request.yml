@@ -1,67 +1,36 @@
-name: "🔧 Task"
-description: "리팩터링, 문서, 테스트, 운영, 빌드 작업을 등록합니다."
+name: "🔧 Task & Maintenance"
+description: "리팩터링, 문서 동기화, 테스트 보강, CI/운영 정리 작업을 등록합니다."
+title: "[Chore] "
 labels: ["task"]
 body:
-  - type: markdown
-    attributes:
-      value: |
-        ## 🔧 Task Intake
-        - 완료 조건과 실제 작업 항목을 함께 적는다.
-        - 비해당 항목은 `없음`으로 적는다.
-
-  - type: dropdown
-    id: task_type
-    attributes:
-      label: "🏷️ Task Type"
-      options:
-        - Refactor
-        - Docs
-        - Test
-        - Build / CI
-        - Ops
-        - Security
-        - Chore
-    validations:
-      required: true
-
-  - type: input
-    id: domain
-    attributes:
-      label: "🧩 Domain"
-      description: 관련 모듈이나 영역을 적는다.
-      placeholder: 예) back/auth, front/dashboard, github-actions
-    validations:
-      required: true
-
   - type: textarea
-    id: reason
+    id: summary
     attributes:
-      label: "📝 Description"
-      description: 어떤 작업인지, 왜 필요한지 적는다.
-      placeholder: 예) 거래 조회 서비스 책임을 분리해 유지보수성을 높인다.
-    validations:
-      required: true
-
-  - type: textarea
-    id: done_when
-    attributes:
-      label: "✅ Done When"
-      description: 완료 조건을 체크리스트로 적는다.
+      label: "배경 및 목표 요약"
+      description: "작업이 필요한 배경과 해결하려는 유지보수 목표를 요약합니다."
       placeholder: |
-        - [ ] 조건 A를 반영했는가?
-        - [ ] 조건 B를 검증했는가?
+        - 배경 및 목적:
     validations:
       required: true
 
   - type: textarea
-    id: todo
+    id: scope
     attributes:
-      label: "🛠 Todo"
-      description: 실제 작업 항목을 체크리스트로 적는다.
+      label: "변경 범위 및 설계 방향"
+      description: "대상 모듈/경로와 변경 범위를 정리합니다. 상위 Epic/Sub-issue 연결 여부를 적고, 경미한 변경은 연관 작업군과 하나의 배치 PR로 묶습니다."
       placeholder: |
-        - [ ] 대상을 파악했는가?
-        - [ ] 변경을 적용했는가?
-        - [ ] 테스트 / 검증했는가?
-        - [ ] 문서를 반영했는가?
+        - 상위 Epic / Sub-issue:
+        - 대상 모듈 및 변경 범위:
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: "인수 기준 및 결정론적 검증 게이트"
+      description: "완료 조건과 실행할 정적 분석/테스트/빌드 검증 명령어를 체크리스트로 작성합니다."
+      placeholder: |
+        - [ ] 대상 변경 적용 및 사이드이펙트 점검 완료
+        - [ ] 관련 린트/테스트/빌드 검증 게이트 통과
     validations:
       required: true

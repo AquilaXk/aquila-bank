@@ -1,87 +1,38 @@
-name: "🐞 Bug"
-description: "버그, 장애, 회귀 이슈를 등록합니다."
+name: "🐞 Bug Report"
+description: "버그, 장애, 정합성 회귀 이슈를 등록합니다."
+title: "[Fix] "
 labels: ["bug"]
 body:
-  - type: markdown
-    attributes:
-      value: |
-        ## 🐞 Bug Intake
-        - 재현 결과와 영향 범위를 함께 적는다.
-        - 비해당 항목은 `없음`으로 적는다.
-
-  - type: dropdown
-    id: severity
-    attributes:
-      label: "🚨 Severity"
-      description: 영향도를 선택한다.
-      options:
-        - Sev 1 - 거래 불가 / 서비스 중단
-        - Sev 2 - 핵심 기능 저하
-        - Sev 3 - 우회 가능한 문제
-        - Sev 4 - 경미한 문제
-    validations:
-      required: true
-
-  - type: input
-    id: domain
-    attributes:
-      label: "🧩 Domain"
-      description: 문제가 발생한 기능/도메인을 적는다.
-      placeholder: 예) auth, transaction, notification, admin
-    validations:
-      required: true
-
   - type: textarea
     id: summary
     attributes:
-      label: "📝 Summary"
-      description: 문제를 한 줄로 요약한다.
-      placeholder: 예) 거래 상세 조회 시 동일 거래가 중복 노출된다.
-    validations:
-      required: true
-
-  - type: textarea
-    id: steps
-    attributes:
-      label: "🔁 Steps To Reproduce"
-      description: 재현 순서를 적는다.
+      label: "배경 및 문제 요약"
+      description: "발생한 문제 현상, 재현 경로, 기대 결과와 실제 결과의 차이를 요약합니다."
       placeholder: |
-        1. ...
-        2. ...
-        3. 문제가 재현된다
+        - 현상 및 재현 경로:
+        - 기대 결과 / 실제 결과:
     validations:
       required: true
 
   - type: textarea
-    id: expected_actual
+    id: scope
     attributes:
-      label: "⚖️ Expected Result / Actual Result"
-      description: 기대 결과와 실제 결과를 함께 적는다.
+      label: "변경 범위 및 설계 방향"
+      description: "영향받는 도메인/파일 경로와 수정 방향을 정리합니다. 상위 Epic이나 연관 Sub-issue가 있으면 함께 연결하고, 연관된 수정은 하나의 수직 슬라이스 PR로 묶어 처리합니다."
       placeholder: |
-        - Expected: 기대한 결과를 적는다
-        - Actual: 실제 결과를 적는다
+        - 상위 Epic / Sub-issue:
+        - 대상 도메인 및 경로:
+        - 수정 방향:
     validations:
       required: true
 
   - type: textarea
-    id: impact
+    id: acceptance
     attributes:
-      label: "📉 Impact"
-      description: 고객, 운영, 데이터 정합성 영향 범위를 적는다.
-      placeholder: 예) 고객 문의가 증가하고, 거래 정합성 영향은 없고, 운영 모니터링 경고가 발생한다.
-    validations:
-      required: true
-
-  - type: textarea
-    id: todo
-    attributes:
-      label: "🛠 Todo"
-      description: 필요한 작업을 체크리스트로 적는다.
+      label: "인수 기준 및 결정론적 검증 게이트"
+      description: "수정 완료 조건과 실행할 검증 명령어를 체크리스트로 작성합니다."
       placeholder: |
-        - [ ] 재현했는가?
-        - [ ] 원인을 분석했는가?
-        - [ ] 수정했는가?
-        - [ ] 테스트했는가?
-        - [ ] 운영 영향을 확인했는가?
+        - [ ] 실패 재현 테스트 작성 및 수정 후 통과 확인
+        - [ ] ./back/gradlew -p back check (또는 yarn --cwd front lint && yarn --cwd front build) 통과
     validations:
       required: true

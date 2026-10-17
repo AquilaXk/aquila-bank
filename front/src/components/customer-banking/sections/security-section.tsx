@@ -1,9 +1,7 @@
 import type { FormEvent } from 'react';
 import type { AuthSessionItem, BackupCodeIssueResponse, CustomerSession, LoginResponse, PasswordRecoveryRequestResult, TotpEnrollmentStartResponse } from '@/lib/api/types';
 import { formatDateTime } from '@/lib/customer-banking/format';
-import { BankActionBar, BankInput, BankNoticeStrip, StatusBadge, WorkStateGrid, WorkTabs } from '../common';
-
-function stayOnCurrentWorkTab(): void {}
+import { BankActionBar, BankInput, BankNoticeStrip, StatusBadge, WorkStateGrid } from '../common';
 
 function getChallengeLabel(challengeType: string | null | undefined): string {
   switch (challengeType) {
@@ -344,14 +342,6 @@ export function SecuritySection(props: {
             </button>
           </BankActionBar>
         </div>
-        <WorkTabs
-          active="session"
-          items={[
-            { id: "login", label: "로그인", onClick: stayOnCurrentWorkTab, disabled: true },
-            { id: "mfa", label: "추가 인증", onClick: stayOnCurrentWorkTab, disabled: true },
-            { id: "session", label: "세션", onClick: stayOnCurrentWorkTab, disabled: true },
-          ]}
-        />
         <BankNoticeStrip
           items={[
             { label: "로그인 상태", value: "로그인됨" },
@@ -367,7 +357,7 @@ export function SecuritySection(props: {
         <WorkStateGrid
           label="인증 업무 상태"
           items={[
-            { label: "로그인", value: "정상" },
+            { label: "보안관리", value: "정상" },
             {
               label: "추가인증",
               value: props.challenge
@@ -375,32 +365,12 @@ export function SecuritySection(props: {
                 : "대기",
             },
             {
-              label: "세션",
+              label: "접속관리",
               value: props.sessions.length > 0 ? `${props.sessions.length}건` : "조회 전",
             },
             { label: "보안수단", value: "OTP/복구코드" },
           ]}
         />
-
-        <div className="security-dashboard" aria-label="보안관리">
-          <div>
-            <span>보안관리</span>
-            <strong>정상</strong>
-            <small>인증센터</small>
-          </div>
-          <div>
-            <span>추가 인증</span>
-            <strong>
-              {props.challenge ? getChallengeLabel(props.challenge.challengeType) : "대기"}
-            </strong>
-            <small>OTP / 복구코드</small>
-          </div>
-          <div>
-            <span>접속관리</span>
-            <strong>{props.sessions.length > 0 ? `${props.sessions.length}건` : "조회 전"}</strong>
-            <small>활성 세션</small>
-          </div>
-        </div>
 
         <div className="security-media-grid" aria-label="보안매체 등록 상태">
           <div>
@@ -420,7 +390,7 @@ export function SecuritySection(props: {
           </div>
           <div>
             <span>세션 만료</span>
-            <strong>만료 임박</strong>
+            <strong>{props.session?.expiresAt ? "유효" : "확인 필요"}</strong>
             <small>{formatDateTime(props.session?.expiresAt)}</small>
           </div>
           <div>

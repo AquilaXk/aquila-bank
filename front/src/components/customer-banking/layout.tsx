@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { useEffect, useState } from "react";
 import type { CustomerSession } from "@/lib/api/types";
 import {
   mainMenus,
@@ -21,7 +22,6 @@ export function BankHeader({
   searchResults,
   serviceMapOpen,
   session,
-  sessionRequired,
   onMobileSearchToggle,
   onMove,
   onSearchChange,
@@ -34,7 +34,6 @@ export function BankHeader({
   searchResults: ServiceSearchItem[];
   serviceMapOpen: boolean;
   session: CustomerSession | null;
-  sessionRequired: boolean;
   onMobileSearchToggle: () => void;
   onMove: MoveHandler;
   onSearchChange: (value: string) => void;
@@ -43,6 +42,81 @@ export function BankHeader({
 }) {
   const isAuthenticated = Boolean(session);
   const hasSearchQuery = searchQuery.trim().length > 0;
+  const [colorScheme, setColorScheme] = useState<"light" | "dark">("light");
+
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const resolveScheme = (stored: string | null): "light" | "dark" => {
+      if (stored === "light" || stored === "dark") {
+        return stored;
+      }
+      return media.matches ? "dark" : "light";
+    };
+    const applyScheme = (stored: string | null) => {
+      const meta = document.querySelector<HTMLMetaElement>('meta[name="color-scheme"]');
+      if (stored === "light" || stored === "dark") {
+        if (meta) meta.content = stored;
+        document.documentElement.dataset.theme = stored;
+      } else {
+        if (meta) meta.content = "light dark";
+        delete document.documentElement.dataset.theme;
+      }
+      setColorScheme(resolveScheme(stored));
+    };
+
+    try {
+      applyScheme(localStorage.getItem("color-scheme"));
+    } catch {
+      setColorScheme(media.matches ? "dark" : "light");
+    }
+
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === "color-scheme") {
+        applyScheme(event.newValue);
+      }
+    };
+    const handleMediaChange = () => {
+      try {
+        const stored = localStorage.getItem("color-scheme");
+        if (stored !== "light" && stored !== "dark") {
+          setColorScheme(media.matches ? "dark" : "light");
+        }
+      } catch {
+        setColorScheme(media.matches ? "dark" : "light");
+      }
+    };
+
+    window.addEventListener("storage", handleStorage);
+    media.addEventListener("change", handleMediaChange);
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+      media.removeEventListener("change", handleMediaChange);
+    };
+  }, []);
+
+  function toggleColorScheme() {
+    const nextScheme: "light" | "dark" = colorScheme === "dark" ? "light" : "dark";
+    const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const matchesSystem =
+      (nextScheme === "dark" && systemDark) || (nextScheme === "light" && !systemDark);
+    const meta = document.querySelector<HTMLMetaElement>('meta[name="color-scheme"]');
+    try {
+      if (matchesSystem) {
+        localStorage.removeItem("color-scheme");
+        if (meta) meta.content = "light dark";
+        delete document.documentElement.dataset.theme;
+      } else {
+        localStorage.setItem("color-scheme", nextScheme);
+        if (meta) meta.content = nextScheme;
+        document.documentElement.dataset.theme = nextScheme;
+      }
+    } catch {
+      if (meta) meta.content = nextScheme;
+      document.documentElement.dataset.theme = nextScheme;
+    }
+    setColorScheme(nextScheme);
+  }
+
   const topNavItems: Array<{
     id: string;
     label: string;
@@ -116,6 +190,15 @@ export function BankHeader({
             type="button"
           >
             전체서비스
+          </button>
+          <button
+            aria-label="테마 전환"
+            aria-pressed={colorScheme === "dark"}
+            className="utility-link theme-toggle-button"
+            onClick={toggleColorScheme}
+            type="button"
+          >
+            {colorScheme === "dark" ? "라이트 모드" : "다크 모드"}
           </button>
           <button
             aria-controls="utility-search-panel"
@@ -237,24 +320,13 @@ export function BankHeader({
           <span>{isAuthenticated ? "세션 연결" : "인증 필요"}</span>
         </div>
       </div>
-      <div className="bank-service-strip gothic-state-strip" aria-label="뱅킹 이용 상태">
+      <div className="bank-service-strip" aria-label="뱅킹 이용 상태">
         <span>
           보안등급 <strong>{isAuthenticated ? "정상" : "보호모드"}</strong>
         </span>
         <span>{isAuthenticated ? "HTTPS 보안접속" : "민감정보 보호"}</span>
         <span>평일 09:00-18:00 상담</span>
         <span>{isAuthenticated ? "서비스 상태 정상" : "인증센터 로그인"}</span>
-      </div>
-      <div className="layout-health-strip" aria-label="화면 이용 상태">
-        <span>개인뱅킹</span>
-        <span>{isAuthenticated ? "로그인 정상" : "보호모드"}</span>
-        <span>
-          {isAuthenticated
-            ? sessionRequired
-              ? "로그인 필요"
-              : "업무 가능"
-            : "로그인 후 업무 가능"}
-        </span>
       </div>
       {serviceMapOpen ? (
         <section
@@ -419,13 +491,11 @@ export function RightRail({
         </div>
         <BankNoticeStrip
           items={[
-            { label: "보안등급", value: isAuthenticated ? "정상" : "로그인 후 확인" },
-            { label: "접속상태", value: "HTTPS" },
+            { label: "피싱예방", value: "공식 도메인 확인" },
             {
-              label: "인증수단",
-              value: isAuthenticated ? "세션 활성" : "인증센터 로그인",
+              label: "이체보호",
+              value: isAuthenticated ? "OTP·추가인증 적용" : "인증 후 이용 가능",
             },
-            { label: "민감정보", value: isAuthenticated ? "표시 가능" : "보호모드" },
           ]}
         />
       </section>

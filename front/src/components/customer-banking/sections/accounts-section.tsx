@@ -2,7 +2,6 @@ import type { AccountItem, AccountSummaryResponse } from '@/lib/api/types';
 import { formatDateTime, formatMinorAmount } from '@/lib/customer-banking/format';
 import {
   BankNoticeStrip,
-  BankActionBar,
   BankSelect,
   BankTable,
   BankToolbar,
@@ -73,7 +72,7 @@ export function AccountsSection({
   return (
     <section className="task-section compact-work-section">
       <WorkTabs
-        active="전계좌조회"
+        active={selectedAccount ? "계좌상세" : "전계좌조회"}
         items={[
           { id: "전계좌조회", label: "전계좌조회", onClick: onLoadAccounts },
           {
@@ -82,21 +81,12 @@ export function AccountsSection({
             onClick: () => {
               if (selectedAccount) {
                 onLoadAccountDetail(selectedAccount.accountId);
+              } else if (accounts.length > 0) {
+                onLoadAccountDetail(accounts[0].accountId);
+              } else {
+                onLoadAccounts();
               }
             },
-            disabled: !selectedAccount,
-          },
-          {
-            id: "거래내역",
-            label: "거래내역",
-            onClick: () => undefined,
-            disabled: true,
-          },
-          {
-            id: "이체",
-            label: "이체",
-            onClick: () => undefined,
-            disabled: true,
           },
         ]}
       />
@@ -132,11 +122,6 @@ export function AccountsSection({
           { label: "통화", value: "계좌별 통화 표시" },
         ]}
       />
-      <div className="work-summary-strip" aria-label="계좌 조회 결과">
-        <span>조회 결과 {accounts.length}건</span>
-        <span>상세 {selectedAccount ? "선택" : "대기"}</span>
-        <span>다음 조회 {accountCursor ? "가능" : "없음"}</span>
-      </div>
       <WorkStateGrid
         label="조회 업무 상태"
         items={[
@@ -149,31 +134,6 @@ export function AccountsSection({
           { label: "처리상태", value: isBusy ? "조회 중" : "대기" },
         ]}
       />
-
-      <div className="account-summary-panel" aria-label="계좌 업무 요약">
-        <div>
-          <span>계좌 업무 요약</span>
-          <strong>{accounts.length}건</strong>
-          <small>보유계좌</small>
-        </div>
-        <div>
-          <span>계좌 상태</span>
-          <strong>{selectedAccount ? selectedAccount.accountStatus : "미선택"}</strong>
-          <small>상세 조회</small>
-        </div>
-        <div>
-          <span>출금가능금액</span>
-          <strong className="font-mono">
-            {selectedAccount
-              ? formatMinorAmount(
-                  selectedAccount.availableBalanceMinor,
-                  selectedAccount.currencyCode,
-                )
-              : "-"}
-          </strong>
-          <small>선택 계좌 기준</small>
-        </div>
-      </div>
 
       <div className="account-status-grid" aria-label="계좌 상태 요약">
         <div>
@@ -197,32 +157,6 @@ export function AccountsSection({
           <small>출금 가능액 확인</small>
         </div>
       </div>
-
-      <section className="work-command-panel" aria-label="조회 업무">
-        <div>
-          <strong>조회 업무</strong>
-          <span>계좌 목록을 조회하고 선택 계좌의 잔액과 보류금액을 확인합니다.</span>
-        </div>
-        <BankActionBar>
-          <button disabled={isBusy} onClick={onLoadAccounts} type="button">
-            전계좌조회
-          </button>
-          <button
-            disabled={!selectedAccount || isBusy}
-            onClick={() =>
-              selectedAccount
-                ? onLoadAccountDetail(selectedAccount.accountId)
-                : undefined
-            }
-            type="button"
-          >
-            계좌상세조회
-          </button>
-          <button disabled={!accountCursor || isBusy} onClick={onLoadNextAccounts} type="button">
-            다음 조회
-          </button>
-        </BankActionBar>
-      </section>
 
       <div className="account-grid">
         <section className="table-panel embedded">
@@ -297,8 +231,7 @@ export function AccountsSection({
           <PaginationBar
             disabled={isBusy}
             hasNext={Boolean(accountCursor)}
-            label="계좌 keyset pagination"
-            nextCursor={accountCursor}
+            label="계좌 목록 페이지 탐색"
             onNext={onLoadNextAccounts}
           />
         </section>

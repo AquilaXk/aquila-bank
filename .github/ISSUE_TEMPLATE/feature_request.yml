@@ -1,77 +1,38 @@
-name: "✨ Feature"
-description: "신규 기능이나 사용자 가치 개선 작업을 등록합니다."
+name: "✨ Feature Request"
+description: "신규 기능이나 도메인/UI 개선 작업을 등록합니다."
+title: "[Feat] "
 labels: ["feature"]
 body:
-  - type: markdown
+  - type: textarea
+    id: summary
     attributes:
-      value: |
-        ## ✨ Feature Intake
-        - 핵심 목표와 범위를 자연스럽게 적는다.
-        - 비해당 항목은 `없음`으로 적는다.
-
-  - type: input
-    id: goal
-    attributes:
-      label: "🎯 Goal"
-      description: 이 기능으로 달성하려는 목표를 적는다.
-      placeholder: 예) 고객이 최근 1년 거래를 조건 검색으로 빠르게 조회할 수 있게 한다.
-    validations:
-      required: true
-
-  - type: input
-    id: domain
-    attributes:
-      label: "🧩 Domain"
-      description: 관련 도메인 또는 화면을 적는다.
-      placeholder: 예) transaction query, auth, notification
+      label: "배경 및 목표 요약"
+      description: "해결하려는 사용자/운영 문제와 달성 목표를 요약합니다."
+      placeholder: |
+        - 추진 배경:
+        - 핵심 목표:
     validations:
       required: true
 
   - type: textarea
-    id: background
+    id: scope
     attributes:
-      label: "📝 Background"
-      description: 왜 필요한지와 현재 불편을 적는다.
-      placeholder: 예) 기간/금액 필터가 제한적이라 대량 거래 조회 UX가 떨어진다.
+      label: "변경 범위 및 설계 방향"
+      description: "대상 도메인(Backend/Frontend/Infra)과 핵심 설계 방향을 정리합니다. 상위 Epic 및 Sub-issue 계층을 연결하고, 연관 작업은 하나의 수직 슬라이스 PR로 묶습니다."
+      placeholder: |
+        - 상위 Epic / Sub-issue:
+        - 변경 범위 (포함 / 제외):
+        - 설계 및 계약 방향:
     validations:
       required: true
 
   - type: textarea
     id: acceptance
     attributes:
-      label: "✅ Acceptance Criteria"
-      description: 완료 기준을 체크리스트로 적는다.
+      label: "인수 기준 및 결정론적 검증 게이트"
+      description: "구현 완료 조건과 통과해야 할 결정론적 검증 명령어를 체크리스트로 작성합니다."
       placeholder: |
-        - [ ] 조건 A를 반영했는가?
-        - [ ] 조건 B를 검증했는가?
-        - [ ] 조건 C를 문서화했는가?
-    validations:
-      required: true
-
-  - type: textarea
-    id: out_of_scope
-    attributes:
-      label: "🚫 Out Of Scope"
-      description: 이번 작업에서 제외할 범위를 적는다.
-      placeholder: 예) 모바일 앱 대응은 이번 범위에서 제외한다.
-
-  - type: textarea
-    id: notes
-    attributes:
-      label: "📌 Notes"
-      description: 보안, 권한, 감사 로그, 운영 리스크를 적는다.
-      placeholder: 예) 타 계좌 거래 접근 방지용 권한 검증이 필요하다.
-
-  - type: textarea
-    id: todo
-    attributes:
-      label: "🛠 Todo"
-      description: 구현 작업을 체크리스트로 적는다.
-      placeholder: |
-        - [ ] 요구사항을 구체화했는가?
-        - [ ] API / 화면 설계를 정리했는가?
-        - [ ] 구현했는가?
-        - [ ] 테스트했는가?
-        - [ ] 문서를 반영했는가?
+        - [ ] 핵심 기능 및 도메인 불변식 검증 완료
+        - [ ] ./back/gradlew -p back check (또는 yarn --cwd front lint && yarn --cwd front test:api-parity && yarn --cwd front test:ui-contract && yarn --cwd front build) 통과
     validations:
       required: true

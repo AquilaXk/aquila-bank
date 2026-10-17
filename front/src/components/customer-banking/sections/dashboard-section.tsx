@@ -6,6 +6,71 @@ import {
   serviceHourItems,
 } from '@/lib/customer-banking/constants';
 
+type DashboardAccountItem = {
+  accountId: number;
+  accountNumber: string;
+  displayName: string;
+  accountStatus: string;
+  currencyCode: string;
+  availableBalanceMinor: number;
+};
+
+const DASHBOARD_WORK_TABS: Array<{ label: string; section: MenuSection }> = [
+  { label: "개인뱅킹", section: "dashboard" },
+  { label: "조회", section: "accounts" },
+  { label: "이체", section: "transfer" },
+  { label: "인증센터", section: "security" },
+  { label: "고객센터", section: "supportCenter" },
+];
+
+function resolvePrimaryAccountDisplay(
+  primaryAccount: DashboardAccountItem | null,
+  hasSession: boolean,
+) {
+  if (primaryAccount) {
+    return {
+      displayName: primaryAccount.displayName,
+      accountNumber: primaryAccount.accountNumber,
+      balanceDisplay: `${(primaryAccount.availableBalanceMinor / 100).toLocaleString("ko-KR")} ${primaryAccount.currencyCode}`,
+    };
+  }
+  if (hasSession) {
+    return {
+      displayName: "보유계좌 조회 대기",
+      accountNumber: "계좌조회 메뉴에서 보유계좌를 확인하세요",
+      balanceDisplay: "조회 전",
+    };
+  }
+  return {
+    displayName: "로그인 후 계좌 확인",
+    accountNumber: "로그인 후 대표계좌 번호가 표시됩니다",
+    balanceDisplay: "로그인 후 확인",
+  };
+}
+
+function resolveDashboardWorkStatus(hasSession: boolean) {
+  if (hasSession) {
+    return {
+      notice: "조회/이체/인증 정상",
+      lookup: "조회 결과 대기",
+      transfer: "이체 처리 대기",
+      notification: "알림 수신 대기",
+      transactionState: "다음 조회 가능",
+      transferState: "중복 방지",
+      notificationState: "실시간 알림",
+    };
+  }
+  return {
+    notice: "로그인 후 업무 가능",
+    lookup: "로그인 후 조회",
+    transfer: "인증 후 이체",
+    notification: "로그인 후 알림 확인",
+    transactionState: "인증 후 가능",
+    transferState: "인증 후 가능",
+    notificationState: "로그인 후 알림 확인",
+  };
+}
+
 export function DashboardSection({
   accounts,
   hasSession,
@@ -13,71 +78,28 @@ export function DashboardSection({
   onMove,
   onRefresh,
 }: {
-  accounts?: Array<{
-    accountId: number;
-    accountNumber: string;
-    displayName: string;
-    accountStatus: string;
-    currencyCode: string;
-    availableBalanceMinor: number;
-  }>;
+  accounts?: DashboardAccountItem[];
   hasSession: boolean;
   isBusy: boolean;
   onMove: (section: MenuSection) => void;
   onRefresh: () => void;
 }) {
   const primaryAccount = hasSession && accounts && accounts.length > 0 ? accounts[0] : null;
-  const primaryDisplayName = primaryAccount?.displayName || "Aquila 입출금 통장";
-  const primaryAccountNumber = primaryAccount?.accountNumber || "102-840-****** (KRW)";
-  const primaryBalanceDisplay = hasSession
-    ? primaryAccount
-      ? `${(primaryAccount.availableBalanceMinor / 100).toLocaleString("ko-KR")} ${primaryAccount.currencyCode}`
-      : "1,250,000 KRW"
-    : "로그인 후 확인";
-  const workStatus = hasSession
-    ? {
-        notice: "조회/이체/인증 정상",
-        lookup: "조회 결과 대기",
-        transfer: "이체 처리 대기",
-        notification: "알림 수신 대기",
-        transactionState: "다음 조회 가능",
-        transferState: "중복 방지",
-        notificationState: "실시간 알림",
-      }
-    : {
-        notice: "로그인 후 업무 가능",
-        lookup: "로그인 후 조회",
-        transfer: "인증 후 이체",
-        notification: "로그인 후 알림 확인",
-        transactionState: "인증 후 가능",
-        transferState: "인증 후 가능",
-        notificationState: "로그인 후 알림 확인",
-      };
+  const {
+    displayName: primaryDisplayName,
+    accountNumber: primaryAccountNumber,
+    balanceDisplay: primaryBalanceDisplay,
+  } = resolvePrimaryAccountDisplay(primaryAccount, hasSession);
+  const workStatus = resolveDashboardWorkStatus(hasSession);
 
   return (
     <section className="task-section compact-work-section">
       <WorkTabs
         active="개인뱅킹"
-        items={["개인뱅킹", "조회", "이체", "인증센터", "고객센터"].map((label) => ({
+        items={DASHBOARD_WORK_TABS.map(({ label, section }) => ({
           id: label,
           label,
-          onClick: () => {
-            if (label === "개인뱅킹") {
-              onMove("dashboard");
-            }
-            if (label === "조회") {
-              onMove("accounts");
-            }
-            if (label === "이체") {
-              onMove("transfer");
-            }
-            if (label === "인증센터") {
-              onMove("security");
-            }
-            if (label === "고객센터") {
-              onMove("supportCenter");
-            }
-          },
+          onClick: () => onMove(section),
         }))}
       />
       <div className="section-title">
@@ -103,47 +125,32 @@ export function DashboardSection({
           { label: "보안등급", value: hasSession ? "개인 인증 완료 후 이체 가능" : "로그인 후 확인" },
           { label: "상담", value: "평일 09:00~18:00" },
           { label: "업무현황", value: workStatus.notice },
+          { label: "조회", value: workStatus.lookup },
+          { label: "이체", value: workStatus.transfer },
+          { label: "알림", value: workStatus.notification },
+          { label: "인증", value: "인증서 관리" },
         ]}
       />
-      <div className="work-summary-strip" aria-label="개인뱅킹 업무현황">
-        <span>{workStatus.lookup}</span>
-        <span>{workStatus.transfer}</span>
-        <span>{workStatus.notification}</span>
-        <span>인증서 관리</span>
-      </div>
-      <div className="dashboard-account-glow-card my-4 p-5 rounded-2xl bg-gradient-to-br from-[#161B29] to-[#101420] border border-purple-500/20 shadow-glow-card relative overflow-hidden group hover:border-purple-500/40 transition-all">
-        <div className="absolute top-0 right-0 w-48 h-48 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative z-10">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-xs font-semibold uppercase tracking-wider text-purple-300">대표 계좌</span>
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400" />
-              <span className="text-xs text-slate-400">{hasSession ? "정상 이용중" : "로그인 필요"}</span>
-            </div>
-            <div className="text-lg font-bold text-slate-100">{primaryDisplayName}</div>
-            <div className="text-xs text-slate-400 font-mono mt-0.5">{primaryAccountNumber}</div>
+      <div className="dashboard-primary-account-card" aria-label="대표 계좌 요약">
+        <div className="dashboard-primary-account-meta">
+          <div className="dashboard-primary-account-badge">
+            <span className="account-badge-label">대표 계좌</span>
+            <span className={hasSession ? "account-status-dot active" : "account-status-dot"} />
+            <span className="account-status-text">{hasSession ? "정상 이용중" : "로그인 필요"}</span>
           </div>
-          <div className="text-left sm:text-right">
-            <span className="text-xs text-slate-400 block mb-0.5">출금가능 잔액</span>
-            <div className="text-2xl sm:text-3xl font-extrabold text-white font-mono tracking-tight">
-              {primaryBalanceDisplay}
-            </div>
-            <div className="mt-2 flex gap-2 sm:justify-end">
-              <button
-                className="px-3 py-1 rounded-lg text-xs font-semibold bg-purple-500/20 text-purple-200 border border-purple-500/30 hover:bg-purple-500/30 transition-colors"
-                onClick={() => onMove("transfer")}
-                type="button"
-              >
-                즉시이체
-              </button>
-              <button
-                className="px-3 py-1 rounded-lg text-xs font-semibold bg-white/5 text-slate-200 border border-white/10 hover:bg-white/10 transition-colors"
-                onClick={() => onMove("accounts")}
-                type="button"
-              >
-                계좌관리
-              </button>
-            </div>
+          <strong className="dashboard-primary-account-name">{primaryDisplayName}</strong>
+          <span className="dashboard-primary-account-number">{primaryAccountNumber}</span>
+        </div>
+        <div className="dashboard-primary-account-balance">
+          <span className="balance-label">출금가능 잔액</span>
+          <strong className="balance-value">{primaryBalanceDisplay}</strong>
+          <div className="button-row compact">
+            <button onClick={() => onMove("transfer")} type="button">
+              즉시이체
+            </button>
+            <button onClick={() => onMove("accounts")} type="button">
+              계좌관리
+            </button>
           </div>
         </div>
       </div>

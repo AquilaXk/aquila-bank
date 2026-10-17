@@ -117,7 +117,7 @@ export const favoriteServiceItems: Array<{
 export const serviceHourItems = [
   { task: "조회", time: "00:30~23:30", status: "정상" },
   { task: "이체", time: "00:30~23:30", status: "정상" },
-  { task: "공과금", time: "07:00~23:30", status: "데모" },
+  { task: "공과금", time: "07:00~23:30", status: "정상" },
   { task: "고객센터", time: "09:00~18:00", status: "상담" },
 ];
 
@@ -136,25 +136,25 @@ export const noticeItems = [
 export const enterpriseServiceItems = [
   {
     title: "공과금",
-    category: "납부 데모",
+    category: "공과금 납부",
     description: "지로, 지방세, 생활요금 신청 접수",
-    status: "mock 처리",
+    status: "온라인 접수",
   },
   {
     title: "오픈뱅킹",
-    category: "연결 데모",
+    category: "계좌 연결",
     description: "외부 계좌 연결 신청, 동의 식별값 관리",
-    status: "mock 처리",
+    status: "온라인 접수",
   },
   {
     title: "예금상품",
-    category: "상품 데모",
+    category: "수신 상품",
     description: "예금 상품 가입 신청 접수",
     status: "심사 대기",
   },
   {
     title: "대출",
-    category: "여신 데모",
+    category: "여신 상품",
     description: "희망 금액, 신청 목적 접수",
     status: "심사 대기",
   },
@@ -162,7 +162,7 @@ export const enterpriseServiceItems = [
     title: "외환",
     category: "FX",
     description: "통화 환전 신청 접수",
-    status: "mock 처리",
+    status: "온라인 접수",
   },
 ];
 

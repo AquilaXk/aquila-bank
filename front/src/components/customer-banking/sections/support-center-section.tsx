@@ -8,13 +8,11 @@ import type {
   CustomerApplicationLatestResult,
   CustomerApplicationSubmitHandler,
 } from "@/lib/customer-banking/types";
-import { BankNoticeStrip, WorkTabs } from "../common";
-
-function stayOnCurrentWorkTab(): void {}
+import { BankNoticeStrip } from "../common";
 
 const faqItems = [
   {
-    question: "FAQ 이체확인증은 어디서 발급하나요?",
+    question: "이체확인증은 어디서 발급하나요?",
     answer: "이체 완료 후 완료증 영역에서 거래번호를 확인하고 증명서 메뉴의 이체확인증 발급으로 이동합니다.",
   },
   {
@@ -59,6 +57,34 @@ type SupportCenterSectionProps = {
   onSubmitCustomerApplication: CustomerApplicationSubmitHandler;
 };
 
+function formatExecutionValue(value: unknown): string {
+  if (typeof value === "boolean") {
+    return value ? "처리됨" : "미처리";
+  }
+  if (value === null || value === undefined) {
+    return "-";
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "bigint") {
+    return value.toString();
+  }
+  return JSON.stringify(value);
+}
+
+function formatExecutionEntries(
+  result?: Record<string, unknown> | null,
+): Array<[string, string]> {
+  if (!result || typeof result !== "object") {
+    return [];
+  }
+  return Object.entries(result).map(([key, value]) => [
+    key,
+    formatExecutionValue(value),
+  ]);
+}
+
 export function SupportCenterSection({
   applicationResult,
   customerApplications,
@@ -99,13 +125,6 @@ export function SupportCenterSection({
     }));
   }
 
-  function formatExecutionResult(result?: Record<string, unknown> | null): string {
-    if (!result || typeof result !== "object") {
-      return "없음";
-    }
-    return Object.keys(result).length === 0 ? "없음" : JSON.stringify(result, null, 2);
-  }
-
   return (
     <section className="task-section compact-work-section">
       <div className="section-title">
@@ -114,20 +133,12 @@ export function SupportCenterSection({
           <h1>고객지원 · 사고신고 · 이체한도</h1>
         </div>
       </div>
-      <WorkTabs
-        active="support"
-        items={[
-          { id: "support", label: "고객센터", onClick: stayOnCurrentWorkTab, disabled: true },
-          { id: "incident", label: "사고신고", onClick: stayOnCurrentWorkTab, disabled: true },
-          { id: "certificate", label: "증명서", onClick: stayOnCurrentWorkTab, disabled: true },
-        ]}
-      />
       <BankNoticeStrip
         items={[
           { label: "FAQ", value: "자주 찾는 문의" },
           { label: "사고신고", value: "분실/도용 접수" },
           { label: "이체한도", value: "변경 접수" },
-          { label: "증명서 발급", value: "접수 데모" },
+          { label: "증명서 발급", value: "온라인 접수" },
         ]}
       />
 
@@ -184,7 +195,7 @@ export function SupportCenterSection({
           <div className="panel-toolbar">
             <div>
               <strong>신청 현황</strong>
-              <span>접수/심사/mock/webhook 경계 상태</span>
+              <span>접수 · 심사 · 처리 상태 조회</span>
             </div>
             <button
               type="button"
@@ -260,9 +271,20 @@ export function SupportCenterSection({
                 </dl>
                 <div className="execution-result-box">
                   <strong>실행 결과</strong>
-                  <pre>
-                    {formatExecutionResult(selectedCustomerApplication.executionResult)}
-                  </pre>
+                  {formatExecutionEntries(selectedCustomerApplication.executionResult).length === 0 ? (
+                    <p className="field-note">처리 내역 없음</p>
+                  ) : (
+                    <dl className="application-detail-list">
+                      {formatExecutionEntries(selectedCustomerApplication.executionResult).map(
+                        ([key, value]) => (
+                          <div key={key}>
+                            <dt>{key}</dt>
+                            <dd>{value}</dd>
+                          </div>
+                        ),
+                      )}
+                    </dl>
+                  )}
                 </div>
               </>
             ) : (

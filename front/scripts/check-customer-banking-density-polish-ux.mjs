@@ -46,7 +46,7 @@ const required = [
   ["transfer failed receipt", files.transfer, "실패 완료증"],
   ["transaction drawer hook", files.transactions, "BankDrawer"],
   ["transaction print view hook", files.transactions, "이체확인증 출력"],
-  ["security expiring session", files.security, "만료 임박"],
+  ["security session expiry label", files.security, "세션 만료"],
   ["security current device", files.security, "현재 기기"],
   ["security revoke impossible", files.security, "해지 불가"],
   ["action bar usage", [files.accounts, files.transfer, files.transactions, files.security].join("\n"), "BankActionBar"],

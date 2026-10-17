@@ -36,7 +36,7 @@ const required = [
   ["support cancel button", files.support, "취소 요청"],
   ["support processing mode", files.support, "처리 모드"],
   ["support execution result", files.support, "실행 결과"],
-  ["support mock boundary", files.support, "mock/webhook 경계"],
+  ["support status description", files.support, "접수 · 심사 · 처리 상태 조회"],
   ["status panel style", files.styles, ".application-status-panel"],
   ["status list style", files.styles, ".application-status-list"],
   ["authenticated e2e application route", files.authenticatedE2e, "/api/v1/customer-service/applications"],

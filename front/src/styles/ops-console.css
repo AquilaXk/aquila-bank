@@ -1,15 +1,15 @@
 :root {
-  --ops-gothic-page: var(--gothic-page, #0B0D13);
-  --ops-gothic-surface: var(--gothic-surface, #121622);
-  --ops-gothic-surface-muted: var(--gothic-surface-muted, #181D2D);
-  --ops-gothic-line: var(--gothic-line, rgba(255, 255, 255, 0.08));
-  --ops-gothic-line-strong: var(--gothic-line-strong, rgba(167, 139, 250, 0.28));
-  --ops-gothic-parchment: var(--gothic-parchment, #F8FAFC);
-  --ops-gothic-muted: var(--gothic-muted, #94A3B8);
-  --ops-gothic-brass: var(--gothic-brass, #A78BFA);
-  --ops-gothic-brass-soft: var(--gothic-brass-soft, rgba(139, 92, 246, 0.15));
-  --ops-gothic-danger: var(--gothic-danger, #F87171);
-  --ops-gothic-danger-soft: var(--gothic-danger-soft, rgba(239, 68, 68, 0.15));
+  --ops-gothic-page: var(--page, light-dark(#f8f9fc, #121317));
+  --ops-gothic-surface: var(--surface, light-dark(#ffffff, #18191d));
+  --ops-gothic-surface-muted: var(--surface-muted, light-dark(#f0f1f5, #212226));
+  --ops-gothic-line: var(--line, light-dark(#e1e6ec, rgba(255, 255, 255, 0.1)));
+  --ops-gothic-line-strong: var(--line-strong, light-dark(#cdd4dc, rgba(255, 255, 255, 0.18)));
+  --ops-gothic-parchment: var(--text, light-dark(#121317, #f8f9fc));
+  --ops-gothic-muted: var(--muted, light-dark(#45474d, #b2bbc5));
+  --ops-gothic-brass: var(--primary, light-dark(#1a63e0, #5b9bff));
+  --ops-gothic-brass-soft: var(--primary-soft, light-dark(rgba(50, 121, 249, 0.08), rgba(91, 155, 255, 0.14)));
+  --ops-gothic-danger: var(--danger, light-dark(#c81e1e, #f87171));
+  --ops-gothic-danger-soft: var(--danger-soft, light-dark(rgba(200, 30, 30, 0.08), rgba(248, 113, 113, 0.14)));
 }
 
 .ops-shell {
@@ -25,9 +25,7 @@
 }
 
 .ops-control-room {
-  background:
-    linear-gradient(180deg, rgba(26, 29, 32, 0.98), rgba(15, 17, 19, 1)),
-    var(--ops-gothic-page);
+  background: var(--ops-gothic-page);
 }
 
 .ops-shell.disabled {
@@ -42,6 +40,7 @@
   width: min(520px, 100%);
   padding: 24px;
   border: 1px solid var(--ops-gothic-line);
+  border-radius: 8px;
   background: var(--ops-gothic-surface);
 }
 
@@ -51,7 +50,7 @@
   justify-content: space-between;
   min-height: 72px;
   padding: 0 32px;
-  border-bottom: 1px solid var(--ops-gothic-line-strong);
+  border-bottom: 1px solid var(--ops-gothic-line);
   background: var(--ops-gothic-surface);
 }
 
@@ -63,6 +62,7 @@
 .ops-title {
   margin: 0;
   font-size: 22px;
+  font-weight: 600;
   color: var(--ops-gothic-parchment);
   line-height: 1.2;
 }
@@ -77,13 +77,13 @@
 .ops-readonly-badge {
   color: var(--ops-gothic-brass);
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .ops-write-badge {
-  color: #f0b7ae;
+  color: var(--ops-gothic-danger);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .ops-header .ops-readonly-badge {
@@ -97,11 +97,12 @@
 .ops-lookup-fields button,
 .ops-danger-button {
   border: 1px solid var(--ops-gothic-line-strong);
+  border-radius: 6px;
   background: var(--ops-gothic-brass-soft);
   color: var(--ops-gothic-brass);
   padding: 8px 12px;
   text-decoration: none;
-  font-weight: 700;
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 
@@ -124,7 +125,8 @@
   gap: 8px;
   padding: 10px 32px;
   border-bottom: 1px solid var(--ops-gothic-line);
-  background: rgba(18, 21, 24, 0.96);
+  background: color-mix(in srgb, var(--ops-gothic-surface) 92%, transparent);
+  backdrop-filter: blur(8px);
 }
 
 .ops-section-nav a,
@@ -149,7 +151,7 @@
   display: grid;
   gap: 6px;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--ops-gothic-muted);
 }
 
@@ -159,7 +161,8 @@
 .ops-action-card select {
   min-width: 0;
   border: 1px solid var(--ops-gothic-line-strong);
-  background: var(--ops-gothic-page);
+  border-radius: 6px;
+  background: var(--ops-gothic-surface);
   padding: 9px 10px;
   color: var(--ops-gothic-parchment);
 }
@@ -176,13 +179,13 @@
 }
 
 .ops-danger-button {
-  border-color: #8b3f37;
+  border-color: var(--ops-gothic-danger);
   background: var(--ops-gothic-danger-soft);
-  color: #f0b7ae;
+  color: var(--ops-gothic-danger);
 }
 
 .ops-danger-button:focus-visible {
-  outline: 3px solid #f0b7ae;
+  outline: 3px solid var(--ops-gothic-danger);
   outline-offset: 2px;
 }
 
@@ -206,7 +209,7 @@
   padding: 6px 10px;
   color: var(--ops-gothic-muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .ops-card,
@@ -222,7 +225,9 @@
 .ops-card {
   min-width: 0;
   border: 1px solid var(--ops-gothic-line);
+  border-radius: 8px;
   background: var(--ops-gothic-surface);
+  overflow: hidden;
 }
 
 .ops-card-head {
@@ -243,6 +248,7 @@
 
 .ops-card-head strong {
   color: var(--ops-gothic-parchment);
+  font-weight: 600;
 }
 
 .ops-card-head span {
@@ -267,7 +273,7 @@
 }
 
 .ops-result.error {
-  color: #f0b7ae;
+  color: var(--ops-gothic-danger);
   background: var(--ops-gothic-danger-soft);
 }
 
@@ -283,11 +289,11 @@
   padding: 18px 32px;
   border-top: 1px solid var(--ops-gothic-line);
   border-bottom: 1px solid var(--ops-gothic-line);
-  background: rgba(43, 23, 22, 0.32);
+  background: var(--ops-gothic-surface-muted);
 }
 
 .ops-write-zone {
-  border-left: 4px solid var(--ops-gothic-danger);
+  border-left: 3px solid var(--ops-gothic-danger);
 }
 
 .ops-write-zone > summary {
@@ -304,11 +310,12 @@
   content: "펼치기";
   width: max-content;
   border: 1px solid var(--ops-gothic-line-strong);
+  border-radius: 4px;
   background: var(--ops-gothic-danger-soft);
-  color: #f0b7ae;
+  color: var(--ops-gothic-danger);
   padding: 6px 10px;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .ops-write-zone[open] > summary {
@@ -322,7 +329,7 @@
 }
 
 .ops-status-actions {
-  background: rgba(43, 36, 24, 0.32);
+  background: var(--ops-gothic-surface-muted);
 }
 
 .ops-action-grid {
@@ -336,7 +343,8 @@
   gap: 12px;
   min-width: 0;
   padding: 14px;
-  border: 1px solid #6f3c35;
+  border: 1px solid var(--ops-gothic-line-strong);
+  border-radius: 8px;
   background: var(--ops-gothic-surface);
 }
 
@@ -351,6 +359,7 @@
 
 .ops-action-card strong {
   color: var(--ops-gothic-parchment);
+  font-weight: 600;
 }
 
 .ops-action-card span {
@@ -367,7 +376,8 @@
 
 .ops-risk-note {
   margin: 0;
-  border-left: 3px solid var(--ops-gothic-brass);
+  border: 1px solid var(--ops-gothic-line);
+  border-radius: 6px;
   background: var(--ops-gothic-brass-soft);
   color: var(--ops-gothic-muted);
   padding: 8px 10px;
@@ -386,29 +396,29 @@
   gap: 12px;
 }
 
-/* Ops Metrics & Batch Status Monitoring Panel */
+/* Ops Live Metrics Summary Panel */
 .ops-metrics-dashboard {
   width: min(1440px, calc(100% - 64px));
   margin: 16px auto;
-  padding: 24px;
-  background: linear-gradient(135deg, rgba(20, 24, 38, 0.95) 0%, rgba(14, 17, 27, 0.98) 100%);
-  border: 1px solid rgba(167, 139, 250, 0.25);
-  border-radius: 14px;
-  box-shadow: 0 4px 24px -2px rgba(0, 0, 0, 0.6), 0 0 16px -3px rgba(167, 139, 250, 0.12);
+  padding: 20px;
+  background: var(--ops-gothic-surface);
+  border: 1px solid var(--ops-gothic-line);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
 }
 
 .ops-metrics-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 .ops-metrics-title {
   margin: 0;
   font-size: 18px;
   color: var(--ops-gothic-parchment);
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: -0.01em;
 }
 
@@ -425,31 +435,24 @@
   gap: 6px;
   padding: 4px 10px;
   border-radius: 9999px;
-  background: rgba(167, 139, 250, 0.15);
-  border: 1px solid rgba(167, 139, 250, 0.3);
-  color: #C4B5FD;
+  background: var(--ops-gothic-brass-soft);
+  border: 1px solid var(--ops-gothic-line-strong);
+  color: var(--ops-gothic-brass);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .ops-metrics-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
-  margin-bottom: 20px;
 }
 
 .ops-metric-card {
   padding: 16px;
-  border-radius: 10px;
-  background: var(--ops-gothic-surface);
+  border-radius: 8px;
+  background: var(--ops-gothic-surface-muted);
   border: 1px solid var(--ops-gothic-line);
-  transition: all 0.2s ease;
-}
-
-.ops-metric-card:hover {
-  border-color: var(--ops-gothic-line-strong);
-  box-shadow: 0 0 12px -2px rgba(167, 139, 250, 0.15);
 }
 
 .ops-metric-card-top {
@@ -461,7 +464,7 @@
 
 .ops-metric-label {
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--ops-gothic-muted);
 }
 
@@ -469,34 +472,43 @@
   padding: 2px 7px;
   border-radius: 9999px;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
+  border: 1px solid var(--ops-gothic-line);
+  background: var(--ops-gothic-surface);
+  color: var(--ops-gothic-muted);
 }
 
 .ops-status-pill.success {
-  background: rgba(52, 211, 153, 0.15);
-  color: #34D399;
-  border: 1px solid rgba(52, 211, 153, 0.3);
+  background: var(--success-soft, light-dark(rgba(14, 116, 82, 0.08), rgba(52, 211, 153, 0.14)));
+  color: var(--success, light-dark(#0e7452, #34d399));
+  border-color: var(--success, light-dark(#0e7452, #34d399));
+}
+
+.ops-status-pill.error {
+  background: var(--ops-gothic-danger-soft);
+  color: var(--ops-gothic-danger);
+  border-color: var(--ops-gothic-danger);
+}
+
+.ops-status-pill.loading {
+  background: var(--ops-gothic-brass-soft);
+  color: var(--ops-gothic-brass);
+  border-color: var(--ops-gothic-brass);
 }
 
 .ops-metric-value {
-  font-size: 24px;
-  font-weight: 800;
+  font-size: 20px;
+  font-weight: 600;
   color: var(--ops-gothic-parchment);
   letter-spacing: -0.02em;
-  font-feature-settings: "tnum";
-}
-
-.ops-metric-unit {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--ops-gothic-muted);
-  margin-left: 4px;
+  font-variant-numeric: tabular-nums;
 }
 
 .ops-metric-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   margin-top: 10px;
   font-size: 11px;
   color: var(--ops-gothic-muted);
@@ -507,85 +519,12 @@
 .ops-metric-link {
   color: var(--ops-gothic-brass);
   text-decoration: none;
-  font-weight: 700;
+  font-weight: 600;
+  flex-shrink: 0;
 }
 
 .ops-metric-link:hover {
   text-decoration: underline;
-}
-
-.ops-batch-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.ops-batch-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 16px;
-  border-radius: 10px;
-  background: var(--ops-gothic-surface);
-  border: 1px solid var(--ops-gothic-line);
-}
-
-.ops-batch-info {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.ops-batch-indicator {
-  width: 9px;
-  height: 9px;
-  border-radius: 9999px;
-  flex-shrink: 0;
-}
-
-.ops-batch-indicator.active {
-  background: #34D399;
-  box-shadow: 0 0 8px rgba(52, 211, 153, 0.6);
-}
-
-.ops-batch-indicator.idle {
-  background: #A78BFA;
-  box-shadow: 0 0 8px rgba(167, 139, 250, 0.6);
-}
-
-.ops-batch-info div {
-  display: grid;
-  gap: 2px;
-}
-
-.ops-batch-info strong {
-  font-size: 13px;
-  color: var(--ops-gothic-parchment);
-}
-
-.ops-batch-info span {
-  font-size: 11px;
-  color: var(--ops-gothic-muted);
-}
-
-.ops-batch-status {
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-}
-
-.ops-batch-status.active {
-  background: rgba(52, 211, 153, 0.12);
-  color: #34D399;
-  border: 1px solid rgba(52, 211, 153, 0.25);
-}
-
-.ops-batch-status.idle {
-  background: rgba(167, 139, 250, 0.12);
-  color: #C4B5FD;
-  border: 1px solid rgba(167, 139, 250, 0.25);
 }
 
 @media (max-width: 980px) {
@@ -594,8 +533,7 @@
   .ops-action-grid,
   .ops-action-fields,
   .ops-lookup-fields,
-  .ops-metrics-grid,
-  .ops-batch-grid {
+  .ops-metrics-grid {
     grid-template-columns: 1fr;
   }
 

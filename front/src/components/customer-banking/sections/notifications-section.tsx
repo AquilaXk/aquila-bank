@@ -3,6 +3,21 @@ import type { NotificationItem, NotificationPreferenceItem, NotificationQueryRes
 import { formatDateTime } from '@/lib/customer-banking/format';
 import { BankNoticeStrip, WorkTabs } from '../common';
 
+function getSseStateLabel(state: string): string {
+  switch (state) {
+    case "CONNECTED":
+      return "실시간 수신 중";
+    case "CONNECTING":
+      return "연결 중";
+    case "DISCONNECTED":
+      return "연결 대기";
+    case "ERROR":
+      return "재연결 필요";
+    default:
+      return state || "연결 대기";
+  }
+}
+
 export function NotificationsSection({
   filters,
   isBusy,
@@ -100,7 +115,7 @@ export function NotificationsSection({
       <div className="notification-status">
         <div>
           <span>실시간 연결 상태</span>
-          <strong>{sseStatus.state}</strong>
+          <strong>{getSseStateLabel(sseStatus.state)}</strong>
         </div>
         <div>
           <span>미확인</span>
@@ -118,16 +133,13 @@ export function NotificationsSection({
       <BankNoticeStrip
         items={[
           { label: "알림함", value: `${notifications.length}건` },
+          { label: "조회 결과", value: `${notifications.length}건` },
           { label: "조건검색", value: mode === "search" ? "사용 중" : "대기" },
           { label: "미확인", value: unreadCount == null ? "조회 전" : `${unreadCount}건` },
+          { label: "수신 설정", value: `${preferences.length}건` },
           { label: "다음 조회", value: slice?.hasNext ? "가능" : "없음" },
         ]}
       />
-      <div className="work-summary-strip" aria-label="알림 업무현황">
-        <span>조회 결과 {notifications.length}건</span>
-        <span>미확인 {unreadCount == null ? "조회 전" : `${unreadCount}건`}</span>
-        <span>수신 설정 {preferences.length}건</span>
-      </div>
 
       <form className="bank-form filter-form" onSubmit={onSearch}>
         <div className="panel-toolbar inline-toolbar">

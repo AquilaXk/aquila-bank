@@ -64,6 +64,7 @@ function getTransactionStatusTone(status: string): "success" | "warn" | "danger"
 }
 
 export function TransactionsSection({
+  accounts,
   filters,
   isBusy,
   mode,
@@ -77,6 +78,11 @@ export function TransactionsSection({
   onReset,
   onSearch,
 }: {
+  accounts?: Array<{
+    accountId: number;
+    accountNumber: string;
+    displayName: string;
+  }>;
   filters: TransactionFilters;
   isBusy: boolean;
   mode: "active" | "archive";
@@ -111,24 +117,17 @@ export function TransactionsSection({
   return (
     <section className="task-section compact-work-section">
       <WorkTabs
-        active="거래내역조회"
+        active={mode}
         items={[
           {
-            id: "거래내역조회",
-            label: "거래내역조회",
+            id: "active",
+            label: "일반 거래내역",
             onClick: () => onModeChange("active"),
           },
           {
-            id: "상세조회",
-            label: "상세조회",
-            onClick: () => undefined,
-            disabled: true,
-          },
-          {
-            id: "증명서 발급",
-            label: "증명서 발급",
-            onClick: () => undefined,
-            disabled: true,
+            id: "archive",
+            label: "보관 거래내역",
+            onClick: () => onModeChange("archive"),
           },
         ]}
       />
@@ -166,17 +165,11 @@ export function TransactionsSection({
           { label: "다음 조회", value: slice?.hasNext ? "가능" : "대기" },
         ]}
       />
-      <div className="work-summary-strip" aria-label="거래 조회 결과">
-        <span>조회 조건 {filters.accountId ? "입력" : "대기"}</span>
-        <span>조회 결과 {transactions.length}건</span>
-        <span>상세 {transactionDetail ? "선택" : "대기"}</span>
-        <span>다음 조회 {slice?.hasNext ? "가능" : "없음"}</span>
-      </div>
       <WorkStateGrid
         label="거래 조회 상태"
         items={[
           { label: "조건", value: filters.accountId ? "입력" : "대기" },
-          { label: "결과", value: slice ? `${transactions.length}건` : "조회 전" },
+          { label: "조회 결과", value: slice ? `${transactions.length}건` : "조회 전" },
           { label: "상세", value: transactionDetail ? "선택" : "미선택" },
           { label: "다음조회", value: slice?.hasNext ? "가능" : "없음" },
         ]}
@@ -221,6 +214,30 @@ export function TransactionsSection({
           </BankToolbar>
           {filterOpen ? (
             <div className="filter-grid" id="transaction-detail-filter">
+              {accounts && accounts.length > 0 ? (
+                <label>
+                  <span>보유계좌 선택</span>
+                  <select
+                    onChange={(event) => {
+                      if (event.target.value) {
+                        onFilterChange({ ...filters, accountId: event.target.value });
+                      }
+                    }}
+                    value={
+                      accounts.some((item) => String(item.accountId) === filters.accountId)
+                        ? filters.accountId
+                        : ""
+                    }
+                  >
+                    <option value="">직접 입력 또는 선택</option>
+                    {accounts.map((account) => (
+                      <option key={account.accountId} value={String(account.accountId)}>
+                        {account.displayName} ({account.accountNumber})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
               <label>
                 <span>계좌 ID</span>
                 <input
@@ -433,13 +450,12 @@ export function TransactionsSection({
             <PaginationBar
               disabled={isBusy}
               hasNext={Boolean(slice?.hasNext)}
-              label="거래내역 Keyset 기준 pagination"
-              nextCursor={slice?.nextCursor}
+              label="거래내역 페이지 탐색"
               onNext={onNext}
             />
           </section>
 
-        <BankDrawer open={Boolean(transactionDetail)} title="거래 상세 drawer">
+        <BankDrawer open={Boolean(transactionDetail)} title="거래 상세내역">
           <div className="form-heading">
             <strong>거래 상세정보</strong>
             <span>
@@ -494,7 +510,7 @@ export function TransactionsSection({
               </div>
               <div>
                 <dt>출력</dt>
-                <dd>거래 상세정보 출력 전용 · 이체확인증 출력 전용 view</dd>
+                <dd>거래 상세정보 출력 전용 · 이체확인증 출력 전용</dd>
               </div>
             </dl>
           ) : (

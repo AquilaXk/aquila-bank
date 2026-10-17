@@ -5,6 +5,8 @@ HELP.md
 .idea/
 .vscode/
 .fleet/
+.worktrees/
+.superpowers/
 *.iws
 *.iml
 *.ipr

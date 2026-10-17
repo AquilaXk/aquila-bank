@@ -144,11 +144,7 @@ const checks = [
   ["dashboard operating hours", files.dashboard, "이용시간"],
   ["dashboard security level", files.dashboard, "보안등급"],
   ["account available amount label", files.accounts, "출금가능금액"],
-  ["account visual summary heading", files.accounts, "계좌 업무 요약"],
-  ["account inquiry command panel", files.accounts, "조회 업무"],
   ["account account status panel", files.accounts, "계좌 상태"],
-  ["account visual summary style", files.styles, ".account-summary-panel"],
-  ["account command style", files.styles, ".work-command-panel"],
   ["transfer receiver label", files.transfer, "받는 분"],
   ["transfer visual process heading", files.transfer, "이체 절차"],
   ["transfer confirmation heading", files.transfer, "이체정보 확인"],
@@ -211,6 +207,9 @@ const checks = [
   ["customer banking keyword touch target", files.styles, ".keyword-list button {\n  min-height: 44px"],
   ["customer banking nav touch target", files.styles, ".nav-tab {\n  min-width: 96px;\n  min-height: 44px"],
   ["customer banking full mobile menu visibility", files.styles, "scroll-snap-type: x proximity"],
+  ["adaptive color-scheme meta", files.layout, 'name="color-scheme" content="light dark"'],
+  ["theme toggle control", files.page, 'aria-label="테마 전환"'],
+  ["adaptive light-dark css", files.styles, "light-dark("],
 ];
 
 const forbidden = [
@@ -235,6 +234,20 @@ const forbidden = [
   ["customer visible actual implementation explanation", customerVisibleContent, "실제"],
   ["customer visible customer explanation", customerVisibleContent, "고객이"],
   ["customer hidden mobile side menu items", files.styles, ".side-menu.mobile-compact-side-menu .side-item:nth-of-type(n + 5) {\n    display: none;"],
+  ["customer visible keyset jargon", customerVisibleContent, "Keyset 기준"],
+  ["customer visible raw cursor jargon", customerVisibleContent, "다음 커서"],
+  ["customer visible drawer jargon", customerVisibleContent, "거래 상세 drawer"],
+  ["customer visible print view jargon", customerVisibleContent, "출력 전용 view"],
+  ["customer visible mock jargon", customerVisibleContent, "mock 접수"],
+  ["customer visible mock wait jargon", customerVisibleContent, "mock 대기"],
+  ["customer visible mock status jargon", customerVisibleContent, "mock 처리"],
+  ["customer visible webhook boundary jargon", customerVisibleContent, "mock/webhook"],
+  ["customer visible mvp jargon", customerVisibleContent, "MVP"],
+  ["customer visible fake balance", customerVisibleContent, "1,250,000 KRW"],
+  ["customer visible fake account", customerVisibleContent, "102-840-******"],
+  ["customer visible swap transfer jargon", customerVisibleContent, "스왑 송금"],
+  ["purple neon glow class", customerVisibleContent, "shadow-glow-card"],
+  ["micro grid background", files.layout, "bg-micro-grid"],
 ];
 
 const missing = checks.filter(([, content, expected]) => !content.includes(expected));

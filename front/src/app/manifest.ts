@@ -8,8 +8,8 @@ export default function manifest(): MetadataRoute.Manifest {
     start_url: "https://bank.aquilaxk.site",
     scope: "/",
     display: "standalone",
-    background_color: "#ffffff",
-    theme_color: "#1157a6",
+    background_color: "#f8f9fc",
+    theme_color: "#3279f9",
     icons: [
       {
         src: "/favicon.ico",
