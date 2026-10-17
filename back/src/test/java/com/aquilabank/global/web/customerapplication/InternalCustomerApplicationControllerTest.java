@@ -75,7 +75,8 @@ class InternalCustomerApplicationControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.applicationReference").value("CSA-001"))
         .andExpect(jsonPath("$.status").value("APPROVED"))
-        .andExpect(jsonPath("$.processedBy").value(SUBJECT));
+        .andExpect(jsonPath("$.processedBy").value(SUBJECT))
+        .andExpect(jsonPath("$.payload.requestedSingleTransferLimitMinor").value(100_000));
 
     verify(operationUseCase)
         .apply(

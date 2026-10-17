@@ -23,4 +23,8 @@ public enum CustomerApplicationStatus {
   public boolean isReviewingState() {
     return this == REVIEWING || this == IN_REVIEW;
   }
+
+  public boolean canCancel() {
+    return this == SUBMITTED || isReviewingState();
+  }
 }

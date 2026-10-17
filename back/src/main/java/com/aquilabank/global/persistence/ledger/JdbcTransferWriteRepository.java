@@ -5,6 +5,7 @@ import com.aquilabank.domain.ledger.exception.CurrencyMismatchException;
 import com.aquilabank.domain.ledger.exception.InsufficientBalanceException;
 import com.aquilabank.domain.ledger.exception.SnapshotNotFoundException;
 import com.aquilabank.domain.ledger.exception.TransferAccountStatusBlockedException;
+import com.aquilabank.domain.ledger.exception.TransferReversalConflictException;
 import com.aquilabank.domain.ledger.exception.TransferReversalNotFoundException;
 import com.aquilabank.domain.ledger.model.TransferCommand;
 import com.aquilabank.domain.ledger.model.TransferResult;
@@ -22,7 +23,9 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Consumer;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -51,13 +54,20 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
   @Override
   @Transactional
   public TransferResult transfer(TransferCommand command) {
+    return transfer(command, null);
+  }
+
+  @Override
+  @Transactional
+  public TransferResult transfer(
+      TransferCommand command, Consumer<TransferCommand> limitValidator) {
     Instant now = Instant.now();
     String fingerprint = command.fingerprint();
-    // 같은 idempotencyKey로 먼저 들어온 요청이 있으면 기존 처리 상태를 재사용합니다.
-    boolean inserted = tryInsertIdempotency(command.idempotencyKey(), fingerprint, now);
-
-    if (!inserted) {
-      IdempotencyRecord record = loadIdempotencyForUpdate(command.idempotencyKey());
+    // 같은 idempotencyKey로 이미 처리된 요청은 한도 소진 이후에도 저장된 결과를 먼저 재사용합니다.
+    Optional<IdempotencyRecord> existingIdempotency =
+        findIdempotencyForUpdate(command.idempotencyKey());
+    if (existingIdempotency.isPresent()) {
+      IdempotencyRecord record = existingIdempotency.get();
       if (!record.requestFingerprint().equals(fingerprint)) {
         throw new CommandConflictException("idempotencyKey is already used with another request");
       }
@@ -67,18 +77,38 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
       if ("STARTED".equals(record.processingStatus()) && record.lockedUntil().isAfter(now)) {
         throw new CommandConflictException("same command is already in progress");
       }
+      if (limitValidator != null) {
+        limitValidator.accept(command);
+      }
       refreshIdempotencyLock(command.idempotencyKey(), now);
+    } else {
+      if (limitValidator != null) {
+        limitValidator.accept(command);
+      }
+      boolean inserted = tryInsertIdempotency(command.idempotencyKey(), fingerprint, now);
+      if (!inserted) {
+        IdempotencyRecord record = loadIdempotencyForUpdate(command.idempotencyKey());
+        if (!record.requestFingerprint().equals(fingerprint)) {
+          throw new CommandConflictException("idempotencyKey is already used with another request");
+        }
+        if ("COMPLETED".equals(record.processingStatus()) && record.responsePayload() != null) {
+          return readStoredResult(record.responsePayload(), TransferResult.class);
+        }
+        if ("STARTED".equals(record.processingStatus()) && record.lockedUntil().isAfter(now)) {
+          throw new CommandConflictException("same command is already in progress");
+        }
+        refreshIdempotencyLock(command.idempotencyKey(), now);
+      }
     }
 
-    // 교차 이체 시 교착상태(Deadlock)를 방지하기 위해 계좌 ID 오름차순으로 락을 획득합니다.
+    // 교차 이체 시 교착상태(Deadlock)를 방지하기 위해 두 계좌를 ID 오름차순 단일 쿼리로 잠급니다.
     long firstLockId = Math.min(command.sourceAccountId(), command.targetAccountId());
     long secondLockId = Math.max(command.sourceAccountId(), command.targetAccountId());
-    LockedBalanceSnapshot firstSnapshot = loadBalanceSnapshot(firstLockId);
-    LockedBalanceSnapshot secondSnapshot = loadBalanceSnapshot(secondLockId);
+    LockedBalanceSnapshotPair lockedPair = loadBalanceSnapshots(firstLockId, secondLockId);
     LockedBalanceSnapshot source =
-        command.sourceAccountId() == firstLockId ? firstSnapshot : secondSnapshot;
+        command.sourceAccountId() == firstLockId ? lockedPair.first() : lockedPair.second();
     LockedBalanceSnapshot target =
-        command.targetAccountId() == firstLockId ? firstSnapshot : secondSnapshot;
+        command.targetAccountId() == firstLockId ? lockedPair.first() : lockedPair.second();
     verifyTransferableAccount(source);
     verifyTransferableAccount(target);
 
@@ -89,11 +119,15 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
     if (source.availableBalanceMinor() < command.amountMinor()) {
       throw new InsufficientBalanceException("available balance is not enough");
     }
+    // 출금 계좌 락을 획득한 상태에서 일일 한도를 다시 검증해 동시 요청의 TOCTOU 우회를 차단합니다.
+    if (limitValidator != null) {
+      limitValidator.accept(command);
+    }
 
     Instant bookedAt = now;
     String transactionReference = "TRX-" + UUID.randomUUID();
     long sourceBalanceAfter = source.availableBalanceMinor() - command.amountMinor();
-    long targetBalanceAfter = target.availableBalanceMinor() + command.amountMinor();
+    long targetBalanceAfter = Math.addExact(target.availableBalanceMinor(), command.amountMinor());
 
     // ledger entry를 먼저 남겨 원장 기록을 source of truth로 고정합니다.
     long debitEntryId =
@@ -198,15 +232,14 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
       throw new CommandConflictException("reversal amount exceeds remaining amount");
     }
 
-    // 교차 환불 및 동시 이체 시 교착상태(Deadlock)를 방지하기 위해 계좌 ID 오름차순으로 락을 획득합니다.
+    // 교차 환불 및 동시 이체 시 교착상태(Deadlock)를 방지하기 위해 두 계좌를 ID 오름차순 단일 쿼리로 잠급니다.
     long firstLockId = Math.min(original.sourceAccountId(), original.targetAccountId());
     long secondLockId = Math.max(original.sourceAccountId(), original.targetAccountId());
-    LockedBalanceSnapshot firstSnapshot = loadBalanceSnapshot(firstLockId);
-    LockedBalanceSnapshot secondSnapshot = loadBalanceSnapshot(secondLockId);
+    LockedBalanceSnapshotPair lockedPair = loadBalanceSnapshots(firstLockId, secondLockId);
     LockedBalanceSnapshot source =
-        original.sourceAccountId() == firstLockId ? firstSnapshot : secondSnapshot;
+        original.sourceAccountId() == firstLockId ? lockedPair.first() : lockedPair.second();
     LockedBalanceSnapshot target =
-        original.targetAccountId() == firstLockId ? firstSnapshot : secondSnapshot;
+        original.targetAccountId() == firstLockId ? lockedPair.first() : lockedPair.second();
     verifyTransferableAccount(source);
     verifyTransferableAccount(target);
     if (!source.currencyCode().equals(original.currencyCode())
@@ -219,9 +252,9 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
 
     Instant bookedAt = now;
     String reversalTransactionReference = "TRX-" + UUID.randomUUID();
-    long sourceBalanceAfter = source.availableBalanceMinor() + reversalAmount;
+    long sourceBalanceAfter = Math.addExact(source.availableBalanceMinor(), reversalAmount);
     long targetBalanceAfter = target.availableBalanceMinor() - reversalAmount;
-    long totalReversedAmount = alreadyReversedAmount + reversalAmount;
+    long totalReversedAmount = Math.addExact(alreadyReversedAmount, reversalAmount);
     String originalStatus =
         totalReversedAmount == original.amountMinor() ? "REVERSED" : "PARTIALLY_REVERSED";
     String reversalMetadata =
@@ -257,7 +290,7 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
     updateBalanceSnapshot(
         original.targetAccountId(), targetReversalEntryId, targetBalanceAfter, bookedAt);
 
-    markTransactionReadModelStatus(original.transactionReference(), originalStatus);
+    markTransactionReadModelStatus(original, originalStatus);
     insertTransactionReadModel(
         sourceReversalEntryId,
         original.sourceAccountId(),
@@ -340,7 +373,7 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
         .isPresent();
   }
 
-  private IdempotencyRecord loadIdempotencyForUpdate(String key) {
+  private Optional<IdempotencyRecord> findIdempotencyForUpdate(String key) {
     MapSqlParameterSource params = new MapSqlParameterSource().addValue("idempotencyKey", key);
     return jdbcTemplate
         .query(
@@ -357,7 +390,11 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
             params,
             IDEMPOTENCY_ROW_MAPPER)
         .stream()
-        .findFirst()
+        .findFirst();
+  }
+
+  private IdempotencyRecord loadIdempotencyForUpdate(String key) {
+    return findIdempotencyForUpdate(key)
         .orElseThrow(() -> new CommandConflictException("idempotencyKey state is missing"));
   }
 
@@ -380,10 +417,14 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
         params);
   }
 
-  private LockedBalanceSnapshot loadBalanceSnapshot(long accountId) {
-    MapSqlParameterSource params = new MapSqlParameterSource().addValue("accountId", accountId);
-    return jdbcTemplate
-        .query(
+  private LockedBalanceSnapshotPair loadBalanceSnapshots(
+      long firstAccountId, long secondAccountId) {
+    MapSqlParameterSource params =
+        new MapSqlParameterSource()
+            .addValue("firstAccountId", firstAccountId)
+            .addValue("secondAccountId", secondAccountId);
+    List<LockedBalanceSnapshot> snapshots =
+        jdbcTemplate.query(
             """
             SELECT s.account_id,
                    s.last_applied_ledger_entry_id,
@@ -393,7 +434,8 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
                    a.account_status
             FROM account_balance_snapshot s
             JOIN bank_account a ON a.id = s.account_id
-            WHERE s.account_id = :accountId
+            WHERE s.account_id IN (:firstAccountId, :secondAccountId)
+            ORDER BY s.account_id ASC
             FOR UPDATE OF s, a
             """,
             params,
@@ -404,11 +446,24 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
                     rs.getLong("available_balance_minor"),
                     rs.getLong("pending_balance_minor"),
                     rs.getString("currency_code"),
-                    rs.getString("account_status")))
-        .stream()
-        .findFirst()
-        .orElseThrow(
-            () -> new SnapshotNotFoundException("account snapshot is missing: " + accountId));
+                    rs.getString("account_status")));
+    LockedBalanceSnapshot first = null;
+    LockedBalanceSnapshot second = null;
+    for (LockedBalanceSnapshot snapshot : snapshots) {
+      if (snapshot.accountId() == firstAccountId) {
+        first = snapshot;
+      }
+      if (snapshot.accountId() == secondAccountId) {
+        second = snapshot;
+      }
+    }
+    if (first == null) {
+      throw new SnapshotNotFoundException("account snapshot is missing: " + firstAccountId);
+    }
+    if (second == null) {
+      throw new SnapshotNotFoundException("account snapshot is missing: " + secondAccountId);
+    }
+    return new LockedBalanceSnapshotPair(first, second);
   }
 
   private void verifyTransferableAccount(LockedBalanceSnapshot snapshot) {
@@ -732,7 +787,8 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
                    direction,
                    amount_minor,
                    currency_code,
-                   description
+                   description,
+                   booked_at
             FROM ledger_entry
             WHERE transaction_reference = :transactionReference
             ORDER BY id
@@ -747,7 +803,8 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
                     rs.getString("direction"),
                     rs.getLong("amount_minor"),
                     rs.getString("currency_code"),
-                    rs.getString("description")));
+                    rs.getString("description"),
+                    rs.getTimestamp("booked_at").toInstant()));
     if (entries.size() != 2) {
       throw new TransferReversalNotFoundException("transfer reversal target is not found");
     }
@@ -767,6 +824,9 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
     if (debit.accountId() != sourceAccountId) {
       throw new TransferReversalNotFoundException("transfer reversal target is not found");
     }
+    if (isReversalTransaction(originalTransactionReference)) {
+      throw new TransferReversalConflictException("reversal transaction cannot be reversed");
+    }
     if (debit.amountMinor() != credit.amountMinor()
         || !debit.currencyCode().equals(credit.currencyCode())) {
       throw new IllegalStateException("original transfer ledger rows are inconsistent");
@@ -776,21 +836,58 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
         debit.accountId(),
         credit.accountId(),
         debit.amountMinor(),
-        debit.currencyCode());
+        debit.currencyCode(),
+        debit.bookedAt());
+  }
+
+  private boolean isReversalTransaction(String transactionReference) {
+    Boolean exists =
+        jdbcTemplate.queryForObject(
+            """
+            SELECT EXISTS (
+                SELECT 1
+                FROM transfer_reversal
+                WHERE reversal_transaction_reference = :transactionReference
+            )
+            """,
+            new MapSqlParameterSource().addValue("transactionReference", transactionReference),
+            Boolean.class);
+    return Boolean.TRUE.equals(exists);
   }
 
   private void markTransactionReadModelStatus(
-      String transactionReference, String transactionStatus) {
+      OriginalTransferRecord original, String transactionStatus) {
+    // 파티션 프루닝을 위해 booked_at과 account_id를 함께 지정하고, 아카이브된 원거래도 갱신합니다.
+    MapSqlParameterSource params =
+        new MapSqlParameterSource()
+            .addValue("transactionReference", original.transactionReference())
+            .addValue("bookedAt", Timestamp.from(original.bookedAt()))
+            .addValue("sourceAccountId", original.sourceAccountId())
+            .addValue("targetAccountId", original.targetAccountId())
+            .addValue("transactionStatus", transactionStatus);
     int updated =
         jdbcTemplate.update(
             """
             UPDATE transaction_read_model
             SET transaction_status = :transactionStatus
             WHERE transaction_reference = :transactionReference
+              AND booked_at = :bookedAt
+              AND account_id IN (:sourceAccountId, :targetAccountId)
             """,
-            new MapSqlParameterSource()
-                .addValue("transactionReference", transactionReference)
-                .addValue("transactionStatus", transactionStatus));
+            params);
+    if (updated < 2) {
+      int archiveUpdated =
+          jdbcTemplate.update(
+              """
+              UPDATE transaction_read_model_archive
+              SET transaction_status = :transactionStatus
+              WHERE transaction_reference = :transactionReference
+                AND booked_at = :bookedAt
+                AND account_id IN (:sourceAccountId, :targetAccountId)
+              """,
+              params);
+      updated += archiveUpdated;
+    }
     if (updated != 2) {
       throw new IllegalStateException("original transaction read model update failed");
     }
@@ -877,14 +974,16 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
       String direction,
       long amountMinor,
       String currencyCode,
-      String summary) {}
+      String summary,
+      Instant bookedAt) {}
 
   private record OriginalTransferRecord(
       String transactionReference,
       long sourceAccountId,
       long targetAccountId,
       long amountMinor,
-      String currencyCode) {}
+      String currencyCode,
+      Instant bookedAt) {}
 
   private record LockedBalanceSnapshot(
       long accountId,
@@ -893,4 +992,7 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
       long pendingBalanceMinor,
       String currencyCode,
       String accountStatus) {}
+
+  private record LockedBalanceSnapshotPair(
+      LockedBalanceSnapshot first, LockedBalanceSnapshot second) {}
 }

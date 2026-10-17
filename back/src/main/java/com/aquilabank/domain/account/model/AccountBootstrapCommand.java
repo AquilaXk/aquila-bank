@@ -19,12 +19,23 @@ public record AccountBootstrapCommand(
       throw new IllegalArgumentException("currencyCode must not be blank");
     }
     currencyCode = currencyCode.trim().toUpperCase(Locale.ROOT);
-    if (!currencyCode.matches("^[A-Z]{3}$")) {
+    if (!isThreeLetterUpperAscii(currencyCode)) {
       throw new IllegalArgumentException("currencyCode must be a 3-letter uppercase code");
     }
 
     if (initialBalanceMinor < 0) {
       throw new IllegalArgumentException("initialBalanceMinor must be zero or positive");
     }
+  }
+
+  private static boolean isThreeLetterUpperAscii(String value) {
+    return value.length() == 3
+        && isUpperAscii(value.charAt(0))
+        && isUpperAscii(value.charAt(1))
+        && isUpperAscii(value.charAt(2));
+  }
+
+  private static boolean isUpperAscii(char ch) {
+    return ch >= 'A' && ch <= 'Z';
   }
 }

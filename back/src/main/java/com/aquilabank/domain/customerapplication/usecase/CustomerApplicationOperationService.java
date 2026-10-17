@@ -170,9 +170,7 @@ public final class CustomerApplicationOperationService
               currentStatus == CustomerApplicationStatus.SUBMITTED
                   || currentStatus.isReviewingState()
                   || currentStatus == CustomerApplicationStatus.APPROVED;
-          case CANCEL ->
-              currentStatus == CustomerApplicationStatus.SUBMITTED
-                  || currentStatus.isReviewingState();
+          case CANCEL -> currentStatus.canCancel();
           case EXECUTE -> currentStatus == CustomerApplicationStatus.APPROVED;
         };
     if (!allowed) {

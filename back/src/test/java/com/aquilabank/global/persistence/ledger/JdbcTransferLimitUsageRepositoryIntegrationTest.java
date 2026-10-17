@@ -64,6 +64,68 @@ class JdbcTransferLimitUsageRepositoryIntegrationTest extends PostgresContainerT
   }
 
   @Test
+  void excludesReversalDebitEntriesFromDailyOutgoingTransferLimitSum() {
+    long[] recipientAccountId = new long[1];
+    long[] originalSenderAccountId = new long[1];
+    commit(
+        transactionManager,
+        () -> {
+          recipientAccountId[0] = insertAccount("recipient");
+          originalSenderAccountId[0] = insertAccount("original-sender");
+          insertLedgerWithReference(
+              "TRX-OUTGOING-1",
+              recipientAccountId[0],
+              "DEBIT",
+              "BOOKED",
+              1_500L,
+              "KRW",
+              DAY_START.plusSeconds(10));
+          insertLedgerWithReference(
+              "TRX-REVERSAL-1",
+              recipientAccountId[0],
+              "DEBIT",
+              "BOOKED",
+              2_500L,
+              "KRW",
+              DAY_START.plusSeconds(20));
+          jdbcTemplate.update(
+              """
+              INSERT INTO transfer_reversal (
+                  original_transaction_reference,
+                  reversal_transaction_reference,
+                  source_account_id,
+                  target_account_id,
+                  amount_minor,
+                  currency_code,
+                  reversal_reason,
+                  summary,
+                  created_at
+              )
+              VALUES (
+                  'TRX-ORIGINAL-1',
+                  'TRX-REVERSAL-1',
+                  :sourceAccountId,
+                  :targetAccountId,
+                  2500,
+                  'KRW',
+                  'CANCEL',
+                  'refund debit on recipient',
+                  :createdAt
+              )
+              """,
+              new MapSqlParameterSource()
+                  .addValue("sourceAccountId", originalSenderAccountId[0])
+                  .addValue("targetAccountId", recipientAccountId[0])
+                  .addValue("createdAt", Timestamp.from(DAY_START.plusSeconds(20))));
+        });
+
+    long total =
+        repository.sumBookedDebitAmountMinor(recipientAccountId[0], "KRW", DAY_START, DAY_END);
+
+    assertThat(total).isEqualTo(1_500L);
+  }
+
+  @Test
   void dailyLimitLookupIndexCoversAmountMinorForIndexOnlySum() {
     String indexDefinition =
         jdbcTemplate.queryForObject(
@@ -117,6 +179,24 @@ class JdbcTransferLimitUsageRepositoryIntegrationTest extends PostgresContainerT
       long amountMinor,
       String currencyCode,
       Instant bookedAt) {
+    insertLedgerWithReference(
+        "TRX-" + java.util.UUID.randomUUID(),
+        accountId,
+        direction,
+        entryStatus,
+        amountMinor,
+        currencyCode,
+        bookedAt);
+  }
+
+  private void insertLedgerWithReference(
+      String transactionReference,
+      long accountId,
+      String direction,
+      String entryStatus,
+      long amountMinor,
+      String currencyCode,
+      Instant bookedAt) {
     jdbcTemplate.update(
         """
         INSERT INTO ledger_entry (
@@ -134,7 +214,7 @@ class JdbcTransferLimitUsageRepositoryIntegrationTest extends PostgresContainerT
         )
         VALUES (
             :accountId,
-            'TRX-' || gen_random_uuid(),
+            :transactionReference,
             'ENT-' || gen_random_uuid(),
             :direction,
             :entryStatus,
@@ -148,6 +228,7 @@ class JdbcTransferLimitUsageRepositoryIntegrationTest extends PostgresContainerT
         """,
         new MapSqlParameterSource()
             .addValue("accountId", accountId)
+            .addValue("transactionReference", transactionReference)
             .addValue("direction", direction)
             .addValue("entryStatus", entryStatus)
             .addValue("amountMinor", amountMinor)

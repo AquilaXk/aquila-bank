@@ -65,6 +65,116 @@ class CustomerApplicationPayloadSchemaTest {
             CustomerApplicationPayloadSchema.validate(
                 CustomerApplicationType.DEPOSIT_PRODUCT_APPLICATION,
                 Map.of("productCode", "DEP-001", "amountMinor", "10_000", "currencyCode", "KRW")));
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            CustomerApplicationPayloadSchema.validate(
+                CustomerApplicationType.DEPOSIT_PRODUCT_APPLICATION,
+                Map.of("productCode", "DEP-001", "amountMinor", 100.99d, "currencyCode", "KRW")));
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            CustomerApplicationPayloadSchema.validate(
+                CustomerApplicationType.DEPOSIT_PRODUCT_APPLICATION,
+                Map.of(
+                    "productCode",
+                    "DEP-001",
+                    "amountMinor",
+                    new java.math.BigDecimal("100.99"),
+                    "currencyCode",
+                    "KRW")));
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            CustomerApplicationPayloadSchema.validate(
+                CustomerApplicationType.DEPOSIT_PRODUCT_APPLICATION,
+                Map.of(
+                    "productCode",
+                    "DEP-001",
+                    "amountMinor",
+                    new java.math.BigDecimal("9007199254740993.5"),
+                    "currencyCode",
+                    "KRW")));
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            CustomerApplicationPayloadSchema.validate(
+                CustomerApplicationType.DEPOSIT_PRODUCT_APPLICATION,
+                Map.of(
+                    "productCode",
+                    "DEP-001",
+                    "amountMinor",
+                    java.math.BigDecimal.ZERO,
+                    "currencyCode",
+                    "KRW")));
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            CustomerApplicationPayloadSchema.validate(
+                CustomerApplicationType.DEPOSIT_PRODUCT_APPLICATION,
+                Map.of(
+                    "productCode",
+                    "DEP-001",
+                    "amountMinor",
+                    java.math.BigInteger.ZERO,
+                    "currencyCode",
+                    "KRW")));
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            CustomerApplicationPayloadSchema.validate(
+                CustomerApplicationType.DEPOSIT_PRODUCT_APPLICATION,
+                Map.of(
+                    "productCode",
+                    "DEP-001",
+                    "amountMinor",
+                    java.math.BigInteger.valueOf(Long.MAX_VALUE).add(java.math.BigInteger.ONE),
+                    "currencyCode",
+                    "KRW")));
+    assertDoesNotThrow(
+        () ->
+            CustomerApplicationPayloadSchema.validate(
+                CustomerApplicationType.DEPOSIT_PRODUCT_APPLICATION,
+                Map.of(
+                    "productCode",
+                    "DEP-001",
+                    "amountMinor",
+                    new java.math.BigDecimal("10000.00"),
+                    "currencyCode",
+                    "KRW")));
+    assertDoesNotThrow(
+        () ->
+            CustomerApplicationPayloadSchema.validate(
+                CustomerApplicationType.DEPOSIT_PRODUCT_APPLICATION,
+                Map.of(
+                    "productCode",
+                    "DEP-001",
+                    "amountMinor",
+                    java.math.BigInteger.valueOf(10_000L),
+                    "currencyCode",
+                    "KRW")));
+    assertDoesNotThrow(
+        () ->
+            CustomerApplicationPayloadSchema.validate(
+                CustomerApplicationType.DEPOSIT_PRODUCT_APPLICATION,
+                Map.of("productCode", "DEP-001", "amountMinor", 10_000, "currencyCode", "KRW")));
+    assertDoesNotThrow(
+        () ->
+            CustomerApplicationPayloadSchema.validate(
+                CustomerApplicationType.DEPOSIT_PRODUCT_APPLICATION,
+                Map.of(
+                    "productCode",
+                    "DEP-001",
+                    "amountMinor",
+                    (short) 10_000,
+                    "currencyCode",
+                    "KRW")));
+    assertDoesNotThrow(
+        () ->
+            CustomerApplicationPayloadSchema.validate(
+                CustomerApplicationType.DEPOSIT_PRODUCT_APPLICATION,
+                Map.of(
+                    "productCode", "DEP-001", "amountMinor", (byte) 100, "currencyCode", "KRW")));
   }
 
   @Test

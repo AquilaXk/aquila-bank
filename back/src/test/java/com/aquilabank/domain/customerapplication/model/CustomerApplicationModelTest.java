@@ -81,4 +81,96 @@ class CustomerApplicationModelTest {
                 Instant.parse("2026-05-13T03:00:00Z"),
                 Map.of()));
   }
+
+  @Test
+  void exposesCanCancelOnlyForSubmittedAndReviewingStates() {
+    assertThat(CustomerApplicationStatus.SUBMITTED.canCancel()).isTrue();
+    assertThat(CustomerApplicationStatus.REVIEWING.canCancel()).isTrue();
+    assertThat(CustomerApplicationStatus.IN_REVIEW.canCancel()).isTrue();
+    assertThat(CustomerApplicationStatus.APPROVED.canCancel()).isFalse();
+    assertThat(CustomerApplicationStatus.PENDING_EXTERNAL.canCancel()).isFalse();
+    assertThat(CustomerApplicationStatus.EXECUTED.canCancel()).isFalse();
+    assertThat(CustomerApplicationStatus.FAILED.canCancel()).isFalse();
+    assertThat(CustomerApplicationStatus.REJECTED.canCancel()).isFalse();
+    assertThat(CustomerApplicationStatus.CANCELLED.canCancel()).isFalse();
+    assertThat(CustomerApplicationStatus.COMPLETED.canCancel()).isFalse();
+  }
+
+  @Test
+  void rejectsNonIntegralTransferLimitPayloadNumbers() {
+    assertThat(
+            CustomerTransferLimitChangeRequest.fromPayload(
+                Map.of(
+                    "singleTransferLimitMinor",
+                    100_000.99d,
+                    "dailyTransferLimitMinor",
+                    500_000L,
+                    "changeReason",
+                    "PAYROLL",
+                    "evidenceReference",
+                    "DOC-20260511-001")))
+        .isEmpty();
+    assertThat(
+            CustomerTransferLimitChangeRequest.fromPayload(
+                Map.of(
+                    "singleTransferLimitMinor",
+                    new java.math.BigDecimal("100000.50"),
+                    "dailyTransferLimitMinor",
+                    500_000L,
+                    "changeReason",
+                    "PAYROLL",
+                    "evidenceReference",
+                    "DOC-20260511-001")))
+        .isEmpty();
+    assertThat(
+            CustomerTransferLimitChangeRequest.fromPayload(
+                Map.of(
+                    "singleTransferLimitMinor",
+                    java.math.BigInteger.valueOf(Long.MAX_VALUE).add(java.math.BigInteger.ONE),
+                    "dailyTransferLimitMinor",
+                    500_000L,
+                    "changeReason",
+                    "PAYROLL",
+                    "evidenceReference",
+                    "DOC-20260511-001")))
+        .isEmpty();
+    assertThat(
+            CustomerTransferLimitChangeRequest.fromPayload(
+                Map.of(
+                    "singleTransferLimitMinor",
+                    new java.math.BigDecimal("100000.00"),
+                    "dailyTransferLimitMinor",
+                    java.math.BigInteger.valueOf(500_000L),
+                    "changeReason",
+                    "PAYROLL",
+                    "evidenceReference",
+                    "DOC-20260511-001")))
+        .contains(
+            new CustomerTransferLimitChangeRequest(
+                100_000L, 500_000L, "PAYROLL", "DOC-20260511-001"));
+    assertThat(
+            CustomerTransferLimitChangeRequest.fromPayload(
+                Map.of(
+                    "singleTransferLimitMinor",
+                    100_000,
+                    "dailyTransferLimitMinor",
+                    (short) 30_000,
+                    "changeReason",
+                    "PAYROLL",
+                    "evidenceReference",
+                    "DOC-20260511-001")))
+        .isEmpty();
+    assertThat(
+            CustomerTransferLimitChangeRequest.fromPayload(
+                Map.of(
+                    "singleTransferLimitMinor",
+                    (byte) 10,
+                    "dailyTransferLimitMinor",
+                    (short) 20,
+                    "changeReason",
+                    "PAYROLL",
+                    "evidenceReference",
+                    "DOC-20260511-001")))
+        .contains(new CustomerTransferLimitChangeRequest(10L, 20L, "PAYROLL", "DOC-20260511-001"));
+  }
 }

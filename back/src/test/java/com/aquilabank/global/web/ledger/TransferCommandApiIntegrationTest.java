@@ -646,6 +646,187 @@ class TransferCommandApiIntegrationTest extends PostgresContainerTestSupport {
     assertEquals(targetBalanceBefore, balanceOf(targetAccountId));
   }
 
+  @Test
+  void reusesCompletedResponseWhenDailyLimitIsFullyExhaustedAndAcceptsMaxLengthSummary()
+      throws Exception {
+    String maxSummary = "x".repeat(120);
+    TransferResponseView first =
+        invokeTransfer("transfer-daily-replay-001", targetAccountId, 1_500L, maxSummary);
+    TransferResponseView second =
+        invokeTransfer("transfer-daily-replay-002", targetAccountId, 1_500L, maxSummary);
+
+    TransferResponseView replayed =
+        invokeTransfer("transfer-daily-replay-002", targetAccountId, 1_500L, maxSummary);
+
+    assertEquals(second.transactionReference(), replayed.transactionReference());
+    assertEquals(7_000L, replayed.availableBalanceAfterMinor());
+    assertEquals(7_000L, balanceOf(sourceAccountId));
+    assertEquals(3_000L, balanceOf(targetAccountId));
+    assertEquals(2L, countRows("ledger_entry", first.transactionReference()));
+    assertEquals(2L, countRows("ledger_entry", second.transactionReference()));
+  }
+
+  @Test
+  void serializesConcurrentTransfersAgainstDailyLimitWithoutExceedingPolicy() throws Exception {
+    java.util.concurrent.ExecutorService executor =
+        java.util.concurrent.Executors.newFixedThreadPool(2);
+    java.util.concurrent.CountDownLatch startLatch = new java.util.concurrent.CountDownLatch(1);
+    java.util.concurrent.CountDownLatch doneLatch = new java.util.concurrent.CountDownLatch(2);
+    java.util.concurrent.atomic.AtomicInteger okCount =
+        new java.util.concurrent.atomic.AtomicInteger();
+    java.util.concurrent.atomic.AtomicInteger forbiddenCount =
+        new java.util.concurrent.atomic.AtomicInteger();
+
+    for (int i = 1; i <= 2; i++) {
+      final String idempotencyKey = "transfer-concurrent-daily-" + i;
+      executor.submit(
+          () -> {
+            try {
+              startLatch.await();
+              MvcResult result =
+                  invokeTransferRaw(idempotencyKey, targetAccountId, 2_000L, "concurrent daily");
+              int status = result.getResponse().getStatus();
+              if (status == 200) {
+                okCount.incrementAndGet();
+              } else if (status == 403) {
+                forbiddenCount.incrementAndGet();
+              }
+            } catch (Exception ignored) {
+              // asserted via status counts below
+            } finally {
+              doneLatch.countDown();
+            }
+          });
+    }
+
+    startLatch.countDown();
+    assertTrue(doneLatch.await(30, java.util.concurrent.TimeUnit.SECONDS));
+    executor.shutdown();
+
+    assertEquals(1, okCount.get());
+    assertEquals(1, forbiddenCount.get());
+    assertEquals(8_000L, balanceOf(sourceAccountId));
+    assertEquals(2_000L, balanceOf(targetAccountId));
+    assertEquals(1L, totalCount("command_idempotency"));
+  }
+
+  @Test
+  void rejectsReversalOfReversalTransactionWithConflict() throws Exception {
+    TransferResponseView booked =
+        invokeTransfer("transfer-rev-of-rev-001", targetAccountId, 1_500L, "rent");
+    TransferReversalResponseView reversed =
+        invokeReversal(booked.transactionReference(), "reversal-of-rev-001", "CANCEL", "cancel");
+
+    MvcResult result =
+        mockMvc
+            .perform(
+                post("/api/v1/transfers/%s/reversal"
+                        .formatted(reversed.reversalTransactionReference()))
+                    .header("X-Account-Id", String.valueOf(targetAccountId))
+                    .header("X-Request-Id", "reversal-of-rev-002-request")
+                    .header("Idempotency-Key", "reversal-of-rev-002")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                          "sourceAccountId": %d,
+                          "reversalReason": "CANCEL",
+                          "summary": "attempt reverse of reversal"
+                        }
+                        """
+                            .formatted(targetAccountId)))
+            .andReturn();
+
+    assertEquals(409, result.getResponse().getStatus(), result.getResponse().getContentAsString());
+    assertEquals(
+        "reversal transaction cannot be reversed",
+        objectMapper
+            .readTree(result.getResponse().getContentAsByteArray())
+            .get("message")
+            .asText());
+    assertEquals(0L, transferReversalCount(reversed.reversalTransactionReference()));
+    assertEquals(0L, idempotencyCount("reversal-of-rev-002"));
+    assertEquals(10_000L, balanceOf(sourceAccountId));
+    assertEquals(0L, balanceOf(targetAccountId));
+  }
+
+  @Test
+  void reversesTransferWhenOriginalReadModelRowsAreInArchiveTable() throws Exception {
+    TransferResponseView booked =
+        invokeTransfer("transfer-archived-001", targetAccountId, 1_500L, "archived rent");
+
+    commit(
+        transactionManager,
+        () -> {
+          jdbcTemplate.update(
+              """
+              INSERT INTO transaction_read_model_archive (
+                  id,
+                  ledger_entry_id,
+                  account_id,
+                  transaction_reference,
+                  direction,
+                  transaction_status,
+                  amount_minor,
+                  balance_after_minor,
+                  currency_code,
+                  summary,
+                  counterparty_masked_name,
+                  booked_at,
+                  created_at,
+                  archived_at
+              )
+              SELECT id,
+                     ledger_entry_id,
+                     account_id,
+                     transaction_reference,
+                     direction,
+                     transaction_status,
+                     amount_minor,
+                     balance_after_minor,
+                     currency_code,
+                     summary,
+                     counterparty_masked_name,
+                     booked_at,
+                     created_at,
+                     CURRENT_TIMESTAMP
+              FROM transaction_read_model
+              WHERE transaction_reference = :transactionReference
+              """,
+              new MapSqlParameterSource()
+                  .addValue("transactionReference", booked.transactionReference()));
+          jdbcTemplate.update(
+              """
+              DELETE FROM transaction_read_model
+              WHERE transaction_reference = :transactionReference
+              """,
+              new MapSqlParameterSource()
+                  .addValue("transactionReference", booked.transactionReference()));
+        });
+
+    TransferReversalResponseView reversed =
+        invokeReversal(
+            booked.transactionReference(),
+            "reversal-archived-001",
+            "CANCEL",
+            "cancel archived rent");
+
+    assertEquals("REVERSED", reversed.status());
+    assertEquals(0L, transactionStatusCount(booked.transactionReference(), "REVERSED"));
+    Long archivedReversedCount =
+        jdbcTemplate.queryForObject(
+            """
+            SELECT COUNT(*)
+            FROM transaction_read_model_archive
+            WHERE transaction_reference = :transactionReference
+              AND transaction_status = 'REVERSED'
+            """,
+            new MapSqlParameterSource()
+                .addValue("transactionReference", booked.transactionReference()),
+            Long.class);
+    assertEquals(2L, archivedReversedCount);
+  }
+
   private AccountBootstrapResponseView bootstrapAccount(
       String displayName, long initialBalanceMinor) throws Exception {
     MvcResult result =

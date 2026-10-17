@@ -104,6 +104,25 @@ class TransferLimitPolicyServiceTest {
     verify(usageReadPort).sumBookedDebitAmountMinor(101L, "KRW", expectedFrom, expectedTo);
   }
 
+  @Test
+  void rejectsWhenDailyUsagePlusTransferAmountOverflowsLong() {
+    TransferLimitPolicyService service =
+        new TransferLimitPolicyService(
+            usageReadPort,
+            overrideReadPort,
+            Clock.fixed(NOW, ZoneOffset.UTC),
+            SEOUL,
+            new TransferLimitPolicy(1_000L, Long.MAX_VALUE));
+    Instant expectedFrom = Instant.parse("2026-04-20T15:00:00Z");
+    Instant expectedTo = Instant.parse("2026-04-21T15:00:00Z");
+    when(usageReadPort.sumBookedDebitAmountMinor(101L, "KRW", expectedFrom, expectedTo))
+        .thenReturn(Long.MAX_VALUE - 500L);
+
+    assertThatThrownBy(() -> service.validate(command(600L)))
+        .isInstanceOf(TransferLimitExceededException.class)
+        .hasMessage("daily transfer limit exceeded");
+  }
+
   private TransferCommand command(long amountMinor) {
     return new TransferCommand(
         101L, 202L, amountMinor, "KRW", "policy test", "transfer-limit-test");

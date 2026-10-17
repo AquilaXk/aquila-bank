@@ -201,6 +201,7 @@ public class CustomerApplicationController {
       String reason,
       String processedBy,
       Instant processedAt,
+      Map<String, Object> payload,
       Map<String, Object> executionResult) {
 
     static CustomerApplicationDetailsResponse from(CustomerApplicationDetails result) {
@@ -218,6 +219,7 @@ public class CustomerApplicationController {
           result.reason(),
           result.processedBy(),
           result.processedAt(),
+          result.payload(),
           result.executionResult());
     }
   }

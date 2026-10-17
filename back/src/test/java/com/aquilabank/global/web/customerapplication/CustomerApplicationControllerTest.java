@@ -154,7 +154,8 @@ class CustomerApplicationControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.items[0].applicationReference").value("CSA-20260511-001"))
         .andExpect(jsonPath("$.items[0].processingMode").value("EXTERNAL_PROVIDER_REQUIRED"))
-        .andExpect(jsonPath("$.items[0].automatedExecutionSupported").value(false));
+        .andExpect(jsonPath("$.items[0].automatedExecutionSupported").value(false))
+        .andExpect(jsonPath("$.items[0].payload.billerCode").value("GIRO"));
   }
 
   @Test
@@ -180,7 +181,8 @@ class CustomerApplicationControllerTest {
         .perform(get("/api/v1/customer-service/applications/CSA-20260511-001"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.applicationReference").value("CSA-20260511-001"))
-        .andExpect(jsonPath("$.status").value("FAILED"));
+        .andExpect(jsonPath("$.status").value("FAILED"))
+        .andExpect(jsonPath("$.payload.billerCode").value("GIRO"));
   }
 
   @Test

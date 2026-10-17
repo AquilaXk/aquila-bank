@@ -47,7 +47,13 @@ public final class TransferLimitPolicyService implements TransferLimitPolicyUseC
     long dailyUsed =
         usageReadPort.sumBookedDebitAmountMinor(
             command.sourceAccountId(), command.currencyCode(), fromInclusive, toExclusive);
-    if (dailyUsed + command.amountMinor() > effectivePolicy.dailyTransferLimitMinor()) {
+    long projectedDailyUsed;
+    try {
+      projectedDailyUsed = Math.addExact(dailyUsed, command.amountMinor());
+    } catch (ArithmeticException ex) {
+      throw new TransferLimitExceededException("daily transfer limit exceeded");
+    }
+    if (projectedDailyUsed > effectivePolicy.dailyTransferLimitMinor()) {
       throw new TransferLimitExceededException("daily transfer limit exceeded");
     }
   }

@@ -104,18 +104,31 @@ class CustomerApplicationSelfServiceTest {
   }
 
   @Test
-  void rejectsCancelForOtherUserOrTerminalStatus() {
+  void rejectsCancelForOtherUserOrNonCancellableStatus() {
     when(operationPort.findByReferenceForUpdate("CSA-other"))
         .thenReturn(Optional.of(details("CSA-other", 8L)));
     when(operationPort.findByReferenceForUpdate("CSA-done"))
         .thenReturn(
             Optional.of(details("CSA-done", 7L, CustomerApplicationStatus.EXECUTED, "ops")));
+    when(operationPort.findByReferenceForUpdate("CSA-approved"))
+        .thenReturn(
+            Optional.of(details("CSA-approved", 7L, CustomerApplicationStatus.APPROVED, "ops")));
+    when(operationPort.findByReferenceForUpdate("CSA-pending-ext"))
+        .thenReturn(
+            Optional.of(
+                details("CSA-pending-ext", 7L, CustomerApplicationStatus.PENDING_EXTERNAL, "ops")));
 
     assertThrows(
         CustomerApplicationNotFoundException.class, () -> service.cancel(7L, "CSA-other", "req"));
     assertThrows(
         CustomerApplicationInvalidTransitionException.class,
         () -> service.cancel(7L, "CSA-done", "req"));
+    assertThrows(
+        CustomerApplicationInvalidTransitionException.class,
+        () -> service.cancel(7L, "CSA-approved", "req"));
+    assertThrows(
+        CustomerApplicationInvalidTransitionException.class,
+        () -> service.cancel(7L, "CSA-pending-ext", "req"));
   }
 
   @Test

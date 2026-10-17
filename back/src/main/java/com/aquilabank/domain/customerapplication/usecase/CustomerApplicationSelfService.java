@@ -70,8 +70,7 @@ public final class CustomerApplicationSelfService implements CustomerApplication
             .orElseThrow(
                 () ->
                     new CustomerApplicationNotFoundException("customer application was not found"));
-    if (application.status().isTerminal()
-        || application.status() == CustomerApplicationStatus.APPROVED) {
+    if (!application.status().canCancel()) {
       throw new CustomerApplicationInvalidTransitionException(
           "cannot CANCEL customer application from " + application.status().name());
     }
