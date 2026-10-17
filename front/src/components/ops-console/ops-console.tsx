@@ -70,6 +70,65 @@ function toOpsAnchorId(label: string): string {
   return `ops-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
 }
 
+function describeOpsMetricResult(result: OpsResult | undefined): {
+  statusLabel: string;
+  statusTone: "idle" | "loading" | "success" | "error";
+  valueText: string;
+  detailText: string;
+} {
+  if (!result || result.status === "idle") {
+    return {
+      statusLabel: "미조회",
+      statusTone: "idle",
+      valueText: "조회 실행 전",
+      detailText: "상단/우측 조회 실행 시 실측 데이터가 표시됩니다",
+    };
+  }
+  if (result.status === "loading") {
+    return {
+      statusLabel: "조회 중",
+      statusTone: "loading",
+      valueText: "조회 중",
+      detailText: "실측 응답을 불러오는 중입니다",
+    };
+  }
+  if (result.status === "error") {
+    return {
+      statusLabel: "오류",
+      statusTone: "error",
+      valueText: "조회 실패",
+      detailText: result.error || "조회 응답을 확인하세요",
+    };
+  }
+  if (Array.isArray(result.data)) {
+    return {
+      statusLabel: "조회 완료",
+      statusTone: "success",
+      valueText: `${result.data.length}건`,
+      detailText: "실측 목록 응답 기준",
+    };
+  }
+  if (typeof result.data === "object" && result.data !== null) {
+    const entries = Object.entries(result.data as Record<string, unknown>);
+    const summaryPreview = entries
+      .slice(0, 2)
+      .map(([key, value]) => `${key}: ${String(value)}`)
+      .join(" · ");
+    return {
+      statusLabel: "조회 완료",
+      statusTone: "success",
+      valueText: `${entries.length}개 항목`,
+      detailText: summaryPreview || "실측 요약 응답 수신 완료",
+    };
+  }
+  return {
+    statusLabel: "조회 완료",
+    statusTone: "success",
+    valueText: String(result.data),
+    detailText: "실측 응답 수신 완료",
+  };
+}
+
 function ResultPanel({ result }: { result: OpsResult }) {
   if (result.status === "idle") {
     return <pre className="ops-result muted">조회 전</pre>;
@@ -586,6 +645,29 @@ export function OpsConsole() {
     },
   ];
 
+  const liveMetricCards = [
+    {
+      title: "Outbox 요약",
+      resultKey: "Outbox summary",
+      anchor: "#ops-outbox-summary",
+    },
+    {
+      title: "알림 요약",
+      resultKey: "Notification summary",
+      anchor: "#ops-notification-summary",
+    },
+    {
+      title: "스냅샷 드리프트",
+      resultKey: "Snapshot drift",
+      anchor: "#ops-snapshot-drift",
+    },
+    {
+      title: "멱등성 요약",
+      resultKey: "Command idempotency summary",
+      anchor: "#ops-command-idempotency-summary",
+    },
+  ];
+
   return (
     <main className="ops-shell ops-control-room">
       <header className="ops-header">
@@ -640,109 +722,39 @@ export function OpsConsole() {
       <section
         className="ops-metrics-dashboard"
         id="ops-metrics-monitoring"
-        aria-label="운영 지표 및 배치 상태 모니터링"
+        aria-label="운영 실측 지표 요약"
       >
         <div className="ops-metrics-header">
           <div>
-            <h2 className="ops-metrics-title">운영 지표 및 배치 상태 모니터링</h2>
+            <h2 className="ops-metrics-title">운영 실측 지표 요약</h2>
             <span className="ops-metrics-subtitle">
-              실시간 메시지 큐 상태, 원장 정합성 드리프트 감지 및 백그라운드 배치 릴레이 상태를 점검합니다.
+              조회 실행 전 (상단/우측 조회 실행 시 실측 데이터가 표시됩니다)
             </span>
           </div>
-          <span className="ops-metrics-badge">실시간 감시</span>
+          <span className="ops-metrics-badge">실측 응답 연동</span>
         </div>
 
         <div className="ops-metrics-grid">
-          <div className="ops-metric-card">
-            <div className="ops-metric-card-top">
-              <span className="ops-metric-label">이벤트 Outbox 대기열</span>
-              <span className="ops-status-pill success">정상</span>
-            </div>
-            <div className="ops-metric-value font-mono">
-              0<span className="ops-metric-unit">건 지연</span>
-            </div>
-            <div className="ops-metric-footer">
-              <span>릴레이 처리율 100%</span>
-              <a href="#ops-outbox-summary" className="ops-metric-link">조회 ↗</a>
-            </div>
-          </div>
-
-          <div className="ops-metric-card">
-            <div className="ops-metric-card-top">
-              <span className="ops-metric-label">DLQ 및 격리 이벤트</span>
-              <span className="ops-status-pill success">정상</span>
-            </div>
-            <div className="ops-metric-value font-mono">
-              0<span className="ops-metric-unit">건 격리</span>
-            </div>
-            <div className="ops-metric-footer">
-              <span>알림 채널 안정</span>
-              <a href="#ops-notification-dlq" className="ops-metric-link">조회 ↗</a>
-            </div>
-          </div>
-
-          <div className="ops-metric-card">
-            <div className="ops-metric-card-top">
-              <span className="ops-metric-label">원장 스냅샷 드리프트</span>
-              <span className="ops-status-pill success">정상</span>
-            </div>
-            <div className="ops-metric-value font-mono">
-              0<span className="ops-metric-unit">건 불일치</span>
-            </div>
-            <div className="ops-metric-footer">
-              <span>원장 무결성 보존</span>
-              <a href="#ops-snapshot-drift" className="ops-metric-link">조회 ↗</a>
-            </div>
-          </div>
-
-          <div className="ops-metric-card">
-            <div className="ops-metric-card-top">
-              <span className="ops-metric-label">Stale 멱등성 락</span>
-              <span className="ops-status-pill success">정상</span>
-            </div>
-            <div className="ops-metric-value font-mono">
-              0<span className="ops-metric-unit">건 잠김</span>
-            </div>
-            <div className="ops-metric-footer">
-              <span>이체 요청 정상 격리</span>
-              <a href="#ops-command-idempotency-summary" className="ops-metric-link">조회 ↗</a>
-            </div>
-          </div>
-        </div>
-
-        <div className="ops-batch-grid">
-          <div className="ops-batch-card">
-            <div className="ops-batch-info">
-              <div className="ops-batch-indicator active" />
-              <div>
-                <strong>원장 스냅샷 일일 대사 배치</strong>
-                <span>매일 01:00 UTC 실행 · 자동 드리프트 복구 가드</span>
+          {liveMetricCards.map((metric) => {
+            const summary = describeOpsMetricResult(results[metric.resultKey]);
+            return (
+              <div className="ops-metric-card" key={metric.resultKey}>
+                <div className="ops-metric-card-top">
+                  <span className="ops-metric-label">{metric.title}</span>
+                  <span className={`ops-status-pill ${summary.statusTone}`}>
+                    {summary.statusLabel}
+                  </span>
+                </div>
+                <div className="ops-metric-value font-mono">{summary.valueText}</div>
+                <div className="ops-metric-footer">
+                  <span>{summary.detailText}</span>
+                  <a href={metric.anchor} className="ops-metric-link">
+                    조회 ↗
+                  </a>
+                </div>
               </div>
-            </div>
-            <span className="ops-batch-status active font-mono">SCHEDULED</span>
-          </div>
-
-          <div className="ops-batch-card">
-            <div className="ops-batch-info">
-              <div className="ops-batch-indicator active" />
-              <div>
-                <strong>이벤트 Outbox 릴레이 데몬</strong>
-                <span>상시 가동 (Polling interval 1s) · 메시지 중복 방지</span>
-              </div>
-            </div>
-            <span className="ops-batch-status active font-mono">RUNNING</span>
-          </div>
-
-          <div className="ops-batch-card">
-            <div className="ops-batch-info">
-              <div className="ops-batch-indicator idle" />
-              <div>
-                <strong>만료 세션 및 Stale 멱등성 정리 배치</strong>
-                <span>매 10분 주기 실행 · 불필요 락 및 만료 토큰 정리</span>
-              </div>
-            </div>
-            <span className="ops-batch-status idle font-mono">STANDBY</span>
-          </div>
+            );
+          })}
         </div>
       </section>
 

@@ -227,6 +227,7 @@ export default function HomePage() {
           ) : null}
           {canRenderWorkSection && activeSection === "transfer" ? (
             <TransferSection
+              accounts={accounts}
               isBusy={isBusy}
               reversalForm={reversalForm}
               reversalResult={reversalResult}
@@ -242,6 +243,7 @@ export default function HomePage() {
           ) : null}
           {canRenderWorkSection && activeSection === "transactions" ? (
             <TransactionsSection
+              accounts={accounts}
               filters={transactionFilters}
               isBusy={isBusy}
               mode={transactionMode}

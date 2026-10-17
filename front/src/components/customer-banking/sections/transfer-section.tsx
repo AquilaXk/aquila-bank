@@ -25,8 +25,6 @@ type TransferStep =
   | "complete"
   | "failed";
 
-function stayOnCurrentWorkTab(): void {}
-
 function printTransferReceipt(): void {
   window.print();
 }
@@ -68,6 +66,7 @@ function getTransferStatusLabel(status: string | undefined): string {
 }
 
 export function TransferSection({
+  accounts,
   isBusy,
   reversalForm,
   reversalResult,
@@ -80,6 +79,12 @@ export function TransferSection({
   onTransfer,
   onTransferChange,
 }: {
+  accounts?: Array<{
+    accountId: number;
+    accountNumber: string;
+    displayName: string;
+    currencyCode: string;
+  }>;
   isBusy: boolean;
   reversalForm: {
     transactionReference: string;
@@ -116,6 +121,7 @@ export function TransferSection({
     summary: string;
   }) => void;
 }) {
+  const [activeTab, setActiveTab] = useState<"transfer" | "reversal">("transfer");
   const [transferStep, setTransferStep] = useState<TransferStep>("input");
   const [otpCode, setOtpCode] = useState("");
 
@@ -129,17 +135,6 @@ export function TransferSection({
     setTransferStep("input");
     setOtpCode("");
     onTransferChange(value);
-  }
-
-  function handleSwapAccounts(): void {
-    const prevSource = transferForm.sourceAccountId;
-    const prevTarget = transferForm.targetAccountNumber;
-    if (!prevSource && !prevTarget) return;
-    updateTransferForm({
-      ...transferForm,
-      sourceAccountId: prevTarget.replace(/[^0-9]/g, ""),
-      targetAccountNumber: prevSource,
-    });
   }
 
   function handleQuickAmount(addAmountMinor: number): void {
@@ -236,10 +231,10 @@ export function TransferSection({
         </div>
       </div>
       <WorkTabs
-        active="transfer"
+        active={activeTab}
         items={[
-          { id: "transfer", label: "즉시이체", onClick: stayOnCurrentWorkTab, disabled: true },
-          { id: "reversal", label: "이체 취소", onClick: stayOnCurrentWorkTab, disabled: true },
+          { id: "transfer", label: "즉시이체", onClick: () => setActiveTab("transfer") },
+          { id: "reversal", label: "이체 취소", onClick: () => setActiveTab("reversal") },
         ]}
       />
       <BankNoticeStrip
@@ -250,25 +245,23 @@ export function TransferSection({
           { label: "보안 확인", value: otpRequired ? "OTP 필요" : "추가 확인 없음" },
         ]}
       />
-      <div className="work-summary-strip" aria-label="이체 처리 결과">
-        <span>받는 분 {transferPreview ? "확인" : "대기"}</span>
-        <span>최종 확인 {transferStep === "confirm" ? "진행" : "대기"}</span>
-        <span>처리 결과 {transferResult ? getTransferStatusLabel(transferResult.status) : "대기"}</span>
-      </div>
       <WorkStateGrid
         label="이체 진행 상태"
         items={[
           { label: "받는 분", value: transferPreview ? "확인" : "대기" },
           {
-            label: "수수료",
-            value: formatMinorAmount(transferFeeMinor, transferForm.currencyCode),
-          },
-          {
             label: "한도",
-            value: isOverLimit ? "확인 필요" : "정상",
+            value: limitExceededLabel,
             tone: isOverLimit ? "warn" : "success",
           },
-          { label: "OTP", value: otpRequired ? "필요" : "생략" },
+          {
+            label: "최종 확인",
+            value: transferStep === "confirm" ? "진행" : "대기",
+          },
+          {
+            label: "처리 결과",
+            value: transferResult ? getTransferStatusLabel(transferResult.status) : "대기",
+          },
         ]}
       />
 
@@ -295,22 +288,6 @@ export function TransferSection({
               ))}
             </ol>
           </div>
-          <div className="transfer-verification-panel" aria-label="받는 사람 검증 결과">
-            <div>
-              <span>받는 사람 검증 결과</span>
-              <strong>{transferPreview ? blockedReasonLabel : "검증 전"}</strong>
-              <small>{recipientMismatchLabel}</small>
-            </div>
-            <div>
-              <span>OTP 검증 상태</span>
-              <strong>{transferStep === "complete" ? "확인 완료" : otpRequired ? "확인 필요" : "생략"}</strong>
-              <small>{otpErrorLabel}</small>
-            </div>
-            <div>
-              <span>한도 확인</span>
-              <strong>{limitExceededLabel}</strong>
-            </div>
-          </div>
           <div className="transfer-risk-grid transfer-process-grid" aria-label="이체 사전 확인">
             <div>
               <span>받는 분</span>
@@ -319,7 +296,7 @@ export function TransferSection({
                   ? `${transferPreview.targetAccount.displayName} ${transferPreview.targetAccount.maskedAccountNumber}`
                   : `계좌번호 ${transferForm.targetAccountNumber || "-"}`}
               </strong>
-              <small>{blockedReasonLabel}</small>
+              <small>{recipientMismatchLabel} · {blockedReasonLabel}</small>
             </div>
             <div>
               <span>수수료</span>
@@ -339,88 +316,61 @@ export function TransferSection({
               <span>보안 확인</span>
               <strong>
                 <StatusBadge tone={otpRequired ? "warn" : "success"}>
-                  {otpRequired ? "필요" : "미필요"}
+                  {transferStep === "complete" ? "확인 완료" : otpRequired ? "필요" : "미필요"}
                 </StatusBadge>
               </strong>
-              <small>OTP 또는 보안매체 확인</small>
+              <small>{otpErrorLabel}</small>
             </div>
           </div>
-          <div className="transfer-swap-widget my-3 p-4 rounded-xl bg-white/[0.02] border border-white/[0.08] backdrop-blur-sm">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-purple-300">스왑 송금</span>
-              <div className="flex gap-1.5">
-                {[
-                  { label: "+1만", value: 1_000_000 },
-                  { label: "+5만", value: 5_000_000 },
-                  { label: "+10만", value: 10_000_000 },
-                  { label: "+100만", value: 100_000_000 },
-                  { label: "정정", value: 0 },
-                ].map((item) => (
-                  <button
-                    className="px-2 py-0.5 rounded text-xs font-semibold bg-white/5 text-purple-200 border border-purple-500/20 hover:bg-purple-500/20 hover:border-purple-500/40 transition-all font-mono"
-                    key={item.label}
-                    onClick={() => handleQuickAmount(item.value)}
-                    type="button"
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-[1fr,auto,1fr] items-center gap-3">
-              <div className="p-3.5 rounded-xl bg-[#141824] border border-purple-500/20 hover:border-purple-500/40 transition-colors">
-                <div className="text-[11px] font-semibold text-slate-400 mb-1 flex items-center justify-between">
-                  <span>출금 계좌</span>
-                  <span className="text-emerald-400 font-mono text-[10px]">출금가능</span>
-                </div>
-                <div className="text-sm font-bold text-white font-mono">
-                  {transferForm.sourceAccountId ? `ID #${transferForm.sourceAccountId}` : "출금계좌 입력"}
-                </div>
-                <div className="text-xs text-slate-400 mt-1">
-                  Aquila 입출금 통장
-                </div>
-              </div>
-              <div className="flex justify-center">
+          <div className="quick-amount-bar" aria-label="빠른 금액 입력">
+            <span className="quick-amount-label">빠른 금액 입력</span>
+            <div className="quick-amount-buttons">
+              {[
+                { label: "+1만", value: 1_000_000 },
+                { label: "+5만", value: 5_000_000 },
+                { label: "+10만", value: 10_000_000 },
+                { label: "+100만", value: 100_000_000 },
+                { label: "정정", value: 0 },
+              ].map((item) => (
                 <button
+                  key={item.label}
+                  onClick={() => handleQuickAmount(item.value)}
                   type="button"
-                  onClick={handleSwapAccounts}
-                  className="w-9 h-9 rounded-full bg-purple-500/10 hover:bg-purple-500/25 border border-purple-500/30 hover:border-purple-500/60 flex items-center justify-center text-purple-300 hover:text-purple-100 shadow-[0_0_12px_rgba(168,85,247,0.25)] transition-all duration-300 group cursor-pointer active:scale-95"
-                  title="출금 계좌와 입금 계좌 교환"
-                  aria-label="출금 계좌와 입금 계좌 교환"
                 >
-                  <svg
-                    className="w-4 h-4 rotate-90 md:rotate-0 transition-transform duration-300 group-hover:scale-110"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2.2"
-                      d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"
-                    />
-                  </svg>
+                  {item.label}
                 </button>
-              </div>
-              <div className="p-3.5 rounded-xl bg-[#141824] border border-white/[0.08] hover:border-purple-500/30 transition-colors">
-                <div className="text-[11px] font-semibold text-slate-400 mb-1 flex items-center justify-between">
-                  <span>입금 대상</span>
-                  <span className="text-purple-300 text-[10px]">수취 확인</span>
-                </div>
-                <div className="text-sm font-bold text-white font-mono truncate">
-                  {transferPreview
-                    ? `${transferPreview.targetAccount.displayName}`
-                    : transferForm.targetAccountNumber
-                    ? transferForm.targetAccountNumber
-                    : "입금계좌 입력"}
-                </div>
-                <div className="text-xs text-slate-400 mt-1 truncate">
-                  {transferPreview?.targetAccount.maskedAccountNumber || "계좌 검증 대기"}
-                </div>
-              </div>
+              ))}
             </div>
           </div>
+          {accounts && accounts.length > 0 ? (
+            <label className="form-field">
+              <span>보유 출금계좌 선택</span>
+              <select
+                onChange={(event) => {
+                  const selectedId = event.target.value;
+                  if (!selectedId) return;
+                  const found = accounts.find((item) => String(item.accountId) === selectedId);
+                  updateTransferForm({
+                    ...transferForm,
+                    sourceAccountId: selectedId,
+                    currencyCode: found?.currencyCode || transferForm.currencyCode,
+                  });
+                }}
+                value={
+                  accounts.some((item) => String(item.accountId) === transferForm.sourceAccountId)
+                    ? transferForm.sourceAccountId
+                    : ""
+                }
+              >
+                <option value="">직접 입력 또는 보유계좌 선택</option>
+                {accounts.map((account) => (
+                  <option key={account.accountId} value={String(account.accountId)}>
+                    {account.displayName} ({account.accountNumber})
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <div className="form-grid">
             <BankInput
               error={sourceAccountError}

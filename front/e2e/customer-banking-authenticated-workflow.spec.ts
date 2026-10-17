@@ -232,8 +232,7 @@ test("로그인 후 계좌, 이체, 거래내역, 세션 관리 업무 화면을
   await transferForm.getByRole("button", { name: "이체 실행" }).click();
   await expect(page.getByLabel("이체 완료증 인쇄")).toContainText("TRX-20260512-0001");
   await expect(page.locator(".print-receipt-button")).toBeVisible();
-  await expect(page.getByText("받는 사람 검증 결과")).toBeVisible();
-  await expect(page.getByText("OTP 검증 상태")).toBeVisible();
+  await expect(page.getByLabel("이체 사전 확인")).toBeVisible();
 
   await page
     .getByRole("navigation", { name: "주요 메뉴" })
@@ -243,7 +242,7 @@ test("로그인 후 계좌, 이체, 거래내역, 세션 관리 업무 화면을
   await page.getByRole("button", { name: "1개월" }).click();
   await page.locator("#bank-work-area").getByRole("button", { exact: true, name: "조회" }).click();
   await expect(page.getByText("TRX-20260512-0001")).toBeVisible();
-  await expect(page.getByText("Keyset 기준")).toBeVisible();
+  await expect(page.getByText("페이지 탐색")).toBeVisible();
   await expect(page.getByRole("button", { name: "이체확인증 출력" })).toBeVisible();
   await page.getByRole("button", { name: "초기화" }).click();
   await expect(page.getByLabel("거래 조회 상태")).toContainText("조회 전");
@@ -267,7 +266,7 @@ test("로그인 후 계좌, 이체, 거래내역, 세션 관리 업무 화면을
   await page.getByRole("button", { name: /APP-DEMO-1/ }).click();
   await expect(page.getByText("신청 상세", { exact: true })).toBeVisible();
   await expect(page.getByText("처리 모드")).toBeVisible();
-  await expect(page.getByText("mock/webhook 경계")).toBeVisible();
+  await expect(page.getByText("접수 · 심사 · 처리 상태 조회")).toBeVisible();
   await page.getByRole("button", { name: "취소 요청" }).click();
   await expect(page.getByText("신청 취소 요청이 처리되었습니다.")).toBeVisible();
 });

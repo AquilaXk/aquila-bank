@@ -12,17 +12,14 @@ import {
   BankInput,
   BankNoticeStrip,
   BankTable,
-  WorkTabs,
 } from "../common";
-
-function stayOnCurrentWorkTab(): void {}
 
 const fulfillmentDetails = [
   {
     title: "공과금 납부",
     applicationType: "BILL_PAYMENT",
     headline: "공과금 납부 신청 접수",
-    description: "기관, 납부번호, 금액, OTP 기준의 mock 접수 업무",
+    description: "기관, 납부번호, 금액, OTP 기준의 신청 접수 업무",
     fields: ["납부기관", "전자납부번호", "납부금액", "통화"],
     formFields: [
       { key: "billerCode", label: "납부기관", value: "GIRO" },
@@ -30,21 +27,21 @@ const fulfillmentDetails = [
       { key: "amountMinor", label: "납부금액", value: "12000" },
       { key: "currencyCode", label: "통화", value: "KRW" },
     ],
-    steps: ["기관 선택", "납부번호 입력", "금액 확인", "mock 대기"],
+    steps: ["기관 선택", "납부번호 입력", "금액 확인", "처리 대기"],
     status: "OTP 확인 후 신청 접수",
   },
   {
     title: "오픈뱅킹 연결",
     applicationType: "OPEN_BANKING_CONNECTION",
-    headline: "외부 계좌 연결 접수 데모",
-    description: "기관코드, 외부 계좌번호, 동의 식별값 기준의 mock 접수 업무",
+    headline: "외부 계좌 연결 온라인 신청 접수",
+    description: "기관코드, 외부 계좌번호, 동의 식별값 기준의 신청 접수 업무",
     fields: ["기관코드", "외부 계좌번호", "동의 식별값", "OTP"],
     formFields: [
       { key: "institutionCode", label: "기관코드", value: "088" },
       { key: "externalAccountNumber", label: "외부 계좌번호", value: "100-200-300" },
       { key: "consentId", label: "동의 식별값", value: "CONSENT_202605" },
     ],
-    steps: ["기관 입력", "동의 식별값 입력", "OTP 확인", "mock 대기"],
+    steps: ["기관 입력", "동의 식별값 입력", "OTP 확인", "처리 대기"],
     status: "OTP 확인 후 연결 접수",
   },
   {
@@ -64,7 +61,7 @@ const fulfillmentDetails = [
   {
     title: "대출 신청",
     applicationType: "LOAN_APPLICATION",
-    headline: "대출 신청 접수 데모",
+    headline: "대출 온라인 신청 접수",
     description: "상품코드, 신청금액, 신청 목적 기준의 접수 업무",
     fields: ["상품코드", "신청금액", "통화", "신청 목적"],
     formFields: [
@@ -79,15 +76,15 @@ const fulfillmentDetails = [
   {
     title: "외환 신청",
     applicationType: "FOREIGN_EXCHANGE_APPLICATION",
-    headline: "외환 신청 접수 데모",
-    description: "출금 통화, 대상 통화, 금액 기준의 mock 접수 업무",
+    headline: "외환 온라인 신청 접수",
+    description: "출금 통화, 대상 통화, 금액 기준의 신청 접수 업무",
     fields: ["출금 통화", "대상 통화", "신청금액", "OTP"],
     formFields: [
       { key: "sourceCurrencyCode", label: "출금 통화", value: "KRW" },
       { key: "targetCurrencyCode", label: "대상 통화", value: "USD" },
       { key: "amountMinor", label: "신청금액", value: "100000" },
     ],
-    steps: ["통화 선택", "금액 입력", "OTP 확인", "mock 대기"],
+    steps: ["통화 선택", "금액 입력", "OTP 확인", "처리 대기"],
     status: "OTP 확인 후 외환 접수",
   },
 ] as const satisfies ReadonlyArray<{
@@ -149,17 +146,9 @@ export function EnterpriseServicesSection({
           <h1>공과금 · 오픈뱅킹 · 상품신청</h1>
         </div>
       </div>
-      <WorkTabs
-        active="bill"
-        items={[
-          { id: "bill", label: "공과금", onClick: stayOnCurrentWorkTab, disabled: true },
-          { id: "open-banking", label: "오픈뱅킹", onClick: stayOnCurrentWorkTab, disabled: true },
-          { id: "products", label: "금융상품", onClick: stayOnCurrentWorkTab, disabled: true },
-        ]}
-      />
       <BankNoticeStrip
         items={[
-          { label: "공과금", value: "mock 접수" },
+          { label: "공과금", value: "신청 접수" },
           { label: "오픈뱅킹", value: "연결 접수" },
           { label: "예금상품", value: "가입 접수" },
           { label: "대출", value: "심사 접수" },
@@ -178,11 +167,11 @@ export function EnterpriseServicesSection({
         ))}
       </div>
 
-      <BankTable caption="부가업무 MVP 처리 기준" className="dense-bank-table">
+      <BankTable caption="부가업무 처리 기준" className="dense-bank-table">
           <thead>
             <tr>
               <th>업무</th>
-              <th>MVP 입력 기준</th>
+              <th>필수 입력 기준</th>
               <th>처리 범위</th>
             </tr>
           </thead>
@@ -190,7 +179,7 @@ export function EnterpriseServicesSection({
             <tr>
               <td>공과금</td>
               <td>기관, 납부번호, 금액, OTP</td>
-              <td>접수 + mock 대기</td>
+              <td>신청 접수 · 처리 대기</td>
             </tr>
             <tr>
               <td>오픈뱅킹</td>

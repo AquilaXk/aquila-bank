@@ -31,8 +31,11 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#121416",
-  colorScheme: "dark",
+  colorScheme: "light dark",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f8f9fc" },
+    { media: "(prefers-color-scheme: dark)", color: "#121317" },
+  ],
 };
 
 export default function RootLayout({
@@ -41,22 +44,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html className="dark" lang="ko" suppressHydrationWarning>
+    <html lang="ko" suppressHydrationWarning>
       <head>
+        <meta name="color-scheme" content="light dark" />
         <script
           dangerouslySetInnerHTML={{
-            __html: `
-              (function() {
-                try {
-                  document.documentElement.classList.add('dark');
-                  document.documentElement.style.colorScheme = 'dark';
-                } catch (e) {}
-              })();
-            `,
+            __html: `(function(){try{var s=localStorage.getItem("color-scheme");var m=document.querySelector('meta[name="color-scheme"]');if(m&&(s==="light"||s==="dark")){m.content=s;document.documentElement.dataset.theme=s;}else{document.documentElement.removeAttribute("data-theme");}}catch(e){}})();`,
           }}
         />
       </head>
-      <body className="min-h-screen bg-[#0B0D13] text-[#F8FAFC] antialiased bg-micro-grid selection:bg-purple-500/30 selection:text-purple-200">
+      <body className="min-h-screen antialiased">
         {children}
       </body>
     </html>

@@ -7,9 +7,7 @@ import type {
   CustomerApplicationLatestResult,
   CustomerApplicationSubmitHandler,
 } from "@/lib/customer-banking/types";
-import { BankNoticeStrip, WorkTabs } from "../common";
-
-function stayOnCurrentWorkTab(): void {}
+import { BankNoticeStrip } from "../common";
 
 type SecurityApplicationForm = {
   subject: string;
@@ -40,7 +38,7 @@ const registrationFlows = [
     description: "발급기관 DN과 인증서 일련번호 기준의 등록 신청 접수",
     steps: ["인증서 선택", "식별값 입력", "OTP 확인", "접수 대기"],
     checks: ["브라우저 저장소 저장 금지", "서명 원문 미보관", "만료일/발급기관 확인"],
-    initialSubject: "CN=AQUILA_DEMO_CA",
+    initialSubject: "CN=AQUILA_PUBLIC_CA",
     initialSerial: "CERT-20260514",
   },
   {
@@ -130,14 +128,6 @@ export function SecurityHubSection({
           <h1>인증서 · OTP · 보안매체</h1>
         </div>
       </div>
-      <WorkTabs
-        active="certificate"
-        items={[
-          { id: "certificate", label: "인증서", onClick: stayOnCurrentWorkTab, disabled: true },
-          { id: "otp", label: "OTP", onClick: stayOnCurrentWorkTab, disabled: true },
-          { id: "media", label: "보안매체", onClick: stayOnCurrentWorkTab, disabled: true },
-        ]}
-      />
       <BankNoticeStrip
         items={[
           { label: "공동인증서", value: "신청 접수" },
@@ -160,7 +150,7 @@ export function SecurityHubSection({
       <section className="table-panel">
         <div className="panel-toolbar">
           <div>
-            <strong>보안매체별 MVP 적용 업무</strong>
+            <strong>보안매체별 적용 업무</strong>
             <span>이체/인증 신청 접수 기준</span>
           </div>
         </div>

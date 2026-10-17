@@ -27,13 +27,21 @@ export function DashboardSection({
   onRefresh: () => void;
 }) {
   const primaryAccount = hasSession && accounts && accounts.length > 0 ? accounts[0] : null;
-  const primaryDisplayName = primaryAccount?.displayName || "Aquila 입출금 통장";
-  const primaryAccountNumber = primaryAccount?.accountNumber || "102-840-****** (KRW)";
-  const primaryBalanceDisplay = hasSession
-    ? primaryAccount
-      ? `${(primaryAccount.availableBalanceMinor / 100).toLocaleString("ko-KR")} ${primaryAccount.currencyCode}`
-      : "1,250,000 KRW"
-    : "로그인 후 확인";
+  const primaryDisplayName = primaryAccount
+    ? primaryAccount.displayName
+    : hasSession
+      ? "보유계좌 조회 대기"
+      : "로그인 후 계좌 확인";
+  const primaryAccountNumber = primaryAccount
+    ? primaryAccount.accountNumber
+    : hasSession
+      ? "계좌조회 메뉴에서 보유계좌를 확인하세요"
+      : "로그인 후 대표계좌 번호가 표시됩니다";
+  const primaryBalanceDisplay = primaryAccount
+    ? `${(primaryAccount.availableBalanceMinor / 100).toLocaleString("ko-KR")} ${primaryAccount.currencyCode}`
+    : hasSession
+      ? "조회 전"
+      : "로그인 후 확인";
   const workStatus = hasSession
     ? {
         notice: "조회/이체/인증 정상",
@@ -103,47 +111,32 @@ export function DashboardSection({
           { label: "보안등급", value: hasSession ? "개인 인증 완료 후 이체 가능" : "로그인 후 확인" },
           { label: "상담", value: "평일 09:00~18:00" },
           { label: "업무현황", value: workStatus.notice },
+          { label: "조회", value: workStatus.lookup },
+          { label: "이체", value: workStatus.transfer },
+          { label: "알림", value: workStatus.notification },
+          { label: "인증", value: "인증서 관리" },
         ]}
       />
-      <div className="work-summary-strip" aria-label="개인뱅킹 업무현황">
-        <span>{workStatus.lookup}</span>
-        <span>{workStatus.transfer}</span>
-        <span>{workStatus.notification}</span>
-        <span>인증서 관리</span>
-      </div>
-      <div className="dashboard-account-glow-card my-4 p-5 rounded-2xl bg-gradient-to-br from-[#161B29] to-[#101420] border border-purple-500/20 shadow-glow-card relative overflow-hidden group hover:border-purple-500/40 transition-all">
-        <div className="absolute top-0 right-0 w-48 h-48 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative z-10">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-xs font-semibold uppercase tracking-wider text-purple-300">대표 계좌</span>
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400" />
-              <span className="text-xs text-slate-400">{hasSession ? "정상 이용중" : "로그인 필요"}</span>
-            </div>
-            <div className="text-lg font-bold text-slate-100">{primaryDisplayName}</div>
-            <div className="text-xs text-slate-400 font-mono mt-0.5">{primaryAccountNumber}</div>
+      <div className="dashboard-primary-account-card" aria-label="대표 계좌 요약">
+        <div className="dashboard-primary-account-meta">
+          <div className="dashboard-primary-account-badge">
+            <span className="account-badge-label">대표 계좌</span>
+            <span className={hasSession ? "account-status-dot active" : "account-status-dot"} />
+            <span className="account-status-text">{hasSession ? "정상 이용중" : "로그인 필요"}</span>
           </div>
-          <div className="text-left sm:text-right">
-            <span className="text-xs text-slate-400 block mb-0.5">출금가능 잔액</span>
-            <div className="text-2xl sm:text-3xl font-extrabold text-white font-mono tracking-tight">
-              {primaryBalanceDisplay}
-            </div>
-            <div className="mt-2 flex gap-2 sm:justify-end">
-              <button
-                className="px-3 py-1 rounded-lg text-xs font-semibold bg-purple-500/20 text-purple-200 border border-purple-500/30 hover:bg-purple-500/30 transition-colors"
-                onClick={() => onMove("transfer")}
-                type="button"
-              >
-                즉시이체
-              </button>
-              <button
-                className="px-3 py-1 rounded-lg text-xs font-semibold bg-white/5 text-slate-200 border border-white/10 hover:bg-white/10 transition-colors"
-                onClick={() => onMove("accounts")}
-                type="button"
-              >
-                계좌관리
-              </button>
-            </div>
+          <strong className="dashboard-primary-account-name">{primaryDisplayName}</strong>
+          <span className="dashboard-primary-account-number">{primaryAccountNumber}</span>
+        </div>
+        <div className="dashboard-primary-account-balance">
+          <span className="balance-label">출금가능 잔액</span>
+          <strong className="balance-value">{primaryBalanceDisplay}</strong>
+          <div className="button-row compact">
+            <button onClick={() => onMove("transfer")} type="button">
+              즉시이체
+            </button>
+            <button onClick={() => onMove("accounts")} type="button">
+              계좌관리
+            </button>
           </div>
         </div>
       </div>

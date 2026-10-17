@@ -23,6 +23,13 @@ test("live desktop 화면은 주요 영역 screenshot artifact를 남긴다", as
     fullPage: true,
     path: testInfo.outputPath("customer-banking-live-desktop.png"),
   });
+
+  await page.getByRole("button", { name: "테마 전환" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await page.screenshot({
+    fullPage: true,
+    path: testInfo.outputPath("customer-banking-live-desktop-dark.png"),
+  });
 });
 
 test("live mobile 화면은 접힌 업무 구조 screenshot artifact를 남긴다", async ({
