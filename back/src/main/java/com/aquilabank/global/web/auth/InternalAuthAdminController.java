@@ -27,6 +27,7 @@ import com.aquilabank.global.security.InternalServiceRequestAuthorizer;
 import com.aquilabank.global.security.InternalServiceScope;
 import com.aquilabank.global.security.InternalServiceTokenClaims;
 import com.aquilabank.global.web.RequestTraceContext;
+import com.aquilabank.global.web.security.RequestAccountAuthorizationService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -35,6 +36,7 @@ import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
@@ -65,6 +67,7 @@ public class InternalAuthAdminController {
   private final ExternalIdentityMappingUnlinkUseCase externalIdentityMappingUnlinkUseCase;
   private final VerifiedContactAdminUseCase verifiedContactAdminUseCase;
   private final InternalServiceRequestAuthorizer internalServiceRequestAuthorizer;
+  private final RequestAccountAuthorizationService requestAccountAuthorizationService;
 
   public InternalAuthAdminController(
       AuthUserQueryUseCase authUserQueryUseCase,
@@ -76,6 +79,31 @@ public class InternalAuthAdminController {
       ExternalIdentityMappingUnlinkUseCase externalIdentityMappingUnlinkUseCase,
       VerifiedContactAdminUseCase verifiedContactAdminUseCase,
       InternalServiceRequestAuthorizer internalServiceRequestAuthorizer) {
+    this(
+        authUserQueryUseCase,
+        userStatusUpdateUseCase,
+        userAccountMembershipQueryUseCase,
+        userAccountMembershipStatusUpdateUseCase,
+        passwordRecoveryTokenQueryUseCase,
+        externalIdentityMappingLinkUseCase,
+        externalIdentityMappingUnlinkUseCase,
+        verifiedContactAdminUseCase,
+        internalServiceRequestAuthorizer,
+        null);
+  }
+
+  @Autowired
+  public InternalAuthAdminController(
+      AuthUserQueryUseCase authUserQueryUseCase,
+      UserStatusUpdateUseCase userStatusUpdateUseCase,
+      UserAccountMembershipQueryUseCase userAccountMembershipQueryUseCase,
+      UserAccountMembershipStatusUpdateUseCase userAccountMembershipStatusUpdateUseCase,
+      PasswordRecoveryTokenQueryUseCase passwordRecoveryTokenQueryUseCase,
+      ExternalIdentityMappingLinkUseCase externalIdentityMappingLinkUseCase,
+      ExternalIdentityMappingUnlinkUseCase externalIdentityMappingUnlinkUseCase,
+      VerifiedContactAdminUseCase verifiedContactAdminUseCase,
+      InternalServiceRequestAuthorizer internalServiceRequestAuthorizer,
+      RequestAccountAuthorizationService requestAccountAuthorizationService) {
     this.authUserQueryUseCase = authUserQueryUseCase;
     this.userStatusUpdateUseCase = userStatusUpdateUseCase;
     this.userAccountMembershipQueryUseCase = userAccountMembershipQueryUseCase;
@@ -85,6 +113,7 @@ public class InternalAuthAdminController {
     this.externalIdentityMappingUnlinkUseCase = externalIdentityMappingUnlinkUseCase;
     this.verifiedContactAdminUseCase = verifiedContactAdminUseCase;
     this.internalServiceRequestAuthorizer = internalServiceRequestAuthorizer;
+    this.requestAccountAuthorizationService = requestAccountAuthorizationService;
   }
 
   @GetMapping("/users/{userId}")
@@ -210,14 +239,18 @@ public class InternalAuthAdminController {
     InternalServiceTokenClaims claims =
         internalServiceRequestAuthorizer.requireScope(
             httpServletRequest, InternalServiceScope.AUTH_ADMIN);
-    return AuthUserResponse.from(
+    AuthUserSummary updated =
         userStatusUpdateUseCase.update(
             new UserStatusUpdateCommand(
                 userId,
                 request.userStatus(),
                 resolveReason(request.reasonCode(), request.reasonDetail(), request.reason()),
                 claims.subject(),
-                resolveRequestId(httpServletRequest))));
+                resolveRequestId(httpServletRequest)));
+    if (requestAccountAuthorizationService != null) {
+      requestAccountAuthorizationService.evictUser(userId);
+    }
+    return AuthUserResponse.from(updated);
   }
 
   @PutMapping("/users/{userId}/memberships/{accountId}/status")
@@ -229,7 +262,7 @@ public class InternalAuthAdminController {
     InternalServiceTokenClaims claims =
         internalServiceRequestAuthorizer.requireScope(
             httpServletRequest, InternalServiceScope.AUTH_ADMIN);
-    return UserAccountMembershipResponse.from(
+    UserAccountMembershipSummary updated =
         userAccountMembershipStatusUpdateUseCase.update(
             new UserAccountMembershipStatusUpdateCommand(
                 userId,
@@ -237,7 +270,12 @@ public class InternalAuthAdminController {
                 request.membershipStatus(),
                 resolveReason(request.reasonCode(), request.reasonDetail(), request.reason()),
                 claims.subject(),
-                resolveRequestId(httpServletRequest))));
+                resolveRequestId(httpServletRequest)));
+    if (requestAccountAuthorizationService != null) {
+      requestAccountAuthorizationService.evictUser(userId);
+      requestAccountAuthorizationService.evictAccount(accountId);
+    }
+    return UserAccountMembershipResponse.from(updated);
   }
 
   /** 내부 user status update 요청 body */

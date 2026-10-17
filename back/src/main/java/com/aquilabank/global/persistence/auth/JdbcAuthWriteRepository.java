@@ -1059,9 +1059,10 @@ public class JdbcAuthWriteRepository
             .stream()
             .findFirst()
             .orElseThrow(() -> new AuthUserNotFoundException("user is not found"));
-    // disable 직후 옛 refresh token이 재활성화와 함께 되살아나는 경로를 막으려고 ACTIVE session만 같이 정리합니다.
+    // disable 직후 옛 refresh token 및 remember-device가 재활성화와 함께 되살아나는 경로를 막으려고 ACTIVE 항목만 같이 정리합니다.
     if (shouldRevokeActiveRefreshTokenSessions(beforeStatus, summary.status())) {
       revokeActiveRefreshTokenSessions(command.userId(), now);
+      revokeActiveByUserId(command.userId(), now);
     }
     insertStatusChangeAudit(
         new AuthStatusChangeAuditEntry(

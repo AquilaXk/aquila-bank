@@ -53,7 +53,11 @@ public final class MemoryLoginThrottleStore implements LoginThrottleStore {
   }
 
   private ThrottleDecision evaluateIpWindow(String ipAddress, Instant now) {
-    AttemptWindow window = ipWindow(ipAddress);
+    AttemptWindow window = ipWindows.get(ipAddress);
+    if (window == null) {
+      return ThrottleDecision.allowed(
+          properties.ip().maxAttempts(), properties.ip().windowSeconds(), ipWindows.size());
+    }
     pruneWindow(window.attempts(), now, properties.ip().windowSeconds());
     if (window.attempts().size() >= properties.ip().maxAttempts()) {
       return ThrottleDecision.blocked(

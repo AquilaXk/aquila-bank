@@ -23,6 +23,7 @@ public class RequestAccountAuthorizationService {
   private static final Logger log =
       LoggerFactory.getLogger(RequestAccountAuthorizationService.class);
   private static final Duration AUTHORIZATION_CACHE_TTL = Duration.ofMillis(500);
+  private static final int MAX_CACHE_ENTRIES = 4096;
 
   private final AccountAccessUseCase accountAccessUseCase;
   // 성공한 account access만 짧게 재사용해 hot read의 반복 DB 왕복을 줄입니다.
@@ -92,27 +93,42 @@ public class RequestAccountAuthorizationService {
     authorizationCache.keySet().removeIf(key -> key.accountId() == accountId);
   }
 
+  public void evictUser(long userId) {
+    if (userId <= 0) {
+      return;
+    }
+    // 사용자나 멤버십 상태 변경 직후 오래된 권한 cache가 남지 않도록 user 단위로 비웁니다.
+    authorizationCache.keySet().removeIf(key -> key.userId() == userId);
+  }
+
   private long resolveCached(AuthorizationCacheKey key, LongSupplier accountIdResolver) {
     long nowNanos = nanoTime.getAsLong();
     AuthorizationCacheEntry cached = authorizationCache.get(key);
-    if (cached != null && cached.isFresh(nowNanos)) {
+    if (cached != null && cached.isFresh(nowNanos, authorizationCacheTtlNanos)) {
       return cached.resolvedAccountId();
     }
     if (cached != null) {
       authorizationCache.remove(key, cached);
     }
     long resolvedAccountId = accountIdResolver.getAsLong();
-    authorizationCache.put(
-        key, new AuthorizationCacheEntry(resolvedAccountId, nowNanos + authorizationCacheTtlNanos));
+    if (authorizationCache.size() >= MAX_CACHE_ENTRIES) {
+      authorizationCache
+          .entrySet()
+          .removeIf(entry -> !entry.getValue().isFresh(nowNanos, authorizationCacheTtlNanos));
+      if (authorizationCache.size() >= MAX_CACHE_ENTRIES) {
+        authorizationCache.clear();
+      }
+    }
+    authorizationCache.put(key, new AuthorizationCacheEntry(resolvedAccountId, nowNanos));
     return resolvedAccountId;
   }
 
   private record AuthorizationCacheKey(long userId, long accountId, AccountAccessScope scope) {}
 
-  private record AuthorizationCacheEntry(long resolvedAccountId, long expiresAtNanos) {
+  private record AuthorizationCacheEntry(long resolvedAccountId, long createdAtNanos) {
 
-    boolean isFresh(long nowNanos) {
-      return nowNanos < expiresAtNanos;
+    boolean isFresh(long nowNanos, long ttlNanos) {
+      return nowNanos - createdAtNanos < ttlNanos;
     }
   }
 }
