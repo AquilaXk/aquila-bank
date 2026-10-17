@@ -22,24 +22,28 @@ public class TransactionReadAccountFairnessLimiter {
   }
 
   public <T> T execute(long accountId, Supplier<T> supplier) {
-    AtomicInteger counter =
-        activeRequests.computeIfAbsent(accountId, ignored -> new AtomicInteger());
-    int active = counter.incrementAndGet();
-    if (active > maxConcurrentRequests) {
-      release(accountId, counter);
+    int[] activeHolder = {0};
+    activeRequests.compute(
+        accountId,
+        (ignored, existing) -> {
+          AtomicInteger counter = existing != null ? existing : new AtomicInteger();
+          activeHolder[0] = counter.incrementAndGet();
+          return counter;
+        });
+    if (activeHolder[0] > maxConcurrentRequests) {
+      release(accountId);
       throw new TransactionReadAccountFairnessRejectedException();
     }
 
     try {
       return supplier.get();
     } finally {
-      release(accountId, counter);
+      release(accountId);
     }
   }
 
-  private void release(long accountId, AtomicInteger counter) {
-    if (counter.decrementAndGet() == 0) {
-      activeRequests.remove(accountId, counter);
-    }
+  private void release(long accountId) {
+    activeRequests.computeIfPresent(
+        accountId, (ignored, counter) -> counter.decrementAndGet() == 0 ? null : counter);
   }
 }

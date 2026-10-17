@@ -60,11 +60,64 @@ class TransactionReadQueryStatementTest {
     TransactionDetailQueryStatement detail =
         TransactionDetailQueryStatement.from(
             new com.aquilabank.domain.transaction.model.TransactionDetailQuery(11L, "tr-ref-001"));
+    TransactionDetailQueryStatement archiveDetail =
+        TransactionDetailQueryStatement.fromArchive(
+            new com.aquilabank.domain.transaction.model.TransactionDetailQuery(11L, "tr-ref-001"));
 
     assertThat(hot.sql()).startsWith("/* requestId=tx_read_req_001 queryShape=hot-timeline */");
     assertThat(archive.sql())
         .startsWith("/* requestId=tx_read_req_001 queryShape=archive-timeline */");
     assertThat(detail.sql()).startsWith("/* requestId=tx_read_req_001 queryShape=detail-exact */");
+    assertThat(detail.sql())
+        .contains("JOIN transaction_read_model trm")
+        .contains("ON trm.ledger_entry_id = le.id")
+        .contains("AND trm.booked_at = le.booked_at");
+    assertThat(archiveDetail.sql())
+        .startsWith("/* requestId=tx_read_req_001 queryShape=detail-archive-exact */")
+        .contains("JOIN transaction_read_model_archive trm")
+        .contains("ON trm.ledger_entry_id = le.id")
+        .contains("AND trm.booked_at = le.booked_at");
+    assertThat(archiveDetail.params().getValue("accountId")).isEqualTo(11L);
+    assertThat(archiveDetail.params().getValue("transactionReference")).isEqualTo("tr-ref-001");
+    assertThat(archiveDetail.params().getValue("rowLimit")).isEqualTo(2);
+  }
+
+  @Test
+  void timelineQueryStatementsBindAllOptionalFiltersIdenticallyForHotAndArchive() {
+    TransactionQuery filteredQuery =
+        new TransactionQuery(
+            11L,
+            FROM,
+            TO,
+            25,
+            new TransactionCursor(CURSOR_AT, 99L),
+            com.aquilabank.domain.transaction.model.TransactionStatus.BOOKED,
+            com.aquilabank.domain.transaction.model.TransactionDirection.DEBIT,
+            1000L,
+            5000L,
+            "TRX-EXACT-1");
+
+    TransactionReadQueryStatement hot = TransactionReadQueryStatement.from(filteredQuery);
+    TransactionArchiveReadQueryStatement archive =
+        TransactionArchiveReadQueryStatement.from(filteredQuery);
+
+    assertThat(hot.sql())
+        .contains("FROM transaction_read_model")
+        .contains("AND transaction_status = :status")
+        .contains("AND direction = :direction")
+        .contains("AND amount_minor >= :minAmountMinor")
+        .contains("AND amount_minor <= :maxAmountMinor")
+        .contains("AND transaction_reference = :transactionReference")
+        .contains("AND (booked_at, id) < (:cursorBookedAt, :cursorId)");
+    assertThat(archive.sql())
+        .contains("FROM transaction_read_model_archive")
+        .contains("AND transaction_status = :status")
+        .contains("AND direction = :direction")
+        .contains("AND amount_minor >= :minAmountMinor")
+        .contains("AND amount_minor <= :maxAmountMinor")
+        .contains("AND transaction_reference = :transactionReference")
+        .contains("AND (booked_at, id) < (:cursorBookedAt, :cursorId)");
+    assertThat(hot.params().getValues()).isEqualTo(archive.params().getValues());
   }
 
   @Test
@@ -73,9 +126,18 @@ class TransactionReadQueryStatementTest {
     assertThat(TransactionReadQueryStatement.from(query(null)).sql())
         .startsWith("/* requestId=unknown queryShape=hot-timeline */");
 
+    RequestTraceContext.set("AZaz09_.:-");
+    assertThat(TransactionReadQueryStatement.from(query(null)).sql())
+        .startsWith("/* requestId=AZaz09_.:- queryShape=hot-timeline */");
+
     RequestTraceContext.set("x".repeat(120));
     assertThat(TransactionReadQueryStatement.from(query(null)).sql())
         .startsWith("/* requestId=%s queryShape=hot-timeline */".formatted("x".repeat(96)));
+
+    RequestTraceContext.set(("bad/id " + "y".repeat(120)));
+    assertThat(TransactionReadQueryStatement.from(query(null)).sql())
+        .startsWith(
+            "/* requestId=%s queryShape=hot-timeline */".formatted("bad_id_" + "y".repeat(89)));
   }
 
   @Test

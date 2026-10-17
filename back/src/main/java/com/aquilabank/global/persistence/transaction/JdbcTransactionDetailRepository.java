@@ -33,33 +33,38 @@ public class JdbcTransactionDetailRepository implements TransactionDetailReadPor
   @Override
   @Transactional(readOnly = true, transactionManager = "transactionReadTransactionManager")
   public Optional<TransactionDetail> find(TransactionDetailQuery query) {
-    TransactionDetailQueryStatement statement = TransactionDetailQueryStatement.from(query);
-    List<TransactionDetail> rows =
-        jdbcTemplate.query(statement.sql(), statement.params(), ROW_MAPPER);
+    List<TransactionDetail> rows = queryRows(TransactionDetailQueryStatement.from(query));
+    if (rows.isEmpty()) {
+      rows = queryRows(TransactionDetailQueryStatement.fromArchive(query));
+    }
     if (rows.size() > 1) {
       throw new IllegalStateException(
           "transaction detail query returned multiple rows for accountId=%d transactionReference=%s"
               .formatted(query.accountId(), query.transactionReference()));
     }
-    return rows.stream().findFirst();
+    return rows.isEmpty() ? Optional.empty() : Optional.of(rows.getFirst());
+  }
+
+  private List<TransactionDetail> queryRows(TransactionDetailQueryStatement statement) {
+    return jdbcTemplate.query(statement.sql(), statement.params(), ROW_MAPPER);
   }
 
   private static TransactionDetail mapRow(ResultSet rs) throws SQLException {
     return new TransactionDetail(
-        rs.getLong("account_id"),
-        rs.getString("transaction_reference"),
-        TransactionDirection.valueOf(rs.getString("direction")),
-        TransactionStatus.valueOf(rs.getString("transaction_status")),
-        rs.getLong("amount_minor"),
-        rs.getLong("balance_after_minor"),
-        rs.getString("currency_code"),
-        rs.getString("summary"),
-        rs.getString("counterparty_masked_name"),
-        toInstant(rs.getTimestamp("booked_at"), "booked_at"),
-        rs.getString("entry_reference"),
-        TransactionStatus.valueOf(rs.getString("entry_status")),
-        toInstant(rs.getTimestamp("occurred_at"), "occurred_at"),
-        rs.getString("description"));
+        rs.getLong(1),
+        rs.getString(2),
+        TransactionDirection.valueOf(rs.getString(3)),
+        TransactionStatus.valueOf(rs.getString(4)),
+        rs.getLong(5),
+        rs.getLong(6),
+        rs.getString(7),
+        rs.getString(8),
+        rs.getString(9),
+        toInstant(rs.getTimestamp(10), "booked_at"),
+        rs.getString(11),
+        TransactionStatus.valueOf(rs.getString(12)),
+        toInstant(rs.getTimestamp(13), "occurred_at"),
+        rs.getString(14));
   }
 
   private static Instant toInstant(Timestamp timestamp, String columnName) {

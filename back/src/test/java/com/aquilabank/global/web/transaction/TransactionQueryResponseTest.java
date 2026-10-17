@@ -60,6 +60,9 @@ class TransactionQueryResponseTest {
     assertFalse(
         code.contains("for (TransactionSummary item : items)"),
         "JFR에서 response item mapping 경로는 iterator 대신 index loop를 사용한다.");
+    assertFalse(
+        code.contains("new ArrayList"),
+        "response item mapping 경로는 ArrayList + List.copyOf 이중 배열 복사를 피한다.");
   }
 
   private static TransactionSummary summary(

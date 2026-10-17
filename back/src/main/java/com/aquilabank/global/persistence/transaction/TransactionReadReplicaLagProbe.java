@@ -17,9 +17,10 @@ public final class TransactionReadReplicaLagProbe {
       SELECT
           pg_is_in_recovery() AS in_recovery,
           CASE
-              WHEN pg_is_in_recovery()
-                  THEN FLOOR(EXTRACT(EPOCH FROM (clock_timestamp() - pg_last_xact_replay_timestamp())) * 1000)::bigint
-              ELSE 0
+              WHEN NOT pg_is_in_recovery() THEN 0::bigint
+              WHEN pg_last_wal_receive_lsn() = pg_last_wal_replay_lsn() THEN 0::bigint
+              WHEN pg_last_xact_replay_timestamp() IS NULL THEN NULL
+              ELSE GREATEST(0::bigint, FLOOR(EXTRACT(EPOCH FROM (clock_timestamp() - pg_last_xact_replay_timestamp())) * 1000)::bigint)
           END AS lag_ms
       """;
 

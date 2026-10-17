@@ -94,6 +94,47 @@ class TransactionReadAccountFairnessLimiterTest {
         .hasMessage("maxConcurrentRequests must be positive");
   }
 
+  @Test
+  void concurrentReleaseAndAcquireNeverExceedsLimitOrLeaksCounter() throws Exception {
+    TransactionReadAccountFairnessLimiter limiter = new TransactionReadAccountFairnessLimiter(1);
+    ExecutorService executor = Executors.newFixedThreadPool(4);
+    java.util.concurrent.atomic.AtomicInteger concurrentActive =
+        new java.util.concurrent.atomic.AtomicInteger();
+    java.util.concurrent.atomic.AtomicInteger maxObservedActive =
+        new java.util.concurrent.atomic.AtomicInteger();
+    try {
+      java.util.List<Future<?>> futures = new java.util.ArrayList<>();
+      for (int i = 0; i < 4; i++) {
+        futures.add(
+            executor.submit(
+                () -> {
+                  for (int iter = 0; iter < 500; iter++) {
+                    try {
+                      limiter.execute(
+                          101L,
+                          () -> {
+                            int current = concurrentActive.incrementAndGet();
+                            maxObservedActive.accumulateAndGet(current, Math::max);
+                            Thread.yield();
+                            concurrentActive.decrementAndGet();
+                            return "ok";
+                          });
+                    } catch (TransactionReadAccountFairnessRejectedException ignored) {
+                      // Expected when another thread holds the single slot
+                    }
+                  }
+                }));
+      }
+      for (Future<?> future : futures) {
+        future.get(5, TimeUnit.SECONDS);
+      }
+      assertThat(maxObservedActive.get()).isEqualTo(1);
+      assertThat(limiter.execute(101L, () -> "clean")).isEqualTo("clean");
+    } finally {
+      executor.shutdownNow();
+    }
+  }
+
   private static void await(CountDownLatch latch) {
     try {
       if (!latch.await(1, TimeUnit.SECONDS)) {

@@ -5,7 +5,6 @@ import com.aquilabank.domain.transaction.model.TransactionQuery;
 import com.aquilabank.domain.transaction.model.TransactionSlice;
 import com.aquilabank.domain.transaction.model.TransactionSummary;
 import com.aquilabank.domain.transaction.port.TransactionArchiveReadPort;
-import java.util.ArrayList;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.RowMapper;
@@ -35,9 +34,8 @@ public class JdbcTransactionArchiveReadRepository implements TransactionArchiveR
     List<TransactionSummary> rows =
         jdbcTemplate.query(statement.sql(), statement.params(), ROW_MAPPER);
     boolean hasNext = rows.size() > query.limit();
-    // hasNext 판단에만 쓴 sentinel row는 응답 전에 제거
-    List<TransactionSummary> items =
-        hasNext ? new ArrayList<>(rows.subList(0, query.limit())) : rows;
+    // hasNext 판단에만 쓴 sentinel row는 응답 전에 제거 (TransactionSlice.copyOf에서 단일 불변 복사 수행)
+    List<TransactionSummary> items = hasNext ? rows.subList(0, query.limit()) : rows;
     TransactionCursor nextCursor = hasNext ? toCursor(items.getLast()) : null;
     return new TransactionSlice(items, nextCursor, hasNext, query.limit());
   }

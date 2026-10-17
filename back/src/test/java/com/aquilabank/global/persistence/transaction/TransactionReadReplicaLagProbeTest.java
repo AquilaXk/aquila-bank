@@ -84,6 +84,13 @@ class TransactionReadReplicaLagProbeTest {
     assertThat(lag.reason()).isEqualTo("probe_error");
   }
 
+  @Test
+  void probeSqlTreatsCaughtUpWriteIdleReplicaAsZeroLag() {
+    assertThat(TransactionReadReplicaLagProbe.PROBE_SQL)
+        .contains("pg_last_wal_receive_lsn() = pg_last_wal_replay_lsn()")
+        .contains("THEN 0::bigint");
+  }
+
   private static TransactionReadReplicaProperties properties() {
     return new TransactionReadReplicaProperties(
         true,

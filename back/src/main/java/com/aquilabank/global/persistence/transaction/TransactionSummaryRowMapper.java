@@ -13,22 +13,34 @@ final class TransactionSummaryRowMapper implements RowMapper<TransactionSummary>
 
   static final TransactionSummaryRowMapper INSTANCE = new TransactionSummaryRowMapper();
 
+  private static final int COL_ID = 1;
+  private static final int COL_ACCOUNT_ID = 2;
+  private static final int COL_TRANSACTION_REFERENCE = 3;
+  private static final int COL_DIRECTION = 4;
+  private static final int COL_TRANSACTION_STATUS = 5;
+  private static final int COL_AMOUNT_MINOR = 6;
+  private static final int COL_BALANCE_AFTER_MINOR = 7;
+  private static final int COL_CURRENCY_CODE = 8;
+  private static final int COL_SUMMARY = 9;
+  private static final int COL_COUNTERPARTY_MASKED_NAME = 10;
+  private static final int COL_BOOKED_AT = 11;
+
   private TransactionSummaryRowMapper() {}
 
   @Override
   public TransactionSummary mapRow(ResultSet rs, int rowNum) throws SQLException {
-    OffsetDateTime bookedAt = rs.getObject("booked_at", OffsetDateTime.class);
+    OffsetDateTime bookedAt = rs.getObject(COL_BOOKED_AT, OffsetDateTime.class);
     return new TransactionSummary(
-        rs.getLong("id"),
-        rs.getLong("account_id"),
-        rs.getString("transaction_reference"),
-        direction(rs.getString("direction")),
-        status(rs.getString("transaction_status")),
-        rs.getLong("amount_minor"),
-        rs.getLong("balance_after_minor"),
-        rs.getString("currency_code"),
-        rs.getString("summary"),
-        rs.getString("counterparty_masked_name"),
+        rs.getLong(COL_ID),
+        rs.getLong(COL_ACCOUNT_ID),
+        rs.getString(COL_TRANSACTION_REFERENCE),
+        direction(rs.getString(COL_DIRECTION)),
+        status(rs.getString(COL_TRANSACTION_STATUS)),
+        rs.getLong(COL_AMOUNT_MINOR),
+        rs.getLong(COL_BALANCE_AFTER_MINOR),
+        rs.getString(COL_CURRENCY_CODE),
+        rs.getString(COL_SUMMARY),
+        rs.getString(COL_COUNTERPARTY_MASKED_NAME),
         bookedAt.toInstant());
   }
 

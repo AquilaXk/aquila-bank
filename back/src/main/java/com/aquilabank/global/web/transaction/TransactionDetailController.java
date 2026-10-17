@@ -1,5 +1,6 @@
 package com.aquilabank.global.web.transaction;
 
+import com.aquilabank.domain.transaction.model.TransactionDetail;
 import com.aquilabank.domain.transaction.model.TransactionDetailQuery;
 import com.aquilabank.domain.transaction.usecase.TransactionDetailQueryUseCase;
 import com.aquilabank.global.security.AuthenticatedRequestPrincipal;
@@ -23,12 +24,21 @@ public class TransactionDetailController {
 
   private final TransactionDetailQueryUseCase transactionDetailQueryUseCase;
   private final RequestAccountAuthorizationService requestAccountAuthorizationService;
+  private final TransactionReadHotPathMetrics hotPathMetrics;
+  private final TransactionReadSingleFlight singleFlight;
+  private final TransactionReadAccountFairnessLimiter accountFairnessLimiter;
 
   public TransactionDetailController(
       TransactionDetailQueryUseCase transactionDetailQueryUseCase,
-      RequestAccountAuthorizationService requestAccountAuthorizationService) {
+      RequestAccountAuthorizationService requestAccountAuthorizationService,
+      TransactionReadHotPathMetrics hotPathMetrics,
+      TransactionReadSingleFlight singleFlight,
+      TransactionReadAccountFairnessLimiter accountFairnessLimiter) {
     this.transactionDetailQueryUseCase = transactionDetailQueryUseCase;
     this.requestAccountAuthorizationService = requestAccountAuthorizationService;
+    this.hotPathMetrics = hotPathMetrics;
+    this.singleFlight = singleFlight;
+    this.accountFairnessLimiter = accountFairnessLimiter;
   }
 
   @GetMapping("/{transactionReference}")
@@ -36,13 +46,41 @@ public class TransactionDetailController {
       @CurrentAuthenticatedPrincipal AuthenticatedRequestPrincipal principal,
       @PathVariable String transactionReference,
       @RequestParam @Positive(message = "accountId must be positive") long accountId) {
+    return hotPathMetrics.record(
+        TransactionReadHotPathMetrics.ENDPOINT_DETAIL,
+        TransactionReadHotPathMetrics.STAGE_TOTAL,
+        () -> getTransactionDetailMeasured(principal, transactionReference, accountId));
+  }
+
+  private TransactionDetailResponse getTransactionDetailMeasured(
+      AuthenticatedRequestPrincipal principal, String transactionReference, long accountId) {
     try {
       // 권한 실패를 먼저 끊어 타 계좌 거래 존재 여부를 상세 응답으로 노출하지 않습니다.
       long resolvedAccountId =
-          requestAccountAuthorizationService.resolveReadableAccountId(principal, accountId);
-      return TransactionDetailResponse.from(
-          transactionDetailQueryUseCase.getTransactionDetail(
-              new TransactionDetailQuery(resolvedAccountId, transactionReference)));
+          hotPathMetrics.record(
+              TransactionReadHotPathMetrics.ENDPOINT_DETAIL,
+              TransactionReadHotPathMetrics.STAGE_AUTHORIZATION,
+              () ->
+                  requestAccountAuthorizationService.resolveReadableAccountId(
+                      principal, accountId));
+      TransactionDetailQuery query =
+          new TransactionDetailQuery(resolvedAccountId, transactionReference);
+      TransactionDetail detail =
+          hotPathMetrics.record(
+              TransactionReadHotPathMetrics.ENDPOINT_DETAIL,
+              TransactionReadHotPathMetrics.STAGE_USECASE,
+              () ->
+                  accountFairnessLimiter.execute(
+                      resolvedAccountId,
+                      () ->
+                          singleFlight.execute(
+                              TransactionReadHotPathMetrics.ENDPOINT_DETAIL,
+                              query,
+                              () -> transactionDetailQueryUseCase.getTransactionDetail(query))));
+      return hotPathMetrics.record(
+          TransactionReadHotPathMetrics.ENDPOINT_DETAIL,
+          TransactionReadHotPathMetrics.STAGE_RESPONSE_MAPPING,
+          () -> TransactionDetailResponse.from(detail));
     } catch (IllegalArgumentException ex) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage(), ex);
     }
