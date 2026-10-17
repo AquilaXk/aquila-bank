@@ -2,125 +2,84 @@
 DROP INDEX IF EXISTS idx_outbox_event_publish_queue;
 DROP INDEX IF EXISTS idx_outbox_event_status_created_at;
 
+CREATE OR REPLACE FUNCTION provider_delivery_metric_extract(
+    p_delivery_status VARCHAR,
+    p_skip_reason VARCHAR
+)
+RETURNS TABLE(metric_type VARCHAR(32), metric_name VARCHAR(64))
+LANGUAGE sql
+IMMUTABLE
+AS $$
+    SELECT v.metric_type, v.metric_name
+    FROM (
+        VALUES
+            ('STATUS'::VARCHAR(32), p_delivery_status::VARCHAR(64)),
+            ('SKIP_REASON'::VARCHAR(32), CASE WHEN p_delivery_status = 'SKIPPED' THEN p_skip_reason::VARCHAR(64) END)
+    ) AS v(metric_type, metric_name)
+    WHERE v.metric_name IS NOT NULL;
+$$;
+
 CREATE OR REPLACE FUNCTION provider_delivery_metric_summary_track()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    item RECORD;
     current_queue_name VARCHAR(64) := TG_ARGV[0];
-    metric_type_status CONSTANT VARCHAR(32) := 'STATUS';
-    metric_type_skip_reason CONSTANT VARCHAR(32) := 'SKIP_REASON';
-    status_skipped CONSTANT VARCHAR(32) := 'SKIPPED';
 BEGIN
-    -- old/new transition delta를 합산한 뒤 (metric_type, metric_name) 오름차순으로만 갱신해 동시 워커 교착을 막습니다.
+    -- transition table의 상태/스킵 사유 변동을 (metric_type, metric_name) 오름차순으로 일괄 반영해 동시 워커 교착을 막습니다.
     IF TG_OP = 'INSERT' THEN
-        FOR item IN
-            SELECT metric_type,
-                   metric_name,
-                   SUM(delta)::BIGINT AS metric_delta
-            FROM (
-                SELECT metric_type_status AS metric_type,
-                       delivery_status AS metric_name,
-                       COUNT(*)::BIGINT AS delta
-                FROM new_rows
-                GROUP BY delivery_status
-                UNION ALL
-                SELECT metric_type_skip_reason AS metric_type,
-                       skip_reason AS metric_name,
-                       COUNT(*)::BIGINT AS delta
-                FROM new_rows
-                WHERE delivery_status = status_skipped
-                  AND skip_reason IS NOT NULL
-                GROUP BY skip_reason
-            ) deltas
-            GROUP BY metric_type, metric_name
-            HAVING SUM(delta) <> 0
-            ORDER BY metric_type ASC, metric_name ASC
-        LOOP
-            PERFORM provider_delivery_metric_summary_adjust(
-                current_queue_name,
-                item.metric_type,
-                item.metric_name,
-                item.metric_delta
-            );
-        END LOOP;
+        PERFORM provider_delivery_metric_summary_adjust(
+            current_queue_name,
+            ins_d.metric_type,
+            ins_d.metric_name,
+            ins_d.metric_delta
+        )
+        FROM (
+            SELECT m.metric_type,
+                   m.metric_name,
+                   COUNT(*)::BIGINT AS metric_delta
+            FROM new_rows nr
+            CROSS JOIN LATERAL provider_delivery_metric_extract(nr.delivery_status, nr.skip_reason) m
+            GROUP BY m.metric_type, m.metric_name
+            ORDER BY m.metric_type ASC, m.metric_name ASC
+        ) ins_d;
     ELSIF TG_OP = 'UPDATE' THEN
-        FOR item IN
-            SELECT metric_type,
-                   metric_name,
-                   SUM(delta)::BIGINT AS metric_delta
+        PERFORM provider_delivery_metric_summary_adjust(
+            current_queue_name,
+            upd_d.metric_type,
+            upd_d.metric_name,
+            upd_d.metric_delta
+        )
+        FROM (
+            SELECT um.metric_type,
+                   um.metric_name,
+                   SUM(s.weight)::BIGINT AS metric_delta
             FROM (
-                SELECT metric_type_status AS metric_type,
-                       delivery_status AS metric_name,
-                       -COUNT(*)::BIGINT AS delta
-                FROM old_rows
-                GROUP BY delivery_status
+                SELECT o.delivery_status, o.skip_reason, -1::BIGINT AS weight FROM old_rows o
                 UNION ALL
-                SELECT metric_type_skip_reason AS metric_type,
-                       skip_reason AS metric_name,
-                       -COUNT(*)::BIGINT AS delta
-                FROM old_rows
-                WHERE delivery_status = status_skipped
-                  AND skip_reason IS NOT NULL
-                GROUP BY skip_reason
-                UNION ALL
-                SELECT metric_type_status AS metric_type,
-                       delivery_status AS metric_name,
-                       COUNT(*)::BIGINT AS delta
-                FROM new_rows
-                GROUP BY delivery_status
-                UNION ALL
-                SELECT metric_type_skip_reason AS metric_type,
-                       skip_reason AS metric_name,
-                       COUNT(*)::BIGINT AS delta
-                FROM new_rows
-                WHERE delivery_status = status_skipped
-                  AND skip_reason IS NOT NULL
-                GROUP BY skip_reason
-            ) deltas
-            GROUP BY metric_type, metric_name
-            HAVING SUM(delta) <> 0
-            ORDER BY metric_type ASC, metric_name ASC
-        LOOP
-            PERFORM provider_delivery_metric_summary_adjust(
-                current_queue_name,
-                item.metric_type,
-                item.metric_name,
-                item.metric_delta
-            );
-        END LOOP;
+                SELECT n.delivery_status, n.skip_reason, 1::BIGINT AS weight FROM new_rows n
+            ) s
+            CROSS JOIN LATERAL provider_delivery_metric_extract(s.delivery_status, s.skip_reason) um
+            GROUP BY um.metric_type, um.metric_name
+            HAVING SUM(s.weight) <> 0
+            ORDER BY um.metric_type ASC, um.metric_name ASC
+        ) upd_d;
     ELSIF TG_OP = 'DELETE' THEN
-        FOR item IN
-            SELECT metric_type,
-                   metric_name,
-                   SUM(delta)::BIGINT AS metric_delta
-            FROM (
-                SELECT metric_type_status AS metric_type,
-                       delivery_status AS metric_name,
-                       -COUNT(*)::BIGINT AS delta
-                FROM old_rows
-                GROUP BY delivery_status
-                UNION ALL
-                SELECT metric_type_skip_reason AS metric_type,
-                       skip_reason AS metric_name,
-                       -COUNT(*)::BIGINT AS delta
-                FROM old_rows
-                WHERE delivery_status = status_skipped
-                  AND skip_reason IS NOT NULL
-                GROUP BY skip_reason
-            ) deltas
-            GROUP BY metric_type, metric_name
-            HAVING SUM(delta) <> 0
-            ORDER BY metric_type ASC, metric_name ASC
-        LOOP
-            PERFORM provider_delivery_metric_summary_adjust(
-                current_queue_name,
-                item.metric_type,
-                item.metric_name,
-                item.metric_delta
-            );
-        END LOOP;
+        PERFORM provider_delivery_metric_summary_adjust(
+            current_queue_name,
+            del_d.metric_type,
+            del_d.metric_name,
+            del_d.metric_delta
+        )
+        FROM (
+            SELECT dm.metric_type,
+                   dm.metric_name,
+                   -COUNT(*)::BIGINT AS metric_delta
+            FROM old_rows dr
+            CROSS JOIN LATERAL provider_delivery_metric_extract(dr.delivery_status, dr.skip_reason) dm
+            GROUP BY dm.metric_type, dm.metric_name
+            ORDER BY dm.metric_type ASC, dm.metric_name ASC
+        ) del_d;
     END IF;
 
     RETURN NULL;
