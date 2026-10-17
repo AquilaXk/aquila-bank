@@ -50,20 +50,20 @@
 
 ### 배경
 
-웹뱅킹 포트폴리오는 화면과 CRUD 기능만으로는 실제 운영 난도를 설명하기 어렵습니다. Aquila Bank는 은행권 전체 시스템을 재현하지 않고, 개인 프로젝트 범위에서 검증 가능한 핵심 경계만 좁게 잡았습니다.
+Aquila Bank는 내부 계좌 이체, 원장 정합성, 대량 거래 조회, 실시간 알림이라는 네 가지 핵심 금융 경계를 제한된 클라우드 예산(OCI A1 Flex) 안에서 실증합니다.
 
-| 문제 | 설명 |
+| 과제 | 설계 방향 |
 | --- | --- |
-| 정합성 우선순위 부족 | 잔액, 원장, 감사 이력이 기능 구현 뒤로 밀리면 송금 도메인을 설명하기 어렵습니다. |
-| 대량 조회 경로 과장 | 전체 1억 건 검색/정렬을 온라인 목표로 두면 작은 인프라 budget과 맞지 않습니다. |
-| 알림 경로 불명확 | 실시간 알림은 재시도, 중복 방지, 재동기화 경계가 함께 설명되어야 합니다. |
-| 성능 주장 근거 부족 | fixture pass나 harness 통과만으로 성능 개선을 주장하지 않도록 evidence 기준이 필요합니다. |
+| 거래 및 원장 정합성 | 잔액 스냅샷, 복식 원장 기록, 감사 추적을 단일 트랜잭션 경계로 묶어 동시성 오류를 차단합니다. |
+| 대량 조회 비용 제어 | 1억 건 규모 거래 내역에 대해 계좌·기간·커서 조건을 결합한 Keyset 조회와 타임아웃을 강제합니다. |
+| 비동기 알림 신뢰성 | Outbox 적재, 선택적 Kafka 발행, 알림 Inbox, SSE 재연결 복구 경계를 단계별로 분리합니다. |
+| 실측 기반 성능 검증 | 성능 개선 여부는 OCI A1 또는 프로덕션에 준하는 환경의 라이브 아티팩트와 메트릭으로 판정합니다. |
 
 ### 목표
 
-실제 은행 운영 서비스를 대체하는 것이 아니라, 웹뱅킹 핵심 흐름을 다음 기준으로 보여주는 프로젝트입니다.
+웹뱅킹 핵심 흐름을 다음 아키텍처 기준으로 설계하고 검증합니다.
 
-| 구분 | AS-IS | TO-BE |
+| 구분 | 기존 일반적 구성 | Aquila Bank 기준 |
 | --- | --- | --- |
 | 거래 처리 | API 성공 응답 중심 | 계좌 잔액, 원장, 감사 추적 경계 우선 |
 | 거래 조회 | offset/전체 검색 중심 | `accountId + 기간 + keyset pagination` bounded query |
@@ -72,79 +72,47 @@
 
 ### 핵심 가치
 
-- **거래 정합성 우선**: 계좌 잔액, 원장, 감사 추적을 기능 수보다 먼저 둡니다.
-- **작은 인프라 기준**: OCI A1 Flex 4 OCPU / 24GB + 200GB data volume을 기준 budget으로 둡니다.
-- **대량 조회 제한**: 1억 건 전체 검색이 아니라 계좌/기간/커서 기반 bounded read path를 목표로 합니다.
-- **비동기 운영 경계**: outbox retry, Kafka publish, notification inbox, SSE replay 경계를 분리합니다.
-- **증거 기반 성능 판단**: `[Perf]` 주장은 OCI 또는 production-like live artifact가 있을 때만 사용합니다.
+- 거래 정합성 우선: 계좌 잔액, 원장, 감사 추적을 기능 수보다 먼저 둡니다.
+- 작은 인프라 기준: OCI A1 Flex 4 OCPU / 24GB + 200GB data volume을 기준 budget으로 둡니다.
+- 대량 조회 경계: 계좌, 기간, 커서 기반의 bounded read path와 명시적 타임아웃을 적용합니다.
+- 비동기 운영 경계: outbox retry, Kafka publish, notification inbox, SSE replay 경계를 분리합니다.
+- 증거 기반 성능 판단: `[Perf]` 주장은 OCI 또는 production-like live artifact가 있을 때만 사용합니다.
 
-공과금, 오픈뱅킹, 인증서, 보안매체 같은 메뉴는 실제 기관 연동이 아니라 고객 신청 접수와 mock/webhook boundary를 보여주는 데모 범위입니다. 운영자 처리와 callback 샘플은 [Customer Application Mock Webhook](docs/customer-application-mock-webhook.md)에 정리했습니다.
+공과금, 오픈뱅킹, 인증서, 보안매체 메뉴는 고객 신청 접수부터 운영자 검토·승인·콜백 실행까지의 상태 전이 경계를 다룹니다. 운영자 처리와 callback 샘플은 [Customer Application Mock Webhook](docs/customer-application-mock-webhook.md)에 정리했습니다.
 
 ## 주요 기능
 
 | 기능 | 설명 | 기술 포인트 |
 | --- | --- | --- |
-| 계좌 관리 | 계좌 생성, 상태 관리, 잔액 조회 | 계좌 상태 정책, snapshot 점검/복구 데모, 대표 계좌 글로우 카드 |
-| 내부 이체 | 송금, preview, 부분 취소, 한도/잔액/상태 검증, **동시 양방향 교차 이체 데드락 방지** | command idempotency, 원장 감사 추적, **Ordered Row Locking** |
-| 거래 조회 | 계좌별 거래 목록과 상세 조회 | keyset pagination, covering index, card-based table, timeout |
+| 계좌 관리 | 계좌 생성, 상태 관리, 잔액 조회 | 계좌 상태 정책, snapshot 점검/복구, 대표 계좌 및 출금 가능 금액 조회 |
+| 내부 이체 | 송금, 사전 검증, 부분 취소, 한도/잔액/상태 검증, 동시 양방향 교차 이체 데드락 방지 | command idempotency, 원장 감사 추적, Ordered Row Locking |
+| 거래 조회 | 계좌별 거래 목록과 상세 조회 | keyset pagination, covering index, 명시적 쿼리 타임아웃 |
 | 인증/보안 | JWT access token, refresh token session, MFA TOTP | session revoke, backup code, remember device |
-| 고객 신청 | 신청 접수, 조회, 취소, 운영자 검토/승인/실행 | 상태 전이 감사, mock webhook boundary |
+| 고객 신청 | 신청 접수, 조회, 취소, 운영자 검토/승인/실행 | 상태 전이 감사, webhook callback 경계 |
 | 알림 | 알림 inbox, unread projection, SSE stream | outbox retry, Kafka 선택 publish, replay |
-| 운영 도구 | 내부 admin API, recovery action, **실시간 운영 지표 및 배치 모니터링 대시보드** | audit search, admission control, DLQ/redrive, **Outbox·원장 실시간 감시** |
+| 운영 도구 | 내부 admin API, 수동 복구 액션, 운영 콘솔 대시보드 | Outbox/DLQ 조회 및 재처리, 멱등성 락 해제, 원장 스냅샷 드리프트 점검, 감사 로그 조회 |
 
-### 실제 화면 (UI Refresh)
+### 화면 구성 및 디자인 시스템
 
-프런트엔드는 다크 뉴트럴 차콜(`--bg-page: #0B0D13`) 배경, 시그니처 라벤더(`--accent-lavender: #A78BFA`) 글로우 하이라이트, 마이크로그리드 패턴(`bg-micro-grid`) 및 고정폭 모노스페이스 숫자(`JetBrains Mono`, `tabular-nums`)가 적용된 모던 뱅킹 디자인 시스템으로 구성되어 있습니다.
+프런트엔드는 라이트/다크 시스템 환경에 자동 대응하는 적응형 컬러 스킴(`color-scheme: light dark`, `light-dark()`), 슬레이트 뉴트럴 서피스(`#F8F9FC` / `#121317`), 시그니처 블루 포인트(`#3279F9`), `1px` 헤어라인 보더, 고정폭 숫자(`tabular-nums`) 기반의 웹뱅킹 인터페이스로 구성되어 있습니다.
 
-메인 화면에서 대표 계좌 요약 카드와 메뉴 통합검색 흐름을 먼저 확인할 수 있고, 계좌/이체/거래내역 같은 보호 업무는 세션 상태에 맞춰 분리합니다.
-
-![Aquila Bank customer banking search](docs/assets/readme-customer-banking-search.jpg)
-
-로그인 후에는 전계좌조회, 즉시이체, 거래내역 keyset 조회, 인증센터 세션 관리, 고객센터 신청 상태를 통일된 디자인 시스템 shell 안에서 처리합니다.
-
-#### 계좌조회
-
-보유 계좌 목록, 계좌 상태, 출금 가능 금액을 한 화면에서 확인하고 선택 계좌 기준으로 상세 조회를 이어갈 수 있습니다. 출금 가능 잔액 카드에는 시그니처 라벤더 글로우와 모노스페이스 숫자가 적용되어 금액 식별성을 높였습니다.
-
-![Aquila Bank customer banking account list](docs/assets/readme-customer-banking-accounts.jpg)
-
-#### 즉시이체
-
-받는 분 확인, 이체 확인, OTP 확인, 완료증 출력까지 이어지는 내부 이체 흐름을 보여줍니다. 반응형 인터랙티브 계좌 스왑(맞바꿈) 버튼과 퀵 금액 선택 위젯(+1만, +5만, +10만, +100만, 정정)을 통해 빠르고 직관적인 송금 경험을 제공합니다.
-
-![Aquila Bank customer banking transfer receipt](docs/assets/readme-customer-banking-transfer.jpg)
-
-#### 거래내역 조회
-
-계좌, 기간, 상태, 금액 조건을 입력하고 keyset cursor 기준으로 다음 페이지를 이어 조회하는 대량 조회 UX입니다. 카드 기반 Keyset 테이블과 행 호버 트랜지션, 소프트 시맨틱 상태 뱃지를 제공합니다.
-
-![Aquila Bank customer banking transaction search](docs/assets/readme-customer-banking-transactions.jpg)
-
-#### 인증센터
-
-로그인 세션, 보안매체, OTP/복구코드, 기기별 세션 해지 같은 인증 후 보안 관리 화면입니다.
-
-![Aquila Bank customer banking security center](docs/assets/readme-customer-banking-security.jpg)
-
-#### 고객센터/사고신고
-
-사고신고와 고객 신청 접수 상태를 조회하고, 운영자 검토와 mock/webhook boundary를 확인하는 화면입니다.
-
-![Aquila Bank customer banking application status](docs/assets/readme-customer-banking-application.jpg)
-
-#### 운영 지표 및 배치 상태 모니터링 대시보드
-
-실시간 이벤트 Outbox 대기열(지연 건수 및 릴레이 처리율), DLQ/격리 이벤트, 원장 스냅샷 드리프트 감지, Stale 멱등성 락 상태 및 일일 원장 대사/릴레이 배치 데몬 상태를 점검하는 운영 콘솔 모니터링 대시보드입니다.
-
-![Aquila Bank operations metrics dashboard](docs/assets/readme-ops-monitoring.jpg)
+| 화면 구분 | 주요 역할 | 세부 기능 및 화면 구성 |
+| --- | --- | --- |
+| 통합 검색 및 홈 | 메인 허브 및 바로가기 | 대표 계좌 요약, 빠른 이체 금액 입력, 업무 및 메뉴 키워드 실시간 검색 |
+| 계좌 조회 | 전계좌 및 잔액 관리 | 보유 계좌 목록, 계좌 상태(정상/한도제한/거래중지), 출금 가능 금액 확인 및 상세 조회 연동 |
+| 즉시 이체 | 내부 송금 처리 | 출금/입금 계좌 맞바꿈(Swap), 금액 증분 입력(+1만, +5만, +10만, +100만, 정정), 수취인 확인, OTP 인증 및 이체 완료 내역 출력 |
+| 거래내역 조회 | 대량 거래 내역 탐색 | 계좌·기간·상태·금액 조건 필터링, 커서 기반 다음 페이지 연속 조회 |
+| 인증센터 | 보안 및 세션 제어 | 활성 로그인 세션 목록, 접속 기기/IP 조회 및 원격 세션 해지, TOTP MFA 등록 및 복구 코드 관리 |
+| 고객센터 및 사고신고 | 사고신고 및 신청 관리 | 사고신고 접수 및 처리 상태 추적, 고객 신청 접수와 운영자 검토·승인·실행 상태 확인 |
+| 운영 콘솔 | 파이프라인 점검 및 수동 복구 | Outbox 대기열 및 DLQ 이벤트 조회/재처리, 만료된 멱등성 락 해제, 원장 스냅샷 드리프트 점검, 감사 로그 실시간 조회 |
 
 ## 시스템 아키텍처
 
 ```mermaid
 flowchart TD
     subgraph Client["Client Layer (Next.js 14 / React 18)"]
-        UI["고객 뱅킹 웹 UI<br/>(Tailwind CSS / Signature Lavender)"]
-        OpsUI["운영 콘솔 대시보드<br/>(실시간 메트릭 & 배치 감시)"]
+        UI["고객 뱅킹 웹 UI<br/>(Adaptive Slate & Blue)"]
+        OpsUI["운영 콘솔 대시보드<br/>(Outbox·DLQ·원장 점검 및 복구)"]
     end
 
     subgraph Edge["Edge / Reverse Proxy Layer"]
@@ -308,14 +276,14 @@ erDiagram
 | 설계 원칙 | 내용 |
 | --- | --- |
 | domain 독립성 | `domain`은 framework/infrastructure 구현에 의존하지 않습니다. |
-| 원장 우선 | 송금 결과는 잔액 변경뿐 아니라 감사 가능한 원장 흐름으로 설명합니다. |
+| 원장 우선 | 송금 결과는 계좌 잔액 스냅샷 갱신과 불변 원장(Ledger Entry) 기록을 단일 트랜잭션으로 묶어 처리합니다. |
 | idempotency | 재시도 상황에서 같은 command가 중복 실행되지 않도록 경계를 둡니다. |
 | audit trail | 상태 변경과 운영자 조작은 추적 가능한 기록으로 남깁니다. |
-| **데드락 방지 (Ordered Row Locking)** | **동시 양방향 교차 송금(A→B, B→A) 시 계좌 ID를 오름차순(Natural Order)으로 정렬하여 balance snapshot 및 계좌 행 락(SELECT FOR UPDATE)을 순차 획득함으로써 순환 대기(Circular Wait) 데드락을 원천 차단합니다.** |
+| 데드락 방지 (Ordered Row Locking) | 동시 양방향 교차 송금(A→B, B→A) 시 계좌 ID 오름차순으로 balance snapshot 및 계좌 행 락(SELECT FOR UPDATE)을 순차 획득하여 순환 대기 데드락을 차단합니다. |
 
 ### 2. 1억 건 거래 조회 경로
 
-온라인 조회 목표는 전체 데이터 검색이 아니라 bounded query입니다.
+온라인 거래 조회는 계좌와 기간, 커서를 결합한 bounded query로 처리합니다.
 
 ```text
 accountId + date range + status + cursor
@@ -343,14 +311,14 @@ small page response / timeout / admission control
 | SSE fan-out | reconnect gap은 bounded replay와 pull API 재동기화로 보완합니다. |
 | DLQ/redrive | 실패 event는 운영 API로 확인하고 재처리 경로를 둡니다. |
 
-### 4. 실시간 운영 지표 및 배치 상태 감시
+### 4. 운영 콘솔 및 수동 복구 경계
 
-운영 콘솔은 금융 시스템의 건전성을 실시간으로 확인하고 자동화된 배치 상태를 점검합니다.
+운영 콘솔은 내부 관리 API를 통해 비동기 이벤트 파이프라인, 멱등성 락, 원장 스냅샷 드리프트, 감사 로그를 실시간 조회하고 수동 복구 작업을 실행합니다.
 
-- **이벤트 Outbox 대기열**: 지연 건수 및 릴레이 처리율을 실시간 추적하여 메시지 큐 적체를 사전에 감지합니다.
-- **DLQ 및 격리 이벤트**: 재시도 상한을 초과한 이벤트를 격리 보관하고 운영자가 즉시 재처리(Redrive)할 수 있습니다.
-- **원장 스냅샷 일일 대사**: 원장 잔액과 snapshot drift 불일치를 실시간 점검하며, 매일 일일 대사 배치가 자동 동기화 가드를 수행합니다.
-- **멱등성 락 관리**: 비정상 중단된 Stale 멱등성 락을 주기적인 정리 배치를 통해 해제하여 연속 이체 차단을 방지합니다.
+- Outbox 및 DLQ 관리: 발송 대기 중인 Outbox 이벤트와 재시도 상한을 초과한 DLQ/격리 이벤트를 조회하고 수동 재처리(Redrive)를 실행합니다.
+- 멱등성 락 제어: 비정상 중단된 요청의 만료된(Stale) 멱등성 락 현황을 확인하고 수동 해제를 수행합니다.
+- 원장 스냅샷 드리프트 점검: 원장 합산 금액과 계좌 잔액 스냅샷 간의 불일치(Drift) 여부를 조회하고 스냅샷 재계산 복구를 실행합니다.
+- 감사 로그 조회: 주요 상태 변경과 운영자 조치 이력을 조건별로 실시간 검색합니다.
 
 ### 5. Evidence 기반 성능 판단
 
@@ -360,18 +328,21 @@ small page response / timeout / admission control
 - synthetic fixture pass, mock evidence, harness-only pass는 성능 개선 증거로 보지 않습니다.
 - shell script, workflow, evidence harness 수정은 병목 확인을 막는 차단 사유가 있을 때만 최소 범위로 진행합니다.
 
-### 6. Delivery flow
+### 6. 개발 및 운영 워크플로우
 
 ```text
-issue -> docs/agent brief -> branch from main -> commit plan -> push -> PR to main
+Epic -> Sub-Issue -> 격리 브랜치(from main) -> 수직 슬라이스 PR
         |
         v
-GitHub Actions CI -> main merge -> staging auto deploy -> production manual promotion/tag
+GitHub Actions CI + 2중 코드리뷰(aquila-review & security-reviewer) -> main 병합
+        |
+        v
+staging 자동 배포 -> production 수동 승격(prod-* 태그) 및 GitHub Release 발행
 ```
 
-- 작업 브랜치는 `main`에서 짧게 분기하고 PR base는 `main`으로 둡니다.
-- `main` merge SHA는 staging에 자동 배포합니다.
-- production은 staging 성공 같은 SHA만 GitHub Environment 수동 승인 또는 `prod-*` tag로 승격합니다.
+- 도메인 목표 단위의 Epic 아래에 Sub-Issue를 두고, 연관된 변경은 하나의 수직 슬라이스(Vertical Slice) PR로 묶어 발행합니다.
+- 모든 PR은 GitHub Actions 품질 게이트와 `aquila-review`(5대 적대적 감사 게이트 + 4-Pass 리뷰) 및 `security-reviewer`(3-Lens 보안 감사) 2중 코드리뷰를 통과하고 미해결 스레드 0건을 확인한 뒤 `main`에 병합합니다.
+- `main` 병합 커밋은 staging 환경에 자동 배포되며, 검증이 끝난 동일 SHA만 GitHub Environment 수동 승인 또는 `prod-*` 태그로 승격하고 `.github/release.yml` 기반 GitHub Release를 발행합니다.
 - 미완성 기능은 장기 `develop` 브랜치 대신 feature flag로 기본 비노출 처리합니다.
 
 ## 기술 스택
@@ -502,6 +473,7 @@ yarn --cwd front build
 ### Frontend Contract & Visual E2E
 
 ```bash
+yarn --cwd front test:api-parity
 yarn --cwd front test:ui-contract
 yarn --cwd front test:login-runtime
 yarn --cwd front test:e2e:visual
@@ -509,7 +481,7 @@ yarn --cwd front test:e2e:live-artifacts
 yarn --cwd front test:e2e:authenticated
 ```
 
-- 프런트 contract 및 정적 검증은 독립 실행 가능하며, Playwright 기반 E2E 및 Visual QA를 통해 모바일/데스크톱 반응형 3열 구조, 레이아웃 바운더리, 접근성 및 라이브 아티팩트 생성을 결정론적으로 검증합니다.
+- 백엔드 OpenAPI 스펙과 프런트엔드 API 클라이언트 간의 패리티(`test:api-parity`), 적응형 디자인 시스템 토큰 및 UI 도메인 계약(`test:ui-contract`), Playwright 기반 반응형 레이아웃 바운더리와 접근성을 결정론적으로 검증합니다.
 
 ### Load / Evidence
 
@@ -566,7 +538,7 @@ docker compose -f compose.yml -f compose.loadtest.yml --profile loadtest up -d
 
 | 항목 | 기준 |
 | --- | --- |
-| PR type | live artifact 없는 harness 정리는 `[Perf]`가 아니라 `[Test]`, `[CI]`, `[Chore]` |
+| PR 분류 | 실측 라이브 아티팩트가 포함된 개선만 `[Perf]`로 분류하며, 테스트/스크립트 정리는 `[Test]`, `[CI]`, `[Chore]`를 사용 |
 | 병목 근거 | 코드 hot path, DB query/index/statistics, runtime/application 설정 중 하나 |
 | 증거 | OCI 또는 production-like run id, artifact URL, 주요 수치 |
 
@@ -583,6 +555,6 @@ docker compose -f compose.yml -f compose.loadtest.yml --profile loadtest up -d
 
 ## 프로젝트에서 강조하고 싶은 점
 
-Aquila Bank는 실제 은행 서비스를 대체하려는 구현이 아닙니다. 개인 프로젝트 범위에서 웹뱅킹 핵심 흐름을 정합성 있게 구성하고, 작은 OCI A1 budget에서 대량 거래 조회와 알림 경로를 어떻게 제한하고 검증할지 보여주는 포트폴리오입니다.
+Aquila Bank는 제한된 클라우드 예산(OCI A1 Flex 4 OCPU / 24GB RAM) 안에서 웹뱅킹 핵심 흐름의 정합성과 대량 조회·알림 경계를 끝까지 검증하는 프로젝트입니다.
 
-기능 수보다 거래 정합성, bounded query, outbox/SSE 알림, admission control, 운영 evidence를 같은 레벨에서 관리하는 데 초점을 둡니다. 외부기관 연동과 은행권 운영통제는 명시적으로 범위 밖에 둡니다.
+기능 수보다 거래/원장 트랜잭션 정합성, Ordered Row Locking 기반 동시성 제어, 1억 건 규모 Keyset 조회 경로, Outbox/SSE 알림 파이프라인, Admission Control, 실측 기반 운영 증거를 일관된 수준으로 관리하는 데 초점을 둡니다. 외부 기관 실연동은 범위 밖에 두고 핵심 금융 도메인 경계에 집중합니다.
