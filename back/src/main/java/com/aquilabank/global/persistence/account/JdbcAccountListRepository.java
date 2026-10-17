@@ -3,10 +3,6 @@ package com.aquilabank.global.persistence.account;
 import com.aquilabank.domain.account.model.AccountSummary;
 import com.aquilabank.domain.account.model.AccountSummaryList;
 import com.aquilabank.domain.account.port.AccountListReadPort;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Timestamp;
-import java.time.Instant;
 import java.util.List;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -53,7 +49,7 @@ public class JdbcAccountListRepository implements AccountListReadPort {
             ORDER BY membership.account_id ASC
             """,
             new MapSqlParameterSource().addValue("userId", userId),
-            (rs, rowNum) -> mapAccountSummary(rs)));
+            (rs, rowNum) -> JdbcAccountSummaryRepository.mapAccountSummary(rs)));
   }
 
   @Override
@@ -94,37 +90,11 @@ public class JdbcAccountListRepository implements AccountListReadPort {
             LIMIT :limit
             """,
             params,
-            (rs, rowNum) -> mapAccountSummary(rs));
+            (rs, rowNum) -> JdbcAccountSummaryRepository.mapAccountSummary(rs));
     if (items.size() <= limit) {
       return new AccountSummaryList(items);
     }
     List<AccountSummary> pageItems = items.subList(0, limit);
     return new AccountSummaryList(pageItems, pageItems.getLast().accountId());
-  }
-
-  private AccountSummary mapAccountSummary(ResultSet rs) throws SQLException {
-    String accountCurrencyCode = rs.getString("account_currency_code");
-    String snapshotCurrencyCode = rs.getString("snapshot_currency_code");
-    if (!accountCurrencyCode.equals(snapshotCurrencyCode)) {
-      throw new IllegalStateException("account snapshot currency does not match");
-    }
-
-    return new AccountSummary(
-        rs.getLong("id"),
-        rs.getString("account_number"),
-        rs.getString("display_name"),
-        rs.getString("account_status"),
-        accountCurrencyCode,
-        rs.getLong("available_balance_minor"),
-        rs.getLong("pending_balance_minor"),
-        toInstant(rs.getTimestamp("created_at")),
-        toInstant(rs.getTimestamp("updated_at")));
-  }
-
-  private Instant toInstant(Timestamp timestamp) {
-    if (timestamp == null) {
-      throw new IllegalStateException("timestamp must not be null");
-    }
-    return timestamp.toInstant();
   }
 }

@@ -1,5 +1,10 @@
 package com.aquilabank.domain.ledger.model;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
+
 /** 송금 reversal 명령 입력 모델 */
 public record TransferReversalCommand(
     String originalTransactionReference,
@@ -34,14 +39,27 @@ public record TransferReversalCommand(
   }
 
   public String fingerprint() {
-    return originalTransactionReference
-        + "|"
-        + sourceAccountId
-        + "|"
-        + amountMinor
-        + "|"
-        + reversalReason
-        + "|"
-        + summary;
+    // 가변 문자열 길이와 구분자 충돌에 무관하게 64자 SHA-256 hex로 request_fingerprint(VARCHAR(160))를 고정합니다.
+    String canonical =
+        "REVERSAL|"
+            + originalTransactionReference.length()
+            + ":"
+            + originalTransactionReference
+            + "|"
+            + sourceAccountId
+            + "|"
+            + amountMinor
+            + "|"
+            + reversalReason
+            + "|"
+            + summary.length()
+            + ":"
+            + summary;
+    try {
+      MessageDigest digest = MessageDigest.getInstance("SHA-256");
+      return HexFormat.of().formatHex(digest.digest(canonical.getBytes(StandardCharsets.UTF_8)));
+    } catch (NoSuchAlgorithmException ex) {
+      throw new IllegalStateException("SHA-256 is not available", ex);
+    }
   }
 }

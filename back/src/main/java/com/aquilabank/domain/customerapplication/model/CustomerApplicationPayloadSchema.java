@@ -1,5 +1,7 @@
 package com.aquilabank.domain.customerapplication.model;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -136,9 +138,36 @@ public final class CustomerApplicationPayloadSchema {
 
   private static long requirePositiveMinor(Map<String, Object> payload, String key) {
     Object value = payload.get(key);
-    if (value instanceof Number number) {
-      long result = number.longValue();
-      if (result <= 0 || Double.compare(number.doubleValue(), (double) result) != 0) {
+    if (value instanceof Long
+        || value instanceof Integer
+        || value instanceof Short
+        || value instanceof Byte) {
+      long result = ((Number) value).longValue();
+      if (result <= 0) {
+        throw new IllegalArgumentException(key + " must be a positive integer minor amount");
+      }
+      return result;
+    }
+    if (value instanceof BigDecimal decimal) {
+      final long result;
+      try {
+        result = decimal.longValueExact();
+      } catch (ArithmeticException ex) {
+        throw new IllegalArgumentException(key + " must be a positive integer minor amount", ex);
+      }
+      if (result <= 0) {
+        throw new IllegalArgumentException(key + " must be a positive integer minor amount");
+      }
+      return result;
+    }
+    if (value instanceof BigInteger integer) {
+      final long result;
+      try {
+        result = integer.longValueExact();
+      } catch (ArithmeticException ex) {
+        throw new IllegalArgumentException(key + " must be a positive integer minor amount", ex);
+      }
+      if (result <= 0) {
         throw new IllegalArgumentException(key + " must be a positive integer minor amount");
       }
       return result;

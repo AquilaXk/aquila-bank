@@ -23,14 +23,19 @@ public class JdbcTransferLimitUsageRepository implements TransferLimitUsageReadP
     Long total =
         jdbcTemplate.queryForObject(
             """
-            SELECT COALESCE(SUM(amount_minor), 0)::bigint
-            FROM ledger_entry
-            WHERE account_id = :sourceAccountId
-              AND currency_code = :currencyCode
-              AND direction = 'DEBIT'
-              AND entry_status = 'BOOKED'
-              AND booked_at >= :fromInclusive
-              AND booked_at < :toExclusive
+            SELECT COALESCE(SUM(le.amount_minor), 0)::bigint
+            FROM ledger_entry le
+            WHERE le.account_id = :sourceAccountId
+              AND le.currency_code = :currencyCode
+              AND le.direction = 'DEBIT'
+              AND le.entry_status = 'BOOKED'
+              AND le.booked_at >= :fromInclusive
+              AND le.booked_at < :toExclusive
+              AND NOT EXISTS (
+                SELECT 1
+                FROM transfer_reversal tr
+                WHERE tr.reversal_transaction_reference = le.transaction_reference
+              )
             """,
             new MapSqlParameterSource()
                 .addValue("sourceAccountId", sourceAccountId)

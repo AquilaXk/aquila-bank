@@ -62,7 +62,7 @@ public class JdbcAccountSummaryRepository implements AccountSummaryReadPort {
         .findFirst();
   }
 
-  private AccountSummary mapAccountSummary(ResultSet rs) throws SQLException {
+  static AccountSummary mapAccountSummary(ResultSet rs) throws SQLException {
     String accountCurrencyCode = rs.getString("account_currency_code");
     String snapshotCurrencyCode = rs.getString("snapshot_currency_code");
     if (!accountCurrencyCode.equals(snapshotCurrencyCode)) {
@@ -81,7 +81,7 @@ public class JdbcAccountSummaryRepository implements AccountSummaryReadPort {
         toInstant(rs.getTimestamp("updated_at")));
   }
 
-  private Instant toInstant(Timestamp timestamp) {
+  private static Instant toInstant(Timestamp timestamp) {
     if (timestamp == null) {
       throw new IllegalStateException("timestamp must not be null");
     }

@@ -36,5 +36,29 @@ class TransferReversalCommandTest {
             "TRX-1", 101L, 700L, TransferReversalReason.CANCEL, "partial", "rev-1");
 
     assertThat(first.fingerprint()).isNotEqualTo(second.fingerprint());
+    assertThat(first.fingerprint()).hasSize(64).matches("^[0-9a-f]{64}$");
+  }
+
+  @Test
+  void produces64CharSha256HexFingerprintForMaxSummaryAndPreventsDelimiterCollision() {
+    String maxSummary = "s".repeat(120);
+    TransferCommand maxSummaryTransfer =
+        new TransferCommand(101L, 202L, 1_000L, "KRW", maxSummary, "idem-max-summary");
+    assertThat(maxSummaryTransfer.fingerprint()).hasSize(64).matches("^[0-9a-f]{64}$");
+
+    TransferCommand pipeInSummaryA =
+        new TransferCommand(101L, 202L, 1_000L, "KRW", "a|b", "idem-pipe-1");
+    TransferCommand pipeInSummaryB =
+        new TransferCommand(101L, 202L, 1_000L, "KRW", "a|c", "idem-pipe-1");
+    assertThat(pipeInSummaryA.fingerprint()).isNotEqualTo(pipeInSummaryB.fingerprint());
+
+    TransferReversalCommand reversalCollisionA =
+        new TransferReversalCommand(
+            "TRX-1|101", 202L, 500L, TransferReversalReason.CANCEL, "summary", "rev-pipe");
+    TransferReversalCommand reversalCollisionB =
+        new TransferReversalCommand(
+            "TRX-1", 101L, 500L, TransferReversalReason.CANCEL, "202|summary", "rev-pipe");
+    assertThat(reversalCollisionA.fingerprint()).isNotEqualTo(reversalCollisionB.fingerprint());
+    assertThat(reversalCollisionA.fingerprint()).hasSize(64).matches("^[0-9a-f]{64}$");
   }
 }

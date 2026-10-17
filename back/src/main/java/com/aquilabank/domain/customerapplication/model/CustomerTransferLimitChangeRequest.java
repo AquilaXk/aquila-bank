@@ -1,5 +1,7 @@
 package com.aquilabank.domain.customerapplication.model;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
@@ -56,8 +58,25 @@ public record CustomerTransferLimitChangeRequest(
   private static Long longPayloadValue(
       Map<String, Object> payload, String key, String fallbackKey) {
     Object value = payload.containsKey(key) ? payload.get(key) : payload.get(fallbackKey);
-    if (value instanceof Number number) {
-      return number.longValue();
+    if (value instanceof Long
+        || value instanceof Integer
+        || value instanceof Short
+        || value instanceof Byte) {
+      return ((Number) value).longValue();
+    }
+    if (value instanceof BigDecimal decimal) {
+      try {
+        return decimal.longValueExact();
+      } catch (ArithmeticException ex) {
+        return null;
+      }
+    }
+    if (value instanceof BigInteger integer) {
+      try {
+        return integer.longValueExact();
+      } catch (ArithmeticException ex) {
+        return null;
+      }
     }
     if (value instanceof String stringValue && !stringValue.isBlank()) {
       try {

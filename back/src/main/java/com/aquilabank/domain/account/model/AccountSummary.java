@@ -27,7 +27,7 @@ public record AccountSummary(
     if (accountStatus == null || accountStatus.isBlank()) {
       throw new IllegalArgumentException("accountStatus is required");
     }
-    if (currencyCode == null || !currencyCode.matches("^[A-Z]{3}$")) {
+    if (currencyCode == null || !isThreeLetterUpperAscii(currencyCode)) {
       throw new IllegalArgumentException("currencyCode must be a 3-letter uppercase code");
     }
     if (availableBalanceMinor < 0) {
@@ -42,5 +42,16 @@ public record AccountSummary(
     if (balanceUpdatedAt == null) {
       throw new IllegalArgumentException("balanceUpdatedAt must not be null");
     }
+  }
+
+  private static boolean isThreeLetterUpperAscii(String value) {
+    return value.length() == 3
+        && isUpperAscii(value.charAt(0))
+        && isUpperAscii(value.charAt(1))
+        && isUpperAscii(value.charAt(2));
+  }
+
+  private static boolean isUpperAscii(char ch) {
+    return ch >= 'A' && ch <= 'Z';
   }
 }

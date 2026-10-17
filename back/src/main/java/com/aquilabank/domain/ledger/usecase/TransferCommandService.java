@@ -19,9 +19,7 @@ public final class TransferCommandService implements TransferCommandUseCase {
 
   @Override
   public TransferResult transfer(TransferCommand command) {
-    // 한도 초과는 command_idempotency insert 전 차단해 실패 side effect를 남기지 않습니다.
-    limitPolicyUseCase.validate(command);
-    // 실제 ledger 반영 책임은 write port 구현으로 위임
-    return transferWritePort.transfer(command);
+    // COMPLETED 멱등 재시도는 한도 검사 전에 즉시 복원하고, 신규/동시 요청은 락 전후로 한도를 검증합니다.
+    return transferWritePort.transfer(command, limitPolicyUseCase::validate);
   }
 }

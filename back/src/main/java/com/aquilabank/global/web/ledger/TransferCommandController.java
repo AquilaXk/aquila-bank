@@ -149,7 +149,7 @@ public class TransferCommandController {
             resolvedSourceAccountId, currencyCode, fromInclusive, toExclusive);
     TransferLimitPolicy policy = transferLimitPolicyUseCase.resolvePolicy(resolvedSourceAccountId);
     long feeMinor = 0L;
-    long totalDebitMinor = amountMinor + feeMinor;
+    long totalDebitMinor = Math.addExact(amountMinor, feeMinor);
     long dailyRemainingMinor = Math.max(0L, policy.dailyTransferLimitMinor() - dailyUsedMinor);
     String blockedReason =
         resolvePreviewBlockedReason(
@@ -319,7 +319,7 @@ public class TransferCommandController {
     if (amountMinor > policy.singleTransferLimitMinor()) {
       return "SINGLE_LIMIT_EXCEEDED";
     }
-    if (dailyUsedMinor + amountMinor > policy.dailyTransferLimitMinor()) {
+    if (dailyUsedMinor > policy.dailyTransferLimitMinor() - amountMinor) {
       return "DAILY_LIMIT_EXCEEDED";
     }
     if (totalDebitMinor > source.availableBalanceMinor()) {
