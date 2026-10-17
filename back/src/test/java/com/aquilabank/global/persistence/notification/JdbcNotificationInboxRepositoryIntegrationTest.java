@@ -587,6 +587,12 @@ class JdbcNotificationInboxRepositoryIntegrationTest extends PostgresContainerTe
         .isEqualTo(1);
     assertThat(findNotificationEventKeys())
         .containsExactlyInAnyOrder("evt-bulk-hide-1", "evt-bulk-hide-3");
+
+    assertThat(
+            repository.deleteByUserId(
+                userIds[0], List.of(notificationIds[0], notificationIds[2]), base.plusSeconds(50)))
+        .isEqualTo(2);
+    assertThat(repository.countUnreadByUserId(userIds[0])).isEqualTo(0L);
   }
 
   @Test
@@ -906,7 +912,7 @@ class JdbcNotificationInboxRepositoryIntegrationTest extends PostgresContainerTe
 
   @Test
   void deletesExpiredNotificationsInBatchesAndCascadesUserReadState() {
-    long[] userId = new long[1];
+    long[] userId = new long[2];
     long[] accountId = new long[1];
     long[] notificationIds = new long[3];
     Instant base = Instant.parse("2026-04-17T00:00:00Z");
@@ -915,8 +921,10 @@ class JdbcNotificationInboxRepositoryIntegrationTest extends PostgresContainerTe
         transactionManager,
         () -> {
           userId[0] = insertUser("cleanup-user");
+          userId[1] = insertUser("cleanup-unread-user");
           accountId[0] = insertAccount("cleanup account");
           insertMembership(userId[0], accountId[0], "OWNER", "ACTIVE");
+          insertMembership(userId[1], accountId[0], "VIEWER", "ACTIVE");
           notificationIds[0] =
               insertNotification(
                   accountId[0],
@@ -949,18 +957,28 @@ class JdbcNotificationInboxRepositoryIntegrationTest extends PostgresContainerTe
           insertUserReadState(userId[0], notificationIds[2], base.minusSeconds(80));
         });
 
+    assertThat(repository.countUnreadByAccountId(accountId[0])).isEqualTo(3L);
+    assertThat(repository.countUnreadByUserId(userId[0])).isEqualTo(0L);
+    assertThat(repository.countUnreadByUserId(userId[1])).isEqualTo(3L);
+
     int firstDeleted = repository.deleteExpiredNotifications(cutoff, 1);
 
     assertThat(firstDeleted).isEqualTo(1);
     assertThat(findNotificationEventKeys())
         .containsExactlyInAnyOrder("evt-cleanup-2", "evt-cleanup-3");
     assertThat(totalUserReadStates()).isEqualTo(2L);
+    assertThat(repository.countUnreadByAccountId(accountId[0])).isEqualTo(2L);
+    assertThat(repository.countUnreadByUserId(userId[0])).isEqualTo(0L);
+    assertThat(repository.countUnreadByUserId(userId[1])).isEqualTo(2L);
 
     int secondDeleted = repository.deleteExpiredNotifications(cutoff, 10);
 
     assertThat(secondDeleted).isEqualTo(1);
     assertThat(findNotificationEventKeys()).containsExactly("evt-cleanup-3");
     assertThat(totalUserReadStates()).isEqualTo(1L);
+    assertThat(repository.countUnreadByAccountId(accountId[0])).isEqualTo(1L);
+    assertThat(repository.countUnreadByUserId(userId[0])).isEqualTo(0L);
+    assertThat(repository.countUnreadByUserId(userId[1])).isEqualTo(1L);
   }
 
   private long insertUser(String loginId) {

@@ -41,7 +41,9 @@ class T3MicroSaturationGuardTest {
     assertThat(decision.snapshot().pool().activeConnections()).isEqualTo(4);
     assertThat(decision.snapshot().servletThreads().busyThreads()).isEqualTo(16);
     assertThat(decision.snapshot().recentQueryTimeoutCount()).isEqualTo(1);
-    assertThat(guard.check("/actuator/health").allowed()).isTrue();
+    T3MicroSaturationDecision healthDecision = guard.check("/actuator/health");
+    assertThat(healthDecision.allowed()).isTrue();
+    assertThat(healthDecision.snapshot()).isEqualTo(T3MicroSaturationSnapshot.empty());
     assertThat(
             meterRegistry
                 .find("aquila.t3micro.saturation.guard.requests")
@@ -95,6 +97,29 @@ class T3MicroSaturationGuardTest {
                 .counter()
                 .count())
         .isEqualTo(1.0);
+  }
+
+  @Test
+  void rejectsWhenPoolAndTimeoutAreSaturatedEvenIfServletThreadMetricsAreUnavailable() {
+    SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+    MutableClock clock = new MutableClock(Instant.parse("2026-05-03T00:00:00Z"));
+    T3MicroQueryTimeoutSignal timeoutSignal = new T3MicroQueryTimeoutSignal(clock, meterRegistry);
+    timeoutSignal.record();
+    T3MicroSaturationGuard guard =
+        new T3MicroSaturationGuard(
+            properties(),
+            new MutableDbPoolProbe(new DbPoolSaturationSnapshot(4, 4, 1)),
+            new MutableServletThreadProbe(ServletThreadSaturationSnapshot.empty()),
+            new MutableJvmPressureProbe(JvmPressureSnapshot.empty()),
+            timeoutSignal,
+            meterRegistry);
+
+    T3MicroSaturationDecision decision = guard.check("/api/v1/transactions");
+
+    assertThat(decision.allowed()).isFalse();
+    assertThat(decision.snapshot().poolSaturated()).isTrue();
+    assertThat(decision.snapshot().servletThreadsSaturated()).isTrue();
+    assertThat(decision.snapshot().queryTimeoutSaturated()).isTrue();
   }
 
   @Test

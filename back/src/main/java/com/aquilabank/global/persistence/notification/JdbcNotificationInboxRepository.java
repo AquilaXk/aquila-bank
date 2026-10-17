@@ -255,8 +255,7 @@ public class JdbcNotificationInboxRepository
   @Transactional
   public int deleteByUserId(long userId, List<Long> notificationIds, Instant deletedAt) {
     // JWT user delete 는 shared inbox row 삭제 대신 per-user deleted_at 으로 숨겨 다른 공동 사용자 inbox를 보존합니다.
-    ProjectionUpdateCount count =
-        hideUserNotifications(userId, notificationIds, deletedAt, "deleted_at");
+    ProjectionUpdateCount count = deleteUserNotifications(userId, notificationIds, deletedAt);
     decrementUnreadProjection(USER_SCOPE, userId, count.unreadDelta());
     return count.matchedCount();
   }
@@ -331,12 +330,55 @@ public class JdbcNotificationInboxRepository
         jdbcTemplate.queryForObject(
             """
             WITH expired AS (
-                SELECT id
+                SELECT id, account_id, read_at, archived_at
                 FROM notification_inbox
                 WHERE created_at < :cutoff
                 ORDER BY created_at ASC, id ASC
                 FOR UPDATE SKIP LOCKED
                 LIMIT :batchSize
+            ),
+            account_deltas AS (
+                SELECT :accountScope AS scope_type,
+                       e.account_id AS scope_id,
+                       COUNT(*) AS unread_delta
+                FROM expired e
+                WHERE e.archived_at IS NULL
+                  AND e.read_at IS NULL
+                GROUP BY e.account_id
+            ),
+            user_deltas AS (
+                SELECT :userScope AS scope_type,
+                       m.user_id AS scope_id,
+                       COUNT(*) AS unread_delta
+                FROM expired e
+                JOIN user_account_membership m
+                  ON m.account_id = e.account_id
+                JOIN bank_user u
+                  ON u.id = m.user_id
+                LEFT JOIN notification_user_read_state r
+                  ON r.user_id = m.user_id
+                 AND r.notification_id = e.id
+                WHERE e.archived_at IS NULL
+                  AND m.membership_status = 'ACTIVE'
+                  AND u.user_status = 'ACTIVE'
+                  AND (r.notification_id IS NULL
+                       OR (r.read_at IS NULL
+                           AND r.archived_at IS NULL
+                           AND r.deleted_at IS NULL))
+                GROUP BY m.user_id
+            ),
+            all_deltas AS (
+                SELECT scope_type, scope_id, unread_delta FROM account_deltas
+                UNION ALL
+                SELECT scope_type, scope_id, unread_delta FROM user_deltas
+            ),
+            updated_projections AS (
+                UPDATE notification_unread_count_projection p
+                SET unread_count = GREATEST(p.unread_count - d.unread_delta, 0),
+                    updated_at = CURRENT_TIMESTAMP
+                FROM all_deltas d
+                WHERE p.scope_type = d.scope_type
+                  AND p.scope_id = d.scope_id
             ),
             deleted AS (
                 DELETE FROM notification_inbox n
@@ -349,7 +391,9 @@ public class JdbcNotificationInboxRepository
             """,
             new MapSqlParameterSource()
                 .addValue("cutoff", Timestamp.from(cutoff))
-                .addValue("batchSize", batchSize),
+                .addValue("batchSize", batchSize)
+                .addValue("accountScope", ACCOUNT_SCOPE)
+                .addValue("userScope", USER_SCOPE),
             Integer.class);
     return deleted == null ? 0 : deleted;
   }
@@ -893,6 +937,105 @@ public class JdbcNotificationInboxRepository
 
   private String hiddenColumnValue(String columnName, String hiddenColumn) {
     return columnName.equals(hiddenColumn) ? ":hiddenAt" : "NULL";
+  }
+
+  private ProjectionUpdateCount deleteUserNotifications(
+      long userId, List<Long> notificationIds, Instant deletedAt) {
+    ProjectionUpdateCount count =
+        jdbcTemplate.queryForObject(
+            """
+            WITH accessible_notification AS (
+                SELECT n.id,
+                       n.read_at,
+                       n.archived_at
+                FROM notification_inbox n
+                JOIN user_account_membership m
+                  ON m.account_id = n.account_id
+                JOIN bank_user u
+                  ON u.id = m.user_id
+                JOIN bank_account a
+                  ON a.id = n.account_id
+                WHERE m.user_id = :userId
+                  AND m.membership_status = 'ACTIVE'
+                  AND u.user_status = 'ACTIVE'
+                  AND a.account_status IN ('ACTIVE', 'LOCKED')
+                  AND n.id IN (:notificationIds)
+            ),
+            changed_unread AS (
+                INSERT INTO notification_user_read_state (
+                    user_id,
+                    notification_id,
+                    read_at,
+                    archived_at,
+                    deleted_at
+                )
+                SELECT :userId, id, NULL, NULL, :deletedAt
+                FROM accessible_notification
+                WHERE archived_at IS NULL
+                ON CONFLICT (user_id, notification_id)
+                DO UPDATE
+                SET deleted_at = COALESCE(notification_user_read_state.deleted_at, EXCLUDED.deleted_at)
+                WHERE notification_user_read_state.read_at IS NULL
+                  AND notification_user_read_state.archived_at IS NULL
+                  AND notification_user_read_state.deleted_at IS NULL
+                RETURNING notification_id
+            )
+            SELECT (SELECT COUNT(*) FROM accessible_notification) AS matched_count,
+                   (SELECT COUNT(*) FROM changed_unread) AS unread_delta
+            """,
+            new MapSqlParameterSource()
+                .addValue("userId", userId)
+                .addValue("notificationIds", notificationIds)
+                .addValue("deletedAt", Timestamp.from(deletedAt)),
+            (rs, rowNum) ->
+                new ProjectionUpdateCount(rs.getInt("matched_count"), rs.getInt("unread_delta")));
+    deleteRemainingUserNotifications(userId, notificationIds, deletedAt);
+    return count;
+  }
+
+  private void deleteRemainingUserNotifications(
+      long userId, List<Long> notificationIds, Instant deletedAt) {
+    jdbcTemplate.queryForObject(
+        """
+        WITH accessible_notification AS (
+            SELECT n.id
+            FROM notification_inbox n
+            JOIN user_account_membership m
+              ON m.account_id = n.account_id
+            JOIN bank_user u
+              ON u.id = m.user_id
+            JOIN bank_account a
+              ON a.id = n.account_id
+            WHERE m.user_id = :userId
+              AND m.membership_status = 'ACTIVE'
+              AND u.user_status = 'ACTIVE'
+              AND a.account_status IN ('ACTIVE', 'LOCKED')
+              AND n.id IN (:notificationIds)
+        ),
+        changed_remaining AS (
+            INSERT INTO notification_user_read_state (
+                user_id,
+                notification_id,
+                read_at,
+                archived_at,
+                deleted_at
+            )
+            SELECT :userId, id, NULL, NULL, :deletedAt
+            FROM accessible_notification
+            ON CONFLICT (user_id, notification_id)
+            DO UPDATE
+            SET deleted_at = COALESCE(notification_user_read_state.deleted_at, EXCLUDED.deleted_at)
+            WHERE notification_user_read_state.deleted_at IS NULL
+            RETURNING notification_id
+        )
+        SELECT COUNT(*)
+        FROM changed_remaining
+        """,
+        new MapSqlParameterSource()
+            .addValue("userId", userId)
+            .addValue("notificationIds", notificationIds)
+            .addValue("deletedAt", Timestamp.from(deletedAt)),
+        Integer.class);
   }
 
   private ProjectionUpdateCount markAccountNotificationsAsRead(

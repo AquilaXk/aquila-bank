@@ -7,6 +7,7 @@ import com.aquilabank.domain.notification.model.NotificationPreferenceChannel;
 import com.aquilabank.domain.notification.port.NotificationChannelProviderPort;
 import com.aquilabank.domain.notification.port.NotificationChannelRecipientLookupPort;
 import com.aquilabank.global.config.NotificationChannelProviderDeliveryProperties;
+import com.fasterxml.jackson.annotation.JsonRawValue;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import org.slf4j.Logger;
@@ -79,7 +80,7 @@ public final class WebhookNotificationChannelProvider implements NotificationCha
                 item.category().name(),
                 item.eventType(),
                 destination,
-                parsePayload(item.payload())))
+                validatePayloadJson(item.payload())))
         .retrieve()
         .toBodilessEntity();
 
@@ -102,9 +103,20 @@ public final class WebhookNotificationChannelProvider implements NotificationCha
     return null;
   }
 
-  private Object parsePayload(String rawPayload) {
-    try {
-      return objectMapper.readValue(rawPayload, Object.class);
+  private String validatePayloadJson(String rawPayload) {
+    if (rawPayload == null || rawPayload.isBlank()) {
+      throw new IllegalArgumentException("notification channel payload must be valid JSON");
+    }
+    try (var parser = objectMapper.getFactory().createParser(rawPayload)) {
+      if (parser.nextToken() == null) {
+        throw new IllegalArgumentException("notification channel payload must be valid JSON");
+      }
+      // 첫 번째 루트 JSON 토큰의 하위 구조를 건너뛴 뒤 후속 루트 토큰이 없는지 검증합니다.
+      parser.skipChildren();
+      if (parser.nextToken() != null) {
+        throw new IllegalArgumentException("notification channel payload must be valid JSON");
+      }
+      return rawPayload;
     } catch (IOException ex) {
       throw new IllegalArgumentException("notification channel payload must be valid JSON", ex);
     }
@@ -119,5 +131,5 @@ public final class WebhookNotificationChannelProvider implements NotificationCha
       String category,
       String eventType,
       String destination,
-      Object payload) {}
+      @JsonRawValue String payload) {}
 }

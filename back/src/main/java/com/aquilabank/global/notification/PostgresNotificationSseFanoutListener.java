@@ -77,19 +77,26 @@ public class PostgresNotificationSseFanoutListener {
       }
       try (Connection connection = dataSource.getConnection();
           Statement statement = connection.createStatement()) {
+        boolean previousAutoCommit = connection.getAutoCommit();
         connection.setAutoCommit(true);
-        listeningConnection = connection;
-        statement.execute("LISTEN " + notificationSseProperties.fanoutChannel());
-        PGConnection pgConnection = connection.unwrap(PGConnection.class);
-        while (running.get()) {
-          PGNotification[] notifications =
-              pgConnection.getNotifications(
-                  Math.toIntExact(notificationSseProperties.fanoutListenTimeoutMs()));
-          if (notifications == null || notifications.length == 0) {
-            continue;
+        try {
+          listeningConnection = connection;
+          statement.execute("LISTEN " + notificationSseProperties.fanoutChannel());
+          PGConnection pgConnection = connection.unwrap(PGConnection.class);
+          while (running.get()) {
+            PGNotification[] notifications =
+                pgConnection.getNotifications(
+                    Math.toIntExact(notificationSseProperties.fanoutListenTimeoutMs()));
+            if (notifications == null || notifications.length == 0) {
+              continue;
+            }
+            for (PGNotification notification : notifications) {
+              handleSignalPayload(notification.getParameter());
+            }
           }
-          for (PGNotification notification : notifications) {
-            handleSignalPayload(notification.getParameter());
+        } finally {
+          if (!connection.isClosed()) {
+            connection.setAutoCommit(previousAutoCommit);
           }
         }
       } catch (SQLException ex) {

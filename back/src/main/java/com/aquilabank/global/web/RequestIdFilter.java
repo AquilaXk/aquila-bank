@@ -11,6 +11,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 /** 모든 요청에 request-id를 부여해 로그와 ledger trace를 같은 키로 묶습니다. */
 public class RequestIdFilter extends OncePerRequestFilter {
 
+  private static final int MAX_REQUEST_ID_LENGTH = 96;
+
   @Override
   protected void doFilterInternal(
       HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -26,10 +28,36 @@ public class RequestIdFilter extends OncePerRequestFilter {
   }
 
   private String resolveRequestId(HttpServletRequest request) {
-    String requestId = request.getHeader(RequestTraceContext.REQUEST_ID_HEADER);
-    if (requestId == null || requestId.isBlank()) {
+    String rawRequestId = request.getHeader(RequestTraceContext.REQUEST_ID_HEADER);
+    if (rawRequestId == null) {
       return UUID.randomUUID().toString();
     }
-    return requestId;
+    String candidate = rawRequestId.trim();
+    if (!isValidRequestId(candidate)) {
+      return UUID.randomUUID().toString();
+    }
+    return candidate;
+  }
+
+  private static boolean isValidRequestId(String candidate) {
+    if (candidate.isEmpty() || candidate.length() > MAX_REQUEST_ID_LENGTH) {
+      return false;
+    }
+    for (int index = 0; index < candidate.length(); index++) {
+      if (!isAllowedRequestIdChar(candidate.charAt(index))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private static boolean isAllowedRequestIdChar(char ch) {
+    return (ch >= 'a' && ch <= 'z')
+        || (ch >= 'A' && ch <= 'Z')
+        || (ch >= '0' && ch <= '9')
+        || ch == '-'
+        || ch == '_'
+        || ch == '.'
+        || ch == ':';
   }
 }

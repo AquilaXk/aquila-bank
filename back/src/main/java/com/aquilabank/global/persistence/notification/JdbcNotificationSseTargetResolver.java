@@ -32,6 +32,14 @@ public class JdbcNotificationSseTargetResolver implements NotificationSseTargetR
           AND m.membership_status = 'ACTIVE'
           AND u.user_status = 'ACTIVE'
           AND a.account_status IN ('ACTIVE', 'LOCKED')
+          AND NOT EXISTS (
+              SELECT 1
+              FROM notification_preference np
+              WHERE np.user_id = m.user_id
+                AND np.category = 'TRANSACTIONAL'
+                AND np.channel = 'IN_APP'
+                AND np.enabled = FALSE
+          )
         ORDER BY m.user_id
         """,
         new MapSqlParameterSource().addValue("accountId", accountId),

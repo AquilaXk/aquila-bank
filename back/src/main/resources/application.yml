@@ -37,6 +37,10 @@ spring:
   mvc:
     async:
       request-timeout: 5000ms
+  task:
+    scheduling:
+      pool:
+        size: ${SPRING_TASK_SCHEDULING_POOL_SIZE:4}
   transaction:
     default-timeout: ${DB_TRANSACTION_TIMEOUT_SECONDS:5}
 
@@ -133,7 +137,7 @@ ops:
         max-concurrency: ${OPS_API_ADMISSION_CONTROL_NOTIFICATION_READ_MAX:4}
         path-prefixes:
           - /api/v1/notifications
-          - /api/v1/notification-preferences
+          - /api/v1/notifications/preferences
       - group: internal-ops
         max-concurrency: ${OPS_API_ADMISSION_CONTROL_INTERNAL_OPS_MAX:2}
         path-prefixes:

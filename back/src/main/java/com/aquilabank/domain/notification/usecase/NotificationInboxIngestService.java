@@ -4,6 +4,10 @@ import com.aquilabank.domain.notification.model.NotificationInboxEntry;
 import com.aquilabank.domain.notification.model.TransferBookedNotificationCommand;
 import com.aquilabank.domain.notification.model.TransferReversedNotificationCommand;
 import com.aquilabank.domain.notification.port.NotificationInboxAppendPort;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.util.List;
 
 /** transfer-level event를 inbox row 두 건으로 fan-out 해 consumer 중복 로직을 막습니다. */
@@ -12,6 +16,8 @@ public final class NotificationInboxIngestService implements NotificationInboxIn
   private static final String TRANSFER_BOOKED = "TransferBooked";
   private static final String TRANSFER_BOOKED_TITLE = "이체 완료";
   private static final String TRANSFER_REVERSED = "TransferReversed";
+  private static final int MAX_EVENT_KEY_LENGTH = 80;
+  private static final int COMPACT_HASH_PREFIX_LENGTH = 32;
 
   private final NotificationInboxAppendPort notificationInboxAppendPort;
 
@@ -72,7 +78,25 @@ public final class NotificationInboxIngestService implements NotificationInboxIn
 
   private String accountScopedEventKey(String eventKey, long accountId) {
     // 기존 notification_inbox.event_key unique 제약을 재사용하려고 account scope를 suffix로 붙입니다.
-    return eventKey + ":ACCOUNT-" + accountId;
+    String suffix = ":ACCOUNT-" + accountId;
+    String candidate = eventKey + suffix;
+    if (candidate.length() <= MAX_EVENT_KEY_LENGTH) {
+      return candidate;
+    }
+    return sha256Hex(eventKey).substring(0, COMPACT_HASH_PREFIX_LENGTH) + suffix;
+  }
+
+  private static String sha256Hex(String value) {
+    return HexFormat.of()
+        .formatHex(messageDigest("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));
+  }
+
+  static MessageDigest messageDigest(String algorithm) {
+    try {
+      return MessageDigest.getInstance(algorithm);
+    } catch (NoSuchAlgorithmException ex) {
+      throw new IllegalStateException(algorithm + " is not available", ex);
+    }
   }
 
   private String reversalTitle(String reversalReason) {

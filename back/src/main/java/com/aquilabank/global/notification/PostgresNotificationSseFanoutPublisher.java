@@ -35,12 +35,15 @@ public class PostgresNotificationSseFanoutPublisher {
     jdbcTemplate.execute(
         (ConnectionCallback<Void>)
             connection -> {
+              boolean previousAutoCommit = connection.getAutoCommit();
               connection.setAutoCommit(true);
               try (PreparedStatement statement =
                   connection.prepareStatement("SELECT pg_notify(?, ?)")) {
                 statement.setString(1, notificationSseProperties.fanoutChannel());
                 statement.setString(2, payload);
                 statement.execute();
+              } finally {
+                connection.setAutoCommit(previousAutoCommit);
               }
               return null;
             });

@@ -19,6 +19,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.LongFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -83,7 +85,7 @@ public class NotificationSseBroker {
         subject,
         "account",
         lastEventId,
-        0,
+        notificationSseProperties.maxUserSessions(),
         replayLastEventId ->
             notificationQueryUseCase.getReplayNotificationsForAccount(
                 accountId,
@@ -176,22 +178,39 @@ public class NotificationSseBroker {
       SseEmitter emitter = sseEmitterFactory.apply(notificationSseProperties.connectionTimeoutMs());
       NotificationSseSession session =
           new NotificationSseSession(sessionId, subject, emitter, lastEventId);
-      if (!registerSession(sessionsByPrincipalId, principalId, session, maxPrincipalSessions)) {
-        releaseSessionSlot();
-        rejectSubscription(
-            sessionsByPrincipalId,
-            principalId,
+      session.sendLock().lock();
+      try {
+        if (!registerSession(sessionsByPrincipalId, principalId, session, maxPrincipalSessions)) {
+          rejectSubscription(
+              sessionsByPrincipalId,
+              principalId,
+              principalType,
+              USER_SESSION_LIMIT_REASON,
+              maxPrincipalSessions);
+          throw new NotificationSseOverloadException(OVERLOAD_MESSAGE);
+        }
+        registered = true;
+        emitter.onCompletion(() -> removeSession(sessionsByPrincipalId, principalId, sessionId));
+        emitter.onTimeout(() -> removeSession(sessionsByPrincipalId, principalId, sessionId));
+        emitter.onError(error -> removeSession(sessionsByPrincipalId, principalId, sessionId));
+        sendConnectedEvent(session);
+      } catch (IOException ex) {
+        log.debug(
+            "notification SSE subscribe bootstrap failed principalType={} principalId={} sessionId={} subject={}",
             principalType,
-            USER_SESSION_LIMIT_REASON,
-            maxPrincipalSessions);
-        throw new NotificationSseOverloadException(OVERLOAD_MESSAGE);
+            principalId,
+            session.sessionId(),
+            session.subject(),
+            ex);
+        closeSession(sessionsByPrincipalId, principalId, session);
+        return emitter;
+      } finally {
+        session.sendLock().unlock();
       }
-      registered = true;
-      emitter.onCompletion(() -> removeSession(sessionsByPrincipalId, principalId, sessionId));
-      emitter.onTimeout(() -> removeSession(sessionsByPrincipalId, principalId, sessionId));
-      emitter.onError(error -> removeSession(sessionsByPrincipalId, principalId, sessionId));
-      scheduleConnectedEvent(
-          sessionsByPrincipalId, principalId, principalType, session, lastEventId, replayLoader);
+      if (lastEventId != null) {
+        scheduleReplay(
+            sessionsByPrincipalId, principalId, principalType, session, lastEventId, replayLoader);
+      }
       log.debug(
           "notification SSE subscribed principalType={} principalId={} sessionId={}",
           principalType,
@@ -209,7 +228,8 @@ public class NotificationSseBroker {
   }
 
   private void sendConnectedEvent(NotificationSseSession session) throws IOException {
-    synchronized (session.monitor()) {
+    session.sendLock().lock();
+    try {
       session
           .emitter()
           .send(
@@ -217,10 +237,12 @@ public class NotificationSseBroker {
                   .name("connected")
                   .reconnectTime(notificationSseProperties.reconnectDelayMs())
                   .data(new NotificationStreamConnectedResponse(Instant.now())));
+    } finally {
+      session.sendLock().unlock();
     }
   }
 
-  private void scheduleConnectedEvent(
+  private void scheduleReplay(
       Map<Long, Map<String, NotificationSseSession>> sessionsByPrincipalId,
       long principalId,
       String principalType,
@@ -230,7 +252,6 @@ public class NotificationSseBroker {
     Thread.startVirtualThread(
         () -> {
           try {
-            sendConnectedEvent(session);
             replayMissedNotifications(session, lastEventId, replayLoader);
           } catch (Exception ex) {
             log.debug(
@@ -255,13 +276,16 @@ public class NotificationSseBroker {
       long principalId = entry.getKey();
       for (NotificationSseSession session : entry.getValue().values()) {
         try {
-          synchronized (session.monitor()) {
+          session.sendLock().lock();
+          try {
             session
                 .emitter()
                 .send(
                     SseEmitter.event()
                         .name("heartbeat")
                         .data(new NotificationStreamHeartbeatResponse(Instant.now())));
+          } finally {
+            session.sendLock().unlock();
           }
         } catch (IOException ex) {
           log.debug(
@@ -352,7 +376,8 @@ public class NotificationSseBroker {
       return;
     }
     List<NotificationSummary> replayItems = replayLoader.apply(lastEventId);
-    synchronized (session.monitor()) {
+    session.sendLock().lock();
+    try {
       if (session.isClosed()) {
         return;
       }
@@ -362,12 +387,15 @@ public class NotificationSseBroker {
       }
       flushPendingNotifications(session);
       session.finishReplay();
+    } finally {
+      session.sendLock().unlock();
     }
   }
 
   private void queueOrSendNotification(NotificationSseSession session, NotificationSummary item)
       throws IOException {
-    synchronized (session.monitor()) {
+    session.sendLock().lock();
+    try {
       if (session.isClosed()) {
         return;
       }
@@ -383,6 +411,8 @@ public class NotificationSseBroker {
         return;
       }
       sendNotification(session, item);
+    } finally {
+      session.sendLock().unlock();
     }
   }
 
@@ -530,19 +560,22 @@ public class NotificationSseBroker {
       Map<Long, Map<String, NotificationSseSession>> sessionsByPrincipalId,
       long principalId,
       String sessionId) {
-    Map<String, NotificationSseSession> sessions = sessionsByPrincipalId.get(principalId);
-    if (sessions == null) {
-      return false;
-    }
-    NotificationSseSession removedSession = sessions.remove(sessionId);
+    AtomicReference<NotificationSseSession> removedRef = new AtomicReference<>();
+    sessionsByPrincipalId.computeIfPresent(
+        principalId,
+        (ignored, currentSessions) -> {
+          NotificationSseSession removed = currentSessions.remove(sessionId);
+          if (removed != null) {
+            removedRef.set(removed);
+          }
+          return currentSessions.isEmpty() ? null : currentSessions;
+        });
+    NotificationSseSession removedSession = removedRef.get();
     if (removedSession == null) {
       return false;
     }
     removedSession.markClosed();
     releaseSessionSlot();
-    if (sessions.isEmpty()) {
-      sessionsByPrincipalId.remove(principalId, sessions);
-    }
     return true;
   }
 
@@ -551,7 +584,7 @@ public class NotificationSseBroker {
     private final String sessionId;
     private final String subject;
     private final SseEmitter emitter;
-    private final Object monitor = new Object();
+    private final ReentrantLock sendLock = new ReentrantLock();
     private final List<NotificationSummary> pendingItems = new ArrayList<>();
     private long lastDeliveredEventId;
     private boolean replaying;
@@ -579,8 +612,8 @@ public class NotificationSseBroker {
       return emitter;
     }
 
-    private Object monitor() {
-      return monitor;
+    private ReentrantLock sendLock() {
+      return sendLock;
     }
 
     private List<NotificationSummary> pendingItems() {

@@ -89,20 +89,45 @@ class NotificationSseIntegrationTest extends PostgresContainerTestSupport {
   @Timeout(15)
   void pushesNotificationToJwtUserStreamAfterConsumerIngest() throws Exception {
     long[] userId = new long[1];
+    long[] mutedUserId = new long[1];
     long[] accountIds = new long[2];
     commit(
         transactionManager,
         () -> {
           userId[0] = insertUser("stream-user");
+          mutedUserId[0] = insertUser("muted-stream-user");
           accountIds[0] = insertAccount("visible account");
           accountIds[1] = insertAccount("hidden account");
           insertMembership(userId[0], accountIds[0], "OWNER", "ACTIVE");
           insertMembership(userId[0], accountIds[1], "VIEWER", "REVOKED");
+          insertMembership(mutedUserId[0], accountIds[0], "VIEWER", "ACTIVE");
+          jdbcTemplate.update(
+              """
+              INSERT INTO notification_preference (
+                  user_id,
+                  category,
+                  channel,
+                  enabled,
+                  updated_at
+              )
+              VALUES (
+                  :userId,
+                  'TRANSACTIONAL',
+                  'IN_APP',
+                  FALSE,
+                  CURRENT_TIMESTAMP
+              )
+              """,
+              new MapSqlParameterSource().addValue("userId", mutedUserId[0]));
         });
 
     String token = issueToken("stream-user-subject", userId[0]);
-    try (NotificationSseStream stream = openJwtStream(token)) {
+    String mutedToken = issueToken("muted-stream-user-subject", mutedUserId[0]);
+    try (NotificationSseStream stream = openJwtStream(token);
+        NotificationSseStream mutedStream = openJwtStream(mutedToken)) {
       assertThat(stream.awaitEvent("connected", Duration.ofSeconds(3)).name())
+          .isEqualTo("connected");
+      assertThat(mutedStream.awaitEvent("connected", Duration.ofSeconds(3)).name())
           .isEqualTo("connected");
 
       transferBookedNotificationConsumer.consume(
@@ -116,6 +141,7 @@ class NotificationSseIntegrationTest extends PostgresContainerTestSupport {
       assertThat(payload.get("title").asText()).isEqualTo("이체 완료");
       assertThat(payload.get("message").asText()).contains("출금").contains("rent");
       assertThat(payload.get("read").asBoolean()).isFalse();
+      mutedStream.assertNoEvent("notification", Duration.ofMillis(400));
     }
   }
 

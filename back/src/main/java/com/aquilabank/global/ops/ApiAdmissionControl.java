@@ -94,7 +94,7 @@ public class ApiAdmissionControl {
     private int rejectionWindowIndex;
     private int rejectionWindowSamples;
     private int rejectionWindowRejected;
-    private long decreaseCooldownUntilNanos;
+    private volatile long decreaseCooldownUntilNanos;
 
     private EndpointState(
         ApiAdmissionControlProperties.EndpointLimit endpoint,
@@ -162,12 +162,9 @@ public class ApiAdmissionControl {
         return;
       }
       healthyCompletions.set(0);
-      recordAdmissionDecision(true);
-      if (!canDecrease()) {
+      if (!tryReserveDecreaseOnRejection()) {
         return;
       }
-      decreaseCooldownUntilNanos =
-          ticker.getAsLong() + adaptive.decreaseCooldownSeconds() * NANOS_PER_SECOND;
       // 429가 짧게 튄 경우는 window ratio로 거르고, 실제 포화가 이어질 때만 단계적으로 낮춥니다.
       currentLimit.updateAndGet(
           value -> Math.max(adaptive.minConcurrency(), value - adaptive.decreaseOnRejections()));
@@ -189,23 +186,33 @@ public class ApiAdmissionControl {
       }
     }
 
-    private synchronized boolean canDecrease() {
+    private synchronized boolean tryReserveDecreaseOnRejection() {
+      recordAdmissionDecision(true);
       if (currentLimit.get() <= adaptive.minConcurrency()) {
         return false;
       }
       if (rejectionWindowSamples < rejectionWindow.length) {
         return false;
       }
-      if (ticker.getAsLong() < decreaseCooldownUntilNanos) {
+      long nowNanos = ticker.getAsLong();
+      if (nowNanos < decreaseCooldownUntilNanos) {
         return false;
       }
       double ratio = (double) rejectionWindowRejected / rejectionWindowSamples;
-      return ratio >= adaptive.decreaseRejectionRatio();
+      if (ratio < adaptive.decreaseRejectionRatio()) {
+        return false;
+      }
+      decreaseCooldownUntilNanos = nowNanos + adaptive.decreaseCooldownSeconds() * NANOS_PER_SECOND;
+      return true;
     }
 
-    private void release() {
+    private void release(boolean healthy) {
       inFlight.decrementAndGet();
-      recordHealthyCompletion();
+      if (healthy) {
+        recordHealthyCompletion();
+      } else {
+        healthyCompletions.set(0);
+      }
     }
 
     private void recordHealthyCompletion() {

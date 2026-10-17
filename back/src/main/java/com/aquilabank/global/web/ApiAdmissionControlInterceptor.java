@@ -36,19 +36,19 @@ public class ApiAdmissionControlInterceptor implements HandlerInterceptor, Async
   @Override
   public void afterCompletion(
       HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
-    release(request);
+    release(request, ex == null && response.getStatus() < 500);
   }
 
   @Override
   public void afterConcurrentHandlingStarted(
       HttpServletRequest request, HttpServletResponse response, Object handler) {
-    release(request);
+    release(request, true);
   }
 
-  private void release(HttpServletRequest request) {
+  private void release(HttpServletRequest request, boolean healthy) {
     Object value = request.getAttribute(PERMIT_ATTRIBUTE);
     if (value instanceof ApiAdmissionPermit permit) {
-      permit.release();
+      permit.release(healthy);
       request.removeAttribute(PERMIT_ATTRIBUTE);
     }
   }

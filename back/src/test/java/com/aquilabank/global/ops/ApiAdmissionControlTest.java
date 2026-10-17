@@ -81,7 +81,9 @@ class ApiAdmissionControlTest {
     ApiAdmissionControl enabledControl = new ApiAdmissionControl(properties(true), meterRegistry);
     ApiAdmissionControl disabledControl = new ApiAdmissionControl(properties(false), meterRegistry);
 
-    assertThat(enabledControl.tryAcquire("/actuator/health").allowed()).isTrue();
+    ApiAdmissionPermit unmatched = enabledControl.tryAcquire("/actuator/health");
+    assertThat(unmatched.allowed()).isTrue();
+    unmatched.release();
     assertThat(disabledControl.tryAcquire("/api/v1/transactions").allowed()).isTrue();
 
     assertThat(
@@ -100,12 +102,20 @@ class ApiAdmissionControlTest {
 
     ApiAdmissionPermit first = admissionControl.tryAcquire("/api/v1/transactions");
     ApiAdmissionPermit rejected = admissionControl.tryAcquire("/api/v1/transactions");
+    rejected.release(false);
 
     assertThat(first.allowed()).isTrue();
     assertThat(rejected.allowed()).isFalse();
     assertCurrentLimit(meterRegistry, 1.0);
 
     first.release();
+    first.release();
+    ApiAdmissionPermit unhealthy = admissionControl.tryAcquire("/api/v1/transactions");
+    unhealthy.release(false);
+    assertCurrentLimit(meterRegistry, 1.0);
+
+    ApiAdmissionPermit recoveredA = admissionControl.tryAcquire("/api/v1/transactions");
+    recoveredA.release();
     ApiAdmissionPermit second = admissionControl.tryAcquire("/api/v1/transactions");
     second.release();
 

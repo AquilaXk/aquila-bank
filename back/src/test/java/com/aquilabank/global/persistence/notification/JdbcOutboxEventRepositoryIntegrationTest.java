@@ -89,7 +89,7 @@ class JdbcOutboxEventRepositoryIntegrationTest extends PostgresContainerTestSupp
         () ->
             id[0] =
                 insertOutboxEventReturningId(
-                    "evt-poison", "FAILED", now.minusSeconds(60), null, now.minusSeconds(30), 2));
+                    "evt-poison", "SENDING", now.minusSeconds(60), null, now.minusSeconds(30), 2));
 
     repository.markQuarantined(id[0], now, "invalid payload");
 
@@ -99,6 +99,42 @@ class JdbcOutboxEventRepositoryIntegrationTest extends PostgresContainerTestSupp
     List<OutboxEvent> claimed =
         repository.claimBatch(10, Duration.ofSeconds(30), now.plusSeconds(1));
     assertThat(claimed).isEmpty();
+  }
+
+  @Test
+  void ignoresStateTransitionsWhenRowIsNoLongerSending() {
+    Instant now = Instant.parse("2026-04-18T01:00:00Z");
+    long[] publishedId = new long[1];
+    long[] pendingId = new long[1];
+    commit(
+        transactionManager,
+        () -> {
+          publishedId[0] =
+              insertOutboxEventReturningId(
+                  "evt-already-published",
+                  "PUBLISHED",
+                  now.minusSeconds(60),
+                  now.minusSeconds(10),
+                  now.minusSeconds(10),
+                  1);
+          pendingId[0] =
+              insertOutboxEventReturningId(
+                  "evt-still-pending",
+                  "PENDING",
+                  now.minusSeconds(60),
+                  null,
+                  now.minusSeconds(10),
+                  0);
+        });
+
+    repository.markFailed(publishedId[0], now.plusSeconds(30), now, "late worker failure");
+    repository.markQuarantined(publishedId[0], now, "late worker quarantine");
+    repository.markPublished(pendingId[0], now);
+
+    assertThat(findStatus(publishedId[0])).isEqualTo("PUBLISHED");
+    assertThat(findRetryCount(publishedId[0])).isEqualTo(1);
+    assertThat(findLastError(publishedId[0])).isNull();
+    assertThat(findStatus(pendingId[0])).isEqualTo("PENDING");
   }
 
   private void insertOutboxEvent(
