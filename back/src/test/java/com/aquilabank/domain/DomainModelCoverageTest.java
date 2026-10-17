@@ -536,6 +536,48 @@ class DomainModelCoverageTest {
                     1L, base, base.plusSeconds(1), 51, null, null, null, null, null, null))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("limit must be between 1 and 50");
+    assertThatThrownBy(
+            () ->
+                new TransactionQuery(
+                    1L, base, base.plusSeconds(1), 10, null, null, null, 0L, null, null))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("minAmountMinor must be positive");
+    assertThatThrownBy(
+            () ->
+                new TransactionQuery(
+                    1L, base, base.plusSeconds(1), 10, null, null, null, null, 0L, null))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("maxAmountMinor must be positive");
+    assertThatThrownBy(
+            () ->
+                new TransactionQuery(
+                    1L,
+                    base,
+                    base.plusSeconds(10),
+                    10,
+                    new TransactionCursor(base.minusSeconds(1), 1L),
+                    null,
+                    null,
+                    null,
+                    null,
+                    null))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("cursor bookedAt must be within [from, to)");
+    assertThatThrownBy(
+            () ->
+                new TransactionQuery(
+                    1L,
+                    base,
+                    base.plusSeconds(10),
+                    10,
+                    new TransactionCursor(base.plusSeconds(10), 1L),
+                    null,
+                    null,
+                    null,
+                    null,
+                    null))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("cursor bookedAt must be within [from, to)");
 
     TransactionCursor transactionCursor = new TransactionCursor(base, 1L);
     assertThat(new TransactionSlice(List.of(), null, false, 10).hasNext()).isFalse();

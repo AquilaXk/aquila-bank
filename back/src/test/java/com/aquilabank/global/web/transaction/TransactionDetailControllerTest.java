@@ -98,4 +98,60 @@ class TransactionDetailControllerTest {
         .perform(get("/api/v1/transactions/TX-101").param("accountId", "101"))
         .andExpect(status().isUnauthorized());
   }
+
+  @Test
+  void recordsDetailHotPathMetricsAndEnforcesFairnessLimiterBeforeSingleFlight() throws Exception {
+    io.micrometer.core.instrument.simple.SimpleMeterRegistry meterRegistry =
+        new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
+    TransactionReadAccountFairnessLimiter limiter = new TransactionReadAccountFairnessLimiter(1);
+    MockMvc measuredMockMvc =
+        MockMvcBuilders.standaloneSetup(
+                new TransactionDetailController(
+                    transactionDetailQueryUseCase,
+                    requestAccountAuthorizationService,
+                    new TransactionReadHotPathMetrics(meterRegistry),
+                    new TransactionReadSingleFlight(),
+                    limiter))
+            .setControllerAdvice(new ApiExceptionHandler())
+            .addFilters(new BootstrapHeaderAuthenticationFilter("X-Account-Id", "X-Subject"))
+            .setCustomArgumentResolvers(new CurrentAuthenticatedPrincipalArgumentResolver())
+            .build();
+
+    when(requestAccountAuthorizationService.resolveReadableAccountId(any(), eq(101L)))
+        .thenReturn(101L);
+    when(transactionDetailQueryUseCase.getTransactionDetail(any()))
+        .thenReturn(
+            new TransactionDetail(
+                101L,
+                "TX-101",
+                TransactionDirection.DEBIT,
+                TransactionStatus.BOOKED,
+                1200L,
+                8800L,
+                "KRW",
+                "card payment",
+                "STORE",
+                Instant.parse("2026-04-16T09:00:00Z"),
+                "ENT-101",
+                TransactionStatus.BOOKED,
+                Instant.parse("2026-04-16T09:00:01Z"),
+                "card payment"));
+
+    measuredMockMvc
+        .perform(
+            get("/api/v1/transactions/TX-101")
+                .header("X-Account-Id", "101")
+                .param("accountId", "101"))
+        .andExpect(status().isOk());
+
+    org.assertj.core.api.Assertions.assertThat(
+            meterRegistry
+                .find("aquila.transaction.read.http.stage")
+                .tag("endpoint", "detail")
+                .tag("stage", "total")
+                .tag("outcome", "success")
+                .timer()
+                .count())
+        .isEqualTo(1L);
+  }
 }

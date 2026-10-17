@@ -180,6 +180,48 @@ class JdbcTransactionDetailRepositoryIntegrationTest extends PostgresContainerTe
     assertThat(result.orElseThrow().entryStatus()).hasToString("BOOKED");
   }
 
+  @Test
+  void findsTransactionDetailFromArchiveWhenHotReadModelIsMoved() {
+    Instant bookedAt = Instant.parse("2025-01-16T09:00:00Z");
+    Instant occurredAt = Instant.parse("2025-01-16T09:00:01Z");
+    long[] accountId = new long[1];
+    commit(
+        transactionManager,
+        () -> {
+          accountId[0] = insertBankAccount("archived detail account");
+          long ledgerEntryId =
+              insertLedgerEntry(
+                  accountId[0],
+                  "TRX-ARCHIVED-1",
+                  "ENT-ARCHIVED-1",
+                  "CREDIT",
+                  bookedAt,
+                  occurredAt,
+                  "archived payroll");
+          insertArchiveReadModel(
+              ledgerEntryId,
+              accountId[0],
+              "TRX-ARCHIVED-1",
+              "CREDIT",
+              "BOOKED",
+              55_000L,
+              155_000L,
+              "archived payroll",
+              "COMPANY",
+              bookedAt);
+        });
+
+    Optional<com.aquilabank.domain.transaction.model.TransactionDetail> result =
+        repository.find(new TransactionDetailQuery(accountId[0], "TRX-ARCHIVED-1"));
+
+    assertThat(result).isPresent();
+    assertThat(result.orElseThrow().accountId()).isEqualTo(accountId[0]);
+    assertThat(result.orElseThrow().transactionReference()).isEqualTo("TRX-ARCHIVED-1");
+    assertThat(result.orElseThrow().direction()).hasToString("CREDIT");
+    assertThat(result.orElseThrow().entryReference()).isEqualTo("ENT-ARCHIVED-1");
+    assertThat(result.orElseThrow().counterpartyMaskedName()).isEqualTo("COMPANY");
+  }
+
   private long insertBankAccount(String displayName) {
     Long accountId =
         jdbcTemplate.queryForObject(
@@ -321,5 +363,66 @@ class JdbcTransactionDetailRepositoryIntegrationTest extends PostgresContainerTe
             .addValue("summary", summary)
             .addValue("counterpartyMaskedName", counterpartyMaskedName)
             .addValue("bookedAt", Timestamp.from(bookedAt)));
+  }
+
+  private void insertArchiveReadModel(
+      long ledgerEntryId,
+      long accountId,
+      String transactionReference,
+      String direction,
+      String transactionStatus,
+      long amountMinor,
+      long balanceAfterMinor,
+      String summary,
+      String counterpartyMaskedName,
+      Instant bookedAt) {
+    jdbcTemplate.update(
+        """
+        INSERT INTO transaction_read_model_archive (
+            id,
+            ledger_entry_id,
+            account_id,
+            transaction_reference,
+            direction,
+            transaction_status,
+            amount_minor,
+            balance_after_minor,
+            currency_code,
+            summary,
+            counterparty_masked_name,
+            booked_at,
+            created_at,
+            archived_at
+        )
+        VALUES (
+            :id,
+            :ledgerEntryId,
+            :accountId,
+            :transactionReference,
+            :direction,
+            :transactionStatus,
+            :amountMinor,
+            :balanceAfterMinor,
+            'KRW',
+            :summary,
+            :counterpartyMaskedName,
+            :bookedAt,
+            :bookedAt,
+            :archivedAt
+        )
+        """,
+        new MapSqlParameterSource()
+            .addValue("id", ledgerEntryId)
+            .addValue("ledgerEntryId", ledgerEntryId)
+            .addValue("accountId", accountId)
+            .addValue("transactionReference", transactionReference)
+            .addValue("direction", direction)
+            .addValue("transactionStatus", transactionStatus)
+            .addValue("amountMinor", amountMinor)
+            .addValue("balanceAfterMinor", balanceAfterMinor)
+            .addValue("summary", summary)
+            .addValue("counterpartyMaskedName", counterpartyMaskedName)
+            .addValue("bookedAt", Timestamp.from(bookedAt))
+            .addValue("archivedAt", Timestamp.from(bookedAt.plusSeconds(60))));
   }
 }

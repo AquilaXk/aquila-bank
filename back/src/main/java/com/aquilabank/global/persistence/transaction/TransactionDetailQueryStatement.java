@@ -15,6 +15,15 @@ final class TransactionDetailQueryStatement {
   }
 
   static TransactionDetailQueryStatement from(TransactionDetailQuery query) {
+    return build(query, "detail-exact", "transaction_read_model");
+  }
+
+  static TransactionDetailQueryStatement fromArchive(TransactionDetailQuery query) {
+    return build(query, "detail-archive-exact", "transaction_read_model_archive");
+  }
+
+  private static TransactionDetailQueryStatement build(
+      TransactionDetailQuery query, String traceShape, String readModelTable) {
     MapSqlParameterSource params =
         new MapSqlParameterSource()
             .addValue("accountId", query.accountId())
@@ -23,7 +32,7 @@ final class TransactionDetailQueryStatement {
             .addValue("rowLimit", 2);
 
     return new TransactionDetailQueryStatement(
-        TransactionReadSqlTraceComment.current("detail-exact")
+        TransactionReadSqlTraceComment.current(traceShape)
             + """
         SELECT trm.account_id,
                trm.transaction_reference,
@@ -40,8 +49,9 @@ final class TransactionDetailQueryStatement {
                le.occurred_at,
                le.description
         FROM ledger_entry le
-        JOIN transaction_read_model trm
+        JOIN %s trm
           ON trm.ledger_entry_id = le.id
+         AND trm.booked_at = le.booked_at
         WHERE le.transaction_reference = :transactionReference
           AND le.account_id = :accountId
           -- source/target row가 같은 transactionReference를 공유하므로 account scope를 양쪽 테이블에 고정합니다.
@@ -49,7 +59,8 @@ final class TransactionDetailQueryStatement {
           AND trm.transaction_reference = :transactionReference
         ORDER BY le.id DESC
         LIMIT :rowLimit
-        """,
+        """
+                .formatted(readModelTable),
         params);
   }
 

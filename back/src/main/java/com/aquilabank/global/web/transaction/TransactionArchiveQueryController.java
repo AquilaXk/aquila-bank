@@ -119,12 +119,12 @@ public class TransactionArchiveQueryController {
               TransactionReadHotPathMetrics.ENDPOINT_ARCHIVE,
               TransactionReadHotPathMetrics.STAGE_USECASE,
               () ->
-                  singleFlight.get(
-                      TransactionReadHotPathMetrics.ENDPOINT_ARCHIVE,
-                      query,
+                  accountFairnessLimiter.execute(
+                      resolvedAccountId,
                       () ->
-                          accountFairnessLimiter.execute(
-                              resolvedAccountId,
+                          singleFlight.get(
+                              TransactionReadHotPathMetrics.ENDPOINT_ARCHIVE,
+                              query,
                               () ->
                                   transactionArchiveQueryUseCase.getArchivedTransactions(query))));
       return hotPathMetrics.record(

@@ -4,7 +4,6 @@ import com.aquilabank.domain.transaction.model.TransactionSlice;
 import com.aquilabank.domain.transaction.model.TransactionSummary;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 
 /** transaction timeline endpoint 응답 모델 */
@@ -30,12 +29,12 @@ public record TransactionQueryResponse(
     if (size == 0) {
       return List.of();
     }
-    // JFR에서 DTO mapping allocation site로 확인된 경로라 Stream/Iterator를 피한다.
-    List<TransactionItemResponse> responses = new ArrayList<>(size);
+    // JFR에서 DTO mapping allocation site로 확인된 경로라 Stream/Iterator와 이중 배열 복사를 피한다.
+    TransactionItemResponse[] responses = new TransactionItemResponse[size];
     for (int i = 0; i < size; i++) {
-      responses.add(TransactionItemResponse.from(items.get(i), responseShape));
+      responses[i] = TransactionItemResponse.from(items.get(i), responseShape);
     }
-    return List.copyOf(responses);
+    return List.of(responses);
   }
 
   /** 웹/모바일 클라이언트용 flat item shape */

@@ -32,15 +32,18 @@ public record TransactionQuery(
     if (limit < 1 || limit > MAX_LIMIT) {
       throw new IllegalArgumentException("limit must be between 1 and 50");
     }
-    if (minAmountMinor != null && minAmountMinor < 0) {
-      throw new IllegalArgumentException("minAmountMinor must be zero or positive");
+    if (minAmountMinor != null && minAmountMinor <= 0) {
+      throw new IllegalArgumentException("minAmountMinor must be positive");
     }
-    if (maxAmountMinor != null && maxAmountMinor < 0) {
-      throw new IllegalArgumentException("maxAmountMinor must be zero or positive");
+    if (maxAmountMinor != null && maxAmountMinor <= 0) {
+      throw new IllegalArgumentException("maxAmountMinor must be positive");
     }
     if (minAmountMinor != null && maxAmountMinor != null && minAmountMinor > maxAmountMinor) {
       throw new IllegalArgumentException(
           "minAmountMinor must be less than or equal to maxAmountMinor");
+    }
+    if (cursor != null && (cursor.bookedAt().isBefore(from) || !cursor.bookedAt().isBefore(to))) {
+      throw new IllegalArgumentException("cursor bookedAt must be within [from, to)");
     }
     if (transactionReference != null) {
       if (transactionReference.isBlank()) {

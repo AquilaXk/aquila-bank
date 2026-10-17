@@ -16,6 +16,11 @@ final class TransactionReadQueryStatement {
   }
 
   static TransactionReadQueryStatement from(TransactionQuery query) {
+    return from(query, "hot-timeline", "transaction_read_model");
+  }
+
+  static TransactionReadQueryStatement from(
+      TransactionQuery query, String traceShape, String tableName) {
     MapSqlParameterSource params =
         new MapSqlParameterSource()
             .addValue("accountId", query.accountId())
@@ -25,7 +30,7 @@ final class TransactionReadQueryStatement {
             .addValue("fetchLimit", query.limit() + 1);
 
     StringBuilder sql =
-        new StringBuilder(TransactionReadSqlTraceComment.current("hot-timeline"))
+        new StringBuilder(TransactionReadSqlTraceComment.current(traceShape))
             .append(
                 """
             SELECT id,
@@ -39,7 +44,11 @@ final class TransactionReadQueryStatement {
                    summary,
                    counterparty_masked_name,
                    booked_at
-            FROM transaction_read_model
+            FROM\s""")
+            .append(tableName)
+            .append(
+                """
+
             WHERE account_id = :accountId
               AND booked_at >= :from
             """);
@@ -104,7 +113,7 @@ final class TransactionReadQueryStatement {
   }
 
   private static java.time.Instant effectiveTo(TransactionQuery query) {
-    if (query.cursor() == null || query.cursor().bookedAt().isAfter(query.to())) {
+    if (query.cursor() == null) {
       return query.to();
     }
     return query.cursor().bookedAt();

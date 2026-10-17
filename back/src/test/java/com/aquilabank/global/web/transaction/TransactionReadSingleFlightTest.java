@@ -137,6 +137,53 @@ class TransactionReadSingleFlightTest {
     }
   }
 
+  @Test
+  void propagatesOwnerErrorToWaiterWithoutHanging() throws Exception {
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+    CountDownLatch ownerStarted = new CountDownLatch(1);
+    CountDownLatch releaseOwner = new CountDownLatch(1);
+    AtomicInteger supplierCalls = new AtomicInteger();
+    AtomicReference<Thread> waiterThread = new AtomicReference<>();
+    try {
+      Future<TransactionSlice> first =
+          executor.submit(
+              () ->
+                  singleFlight.get(
+                      "active",
+                      query,
+                      () -> {
+                        supplierCalls.incrementAndGet();
+                        ownerStarted.countDown();
+                        await(releaseOwner);
+                        throw new AssertionError("fatal error");
+                      }));
+      assertThat(ownerStarted.await(1, TimeUnit.SECONDS)).isTrue();
+
+      Future<TransactionSlice> second =
+          executor.submit(
+              () -> {
+                waiterThread.set(Thread.currentThread());
+                return singleFlight.get(
+                    "active",
+                    query,
+                    () -> {
+                      supplierCalls.incrementAndGet();
+                      return new TransactionSlice(List.of(), null, false, 50);
+                    });
+              });
+      assertThat(awaitWaiting(waiterThread)).isTrue();
+
+      releaseOwner.countDown();
+
+      assertThatThrownBy(() -> first.get(1, TimeUnit.SECONDS))
+          .hasRootCauseInstanceOf(AssertionError.class);
+      assertThatThrownBy(() -> second.get(1, TimeUnit.SECONDS))
+          .hasRootCauseInstanceOf(AssertionError.class);
+    } finally {
+      executor.shutdownNow();
+    }
+  }
+
   private static void await(CountDownLatch latch) {
     try {
       if (!latch.await(1, TimeUnit.SECONDS)) {

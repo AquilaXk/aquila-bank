@@ -11,6 +11,7 @@ public final class TransactionReadHotPathMetrics {
 
   static final String ENDPOINT_ACTIVE = "active";
   static final String ENDPOINT_ARCHIVE = "archive";
+  static final String ENDPOINT_DETAIL = "detail";
   static final String STAGE_AUTHORIZATION = "authorization";
   static final String STAGE_USECASE = "usecase";
   static final String STAGE_RESPONSE_MAPPING = "response_mapping";

@@ -120,12 +120,12 @@ public class TransactionQueryController {
               TransactionReadHotPathMetrics.ENDPOINT_ACTIVE,
               TransactionReadHotPathMetrics.STAGE_USECASE,
               () ->
-                  singleFlight.get(
-                      TransactionReadHotPathMetrics.ENDPOINT_ACTIVE,
-                      query,
+                  accountFairnessLimiter.execute(
+                      resolvedAccountId,
                       () ->
-                          accountFairnessLimiter.execute(
-                              resolvedAccountId,
+                          singleFlight.get(
+                              TransactionReadHotPathMetrics.ENDPOINT_ACTIVE,
+                              query,
                               () -> transactionQueryUseCase.getTransactions(query))));
       return hotPathMetrics.record(
           TransactionReadHotPathMetrics.ENDPOINT_ACTIVE,

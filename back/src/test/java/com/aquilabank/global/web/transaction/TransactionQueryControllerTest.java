@@ -282,6 +282,65 @@ class TransactionQueryControllerTest {
         .andExpect(status().isUnauthorized());
   }
 
+  @Test
+  void enforcesAccountFairnessLimitBeforeParkingInSingleFlight() throws Exception {
+    TransactionReadSingleFlight spySingleFlight = mock(TransactionReadSingleFlight.class);
+    TransactionReadAccountFairnessLimiter limiter = new TransactionReadAccountFairnessLimiter(1);
+    TransactionQueryController controller =
+        new TransactionQueryController(
+            transactionQueryUseCase,
+            requestAccountAuthorizationService,
+            new TransactionReadHotPathMetrics(meterRegistry),
+            spySingleFlight,
+            limiter);
+    when(requestAccountAuthorizationService.resolveReadableAccountId(
+            org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(101L)))
+        .thenReturn(101L);
+
+    java.util.concurrent.CountDownLatch slotHeld = new java.util.concurrent.CountDownLatch(1);
+    java.util.concurrent.CountDownLatch releaseSlot = new java.util.concurrent.CountDownLatch(1);
+    Thread holder =
+        new Thread(
+            () ->
+                limiter.execute(
+                    101L,
+                    () -> {
+                      slotHeld.countDown();
+                      try {
+                        releaseSlot.await(2, java.util.concurrent.TimeUnit.SECONDS);
+                      } catch (InterruptedException ex) {
+                        Thread.currentThread().interrupt();
+                      }
+                      return "held";
+                    }));
+    holder.start();
+    try {
+      org.assertj.core.api.Assertions.assertThat(
+              slotHeld.await(1, java.util.concurrent.TimeUnit.SECONDS))
+          .isTrue();
+      org.assertj.core.api.Assertions.assertThatThrownBy(
+              () ->
+                  controller.getTransactions(
+                      null,
+                      101L,
+                      java.time.OffsetDateTime.parse("2026-04-01T00:00:00Z"),
+                      java.time.OffsetDateTime.parse("2026-04-17T00:00:00Z"),
+                      20,
+                      null,
+                      null,
+                      null,
+                      null,
+                      null,
+                      null,
+                      "full"))
+          .isInstanceOf(TransactionReadAccountFairnessRejectedException.class);
+      org.mockito.Mockito.verifyNoInteractions(spySingleFlight);
+    } finally {
+      releaseSlot.countDown();
+      holder.join(1000);
+    }
+  }
+
   private boolean matchesExpandedFilters(TransactionQuery query) {
     return query.accountId() == 101L
         && query.status() == TransactionStatus.BOOKED

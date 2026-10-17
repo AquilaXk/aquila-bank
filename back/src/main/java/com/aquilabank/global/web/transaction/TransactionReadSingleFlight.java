@@ -12,37 +12,56 @@ import org.springframework.stereotype.Component;
 @Component
 public class TransactionReadSingleFlight {
 
-  private final ConcurrentHashMap<RequestKey, CompletableFuture<TransactionSlice>> inFlight =
+  private final ConcurrentHashMap<RequestKey, CompletableFuture<?>> inFlight =
       new ConcurrentHashMap<>();
 
   public TransactionSlice get(
       String endpoint, TransactionQuery query, Supplier<TransactionSlice> supplier) {
-    RequestKey key = new RequestKey(endpoint, query);
-    CompletableFuture<TransactionSlice> ownerFuture = new CompletableFuture<>();
-    CompletableFuture<TransactionSlice> existingFuture = inFlight.putIfAbsent(key, ownerFuture);
-    if (existingFuture != null) {
-      return await(existingFuture);
+    return execute(endpoint, query, supplier);
+  }
+
+  @SuppressWarnings("unchecked")
+  public <T> T execute(String endpoint, Object queryKey, Supplier<T> supplier) {
+    RequestKey key = new RequestKey(endpoint, queryKey);
+    boolean[] isOwner = {false};
+    CompletableFuture<T> future =
+        (CompletableFuture<T>)
+            inFlight.computeIfAbsent(
+                key,
+                ignored -> {
+                  isOwner[0] = true;
+                  return new CompletableFuture<T>();
+                });
+    if (!isOwner[0]) {
+      return await(future);
     }
 
     try {
-      TransactionSlice slice = supplier.get();
-      ownerFuture.complete(slice);
-      return slice;
-    } catch (RuntimeException ex) {
-      ownerFuture.completeExceptionally(ex);
-      throw ex;
+      T result = supplier.get();
+      future.complete(result);
+      return result;
+    } catch (Throwable throwable) {
+      future.completeExceptionally(throwable);
+      throw rethrow(throwable);
     } finally {
-      inFlight.remove(key, ownerFuture);
+      inFlight.remove(key, future);
     }
   }
 
-  private TransactionSlice await(CompletableFuture<TransactionSlice> future) {
+  private <T> T await(CompletableFuture<T> future) {
     try {
       return future.join();
     } catch (CompletionException ex) {
-      throw (RuntimeException) ex.getCause();
+      throw rethrow(ex.getCause());
     }
   }
 
-  private record RequestKey(String endpoint, TransactionQuery query) {}
+  private RuntimeException rethrow(Throwable throwable) {
+    if (throwable instanceof Error error) {
+      throw error;
+    }
+    return (RuntimeException) throwable;
+  }
+
+  private record RequestKey(String endpoint, Object queryKey) {}
 }
