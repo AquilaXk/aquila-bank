@@ -95,6 +95,7 @@ export function SupportCenterSection({
   onSelectCustomerApplication,
   onSubmitCustomerApplication,
 }: SupportCenterSectionProps) {
+  const [activeTask, setActiveTask] = useState<string>("all");
   const [incidentForm, setIncidentForm] = useState({
     incidentType: "SECURITY_MEDIA_LOSS",
     accountId: "",
@@ -147,50 +148,105 @@ export function SupportCenterSection({
           <article className="support-service-card" key={item.title}>
             <strong>{item.title}</strong>
             <p>{item.description}</p>
-            <button type="button">{item.action}</button>
+            <button
+              onClick={() =>
+                setActiveTask(
+                  item.title === "사고신고" || item.title === "이체한도"
+                    ? "incident"
+                    : item.title === "고객센터"
+                      ? "faq"
+                      : "status",
+                )
+              }
+              type="button"
+            >
+              {item.action}
+            </button>
           </article>
         ))}
       </div>
 
-      <section className="table-panel">
-        <div className="panel-toolbar">
-          <div>
-            <strong>사고신고 우선순위</strong>
-            <span>분실/도용 의심 업무 우선 접수</span>
+      <div className="task-filter-bar" role="toolbar" aria-label="고객센터 업무 선택">
+        <button
+          className={activeTask === "all" ? "active" : ""}
+          onClick={() => setActiveTask("all")}
+          type="button"
+        >
+          전체 업무 보기
+        </button>
+        <button
+          className={activeTask === "status" ? "active" : ""}
+          onClick={() => setActiveTask("status")}
+          type="button"
+        >
+          접수조회
+        </button>
+        <button
+          className={activeTask === "faq" ? "active" : ""}
+          onClick={() => setActiveTask("faq")}
+          type="button"
+        >
+          자주찾는질문
+        </button>
+        <button
+          className={activeTask === "incident" ? "active" : ""}
+          onClick={() => setActiveTask("incident")}
+          type="button"
+        >
+          긴급신고
+        </button>
+        <button
+          className={activeTask === "certificate" ? "active" : ""}
+          onClick={() => setActiveTask("certificate")}
+          type="button"
+        >
+          증명서발급
+        </button>
+      </div>
+
+      <details className="spec-disclosure">
+        <summary>사고신고 유형별 우선순위 및 초기 조치 기준 보기</summary>
+        <section className="table-panel">
+          <div className="panel-toolbar">
+            <div>
+              <strong>사고신고 우선순위</strong>
+              <span>분실/도용 의심 업무 우선 접수</span>
+            </div>
           </div>
-        </div>
-        <div className="bank-table-wrap">
-          <table className="bank-table">
-            <caption>사고신고 우선순위</caption>
-            <thead>
-              <tr>
-                <th>신고 유형</th>
-                <th>대상</th>
-                <th>초기 조치</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>보안매체 분실</td>
-                <td>OTP, 보안카드</td>
-                <td>접수 후 운영자 확인</td>
-              </tr>
-              <tr>
-                <td>인증서 도용 의심</td>
-                <td>공동인증서, 금융인증서</td>
-                <td>접수 후 재등록 안내</td>
-              </tr>
-              <tr>
-                <td>이체한도 관리</td>
-                <td>1회/1일 한도</td>
-                <td>보안등급 확인</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
+          <div className="bank-table-wrap">
+            <table className="bank-table">
+              <caption>사고신고 우선순위</caption>
+              <thead>
+                <tr>
+                  <th>신고 유형</th>
+                  <th>대상</th>
+                  <th>초기 조치</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>보안매체 분실</td>
+                  <td>OTP, 보안카드</td>
+                  <td>접수 후 운영자 확인</td>
+                </tr>
+                <tr>
+                  <td>인증서 도용 의심</td>
+                  <td>공동인증서, 금융인증서</td>
+                  <td>접수 후 재등록 안내</td>
+                </tr>
+                <tr>
+                  <td>이체한도 관리</td>
+                  <td>1회/1일 한도</td>
+                  <td>보안등급 확인</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </details>
 
       <section className="support-detail-grid" aria-label="고객센터 상세 업무">
+        {activeTask === "all" || activeTask === "status" ? (
         <article className="application-status-panel">
           <div className="panel-toolbar">
             <div>
@@ -292,7 +348,9 @@ export function SupportCenterSection({
             )}
           </div>
         </article>
+        ) : null}
 
+        {activeTask === "all" || activeTask === "faq" ? (
         <article className="faq-list">
           <div className="panel-toolbar">
             <div>
@@ -307,7 +365,9 @@ export function SupportCenterSection({
             </details>
           ))}
         </article>
+        ) : null}
 
+        {activeTask === "all" || activeTask === "incident" ? (
         <article className="incident-form">
           <div className="panel-toolbar">
             <div>
@@ -390,7 +450,9 @@ export function SupportCenterSection({
             신고 접수
           </button>
         </article>
+        ) : null}
 
+        {activeTask === "all" || activeTask === "certificate" ? (
         <article className="certificate-list">
           <div className="panel-toolbar">
             <div>
@@ -457,6 +519,7 @@ export function SupportCenterSection({
             </div>
           ))}
         </article>
+        ) : null}
       </section>
       {applicationResult ? (
         <p className="application-result-line">

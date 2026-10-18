@@ -143,25 +143,9 @@ export function NotificationsSection({
 
       <form className="bank-form filter-form" onSubmit={onSearch}>
         <div className="panel-toolbar inline-toolbar">
-          <div className="tab-switch" role="tablist" aria-label="알림 조회 구분">
-            <button
-              aria-selected={mode === "inbox"}
-              className={mode === "inbox" ? "active" : ""}
-              onClick={() => onModeChange("inbox")}
-              role="tab"
-              type="button"
-            >
-              알림함
-            </button>
-            <button
-              aria-selected={mode === "search"}
-              className={mode === "search" ? "active" : ""}
-              onClick={() => onModeChange("search")}
-              role="tab"
-              type="button"
-            >
-              조건검색
-            </button>
+          <div>
+            <strong>{mode === "inbox" ? "알림함 조회 조건" : "알림 상세 조건검색"}</strong>
+            <span>건수 및 기간 기준</span>
           </div>
           <div className="button-row compact">
             <button disabled={isBusy} type="submit">

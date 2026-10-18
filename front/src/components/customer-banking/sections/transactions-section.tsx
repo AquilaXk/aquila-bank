@@ -136,26 +136,6 @@ export function TransactionsSection({
           <p>조회</p>
           <h1>거래내역 조회</h1>
         </div>
-        <div className="tab-switch" role="tablist" aria-label="거래 조회 구분">
-          <button
-            aria-selected={mode === "active"}
-            className={mode === "active" ? "active" : ""}
-            onClick={() => onModeChange("active")}
-            role="tab"
-            type="button"
-          >
-            일반
-          </button>
-          <button
-            aria-selected={mode === "archive"}
-            className={mode === "archive" ? "active" : ""}
-            onClick={() => onModeChange("archive")}
-            role="tab"
-            type="button"
-          >
-            아카이브
-          </button>
-        </div>
       </div>
       <BankNoticeStrip
         items={[
