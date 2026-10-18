@@ -419,7 +419,7 @@ export function SecuritySection(props: {
               </div>
               <div>
                 <dt>인증 방식</dt>
-                <dd>{props.session?.tokenType ? `보안 세션 (${props.session.tokenType})` : "확인 전"}</dd>
+                <dd>{props.session ? "보안 세션" : "확인 전"}</dd>
               </div>
               <div>
                 <dt>세션 만료</dt>

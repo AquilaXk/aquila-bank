@@ -423,7 +423,7 @@ export function RightRail({
             </div>
             <div>
               <dt>인증 방식</dt>
-              <dd>보안 세션 ({session.tokenType})</dd>
+              <dd>보안 세션</dd>
             </div>
             <div>
               <dt>만료</dt>

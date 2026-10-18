@@ -3017,10 +3017,12 @@ label span {
     grid-template-columns: 1fr;
   }
 
+  .account-summary-panel > div,
   .account-status-grid > div,
   .work-state-grid > div,
   .notification-status > div,
   .transfer-risk-grid > div,
+  .transfer-verification-panel > div,
   .auth-method-grid > div,
   .security-dashboard > div,
   .security-media-grid > div {
@@ -3028,10 +3030,12 @@ label span {
     border-bottom: 1px solid var(--line);
   }
 
+  .account-summary-panel > div:last-child,
   .account-status-grid > div:last-child,
   .work-state-grid > div:last-child,
   .notification-status > div:last-child,
   .transfer-risk-grid > div:last-child,
+  .transfer-verification-panel > div:last-child,
   .auth-method-grid > div:last-child,
   .security-dashboard > div:last-child,
   .security-media-grid > div:last-child {

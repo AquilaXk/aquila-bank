@@ -148,7 +148,18 @@ export function SupportCenterSection({
           <article className="support-service-card" key={item.title}>
             <strong>{item.title}</strong>
             <p>{item.description}</p>
-            <button onClick={() => setActiveTask("all")} type="button">
+            <button
+              onClick={() =>
+                setActiveTask(
+                  item.title === "사고신고" || item.title === "이체한도"
+                    ? "incident"
+                    : item.title === "고객센터"
+                      ? "faq"
+                      : "status",
+                )
+              }
+              type="button"
+            >
               {item.action}
             </button>
           </article>
