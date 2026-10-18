@@ -229,72 +229,78 @@ export function SecuritySection(props: {
 
   function renderPasswordRecoveryForms() {
     return (
-      <div className="two-column">
-        <form className="bank-form" onSubmit={props.onPasswordRecoveryRequest}>
-          <div className="form-heading">
-            <strong>비밀번호 찾기</strong>
-            <span>비로그인 복구 가능</span>
-          </div>
-          <label>
-            <span>고객 ID</span>
-            <input
-              onChange={(event) =>
-                props.onPasswordRecoveryChange({
-                  ...props.passwordRecoveryForm,
-                  loginId: event.target.value,
-                })
-              }
-              required
-              value={props.passwordRecoveryForm.loginId}
-            />
-          </label>
-          <button disabled={props.isBusy} type="submit">
-            복구 요청
-          </button>
-          {props.passwordRecoveryResult?.handoffRequestId ? (
-            <p className="field-note">
-              요청번호: {props.passwordRecoveryResult.handoffRequestId}
-            </p>
-          ) : null}
-        </form>
+      <details className="recovery-disclosure">
+        <summary>
+          <strong>비밀번호 찾기</strong>
+          <span>복구 확정 · 비로그인 복구 가능</span>
+        </summary>
+        <div className="two-column">
+          <form className="bank-form" onSubmit={props.onPasswordRecoveryRequest}>
+            <div className="form-heading">
+              <strong>비밀번호 복구 요청</strong>
+              <span>비로그인 복구 가능</span>
+            </div>
+            <label>
+              <span>고객 ID</span>
+              <input
+                onChange={(event) =>
+                  props.onPasswordRecoveryChange({
+                    ...props.passwordRecoveryForm,
+                    loginId: event.target.value,
+                  })
+                }
+                required
+                value={props.passwordRecoveryForm.loginId}
+              />
+            </label>
+            <button disabled={props.isBusy} type="submit">
+              복구 요청
+            </button>
+            {props.passwordRecoveryResult?.handoffRequestId ? (
+              <p className="field-note">
+                요청번호: {props.passwordRecoveryResult.handoffRequestId}
+              </p>
+            ) : null}
+          </form>
 
-        <form className="bank-form" onSubmit={props.onPasswordRecoveryConfirm}>
-          <div className="form-heading">
-            <strong>복구 확정</strong>
-            <span>본인확인 후 변경</span>
-          </div>
-          <label>
-            <span>복구 토큰</span>
-            <input
-              onChange={(event) =>
-                props.onPasswordRecoveryChange({
-                  ...props.passwordRecoveryForm,
-                  recoveryToken: event.target.value,
-                })
-              }
-              required
-              value={props.passwordRecoveryForm.recoveryToken}
-            />
-          </label>
-          <label>
-            <span>새 비밀번호</span>
-            <input
-              onChange={(event) =>
-                props.onPasswordRecoveryChange({
-                  ...props.passwordRecoveryForm,
-                  newPassword: event.target.value,
-                })
-              }
-              required
-              type="password"
-              value={props.passwordRecoveryForm.newPassword}
-            />
-          </label>
-          <button disabled={props.isBusy} type="submit">
-            변경
-          </button>
-        </form>
-      </div>
+          <form className="bank-form" onSubmit={props.onPasswordRecoveryConfirm}>
+            <div className="form-heading">
+              <strong>새 비밀번호 확정</strong>
+              <span>본인확인 후 변경</span>
+            </div>
+            <label>
+              <span>복구 토큰</span>
+              <input
+                onChange={(event) =>
+                  props.onPasswordRecoveryChange({
+                    ...props.passwordRecoveryForm,
+                    recoveryToken: event.target.value,
+                  })
+                }
+                required
+                value={props.passwordRecoveryForm.recoveryToken}
+              />
+            </label>
+            <label>
+              <span>새 비밀번호</span>
+              <input
+                onChange={(event) =>
+                  props.onPasswordRecoveryChange({
+                    ...props.passwordRecoveryForm,
+                    newPassword: event.target.value,
+                  })
+                }
+                required
+                type="password"
+                value={props.passwordRecoveryForm.newPassword}
+              />
+            </label>
+            <button disabled={props.isBusy} type="submit">
+              변경
+            </button>
+          </form>
+        </div>
+      </details>
     );
   }
 
@@ -412,8 +418,8 @@ export function SecuritySection(props: {
                 <dd>{props.session?.userId ?? "확인 전"}</dd>
               </div>
               <div>
-                <dt>세션 방식</dt>
-                <dd>{props.session?.tokenType ?? "확인 전"}</dd>
+                <dt>인증 방식</dt>
+                <dd>{props.session?.tokenType ? `보안 세션 (${props.session.tokenType})` : "확인 전"}</dd>
               </div>
               <div>
                 <dt>세션 만료</dt>

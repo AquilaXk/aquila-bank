@@ -125,6 +125,7 @@ export function EnterpriseServicesSection({
   isBusy,
   onSubmitCustomerApplication,
 }: EnterpriseServicesSectionProps) {
+  const [activeTask, setActiveTask] = useState<string>("all");
   const [forms, setForms] =
     useState<Record<FulfillmentApplicationType, ApplicationFormState>>(createInitialForms);
 
@@ -137,6 +138,11 @@ export function EnterpriseServicesSection({
       },
     }));
   }
+
+  const visibleDetails =
+    activeTask === "all"
+      ? fulfillmentDetails
+      : fulfillmentDetails.filter((item) => item.applicationType === activeTask);
 
   return (
     <section className="task-section compact-work-section">
@@ -167,7 +173,29 @@ export function EnterpriseServicesSection({
         ))}
       </div>
 
-      <BankTable caption="부가업무 처리 기준" className="dense-bank-table">
+      <div className="task-filter-bar" role="toolbar" aria-label="부가업무 신청 선택">
+        <button
+          className={activeTask === "all" ? "active" : ""}
+          onClick={() => setActiveTask("all")}
+          type="button"
+        >
+          전체 업무 보기
+        </button>
+        {fulfillmentDetails.map((item) => (
+          <button
+            className={activeTask === item.applicationType ? "active" : ""}
+            key={item.applicationType}
+            onClick={() => setActiveTask(item.applicationType)}
+            type="button"
+          >
+            {item.title} 업무
+          </button>
+        ))}
+      </div>
+
+      <details className="spec-disclosure">
+        <summary>부가업무 처리 기준 및 필수 입력 항목 보기</summary>
+        <BankTable caption="부가업무 처리 기준" className="dense-bank-table">
           <thead>
             <tr>
               <th>업무</th>
@@ -202,10 +230,14 @@ export function EnterpriseServicesSection({
               <td>외환 신청 접수</td>
             </tr>
           </tbody>
-      </BankTable>
+        </BankTable>
+      </details>
 
-      <section className="fulfillment-detail-grid" aria-label="부가업무 상세 화면">
-        {fulfillmentDetails.map((item) => (
+      <section
+        className={`fulfillment-detail-grid ${activeTask !== "all" ? "single-task-grid" : ""}`.trim()}
+        aria-label="부가업무 상세 화면"
+      >
+        {visibleDetails.map((item) => (
           <article className="fulfillment-detail-card" key={item.title}>
             <div className="fulfillment-detail-head">
               <span>{item.title}</span>

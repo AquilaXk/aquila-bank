@@ -96,6 +96,7 @@ export function SecurityHubSection({
   isBusy,
   onSubmitCustomerApplication,
 }: SecurityHubSectionProps) {
+  const [activeTask, setActiveTask] = useState<string>("all");
   const [forms, setForms] = useState<Record<string, SecurityApplicationForm>>(
     () =>
       Object.fromEntries(
@@ -119,6 +120,11 @@ export function SecurityHubSection({
       },
     }));
   }
+
+  const visibleFlows =
+    activeTask === "all"
+      ? registrationFlows
+      : registrationFlows.filter((flow) => flow.title === activeTask);
 
   return (
     <section className="task-section compact-work-section">
@@ -147,51 +153,77 @@ export function SecurityHubSection({
         ))}
       </div>
 
-      <section className="table-panel">
-        <div className="panel-toolbar">
-          <div>
-            <strong>보안매체별 적용 업무</strong>
-            <span>이체/인증 신청 접수 기준</span>
-          </div>
-        </div>
-        <div className="bank-table-wrap">
-          <table className="bank-table">
-            <caption>보안매체별 적용 업무</caption>
-            <thead>
-              <tr>
-                <th>구분</th>
-                <th>주요 업무</th>
-                <th>확인 단계</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>공동인증서</td>
-                <td>인증서 관리 접수</td>
-                <td>식별값/OTP</td>
-              </tr>
-              <tr>
-                <td>금융인증서</td>
-                <td>로그인 보조, 등록 접수</td>
-                <td>식별값/OTP</td>
-              </tr>
-              <tr>
-                <td>OTP</td>
-                <td>즉시이체, 한도 상향</td>
-                <td>일회용 비밀번호</td>
-              </tr>
-              <tr>
-                <td>보안매체</td>
-                <td>보안카드, 모바일 OTP</td>
-                <td>매체별 등급 확인</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section className="registration-flow-grid" aria-label="인증센터 등록 업무">
+      <div className="task-filter-bar" role="toolbar" aria-label="보안 등록 업무 선택">
+        <button
+          className={activeTask === "all" ? "active" : ""}
+          onClick={() => setActiveTask("all")}
+          type="button"
+        >
+          전체 업무 보기
+        </button>
         {registrationFlows.map((flow) => (
+          <button
+            className={activeTask === flow.title ? "active" : ""}
+            key={flow.title}
+            onClick={() => setActiveTask(flow.title)}
+            type="button"
+          >
+            {flow.title} 업무
+          </button>
+        ))}
+      </div>
+
+      <details className="spec-disclosure">
+        <summary>보안매체별 적용 업무 및 확인 기준 보기</summary>
+        <section className="table-panel">
+          <div className="panel-toolbar">
+            <div>
+              <strong>보안매체별 적용 업무</strong>
+              <span>이체/인증 신청 접수 기준</span>
+            </div>
+          </div>
+          <div className="bank-table-wrap">
+            <table className="bank-table">
+              <caption>보안매체별 적용 업무</caption>
+              <thead>
+                <tr>
+                  <th>구분</th>
+                  <th>주요 업무</th>
+                  <th>확인 단계</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>공동인증서</td>
+                  <td>인증서 관리 접수</td>
+                  <td>식별값/OTP</td>
+                </tr>
+                <tr>
+                  <td>금융인증서</td>
+                  <td>로그인 보조, 등록 접수</td>
+                  <td>식별값/OTP</td>
+                </tr>
+                <tr>
+                  <td>OTP</td>
+                  <td>즉시이체, 한도 상향</td>
+                  <td>일회용 비밀번호</td>
+                </tr>
+                <tr>
+                  <td>보안매체</td>
+                  <td>보안카드, 모바일 OTP</td>
+                  <td>매체별 등급 확인</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </details>
+
+      <section
+        className={`registration-flow-grid ${activeTask !== "all" ? "single-task-grid" : ""}`.trim()}
+        aria-label="인증센터 등록 업무"
+      >
+        {visibleFlows.map((flow) => (
           <article className="registration-flow-card" key={flow.title}>
             <div>
               <span>인증센터</span>

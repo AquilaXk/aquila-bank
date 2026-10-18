@@ -418,12 +418,12 @@ export function RightRail({
         {isAuthenticated && session ? (
           <dl className="session-summary">
             <div>
-              <dt>User ID</dt>
-              <dd>{session.userId ?? "-"}</dd>
+              <dt>접속 고객</dt>
+              <dd>{session.userId ? `${session.userId}번 고객` : "-"}</dd>
             </div>
             <div>
-              <dt>세션 방식</dt>
-              <dd>{session.tokenType}</dd>
+              <dt>인증 방식</dt>
+              <dd>보안 세션 ({session.tokenType})</dd>
             </div>
             <div>
               <dt>만료</dt>

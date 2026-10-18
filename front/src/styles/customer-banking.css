@@ -2,62 +2,43 @@
   color-scheme: light dark;
   --palette-grey-0: #ffffff;
   --palette-grey-10: #f8f9fc;
-  --palette-grey-15: #f0f1f5;
-  --palette-grey-20: #eff2f7;
-  --palette-grey-50: #e6eaf0;
-  --palette-grey-100: #e1e6ec;
-  --palette-grey-200: #cdd4dc;
-  --palette-grey-300: #b2bbc5;
-  --palette-grey-800: #45474d;
-  --palette-grey-900: #2f3034;
-  --palette-grey-1000: #212226;
-  --palette-grey-1100: #18191d;
-  --palette-grey-1200: #121317;
-  --palette-blue-600: #3279f9;
-  --palette-blue-700: #1a63e0;
-  --palette-blue-400: #5b9bff;
+  --palette-grey-15: #f1f3f8;
+  --palette-grey-20: #eef1f6;
+  --palette-grey-50: #e5e9f0;
+  --palette-grey-100: #dfe4ec;
+  --palette-grey-200: #cbd2dc;
+  --palette-grey-300: #a8b2bf;
+  --palette-grey-800: #474a52;
+  --palette-grey-900: #2e3036;
+  --palette-grey-1000: #1f2126;
+  --palette-grey-1100: #16181c;
+  --palette-grey-1200: #101114;
+  --palette-blue-600: #2563eb;
+  --palette-blue-700: #1d4ed8;
+  --palette-blue-400: #60a5fa;
 
   --page: light-dark(var(--palette-grey-10), var(--palette-grey-1200));
   --surface: light-dark(var(--palette-grey-0), var(--palette-grey-1100));
   --surface-muted: light-dark(var(--palette-grey-15), var(--palette-grey-1000));
-  --line: light-dark(var(--palette-grey-100), rgba(255, 255, 255, 0.1));
-  --line-strong: light-dark(var(--palette-grey-200), rgba(255, 255, 255, 0.18));
+  --line: light-dark(var(--palette-grey-100), rgba(255, 255, 255, 0.09));
+  --line-strong: light-dark(var(--palette-grey-200), rgba(255, 255, 255, 0.16));
   --text: light-dark(var(--palette-grey-1200), var(--palette-grey-10));
   --muted: light-dark(var(--palette-grey-800), var(--palette-grey-300));
   --primary: light-dark(var(--palette-blue-700), var(--palette-blue-400));
-  --primary-dark: light-dark(#124bb5, #8ab8ff);
-  --primary-soft: light-dark(rgba(50, 121, 249, 0.08), rgba(91, 155, 255, 0.14));
+  --primary-dark: light-dark(#1e40af, #93c5fd);
+  --primary-soft: light-dark(rgba(37, 99, 235, 0.07), rgba(96, 165, 250, 0.13));
   --accent: var(--palette-blue-600);
-  --danger: light-dark(#c81e1e, #f87171);
-  --danger-soft: light-dark(rgba(200, 30, 30, 0.08), rgba(248, 113, 113, 0.14));
-  --success: light-dark(#0e7452, #34d399);
-  --success-soft: light-dark(rgba(14, 116, 82, 0.08), rgba(52, 211, 153, 0.14));
-  --warning: light-dark(#9a5b00, #fbbf24);
-  --warning-soft: light-dark(rgba(217, 119, 6, 0.1), rgba(245, 158, 11, 0.14));
+  --danger: light-dark(#dc2626, #f87171);
+  --danger-soft: light-dark(rgba(220, 38, 38, 0.08), rgba(248, 113, 113, 0.14));
+  --success: light-dark(#059669, #34d399);
+  --success-soft: light-dark(rgba(5, 150, 105, 0.08), rgba(52, 211, 153, 0.14));
+  --warning: light-dark(#b45309, #fbbf24);
+  --warning-soft: light-dark(rgba(217, 119, 6, 0.09), rgba(245, 158, 11, 0.14));
   --shadow: light-dark(
-    0 4px 16px -2px rgba(18, 19, 23, 0.06),
+    0 2px 10px -2px rgba(16, 17, 20, 0.05),
     0 8px 24px -4px rgba(0, 0, 0, 0.45)
   );
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-
-  --gothic-page: var(--page);
-  --gothic-surface: var(--surface);
-  --gothic-surface-muted: var(--surface-muted);
-  --gothic-iron: var(--surface-muted);
-  --gothic-line: var(--line);
-  --gothic-line-strong: var(--line-strong);
-  --gothic-parchment: var(--text);
-  --gothic-muted: var(--muted);
-  --gothic-brass: var(--primary);
-  --gothic-brass-strong: var(--primary-dark);
-  --gothic-brass-soft: var(--primary-soft);
-  --gothic-danger: var(--danger);
-  --gothic-danger-soft: var(--danger-soft);
-  --gothic-success: var(--success);
-  --gothic-success-soft: var(--success-soft);
-  --gothic-warning-soft: var(--warning-soft);
-  --gothic-focus: var(--primary);
-  --gothic-shadow: var(--shadow);
 
   accent-color: var(--primary);
   scrollbar-color: light-dark(var(--palette-grey-200), var(--palette-grey-800)) transparent;
@@ -88,13 +69,14 @@ body {
   background: var(--page);
   color: var(--text);
   font-family:
+    "Pretendard",
     "Noto Sans KR",
-    "Malgun Gothic",
     "Apple SD Gothic Neo",
-    Arial,
+    "Malgun Gothic",
     sans-serif;
   font-size: 14px;
   line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 
 button,
@@ -106,11 +88,13 @@ select {
 button {
   min-height: 44px;
   min-width: 44px;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--line);
   border-radius: 6px;
-  background: var(--surface);
+  background: var(--surface-muted);
   color: var(--text);
   cursor: pointer;
+  padding: 0 12px;
+  font-size: 13px;
   font-weight: 600;
   line-height: 1.25;
   word-break: keep-all;
@@ -119,26 +103,28 @@ button {
 
 button:hover:not(:disabled) {
   border-color: var(--primary);
+  background: var(--surface);
   color: var(--primary-dark);
 }
 
 button:focus-visible,
 input:focus-visible,
 select:focus-visible,
+summary:focus-visible,
 a:focus-visible {
-  outline: 3px solid var(--gothic-focus);
+  outline: 3px solid var(--primary);
   outline-offset: 2px;
 }
 
 button:disabled {
   cursor: not-allowed;
-  opacity: 0.48;
+  opacity: 0.45;
 }
 
 input,
 select {
   width: 100%;
-  height: 44px;
+  height: 42px;
   border: 1px solid var(--line-strong);
   border-radius: 6px;
   background: var(--surface);
@@ -151,29 +137,23 @@ select:user-invalid {
   border-color: var(--danger);
 }
 
-.gothic-banking-shell input,
-.gothic-banking-shell select {
-  background: var(--surface);
-  color: var(--text);
-}
-
 label span {
   display: block;
-  margin-bottom: 6px;
+  margin-bottom: 5px;
   color: var(--muted);
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 12px;
+  font-weight: 600;
 }
 
-.bank-shell,
-.gothic-banking-shell {
-  min-width: 1180px;
+.bank-shell {
+  width: 100%;
+  min-width: 0;
   background: var(--page);
 }
 
 .dense-banking-shell {
-  --dense-section-gap: 10px;
-  --dense-panel-padding: 12px;
+  --dense-section-gap: 14px;
+  --dense-panel-padding: 18px;
 }
 
 .mobile-work-jump {
@@ -201,17 +181,15 @@ label span {
 
 .bank-header {
   display: grid;
-  gap: 4px;
+  gap: 0;
   border-bottom: 1px solid var(--line);
   background: var(--surface);
-  box-shadow: var(--shadow);
-  padding-bottom: 6px;
 }
 
 .utility-bar,
 .brand-row,
 .bank-layout {
-  width: min(1440px, calc(100% - 48px));
+  width: min(1400px, calc(100% - 40px));
   margin: 0 auto;
 }
 
@@ -219,9 +197,9 @@ label span {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 52px;
+  min-height: 46px;
   border-bottom: 1px solid var(--line);
-  padding-block: 4px;
+  padding-block: 3px;
 }
 
 .utility-left,
@@ -230,7 +208,7 @@ label span {
 .button-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .utility-right {
@@ -241,15 +219,15 @@ label span {
 }
 
 .utility-link {
-  min-height: 44px;
+  min-height: 36px;
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
   color: var(--muted);
-  padding: 8px 10px;
+  padding: 6px 10px;
   font-size: 12px;
-  font-weight: 500;
-  line-height: 1.35;
+  font-weight: 600;
+  line-height: 1.3;
 }
 
 .theme-toggle-button {
@@ -260,41 +238,40 @@ label span {
 }
 
 .utility-link.active {
-  border-color: var(--line-strong);
+  border-color: transparent;
   background: var(--primary-soft);
   color: var(--primary-dark);
-  box-shadow: none;
 }
 
 .top-channel-nav {
-  gap: 6px;
+  gap: 4px;
 }
 
 .top-channel-link.active {
   border-color: var(--primary);
   background: var(--primary);
-  color: var(--page);
+  color: var(--palette-grey-0);
 }
 
 .top-channel-link.active:hover:not(:disabled) {
   border-color: var(--primary-dark);
   background: var(--primary-dark);
-  color: var(--page);
+  color: var(--palette-grey-0);
 }
 
 .service-map {
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: var(--primary-soft);
+  background: transparent;
   padding: 0 10px;
-  color: var(--primary-dark);
+  color: var(--text);
 }
 
 .spacing-safe-service-map {
-  min-height: 44px;
+  min-height: 36px;
   margin-block: 0;
-  padding: 8px 12px;
-  line-height: 1.35;
+  padding: 6px 10px;
+  line-height: 1.3;
 }
 
 .mobile-search-toggle {
@@ -305,7 +282,7 @@ label span {
 
 .search-field {
   display: grid;
-  grid-template-columns: max-content minmax(180px, 1fr);
+  grid-template-columns: max-content minmax(160px, 1fr);
   align-items: center;
   gap: 6px;
   min-width: 0;
@@ -314,12 +291,16 @@ label span {
 .search-field label {
   margin: 0;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
 }
 
 .search-field input {
   min-width: 0;
+  height: 36px;
+  background: var(--surface-muted);
+  border-color: var(--line);
+  font-size: 13px;
 }
 
 .search-input-row {
@@ -330,7 +311,7 @@ label span {
 }
 
 .search-clear-button {
-  min-height: 44px;
+  min-height: 36px;
   padding: 0 10px;
   font-size: 12px;
 }
@@ -338,10 +319,10 @@ label span {
 .utility-search {
   display: flex;
   align-items: center;
-  gap: 10px;
-  flex: 0 1 660px;
+  gap: 8px;
+  flex: 0 1 560px;
   min-width: 0;
-  max-width: 660px;
+  max-width: 560px;
   position: relative;
   z-index: 20;
 }
@@ -355,7 +336,7 @@ label span {
   align-items: center;
   flex: 0 1 auto;
   flex-wrap: nowrap;
-  gap: 4px;
+  gap: 2px;
   color: var(--muted);
   font-size: 12px;
   font-weight: 500;
@@ -364,14 +345,20 @@ label span {
   word-break: keep-all;
 }
 
+.keyword-list > span {
+  margin-right: 4px;
+  white-space: nowrap;
+}
+
 .keyword-list button {
-  min-height: 44px;
+  min-height: 34px;
+  min-width: 0;
   border: 0;
   background: transparent;
   color: var(--primary-dark);
   padding: 0 6px;
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -381,32 +368,37 @@ label span {
 
 .service-search-panel {
   display: grid;
-  gap: 6px;
+  gap: 4px;
   position: absolute;
   top: calc(100% + 6px);
   right: 0;
   left: 0;
   z-index: 30;
-  max-height: min(390px, calc(100vh - 150px));
+  max-height: min(380px, calc(100vh - 150px));
   overflow: auto;
   border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: var(--surface);
-  padding: 8px;
+  padding: 6px;
   box-shadow: var(--shadow);
 }
 
 .service-search-item {
   display: grid;
-  grid-template-columns: minmax(96px, 0.34fr) minmax(120px, 0.5fr) minmax(160px, 1fr);
+  grid-template-columns: minmax(84px, 0.3fr) minmax(110px, 0.45fr) minmax(140px, 1fr);
   align-items: center;
   gap: 8px;
-  min-height: 42px;
+  min-height: 40px;
   width: 100%;
-  border-color: var(--line);
-  background: var(--surface-muted);
-  padding: 7px 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  padding: 6px 10px;
   text-align: left;
+}
+
+.service-search-item:hover:not(:disabled) {
+  background: var(--primary-soft);
 }
 
 .service-search-item span,
@@ -420,7 +412,7 @@ label span {
 
 .service-search-item strong {
   color: var(--text);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   line-height: 1.3;
 }
@@ -439,22 +431,24 @@ label span {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px 18px;
-  min-height: 58px;
+  gap: 12px 20px;
+  min-height: 54px;
+  flex-wrap: nowrap;
 }
 
 .brand-mark {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+  flex-shrink: 0;
 }
 
 .brand-symbol {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   border-radius: 8px;
   border: 1px solid var(--line);
   background: var(--surface-muted);
@@ -463,69 +457,70 @@ label span {
 
 .brand-symbol img {
   display: block;
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   object-fit: contain;
 }
 
 .brand-mark strong {
   display: block;
   color: var(--text);
-  font-size: 20px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
 }
 
 .brand-mark small {
   display: block;
-  margin-top: 2px;
-  color: var(--primary);
-  font-size: 12px;
+  color: var(--muted);
+  font-size: 11px;
   font-weight: 500;
 }
 
 .primary-nav {
   display: flex;
   align-items: center;
-  gap: 4px;
+  flex-wrap: nowrap;
+  gap: 2px;
   min-width: 0;
   max-width: 100%;
-  background: var(--surface-muted);
-  padding: 4px;
-  border-radius: 10px;
-  border: 1px solid var(--line);
+  background: transparent;
+  padding: 0;
+  border: 0;
 }
 
 .nav-tab {
-  min-width: 96px;
+  min-width: 68px;
   min-height: 44px;
-  border: 1px solid transparent;
-  border-radius: 6px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 6px 6px 0 0;
   background: transparent;
-  padding-inline: 14px;
-  font-weight: 500;
+  padding-inline: 12px;
+  font-size: 14px;
+  font-weight: 600;
   color: var(--muted);
-  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  white-space: nowrap;
 }
 
-.nav-tab:hover {
+.nav-tab:hover:not(:disabled) {
   color: var(--text);
-  background: var(--surface);
+  background: var(--surface-muted);
 }
 
 .nav-tab.active {
-  border: 1px solid var(--primary);
+  border-bottom-color: var(--primary);
   background: var(--primary-soft);
   color: var(--primary-dark);
-  font-weight: 600;
-  box-shadow: none;
+  font-weight: 700;
 }
 
 .header-user-chip {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 14px;
+  gap: 6px;
+  padding: 5px 12px;
   border-radius: 9999px;
   border: 1px solid var(--line);
   background: var(--surface-muted);
@@ -536,8 +531,8 @@ label span {
 }
 
 .header-user-chip .chip-dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 9999px;
 }
 
@@ -559,21 +554,15 @@ label span {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px 18px;
-  width: min(1440px, calc(100% - 48px));
-  min-height: 28px;
+  gap: 6px 16px;
+  width: min(1400px, calc(100% - 40px));
+  min-height: 26px;
   margin: 0 auto;
-  padding: 5px 0 6px;
+  padding: 4px 0 5px;
   border-top: 1px solid var(--line);
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
-}
-
-.gothic-state-strip {
-  border-color: var(--line);
-  background: var(--surface-muted);
-  color: var(--text);
 }
 
 .bank-service-strip strong,
@@ -587,13 +576,13 @@ label span {
 }
 
 .bank-layout[data-auth-state="guest"] .login-panel {
-  border-color: var(--line-strong);
+  border-color: var(--line);
 }
 
 .guest-protected .rail-panel,
 .bank-layout[data-auth-state="guest"] .security-section .security-dashboard > div,
 .bank-layout[data-auth-state="guest"] .security-section .security-media-grid > div {
-  border-color: var(--line-strong);
+  border-color: var(--line);
 }
 
 .sensitive-placeholder {
@@ -605,8 +594,8 @@ label span {
   display: grid;
   grid-template-columns: 150px minmax(0, 1fr);
   gap: 16px;
-  width: min(1440px, calc(100% - 48px));
-  margin: 0 auto 12px;
+  width: min(1400px, calc(100% - 40px));
+  margin: 0 auto 10px;
   border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: var(--surface);
@@ -617,15 +606,15 @@ label span {
 .service-map-title {
   display: grid;
   align-content: start;
-  gap: 6px;
+  gap: 4px;
   border-right: 1px solid var(--line);
   padding-right: 14px;
 }
 
 .service-map-title strong {
   color: var(--primary-dark);
-  font-size: 17px;
-  font-weight: 600;
+  font-size: 16px;
+  font-weight: 700;
 }
 
 .service-map-title span {
@@ -643,7 +632,7 @@ label span {
 .service-map-group {
   display: grid;
   align-content: start;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -659,7 +648,7 @@ label span {
 }
 
 .service-map-group button {
-  min-height: 44px;
+  min-height: 36px;
   border: 0;
   background: transparent;
   color: var(--text);
@@ -671,9 +660,9 @@ label span {
 
 .bank-layout {
   display: grid;
-  grid-template-columns: 216px minmax(0, 1fr) 268px;
-  gap: 14px;
-  padding: 14px 0 42px;
+  grid-template-columns: 192px minmax(0, 1fr) 244px;
+  gap: 18px;
+  padding: 16px 0 48px;
 }
 
 .mobile-priority-work {
@@ -682,8 +671,8 @@ label span {
 
 .dense-banking-shell .bank-layout {
   align-items: start;
-  gap: var(--dense-section-gap);
-  padding-top: 10px;
+  gap: 18px;
+  padding-top: 14px;
 }
 
 .side-menu,
@@ -694,8 +683,9 @@ label span {
 
 .side-menu {
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--surface);
+  padding: 6px;
   overflow: hidden;
 }
 
@@ -706,45 +696,50 @@ label span {
 .side-title {
   display: flex;
   align-items: center;
-  min-height: 54px;
-  padding: 12px 16px;
+  min-height: 38px;
+  padding: 6px 10px;
   border-bottom: 1px solid var(--line);
-  background: var(--surface-muted);
-  color: var(--text);
-  font-size: 16px;
-  font-weight: 600;
+  margin-bottom: 4px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
   line-height: 1.35;
 }
 
 .side-item {
   display: grid;
   align-content: center;
-  gap: 5px;
+  gap: 2px;
   width: 100%;
-  min-height: 58px;
+  min-height: 48px;
   border: 0;
-  border-bottom: 1px solid var(--line);
-  border-radius: 0;
-  background: var(--surface);
-  padding: 10px 14px;
+  border-radius: 6px;
+  background: transparent;
+  padding: 7px 10px;
   text-align: left;
 }
 
 .side-menu.compact-menu .side-item {
-  min-height: 56px;
-  padding: 10px 14px;
+  min-height: 48px;
+  padding: 7px 10px;
+}
+
+.side-item:hover:not(:disabled) {
+  background: var(--surface-muted);
 }
 
 .side-item span {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
   line-height: 1.25;
   word-break: keep-all;
 }
 
 .side-item strong {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   line-height: 1.28;
   word-break: keep-all;
@@ -753,11 +748,12 @@ label span {
 .side-item.active {
   background: var(--primary-soft);
   color: var(--primary-dark);
-  padding-left: 16px;
+  box-shadow: inset 3px 0 0 var(--primary);
+  padding-left: 12px;
 }
 
 .spacing-safe-side-menu .side-item.active {
-  padding-left: 16px;
+  padding-left: 12px;
 }
 
 .utility-link.active,
@@ -770,13 +766,13 @@ label span {
 .top-channel-nav .top-channel-link.active {
   border-color: var(--primary);
   background: var(--primary);
-  color: var(--page);
+  color: var(--palette-grey-0);
 }
 
 .top-channel-nav .top-channel-link.active:hover:not(:disabled) {
   border-color: var(--primary-dark);
   background: var(--primary-dark);
-  color: var(--page);
+  color: var(--palette-grey-0);
 }
 
 .work-area {
@@ -788,17 +784,16 @@ label span {
 .task-section,
 .rail-panel,
 .table-panel,
-.bank-work-panel,
-.gothic-work-panel {
+.bank-work-panel {
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--surface);
   color: var(--text);
   box-shadow: none;
 }
 
 .task-section {
-  padding: 14px;
+  padding: 18px;
 }
 
 .task-section.compact-work-section {
@@ -815,19 +810,19 @@ label span {
 }
 
 .section-title {
-  padding-bottom: 10px;
+  padding-bottom: 12px;
   border-bottom: 1px solid var(--line);
 }
 
 .task-section.compact-work-section .section-title {
-  padding-bottom: 8px;
+  padding-bottom: 10px;
 }
 
 .section-title p {
-  margin: 0 0 4px;
+  margin: 0 0 2px;
   color: var(--primary);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .section-title > div:first-child {
@@ -836,8 +831,9 @@ label span {
 
 .section-title h1 {
   margin: 0;
-  font-size: 22px;
-  letter-spacing: 0;
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
   white-space: nowrap;
 }
 
@@ -1021,9 +1017,10 @@ label span {
   margin-top: 14px;
   border: 1px solid var(--line-strong);
   border-radius: 10px;
-  background: linear-gradient(180deg, var(--surface-muted), var(--surface));
+  background: var(--surface);
+  box-shadow: var(--shadow);
   color: var(--text);
-  padding: 18px 20px;
+  padding: 20px 22px;
 }
 
 .dashboard-primary-account-meta {
@@ -1041,7 +1038,7 @@ label span {
 .account-badge-label {
   color: var(--primary);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .account-status-dot {
@@ -1063,13 +1060,14 @@ label span {
 
 .dashboard-primary-account-name {
   color: var(--text);
-  font-size: 18px;
+  font-size: 19px;
   font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 .dashboard-primary-account-number {
   color: var(--muted);
-  font-family: var(--font-sans);
+  font-family: var(--font-mono);
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
@@ -1088,12 +1086,24 @@ label span {
 }
 
 .dashboard-primary-account-balance .balance-value {
-  color: var(--primary-dark);
-  font-family: var(--font-sans);
-  font-size: 24px;
-  font-weight: 600;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 26px;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
+}
+
+.dashboard-primary-account-balance .button-row button:first-child {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--palette-grey-0);
+}
+
+.dashboard-primary-account-balance .button-row button:first-child:hover:not(:disabled) {
+  border-color: var(--primary-dark);
+  background: var(--primary-dark);
+  color: var(--palette-grey-0);
 }
 
 .quick-amount-bar {
@@ -1105,7 +1115,7 @@ label span {
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--surface-muted);
-  padding: 10px 12px;
+  padding: 8px 12px;
 }
 
 .quick-amount-label {
@@ -1122,26 +1132,36 @@ label span {
 
 .quick-amount-buttons button {
   min-width: 60px;
-  min-height: 44px;
+  min-height: 36px;
   padding: 0 10px;
   font-family: var(--font-mono);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
+  background: var(--surface);
 }
 
 .bank-home-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
-  gap: 10px;
-  margin-top: 14px;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: 14px;
+  margin-top: 16px;
 }
 
 .bank-home-panel {
-  padding: 14px;
+  padding: 0;
+}
+
+.bank-home-panel > :not(.panel-toolbar) {
+  padding: 12px 14px 14px;
 }
 
 .bank-home-panel.hours-panel {
   grid-column: 1 / -1;
+}
+
+.bank-home-panel.hours-panel > .service-hours-table {
+  padding: 0;
+  margin-top: 0;
 }
 
 .bank-home-panel .panel-toolbar span {
@@ -1154,45 +1174,58 @@ label span {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
-  margin-top: 12px;
+  margin-top: 0;
 }
 
 .bank-service-list button {
   display: grid;
-  gap: 4px;
-  min-height: 54px;
-  padding: 8px 10px;
+  gap: 3px;
+  min-height: 52px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 10px 12px;
   text-align: left;
 }
 
+.bank-service-list button:hover:not(:disabled) {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
 .bank-service-list button span {
-  color: var(--muted);
-  font-size: 12px;
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .bank-news-list {
   display: grid;
-  gap: 6px;
-  margin: 12px 0 0;
-  padding: 0;
+  gap: 4px;
+  margin: 0;
+  padding: 10px 14px 12px;
   list-style: none;
 }
 
 .bank-news-list button {
   width: 100%;
-  min-height: 44px;
+  min-height: 40px;
   border: 0;
   border-bottom: 1px solid var(--line);
   border-radius: 0;
   background: transparent;
-  padding: 0;
+  padding: 6px 0;
   text-align: left;
-  font-weight: 600;
+  font-weight: 500;
+}
+
+.bank-news-list li:last-child button {
+  border-bottom: 0;
 }
 
 .service-hours-table {
   width: 100%;
-  margin-top: 12px;
+  margin-top: 0;
   border-collapse: collapse;
   table-layout: fixed;
   background: var(--surface);
@@ -1208,16 +1241,19 @@ label span {
 
 .service-hours-table th,
 .service-hours-table td {
-  border: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
   background: var(--surface);
   color: var(--text);
-  padding: 9px 10px;
+  padding: 9px 14px;
   text-align: left;
+  font-size: 13px;
 }
 
 .service-hours-table th {
   background: var(--surface-muted);
-  color: var(--primary-dark);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .work-summary-strip {
@@ -1228,12 +1264,12 @@ label span {
 }
 
 .work-summary-strip span {
-  min-height: 30px;
+  min-height: 28px;
   border: 1px solid var(--line);
-  border-radius: 4px;
-  background: linear-gradient(180deg, var(--primary-soft), var(--page));
-  color: var(--primary-dark);
-  padding: 7px 10px;
+  border-radius: 9999px;
+  background: var(--surface-muted);
+  color: var(--text);
+  padding: 5px 12px;
   font-size: 12px;
   font-weight: 600;
   overflow-wrap: anywhere;
@@ -1242,18 +1278,27 @@ label span {
 .work-state-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+  gap: 0;
   margin-top: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  overflow: hidden;
 }
 
 .work-state-grid div {
-  display: grid;
-  gap: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   min-width: 0;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--surface-muted);
-  padding: 9px 10px;
+  border-right: 1px solid var(--line);
+  background: transparent;
+  padding: 9px 14px;
+}
+
+.work-state-grid div:last-child {
+  border-right: 0;
 }
 
 .work-state-grid span {
@@ -1264,17 +1309,16 @@ label span {
 
 .work-state-grid strong {
   color: var(--text);
-  font-size: 14px;
+  font-size: 13px;
+  font-weight: 700;
   overflow-wrap: anywhere;
 }
 
 .work-state-grid .tone-warn {
-  border-color: var(--primary);
   background: var(--primary-soft);
 }
 
 .work-state-grid .tone-success {
-  border-color: var(--success);
   background: var(--success-soft);
 }
 
@@ -1283,24 +1327,37 @@ label span {
 .transfer-verification-panel {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  gap: 0;
   margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  overflow: hidden;
 }
 
 .account-status-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.security-media-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
 .account-status-grid div,
 .security-media-grid div,
 .transfer-verification-panel div {
   display: grid;
-  gap: 4px;
+  gap: 3px;
   min-width: 0;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--surface-muted);
-  padding: 10px;
+  border-right: 1px solid var(--line);
+  background: transparent;
+  padding: 10px 14px;
+}
+
+.account-status-grid div:last-child,
+.security-media-grid div:last-child,
+.transfer-verification-panel div:last-child {
+  border-right: 0;
 }
 
 .account-status-grid span,
@@ -1318,6 +1375,7 @@ label span {
 .security-media-grid strong,
 .transfer-verification-panel strong {
   color: var(--text);
+  font-size: 14px;
   overflow-wrap: anywhere;
 }
 
@@ -1325,35 +1383,36 @@ label span {
 .security-hub-grid,
 .support-service-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 10px;
-  margin-top: 14px;
+  margin-top: 12px;
 }
 
 .enterprise-service-card,
 .security-hub-card,
 .support-service-card {
   display: grid;
-  gap: 8px;
+  align-content: space-between;
+  gap: 6px;
   min-width: 0;
   border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--surface-muted);
-  padding: 14px;
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 12px 14px;
 }
 
 .enterprise-service-card span,
 .security-hub-card span {
   color: var(--primary);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .enterprise-service-card strong,
 .security-hub-card strong,
 .support-service-card strong {
   color: var(--text);
-  font-size: 17px;
+  font-size: 15px;
 }
 
 .enterprise-service-card p,
@@ -1361,17 +1420,119 @@ label span {
 .support-service-card p {
   margin: 0;
   color: var(--muted);
-  line-height: 1.55;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .enterprise-service-card small {
   color: var(--success);
+  font-size: 12px;
   font-weight: 600;
 }
 
 .support-service-card button {
   width: fit-content;
+  min-height: 36px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.task-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  padding: 5px;
+}
+
+.task-filter-bar button {
+  min-height: 36px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
   padding: 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.task-filter-bar button:hover:not(:disabled) {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.task-filter-bar button.active {
+  border-color: var(--primary);
+  background: var(--surface);
+  color: var(--primary-dark);
+  box-shadow: var(--shadow);
+}
+
+.spec-disclosure,
+.recovery-disclosure {
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.spec-disclosure > summary,
+.recovery-disclosure > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+  background: var(--surface-muted);
+  color: var(--text);
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  list-style: none;
+}
+
+.spec-disclosure > summary::-webkit-details-marker,
+.recovery-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.spec-disclosure > summary::after,
+.recovery-disclosure > summary::after {
+  content: "펼치기 ▾";
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.spec-disclosure[open] > summary::after,
+.recovery-disclosure[open] > summary::after {
+  content: "접기 ▴";
+}
+
+.recovery-disclosure > summary span {
+  margin-right: auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.spec-disclosure > .table-panel,
+.spec-disclosure > .bank-table-wrap {
+  margin-top: 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+}
+
+.recovery-disclosure > .two-column {
+  margin: 0;
+  padding: 12px;
+  border-top: 1px solid var(--line);
 }
 
 .fulfillment-detail-grid,
@@ -1379,8 +1540,13 @@ label span {
 .support-detail-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 14px;
   margin-top: 14px;
+}
+
+.fulfillment-detail-grid.single-task-grid,
+.registration-flow-grid.single-task-grid {
+  grid-template-columns: minmax(0, 680px);
 }
 
 .fulfillment-detail-card,
@@ -1392,27 +1558,27 @@ label span {
   gap: 12px;
   min-width: 0;
   border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--surface-muted);
-  padding: 14px;
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 16px;
 }
 
 .fulfillment-detail-head {
   display: grid;
-  gap: 6px;
+  gap: 4px;
 }
 
 .fulfillment-detail-head span,
 .registration-flow-card span {
   color: var(--primary);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .fulfillment-detail-head strong,
 .registration-flow-card strong {
   color: var(--text);
-  font-size: 17px;
+  font-size: 16px;
 }
 
 .fulfillment-detail-head p,
@@ -1421,7 +1587,8 @@ label span {
 .certificate-item p {
   margin: 0;
   color: var(--muted);
-  line-height: 1.55;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .detail-list {
@@ -1452,7 +1619,7 @@ label span {
 .process-strip {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
+  gap: 4px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -1461,14 +1628,20 @@ label span {
 .process-strip li {
   border: 1px solid var(--line);
   border-radius: 6px;
+  background: var(--surface-muted);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  min-height: 32px;
+  padding: 6px;
+  text-align: center;
+}
+
+.process-strip li:first-child {
+  border-color: var(--primary);
   background: var(--primary-soft);
   color: var(--primary-dark);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.35;
-  min-height: 36px;
-  padding: 8px;
-  text-align: center;
 }
 
 .application-submit-panel {
@@ -1480,13 +1653,26 @@ label span {
 
 .enterprise-application-form {
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--surface-muted);
-  padding: 10px;
+  padding: 12px;
 }
 
-.application-submit-panel button {
+.application-submit-panel button[type="submit"],
+.incident-form > button,
+.certificate-item > button {
   width: fit-content;
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--palette-grey-0);
+}
+
+.application-submit-panel button[type="submit"]:hover:not(:disabled),
+.incident-form > button:hover:not(:disabled),
+.certificate-item > button:hover:not(:disabled) {
+  border-color: var(--primary-dark);
+  background: var(--primary-dark);
+  color: var(--palette-grey-0);
 }
 
 .form-grid.compact {
@@ -1496,7 +1682,7 @@ label span {
 .application-result-line {
   margin: 12px 0 0;
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: 6px;
   background: var(--primary-soft);
   color: var(--primary-dark);
   padding: 10px 12px;
@@ -1507,19 +1693,21 @@ label span {
   display: grid;
   gap: 10px;
   border: 1px solid var(--line);
-  border-radius: 4px;
-  background: linear-gradient(180deg, var(--surface-muted), var(--surface));
+  border-radius: 8px;
+  background: var(--surface-muted);
   color: var(--text);
   padding: 12px;
 }
 
 .check-list {
-  display: grid;
-  gap: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
   margin: 0;
-  padding-left: 18px;
+  padding-left: 16px;
   color: var(--muted);
-  line-height: 1.5;
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .support-detail-grid {
@@ -1530,9 +1718,9 @@ label span {
   display: grid;
   gap: 12px;
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: 8px;
   background: var(--surface);
-  padding: 12px;
+  padding: 14px;
 }
 
 .application-status-list {
@@ -1549,9 +1737,9 @@ label span {
   gap: 8px;
   align-items: center;
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: 6px;
   background: var(--surface-muted);
-  padding: 8px;
+  padding: 8px 12px;
 }
 
 .application-status-list li > button:first-child {
@@ -1568,12 +1756,12 @@ label span {
 
 .application-status-list li > span {
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: 9999px;
   background: var(--primary-soft);
   color: var(--primary-dark);
   font-size: 12px;
   font-weight: 600;
-  padding: 5px 8px;
+  padding: 4px 10px;
 }
 
 .application-detail-card {
@@ -1592,9 +1780,9 @@ label span {
 
 .application-detail-list div {
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: 6px;
   background: var(--surface-muted);
-  padding: 8px;
+  padding: 8px 10px;
 }
 
 .application-detail-list dt {
@@ -1618,7 +1806,7 @@ label span {
   max-height: 160px;
   overflow: auto;
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: 6px;
   background: var(--surface-muted);
   color: var(--text);
   margin: 0;
@@ -1636,10 +1824,6 @@ label span {
   font-weight: 600;
 }
 
-.incident-form button {
-  width: fit-content;
-}
-
 .certificate-list {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
@@ -1653,7 +1837,7 @@ label span {
   gap: 8px;
   min-width: 0;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--surface-muted);
   padding: 12px;
 }
@@ -1664,25 +1848,28 @@ label span {
   font-weight: 600;
 }
 
-.certificate-item button {
-  width: fit-content;
-}
-
 .account-summary-panel {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  gap: 0;
   margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  overflow: hidden;
 }
 
 .account-summary-panel > div {
   display: grid;
   gap: 4px;
   min-width: 0;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--surface-muted);
-  padding: 12px;
+  border-right: 1px solid var(--line);
+  background: transparent;
+  padding: 12px 16px;
+}
+
+.account-summary-panel > div:last-child {
+  border-right: 0;
 }
 
 .account-summary-panel span,
@@ -1694,7 +1881,9 @@ label span {
 
 .account-summary-panel strong {
   overflow-wrap: anywhere;
-  color: var(--primary-dark);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 18px;
 }
 
@@ -1705,18 +1894,18 @@ label span {
   gap: 12px;
   margin-top: 12px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--surface-muted);
-  padding: 12px 14px;
+  padding: 10px 14px;
 }
 
 .work-command-panel > div:first-child {
   display: grid;
-  gap: 4px;
+  gap: 2px;
 }
 
 .work-command-panel strong {
-  color: var(--primary-dark);
+  color: var(--text);
 }
 
 .work-command-panel span {
@@ -1728,23 +1917,23 @@ label span {
 .account-grid,
 .split-work {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) 310px;
+  gap: 14px;
   margin-top: 12px;
 }
 
 .detail-panel,
 .result-panel {
   border: 1px solid var(--line);
-  border-radius: 6px;
-  background: linear-gradient(180deg, var(--surface-muted), var(--surface));
+  border-radius: 8px;
+  background: var(--surface);
   color: var(--text);
   padding: 14px;
   box-shadow: none;
 }
 
 .account-detail-work-panel {
-  padding: 12px;
+  padding: 14px;
 }
 
 .balance-card {
@@ -1752,11 +1941,10 @@ label span {
   gap: 6px;
   margin: 12px 0;
   border: 1px solid var(--line-strong);
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--surface-muted);
-  padding: 20px;
-  box-shadow: var(--shadow-soft);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  padding: 18px;
+  transition: border-color 0.2s ease;
   position: relative;
   overflow: hidden;
 }
@@ -1772,8 +1960,8 @@ label span {
 }
 
 .balance-card strong {
-  color: var(--primary-dark);
-  font-size: 28px;
+  color: var(--text);
+  font-size: 26px;
   font-family: var(--font-mono);
   font-feature-settings: "tnum";
   font-variant-numeric: tabular-nums;
@@ -1800,13 +1988,13 @@ label span {
 .status-badge {
   display: inline-flex;
   align-items: center;
-  min-height: 24px;
-  border: 1px solid var(--line-strong);
-  border-radius: 4px;
+  min-height: 22px;
+  border: 1px solid var(--line);
+  border-radius: 9999px;
   background: var(--primary-soft);
   color: var(--primary-dark);
-  padding: 0 8px;
-  font-size: 12px;
+  padding: 0 9px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: -0.01em;
 }
@@ -1856,17 +2044,24 @@ label span {
 .notification-status {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  gap: 0;
   margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  overflow: hidden;
 }
 
 .notification-status div {
   display: grid;
-  gap: 4px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--surface-muted);
-  padding: 12px;
+  gap: 3px;
+  border-right: 1px solid var(--line);
+  background: transparent;
+  padding: 10px 14px;
+}
+
+.notification-status div:last-child {
+  border-right: 0;
 }
 
 .notification-status span {
@@ -1877,13 +2072,13 @@ label span {
 
 .notification-status strong {
   overflow-wrap: anywhere;
-  color: var(--primary-dark);
+  color: var(--text);
 }
 
 .two-column {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 14px;
   margin-top: 12px;
 }
 
@@ -1895,16 +2090,16 @@ label span {
   display: grid;
   gap: 12px;
   border: 1px solid var(--line);
-  border-radius: 6px;
-  background: linear-gradient(180deg, var(--surface-muted), var(--surface));
+  border-radius: 8px;
+  background: var(--surface);
   color: var(--text);
-  padding: 14px;
+  padding: 16px;
   box-shadow: none;
 }
 
 .bank-form.tight-work-form {
-  gap: 9px;
-  padding: 12px;
+  gap: 10px;
+  padding: 14px;
 }
 
 .bank-form.passive {
@@ -1913,16 +2108,27 @@ label span {
 
 .authenticated-only-form[data-locked="true"] {
   border-style: dashed;
-  background: linear-gradient(180deg, var(--surface-muted), var(--page));
+  background: var(--surface-muted);
 }
 
 .authenticated-only-form[data-locked="true"] input {
   opacity: 0.56;
 }
 
-.bank-form > button {
+.bank-form > button,
+.bank-form .bank-action-bar button[type="submit"],
+.bank-form .button-row button[type="submit"] {
+  border-color: var(--primary);
   background: var(--primary);
-  color: var(--page);
+  color: var(--palette-grey-0);
+}
+
+.bank-form > button:hover:not(:disabled),
+.bank-form .bank-action-bar button[type="submit"]:hover:not(:disabled),
+.bank-form .button-row button[type="submit"]:hover:not(:disabled) {
+  border-color: var(--primary-dark);
+  background: var(--primary-dark);
+  color: var(--palette-grey-0);
 }
 
 .field-error {
@@ -2057,8 +2263,12 @@ label span {
 .security-dashboard {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  gap: 0;
   margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  overflow: hidden;
 }
 
 .auth-method-grid > div,
@@ -2066,10 +2276,14 @@ label span {
   display: grid;
   gap: 4px;
   min-width: 0;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--surface-muted);
-  padding: 12px;
+  border-right: 1px solid var(--line);
+  background: transparent;
+  padding: 12px 14px;
+}
+
+.auth-method-grid > div:last-child,
+.security-dashboard > div:last-child {
+  border-right: 0;
 }
 
 .auth-method-grid span,
@@ -2083,8 +2297,8 @@ label span {
 
 .auth-method-grid strong,
 .security-dashboard strong {
-  color: var(--primary-dark);
-  font-size: 17px;
+  color: var(--text);
+  font-size: 16px;
 }
 
 .stepper {
@@ -2099,6 +2313,7 @@ label span {
 .stepper li {
   min-height: 30px;
   border: 1px solid var(--line);
+  border-radius: 6px;
   background: var(--surface);
   color: var(--muted);
   padding: 6px 8px;
@@ -2119,8 +2334,8 @@ label span {
   flex-wrap: wrap;
   gap: 8px 12px;
   align-items: center;
-  border: 1px solid var(--line-strong);
-  border-radius: 4px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
   background: var(--primary-soft);
   padding: 10px 12px;
 }
@@ -2142,16 +2357,23 @@ label span {
 .transfer-risk-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  gap: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  overflow: hidden;
 }
 
 .transfer-risk-grid div {
   display: grid;
   gap: 4px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: var(--surface-muted);
-  padding: 10px;
+  border-right: 1px solid var(--line);
+  background: transparent;
+  padding: 10px 12px;
+}
+
+.transfer-risk-grid div:last-child {
+  border-right: 0;
 }
 
 .transfer-risk-grid span {
@@ -2163,7 +2385,7 @@ label span {
 
 .transfer-risk-grid strong {
   overflow-wrap: anywhere;
-  color: var(--primary-dark);
+  color: var(--text);
 }
 
 .transfer-receipt .result-panel {
@@ -2223,8 +2445,8 @@ label span {
   gap: 10px;
   min-width: 0;
   border: 1px solid var(--line);
-  border-radius: 6px;
-  background: linear-gradient(180deg, var(--surface-muted), var(--surface));
+  border-radius: 8px;
+  background: var(--surface-muted);
   color: var(--text);
   padding: 12px;
 }
@@ -2360,7 +2582,7 @@ label span {
 .panel-toolbar {
   padding: 12px 14px;
   border-bottom: 1px solid var(--line);
-  background: linear-gradient(180deg, var(--primary-soft), var(--surface));
+  background: var(--surface-muted);
 }
 
 .panel-toolbar strong {
@@ -2375,24 +2597,21 @@ label span {
 .bank-table-wrap {
   margin-top: 14px;
   overflow-x: auto;
-  border: 1px solid var(--line-strong);
-  background: linear-gradient(180deg, var(--surface-muted), var(--surface));
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
   color: var(--text);
 }
 
 .table-panel .bank-table-wrap {
   margin-top: 0;
   border: 0;
+  border-radius: 0;
 }
 
 .bank-table {
   width: 100%;
   border-collapse: collapse;
-  background: var(--surface);
-  color: var(--text);
-}
-
-.gothic-bank-table {
   background: var(--surface);
   color: var(--text);
 }
@@ -2421,10 +2640,11 @@ label span {
 }
 
 .bank-table th {
-  border-bottom: 1px solid var(--line-strong);
-  background: var(--primary-soft);
-  color: var(--primary-dark);
-  font-size: 13px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-muted);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .bank-table td {
@@ -2444,7 +2664,7 @@ label span {
   gap: 6px;
   margin-top: 14px;
   border: 1px dashed var(--line-strong);
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--surface-muted);
   padding: 28px;
   text-align: center;
@@ -2471,7 +2691,7 @@ label span {
   min-height: 72px;
   align-content: center;
   border: 1px dashed var(--line-strong);
-  border-radius: 4px;
+  border-radius: 6px;
   background: var(--surface-muted);
   padding: 14px;
   text-align: center;
@@ -2525,8 +2745,8 @@ label span {
 .tab-switch {
   display: inline-flex;
   overflow: hidden;
-  border: 1px solid var(--line-strong);
-  border-radius: 4px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
 }
 
 .tab-switch button {
@@ -2536,7 +2756,7 @@ label span {
 }
 
 .tab-switch button + button {
-  border-left: 1px solid var(--line-strong);
+  border-left: 1px solid var(--line);
 }
 
 .tab-switch button.active {
@@ -2545,12 +2765,14 @@ label span {
 }
 
 .work-tabs {
-  display: flex;
+  display: inline-flex;
+  gap: 4px;
   max-width: 100%;
   overflow-x: auto;
-  border: 1px solid var(--line-strong);
-  border-radius: 6px;
-  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  padding: 4px;
   scrollbar-width: thin;
 }
 
@@ -2560,26 +2782,23 @@ label span {
 
 .work-tabs button {
   flex: 0 0 auto;
-  min-width: 96px;
-  min-height: 44px;
+  min-width: 88px;
+  min-height: 36px;
   border: 0;
-  border-radius: 0;
-  border-right: 1px solid var(--line-strong);
-  background: var(--surface);
+  border-radius: 6px;
+  background: transparent;
   color: var(--muted);
   padding: 0 14px;
   font-size: 13px;
+  font-weight: 600;
   white-space: nowrap;
   line-height: 1.35;
 }
 
-.work-tabs button:last-child {
-  border-right: 0;
-}
-
 .work-tabs button.active {
-  background: var(--primary);
-  color: var(--page);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
 }
 
 .work-tabs button.active:disabled {
@@ -2618,7 +2837,7 @@ label span {
 }
 
 .rail-heading strong {
-  color: var(--primary);
+  color: var(--text);
 }
 
 .rail-copy {
@@ -2660,11 +2879,31 @@ label span {
 .bank-notice-strip dd {
   min-width: 0;
   margin: 0;
-  color: var(--primary-dark);
+  color: var(--text);
   font-weight: 600;
   line-height: 1.35;
   word-break: keep-all;
   overflow-wrap: anywhere;
+}
+
+.task-section > .bank-notice-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 18px;
+  margin: 12px 0 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  padding: 8px 14px;
+}
+
+.task-section > .bank-notice-strip div {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  border-top: 0;
+  padding-top: 0;
 }
 
 .security-notice dd {
@@ -2679,7 +2918,7 @@ label span {
 }
 
 .quick-grid button {
-  min-height: 44px;
+  min-height: 40px;
   font-size: 12px;
 }
 
@@ -2696,7 +2935,7 @@ label span {
 .recent-menu-list button {
   justify-content: flex-start;
   width: 100%;
-  min-height: 44px;
+  min-height: 40px;
   padding: 0 10px;
   text-align: left;
   font-size: 12px;
@@ -2776,6 +3015,27 @@ label span {
   .security-media-grid,
   .two-column {
     grid-template-columns: 1fr;
+  }
+
+  .account-status-grid > div,
+  .work-state-grid > div,
+  .notification-status > div,
+  .transfer-risk-grid > div,
+  .auth-method-grid > div,
+  .security-dashboard > div,
+  .security-media-grid > div {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .account-status-grid > div:last-child,
+  .work-state-grid > div:last-child,
+  .notification-status > div:last-child,
+  .transfer-risk-grid > div:last-child,
+  .auth-method-grid > div:last-child,
+  .security-dashboard > div:last-child,
+  .security-media-grid > div:last-child {
+    border-bottom: 0;
   }
 
   .brand-row,

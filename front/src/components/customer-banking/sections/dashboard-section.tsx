@@ -212,35 +212,38 @@ export function DashboardSection({
           </table>
         </section>
       </div>
-      <div className="bank-table-wrap">
-        <table className="bank-table">
-          <caption>업무별 처리 기준</caption>
-          <thead>
-            <tr>
-              <th>업무</th>
-              <th>기준</th>
-              <th>상태</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>거래내역 조회</td>
-              <td>계좌와 기간 조건 조회</td>
-              <td>{workStatus.transactionState}</td>
-            </tr>
-            <tr>
-              <td>이체</td>
-              <td>요청 단위 중복 방지</td>
-              <td>{workStatus.transferState}</td>
-            </tr>
-            <tr>
-              <td>알림</td>
-              <td>실시간 알림과 알림함</td>
-              <td>{workStatus.notificationState}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <details className="spec-disclosure">
+        <summary>업무별 처리 기준 안내</summary>
+        <div className="bank-table-wrap">
+          <table className="bank-table">
+            <caption>업무별 처리 기준</caption>
+            <thead>
+              <tr>
+                <th>업무</th>
+                <th>기준</th>
+                <th>상태</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>거래내역 조회</td>
+                <td>계좌와 기간 조건 조회</td>
+                <td>{workStatus.transactionState}</td>
+              </tr>
+              <tr>
+                <td>이체</td>
+                <td>요청 단위 중복 방지</td>
+                <td>{workStatus.transferState}</td>
+              </tr>
+              <tr>
+                <td>알림</td>
+                <td>실시간 알림과 알림함</td>
+                <td>{workStatus.notificationState}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </details>
     </section>
   );
 }
