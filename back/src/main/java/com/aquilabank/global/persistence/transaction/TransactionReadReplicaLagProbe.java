@@ -6,6 +6,7 @@ import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import javax.sql.DataSource;
 
@@ -27,6 +28,7 @@ public final class TransactionReadReplicaLagProbe {
   private final Supplier<DataSource> replicaDataSourceSupplier;
   private final TransactionReadReplicaProperties properties;
   private final Clock clock;
+  private final AtomicBoolean probing = new AtomicBoolean(false);
   private volatile CachedLag cachedLag;
 
   public TransactionReadReplicaLagProbe(
@@ -45,9 +47,16 @@ public final class TransactionReadReplicaLagProbe {
     if (current != null && now.isBefore(current.expiresAt())) {
       return current.value();
     }
-    ReplicaLag measured = measure();
-    cachedLag = new CachedLag(measured, now.plusMillis(properties.probeCacheMs()));
-    return measured;
+    if (!probing.compareAndSet(false, true)) {
+      return current != null ? current.value() : measure();
+    }
+    try {
+      ReplicaLag measured = measure();
+      cachedLag = new CachedLag(measured, now.plusMillis(properties.probeCacheMs()));
+      return measured;
+    } finally {
+      probing.set(false);
+    }
   }
 
   private ReplicaLag measure() {

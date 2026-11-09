@@ -2,12 +2,13 @@ package com.aquilabank.global.persistence.transaction;
 
 import com.aquilabank.domain.transaction.model.TransactionQuery;
 import com.aquilabank.global.config.TransactionReadReplicaProperties;
+import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
 import java.time.Instant;
-import java.util.Locale;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
@@ -19,6 +20,8 @@ public final class TransactionReadRoutingPolicy {
   private final Clock clock;
   private final MeterRegistry meterRegistry;
   private final AtomicLong latestReplicaLagMs = new AtomicLong(-1L);
+  private final ConcurrentHashMap<DecisionCounterKey, Counter> decisionCounters =
+      new ConcurrentHashMap<>();
 
   public TransactionReadRoutingPolicy(
       TransactionReadReplicaProperties properties,
@@ -91,17 +94,22 @@ public final class TransactionReadRoutingPolicy {
       latestReplicaLagMs.set(decision.replicaLagMs());
     }
     if (meterRegistry != null) {
-      meterRegistry
-          .counter(
-              "aquila.transaction.read_replica.route.decisions",
-              "query_shape",
-              queryShape,
-              "route",
-              decision.route().name().toLowerCase(Locale.ROOT),
-              "reason",
-              decision.reason())
+      decisionCounters
+          .computeIfAbsent(
+              new DecisionCounterKey(queryShape, decision.route(), decision.reason()),
+              key ->
+                  meterRegistry.counter(
+                      "aquila.transaction.read_replica.route.decisions",
+                      "query_shape",
+                      key.queryShape(),
+                      "route",
+                      key.route() == TransactionReadRoute.PRIMARY ? "primary" : "replica",
+                      "reason",
+                      key.reason()))
           .increment();
     }
     return decision;
   }
+
+  private record DecisionCounterKey(String queryShape, TransactionReadRoute route, String reason) {}
 }

@@ -1,10 +1,7 @@
 package com.aquilabank.global.security;
 
 import com.aquilabank.global.web.RequestTraceContext;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
+import com.aquilabank.standard.util.Sha256Hex;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.context.request.RequestContextHolder;
@@ -89,12 +86,7 @@ public class LoginThrottleGuard {
   }
 
   private String hashIpAddress(String ipAddress) {
-    try {
-      MessageDigest digest = MessageDigest.getInstance("SHA-256");
-      return HexFormat.of().formatHex(digest.digest(ipAddress.getBytes(StandardCharsets.UTF_8)));
-    } catch (NoSuchAlgorithmException ex) {
-      throw new IllegalStateException("SHA-256 is not available", ex);
-    }
+    return Sha256Hex.hashHex(ipAddress);
   }
 
   private String normalizeIpAddress(String ipAddress) {

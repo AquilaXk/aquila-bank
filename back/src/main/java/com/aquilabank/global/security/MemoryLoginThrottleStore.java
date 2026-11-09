@@ -13,6 +13,7 @@ import java.util.Map;
 public final class MemoryLoginThrottleStore implements LoginThrottleStore {
 
   private static final String PASSWORD_RECOVERY_PREFIX = "password_recovery:";
+  private static final int MAX_TRACKED_IPS_HARD_LIMIT = 10_000;
 
   private final LoginThrottlingProperties properties;
   private final Clock clock;
@@ -104,10 +105,11 @@ public final class MemoryLoginThrottleStore implements LoginThrottleStore {
     if (window != null) {
       return window;
     }
-    if (ipWindows.size() >= properties.maxTrackedIps()) {
+    int maxTrackedIps = Math.min(properties.maxTrackedIps(), MAX_TRACKED_IPS_HARD_LIMIT);
+    if (ipWindows.size() >= maxTrackedIps) {
       pruneIpWindows(now);
     }
-    while (ipWindows.size() >= properties.maxTrackedIps()) {
+    while (ipWindows.size() >= maxTrackedIps) {
       Iterator<Map.Entry<String, AttemptWindow>> iterator = ipWindows.entrySet().iterator();
       if (!iterator.hasNext()) {
         break;
@@ -121,14 +123,15 @@ public final class MemoryLoginThrottleStore implements LoginThrottleStore {
   }
 
   private void pruneIpWindows(Instant now) {
-    Iterator<Map.Entry<String, AttemptWindow>> iterator = ipWindows.entrySet().iterator();
-    while (iterator.hasNext()) {
-      AttemptWindow window = iterator.next().getValue();
-      pruneWindow(window.attempts(), now, properties.ip().windowSeconds());
-      if (window.attempts().isEmpty()) {
-        iterator.remove();
-      }
-    }
+    long windowSeconds = properties.ip().windowSeconds();
+    ipWindows
+        .entrySet()
+        .removeIf(
+            entry -> {
+              Deque<Instant> attempts = entry.getValue().attempts();
+              pruneWindow(attempts, now, windowSeconds);
+              return attempts.isEmpty();
+            });
   }
 
   private void pruneWindow(Deque<Instant> window, Instant now, long windowSeconds) {

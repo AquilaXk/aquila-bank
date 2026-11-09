@@ -77,14 +77,8 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
       if ("STARTED".equals(record.processingStatus()) && record.lockedUntil().isAfter(now)) {
         throw new CommandConflictException("same command is already in progress");
       }
-      if (limitValidator != null) {
-        limitValidator.accept(command);
-      }
       refreshIdempotencyLock(command.idempotencyKey(), now);
     } else {
-      if (limitValidator != null) {
-        limitValidator.accept(command);
-      }
       boolean inserted = tryInsertIdempotency(command.idempotencyKey(), fingerprint, now);
       if (!inserted) {
         IdempotencyRecord record = loadIdempotencyForUpdate(command.idempotencyKey());

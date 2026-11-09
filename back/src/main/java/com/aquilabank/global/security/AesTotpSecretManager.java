@@ -3,10 +3,10 @@ package com.aquilabank.global.security;
 import com.aquilabank.domain.auth.model.GeneratedTotpSecret;
 import com.aquilabank.domain.auth.port.TotpSecretPort;
 import com.aquilabank.standard.util.Base32Codec;
+import com.aquilabank.standard.util.Sha256Hex;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
-import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Arrays;
@@ -41,7 +41,8 @@ public class AesTotpSecretManager implements TotpSecretPort {
       throw new IllegalStateException("security.totp.secret-encryption-key is required");
     }
     this.secretKeySpec =
-        new SecretKeySpec(sha256(secretEncryptionKey.getBytes(StandardCharsets.UTF_8)), "AES");
+        new SecretKeySpec(
+            Sha256Hex.digest(secretEncryptionKey.getBytes(StandardCharsets.UTF_8)), "AES");
     this.issuer =
         securityTotpProperties.issuer() == null || securityTotpProperties.issuer().isBlank()
             ? "Aquila Bank"
@@ -190,13 +191,5 @@ public class AesTotpSecretManager implements TotpSecretPort {
 
   private byte[] decode(String value) {
     return Base64.getUrlDecoder().decode(value);
-  }
-
-  private byte[] sha256(byte[] value) {
-    try {
-      return MessageDigest.getInstance("SHA-256").digest(value);
-    } catch (java.security.NoSuchAlgorithmException ex) {
-      throw new IllegalStateException("SHA-256 is not available", ex);
-    }
   }
 }

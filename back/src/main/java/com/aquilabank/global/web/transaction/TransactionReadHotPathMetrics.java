@@ -2,6 +2,9 @@ package com.aquilabank.global.web.transaction;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 import org.springframework.stereotype.Component;
 
@@ -18,25 +21,44 @@ public final class TransactionReadHotPathMetrics {
   static final String STAGE_TOTAL = "total";
 
   private static final String TIMER_NAME = "aquila.transaction.read.http.stage";
+  private static final List<String> ENDPOINTS =
+      List.of(ENDPOINT_ACTIVE, ENDPOINT_ARCHIVE, ENDPOINT_DETAIL);
+  private static final List<String> STAGES =
+      List.of(STAGE_AUTHORIZATION, STAGE_USECASE, STAGE_RESPONSE_MAPPING, STAGE_TOTAL);
 
-  private final MeterRegistry meterRegistry;
+  private final Map<String, Map<String, StageTimers>> timersByEndpoint;
 
   public TransactionReadHotPathMetrics(MeterRegistry meterRegistry) {
-    this.meterRegistry = meterRegistry;
+    java.util.HashMap<String, Map<String, StageTimers>> endpointMap = new java.util.HashMap<>();
+    for (String endpoint : ENDPOINTS) {
+      java.util.HashMap<String, StageTimers> stageMap = new java.util.HashMap<>();
+      for (String stage : STAGES) {
+        stageMap.put(
+            stage,
+            new StageTimers(
+                meterRegistry.timer(
+                    TIMER_NAME, "endpoint", endpoint, "stage", stage, "outcome", "success"),
+                meterRegistry.timer(
+                    TIMER_NAME, "endpoint", endpoint, "stage", stage, "outcome", "error")));
+      }
+      endpointMap.put(endpoint, Map.copyOf(stageMap));
+    }
+    this.timersByEndpoint = Map.copyOf(endpointMap);
   }
 
   public <T> T record(String endpoint, String stage, Supplier<T> action) {
-    Timer.Sample sample = Timer.start(meterRegistry);
-    String outcome = "success";
+    StageTimers timers = timersByEndpoint.get(endpoint).get(stage);
+    long startNanos = System.nanoTime();
+    Timer timer = timers.success();
     try {
       return action.get();
     } catch (RuntimeException ex) {
-      outcome = "error";
+      timer = timers.error();
       throw ex;
     } finally {
-      sample.stop(
-          meterRegistry.timer(
-              TIMER_NAME, "endpoint", endpoint, "stage", stage, "outcome", outcome));
+      timer.record(System.nanoTime() - startNanos, TimeUnit.NANOSECONDS);
     }
   }
+
+  private record StageTimers(Timer success, Timer error) {}
 }

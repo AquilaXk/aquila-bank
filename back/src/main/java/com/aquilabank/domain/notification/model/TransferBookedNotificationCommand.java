@@ -35,7 +35,7 @@ public record TransferBookedNotificationCommand(
     if (amountMinor <= 0) {
       throw new IllegalArgumentException("amountMinor must be positive");
     }
-    if (currencyCode == null || !currencyCode.matches("^[A-Z]{3}$")) {
+    if (currencyCode == null || !isThreeLetterUpperAscii(currencyCode)) {
       throw new IllegalArgumentException("currencyCode must be a 3-letter uppercase code");
     }
     if (summary == null || summary.isBlank() || summary.length() > 120) {
@@ -44,5 +44,16 @@ public record TransferBookedNotificationCommand(
     if (bookedAt == null) {
       throw new IllegalArgumentException("bookedAt must not be null");
     }
+  }
+
+  private static boolean isThreeLetterUpperAscii(String value) {
+    return value.length() == 3
+        && isUpperAscii(value.charAt(0))
+        && isUpperAscii(value.charAt(1))
+        && isUpperAscii(value.charAt(2));
+  }
+
+  private static boolean isUpperAscii(char ch) {
+    return ch >= 'A' && ch <= 'Z';
   }
 }

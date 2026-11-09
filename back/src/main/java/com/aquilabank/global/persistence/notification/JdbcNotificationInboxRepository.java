@@ -24,7 +24,9 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.jdbc.core.RowMapper;
@@ -65,10 +67,10 @@ public class JdbcNotificationInboxRepository
   @Override
   @Transactional(readOnly = true, transactionManager = "notificationReadTransactionManager")
   public NotificationSlice fetchByUserId(long userId, NotificationListQuery query) {
+    NotificationUserInboxQueryStatement statement =
+        NotificationUserInboxQueryStatement.from(userId, query);
     List<NotificationSummary> rows =
-        query.cursor() == null
-            ? fetchByUserIdFirstPage(userId, query)
-            : fetchByUserIdNextPage(userId, query);
+        notificationReadJdbcTemplate.query(statement.sql(), statement.params(), ROW_MAPPER);
     return toSlice(rows, query.limit());
   }
 
@@ -769,8 +771,30 @@ public class JdbcNotificationInboxRepository
   }
 
   private void decrementUserUnreadProjections(List<ProjectionDelta> deltas) {
+    if (deltas.isEmpty()) {
+      return;
+    }
+    Map<Long, List<Long>> userIdsByDelta = new LinkedHashMap<>();
     for (ProjectionDelta delta : deltas) {
-      decrementUnreadProjection(USER_SCOPE, delta.scopeId(), delta.unreadCount());
+      if (delta.unreadCount() > 0) {
+        userIdsByDelta
+            .computeIfAbsent(delta.unreadCount(), ignored -> new ArrayList<>())
+            .add(delta.scopeId());
+      }
+    }
+    for (Map.Entry<Long, List<Long>> entry : userIdsByDelta.entrySet()) {
+      jdbcTemplate.update(
+          """
+          UPDATE notification_unread_count_projection
+          SET unread_count = GREATEST(unread_count - :delta, 0),
+              updated_at = CURRENT_TIMESTAMP
+          WHERE scope_type = :scopeType
+            AND scope_id IN (:userIds)
+          """,
+          new MapSqlParameterSource()
+              .addValue("scopeType", USER_SCOPE)
+              .addValue("userIds", entry.getValue())
+              .addValue("delta", entry.getKey()));
     }
   }
 
@@ -1160,20 +1184,6 @@ public class JdbcNotificationInboxRepository
   private record ProjectionUpdateCount(int matchedCount, long unreadDelta) {}
 
   private record ProjectionDelta(long scopeId, long unreadCount) {}
-
-  private List<NotificationSummary> fetchByUserIdFirstPage(
-      long userId, NotificationListQuery query) {
-    NotificationUserInboxQueryStatement statement =
-        NotificationUserInboxQueryStatement.from(userId, query);
-    return notificationReadJdbcTemplate.query(statement.sql(), statement.params(), ROW_MAPPER);
-  }
-
-  private List<NotificationSummary> fetchByUserIdNextPage(
-      long userId, NotificationListQuery query) {
-    NotificationUserInboxQueryStatement statement =
-        NotificationUserInboxQueryStatement.from(userId, query);
-    return notificationReadJdbcTemplate.query(statement.sql(), statement.params(), ROW_MAPPER);
-  }
 
   private List<NotificationSummary> fetchByAccountIdFirstPage(
       long accountId, NotificationListQuery query) {

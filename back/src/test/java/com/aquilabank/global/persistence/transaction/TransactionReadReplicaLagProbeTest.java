@@ -91,6 +91,64 @@ class TransactionReadReplicaLagProbeTest {
         .contains("THEN 0::bigint");
   }
 
+  @Test
+  void reusesPreviousCachedLagWhenConcurrentProbeIsAlreadyRunningOnCacheExpiry() throws Exception {
+    Instant[] nowHolder = {Instant.parse("2026-04-24T12:00:00Z")};
+    Clock mutableClock =
+        new Clock() {
+          @Override
+          public ZoneOffset getZone() {
+            return ZoneOffset.UTC;
+          }
+
+          @Override
+          public Clock withZone(java.time.ZoneId zone) {
+            return this;
+          }
+
+          @Override
+          public Instant instant() {
+            return nowHolder[0];
+          }
+        };
+    DataSource firstDataSource = dataSource(true, 100L, false);
+    DataSource secondDataSource = dataSource(true, 250L, false);
+    TransactionReadReplicaLagProbe[] probeRef = new TransactionReadReplicaLagProbe[1];
+    TransactionReadReplicaLagProbe.ReplicaLag[] concurrentLagWhileCached =
+        new TransactionReadReplicaLagProbe.ReplicaLag[1];
+    TransactionReadReplicaLagProbe.ReplicaLag[] concurrentLagWhenUncached =
+        new TransactionReadReplicaLagProbe.ReplicaLag[1];
+    int[] callCount = {0};
+    probeRef[0] =
+        new TransactionReadReplicaLagProbe(
+            () -> {
+              int step = ++callCount[0];
+              if (step == 1) {
+                concurrentLagWhenUncached[0] = probeRef[0].currentLag();
+                return firstDataSource;
+              }
+              if (step == 2) {
+                return firstDataSource;
+              }
+              if (step == 3) {
+                concurrentLagWhileCached[0] = probeRef[0].currentLag();
+                return secondDataSource;
+              }
+              return secondDataSource;
+            },
+            properties(),
+            mutableClock);
+
+    TransactionReadReplicaLagProbe.ReplicaLag initialLag = probeRef[0].currentLag();
+    assertThat(initialLag.lagMs()).isEqualTo(100L);
+    assertThat(concurrentLagWhenUncached[0].lagMs()).isEqualTo(100L);
+
+    nowHolder[0] = nowHolder[0].plusSeconds(5);
+    TransactionReadReplicaLagProbe.ReplicaLag refreshedLag = probeRef[0].currentLag();
+    assertThat(concurrentLagWhileCached[0].lagMs()).isEqualTo(100L);
+    assertThat(refreshedLag.lagMs()).isEqualTo(250L);
+  }
+
   private static TransactionReadReplicaProperties properties() {
     return new TransactionReadReplicaProperties(
         true,

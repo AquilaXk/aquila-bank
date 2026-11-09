@@ -96,6 +96,9 @@ public class CurrentSessionActiveInterceptor implements HandlerInterceptor {
   }
 
   private boolean isSensitiveMutation(String method, String path) {
+    if (!"POST".equals(method) && !"DELETE".equals(method)) {
+      return false;
+    }
     return SENSITIVE_MUTATION_PATHS.stream().anyMatch(item -> item.matches(method, path));
   }
 

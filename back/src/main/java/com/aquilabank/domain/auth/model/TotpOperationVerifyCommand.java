@@ -10,8 +10,22 @@ public record TotpOperationVerifyCommand(long userId, String totpCode) {
     if (totpCode == null || totpCode.isBlank()) {
       throw new IllegalArgumentException("totpCode is required");
     }
-    if (!totpCode.matches("^[0-9]{6,8}$")) {
+    if (!isSixToEightAsciiDigits(totpCode)) {
       throw new IllegalArgumentException("totpCode must be 6 to 8 digits");
     }
+  }
+
+  private static boolean isSixToEightAsciiDigits(String value) {
+    int length = value.length();
+    if (length < 6 || length > 8) {
+      return false;
+    }
+    for (int index = 0; index < length; index++) {
+      char ch = value.charAt(index);
+      if (ch < '0' || ch > '9') {
+        return false;
+      }
+    }
+    return true;
   }
 }

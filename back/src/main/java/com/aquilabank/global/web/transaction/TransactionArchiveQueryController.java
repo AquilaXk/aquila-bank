@@ -1,9 +1,6 @@
 package com.aquilabank.global.web.transaction;
 
-import com.aquilabank.domain.transaction.model.TransactionCursor;
 import com.aquilabank.domain.transaction.model.TransactionDirection;
-import com.aquilabank.domain.transaction.model.TransactionQuery;
-import com.aquilabank.domain.transaction.model.TransactionSlice;
 import com.aquilabank.domain.transaction.model.TransactionStatus;
 import com.aquilabank.domain.transaction.usecase.TransactionArchiveQueryUseCase;
 import com.aquilabank.global.security.AuthenticatedRequestPrincipal;
@@ -12,13 +9,11 @@ import com.aquilabank.global.web.security.RequestAccountAuthorizationService;
 import jakarta.validation.constraints.Positive;
 import java.time.OffsetDateTime;
 import org.springframework.format.annotation.DateTimeFormat;
-import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
 /** archive transaction timeline read use case를 노출하는 HTTP adapter */
 @Validated
@@ -27,10 +22,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class TransactionArchiveQueryController {
 
   private final TransactionArchiveQueryUseCase transactionArchiveQueryUseCase;
-  private final RequestAccountAuthorizationService requestAccountAuthorizationService;
-  private final TransactionReadHotPathMetrics hotPathMetrics;
-  private final TransactionReadSingleFlight singleFlight;
-  private final TransactionReadAccountFairnessLimiter accountFairnessLimiter;
+  private final TransactionTimelineQuerySupport timelineQuerySupport;
 
   public TransactionArchiveQueryController(
       TransactionArchiveQueryUseCase transactionArchiveQueryUseCase,
@@ -39,10 +31,13 @@ public class TransactionArchiveQueryController {
       TransactionReadSingleFlight singleFlight,
       TransactionReadAccountFairnessLimiter accountFairnessLimiter) {
     this.transactionArchiveQueryUseCase = transactionArchiveQueryUseCase;
-    this.requestAccountAuthorizationService = requestAccountAuthorizationService;
-    this.hotPathMetrics = hotPathMetrics;
-    this.singleFlight = singleFlight;
-    this.accountFairnessLimiter = accountFairnessLimiter;
+    this.timelineQuerySupport =
+        new TransactionTimelineQuerySupport(
+            TransactionReadHotPathMetrics.ENDPOINT_ARCHIVE,
+            requestAccountAuthorizationService,
+            hotPathMetrics,
+            singleFlight,
+            accountFairnessLimiter);
   }
 
   @GetMapping
@@ -59,80 +54,19 @@ public class TransactionArchiveQueryController {
       @RequestParam(required = false) Long maxAmountMinor,
       @RequestParam(required = false) String transactionReference,
       @RequestParam(defaultValue = "full") String responseShape) {
-    return hotPathMetrics.record(
-        TransactionReadHotPathMetrics.ENDPOINT_ARCHIVE,
-        TransactionReadHotPathMetrics.STAGE_TOTAL,
-        () ->
-            getArchivedTransactionsMeasured(
-                principal,
-                accountId,
-                from,
-                to,
-                limit,
-                cursor,
-                status,
-                direction,
-                minAmountMinor,
-                maxAmountMinor,
-                transactionReference,
-                responseShape));
-  }
-
-  private TransactionQueryResponse getArchivedTransactionsMeasured(
-      AuthenticatedRequestPrincipal principal,
-      long accountId,
-      OffsetDateTime from,
-      OffsetDateTime to,
-      int limit,
-      String cursor,
-      TransactionStatus status,
-      TransactionDirection direction,
-      Long minAmountMinor,
-      Long maxAmountMinor,
-      String transactionReference,
-      String responseShape) {
-    try {
-      TransactionCursor decodedCursor =
-          cursor == null || cursor.isBlank() ? null : TransactionCursorCodec.decode(cursor);
-      long resolvedAccountId =
-          hotPathMetrics.record(
-              TransactionReadHotPathMetrics.ENDPOINT_ARCHIVE,
-              TransactionReadHotPathMetrics.STAGE_AUTHORIZATION,
-              () ->
-                  requestAccountAuthorizationService.resolveReadableAccountId(
-                      principal, accountId));
-      TransactionQuery query =
-          new TransactionQuery(
-              resolvedAccountId,
-              from.toInstant(),
-              to.toInstant(),
-              limit,
-              decodedCursor,
-              status,
-              direction,
-              minAmountMinor,
-              maxAmountMinor,
-              transactionReference);
-      TransactionResponseShape resolvedResponseShape = TransactionResponseShape.from(responseShape);
-      TransactionSlice slice =
-          hotPathMetrics.record(
-              TransactionReadHotPathMetrics.ENDPOINT_ARCHIVE,
-              TransactionReadHotPathMetrics.STAGE_USECASE,
-              () ->
-                  accountFairnessLimiter.execute(
-                      resolvedAccountId,
-                      () ->
-                          singleFlight.get(
-                              TransactionReadHotPathMetrics.ENDPOINT_ARCHIVE,
-                              query,
-                              () ->
-                                  transactionArchiveQueryUseCase.getArchivedTransactions(query))));
-      return hotPathMetrics.record(
-          TransactionReadHotPathMetrics.ENDPOINT_ARCHIVE,
-          TransactionReadHotPathMetrics.STAGE_RESPONSE_MAPPING,
-          () -> TransactionQueryResponse.from(slice, resolvedResponseShape));
-    } catch (IllegalArgumentException ex) {
-      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage(), ex);
-    }
+    return timelineQuerySupport.execute(
+        principal,
+        accountId,
+        from,
+        to,
+        limit,
+        cursor,
+        status,
+        direction,
+        minAmountMinor,
+        maxAmountMinor,
+        transactionReference,
+        responseShape,
+        transactionArchiveQueryUseCase::getArchivedTransactions);
   }
 }

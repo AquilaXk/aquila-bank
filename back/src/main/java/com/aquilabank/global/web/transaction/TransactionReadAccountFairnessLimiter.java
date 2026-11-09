@@ -1,7 +1,6 @@
 package com.aquilabank.global.web.transaction;
 
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -10,7 +9,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class TransactionReadAccountFairnessLimiter {
 
-  private final ConcurrentHashMap<Long, AtomicInteger> activeRequests = new ConcurrentHashMap<>();
+  private final ConcurrentHashMap<Long, Integer> activeRequests = new ConcurrentHashMap<>();
   private final int maxConcurrentRequests;
 
   public TransactionReadAccountFairnessLimiter(
@@ -22,15 +21,8 @@ public class TransactionReadAccountFairnessLimiter {
   }
 
   public <T> T execute(long accountId, Supplier<T> supplier) {
-    int[] activeHolder = {0};
-    activeRequests.compute(
-        accountId,
-        (ignored, existing) -> {
-          AtomicInteger counter = existing != null ? existing : new AtomicInteger();
-          activeHolder[0] = counter.incrementAndGet();
-          return counter;
-        });
-    if (activeHolder[0] > maxConcurrentRequests) {
+    int active = activeRequests.merge(accountId, 1, Integer::sum);
+    if (active > maxConcurrentRequests) {
       release(accountId);
       throw new TransactionReadAccountFairnessRejectedException();
     }
@@ -43,7 +35,6 @@ public class TransactionReadAccountFairnessLimiter {
   }
 
   private void release(long accountId) {
-    activeRequests.computeIfPresent(
-        accountId, (ignored, counter) -> counter.decrementAndGet() == 0 ? null : counter);
+    activeRequests.computeIfPresent(accountId, (ignored, count) -> count > 1 ? count - 1 : null);
   }
 }

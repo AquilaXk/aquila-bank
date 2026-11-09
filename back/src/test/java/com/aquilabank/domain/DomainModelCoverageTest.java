@@ -1014,6 +1014,10 @@ class DomainModelCoverageTest {
       if (name.toLowerCase().contains("reason")) {
         values.add("bad reason");
       }
+      if (name.toLowerCase().contains("code")) {
+        values.add("12345a");
+        values.add("12345/");
+      }
     } else if (type == long.class || type == Long.class) {
       values.add(0L);
       values.add(-1L);

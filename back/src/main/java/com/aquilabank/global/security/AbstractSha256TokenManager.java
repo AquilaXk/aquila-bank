@@ -1,11 +1,8 @@
 package com.aquilabank.global.security;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
+import com.aquilabank.standard.util.Sha256Hex;
 import java.security.SecureRandom;
 import java.util.Base64;
-import java.util.HexFormat;
 
 /** opaque random 32-byte URL-safe 토큰 생성과 SHA-256 해시 계산을 공통 처리합니다. */
 abstract class AbstractSha256TokenManager {
@@ -31,15 +28,6 @@ abstract class AbstractSha256TokenManager {
     if (rawToken == null || rawToken.isBlank()) {
       throw new IllegalArgumentException("rawToken is required");
     }
-    MessageDigest digest = messageDigest("SHA-256");
-    return HexFormat.of().formatHex(digest.digest(rawToken.getBytes(StandardCharsets.UTF_8)));
-  }
-
-  static MessageDigest messageDigest(String algorithm) {
-    try {
-      return MessageDigest.getInstance(algorithm);
-    } catch (NoSuchAlgorithmException ex) {
-      throw new IllegalStateException(algorithm + " is not available", ex);
-    }
+    return Sha256Hex.hashHex(rawToken);
   }
 }

@@ -23,28 +23,21 @@ public class TransactionReadSingleFlight {
   @SuppressWarnings("unchecked")
   public <T> T execute(String endpoint, Object queryKey, Supplier<T> supplier) {
     RequestKey key = new RequestKey(endpoint, queryKey);
-    boolean[] isOwner = {false};
-    CompletableFuture<T> future =
-        (CompletableFuture<T>)
-            inFlight.computeIfAbsent(
-                key,
-                ignored -> {
-                  isOwner[0] = true;
-                  return new CompletableFuture<T>();
-                });
-    if (!isOwner[0]) {
-      return await(future);
+    CompletableFuture<T> created = new CompletableFuture<>();
+    CompletableFuture<T> existing = (CompletableFuture<T>) inFlight.putIfAbsent(key, created);
+    if (existing != null) {
+      return await(existing);
     }
 
     try {
       T result = supplier.get();
-      future.complete(result);
+      created.complete(result);
       return result;
     } catch (Throwable throwable) {
-      future.completeExceptionally(throwable);
+      created.completeExceptionally(throwable);
       throw rethrow(throwable);
     } finally {
-      inFlight.remove(key, future);
+      inFlight.remove(key, created);
     }
   }
 

@@ -6,8 +6,6 @@ import com.aquilabank.domain.account.model.AccountStatusChangeAuditEntry;
 import com.aquilabank.domain.account.model.AccountStatusUpdateCommand;
 import com.aquilabank.domain.account.model.AccountSummary;
 import com.aquilabank.domain.account.port.AccountStatusUpdatePort;
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -64,7 +62,7 @@ public class JdbcAccountStatusUpdateRepository implements AccountStatusUpdatePor
                     .addValue("accountId", command.accountId())
                     .addValue("accountStatus", command.status().name())
                     .addValue("updatedAt", Timestamp.from(updatedAt)),
-                (rs, rowNum) -> mapAccountSummary(rs))
+                (rs, rowNum) -> JdbcAccountSummaryRepository.mapAccountSummary(rs))
             .stream()
             .findFirst()
             .orElseThrow(() -> new AccountSummaryNotFoundException("account summary is not found"));
@@ -123,31 +121,5 @@ public class JdbcAccountStatusUpdateRepository implements AccountStatusUpdatePor
             .addValue("beforeStatus", entry.beforeStatus())
             .addValue("afterStatus", entry.afterStatus())
             .addValue("createdAt", Timestamp.from(entry.createdAt())));
-  }
-
-  private AccountSummary mapAccountSummary(ResultSet rs) throws SQLException {
-    String accountCurrencyCode = rs.getString("account_currency_code");
-    String snapshotCurrencyCode = rs.getString("snapshot_currency_code");
-    if (!accountCurrencyCode.equals(snapshotCurrencyCode)) {
-      throw new IllegalStateException("account snapshot currency does not match");
-    }
-
-    return new AccountSummary(
-        rs.getLong("id"),
-        rs.getString("account_number"),
-        rs.getString("display_name"),
-        rs.getString("account_status"),
-        accountCurrencyCode,
-        rs.getLong("available_balance_minor"),
-        rs.getLong("pending_balance_minor"),
-        toInstant(rs.getTimestamp("created_at")),
-        toInstant(rs.getTimestamp("updated_at")));
-  }
-
-  private Instant toInstant(Timestamp timestamp) {
-    if (timestamp == null) {
-      throw new IllegalStateException("timestamp must not be null");
-    }
-    return timestamp.toInstant();
   }
 }

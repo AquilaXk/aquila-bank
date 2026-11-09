@@ -1,12 +1,9 @@
 package com.aquilabank.global.security;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
+import com.aquilabank.standard.util.Sha256Hex;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -185,12 +182,7 @@ public final class RedisLoginThrottleStore implements LoginThrottleStore {
   }
 
   private String hashIpAddress(String ipAddress) {
-    try {
-      MessageDigest digest = MessageDigest.getInstance("SHA-256");
-      return HexFormat.of().formatHex(digest.digest(ipAddress.getBytes(StandardCharsets.UTF_8)));
-    } catch (NoSuchAlgorithmException ex) {
-      throw new IllegalStateException("SHA-256 is not available", ex);
-    }
+    return Sha256Hex.hashHex(ipAddress);
   }
 
   private String normalizeIpAddress(String ipAddress) {

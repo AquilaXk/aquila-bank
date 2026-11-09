@@ -3,6 +3,7 @@ package com.aquilabank.global.security;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.aquilabank.standard.util.Sha256Hex;
 import org.junit.jupiter.api.Test;
 
 class Sha256RefreshTokenManagerTest {
@@ -28,8 +29,6 @@ class Sha256RefreshTokenManagerTest {
     assertThrows(IllegalArgumentException.class, () -> manager.hash(null));
     assertThrows(IllegalArgumentException.class, () -> manager.hash(" "));
     assertThrows(IllegalArgumentException.class, () -> manager.generateOpaqueToken(0));
-    assertThrows(
-        IllegalStateException.class,
-        () -> AbstractSha256TokenManager.messageDigest("UNSUPPORTED-SHA-999"));
+    assertThrows(IllegalStateException.class, () -> Sha256Hex.messageDigest("UNSUPPORTED-SHA-999"));
   }
 }

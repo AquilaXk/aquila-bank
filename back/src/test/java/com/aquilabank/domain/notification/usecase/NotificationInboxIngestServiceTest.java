@@ -156,7 +156,7 @@ class NotificationInboxIngestServiceTest {
     assertThatThrownBy(() -> notificationInboxIngestService.ingestTransferReversed(null))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("command is required");
-    assertThatThrownBy(() -> NotificationInboxIngestService.messageDigest("INVALID-DIGEST"))
+    assertThatThrownBy(() -> com.aquilabank.standard.util.Sha256Hex.messageDigest("INVALID-DIGEST"))
         .isInstanceOf(IllegalStateException.class)
         .hasMessage("INVALID-DIGEST is not available");
 

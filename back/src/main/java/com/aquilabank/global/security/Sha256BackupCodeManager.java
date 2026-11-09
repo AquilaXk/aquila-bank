@@ -2,13 +2,11 @@ package com.aquilabank.global.security;
 
 import com.aquilabank.domain.auth.model.GeneratedBackupCode;
 import com.aquilabank.domain.auth.port.BackupCodeSecretPort;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
+import com.aquilabank.standard.util.Sha256Hex;
 import java.security.SecureRandom;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Set;
 
@@ -18,6 +16,14 @@ public class Sha256BackupCodeManager implements BackupCodeSecretPort {
   private static final String ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   private static final int CODE_LENGTH = 8;
   private static final int SEGMENT_LENGTH = 4;
+  private static final byte[] LOOKUP = new byte[128];
+
+  static {
+    Arrays.fill(LOOKUP, (byte) -1);
+    for (int index = 0; index < ALPHABET.length(); index++) {
+      LOOKUP[ALPHABET.charAt(index)] = (byte) index;
+    }
+  }
 
   private final SecureRandom secureRandom = new SecureRandom();
 
@@ -34,14 +40,14 @@ public class Sha256BackupCodeManager implements BackupCodeSecretPort {
       if (!seen.add(normalized)) {
         continue;
       }
-      items.add(new GeneratedBackupCode(format(normalized), sha256Hex(normalized)));
+      items.add(new GeneratedBackupCode(format(normalized), Sha256Hex.hashHex(normalized)));
     }
     return items;
   }
 
   @Override
   public String hash(String plainCode) {
-    return sha256Hex(normalize(plainCode));
+    return Sha256Hex.hashHex(normalize(plainCode));
   }
 
   private String generateNormalizedCode() {
@@ -74,24 +80,13 @@ public class Sha256BackupCodeManager implements BackupCodeSecretPort {
     if (normalized.length() != CODE_LENGTH) {
       throw new IllegalArgumentException("plainCode must be 8 characters");
     }
-    // 입력 formatting 차이로 hash가 달라지지 않게 hyphen/대소문자를 제거한 뒤 검증합니다.
+    // 입력 formatting 차이로 hash가 달라지지 않게 hyphen/대소문자를 제거한 뒤 O(1) 룩업 테이블로 검증합니다.
     for (int index = 0; index < normalized.length(); index++) {
-      if (ALPHABET.indexOf(normalized.charAt(index)) < 0) {
+      char ch = normalized.charAt(index);
+      if (ch >= LOOKUP.length || LOOKUP[ch] < 0) {
         throw new IllegalArgumentException("plainCode contains unsupported characters");
       }
     }
     return normalized;
-  }
-
-  private String sha256Hex(String value) {
-    return HexFormat.of().formatHex(sha256(value.getBytes(StandardCharsets.UTF_8)));
-  }
-
-  private byte[] sha256(byte[] value) {
-    try {
-      return MessageDigest.getInstance("SHA-256").digest(value);
-    } catch (NoSuchAlgorithmException ex) {
-      throw new IllegalStateException("SHA-256 is not available", ex);
-    }
   }
 }

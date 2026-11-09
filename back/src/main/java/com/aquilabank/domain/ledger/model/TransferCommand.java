@@ -1,9 +1,6 @@
 package com.aquilabank.domain.ledger.model;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
+import com.aquilabank.standard.util.Sha256Hex;
 
 /** 송금 명령 입력 모델 */
 public record TransferCommand(
@@ -53,12 +50,7 @@ public record TransferCommand(
             + summary.length()
             + ":"
             + summary;
-    try {
-      MessageDigest digest = MessageDigest.getInstance("SHA-256");
-      return HexFormat.of().formatHex(digest.digest(canonical.getBytes(StandardCharsets.UTF_8)));
-    } catch (NoSuchAlgorithmException ex) {
-      throw new IllegalStateException("SHA-256 is not available", ex);
-    }
+    return Sha256Hex.hashHex(canonical);
   }
 
   private static boolean isThreeLetterUpperAscii(String value) {

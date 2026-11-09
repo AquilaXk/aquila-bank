@@ -90,8 +90,18 @@ class ApiAdmissionControlTest {
             meterRegistry
                 .find("aquila.api.admission.requests")
                 .tag("group", "transaction-read")
-                .counter())
-        .isNull();
+                .tag("outcome", "accepted")
+                .counter()
+                .count())
+        .isZero();
+    assertThat(
+            meterRegistry
+                .find("aquila.api.admission.requests")
+                .tag("group", "transaction-read")
+                .tag("outcome", "rejected")
+                .counter()
+                .count())
+        .isZero();
   }
 
   @Test

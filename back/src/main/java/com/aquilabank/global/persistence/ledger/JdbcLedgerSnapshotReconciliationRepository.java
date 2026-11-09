@@ -14,6 +14,7 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -54,17 +55,19 @@ public class JdbcLedgerSnapshotReconciliationRepository
     }
     List<SnapshotComparison> items = findSnapshotComparisons(afterAccountId, batchSize);
     int driftedCount = 0;
-    int resolvedCount = 0;
     long nextAccountId = afterAccountId;
+    List<Long> healthyAccountIds = new ArrayList<>(items.size());
     for (SnapshotComparison item : items) {
       nextAccountId = item.accountId();
       if (item.isDrifted()) {
         upsertOpenDrift(item, observedAt);
         driftedCount++;
       } else {
-        resolvedCount += resolveOpenDrift(item.accountId(), observedAt);
+        healthyAccountIds.add(item.accountId());
       }
     }
+    int resolvedCount =
+        healthyAccountIds.isEmpty() ? 0 : resolveOpenDrifts(healthyAccountIds, observedAt);
     return new LedgerSnapshotReconciliationBatchResult(
         observedAt,
         nextAccountId,
@@ -236,18 +239,18 @@ public class JdbcLedgerSnapshotReconciliationRepository
         driftParams(item, observedAt).addValue("driftStatus", OPEN));
   }
 
-  private int resolveOpenDrift(long accountId, Instant observedAt) {
+  private int resolveOpenDrifts(List<Long> accountIds, Instant observedAt) {
     return jdbcTemplate.update(
         """
         UPDATE ledger_snapshot_reconciliation_drift
         SET drift_status = :resolvedStatus,
             resolved_at = :observedAt,
             updated_at = :observedAt
-        WHERE account_id = :accountId
-          AND drift_status = :openStatus
+        WHERE drift_status = :openStatus
+          AND account_id IN (:accountIds)
         """,
         new MapSqlParameterSource()
-            .addValue("accountId", accountId)
+            .addValue("accountIds", accountIds)
             .addValue("observedAt", Timestamp.from(observedAt))
             .addValue("openStatus", OPEN)
             .addValue("resolvedStatus", RESOLVED));

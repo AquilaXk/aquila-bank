@@ -12,7 +12,6 @@ public class ApiAdmissionControl {
   private static final long NANOS_PER_SECOND = 1_000_000_000L;
 
   private final ApiAdmissionControlProperties properties;
-  private final MeterRegistry meterRegistry;
   private final List<EndpointState> endpoints;
 
   public ApiAdmissionControl(
@@ -23,7 +22,6 @@ public class ApiAdmissionControl {
   ApiAdmissionControl(
       ApiAdmissionControlProperties properties, MeterRegistry meterRegistry, LongSupplier ticker) {
     this.properties = properties;
-    this.meterRegistry = meterRegistry;
     this.endpoints =
         properties.endpoints().stream()
             .map(
@@ -43,11 +41,9 @@ public class ApiAdmissionControl {
     }
     if (!endpoint.tryAcquire()) {
       endpoint.recordRejection();
-      increment(endpoint.group(), "rejected");
       return ApiAdmissionPermit.rejected(endpoint.group(), endpoint.retryAfterSeconds());
     }
     endpoint.recordAccepted();
-    increment(endpoint.group(), "accepted");
     return ApiAdmissionPermit.acquired(endpoint.group(), endpoint::release);
   }
 
@@ -63,15 +59,6 @@ public class ApiAdmissionControl {
     }
     // archive처럼 겹치는 prefix는 더 구체적인 endpoint group이 admission budget을 가져간다.
     return result;
-  }
-
-  private void increment(String group, String outcome) {
-    Counter.builder("aquila.api.admission.requests")
-        .tag("group", group)
-        .tag("outcome", outcome)
-        .description("endpoint admission control request decisions")
-        .register(meterRegistry)
-        .increment();
   }
 
   private String pathOnly(String rawPath) {
@@ -90,6 +77,8 @@ public class ApiAdmissionControl {
     private final AtomicInteger healthyCompletions = new AtomicInteger();
     private final LongSupplier ticker;
     private final boolean[] rejectionWindow;
+    private final Counter acceptedCounter;
+    private final Counter rejectedCounter;
 
     private int rejectionWindowIndex;
     private int rejectionWindowSamples;
@@ -111,6 +100,18 @@ public class ApiAdmissionControl {
       this.currentLimit = new AtomicInteger(endpoint.maxConcurrency());
       this.ticker = ticker;
       this.rejectionWindow = new boolean[endpoint.adaptive().rejectionWindowSize()];
+      this.acceptedCounter =
+          Counter.builder("aquila.api.admission.requests")
+              .tag("group", group)
+              .tag("outcome", "accepted")
+              .description("endpoint admission control request decisions")
+              .register(meterRegistry);
+      this.rejectedCounter =
+          Counter.builder("aquila.api.admission.requests")
+              .tag("group", group)
+              .tag("outcome", "rejected")
+              .description("endpoint admission control request decisions")
+              .register(meterRegistry);
       Gauge.builder("aquila.api.admission.inflight", inFlight, AtomicInteger::get)
           .tag("group", group)
           .description("endpoint admission control in-flight requests")
@@ -152,12 +153,14 @@ public class ApiAdmissionControl {
     }
 
     private void recordAccepted() {
+      acceptedCounter.increment();
       if (adaptive.enabled()) {
         recordAdmissionDecision(false);
       }
     }
 
     private void recordRejection() {
+      rejectedCounter.increment();
       if (!adaptive.enabled()) {
         return;
       }

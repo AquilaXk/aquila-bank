@@ -151,8 +151,10 @@ public class NotificationSseBroker {
 
   @Scheduled(fixedDelayString = "${notification.sse.heartbeat-interval-ms:25000}")
   void sendHeartbeats() {
-    sendHeartbeats(accountSessions, "account");
-    sendHeartbeats(userSessions, "user");
+    NotificationStreamHeartbeatResponse heartbeat =
+        new NotificationStreamHeartbeatResponse(Instant.now());
+    sendHeartbeats(accountSessions, "account", heartbeat);
+    sendHeartbeats(userSessions, "user", heartbeat);
   }
 
   private SseEmitter subscribe(
@@ -267,7 +269,9 @@ public class NotificationSseBroker {
   }
 
   private void sendHeartbeats(
-      Map<Long, Map<String, NotificationSseSession>> sessionsByPrincipalId, String principalType) {
+      Map<Long, Map<String, NotificationSseSession>> sessionsByPrincipalId,
+      String principalType,
+      NotificationStreamHeartbeatResponse heartbeat) {
     if (sessionsByPrincipalId.isEmpty()) {
       return;
     }
@@ -278,12 +282,7 @@ public class NotificationSseBroker {
         try {
           session.sendLock().lock();
           try {
-            session
-                .emitter()
-                .send(
-                    SseEmitter.event()
-                        .name("heartbeat")
-                        .data(new NotificationStreamHeartbeatResponse(Instant.now())));
+            session.emitter().send(SseEmitter.event().name("heartbeat").data(heartbeat));
           } finally {
             session.sendLock().unlock();
           }
@@ -657,5 +656,10 @@ public class NotificationSseBroker {
     }
   }
 
-  private static final class NotificationSseSessionBackpressureException extends RuntimeException {}
+  private static final class NotificationSseSessionBackpressureException extends RuntimeException {
+
+    private NotificationSseSessionBackpressureException() {
+      super("notification SSE session pending queue overflow", null, false, false);
+    }
+  }
 }

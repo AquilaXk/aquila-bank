@@ -4,10 +4,7 @@ import com.aquilabank.domain.auth.model.LoginFailureAuditEntry;
 import com.aquilabank.domain.auth.model.LoginResetAuditEntry;
 import com.aquilabank.domain.auth.port.LoginAttemptAuditPort;
 import com.aquilabank.global.web.RequestTraceContext;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
+import com.aquilabank.standard.util.Sha256Hex;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.context.request.RequestContextHolder;
@@ -54,11 +51,6 @@ public class StructuredLoginAttemptAuditLogger implements LoginAttemptAuditPort 
   }
 
   private String hashLoginId(String loginId) {
-    try {
-      MessageDigest digest = MessageDigest.getInstance("SHA-256");
-      return HexFormat.of().formatHex(digest.digest(loginId.getBytes(StandardCharsets.UTF_8)));
-    } catch (NoSuchAlgorithmException ex) {
-      throw new IllegalStateException("SHA-256 is not available", ex);
-    }
+    return Sha256Hex.hashHex(loginId);
   }
 }

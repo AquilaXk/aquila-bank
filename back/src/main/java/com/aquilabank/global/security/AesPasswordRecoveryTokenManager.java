@@ -2,13 +2,11 @@ package com.aquilabank.global.security;
 
 import com.aquilabank.domain.auth.model.GeneratedPasswordRecoveryToken;
 import com.aquilabank.domain.auth.port.PasswordRecoverySecretPort;
+import com.aquilabank.standard.util.Sha256Hex;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.Base64;
-import java.util.HexFormat;
 import javax.crypto.Cipher;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
@@ -34,7 +32,8 @@ public class AesPasswordRecoveryTokenManager implements PasswordRecoverySecretPo
           "security.password-recovery.secret-encryption-key is required");
     }
     this.secretKeySpec =
-        new SecretKeySpec(sha256(secretEncryptionKey.getBytes(StandardCharsets.UTF_8)), "AES");
+        new SecretKeySpec(
+            Sha256Hex.digest(secretEncryptionKey.getBytes(StandardCharsets.UTF_8)), "AES");
   }
 
   @Override
@@ -49,7 +48,7 @@ public class AesPasswordRecoveryTokenManager implements PasswordRecoverySecretPo
 
     return new GeneratedPasswordRecoveryToken(
         plainToken,
-        sha256Hex(plainTokenBytes),
+        Sha256Hex.hashHex(plainTokenBytes),
         encode(encrypt(plainTokenBytes, nonce)),
         encode(nonce));
   }
@@ -59,7 +58,7 @@ public class AesPasswordRecoveryTokenManager implements PasswordRecoverySecretPo
     if (plainToken == null || plainToken.isBlank()) {
       throw new IllegalArgumentException("plainToken is required");
     }
-    return sha256Hex(plainToken.getBytes(StandardCharsets.UTF_8));
+    return Sha256Hex.hashHex(plainToken);
   }
 
   @Override
@@ -101,17 +100,5 @@ public class AesPasswordRecoveryTokenManager implements PasswordRecoverySecretPo
 
   private byte[] decode(String value) {
     return Base64.getUrlDecoder().decode(value);
-  }
-
-  private byte[] sha256(byte[] value) {
-    try {
-      return MessageDigest.getInstance("SHA-256").digest(value);
-    } catch (NoSuchAlgorithmException ex) {
-      throw new IllegalStateException("SHA-256 is not available", ex);
-    }
-  }
-
-  private String sha256Hex(byte[] value) {
-    return HexFormat.of().formatHex(sha256(value));
   }
 }

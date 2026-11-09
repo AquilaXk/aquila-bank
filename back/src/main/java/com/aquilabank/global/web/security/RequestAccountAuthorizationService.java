@@ -63,9 +63,7 @@ public class RequestAccountAuthorizationService {
     }
 
     if (principal instanceof AuthenticatedUserPrincipal userPrincipal) {
-      return resolveCached(
-          new AuthorizationCacheKey(userPrincipal.userId(), requestedAccountId, scope),
-          () -> accountAccessUseCase.verify(userPrincipal.userId(), requestedAccountId, scope));
+      return resolveCached(userPrincipal.userId(), requestedAccountId, scope);
     }
 
     if (principal instanceof AuthenticatedAccountPrincipal accountPrincipal) {
@@ -101,7 +99,8 @@ public class RequestAccountAuthorizationService {
     authorizationCache.keySet().removeIf(key -> key.userId() == userId);
   }
 
-  private long resolveCached(AuthorizationCacheKey key, LongSupplier accountIdResolver) {
+  private long resolveCached(long userId, long requestedAccountId, AccountAccessScope scope) {
+    AuthorizationCacheKey key = new AuthorizationCacheKey(userId, requestedAccountId, scope);
     long nowNanos = nanoTime.getAsLong();
     AuthorizationCacheEntry cached = authorizationCache.get(key);
     if (cached != null && cached.isFresh(nowNanos, authorizationCacheTtlNanos)) {
@@ -110,7 +109,7 @@ public class RequestAccountAuthorizationService {
     if (cached != null) {
       authorizationCache.remove(key, cached);
     }
-    long resolvedAccountId = accountIdResolver.getAsLong();
+    long resolvedAccountId = accountAccessUseCase.verify(userId, requestedAccountId, scope);
     if (authorizationCache.size() >= MAX_CACHE_ENTRIES) {
       authorizationCache
           .entrySet()
