@@ -33,33 +33,40 @@ validate_branch() {
 while read -r local_ref local_sha remote_ref remote_sha; do
   [[ -z "${local_ref:-}" ]] && continue
 
-  if local_branch="$(branch_name_from_ref "${local_ref}")"; then
-    if ! validate_branch "${local_branch}"; then
-      violations+=("local:${local_branch}")
-    fi
-  elif [[ "${local_sha}" != "${zero_sha}" ]]; then
-    violations+=("local-ref:${local_ref}")
-  fi
-
+  remote_branch=""
   if remote_branch="$(branch_name_from_ref "${remote_ref}")"; then
-    if ! validate_branch "${remote_branch}"; then
+    if [[ "${remote_branch}" == "main" && "${local_sha}" != "${zero_sha}" ]]; then
+      :
+    elif ! validate_branch "${remote_branch}"; then
       violations+=("remote:${remote_branch}")
     fi
   elif [[ "${remote_sha}" != "${zero_sha}" ]]; then
     violations+=("remote-ref:${remote_ref}")
   fi
+
+  if local_branch="$(branch_name_from_ref "${local_ref}")"; then
+    if [[ "${remote_branch}" == "main" && "${local_sha}" != "${zero_sha}" && "${local_branch}" == "main" ]]; then
+      :
+    elif ! validate_branch "${local_branch}"; then
+      violations+=("local:${local_branch}")
+    fi
+  elif [[ "${local_ref}" == "HEAD" && "${remote_branch}" == "main" && "${local_sha}" != "${zero_sha}" ]]; then
+    :
+  elif [[ "${local_sha}" != "${zero_sha}" ]]; then
+    violations+=("local-ref:${local_ref}")
+  fi
 done
 
 if [[ "${#violations[@]}" -gt 0 ]]; then
   {
-    echo "[pre-push] main/develop 직접 push 는 금지됩니다."
-    echo "[pre-push] 허용 브랜치 형식: type/short-description"
+    echo "[pre-push] 허용되지 않은 브랜치 push 또는 보호 브랜치 삭제가 감지되었습니다."
+    echo "[pre-push] 허용 대상: main fast-forward push(HEAD:main) 또는 type/short-description 작업 브랜치"
     echo "[pre-push] 허용 type: feat|fix|refactor|chore|docs|style|test|perf|build|ci|revert|hotfix"
     echo "[pre-push] 차단된 ref:"
     for violation in "${violations[@]}"; do
       echo "  - ${violation}"
     done
-    echo "[pre-push] 예시: feat/account-bootstrap"
+    echo "[pre-push] 예시: git push origin HEAD:main 또는 feat/account-bootstrap"
   } >&2
   exit 1
 fi

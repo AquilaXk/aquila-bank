@@ -24,15 +24,16 @@ if [[ "$subject" =~ ^Merge\  ]] || [[ "$subject" =~ ^Revert\  ]] || [[ "$subject
   exit 0
 fi
 
-if ! [[ "$subject" =~ ^(feat|fix|refactor|chore|docs|style|test|perf|build|ci|revert|hotfix)(\([a-z0-9][a-z0-9._/-]*\))?!?:\ .+$ ]]; then
+if ! [[ "$subject" =~ ^(feat|fix|refactor|chore|docs|style|test|perf|build|ci|revert|hotfix)(\([a-z0-9][a-z0-9._/-]*\))?!?:\ .+$ ]] \
+  && ! [[ "$subject" =~ ^\[(Feat|Fix|Refactor|Chore|Docs|Style|Test|Perf|Build|CI|Revert|Hotfix)\]\ .+$ ]]; then
   cat >&2 <<'EOF'
 [commit-msg] 커밋 메시지 규칙 위반!
-형식: <type>(<scope>): <summary> 또는 <type>: <summary>
-예시1: feat(transaction): implement keyset pagination cursor
-예시2: fix(account): prevent concurrent overdraft race condition
-예시3: docs(readme): update verification gate commands
-허용 타입: feat, fix, refactor, chore, docs, style, test, perf, build, ci, revert, hotfix
-권장 사항: 영문 명령형 동사(Imperative verb) 사용, 제목 72자 이내
+형식: [<Type>] <summary> 또는 <type>(<scope>): <summary> 또는 <type>: <summary>
+예시1: [Perf] 거래 커서 HMAC 상수 시간 워드 비교 및 쿼리 최적화
+예시2: feat(transaction): implement keyset pagination cursor
+예시3: fix(account): prevent concurrent overdraft race condition
+허용 타입: Feat/feat, Fix/fix, Refactor/refactor, Chore/chore, Docs/docs, Style/style, Test/test, Perf/perf, Build/build, CI/ci, Revert/revert, Hotfix/hotfix
+권장 사항: 제목 72자 이내
 EOF
   exit 1
 fi
