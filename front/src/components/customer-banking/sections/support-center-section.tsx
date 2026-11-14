@@ -4,11 +4,16 @@ import { useState } from "react";
 import type { CustomerApplicationDetailsResponse } from "@/lib/api/types";
 import { supportCenterItems } from "@/lib/customer-banking/constants";
 import { formatDateTime } from "@/lib/customer-banking/format";
+import {
+  getApplicationStatusLabel,
+  getApplicationTypeLabel,
+  getProcessingModeLabel,
+} from "@/lib/customer-banking/labels";
 import type {
   CustomerApplicationLatestResult,
   CustomerApplicationSubmitHandler,
 } from "@/lib/customer-banking/types";
-import { BankNoticeStrip } from "../common";
+import { BankNoticeStrip, CopyButton, OtpCodeInput } from "../common";
 
 const faqItems = [
   {
@@ -46,7 +51,14 @@ const certificateItems = [
   },
 ] as const;
 
+type SupportAccountOption = {
+  accountId: number;
+  accountNumber: string;
+  displayName: string;
+};
+
 type SupportCenterSectionProps = {
+  accounts?: ReadonlyArray<SupportAccountOption>;
   applicationResult: CustomerApplicationLatestResult;
   customerApplications: CustomerApplicationDetailsResponse[];
   isBusy: boolean;
@@ -86,6 +98,7 @@ function formatExecutionEntries(
 }
 
 export function SupportCenterSection({
+  accounts = [],
   applicationResult,
   customerApplications,
   isBusy,
@@ -274,9 +287,9 @@ export function SupportCenterSection({
                     }
                   >
                     <strong>{item.applicationReference}</strong>
-                    <span>{item.applicationType}</span>
+                    <span>{getApplicationTypeLabel(item.applicationType)}</span>
                   </button>
-                  <span>{item.status}</span>
+                  <span>{getApplicationStatusLabel(item.status)}</span>
                   <button
                     type="button"
                     disabled={isBusy}
@@ -302,15 +315,23 @@ export function SupportCenterSection({
                 <dl className="application-detail-list">
                   <div>
                     <dt>접수번호</dt>
-                    <dd>{selectedCustomerApplication.applicationReference}</dd>
+                    <dd className="inline-copy-cell">
+                      <span>{selectedCustomerApplication.applicationReference}</span>
+                      <CopyButton
+                        label="접수번호"
+                        value={selectedCustomerApplication.applicationReference}
+                      />
+                    </dd>
                   </div>
                   <div>
                     <dt>상태</dt>
-                    <dd>{selectedCustomerApplication.status}</dd>
+                    <dd>{getApplicationStatusLabel(selectedCustomerApplication.status)}</dd>
                   </div>
                   <div>
                     <dt>처리 모드</dt>
-                    <dd>{selectedCustomerApplication.processingMode}</dd>
+                    <dd>
+                      {getProcessingModeLabel(selectedCustomerApplication.processingMode)}
+                    </dd>
                   </div>
                   <div>
                     <dt>사유</dt>
@@ -408,26 +429,42 @@ export function SupportCenterSection({
                 }
               />
             </label>
-            <label>
-              <span>계좌 ID</span>
-              <input
-                inputMode="numeric"
-                value={incidentForm.accountId}
-                onChange={(event) =>
-                  setIncidentForm((form) => ({ ...form, accountId: event.target.value }))
-                }
-              />
-            </label>
-            <label>
-              <span>OTP</span>
-              <input
-                inputMode="numeric"
-                value={incidentForm.totpCode}
-                onChange={(event) =>
-                  setIncidentForm((form) => ({ ...form, totpCode: event.target.value }))
-                }
-              />
-            </label>
+            {accounts.length > 0 ? (
+              <label>
+                <span>계좌 선택</span>
+                <select
+                  value={incidentForm.accountId}
+                  onChange={(event) =>
+                    setIncidentForm((form) => ({ ...form, accountId: event.target.value }))
+                  }
+                >
+                  <option value="">계좌를 선택하세요 (선택)</option>
+                  {accounts.map((account) => (
+                    <option key={account.accountId} value={String(account.accountId)}>
+                      {account.displayName} ({account.accountNumber})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <label>
+                <span>계좌 ID</span>
+                <input
+                  inputMode="numeric"
+                  value={incidentForm.accountId}
+                  onChange={(event) =>
+                    setIncidentForm((form) => ({ ...form, accountId: event.target.value }))
+                  }
+                />
+              </label>
+            )}
+            <OtpCodeInput
+              label="OTP"
+              onValueChange={(nextCode) =>
+                setIncidentForm((form) => ({ ...form, totpCode: nextCode }))
+              }
+              value={incidentForm.totpCode}
+            />
           </div>
           <button
             type="button"
@@ -466,16 +503,35 @@ export function SupportCenterSection({
               <p>{item.description}</p>
               <span>{item.scope}</span>
               <div className="form-grid compact">
-                <label>
-                  <span>계좌 ID</span>
-                  <input
-                    inputMode="numeric"
-                    value={certificateForms[item.title].accountId}
-                    onChange={(event) =>
-                      updateCertificateForm(item.title, "accountId", event.target.value)
-                    }
-                  />
-                </label>
+                {accounts.length > 0 ? (
+                  <label>
+                    <span>계좌 선택</span>
+                    <select
+                      value={certificateForms[item.title].accountId}
+                      onChange={(event) =>
+                        updateCertificateForm(item.title, "accountId", event.target.value)
+                      }
+                    >
+                      <option value="">계좌를 선택하세요 (선택)</option>
+                      {accounts.map((account) => (
+                        <option key={account.accountId} value={String(account.accountId)}>
+                          {account.displayName} ({account.accountNumber})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : (
+                  <label>
+                    <span>계좌 ID</span>
+                    <input
+                      inputMode="numeric"
+                      value={certificateForms[item.title].accountId}
+                      onChange={(event) =>
+                        updateCertificateForm(item.title, "accountId", event.target.value)
+                      }
+                    />
+                  </label>
+                )}
                 <label>
                   <span>발급 목적</span>
                   <input
@@ -485,16 +541,13 @@ export function SupportCenterSection({
                     }
                   />
                 </label>
-                <label>
-                  <span>OTP</span>
-                  <input
-                    inputMode="numeric"
-                    value={certificateForms[item.title].totpCode}
-                    onChange={(event) =>
-                      updateCertificateForm(item.title, "totpCode", event.target.value)
-                    }
-                  />
-                </label>
+                <OtpCodeInput
+                  label="OTP"
+                  onValueChange={(nextCode) =>
+                    updateCertificateForm(item.title, "totpCode", nextCode)
+                  }
+                  value={certificateForms[item.title].totpCode}
+                />
               </div>
               <button
                 type="button"
@@ -523,7 +576,8 @@ export function SupportCenterSection({
       </section>
       {applicationResult ? (
         <p className="application-result-line">
-          최근 고객센터 접수 {applicationResult.applicationReference} · {applicationResult.status}
+          최근 고객센터 접수 {applicationResult.applicationReference} ·{" "}
+          {getApplicationStatusLabel(applicationResult.status)}
         </p>
       ) : null}
     </section>

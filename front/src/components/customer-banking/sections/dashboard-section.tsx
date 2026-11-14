@@ -1,10 +1,11 @@
-import type { MenuSection } from '@/lib/customer-banking/types';
-import { BankNoticeStrip, WorkTabs } from '../common';
+import type { MenuSection } from "@/lib/customer-banking/types";
+import { BankNoticeStrip, WorkTabs } from "../common";
 import {
   bankingNewsItems,
   favoriteServiceItems,
   serviceHourItems,
-} from '@/lib/customer-banking/constants';
+} from "@/lib/customer-banking/constants";
+import { formatMinorAmount } from "@/lib/customer-banking/format";
 
 type DashboardAccountItem = {
   accountId: number;
@@ -31,7 +32,10 @@ function resolvePrimaryAccountDisplay(
     return {
       displayName: primaryAccount.displayName,
       accountNumber: primaryAccount.accountNumber,
-      balanceDisplay: `${(primaryAccount.availableBalanceMinor / 100).toLocaleString("ko-KR")} ${primaryAccount.currencyCode}`,
+      balanceDisplay: formatMinorAmount(
+        primaryAccount.availableBalanceMinor,
+        primaryAccount.currencyCode,
+      ),
     };
   }
   if (hasSession) {
@@ -139,11 +143,13 @@ export function DashboardSection({
             <span className="account-status-text">{hasSession ? "정상 이용중" : "로그인 필요"}</span>
           </div>
           <strong className="dashboard-primary-account-name">{primaryDisplayName}</strong>
-          <span className="dashboard-primary-account-number">{primaryAccountNumber}</span>
+          <span className="dashboard-primary-account-number tabular-nums">
+            {primaryAccountNumber}
+          </span>
         </div>
         <div className="dashboard-primary-account-balance">
           <span className="balance-label">출금가능 잔액</span>
-          <strong className="balance-value">{primaryBalanceDisplay}</strong>
+          <strong className="balance-value tabular-nums">{primaryBalanceDisplay}</strong>
           <div className="button-row compact">
             <button onClick={() => onMove("transfer")} type="button">
               즉시이체
@@ -181,7 +187,9 @@ export function DashboardSection({
           <ul className="bank-news-list">
             {bankingNewsItems.map((item) => (
               <li key={item}>
-                <button type="button">{item}</button>
+                <button onClick={() => onMove("notifications")} type="button">
+                  {item}
+                </button>
               </li>
             ))}
           </ul>

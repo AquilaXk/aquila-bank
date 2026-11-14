@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import type { CustomerSession } from "@/lib/api/types";
 import {
   mainMenus,
@@ -10,10 +10,18 @@ import {
   serviceMapGroups,
 } from "@/lib/customer-banking/constants";
 import { formatDateTime } from "@/lib/customer-banking/format";
+import {
+  subscribeColorScheme,
+  toggleStoredColorScheme,
+  type ColorScheme,
+} from "@/lib/customer-banking/theme";
 import type { MenuSection, ServiceSearchItem } from "@/lib/customer-banking/types";
 import { BankNoticeStrip } from "./common";
 
 type MoveHandler = (section: MenuSection) => void;
+
+const IME_KEY_CODE = 229;
+const IME_COMPOSITION_COOLDOWN_MS = 50;
 
 export function BankHeader({
   activeSection,
@@ -42,79 +50,103 @@ export function BankHeader({
 }) {
   const isAuthenticated = Boolean(session);
   const hasSearchQuery = searchQuery.trim().length > 0;
-  const [colorScheme, setColorScheme] = useState<"light" | "dark">("light");
+  const [colorScheme, setColorScheme] = useState<ColorScheme>("light");
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchPanelRef = useRef<HTMLDivElement>(null);
+  const compositionEndedAtRef = useRef(0);
 
   useEffect(() => {
-    const media = window.matchMedia("(prefers-color-scheme: dark)");
-    const resolveScheme = (stored: string | null): "light" | "dark" => {
-      if (stored === "light" || stored === "dark") {
-        return stored;
-      }
-      return media.matches ? "dark" : "light";
-    };
-    const applyScheme = (stored: string | null) => {
-      const meta = document.querySelector<HTMLMetaElement>('meta[name="color-scheme"]');
-      if (stored === "light" || stored === "dark") {
-        if (meta) meta.content = stored;
-        document.documentElement.dataset.theme = stored;
-      } else {
-        if (meta) meta.content = "light dark";
-        delete document.documentElement.dataset.theme;
-      }
-      setColorScheme(resolveScheme(stored));
-    };
-
-    try {
-      applyScheme(localStorage.getItem("color-scheme"));
-    } catch {
-      setColorScheme(media.matches ? "dark" : "light");
-    }
-
-    const handleStorage = (event: StorageEvent) => {
-      if (event.key === "color-scheme") {
-        applyScheme(event.newValue);
-      }
-    };
-    const handleMediaChange = () => {
-      try {
-        const stored = localStorage.getItem("color-scheme");
-        if (stored !== "light" && stored !== "dark") {
-          setColorScheme(media.matches ? "dark" : "light");
-        }
-      } catch {
-        setColorScheme(media.matches ? "dark" : "light");
-      }
-    };
-
-    window.addEventListener("storage", handleStorage);
-    media.addEventListener("change", handleMediaChange);
-    return () => {
-      window.removeEventListener("storage", handleStorage);
-      media.removeEventListener("change", handleMediaChange);
-    };
+    return subscribeColorScheme(setColorScheme);
   }, []);
 
-  function toggleColorScheme() {
-    const nextScheme: "light" | "dark" = colorScheme === "dark" ? "light" : "dark";
-    const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    const matchesSystem =
-      (nextScheme === "dark" && systemDark) || (nextScheme === "light" && !systemDark);
-    const meta = document.querySelector<HTMLMetaElement>('meta[name="color-scheme"]');
-    try {
-      if (matchesSystem) {
-        localStorage.removeItem("color-scheme");
-        if (meta) meta.content = "light dark";
-        delete document.documentElement.dataset.theme;
-      } else {
-        localStorage.setItem("color-scheme", nextScheme);
-        if (meta) meta.content = nextScheme;
-        document.documentElement.dataset.theme = nextScheme;
+  useEffect(() => {
+    setHighlightedIndex(0);
+  }, [searchQuery, searchResults.length]);
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (event: globalThis.KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        if (event.isComposing || event.keyCode === IME_KEY_CODE) {
+          return;
+        }
+        event.preventDefault();
+        if (!mobileSearchOpen && window.matchMedia("(max-width: 760px)").matches) {
+          onMobileSearchToggle();
+        }
+        window.requestAnimationFrame(() => {
+          searchInputRef.current?.focus();
+          searchInputRef.current?.select();
+        });
       }
-    } catch {
-      if (meta) meta.content = nextScheme;
-      document.documentElement.dataset.theme = nextScheme;
+    };
+
+    const handleOutsidePointerDown = (event: globalThis.PointerEvent) => {
+      if (
+        hasSearchQuery &&
+        searchPanelRef.current &&
+        event.target instanceof Node &&
+        !searchPanelRef.current.contains(event.target)
+      ) {
+        onSearchChange("");
+      }
+    };
+
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    document.addEventListener("pointerdown", handleOutsidePointerDown);
+    return () => {
+      window.removeEventListener("keydown", handleGlobalKeyDown);
+      document.removeEventListener("pointerdown", handleOutsidePointerDown);
+    };
+  }, [hasSearchQuery, mobileSearchOpen, onMobileSearchToggle, onSearchChange]);
+
+  function toggleColorScheme() {
+    setColorScheme((current) => toggleStoredColorScheme(current));
+  }
+
+  function handleSearchKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    const inComposition =
+      event.nativeEvent.isComposing ||
+      event.keyCode === IME_KEY_CODE ||
+      performance.now() - compositionEndedAtRef.current < IME_COMPOSITION_COOLDOWN_MS;
+    if (inComposition) {
+      return;
     }
-    setColorScheme(nextScheme);
+
+    if (event.key === "Escape") {
+      if (hasSearchQuery) {
+        event.preventDefault();
+        onSearchChange("");
+      } else if (mobileSearchOpen) {
+        event.preventDefault();
+        onMobileSearchToggle();
+      }
+      return;
+    }
+
+    if (!hasSearchQuery || searchResults.length === 0) {
+      return;
+    }
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setHighlightedIndex((idx) => (idx + 1) % searchResults.length);
+      return;
+    }
+
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setHighlightedIndex((idx) => (idx - 1 + searchResults.length) % searchResults.length);
+      return;
+    }
+
+    if (event.key === "Enter") {
+      event.preventDefault();
+      const target = searchResults[highlightedIndex] ?? searchResults[0];
+      if (target) {
+        onSearchSelect(target);
+      }
+    }
   }
 
   const topNavItems: Array<{
@@ -211,6 +243,7 @@ export function BankHeader({
             검색
           </button>
           <div
+            ref={searchPanelRef}
             className={
               mobileSearchOpen
                 ? "utility-search spacing-safe-search open"
@@ -222,10 +255,21 @@ export function BankHeader({
               <label htmlFor="utility-search-input">통합검색</label>
               <div className="search-input-row">
                 <input
+                  ref={searchInputRef}
+                  aria-activedescendant={
+                    hasSearchQuery && searchResults[highlightedIndex]
+                      ? `search-option-${searchResults[highlightedIndex].id}`
+                      : undefined
+                  }
+                  aria-controls="service-search-listbox"
                   aria-label="통합검색"
                   id="utility-search-input"
                   onChange={(event) => onSearchChange(event.target.value)}
-                  placeholder="업무명 또는 메뉴 검색"
+                  onCompositionEnd={() => {
+                    compositionEndedAtRef.current = performance.now();
+                  }}
+                  onKeyDown={handleSearchKeyDown}
+                  placeholder="업무명 또는 메뉴 검색 (⌘K)"
                   value={searchQuery}
                 />
                 {hasSearchQuery ? (
@@ -253,20 +297,36 @@ export function BankHeader({
               ))}
             </div>
             {hasSearchQuery ? (
-              <div className="service-search-panel" aria-label="통합검색 결과">
+              <div
+                aria-label="통합검색 결과"
+                className="service-search-panel"
+                id="service-search-listbox"
+                role="listbox"
+              >
                 {searchResults.length > 0 ? (
-                  searchResults.map((item) => (
-                    <button
-                      className="service-search-item"
-                      key={item.id}
-                      onClick={() => onSearchSelect(item)}
-                      type="button"
-                    >
-                      <span>{item.group}</span>
-                      <strong>{item.label}</strong>
-                      <small>{item.description}</small>
-                    </button>
-                  ))
+                  searchResults.map((item, index) => {
+                    const isHighlighted = index === highlightedIndex;
+                    return (
+                      <button
+                        aria-selected={isHighlighted}
+                        className={
+                          isHighlighted
+                            ? "service-search-item highlighted"
+                            : "service-search-item"
+                        }
+                        id={`search-option-${item.id}`}
+                        key={item.id}
+                        onClick={() => onSearchSelect(item)}
+                        onMouseEnter={() => setHighlightedIndex(index)}
+                        role="option"
+                        type="button"
+                      >
+                        <span>{item.group}</span>
+                        <strong>{item.label}</strong>
+                        <small>{item.description}</small>
+                      </button>
+                    );
+                  })
                 ) : (
                   <div className="service-search-empty">검색 결과 없음</div>
                 )}

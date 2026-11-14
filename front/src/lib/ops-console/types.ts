@@ -1,6 +1,7 @@
 export type OpsResult = {
   status: "idle" | "loading" | "success" | "error";
   data: unknown;
+  formattedData?: string;
   error: string;
 };
 
@@ -42,8 +43,6 @@ export type OpsFormState = {
   membershipStatusConfirmation: string;
   accountStatusAccountId: string;
   accountStatusValue: string;
-  accountStatusReasonCode: string;
-  accountStatusReasonDetail: string;
   accountStatusRequestId: string;
   accountStatusConfirmation: string;
   applicationReference: string;

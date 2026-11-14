@@ -1,7 +1,17 @@
-import type { FormEvent } from 'react';
-import type { NotificationItem, NotificationPreferenceItem, NotificationQueryResponse } from '@/lib/api/types';
-import { formatDateTime } from '@/lib/customer-banking/format';
-import { BankNoticeStrip, WorkTabs } from '../common';
+import { Fragment, type FormEvent } from "react";
+import type {
+  NotificationItem,
+  NotificationPreferenceItem,
+  NotificationQueryResponse,
+} from "@/lib/api/types";
+import type { NotificationViewMode } from "@/hooks/use-customer-banking";
+import { formatDateTime } from "@/lib/customer-banking/format";
+import {
+  getNotificationCategoryLabel,
+  getNotificationChannelLabel,
+  getNotificationEventTypeLabel,
+} from "@/lib/customer-banking/labels";
+import { BankNoticeStrip, PaginationBar, WorkTabs } from "../common";
 
 function getSseStateLabel(state: string): string {
   switch (state) {
@@ -18,8 +28,53 @@ function getSseStateLabel(state: string): string {
   }
 }
 
+function getDateGroupLabel(createdAt: string, todayKey: string, yesterdayKey: string): string {
+  const parsed = new Date(createdAt);
+  if (Number.isNaN(parsed.getTime())) {
+    return "기타 일자";
+  }
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+  const dateKey = `${year}-${month}-${day}`;
+  if (dateKey === todayKey) {
+    return "오늘";
+  }
+  if (dateKey === yesterdayKey) {
+    return "어제";
+  }
+  return dateKey;
+}
+
+function groupNotificationsByDate(
+  items: NotificationItem[],
+): Array<{ groupLabel: string; rows: NotificationItem[] }> {
+  if (items.length === 0) {
+    return [];
+  }
+  const now = new Date();
+  const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const yesterdayKey = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, "0")}-${String(yesterday.getDate()).padStart(2, "0")}`;
+
+  const groups: Array<{ groupLabel: string; rows: NotificationItem[] }> = [];
+  for (let i = 0; i < items.length; i += 1) {
+    const item = items[i];
+    const label = getDateGroupLabel(item.createdAt, todayKey, yesterdayKey);
+    const lastGroup = groups[groups.length - 1];
+    if (lastGroup && lastGroup.groupLabel === label) {
+      lastGroup.rows.push(item);
+    } else {
+      groups.push({ groupLabel: label, rows: [item] });
+    }
+  }
+  return groups;
+}
+
 export function NotificationsSection({
   filters,
+  hasPrev = false,
   isBusy,
   mode,
   notifications,
@@ -32,11 +87,13 @@ export function NotificationsSection({
   onConnect,
   onDisconnect,
   onFilterChange,
+  onFirst,
   onLoadPreferences,
   onLoadUnreadCount,
   onModeChange,
   onNext,
   onPreferenceChange,
+  onPrev,
   onSearch,
   onToggleId,
   onUpdatePreferences,
@@ -49,11 +106,12 @@ export function NotificationsSection({
     from: string;
     to: string;
   };
+  hasPrev?: boolean;
   isBusy: boolean;
-  mode: "inbox" | "search";
+  mode: NotificationViewMode;
   notifications: NotificationItem[];
   preferences: NotificationPreferenceItem[];
-  selectedIds: number[];
+  selectedIds: Set<number>;
   slice: NotificationQueryResponse | null;
   sseStatus: {
     state: string;
@@ -75,24 +133,38 @@ export function NotificationsSection({
     from: string;
     to: string;
   }) => void;
+  onFirst?: () => void;
   onLoadPreferences: () => void;
   onLoadUnreadCount: () => void;
-  onModeChange: (mode: "inbox" | "search") => void;
+  onModeChange: (mode: NotificationViewMode) => void;
   onNext: () => void;
   onPreferenceChange: (value: NotificationPreferenceItem[]) => void;
+  onPrev?: () => void;
   onSearch: (event: FormEvent<HTMLFormElement>) => void;
   onToggleId: (notificationId: number) => void;
   onUpdatePreferences: () => void;
 }) {
+  const activeTabLabel =
+    mode === "preferences" ? "수신설정" : mode === "search" ? "조건검색" : "알림함";
+  const dateGroups = groupNotificationsByDate(notifications);
+
   return (
     <section className="task-section compact-work-section">
       <WorkTabs
-        active={mode === "inbox" ? "알림함" : "조건검색"}
+        active={activeTabLabel}
         items={[
           { id: "알림함", label: "알림함", onClick: () => onModeChange("inbox") },
           { id: "조건검색", label: "조건검색", onClick: () => onModeChange("search") },
-          { id: "수신설정", label: "수신설정", onClick: onLoadPreferences },
+          {
+            id: "수신설정",
+            label: "수신설정",
+            onClick: () => {
+              onModeChange("preferences");
+              onLoadPreferences();
+            },
+          },
         ]}
+        label="알림 업무 전환 탭"
       />
       <div className="section-title">
         <div>
@@ -119,15 +191,15 @@ export function NotificationsSection({
         </div>
         <div>
           <span>미확인</span>
-          <strong>{unreadCount ?? "-"}</strong>
+          <strong className="tabular-nums">{unreadCount ?? "-"}</strong>
         </div>
         <div>
           <span>최근 알림</span>
-          <strong>{sseStatus.lastEventId || "-"}</strong>
+          <strong className="tabular-nums">{sseStatus.lastEventId || "-"}</strong>
         </div>
         <div>
           <span>수신시각</span>
-          <strong>{formatDateTime(sseStatus.lastEventAt)}</strong>
+          <strong className="tabular-nums">{formatDateTime(sseStatus.lastEventAt)}</strong>
         </div>
       </div>
       <BankNoticeStrip
@@ -141,187 +213,21 @@ export function NotificationsSection({
         ]}
       />
 
-      <form className="bank-form filter-form" onSubmit={onSearch}>
-        <div className="panel-toolbar inline-toolbar">
-          <div>
-            <strong>{mode === "inbox" ? "알림함 조회 조건" : "알림 상세 조건검색"}</strong>
-            <span>건수 및 기간 기준</span>
-          </div>
-          <div className="button-row compact">
-            <button disabled={isBusy} type="submit">
-              조회
-            </button>
-            <button disabled={!slice?.nextCursor || isBusy} onClick={onNext} type="button">
-              다음 조회
-            </button>
-          </div>
-        </div>
-        <div className="filter-grid notification-filter">
-          <label>
-            <span>건수</span>
-            <select
-              onChange={(event) =>
-                onFilterChange({ ...filters, limit: event.target.value })
-              }
-              value={filters.limit}
-            >
-              <option value="20">20</option>
-              <option value="50">50</option>
-              <option value="100">100</option>
-            </select>
-          </label>
-          <label>
-            <span>읽음상태</span>
-            <select
-              disabled={mode === "inbox"}
-              onChange={(event) =>
-                onFilterChange({ ...filters, readStatus: event.target.value })
-              }
-              value={filters.readStatus}
-            >
-              <option value="ALL">전체</option>
-              <option value="READ">확인</option>
-              <option value="UNREAD">미확인</option>
-            </select>
-          </label>
-          <label>
-            <span>이벤트 유형</span>
-            <input
-              disabled={mode === "inbox"}
-              onChange={(event) =>
-                onFilterChange({ ...filters, eventType: event.target.value })
-              }
-              value={filters.eventType}
-            />
-          </label>
-          <label>
-            <span>시작일시</span>
-            <input
-              disabled={mode === "inbox"}
-              onChange={(event) =>
-                onFilterChange({ ...filters, from: event.target.value })
-              }
-              type="datetime-local"
-              value={filters.from}
-            />
-          </label>
-          <label>
-            <span>종료일시</span>
-            <input
-              disabled={mode === "inbox"}
-              onChange={(event) =>
-                onFilterChange({ ...filters, to: event.target.value })
-              }
-              type="datetime-local"
-              value={filters.to}
-            />
-          </label>
-        </div>
-      </form>
-
-      <div className="split-work">
-        <section className="table-panel embedded">
-          <div className="panel-toolbar">
-            <div>
-              <strong>알림함</strong>
-              <span>
-                {slice
-                  ? `${notifications.length}건 / 다음 조회 ${slice.hasNext ? "가능" : "없음"}`
-                  : "조회 전"}
-              </span>
-            </div>
-            <div className="button-row compact">
-              <span className="bulk-label">선택 일괄 처리</span>
-              <button
-                disabled={selectedIds.length === 0 || isBusy}
-                onClick={() => onBulkAction("read")}
-                type="button"
-              >
-                읽음
-              </button>
-              <button
-                disabled={selectedIds.length === 0 || isBusy}
-                onClick={() => onBulkAction("archive")}
-                type="button"
-              >
-                보관
-              </button>
-              <button
-                disabled={selectedIds.length === 0 || isBusy}
-                onClick={() => onBulkAction("delete")}
-                type="button"
-              >
-                삭제
-              </button>
-            </div>
-          </div>
-          <div className="bank-table-wrap">
-            <table className="bank-table">
-              <caption>알림 목록</caption>
-              <thead>
-                <tr>
-                  <th>선택</th>
-                  <th>상태</th>
-                  <th>유형</th>
-                  <th>제목</th>
-                  <th>수신시각</th>
-                  <th>관리</th>
-                </tr>
-              </thead>
-              <tbody>
-                {notifications.length === 0 ? (
-                  <tr>
-                    <td colSpan={6}>조회된 알림이 없습니다.</td>
-                  </tr>
-                ) : (
-                  notifications.map((item) => (
-                    <tr key={item.notificationId}>
-                      <td>
-                        <input
-                          aria-label={`${item.notificationId} 선택`}
-                          checked={selectedIds.includes(item.notificationId)}
-                          onChange={() => onToggleId(item.notificationId)}
-                          type="checkbox"
-                        />
-                      </td>
-                      <td>
-                        <span className={item.read ? "status-badge" : "status-badge unread"}>
-                          {item.read ? "확인" : "미확인"}
-                        </span>
-                      </td>
-                      <td>{item.eventType}</td>
-                      <td>
-                        <strong>{item.title}</strong>
-                        <p className="table-message">{item.message}</p>
-                      </td>
-                      <td>{formatDateTime(item.createdAt)}</td>
-                      <td>
-                        <button
-                          disabled={item.read || isBusy}
-                          onClick={() => onBulkAction("read", item.notificationId)}
-                          type="button"
-                        >
-                          읽음
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <aside className="detail-panel">
+      {mode === "preferences" ? (
+        <aside className="detail-panel" role="tabpanel">
           <div className="form-heading">
             <strong>알림 수신 설정</strong>
-            <span>{preferences.length}건</span>
+            <span className="tabular-nums">{preferences.length}건</span>
           </div>
           <div className="button-row compact preference-actions">
             <button disabled={isBusy} onClick={onLoadPreferences} type="button">
               설정 조회
             </button>
-            <button disabled={preferences.length === 0 || isBusy} onClick={onUpdatePreferences} type="button">
+            <button
+              disabled={preferences.length === 0 || isBusy}
+              onClick={onUpdatePreferences}
+              type="button"
+            >
               저장
             </button>
           </div>
@@ -344,15 +250,272 @@ export function NotificationsSection({
                     type="checkbox"
                   />
                   <span>
-                    <strong>{item.category}</strong>
-                    <small>{item.channel}</small>
+                    <strong>{getNotificationCategoryLabel(item.category)}</strong>
+                    <small>{getNotificationChannelLabel(item.channel)}</small>
                   </span>
                 </label>
               ))}
             </div>
           )}
         </aside>
-      </div>
+      ) : (
+        <div role="tabpanel">
+          <form className="bank-form filter-form" onSubmit={onSearch}>
+            <div className="panel-toolbar inline-toolbar">
+              <div>
+                <strong>
+                  {mode === "inbox" ? "알림함 조회 조건" : "알림 상세 조건검색"}
+                </strong>
+                <span>건수 및 기간 기준</span>
+              </div>
+              <div className="button-row compact">
+                <button disabled={isBusy} type="submit">
+                  조회
+                </button>
+                <button
+                  disabled={!slice?.nextCursor || isBusy}
+                  onClick={onNext}
+                  type="button"
+                >
+                  다음 조회
+                </button>
+              </div>
+            </div>
+            <div className="filter-grid notification-filter">
+              <label>
+                <span>건수</span>
+                <select
+                  onChange={(event) =>
+                    onFilterChange({ ...filters, limit: event.target.value })
+                  }
+                  value={filters.limit}
+                >
+                  <option value="20">20</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                </select>
+              </label>
+              <label>
+                <span>읽음상태</span>
+                <select
+                  disabled={mode === "inbox"}
+                  onChange={(event) =>
+                    onFilterChange({ ...filters, readStatus: event.target.value })
+                  }
+                  value={filters.readStatus}
+                >
+                  <option value="ALL">전체</option>
+                  <option value="READ">확인</option>
+                  <option value="UNREAD">미확인</option>
+                </select>
+              </label>
+              <label>
+                <span>이벤트 유형</span>
+                <input
+                  disabled={mode === "inbox"}
+                  onChange={(event) =>
+                    onFilterChange({ ...filters, eventType: event.target.value })
+                  }
+                  value={filters.eventType}
+                />
+              </label>
+              <label>
+                <span>시작일시</span>
+                <input
+                  disabled={mode === "inbox"}
+                  onChange={(event) =>
+                    onFilterChange({ ...filters, from: event.target.value })
+                  }
+                  type="datetime-local"
+                  value={filters.from}
+                />
+              </label>
+              <label>
+                <span>종료일시</span>
+                <input
+                  disabled={mode === "inbox"}
+                  onChange={(event) =>
+                    onFilterChange({ ...filters, to: event.target.value })
+                  }
+                  type="datetime-local"
+                  value={filters.to}
+                />
+              </label>
+            </div>
+          </form>
+
+          <div className="split-work">
+            <section className="table-panel embedded">
+              <div className="panel-toolbar">
+                <div>
+                  <strong>알림함</strong>
+                  <span className="tabular-nums">
+                    {slice
+                      ? `${notifications.length}건 / 다음 조회 ${slice.hasNext ? "가능" : "없음"}`
+                      : "조회 전"}
+                  </span>
+                </div>
+                <div className="button-row compact">
+                  <span className="bulk-label">선택 일괄 처리</span>
+                  <button
+                    disabled={selectedIds.size === 0 || isBusy}
+                    onClick={() => onBulkAction("read")}
+                    type="button"
+                  >
+                    읽음
+                  </button>
+                  <button
+                    disabled={selectedIds.size === 0 || isBusy}
+                    onClick={() => onBulkAction("archive")}
+                    type="button"
+                  >
+                    보관
+                  </button>
+                  <button
+                    disabled={selectedIds.size === 0 || isBusy}
+                    onClick={() => onBulkAction("delete")}
+                    type="button"
+                  >
+                    삭제
+                  </button>
+                </div>
+              </div>
+              <div className="bank-table-wrap">
+                <table className="bank-table">
+                  <caption>알림 목록</caption>
+                  <thead>
+                    <tr>
+                      <th>선택</th>
+                      <th>상태</th>
+                      <th>유형</th>
+                      <th>제목</th>
+                      <th>수신시각</th>
+                      <th>관리</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {notifications.length === 0 ? (
+                      <tr>
+                        <td colSpan={6}>조회된 알림이 없습니다.</td>
+                      </tr>
+                    ) : (
+                      dateGroups.map((group) => (
+                        <Fragment key={group.groupLabel}>
+                          <tr className="notification-date-group-row">
+                            <th colSpan={6} scope="colgroup">
+                              {group.groupLabel} ({group.rows.length}건)
+                            </th>
+                          </tr>
+                          {group.rows.map((item) => (
+                            <tr
+                              className="notification-row-item"
+                              key={item.notificationId}
+                            >
+                              <td>
+                                <input
+                                  aria-label={`${item.notificationId} 선택`}
+                                  checked={selectedIds.has(item.notificationId)}
+                                  onChange={() => onToggleId(item.notificationId)}
+                                  type="checkbox"
+                                />
+                              </td>
+                              <td>
+                                <span
+                                  className={
+                                    item.read ? "status-badge" : "status-badge unread"
+                                  }
+                                >
+                                  {item.read ? "확인" : "미확인"}
+                                </span>
+                              </td>
+                              <td>{getNotificationEventTypeLabel(item.eventType)}</td>
+                              <td>
+                                <strong>{item.title}</strong>
+                                <p className="table-message">{item.message}</p>
+                              </td>
+                              <td className="tabular-nums">
+                                {formatDateTime(item.createdAt)}
+                              </td>
+                              <td>
+                                <button
+                                  disabled={item.read || isBusy}
+                                  onClick={() =>
+                                    onBulkAction("read", item.notificationId)
+                                  }
+                                  type="button"
+                                >
+                                  읽음
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </Fragment>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <PaginationBar
+                disabled={isBusy}
+                hasNext={Boolean(slice?.hasNext)}
+                hasPrev={hasPrev}
+                label="알림 페이지 탐색"
+                onFirst={onFirst}
+                onNext={onNext}
+                onPrev={onPrev}
+              />
+            </section>
+
+            <aside className="detail-panel">
+              <div className="form-heading">
+                <strong>알림 수신 설정</strong>
+                <span className="tabular-nums">{preferences.length}건</span>
+              </div>
+              <div className="button-row compact preference-actions">
+                <button disabled={isBusy} onClick={onLoadPreferences} type="button">
+                  설정 조회
+                </button>
+                <button
+                  disabled={preferences.length === 0 || isBusy}
+                  onClick={onUpdatePreferences}
+                  type="button"
+                >
+                  저장
+                </button>
+              </div>
+              {preferences.length === 0 ? (
+                <p className="rail-copy">알림 설정을 조회하세요.</p>
+              ) : (
+                <div className="preference-list">
+                  {preferences.map((item, index) => (
+                    <label
+                      className="preference-row"
+                      key={`${item.category}-${item.channel}`}
+                    >
+                      <input
+                        checked={item.enabled}
+                        onChange={(event) => {
+                          const nextItems = [...preferences];
+                          nextItems[index] = {
+                            ...item,
+                            enabled: event.target.checked,
+                          };
+                          onPreferenceChange(nextItems);
+                        }}
+                        type="checkbox"
+                      />
+                      <span>
+                        <strong>{getNotificationCategoryLabel(item.category)}</strong>
+                        <small>{getNotificationChannelLabel(item.channel)}</small>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </aside>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

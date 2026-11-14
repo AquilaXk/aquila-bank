@@ -123,7 +123,7 @@ export function notificationDlqRedrivePath(): string {
 }
 
 export function notificationChannelRedrivePath(id: string): string {
-  return `/internal/api/v1/outbox/notification-channel/quarantined-events/${id}/redrive`;
+  return `/internal/api/v1/outbox/notification-channel/quarantined-events/${encodeURIComponent(id)}/redrive`;
 }
 
 export function commandIdempotencyRecoveryPath(): string {
@@ -131,7 +131,7 @@ export function commandIdempotencyRecoveryPath(): string {
 }
 
 export function ledgerSnapshotRecoveryPath(accountId: string): string {
-  return `/internal/api/v1/ledger/snapshot-reconciliation/accounts/${accountId}/recovery`;
+  return `/internal/api/v1/ledger/snapshot-reconciliation/accounts/${encodeURIComponent(accountId)}/recovery`;
 }
 
 export function authUserStatusPath(userId: string): string {

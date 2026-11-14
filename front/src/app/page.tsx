@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AccountsSection } from "@/components/customer-banking/sections/accounts-section";
 import { BankHeader, RightRail, SideMenu } from "@/components/customer-banking/layout";
 import { DashboardSection } from "@/components/customer-banking/sections/dashboard-section";
@@ -22,6 +22,7 @@ export default function HomePage() {
     activeSection,
     setActiveSection,
     session,
+    authGeneration,
     alert,
     busyLabel,
     loginForm,
@@ -60,6 +61,7 @@ export default function HomePage() {
     unreadCount,
     preferences,
     sseStatus,
+    hasPrevNotificationPage,
     handleLogin,
     handleTotpChallenge,
     handleBackupChallenge,
@@ -88,6 +90,8 @@ export default function HomePage() {
     handleResetTransactionFilters,
     handleLoadTransactionDetail,
     handleLoadNotifications,
+    handlePrevNotifications,
+    handleFirstNotifications,
     handleLoadUnreadCount,
     handleLoadPreferences,
     handleUpdatePreferences,
@@ -121,6 +125,12 @@ export default function HomePage() {
     () => searchCustomerBankingServices(searchQuery),
     [searchQuery],
   );
+
+  useEffect(() => {
+    setSearchQuery("");
+    setServiceMapOpen(false);
+    setMobileSearchOpen(false);
+  }, [authGeneration]);
 
   function moveToSection(section: MenuSection) {
     setActiveSection(section);
@@ -213,6 +223,7 @@ export default function HomePage() {
           ) : null}
           {canRenderWorkSection && activeSection === "accounts" ? (
             <AccountsSection
+              key={`accounts-${authGeneration}`}
               accountCursor={accountCursor}
               accountLimit={accountLimit}
               accounts={accounts}
@@ -226,6 +237,7 @@ export default function HomePage() {
           ) : null}
           {canRenderWorkSection && activeSection === "transfer" ? (
             <TransferSection
+              key={`transfer-${authGeneration}`}
               accounts={accounts}
               isBusy={isBusy}
               reversalForm={reversalForm}
@@ -242,6 +254,7 @@ export default function HomePage() {
           ) : null}
           {canRenderWorkSection && activeSection === "transactions" ? (
             <TransactionsSection
+              key={`transactions-${authGeneration}`}
               accounts={accounts}
               filters={transactionFilters}
               isBusy={isBusy}
@@ -270,6 +283,7 @@ export default function HomePage() {
           ) : null}
           {activeSection === "security" ? (
             <SecuritySection
+              key={`security-${authGeneration}`}
               backupChallengeForm={backupChallengeForm}
               backupCodes={backupCodes}
               challenge={challenge}
@@ -308,6 +322,7 @@ export default function HomePage() {
           ) : null}
           {canRenderWorkSection && activeSection === "securityHub" ? (
             <SecurityHubSection
+              key={`securityHub-${authGeneration}`}
               applicationResult={customerApplicationResult}
               isBusy={isBusy}
               onSubmitCustomerApplication={handleSubmitCustomerApplication}
@@ -315,6 +330,8 @@ export default function HomePage() {
           ) : null}
           {canRenderWorkSection && activeSection === "supportCenter" ? (
             <SupportCenterSection
+              key={`supportCenter-${authGeneration}`}
+              accounts={accounts}
               applicationResult={customerApplicationResult}
               customerApplications={customerApplications}
               isBusy={isBusy}
@@ -327,6 +344,8 @@ export default function HomePage() {
           ) : null}
           {canRenderWorkSection && activeSection === "enterpriseServices" ? (
             <EnterpriseServicesSection
+              key={`enterprise-${authGeneration}`}
+              accounts={accounts}
               applicationResult={customerApplicationResult}
               isBusy={isBusy}
               onSubmitCustomerApplication={handleSubmitCustomerApplication}
@@ -334,7 +353,9 @@ export default function HomePage() {
           ) : null}
           {canRenderWorkSection && activeSection === "notifications" ? (
             <NotificationsSection
+              key={`notifications-${authGeneration}`}
               filters={notificationFilters}
+              hasPrev={hasPrevNotificationPage}
               isBusy={isBusy}
               mode={notificationMode}
               notifications={notifications}
@@ -347,6 +368,7 @@ export default function HomePage() {
               onConnect={handleConnectNotifications}
               onDisconnect={handleDisconnectNotifications}
               onFilterChange={setNotificationFilters}
+              onFirst={() => void handleFirstNotifications()}
               onLoadPreferences={handleLoadPreferences}
               onLoadUnreadCount={handleLoadUnreadCount}
               onModeChange={setNotificationMode}
@@ -355,11 +377,12 @@ export default function HomePage() {
                   void handleLoadNotifications(
                     notificationMode,
                     notificationSlice.nextCursor,
-                    true,
+                    false,
                   );
                 }
               }}
               onPreferenceChange={setPreferences}
+              onPrev={() => void handlePrevNotifications()}
               onSearch={(event) => {
                 event.preventDefault();
                 void handleLoadNotifications(notificationMode);

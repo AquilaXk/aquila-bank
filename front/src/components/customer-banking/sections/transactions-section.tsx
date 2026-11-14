@@ -1,18 +1,29 @@
-import type { FormEvent } from 'react';
-import { useState } from 'react';
-import type { TransactionDetailResponse, TransactionItem, TransactionQueryResponse } from '@/lib/api/types';
-import { formatDateTime, formatMinorAmount, toLocalInputValue } from '@/lib/customer-banking/format';
+import type { FormEvent } from "react";
+import { useState } from "react";
+import type {
+  TransactionDetailResponse,
+  TransactionItem,
+  TransactionQueryResponse,
+} from "@/lib/api/types";
+import { formatDateTime, formatMinorAmount, toLocalInputValue } from "@/lib/customer-banking/format";
 import {
-  BankNoticeStrip,
+  getDirectionLabel,
+  getTransactionStatusLabel,
+} from "@/lib/customer-banking/labels";
+import {
+  BankActionBar,
+  BankCurrencyInput,
   BankDateRange,
   BankDrawer,
+  BankNoticeStrip,
   BankToolbar,
+  CopyButton,
   EmptyState,
   PaginationBar,
   StatusBadge,
   WorkStateGrid,
   WorkTabs,
-} from '../common';
+} from "../common";
 
 type TransactionFilters = {
   accountId: string;
@@ -22,41 +33,24 @@ type TransactionFilters = {
   cursor: string;
   status: string;
   direction: string;
-  minAmountMinor: string;
-  maxAmountMinor: string;
+  minAmountKrw: string;
+  maxAmountKrw: string;
   transactionReference: string;
   responseShape: "full" | "slim";
 };
 
-const transactionStatusLabels: Record<string, string> = {
-  PENDING: "처리중",
-  BOOKED: "처리완료",
-  REVERSED: "취소완료",
-  FAILED: "실패",
-};
-
-const transactionDirectionLabels: Record<string, string> = {
-  DEBIT: "출금",
-  CREDIT: "입금",
-};
-
-function getTransactionStatusLabel(status: string) {
-  return transactionStatusLabels[status] ?? status;
-}
-
-function getTransactionDirectionLabel(direction: string) {
-  return transactionDirectionLabels[direction] ?? direction;
-}
-
 function getTransactionStatusTone(status: string): "success" | "warn" | "danger" | "reversed" {
   switch (status) {
     case "BOOKED":
+    case "POSTED":
       return "success";
     case "PENDING":
       return "warn";
     case "FAILED":
+    case "REJECTED":
       return "danger";
     case "REVERSED":
+    case "CANCELLED":
       return "reversed";
     default:
       return "warn";
@@ -97,6 +91,13 @@ export function TransactionsSection({
   onSearch: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   const [filterOpen, setFilterOpen] = useState(true);
+  const hasOwnedAccounts = Boolean(accounts && accounts.length > 0);
+  const selectedAccount = accounts?.find(
+    (item) => String(item.accountId) === filters.accountId,
+  );
+  const accountSummaryLabel = selectedAccount
+    ? `${selectedAccount.displayName} (${selectedAccount.accountNumber})`
+    : filters.accountId || "미선택";
 
   function setQuickRange(days: number): void {
     const to = new Date();
@@ -130,6 +131,7 @@ export function TransactionsSection({
             onClick: () => onModeChange("archive"),
           },
         ]}
+        label="거래내역 구분 탭"
       />
       <div className="section-title">
         <div>
@@ -140,7 +142,7 @@ export function TransactionsSection({
       <BankNoticeStrip
         items={[
           { label: "조회기간", value: `${filters.from || "-"} ~ ${filters.to || "-"}` },
-          { label: "계좌", value: filters.accountId || "미입력" },
+          { label: "계좌", value: accountSummaryLabel },
           { label: "표시건수", value: `${filters.limit}건` },
           { label: "다음 조회", value: slice?.hasNext ? "가능" : "대기" },
         ]}
@@ -159,7 +161,7 @@ export function TransactionsSection({
         <form className="bank-form filter-form mobile-filter-drawer" onSubmit={onSearch}>
           <div className="filter-summary" aria-label="현재 조건">
             <strong>거래 조건</strong>
-            <span>계좌 {filters.accountId || "미입력"}</span>
+            <span>계좌 {accountSummaryLabel}</span>
             <span>
               기간 {filters.from || "-"} ~ {filters.to || "-"}
             </span>
@@ -194,22 +196,17 @@ export function TransactionsSection({
           </BankToolbar>
           {filterOpen ? (
             <div className="filter-grid" id="transaction-detail-filter">
-              {accounts && accounts.length > 0 ? (
+              {hasOwnedAccounts && accounts ? (
                 <label>
-                  <span>보유계좌 선택</span>
+                  <span>계좌 ID</span>
                   <select
-                    onChange={(event) => {
-                      if (event.target.value) {
-                        onFilterChange({ ...filters, accountId: event.target.value });
-                      }
-                    }}
-                    value={
-                      accounts.some((item) => String(item.accountId) === filters.accountId)
-                        ? filters.accountId
-                        : ""
+                    onChange={(event) =>
+                      onFilterChange({ ...filters, accountId: event.target.value })
                     }
+                    required
+                    value={filters.accountId}
                   >
-                    <option value="">직접 입력 또는 선택</option>
+                    <option value="">조회할 계좌를 선택하세요</option>
                     {accounts.map((account) => (
                       <option key={account.accountId} value={String(account.accountId)}>
                         {account.displayName} ({account.accountNumber})
@@ -217,18 +214,19 @@ export function TransactionsSection({
                     ))}
                   </select>
                 </label>
-              ) : null}
-              <label>
-                <span>계좌 ID</span>
-                <input
-                  inputMode="numeric"
-                  onChange={(event) =>
-                    onFilterChange({ ...filters, accountId: event.target.value })
-                  }
-                  required
-                  value={filters.accountId}
-                />
-              </label>
+              ) : (
+                <label>
+                  <span>계좌 ID</span>
+                  <input
+                    inputMode="numeric"
+                    onChange={(event) =>
+                      onFilterChange({ ...filters, accountId: event.target.value })
+                    }
+                    required
+                    value={filters.accountId}
+                  />
+                </label>
+              )}
               <BankDateRange
                 from={filters.from}
                 onFromChange={(value) => onFilterChange({ ...filters, from: value })}
@@ -257,7 +255,7 @@ export function TransactionsSection({
                   value={filters.status}
                 >
                   <option value="">전체</option>
-                  <option value="PENDING">처리중</option>
+                  <option value="PENDING">처리대기</option>
                   <option value="BOOKED">처리완료</option>
                   <option value="REVERSED">취소완료</option>
                   <option value="FAILED">실패</option>
@@ -276,32 +274,28 @@ export function TransactionsSection({
                   <option value="CREDIT">입금</option>
                 </select>
               </label>
-              <label>
-                <span>최소금액</span>
-                <input
-                  inputMode="numeric"
-                  onChange={(event) =>
-                    onFilterChange({
-                      ...filters,
-                      minAmountMinor: event.target.value,
-                    })
-                  }
-                  value={filters.minAmountMinor}
-                />
-              </label>
-              <label>
-                <span>최대금액</span>
-                <input
-                  inputMode="numeric"
-                  onChange={(event) =>
-                    onFilterChange({
-                      ...filters,
-                      maxAmountMinor: event.target.value,
-                    })
-                  }
-                  value={filters.maxAmountMinor}
-                />
-              </label>
+              <BankCurrencyInput
+                label="최소금액"
+                onValueChange={(digits) =>
+                  onFilterChange({
+                    ...filters,
+                    minAmountKrw: digits,
+                  })
+                }
+                placeholder="최소 원화 금액"
+                value={filters.minAmountKrw}
+              />
+              <BankCurrencyInput
+                label="최대금액"
+                onValueChange={(digits) =>
+                  onFilterChange({
+                    ...filters,
+                    maxAmountKrw: digits,
+                  })
+                }
+                placeholder="최대 원화 금액"
+                value={filters.maxAmountKrw}
+              />
               <label>
                 <span>거래번호</span>
                 <input
@@ -385,18 +379,24 @@ export function TransactionsSection({
                   ) : (
                     transactions.map((item) => (
                       <tr key={`${item.id}-${item.transactionReference}`}>
-                        <td>{formatDateTime(item.bookedAt)}</td>
-                        <td>{item.transactionReference}</td>
-                        <td>{getTransactionDirectionLabel(item.direction)}</td>
+                        <td className="tabular-nums">{formatDateTime(item.bookedAt)}</td>
+                        <td className="tabular-nums">{item.transactionReference}</td>
+                        <td>{getDirectionLabel(item.direction)}</td>
                         <td>
                           <StatusBadge tone={getTransactionStatusTone(item.status)}>
                             {getTransactionStatusLabel(item.status)}
                           </StatusBadge>
                         </td>
-                        <td className={item.direction === "DEBIT" ? "amount debit font-mono" : "amount credit font-mono"}>
+                        <td
+                          className={
+                            item.direction === "DEBIT"
+                              ? "amount debit font-mono tabular-nums"
+                              : "amount credit font-mono tabular-nums"
+                          }
+                        >
                           {formatMinorAmount(item.amountMinor, item.currencyCode)}
                         </td>
-                        <td className="font-mono">
+                        <td className="font-mono tabular-nums">
                           {item.balanceAfterMinor == null
                             ? "-"
                             : formatMinorAmount(
@@ -405,21 +405,23 @@ export function TransactionsSection({
                               )}
                         </td>
                         <td>
-                          <button
-                            disabled={isBusy}
-                            onClick={() => onDetail(item.transactionReference)}
-                            type="button"
-                          >
-                            상세
-                          </button>
-                          <button
-                            className="receipt-link-button"
-                            disabled={item.direction !== "DEBIT"}
-                            onClick={() => onDetail(item.transactionReference)}
-                            type="button"
-                          >
-                            이체확인증 출력
-                          </button>
+                          <div className="table-row-actions">
+                            <button
+                              disabled={isBusy}
+                              onClick={() => onDetail(item.transactionReference)}
+                              type="button"
+                            >
+                              상세
+                            </button>
+                            <button
+                              className="receipt-link-button"
+                              disabled={item.direction !== "DEBIT"}
+                              onClick={() => onDetail(item.transactionReference)}
+                              type="button"
+                            >
+                              이체확인증 출력
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -435,71 +437,90 @@ export function TransactionsSection({
             />
           </section>
 
-        <BankDrawer open={Boolean(transactionDetail)} title="거래 상세내역">
-          <div className="form-heading">
-            <strong>거래 상세정보</strong>
-            <span>
-              {transactionDetail
-                ? getTransactionStatusLabel(transactionDetail.transactionStatus)
-                : "미선택"}
-            </span>
-          </div>
-          {transactionDetail ? (
-            <dl className="detail-list">
-              <div>
-                <dt>거래번호</dt>
-                <dd>{transactionDetail.transactionReference}</dd>
-              </div>
-              <div>
-                <dt>입출금</dt>
-                <dd>{getTransactionDirectionLabel(transactionDetail.direction)}</dd>
-              </div>
-              <div>
-                <dt>금액</dt>
-                <dd className="font-mono">
-                  {formatMinorAmount(
-                    transactionDetail.amountMinor,
-                    transactionDetail.currencyCode,
-                  )}
-                </dd>
-              </div>
-              <div>
-                <dt>잔액</dt>
-                <dd className="font-mono">
-                  {formatMinorAmount(
-                    transactionDetail.balanceAfterMinor,
-                    transactionDetail.currencyCode,
-                  )}
-                </dd>
-              </div>
-              <div>
-                <dt>상대방</dt>
-                <dd>{transactionDetail.counterpartyMaskedName ?? "-"}</dd>
-              </div>
-              <div>
-                <dt>처리번호</dt>
-                <dd>{transactionDetail.entryReference}</dd>
-              </div>
-              <div>
-                <dt>발생시각</dt>
-                <dd>{formatDateTime(transactionDetail.occurredAt)}</dd>
-              </div>
-              <div>
-                <dt>설명</dt>
-                <dd>{transactionDetail.description ?? "-"}</dd>
-              </div>
-              <div>
-                <dt>출력</dt>
-                <dd>거래 상세정보 출력 전용 · 이체확인증 출력 전용</dd>
-              </div>
-            </dl>
-          ) : (
-            <EmptyState
-              title="거래 미선택"
-              description="입출금 내역에서 상세 버튼을 선택하세요."
-            />
-          )}
-        </BankDrawer>
+          <BankDrawer open={Boolean(transactionDetail)} title="거래 상세내역">
+            <div className="form-heading">
+              <strong>거래 상세정보</strong>
+              <span>
+                {transactionDetail
+                  ? getTransactionStatusLabel(transactionDetail.transactionStatus)
+                  : "미선택"}
+              </span>
+            </div>
+            {transactionDetail ? (
+              <>
+                <dl className="detail-list receipt-print-view">
+                  <div>
+                    <dt>거래번호</dt>
+                    <dd className="tabular-nums inline-copy-cell">
+                      <span>{transactionDetail.transactionReference}</span>
+                      <CopyButton
+                        label="거래번호"
+                        value={transactionDetail.transactionReference}
+                      />
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>입출금</dt>
+                    <dd>{getDirectionLabel(transactionDetail.direction)}</dd>
+                  </div>
+                  <div>
+                    <dt>금액</dt>
+                    <dd className="font-mono tabular-nums">
+                      {formatMinorAmount(
+                        transactionDetail.amountMinor,
+                        transactionDetail.currencyCode,
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>잔액</dt>
+                    <dd className="font-mono tabular-nums">
+                      {formatMinorAmount(
+                        transactionDetail.balanceAfterMinor,
+                        transactionDetail.currencyCode,
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>상대방</dt>
+                    <dd>{transactionDetail.counterpartyMaskedName ?? "-"}</dd>
+                  </div>
+                  <div>
+                    <dt>처리번호</dt>
+                    <dd className="tabular-nums">{transactionDetail.entryReference}</dd>
+                  </div>
+                  <div>
+                    <dt>발생시각</dt>
+                    <dd className="tabular-nums">
+                      {formatDateTime(transactionDetail.occurredAt)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>설명</dt>
+                    <dd>{transactionDetail.description ?? "-"}</dd>
+                  </div>
+                  <div>
+                    <dt>출력</dt>
+                    <dd>거래 상세정보 출력 전용 · 이체확인증 출력 전용</dd>
+                  </div>
+                </dl>
+                <BankActionBar label="거래 상세 출력">
+                  <button
+                    className="print-receipt-button"
+                    onClick={() => window.print()}
+                    type="button"
+                  >
+                    인쇄
+                  </button>
+                </BankActionBar>
+              </>
+            ) : (
+              <EmptyState
+                title="거래 미선택"
+                description="입출금 내역에서 상세 버튼을 선택하세요."
+              />
+            )}
+          </BankDrawer>
         </div>
       </div>
     </section>

@@ -3,15 +3,19 @@
 import { useState } from "react";
 import type { CustomerApplicationType } from "@/lib/api/types";
 import { enterpriseServiceItems } from "@/lib/customer-banking/constants";
+import { tryKrwToMinor } from "@/lib/customer-banking/currency";
+import { getApplicationStatusLabel } from "@/lib/customer-banking/labels";
 import type {
   CustomerApplicationLatestResult,
   CustomerApplicationSubmitHandler,
 } from "@/lib/customer-banking/types";
 import {
   BankActionBar,
+  BankCurrencyInput,
   BankInput,
   BankNoticeStrip,
   BankTable,
+  OtpCodeInput,
 } from "../common";
 
 const fulfillmentDetails = [
@@ -100,7 +104,15 @@ const fulfillmentDetails = [
 
 type FulfillmentApplicationType = (typeof fulfillmentDetails)[number]["applicationType"];
 
+type EnterpriseAccountOption = {
+  accountId: number;
+  accountNumber: string;
+  displayName: string;
+  availableBalanceMinor?: number;
+};
+
 type EnterpriseServicesSectionProps = {
+  accounts?: ReadonlyArray<EnterpriseAccountOption>;
   applicationResult: CustomerApplicationLatestResult;
   isBusy: boolean;
   onSubmitCustomerApplication: CustomerApplicationSubmitHandler;
@@ -121,11 +133,13 @@ function createInitialForms(): Record<FulfillmentApplicationType, ApplicationFor
 }
 
 export function EnterpriseServicesSection({
+  accounts = [],
   applicationResult,
   isBusy,
   onSubmitCustomerApplication,
 }: EnterpriseServicesSectionProps) {
   const [activeTask, setActiveTask] = useState<string>("all");
+  const [submitAttemptedByType, setSubmitAttemptedByType] = useState<Record<string, boolean>>({});
   const [forms, setForms] =
     useState<Record<FulfillmentApplicationType, ApplicationFormState>>(createInitialForms);
 
@@ -264,42 +278,111 @@ export function EnterpriseServicesSection({
               onSubmit={(event) => {
                 event.preventDefault();
                 const form = forms[item.applicationType];
+                const hasInvalidCurrency = item.formFields.some((field) => {
+                  if (field.key !== "amountMinor" && field.key !== "requestedAmountMinor") {
+                    return false;
+                  }
+                  const parsed = tryKrwToMinor(form[field.key]);
+                  return parsed === undefined || parsed <= 0;
+                });
+                if (hasInvalidCurrency) {
+                  setSubmitAttemptedByType((prev) => ({
+                    ...prev,
+                    [item.applicationType]: true,
+                  }));
+                  return;
+                }
                 void onSubmitCustomerApplication({
                   applicationType: item.applicationType,
                   accountId: form.accountId,
                   totpCode: form.totpCode,
                   payload: Object.fromEntries(
-                    item.formFields.map((field) => [field.key, form[field.key]]),
+                    item.formFields.map((field) => {
+                      if (field.key === "amountMinor" || field.key === "requestedAmountMinor") {
+                        return [field.key, tryKrwToMinor(form[field.key])];
+                      }
+                      return [field.key, form[field.key]];
+                    }),
                   ),
                   successMessage: `${item.title} 접수가 완료되었습니다.`,
                 });
               }}
             >
               <div className="form-grid compact">
-                <BankInput
-                  inputMode="numeric"
-                  label="계좌 ID"
-                  onChange={(event) =>
-                    updateForm(item.applicationType, "accountId", event.target.value)
-                  }
-                  placeholder="선택"
-                  value={forms[item.applicationType].accountId}
-                />
-                {item.formFields.map((field) => (
+                {accounts.length > 0 ? (
+                  <label className="form-field bank-input">
+                    <span>출금 계좌</span>
+                    <select
+                      onChange={(event) =>
+                        updateForm(item.applicationType, "accountId", event.target.value)
+                      }
+                      value={forms[item.applicationType].accountId}
+                    >
+                      <option value="">계좌를 선택하세요 (선택)</option>
+                      {accounts.map((account) => (
+                        <option key={account.accountId} value={String(account.accountId)}>
+                          {account.displayName} ({account.accountNumber})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : (
                   <BankInput
-                    key={field.key}
-                    label={field.label}
+                    inputMode="numeric"
+                    label="출금 계좌"
                     onChange={(event) =>
-                      updateForm(item.applicationType, field.key, event.target.value)
+                      updateForm(item.applicationType, "accountId", event.target.value)
                     }
-                    value={forms[item.applicationType][field.key]}
+                    placeholder="선택"
+                    value={forms[item.applicationType].accountId}
                   />
-                ))}
-                <BankInput
-                  inputMode="numeric"
+                )}
+                {item.formFields.map((field) => {
+                  if (field.key === "amountMinor" || field.key === "requestedAmountMinor") {
+                    const currencyCodeField = item.formFields.find(
+                      (candidate) => candidate.key === "currencyCode",
+                    );
+                    const isKrwCurrency =
+                      !currencyCodeField ||
+                      (forms[item.applicationType].currencyCode || "KRW").toUpperCase() === "KRW";
+                    const parsedAmount = tryKrwToMinor(forms[item.applicationType][field.key]);
+                    const selectedAccount = accounts.find(
+                      (account) => String(account.accountId) === forms[item.applicationType].accountId,
+                    );
+                    return (
+                      <BankCurrencyInput
+                        key={field.key}
+                        availableBalanceMinor={selectedAccount?.availableBalanceMinor}
+                        error={
+                          parsedAmount === undefined || parsedAmount <= 0
+                            ? "1원 이상의 금액을 입력하세요."
+                            : undefined
+                        }
+                        label={field.label}
+                        onValueChange={(digits) =>
+                          updateForm(item.applicationType, field.key, digits)
+                        }
+                        placeholder={isKrwCurrency ? "원화 금액 입력" : "금액 입력"}
+                        submitAttempted={Boolean(submitAttemptedByType[item.applicationType])}
+                        value={forms[item.applicationType][field.key]}
+                      />
+                    );
+                  }
+                  return (
+                    <BankInput
+                      key={field.key}
+                      label={field.label}
+                      onChange={(event) =>
+                        updateForm(item.applicationType, field.key, event.target.value)
+                      }
+                      value={forms[item.applicationType][field.key]}
+                    />
+                  );
+                })}
+                <OtpCodeInput
                   label="OTP"
-                  onChange={(event) =>
-                    updateForm(item.applicationType, "totpCode", event.target.value)
+                  onValueChange={(nextCode) =>
+                    updateForm(item.applicationType, "totpCode", nextCode)
                   }
                   value={forms[item.applicationType].totpCode}
                 />
@@ -315,7 +398,8 @@ export function EnterpriseServicesSection({
       </section>
       {applicationResult ? (
         <p className="application-result-line">
-          최근 접수 {applicationResult.applicationReference} · {applicationResult.status}
+          최근 접수 {applicationResult.applicationReference} ·{" "}
+          {getApplicationStatusLabel(applicationResult.status)}
         </p>
       ) : null}
     </section>

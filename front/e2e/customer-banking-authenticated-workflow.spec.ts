@@ -220,9 +220,9 @@ test("로그인 후 계좌, 이체, 거래내역, 세션 관리 업무 화면을
     .getByRole("button", { exact: true, name: "이체" })
     .click();
   const transferForm = page.locator("form").filter({ hasText: "이체정보 입력" });
-  await transferForm.getByLabel("출금계좌 ID").fill("101");
+  await transferForm.getByLabel("출금계좌 ID").selectOption("101");
   await transferForm.getByLabel("입금계좌번호").fill("202");
-  await transferForm.getByLabel("이체금액").fill("1200000");
+  await transferForm.getByLabel("이체금액").fill("12000");
   await transferForm.getByLabel("받는 분 통장 표시").fill("생활비");
   await transferForm.getByRole("button", { name: "받는 분 확인" }).click();
   await expect(page.getByLabel("이체 진행 상태")).toContainText("확인");

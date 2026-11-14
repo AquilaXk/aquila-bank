@@ -54,9 +54,15 @@
   background: var(--ops-gothic-surface);
 }
 
-.ops-header div {
+.ops-header > div:first-child {
   display: grid;
   gap: 3px;
+}
+
+.ops-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .ops-title {
@@ -91,6 +97,7 @@
 }
 
 .ops-header a,
+.ops-theme-toggle,
 .ops-section-nav a,
 .ops-section-map a,
 .ops-card-head button,
@@ -106,7 +113,13 @@
   overflow-wrap: anywhere;
 }
 
+.ops-theme-toggle {
+  cursor: pointer;
+  min-height: 40px;
+}
+
 .ops-header a:hover,
+.ops-theme-toggle:hover,
 .ops-section-nav a:hover,
 .ops-section-map a:hover,
 .ops-card-head button:hover,
@@ -169,9 +182,16 @@
 
 .ops-guard input:focus-visible,
 .ops-lookup-fields input:focus-visible,
+.ops-lookup-fields select:focus-visible,
 .ops-action-card input:focus-visible,
 .ops-action-card select:focus-visible,
+.ops-action-card button:focus-visible,
+.ops-write-zone > summary:focus-visible,
 .ops-header a:focus-visible,
+.ops-theme-toggle:focus-visible,
+.ops-section-nav a:focus-visible,
+.ops-section-map a:focus-visible,
+.ops-metric-link:focus-visible,
 .ops-card-head button:focus-visible,
 .ops-lookup-fields button:focus-visible {
   outline: 3px solid var(--ops-gothic-brass);

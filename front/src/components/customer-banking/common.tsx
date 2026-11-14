@@ -1,4 +1,25 @@
-import type { ChangeEventHandler, FormEventHandler, ReactNode } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type ChangeEventHandler,
+  type FocusEventHandler,
+  type FormEventHandler,
+  type KeyboardEvent,
+  type PointerEvent,
+  type ReactNode,
+} from "react";
+import {
+  countDigitsBeforeCaret,
+  findCaretForDigitCount,
+  formatKoreanCurrencyUnits,
+  formatKrwDisplay,
+  parseKrwDigits,
+  tryKrwToMinor,
+} from "@/lib/customer-banking/currency";
+import { formatMinorAmount } from "@/lib/customer-banking/format";
 
 export function ResultPanel({ title, rows }: { title: string; rows: string[][] }) {
   return (
@@ -128,9 +149,11 @@ export function BankInput({
   inputMode,
   label,
   maxLength,
+  onBlur,
   onChange,
   placeholder,
   required,
+  submitAttempted = false,
   type = "text",
   value,
 }: {
@@ -139,12 +162,16 @@ export function BankInput({
   inputMode?: "none" | "text" | "tel" | "url" | "email" | "numeric" | "decimal" | "search";
   label: string;
   maxLength?: number;
+  onBlur?: FocusEventHandler<HTMLInputElement>;
   onChange: ChangeEventHandler<HTMLInputElement>;
   placeholder?: string;
   required?: boolean;
+  submitAttempted?: boolean;
   type?: string;
   value: string | number;
 }) {
+  const [touched, setTouched] = useState(false);
+
   return (
     <label className="form-field bank-input">
       <span>{label}</span>
@@ -152,14 +179,243 @@ export function BankInput({
         autoComplete={autoComplete}
         inputMode={inputMode}
         maxLength={maxLength}
-        onChange={onChange}
+        onBlur={(event) => {
+          setTouched(true);
+          onBlur?.(event);
+        }}
+        onChange={(event) => {
+          setTouched(true);
+          onChange(event);
+        }}
         placeholder={placeholder}
         required={required}
         type={type}
         value={value}
       />
-      <FieldError message={error} />
+      <FieldError message={touched || submitAttempted ? error : undefined} />
     </label>
+  );
+}
+
+export function BankCurrencyInput({
+  availableBalanceMinor,
+  error,
+  label,
+  onValueChange,
+  placeholder = "금액 입력 (원)",
+  required,
+  submitAttempted = false,
+  value,
+}: {
+  availableBalanceMinor?: number;
+  error?: string;
+  label: string;
+  onValueChange: (digits: string) => void;
+  placeholder?: string;
+  required?: boolean;
+  submitAttempted?: boolean;
+  value: string;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [touched, setTouched] = useState(false);
+  const displayValue = formatKrwDisplay(value);
+  const koreanUnits = formatKoreanCurrencyUnits(value);
+  const minor = tryKrwToMinor(value);
+  const exceedsBalance =
+    typeof availableBalanceMinor === "number" &&
+    minor !== undefined &&
+    minor > availableBalanceMinor;
+
+  function handleChange(event: ChangeEvent<HTMLInputElement>) {
+    setTouched(true);
+    const input = event.target;
+    const rawValue = input.value;
+    const caretPos = input.selectionStart ?? rawValue.length;
+    const digitsBeforeCaret = countDigitsBeforeCaret(rawValue, caretPos);
+    const nextDigits = parseKrwDigits(rawValue);
+    onValueChange(nextDigits);
+
+    const nextFormatted = formatKrwDisplay(nextDigits);
+    const targetCaret = findCaretForDigitCount(nextFormatted, digitsBeforeCaret);
+    if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(() => {
+        if (inputRef.current && document.activeElement === inputRef.current) {
+          inputRef.current.setSelectionRange(targetCaret, targetCaret);
+        }
+      });
+    }
+  }
+
+  return (
+    <label className="form-field bank-input bank-currency-field">
+      <span>{label}</span>
+      <div className="currency-input-wrap">
+        <input
+          ref={inputRef}
+          className="currency-input"
+          inputMode="numeric"
+          onBlur={() => setTouched(true)}
+          onChange={handleChange}
+          placeholder={placeholder}
+          required={required}
+          type="text"
+          value={displayValue}
+        />
+        <span aria-hidden="true" className="currency-unit-suffix">
+          원
+        </span>
+      </div>
+      {koreanUnits ? (
+        <small className="field-note currency-readout">
+          {koreanUnits}
+          {typeof availableBalanceMinor === "number"
+            ? ` · 출금 가능 잔액 ${formatMinorAmount(availableBalanceMinor)}`
+            : ""}
+        </small>
+      ) : null}
+      {exceedsBalance ? (
+        <small className="field-error currency-limit-warn" role="alert">
+          출금 가능 잔액({formatMinorAmount(availableBalanceMinor as number)})을 초과했습니다.
+        </small>
+      ) : null}
+      <FieldError message={touched || submitAttempted ? error : undefined} />
+    </label>
+  );
+}
+
+function extractSixDigits(raw: string): string {
+  let out = "";
+  for (let i = 0; i < raw.length; i += 1) {
+    const code = raw.charCodeAt(i);
+    if (code >= 48 && code <= 57) {
+      out += raw[i];
+      if (out.length === 6) {
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+export function OtpCodeInput({
+  disabled = false,
+  error,
+  hint = "인증 앱의 6자리 숫자를 입력하세요.",
+  label,
+  onValueChange,
+  required = false,
+  submitAttempted = false,
+  value,
+}: {
+  disabled?: boolean;
+  error?: string;
+  hint?: string;
+  label: string;
+  onValueChange: (nextCode: string) => void;
+  required?: boolean;
+  submitAttempted?: boolean;
+  value: string;
+}) {
+  const inputId = useId();
+  const [touched, setTouched] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const cleanCode = extractSixDigits(value);
+  const activeSlot = Math.min(cleanCode.length, 5);
+
+  return (
+    <div className="form-field bank-input otp-code-field">
+      <label className="otp-field-label" htmlFor={inputId}>
+        {label}
+      </label>
+      <small className="field-note otp-field-hint">{hint}</small>
+      <div className={`otp-code-frame ${focused ? "focused" : ""}`.trim()}>
+        <div aria-hidden="true" className="otp-cells">
+          {[0, 1, 2, 3, 4, 5].map((index) => {
+            const digit = cleanCode[index] ?? "";
+            const isActive = focused && index === activeSlot;
+            return (
+              <span
+                className={`otp-cell ${digit ? "filled" : ""} ${isActive ? "active" : ""}`.trim()}
+                key={index}
+              >
+                {digit || "·"}
+              </span>
+            );
+          })}
+        </div>
+        <input
+          autoComplete="one-time-code"
+          className="otp-native-overlay"
+          disabled={disabled}
+          id={inputId}
+          inputMode="numeric"
+          maxLength={6}
+          onBlur={() => {
+            setFocused(false);
+            setTouched(true);
+          }}
+          onChange={(event) => {
+            setTouched(true);
+            onValueChange(extractSixDigits(event.target.value));
+          }}
+          onFocus={() => setFocused(true)}
+          pattern="\d{6}"
+          required={required}
+          type="text"
+          value={cleanCode}
+        />
+      </div>
+      <FieldError message={touched || submitAttempted ? error : undefined} />
+    </div>
+  );
+}
+
+export function CopyButton({
+  className = "",
+  label = "복사",
+  value,
+}: {
+  className?: string;
+  label?: string;
+  value: string;
+}) {
+  const [copied, setCopied] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
+    };
+  }, []);
+
+  async function handleCopy() {
+    if (!value) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
+      timerRef.current = setTimeout(() => setCopied(false), 1800);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <button
+      aria-label={`${label} 복사`}
+      className={`copy-action-button ${className}`.trim()}
+      disabled={!value}
+      onClick={() => void handleCopy()}
+      type="button"
+    >
+      {copied ? "복사됨" : label}
+    </button>
   );
 }
 
@@ -237,8 +493,22 @@ export function BankDrawer({
   open: boolean;
   title: string;
 }) {
+  const asideRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (asideRef.current) {
+      asideRef.current.inert = !open;
+    }
+  }, [open]);
+
   return (
-    <aside className={open ? "bank-drawer open" : "bank-drawer"} aria-label={title}>
+    <aside
+      ref={asideRef}
+      aria-hidden={!open}
+      aria-label={title}
+      className={open ? "bank-drawer open" : "bank-drawer"}
+      hidden={!open}
+    >
       <div className="form-heading">
         <strong>{title}</strong>
         <span>{open ? "열림" : "닫힘"}</span>
@@ -249,24 +519,136 @@ export function BankDrawer({
 }
 
 export function BankDialog({
+  busy = false,
+  cancelLabel = "취소",
   children,
+  confirmLabel,
+  confirmTone = "primary",
+  onClose,
+  onConfirm,
   open,
   title,
 }: {
+  busy?: boolean;
+  cancelLabel?: string;
   children: ReactNode;
+  confirmLabel?: string;
+  confirmTone?: "danger" | "primary";
+  onClose?: () => void;
+  onConfirm?: () => void;
   open: boolean;
   title: string;
 }) {
-  if (!open) {
-    return null;
+  const titleId = useId();
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const pointerDownOutsideRef = useRef(false);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) {
+      return;
+    }
+    dialog.setAttribute("closedby", "any");
+    if (open) {
+      if (!dialog.open) {
+        previousFocusRef.current =
+          document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        if (typeof dialog.showModal === "function") {
+          dialog.showModal();
+        } else {
+          dialog.setAttribute("open", "");
+        }
+      }
+    } else if (dialog.open) {
+      if (typeof dialog.close === "function") {
+        dialog.close();
+      } else {
+        dialog.removeAttribute("open");
+      }
+      previousFocusRef.current?.focus();
+    }
+  }, [open]);
+
+  function isPointOutsidePanel(clientX: number, clientY: number): boolean {
+    const panel = panelRef.current;
+    if (!panel) {
+      return false;
+    }
+    const rect = panel.getBoundingClientRect();
+    return (
+      clientX < rect.left ||
+      clientX > rect.right ||
+      clientY < rect.top ||
+      clientY > rect.bottom
+    );
   }
+
+  function handlePointerDown(event: PointerEvent<HTMLDialogElement>) {
+    pointerDownOutsideRef.current =
+      event.target === dialogRef.current &&
+      isPointOutsidePanel(event.clientX, event.clientY);
+  }
+
+  function handlePointerUp(event: PointerEvent<HTMLDialogElement>) {
+    const shouldClose =
+      pointerDownOutsideRef.current &&
+      event.target === dialogRef.current &&
+      isPointOutsidePanel(event.clientX, event.clientY);
+    pointerDownOutsideRef.current = false;
+    if (shouldClose) {
+      onClose?.();
+    }
+  }
+
   return (
-    <section aria-label={title} className="bank-dialog" role="dialog">
-      <div className="form-heading">
-        <strong>{title}</strong>
+    <dialog
+      ref={dialogRef}
+      aria-labelledby={titleId}
+      className="bank-dialog"
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose?.();
+      }}
+      onClose={() => {
+        previousFocusRef.current?.focus();
+      }}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
+    >
+      <div ref={panelRef} className="bank-dialog-panel">
+        <div className="form-heading">
+          <strong id={titleId}>{title}</strong>
+          {onClose ? (
+            <button
+              aria-label={`${title} 닫기`}
+              className="dialog-close-button"
+              onClick={onClose}
+              type="button"
+            >
+              닫기
+            </button>
+          ) : null}
+        </div>
+        <div className="bank-dialog-body">{children}</div>
+        {onConfirm ? (
+          <div className="bank-dialog-actions">
+            <button autoFocus onClick={onClose} type="button">
+              {cancelLabel}
+            </button>
+            <button
+              className={confirmTone === "danger" ? "danger-button" : "primary-confirm-button"}
+              disabled={busy}
+              onClick={onConfirm}
+              type="button"
+            >
+              {confirmLabel ?? "확인"}
+            </button>
+          </div>
+        ) : null}
       </div>
-      {children}
-    </section>
+    </dialog>
   );
 }
 
@@ -335,21 +717,39 @@ export function ReceiptPanel({
 export function PaginationBar({
   disabled,
   hasNext,
+  hasPrev = false,
   label,
+  onFirst,
   onNext,
+  onPrev,
 }: {
   disabled?: boolean;
   hasNext: boolean;
+  hasPrev?: boolean;
   label: string;
+  onFirst?: () => void;
   onNext: () => void;
+  onPrev?: () => void;
 }) {
   return (
     <div className="pagination-bar" aria-label={label}>
       <span>페이지 탐색</span>
       <strong>{hasNext ? "추가 내역 조회 가능" : "마지막 페이지"}</strong>
-      <button disabled={!hasNext || disabled} onClick={onNext} type="button">
-        다음 페이지
-      </button>
+      <div className="pagination-actions">
+        {onFirst ? (
+          <button disabled={!hasPrev || disabled} onClick={onFirst} type="button">
+            처음으로
+          </button>
+        ) : null}
+        {onPrev ? (
+          <button disabled={!hasPrev || disabled} onClick={onPrev} type="button">
+            이전 페이지
+          </button>
+        ) : null}
+        <button disabled={!hasNext || disabled} onClick={onNext} type="button">
+          다음 페이지
+        </button>
+      </div>
     </div>
   );
 }
@@ -391,6 +791,7 @@ export function EmptyState({
 export function WorkTabs({
   active,
   items,
+  label = "업무 전환 탭",
 }: {
   active: string;
   items: Array<{
@@ -399,21 +800,64 @@ export function WorkTabs({
     onClick: () => void;
     disabled?: boolean;
   }>;
+  label?: string;
 }) {
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  function handleKeyDown(event: KeyboardEvent<HTMLButtonElement>, currentIndex: number) {
+    const enabledIndexes: number[] = [];
+    for (let i = 0; i < items.length; i += 1) {
+      if (!items[i].disabled) {
+        enabledIndexes.push(i);
+      }
+    }
+    if (enabledIndexes.length === 0) {
+      return;
+    }
+
+    let nextIndex: number | null = null;
+    if (event.key === "ArrowRight") {
+      const pos = enabledIndexes.indexOf(currentIndex);
+      nextIndex = enabledIndexes[(pos + 1) % enabledIndexes.length];
+    } else if (event.key === "ArrowLeft") {
+      const pos = enabledIndexes.indexOf(currentIndex);
+      nextIndex = enabledIndexes[(pos - 1 + enabledIndexes.length) % enabledIndexes.length];
+    } else if (event.key === "Home") {
+      nextIndex = enabledIndexes[0];
+    } else if (event.key === "End") {
+      nextIndex = enabledIndexes[enabledIndexes.length - 1];
+    }
+
+    if (nextIndex !== null) {
+      event.preventDefault();
+      items[nextIndex].onClick();
+      tabRefs.current[nextIndex]?.focus();
+    }
+  }
+
   return (
-    <div className="work-tabs">
-      {items.map((item) => (
-        <button
-          aria-current={active === item.id ? "page" : undefined}
-          className={active === item.id ? "active" : undefined}
-          disabled={item.disabled}
-          key={item.id}
-          onClick={item.onClick}
-          type="button"
-        >
-          {item.label}
-        </button>
-      ))}
+    <div aria-label={label} className="work-tabs" role="tablist">
+      {items.map((item, index) => {
+        const selected = active === item.id;
+        return (
+          <button
+            ref={(el) => {
+              tabRefs.current[index] = el;
+            }}
+            aria-selected={selected}
+            className={selected ? "active" : undefined}
+            disabled={item.disabled}
+            key={item.id}
+            onClick={item.onClick}
+            onKeyDown={(event) => handleKeyDown(event, index)}
+            role="tab"
+            tabIndex={selected ? 0 : -1}
+            type="button"
+          >
+            {item.label}
+          </button>
+        );
+      })}
     </div>
   );
 }

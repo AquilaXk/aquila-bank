@@ -3,11 +3,12 @@
 import { useState } from "react";
 import type { CustomerApplicationType } from "@/lib/api/types";
 import { securityHubItems } from "@/lib/customer-banking/constants";
+import { getApplicationStatusLabel } from "@/lib/customer-banking/labels";
 import type {
   CustomerApplicationLatestResult,
   CustomerApplicationSubmitHandler,
 } from "@/lib/customer-banking/types";
-import { BankNoticeStrip } from "../common";
+import { BankNoticeStrip, OtpCodeInput } from "../common";
 
 type SecurityApplicationForm = {
   subject: string;
@@ -82,7 +83,18 @@ function createSecurityApplicationPayload(
       issuerDn: form.subject,
     };
   }
-  return flow.securityMediaPayload ?? { mediaType: "MOBILE_OTP", deliveryMethod: "BRANCH" };
+  const mediaType =
+    form.subject === "OTP" || form.subject === "SECURITY_CARD" || form.subject === "MOBILE_OTP"
+      ? form.subject
+      : (flow.securityMediaPayload?.mediaType ?? "MOBILE_OTP");
+  const deliveryMethod =
+    form.serial === "BRANCH" || form.serial === "REGISTERED_MAIL"
+      ? form.serial
+      : (flow.securityMediaPayload?.deliveryMethod ?? "BRANCH");
+  return {
+    deliveryMethod,
+    mediaType,
+  };
 }
 
 type SecurityHubSectionProps = {
@@ -254,28 +266,53 @@ export function SecurityHubSection({
               }}
             >
               <div className="form-grid compact">
-                <label>
-                  <span>신청 대상</span>
-                  <input
-                    value={forms[flow.title].subject}
-                    onChange={(event) => updateForm(flow.title, "subject", event.target.value)}
-                  />
-                </label>
-                <label>
-                  <span>일련번호/식별값</span>
-                  <input
-                    value={forms[flow.title].serial}
-                    onChange={(event) => updateForm(flow.title, "serial", event.target.value)}
-                  />
-                </label>
-                <label>
-                  <span>OTP</span>
-                  <input
-                    inputMode="numeric"
-                    value={forms[flow.title].totpCode}
-                    onChange={(event) => updateForm(flow.title, "totpCode", event.target.value)}
-                  />
-                </label>
+                {flow.applicationType === "SECURITY_MEDIA_APPLICATION" ? (
+                  <>
+                    <label>
+                      <span>매체 종류</span>
+                      <select
+                        value={forms[flow.title].subject}
+                        onChange={(event) => updateForm(flow.title, "subject", event.target.value)}
+                      >
+                        <option value="MOBILE_OTP">모바일 OTP</option>
+                        <option value="SECURITY_CARD">보안카드</option>
+                        <option value="OTP">실물 OTP</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span>수령 방법</span>
+                      <select
+                        value={forms[flow.title].serial}
+                        onChange={(event) => updateForm(flow.title, "serial", event.target.value)}
+                      >
+                        <option value="BRANCH">영업점 수령</option>
+                        <option value="REGISTERED_MAIL">등기 우편</option>
+                      </select>
+                    </label>
+                  </>
+                ) : (
+                  <>
+                    <label>
+                      <span>신청 대상</span>
+                      <input
+                        value={forms[flow.title].subject}
+                        onChange={(event) => updateForm(flow.title, "subject", event.target.value)}
+                      />
+                    </label>
+                    <label>
+                      <span>일련번호/식별값</span>
+                      <input
+                        value={forms[flow.title].serial}
+                        onChange={(event) => updateForm(flow.title, "serial", event.target.value)}
+                      />
+                    </label>
+                  </>
+                )}
+                <OtpCodeInput
+                  label="OTP"
+                  onValueChange={(nextCode) => updateForm(flow.title, "totpCode", nextCode)}
+                  value={forms[flow.title].totpCode}
+                />
               </div>
               <button type="submit" disabled={isBusy}>
                 등록 신청
@@ -286,7 +323,8 @@ export function SecurityHubSection({
       </section>
       {applicationResult ? (
         <p className="application-result-line">
-          최근 보안 신청 {applicationResult.applicationReference} · {applicationResult.status}
+          최근 보안 신청 {applicationResult.applicationReference} ·{" "}
+          {getApplicationStatusLabel(applicationResult.status)}
         </p>
       ) : null}
     </section>

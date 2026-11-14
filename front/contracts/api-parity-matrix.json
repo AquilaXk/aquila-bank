@@ -24,7 +24,7 @@
       "frontendEvidence": [
         {
           "file": "src/lib/api/client.ts",
-          "contains": ["/api/v1/accounts/${accountId}"]
+          "contains": ["/api/v1/accounts/${encodeURIComponent(String(accountId))}"]
         }
       ]
     },
@@ -206,7 +206,7 @@
       "frontendEvidence": [
         {
           "file": "src/lib/api/client.ts",
-          "contains": ["/api/v1/auth/sessions/${sessionId}", "method: \"DELETE\""]
+          "contains": ["/api/v1/auth/sessions/${encodeURIComponent(String(sessionId))}", "method: \"DELETE\""]
         }
       ]
     },
@@ -370,7 +370,7 @@
       "frontendEvidence": [
         {
           "file": "src/lib/api/client.ts",
-          "contains": ["/api/v1/notifications/${notificationId}/read"]
+          "contains": ["/api/v1/notifications/${encodeURIComponent(String(notificationId))}/read"]
         }
       ]
     },
@@ -435,7 +435,7 @@
       "frontendEvidence": [
         {
           "file": "src/lib/api/client.ts",
-          "contains": ["/api/v1/transactions/${transactionReference}"]
+          "contains": ["/api/v1/transactions/${encodeURIComponent(transactionReference)}"]
         }
       ]
     },
@@ -487,7 +487,7 @@
       "frontendEvidence": [
         {
           "file": "src/lib/api/client.ts",
-          "contains": ["/api/v1/transfers/${transactionReference}/reversal"]
+          "contains": ["/api/v1/transfers/${encodeURIComponent(transactionReference)}/reversal"]
         }
       ]
     },
@@ -673,8 +673,17 @@
       "method": "PUT",
       "path": "/internal/api/v1/accounts/{accountId}/status",
       "audience": "internal-admin",
-      "frontendStatus": "intentional-no-ui",
-      "rationale": "계좌 상태 write API는 권한, 사유 코드, 이중 확인, 감사 로그 UI가 설계된 별도 admin 작업으로 분리한다."
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/ops-console/client.ts",
+          "contains": ["accountStatusPath", "/internal/api/v1/accounts/${encodeURIComponent(accountId)}/status"]
+        },
+        {
+          "file": "src/components/ops-console/ops-console.tsx",
+          "contains": ["CHANGE ACCOUNT"]
+        }
+      ]
     },
     {
       "id": "internal.auth.bootstrap.membership",
@@ -729,8 +738,17 @@
       "method": "PUT",
       "path": "/internal/api/v1/auth/users/{userId}/memberships/{accountId}/status",
       "audience": "internal-admin",
-      "frontendStatus": "intentional-no-ui",
-      "rationale": "membership 상태 변경은 계좌 접근 권한에 직접 영향이 있어 사유/승인/감사 UX를 갖춘 별도 작업으로 분리한다."
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/ops-console/client.ts",
+          "contains": ["authMembershipStatusPath", "memberships/${encodeURIComponent(accountId)}/status"]
+        },
+        {
+          "file": "src/components/ops-console/ops-console.tsx",
+          "contains": ["CHANGE MEMBERSHIP"]
+        }
+      ]
     },
     {
       "id": "internal.auth.password.recovery.token.by.request",
@@ -761,8 +779,17 @@
       "method": "PUT",
       "path": "/internal/api/v1/auth/users/{userId}/status",
       "audience": "internal-admin",
-      "frontendStatus": "intentional-no-ui",
-      "rationale": "사용자 상태 변경은 로그인 차단/복구 영향이 있어 권한, 사유, 이중 확인, 감사 표시가 필요하다."
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/ops-console/client.ts",
+          "contains": ["authUserStatusPath", "/internal/api/v1/auth/users/${encodeURIComponent(userId)}/status"]
+        },
+        {
+          "file": "src/components/ops-console/ops-console.tsx",
+          "contains": ["CHANGE USER"]
+        }
+      ]
     },
     {
       "id": "internal.auth.verified.contact.delete",
@@ -932,7 +959,7 @@
       "frontendEvidence": [
         {
           "file": "src/lib/ops-console/client.ts",
-          "contains": ["/internal/api/v1/outbox/notification-channel/quarantined-events/${id}/redrive"]
+          "contains": ["/internal/api/v1/outbox/notification-channel/quarantined-events/${encodeURIComponent(id)}/redrive"]
         },
         {
           "file": "src/components/ops-console/ops-console.tsx",
@@ -983,7 +1010,7 @@
       "frontendEvidence": [
         {
           "file": "src/lib/ops-console/client.ts",
-          "contains": ["/internal/api/v1/ledger/snapshot-reconciliation/accounts/${accountId}/recovery"]
+          "contains": ["/internal/api/v1/ledger/snapshot-reconciliation/accounts/${encodeURIComponent(accountId)}/recovery"]
         },
         {
           "file": "src/components/ops-console/ops-console.tsx",

@@ -1,6 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
+import {
+  subscribeColorScheme,
+  toggleStoredColorScheme,
+  type ColorScheme,
+} from "@/lib/customer-banking/theme";
 import {
   accountAuditByRequestIdPath,
   accountStatusPath,
@@ -129,7 +134,15 @@ function describeOpsMetricResult(result: OpsResult | undefined): {
   };
 }
 
-function ResultPanel({ result }: { result: OpsResult }) {
+function formatOpsData(data: unknown): string {
+  try {
+    return JSON.stringify(data, null, 2) ?? String(data);
+  } catch {
+    return String(data);
+  }
+}
+
+const ResultPanel = memo(function ResultPanel({ result }: { result: OpsResult }) {
   if (result.status === "idle") {
     return <pre className="ops-result muted">조회 전</pre>;
   }
@@ -141,13 +154,15 @@ function ResultPanel({ result }: { result: OpsResult }) {
   }
   return (
     <pre className="ops-result">
-      {JSON.stringify(result.data, null, 2)}
+      {result.formattedData ?? formatOpsData(result.data)}
     </pre>
   );
-}
+});
 
 export function OpsConsole() {
   const enabled = process.env.NEXT_PUBLIC_OPS_CONSOLE_ENABLED === "true";
+  const [colorScheme, setColorScheme] = useState<ColorScheme>("light");
+  useEffect(() => subscribeColorScheme(setColorScheme), []);
   const [form, setForm] = useState<OpsFormState>({
     baseUrl: resolveOpsBaseUrl(),
     token: "",
@@ -181,8 +196,6 @@ export function OpsConsole() {
     membershipStatusConfirmation: "",
     accountStatusAccountId: "",
     accountStatusValue: "LOCKED",
-    accountStatusReasonCode: "OPS_MANUAL",
-    accountStatusReasonDetail: "",
     accountStatusRequestId: "",
     accountStatusConfirmation: "",
     applicationReference: "",
@@ -232,7 +245,12 @@ export function OpsConsole() {
       const data = await getOpsJson(form.baseUrl, form.token, path);
       setResults((current) => ({
         ...current,
-        [label]: { status: "success", data, error: "" },
+        [label]: {
+          status: "success",
+          data,
+          formattedData: formatOpsData(data),
+          error: "",
+        },
       }));
     } catch (error) {
       setResults((current) => ({
@@ -280,7 +298,12 @@ export function OpsConsole() {
       const data = await postOpsJson(form.baseUrl, form.token, path, body);
       setResults((current) => ({
         ...current,
-        [label]: { status: "success", data, error: "" },
+        [label]: {
+          status: "success",
+          data,
+          formattedData: formatOpsData(data),
+          error: "",
+        },
       }));
     } catch (error) {
       setResults((current) => ({
@@ -348,13 +371,23 @@ export function OpsConsole() {
       const data = await putOpsJson(form.baseUrl, form.token, path, requestId, body);
       setResults((current) => ({
         ...current,
-        [label]: { status: "success", data, error: "" },
+        [label]: {
+          status: "success",
+          data,
+          formattedData: formatOpsData(data),
+          error: "",
+        },
       }));
       try {
         const audit = await getOpsJson(form.baseUrl, form.token, auditPath);
         setResults((current) => ({
           ...current,
-          [auditResultLabel]: { status: "success", data: audit, error: "" },
+          [auditResultLabel]: {
+            status: "success",
+            data: audit,
+            formattedData: formatOpsData(audit),
+            error: "",
+          },
         }));
       } catch (auditError) {
         setResults((current) => ({
@@ -527,17 +560,13 @@ export function OpsConsole() {
 
   function runAccountStatusUpdate(): void {
     const accountId = toPositiveNumber(form.accountStatusAccountId);
-    if (
-      accountId === null ||
-      !form.accountStatusReasonDetail.trim() ||
-      !form.accountStatusRequestId.trim()
-    ) {
+    if (accountId === null || !form.accountStatusRequestId.trim()) {
       setResults((current) => ({
         ...current,
         ["Account status update"]: {
           status: "error",
           data: null,
-          error: "accountId, requestId, reasonDetail을 입력하세요.",
+          error: "accountId, requestId를 입력하세요.",
         },
       }));
       return;
@@ -676,9 +705,19 @@ export function OpsConsole() {
           <span className="ops-readonly-badge">Read-only Surface</span>
           <span className="ops-write-badge">Guarded Recovery Actions</span>
         </div>
-        <a href="/" aria-label="고객 웹뱅킹으로 이동">
-          고객뱅킹
-        </a>
+        <div className="ops-header-actions">
+          <button
+            aria-label="테마 전환"
+            className="ops-theme-toggle"
+            onClick={() => setColorScheme((current) => toggleStoredColorScheme(current))}
+            type="button"
+          >
+            {colorScheme === "dark" ? "라이트 모드" : "다크 모드"}
+          </button>
+          <a href="/" aria-label="고객 웹뱅킹으로 이동">
+            고객뱅킹
+          </a>
+        </div>
       </header>
 
       <nav className="ops-section-nav" aria-label="운영 콘솔 섹션 바로가기">
@@ -1158,40 +1197,14 @@ export function OpsConsole() {
                 </select>
               </label>
             </div>
-            <div className="ops-action-fields">
-              <label>
-                Reason code
-                <select
-                  value={form.accountStatusReasonCode}
-                  onChange={(event) =>
-                    updateField("accountStatusReasonCode", event.target.value)
-                  }
-                >
-                  <option value="OPS_MANUAL">OPS_MANUAL</option>
-                  <option value="FRAUD_REVIEW">FRAUD_REVIEW</option>
-                  <option value="USER_REQUEST">USER_REQUEST</option>
-                  <option value="ACCOUNT_CLOSURE">ACCOUNT_CLOSURE</option>
-                </select>
-              </label>
-              <label>
-                Request ID
-                <input
-                  value={form.accountStatusRequestId}
-                  onChange={(event) =>
-                    updateField("accountStatusRequestId", event.target.value)
-                  }
-                  placeholder="account-status-..."
-                />
-              </label>
-            </div>
             <label>
-              Reason detail
+              Request ID
               <input
-                maxLength={200}
-                value={form.accountStatusReasonDetail}
+                value={form.accountStatusRequestId}
                 onChange={(event) =>
-                  updateField("accountStatusReasonDetail", event.target.value)
+                  updateField("accountStatusRequestId", event.target.value)
                 }
+                placeholder="account-status-..."
               />
             </label>
             <p className="ops-risk-note">

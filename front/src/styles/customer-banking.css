@@ -26,9 +26,11 @@
   --muted: light-dark(var(--palette-grey-800), var(--palette-grey-300));
   --primary: light-dark(var(--palette-blue-700), var(--palette-blue-400));
   --primary-dark: light-dark(#1e40af, #93c5fd);
+  --primary-contrast: light-dark(var(--palette-grey-0), var(--palette-grey-1200));
   --primary-soft: light-dark(rgba(37, 99, 235, 0.07), rgba(96, 165, 250, 0.13));
   --accent: var(--palette-blue-600);
   --danger: light-dark(#dc2626, #f87171);
+  --danger-contrast: light-dark(var(--palette-grey-0), var(--palette-grey-1200));
   --danger-soft: light-dark(rgba(220, 38, 38, 0.08), rgba(248, 113, 113, 0.14));
   --success: light-dark(#059669, #34d399);
   --success-soft: light-dark(rgba(5, 150, 105, 0.08), rgba(52, 211, 153, 0.14));
@@ -181,6 +183,9 @@ label span {
 
 .bank-header {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  width: 100%;
+  min-width: 0;
   gap: 0;
   border-bottom: 1px solid var(--line);
   background: var(--surface);
@@ -190,6 +195,7 @@ label span {
 .brand-row,
 .bank-layout {
   width: min(1400px, calc(100% - 40px));
+  min-width: 0;
   margin: 0 auto;
 }
 
@@ -250,13 +256,13 @@ label span {
 .top-channel-link.active {
   border-color: var(--primary);
   background: var(--primary);
-  color: var(--palette-grey-0);
+  color: var(--primary-contrast);
 }
 
 .top-channel-link.active:hover:not(:disabled) {
   border-color: var(--primary-dark);
   background: var(--primary-dark);
-  color: var(--palette-grey-0);
+  color: var(--primary-contrast);
 }
 
 .service-map {
@@ -397,8 +403,13 @@ label span {
   text-align: left;
 }
 
-.service-search-item:hover:not(:disabled) {
+.service-search-item:hover:not(:disabled),
+.service-search-item.highlighted {
   background: var(--primary-soft);
+}
+
+.service-search-item.highlighted {
+  outline: 1px solid var(--primary);
 }
 
 .service-search-item span,
@@ -549,8 +560,7 @@ label span {
   font-weight: 600;
 }
 
-.bank-service-strip,
-.banking-status-bar {
+.bank-service-strip {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -565,8 +575,7 @@ label span {
   font-weight: 500;
 }
 
-.bank-service-strip strong,
-.banking-status-bar strong {
+.bank-service-strip strong {
   color: var(--success);
   font-weight: 600;
 }
@@ -766,13 +775,13 @@ label span {
 .top-channel-nav .top-channel-link.active {
   border-color: var(--primary);
   background: var(--primary);
-  color: var(--palette-grey-0);
+  color: var(--primary-contrast);
 }
 
 .top-channel-nav .top-channel-link.active:hover:not(:disabled) {
   border-color: var(--primary-dark);
   background: var(--primary-dark);
-  color: var(--palette-grey-0);
+  color: var(--primary-contrast);
 }
 
 .work-area {
@@ -969,43 +978,13 @@ label span {
   min-width: 180px;
   border-color: var(--primary-dark);
   background: var(--primary);
-  color: var(--page);
+  color: var(--primary-contrast);
 }
 
 .primary-login-button:hover:not(:disabled) {
   border-color: var(--primary-dark);
   background: var(--primary-dark);
-  color: var(--page);
-}
-
-.summary-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 14px;
-}
-
-.summary-box {
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--surface-muted);
-  padding: 14px;
-}
-
-.summary-box span {
-  color: var(--primary);
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.summary-box strong {
-  display: block;
-  margin: 8px 0 14px;
-  font-size: 17px;
-}
-
-.summary-box button {
-  width: 100%;
+  color: var(--primary-contrast);
 }
 
 .dashboard-primary-account-card {
@@ -1097,13 +1076,13 @@ label span {
 .dashboard-primary-account-balance .button-row button:first-child {
   border-color: var(--primary);
   background: var(--primary);
-  color: var(--palette-grey-0);
+  color: var(--primary-contrast);
 }
 
 .dashboard-primary-account-balance .button-row button:first-child:hover:not(:disabled) {
   border-color: var(--primary-dark);
   background: var(--primary-dark);
-  color: var(--palette-grey-0);
+  color: var(--primary-contrast);
 }
 
 .quick-amount-bar {
@@ -1323,8 +1302,7 @@ label span {
 }
 
 .account-status-grid,
-.security-media-grid,
-.transfer-verification-panel {
+.security-media-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0;
@@ -1344,8 +1322,7 @@ label span {
 }
 
 .account-status-grid div,
-.security-media-grid div,
-.transfer-verification-panel div {
+.security-media-grid div {
   display: grid;
   gap: 3px;
   min-width: 0;
@@ -1355,25 +1332,21 @@ label span {
 }
 
 .account-status-grid div:last-child,
-.security-media-grid div:last-child,
-.transfer-verification-panel div:last-child {
+.security-media-grid div:last-child {
   border-right: 0;
 }
 
 .account-status-grid span,
 .account-status-grid small,
 .security-media-grid span,
-.security-media-grid small,
-.transfer-verification-panel span,
-.transfer-verification-panel small {
+.security-media-grid small {
   color: var(--muted);
   font-size: 12px;
   font-weight: 500;
 }
 
 .account-status-grid strong,
-.security-media-grid strong,
-.transfer-verification-panel strong {
+.security-media-grid strong {
   color: var(--text);
   font-size: 14px;
   overflow-wrap: anywhere;
@@ -1664,7 +1637,7 @@ label span {
   width: fit-content;
   border-color: var(--primary);
   background: var(--primary);
-  color: var(--palette-grey-0);
+  color: var(--primary-contrast);
 }
 
 .application-submit-panel button[type="submit"]:hover:not(:disabled),
@@ -1672,7 +1645,7 @@ label span {
 .certificate-item > button:hover:not(:disabled) {
   border-color: var(--primary-dark);
   background: var(--primary-dark);
-  color: var(--palette-grey-0);
+  color: var(--primary-contrast);
 }
 
 .form-grid.compact {
@@ -2120,7 +2093,7 @@ label span {
 .bank-form .button-row button[type="submit"] {
   border-color: var(--primary);
   background: var(--primary);
-  color: var(--palette-grey-0);
+  color: var(--primary-contrast);
 }
 
 .bank-form > button:hover:not(:disabled),
@@ -2128,7 +2101,7 @@ label span {
 .bank-form .button-row button[type="submit"]:hover:not(:disabled) {
   border-color: var(--primary-dark);
   background: var(--primary-dark);
-  color: var(--palette-grey-0);
+  color: var(--primary-contrast);
 }
 
 .field-error {
@@ -2256,7 +2229,7 @@ label span {
 .mobile-sticky-actions button {
   min-width: 120px;
   background: var(--primary);
-  color: var(--page);
+  color: var(--primary-contrast);
 }
 
 .auth-method-grid,
@@ -2325,7 +2298,7 @@ label span {
 .stepper li.active {
   border-color: var(--primary);
   background: var(--primary);
-  color: var(--page);
+  color: var(--primary-contrast);
 }
 
 .confirm-box,
@@ -2439,8 +2412,7 @@ label span {
   width: 100%;
 }
 
-.bank-drawer,
-.bank-dialog {
+.bank-drawer {
   display: grid;
   gap: 10px;
   min-width: 0;
@@ -2451,14 +2423,296 @@ label span {
   padding: 12px;
 }
 
+.bank-drawer[hidden],
 .bank-drawer:not(.open) {
-  border-style: dashed;
-  background: var(--surface-muted);
+  display: none;
 }
 
-.bank-dialog {
-  margin-top: 10px;
+dialog.bank-dialog:not([open]) {
+  display: none;
+}
+
+dialog.bank-dialog[open] {
+  display: block;
+  width: min(480px, calc(100% - 32px));
+  max-width: 100%;
+  margin: auto;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+dialog.bank-dialog:modal,
+dialog.bank-dialog::backdrop {
+  overscroll-behavior: contain;
+}
+
+dialog.bank-dialog::backdrop {
+  background: rgba(16, 17, 20, 0.58);
+  backdrop-filter: blur(2px);
+}
+
+.bank-dialog-panel {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.bank-dialog-body {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.confirm-dialog-message {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.bank-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.bank-dialog-actions .danger-button {
   border-color: var(--danger);
+  background: var(--danger);
+  color: var(--danger-contrast);
+}
+
+.bank-dialog-actions .primary-confirm-button {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-contrast);
+}
+
+.form-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+.currency-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.currency-input {
+  width: 100%;
+  padding-right: 30px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.currency-unit-suffix {
+  position: absolute;
+  right: 10px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.currency-readout {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.currency-limit-warn {
+  margin-top: 2px;
+}
+
+.otp-code-field {
+  align-content: start;
+}
+
+.otp-field-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.otp-field-hint {
+  margin-top: -2px;
+}
+
+.otp-code-frame {
+  position: relative;
+  width: fit-content;
+  border-radius: 8px;
+}
+
+.otp-code-frame.focused {
+  outline: 3px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.otp-cells {
+  display: grid;
+  grid-template-columns: repeat(6, 36px);
+  gap: 6px;
+}
+
+.otp-cell {
+  display: grid;
+  place-items: center;
+  min-height: 44px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.otp-cell.filled {
+  color: var(--text);
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.otp-cell.active {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-soft);
+}
+
+.otp-native-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: text;
+  font-size: 16px;
+}
+
+.copy-action-button,
+.dialog-close-button {
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.inline-copy-cell {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.receipt-copy-bar,
+.table-row-actions,
+.pagination-actions,
+.backup-codes-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.otp-app-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--primary);
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.otp-app-link:hover {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.backup-codes-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.account-balance-chart {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 12px 14px;
+}
+
+.balance-chart-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.balance-chart-head span {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.balance-ratio-svg {
+  display: block;
+  width: 100%;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--surface-muted);
+  overflow: hidden;
+}
+
+.notification-date-group-row th {
+  background: var(--surface-muted);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 12px;
+}
+
+.notification-row-item {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 72px;
+}
+
+@supports not (content-visibility: auto) {
+  .notification-row-item {
+    content-visibility: visible;
+  }
+}
+
+.recent-list {
+  display: grid;
+  gap: 6px;
+  padding-left: 18px;
+  margin: 0;
 }
 
 .form-grid {
@@ -2659,25 +2913,6 @@ label span {
   background: var(--primary-soft);
 }
 
-.empty-business {
-  display: grid;
-  gap: 6px;
-  margin-top: 14px;
-  border: 1px dashed var(--line-strong);
-  border-radius: 8px;
-  background: var(--surface-muted);
-  padding: 28px;
-  text-align: center;
-}
-
-.empty-business strong {
-  font-size: 18px;
-}
-
-.empty-business span {
-  color: var(--muted);
-}
-
 .table-message {
   margin: 4px 0 0;
   color: var(--muted);
@@ -2761,7 +2996,7 @@ label span {
 
 .tab-switch button.active {
   background: var(--primary);
-  color: var(--page);
+  color: var(--primary-contrast);
 }
 
 .work-tabs {
@@ -2956,7 +3191,6 @@ label span {
   .utility-bar,
   .brand-row,
   .bank-service-strip,
-  .banking-status-bar,
   .layout-health-strip,
   .service-map-panel,
   .bank-layout {
@@ -2988,7 +3222,6 @@ label span {
     grid-column: 1 / -1;
   }
 
-  .summary-grid,
   .bank-home-grid,
   .account-summary-panel,
   .account-status-grid,
@@ -3001,7 +3234,6 @@ label span {
   .support-detail-grid,
   .certificate-list,
   .transfer-risk-grid,
-  .transfer-verification-panel,
   .account-grid,
   .split-work,
   .work-command-panel,
@@ -3022,7 +3254,6 @@ label span {
   .work-state-grid > div,
   .notification-status > div,
   .transfer-risk-grid > div,
-  .transfer-verification-panel > div,
   .auth-method-grid > div,
   .security-dashboard > div,
   .security-media-grid > div {
@@ -3035,7 +3266,6 @@ label span {
   .work-state-grid > div:last-child,
   .notification-status > div:last-child,
   .transfer-risk-grid > div:last-child,
-  .transfer-verification-panel > div:last-child,
   .auth-method-grid > div:last-child,
   .security-dashboard > div:last-child,
   .security-media-grid > div:last-child {
@@ -3081,12 +3311,11 @@ label span {
   .utility-bar,
   .brand-row,
   .bank-service-strip,
-  .banking-status-bar,
   .layout-health-strip,
   .service-map-panel,
   .bank-layout {
-    width: calc(100vw - 20px);
-    max-width: calc(100vw - 20px);
+    width: calc(100% - 20px);
+    max-width: calc(100% - 20px);
   }
 
   .utility-bar,
@@ -3307,8 +3536,7 @@ label span {
 }
 
 @media (max-width: 480px) {
-  .bank-service-strip,
-  .banking-status-bar {
+  .bank-service-strip {
     gap: 6px 10px;
   }
 
@@ -3383,8 +3611,21 @@ label span {
 }
 
 @media print {
+  :root,
+  :root[data-theme="dark"] {
+    color-scheme: light;
+    --page: #ffffff;
+    --surface: #ffffff;
+    --surface-muted: #f8f9fc;
+    --text: #111111;
+    --muted: #474a52;
+    --line: #d4d8df;
+    --line-strong: #9ca3af;
+  }
+
   body {
     background: #fff;
+    color: #111;
   }
 
   .bank-shell > .bank-header,
@@ -3397,6 +3638,8 @@ label span {
   .work-area .work-summary-strip,
   .work-area .work-state-grid,
   .work-area .receipt-action-row,
+  .work-area .copy-action-button,
+  .work-area .pagination-bar,
   .work-area .two-column + .two-column {
     display: none;
   }
@@ -3405,6 +3648,9 @@ label span {
   .bank-layout,
   .work-area,
   .task-section,
+  .bank-drawer.open,
+  .detail-panel,
+  .result-panel,
   .transfer-print-receipt {
     display: block;
     min-width: 0;
@@ -3412,9 +3658,11 @@ label span {
     border: 0;
     box-shadow: none;
     background: #fff;
+    color: #111;
   }
 
-  .transfer-print-receipt .result-panel {
+  .transfer-print-receipt .result-panel,
+  .bank-drawer.open {
     border: 1px solid #222;
   }
 }

@@ -43,7 +43,7 @@ const required = [
   ["transfer limit exceeded state", files.transfer, "한도 초과"],
   ["transfer otp error state", files.transfer, "OTP 오류"],
   ["transfer recipient mismatch", files.transfer, "수취계좌 불일치"],
-  ["transfer failed receipt", files.transfer, "실패 완료증"],
+  ["transfer failed receipt", files.transfer, "이체 실패 안내"],
   ["transaction drawer hook", files.transactions, "BankDrawer"],
   ["transaction print view hook", files.transactions, "이체확인증 출력"],
   ["security session expiry label", files.security, "세션 만료"],

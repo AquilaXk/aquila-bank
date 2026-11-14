@@ -1,20 +1,32 @@
-import type { FormEvent } from 'react';
-import { useEffect, useState } from 'react';
-import type { TransferPreviewResponse, TransferResponse, TransferReversalResponse } from '@/lib/api/types';
-import { formatDateTime, formatMinorAmount } from '@/lib/customer-banking/format';
+import type { FormEvent } from "react";
+import { useEffect, useState } from "react";
+import type {
+  TransferPreviewResponse,
+  TransferResponse,
+  TransferReversalResponse,
+} from "@/lib/api/types";
 import {
-  BankForm,
+  addKrwAmount,
+  tryKrwToMinor,
+} from "@/lib/customer-banking/currency";
+import { formatDateTime, formatMinorAmount } from "@/lib/customer-banking/format";
+import { getTransactionStatusLabel } from "@/lib/customer-banking/labels";
+import {
   BankActionBar,
+  BankCurrencyInput,
   BankDialog,
+  BankForm,
   BankInput,
   BankNoticeStrip,
+  CopyButton,
   FieldError,
+  OtpCodeInput,
   ReceiptPanel,
   ResultPanel,
   StatusBadge,
   WorkStateGrid,
   WorkTabs,
-} from '../common';
+} from "../common";
 
 type TransferStep =
   | "input"
@@ -29,7 +41,10 @@ function printTransferReceipt(): void {
   window.print();
 }
 
-function getTransferBlockedReasonLabel(reason: string | undefined, allowed: boolean | undefined): string {
+function getTransferBlockedReasonLabel(
+  reason: string | undefined,
+  allowed: boolean | undefined,
+): string {
   if (allowed) {
     return "이체 가능";
   }
@@ -48,20 +63,6 @@ function getTransferBlockedReasonLabel(reason: string | undefined, allowed: bool
     case "PREVIEW_REQUIRED":
     default:
       return "받는 계좌 확인 필요";
-  }
-}
-
-function getTransferStatusLabel(status: string | undefined): string {
-  switch (status) {
-    case "BOOKED":
-    case "REVERSED":
-      return "처리 완료";
-    case "FAILED":
-      return "처리 실패";
-    case "PENDING":
-      return "처리 중";
-    default:
-      return status ? "처리 확인 필요" : "-";
   }
 }
 
@@ -84,12 +85,13 @@ export function TransferSection({
     accountNumber: string;
     displayName: string;
     currencyCode: string;
+    availableBalanceMinor?: number;
   }>;
   isBusy: boolean;
   reversalForm: {
     transactionReference: string;
     sourceAccountId: string;
-    amountMinor: string;
+    amountKrw: string;
     reversalReason: string;
     summary: string;
   };
@@ -97,7 +99,7 @@ export function TransferSection({
   transferForm: {
     sourceAccountId: string;
     targetAccountNumber: string;
-    amountMinor: string;
+    amountKrw: string;
     currencyCode: string;
     summary: string;
   };
@@ -108,7 +110,7 @@ export function TransferSection({
   onReversalChange: (value: {
     transactionReference: string;
     sourceAccountId: string;
-    amountMinor: string;
+    amountKrw: string;
     reversalReason: string;
     summary: string;
   }) => void;
@@ -116,7 +118,7 @@ export function TransferSection({
   onTransferChange: (value: {
     sourceAccountId: string;
     targetAccountNumber: string;
-    amountMinor: string;
+    amountKrw: string;
     currencyCode: string;
     summary: string;
   }) => void;
@@ -124,6 +126,7 @@ export function TransferSection({
   const [activeTab, setActiveTab] = useState<"transfer" | "reversal">("transfer");
   const [transferStep, setTransferStep] = useState<TransferStep>("input");
   const [otpCode, setOtpCode] = useState("");
+  const [submitAttempted, setSubmitAttempted] = useState(false);
 
   useEffect(() => {
     if (transferResult) {
@@ -131,32 +134,36 @@ export function TransferSection({
     }
   }, [transferResult]);
 
+  const selectedSourceAccount = accounts?.find(
+    (item) => String(item.accountId) === transferForm.sourceAccountId,
+  );
+
   function updateTransferForm(value: typeof transferForm): void {
     setTransferStep("input");
     setOtpCode("");
     onTransferChange(value);
   }
 
-  function handleQuickAmount(addAmountMinor: number): void {
-    if (addAmountMinor === 0) {
-      updateTransferForm({ ...transferForm, amountMinor: "" });
+  function handleQuickAmount(deltaKrw: number): void {
+    if (deltaKrw === 0) {
+      updateTransferForm({ ...transferForm, amountKrw: "" });
       return;
     }
-    const current = Number(transferForm.amountMinor) || 0;
-    const next = current + addAmountMinor;
-    updateTransferForm({ ...transferForm, amountMinor: String(next) });
+    const nextDigits = addKrwAmount(transferForm.amountKrw, deltaKrw);
+    updateTransferForm({ ...transferForm, amountKrw: nextDigits });
   }
 
   async function handleTransferSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setSubmitAttempted(true);
+    if (transferStep === "failed") {
+      setTransferStep("input");
+      return;
+    }
     if (transferStep === "input") {
       setTransferStep("submitting");
       const ok = await onPreviewTransfer();
       setTransferStep(ok ? "receiverCheck" : "failed");
-      return;
-    }
-    if (transferStep === "failed") {
-      setTransferStep("input");
       return;
     }
     if (transferStep === "receiverCheck") {
@@ -186,9 +193,9 @@ export function TransferSection({
     { id: "complete", label: "완료" },
     { id: "failed", label: "실패" },
   ];
-  const amountMinor = Number(transferForm.amountMinor || 0);
+  const amountMinor = tryKrwToMinor(transferForm.amountKrw) ?? 0;
   const transferFeeMinor = transferPreview?.feeMinor ?? 0;
-  const limitMinor = transferPreview?.singleTransferLimitMinor ?? 1000000000;
+  const limitMinor = transferPreview?.singleTransferLimitMinor ?? 1_000_000_000;
   const remainingLimitMinor = transferPreview?.dailyRemainingMinor ?? limitMinor;
   const blockedReasonLabel = getTransferBlockedReasonLabel(
     transferPreview?.blockedReason,
@@ -207,8 +214,8 @@ export function TransferSection({
           ? "이체 실행"
           : transferStep === "failed"
             ? "입력 다시 확인"
-          : "받는 분 확인";
-  const sourceAccountError = transferForm.sourceAccountId ? "" : "출금계좌를 입력하세요.";
+            : "받는 분 확인";
+  const sourceAccountError = transferForm.sourceAccountId ? "" : "출금계좌를 선택하세요.";
   const targetAccountError = transferForm.targetAccountNumber ? "" : "입금계좌를 입력하세요.";
   const amountError = amountMinor > 0 ? "" : "이체금액을 입력하세요.";
   const summaryError = transferForm.summary ? "" : "받는 분 통장 표시를 입력하세요.";
@@ -224,6 +231,7 @@ export function TransferSection({
   const securityCheckBadgeLabel =
     transferStep === "complete" ? "확인 완료" : otpRequiredLabel;
   const showFailedReceipt = transferStep === "failed";
+  const hasOwnedAccounts = Boolean(accounts && accounts.length > 0);
 
   return (
     <section className="task-section compact-work-section">
@@ -239,6 +247,7 @@ export function TransferSection({
           { id: "transfer", label: "즉시이체", onClick: () => setActiveTab("transfer") },
           { id: "reversal", label: "이체 취소", onClick: () => setActiveTab("reversal") },
         ]}
+        label="이체 업무 전환 탭"
       />
       <BankNoticeStrip
         items={[
@@ -263,401 +272,453 @@ export function TransferSection({
           },
           {
             label: "처리 결과",
-            value: transferResult ? getTransferStatusLabel(transferResult.status) : "대기",
+            value: transferResult ? getTransactionStatusLabel(transferResult.status) : "대기",
           },
         ]}
       />
 
-      <div className="two-column">
-        <BankForm
-          className="tight-work-form"
-          meta={transferStep === "confirm" ? "최종 확인 후 실행" : "요청 단위 중복 방지"}
-          onSubmit={handleTransferSubmit}
-          title="이체정보 입력"
-        >
-          <div className="process-panel">
-            <div className="form-heading">
-              <strong>이체 절차</strong>
-              <span>받는 분 확인 · 이체정보 확인 · OTP 확인 · 완료증</span>
+      {activeTab === "transfer" ? (
+        <div className="two-column" role="tabpanel">
+          <BankForm
+            className="tight-work-form"
+            meta={transferStep === "confirm" ? "최종 확인 후 실행" : "요청 단위 중복 방지"}
+            onSubmit={handleTransferSubmit}
+            title="이체정보 입력"
+          >
+            <div className="process-panel">
+              <div className="form-heading">
+                <strong>이체 절차</strong>
+                <span>받는 분 확인 · 이체정보 확인 · OTP 확인 · 완료증</span>
+              </div>
+              <ol className="stepper" aria-label="이체 진행 단계">
+                {stepLabels.map((step) => (
+                  <li
+                    className={transferStep === step.id ? "active" : ""}
+                    key={step.id}
+                  >
+                    {step.label}
+                  </li>
+                ))}
+              </ol>
             </div>
-            <ol className="stepper" aria-label="이체 진행 단계">
-              {stepLabels.map((step) => (
-                <li
-                  className={transferStep === step.id ? "active" : ""}
-                  key={step.id}
-                >
-                  {step.label}
-                </li>
-              ))}
-            </ol>
-          </div>
-          <div className="transfer-risk-grid transfer-process-grid" aria-label="이체 사전 확인">
-            <div>
-              <span>받는 분</span>
-              <strong>
-                {transferPreview
-                  ? `${transferPreview.targetAccount.displayName} ${transferPreview.targetAccount.maskedAccountNumber}`
-                  : `계좌번호 ${transferForm.targetAccountNumber || "-"}`}
-              </strong>
-              <small>{recipientMismatchLabel} · {blockedReasonLabel}</small>
+            <div className="transfer-risk-grid transfer-process-grid" aria-label="이체 사전 확인">
+              <div>
+                <span>받는 분</span>
+                <strong>
+                  {transferPreview
+                    ? `${transferPreview.targetAccount.displayName} ${transferPreview.targetAccount.maskedAccountNumber}`
+                    : `계좌번호 ${transferForm.targetAccountNumber || "-"}`}
+                </strong>
+                <small>{recipientMismatchLabel} · {blockedReasonLabel}</small>
+              </div>
+              <div>
+                <span>수수료</span>
+                <strong className="tabular-nums">
+                  {formatMinorAmount(transferFeeMinor, transferForm.currencyCode)}
+                </strong>
+                <small>이체 실행 전 최종 확인</small>
+              </div>
+              <div>
+                <span>잔여한도</span>
+                <strong className={`tabular-nums ${isOverLimit ? "danger-text" : ""}`.trim()}>
+                  {formatMinorAmount(remainingLimitMinor, transferForm.currencyCode)}
+                </strong>
+                <small className="tabular-nums">
+                  1회 한도 {formatMinorAmount(limitMinor, transferForm.currencyCode)}
+                </small>
+              </div>
+              <div>
+                <span>보안 확인</span>
+                <strong>
+                  <StatusBadge tone={otpRequired ? "warn" : "success"}>
+                    {securityCheckBadgeLabel}
+                  </StatusBadge>
+                </strong>
+                <small>{otpErrorLabel}</small>
+              </div>
             </div>
-            <div>
-              <span>수수료</span>
-              <strong>
-                {formatMinorAmount(transferFeeMinor, transferForm.currencyCode)}
-              </strong>
-              <small>이체 실행 전 최종 확인</small>
+            <div className="quick-amount-bar" aria-label="빠른 금액 입력">
+              <span className="quick-amount-label">빠른 금액 입력</span>
+              <div className="quick-amount-buttons">
+                {[
+                  { label: "+1만", value: 10_000 },
+                  { label: "+5만", value: 50_000 },
+                  { label: "+10만", value: 100_000 },
+                  { label: "+100만", value: 1_000_000 },
+                  { label: "정정", value: 0 },
+                ].map((item) => (
+                  <button
+                    key={item.label}
+                    onClick={() => handleQuickAmount(item.value)}
+                    type="button"
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
             </div>
-            <div>
-              <span>잔여한도</span>
-              <strong className={isOverLimit ? "danger-text" : ""}>
-                {formatMinorAmount(remainingLimitMinor, transferForm.currencyCode)}
-              </strong>
-              <small>1회 한도 {formatMinorAmount(limitMinor, transferForm.currencyCode)}</small>
-            </div>
-            <div>
-              <span>보안 확인</span>
-              <strong>
-                <StatusBadge tone={otpRequired ? "warn" : "success"}>
-                  {securityCheckBadgeLabel}
-                </StatusBadge>
-              </strong>
-              <small>{otpErrorLabel}</small>
-            </div>
-          </div>
-          <div className="quick-amount-bar" aria-label="빠른 금액 입력">
-            <span className="quick-amount-label">빠른 금액 입력</span>
-            <div className="quick-amount-buttons">
-              {[
-                { label: "+1만", value: 1_000_000 },
-                { label: "+5만", value: 5_000_000 },
-                { label: "+10만", value: 10_000_000 },
-                { label: "+100만", value: 100_000_000 },
-                { label: "정정", value: 0 },
-              ].map((item) => (
-                <button
-                  key={item.label}
-                  onClick={() => handleQuickAmount(item.value)}
-                  type="button"
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          {accounts && accounts.length > 0 ? (
-            <label className="form-field">
-              <span>보유 출금계좌 선택</span>
-              <select
-                onChange={(event) => {
-                  const selectedId = event.target.value;
-                  if (!selectedId) return;
-                  const found = accounts.find((item) => String(item.accountId) === selectedId);
+            <div className="form-grid">
+              {hasOwnedAccounts && accounts ? (
+                <label className="form-field">
+                  <span>출금계좌 ID</span>
+                  <select
+                    onChange={(event) => {
+                      const selectedId = event.target.value;
+                      const found = accounts.find(
+                        (item) => String(item.accountId) === selectedId,
+                      );
+                      updateTransferForm({
+                        ...transferForm,
+                        sourceAccountId: selectedId,
+                        currencyCode: found?.currencyCode || transferForm.currencyCode,
+                      });
+                    }}
+                    required
+                    value={transferForm.sourceAccountId}
+                  >
+                    <option value="">출금계좌를 선택하세요</option>
+                    {accounts.map((account) => (
+                      <option key={account.accountId} value={String(account.accountId)}>
+                        {account.displayName} ({account.accountNumber})
+                      </option>
+                    ))}
+                  </select>
+                  <FieldError message={submitAttempted ? sourceAccountError : undefined} />
+                </label>
+              ) : (
+                <BankInput
+                  error={sourceAccountError}
+                  inputMode="numeric"
+                  label="출금계좌 ID"
+                  onChange={(event) =>
+                    updateTransferForm({
+                      ...transferForm,
+                      sourceAccountId: event.target.value,
+                    })
+                  }
+                  placeholder="계좌조회에서 계좌를 먼저 불러오세요"
+                  required
+                  submitAttempted={submitAttempted}
+                  value={transferForm.sourceAccountId}
+                />
+              )}
+              <BankInput
+                error={targetAccountError}
+                inputMode="numeric"
+                label="입금계좌번호"
+                onChange={(event) =>
                   updateTransferForm({
                     ...transferForm,
-                    sourceAccountId: selectedId,
-                    currencyCode: found?.currencyCode || transferForm.currencyCode,
-                  });
-                }}
-                value={
-                  accounts.some((item) => String(item.accountId) === transferForm.sourceAccountId)
-                    ? transferForm.sourceAccountId
-                    : ""
-                }
-              >
-                <option value="">직접 입력 또는 보유계좌 선택</option>
-                {accounts.map((account) => (
-                  <option key={account.accountId} value={String(account.accountId)}>
-                    {account.displayName} ({account.accountNumber})
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-          <div className="form-grid">
-            <BankInput
-              error={sourceAccountError}
-              inputMode="numeric"
-              label="출금계좌 ID"
-              onChange={(event) =>
-                updateTransferForm({
-                  ...transferForm,
-                  sourceAccountId: event.target.value,
-                })
-              }
-              required
-              value={transferForm.sourceAccountId}
-            />
-            <BankInput
-              error={targetAccountError}
-              inputMode="numeric"
-              label="입금계좌번호"
-              onChange={(event) =>
-                updateTransferForm({
-                  ...transferForm,
-                  targetAccountNumber: event.target.value,
-                })
-              }
-              required
-              value={transferForm.targetAccountNumber}
-            />
-            <BankInput
-              error={amountError}
-              inputMode="numeric"
-              label="이체금액"
-              onChange={(event) =>
-                updateTransferForm({
-                  ...transferForm,
-                  amountMinor: event.target.value,
-                })
-              }
-              required
-              value={transferForm.amountMinor}
-            />
-            <BankInput
-              label="통화"
-              maxLength={3}
-              onChange={(event) =>
-                updateTransferForm({
-                  ...transferForm,
-                  currencyCode: event.target.value.toUpperCase(),
-                })
-              }
-              required
-              value={transferForm.currencyCode}
-            />
-          </div>
-          <BankInput
-            error={summaryError}
-            label="받는 분 통장 표시"
-            maxLength={120}
-            onChange={(event) =>
-              updateTransferForm({ ...transferForm, summary: event.target.value })
-            }
-            required
-            value={transferForm.summary}
-          />
-          {transferStep === "confirm" ? (
-            <div className="confirm-box" role="status">
-              <strong>이체정보 확인</strong>
-              <span>
-                출금계좌 {transferForm.sourceAccountId}에서 입금계좌{" "}
-                {transferForm.targetAccountNumber}로{" "}
-                {formatMinorAmount(
-                  Number(transferForm.amountMinor || 0),
-                  transferForm.currencyCode,
-                )}
-                을 이체합니다.
-                {transferPreview
-                  ? ` 총 출금액은 ${formatMinorAmount(
-                      transferPreview.totalDebitMinor,
-                      transferPreview.currencyCode,
-                    )}입니다.`
-                  : ""}
-              </span>
-            </div>
-          ) : null}
-          {transferStep === "otp" ? (
-            <label>
-              <span>OTP 확인</span>
-              <input
-                inputMode="numeric"
-                maxLength={6}
-                onChange={(event) => setOtpCode(event.target.value)}
-                placeholder="6자리"
-                required
-                value={otpCode}
-              />
-              <FieldError message={otpError} />
-            </label>
-          ) : null}
-          {isOverLimit ? (
-            <div className="confirm-box warning" role="alert">
-              <strong>이체 사전 검증 실패</strong>
-              <span>{blockedReasonLabel}. 고객센터의 이체한도 메뉴에서 보안등급과 한도를 확인하세요.</span>
-            </div>
-          ) : null}
-          <BankActionBar>
-            <div className="mobile-sticky-actions">
-              <button disabled={isBusy || isOverLimit} type="submit">
-                {submitLabel}
-              </button>
-            </div>
-          </BankActionBar>
-        </BankForm>
-
-        <div className="transfer-receipt transfer-receipt-panel">
-          <ReceiptPanel
-            action={
-              <>
-                <span>완료증 출력</span>
-                <button
-                  className="print-receipt-button"
-                  disabled={!transferResult}
-                  onClick={printTransferReceipt}
-                  type="button"
-                >
-                  인쇄
-                </button>
-              </>
-            }
-            label="이체 완료증 인쇄"
-            rows={
-              transferResult
-                ? [
-                    ["거래번호", transferResult.transactionReference],
-                    ["상태", getTransferStatusLabel(transferResult.status)],
-                    [
-                      "이체금액",
-                      formatMinorAmount(
-                        transferResult.amountMinor,
-                        transferResult.currencyCode,
-                      ),
-                    ],
-                    [
-                      "수수료",
-                      formatMinorAmount(transferFeeMinor, transferResult.currencyCode),
-                    ],
-                    [
-                      "총 출금액",
-                      formatMinorAmount(
-                        transferPreview?.totalDebitMinor ?? transferResult.amountMinor,
-                        transferResult.currencyCode,
-                      ),
-                    ],
-                    [
-                      "이체 후 잔액",
-                      formatMinorAmount(
-                        transferResult.availableBalanceAfterMinor,
-                        transferResult.currencyCode,
-                      ),
-                    ],
-                    ["출력구분", "이체 완료증 출력 전용"],
-                    ["기장시각", formatDateTime(transferResult.bookedAt)],
-                  ]
-                : []
-            }
-            title="이체 완료증"
-          />
-          <BankDialog open={showFailedReceipt} title="실패 완료증">
-            <dl className="detail-list">
-              <div>
-                <dt>처리상태</dt>
-                <dd>실패 완료증</dd>
-              </div>
-              <div>
-                <dt>사유</dt>
-                <dd>{blockedReasonLabel}</dd>
-              </div>
-            </dl>
-          </BankDialog>
-        </div>
-      </div>
-
-      <div className="two-column">
-        <form className="bank-form" onSubmit={onReversal}>
-          <div className="form-heading">
-            <strong>이체 취소</strong>
-            <span>원거래번호 기준</span>
-          </div>
-          <label>
-            <span>원거래번호</span>
-            <input
-              onChange={(event) =>
-                onReversalChange({
-                  ...reversalForm,
-                  transactionReference: event.target.value,
-                })
-              }
-              required
-              value={reversalForm.transactionReference}
-            />
-          </label>
-          <div className="form-grid">
-            <label>
-              <span>출금계좌 ID</span>
-              <input
-                inputMode="numeric"
-                onChange={(event) =>
-                  onReversalChange({
-                    ...reversalForm,
-                    sourceAccountId: event.target.value,
+                    targetAccountNumber: event.target.value,
                   })
                 }
                 required
-                value={reversalForm.sourceAccountId}
+                submitAttempted={submitAttempted}
+                value={transferForm.targetAccountNumber}
               />
-            </label>
-            <label>
-              <span>취소금액</span>
-              <input
-                inputMode="numeric"
-                onChange={(event) =>
-                  onReversalChange({
-                    ...reversalForm,
-                    amountMinor: event.target.value,
+              <BankCurrencyInput
+                availableBalanceMinor={selectedSourceAccount?.availableBalanceMinor}
+                error={amountError}
+                label="이체금액"
+                onValueChange={(digits) =>
+                  updateTransferForm({
+                    ...transferForm,
+                    amountKrw: digits,
                   })
                 }
                 required
-                value={reversalForm.amountMinor}
+                submitAttempted={submitAttempted}
+                value={transferForm.amountKrw}
               />
-            </label>
-          </div>
-          <label>
-            <span>취소사유</span>
-            <select
-              onChange={(event) =>
-                onReversalChange({
-                  ...reversalForm,
-                  reversalReason: event.target.value,
-                })
-              }
-              value={reversalForm.reversalReason}
-            >
-              <option value="CUSTOMER_REQUEST">고객 요청</option>
-              <option value="DUPLICATE">중복 이체</option>
-              <option value="WRONG_AMOUNT">금액 오류</option>
-              <option value="WRONG_TARGET">받는 분 오류</option>
-              <option value="FRAUD_REPORTED">사기 의심 신고</option>
-            </select>
-          </label>
-          <label>
-            <span>적요</span>
-            <input
+              <BankInput
+                label="통화"
+                maxLength={3}
+                onChange={(event) =>
+                  updateTransferForm({
+                    ...transferForm,
+                    currencyCode: event.target.value.toUpperCase(),
+                  })
+                }
+                required
+                submitAttempted={submitAttempted}
+                value={transferForm.currencyCode}
+              />
+            </div>
+            <BankInput
+              error={summaryError}
+              label="받는 분 통장 표시"
               maxLength={120}
               onChange={(event) =>
-                onReversalChange({ ...reversalForm, summary: event.target.value })
+                updateTransferForm({ ...transferForm, summary: event.target.value })
               }
               required
-              value={reversalForm.summary}
+              submitAttempted={submitAttempted}
+              value={transferForm.summary}
             />
-          </label>
-          <button disabled={isBusy} type="submit">
-            취소 실행
-          </button>
-        </form>
+            {transferStep === "confirm" ? (
+              <div className="confirm-box" role="status">
+                <strong>이체정보 확인</strong>
+                <span>
+                  출금계좌 {selectedSourceAccount?.accountNumber ?? transferForm.sourceAccountId}에서
+                  입금계좌 {transferForm.targetAccountNumber}로{" "}
+                  {formatMinorAmount(amountMinor, transferForm.currencyCode)}을 이체합니다.
+                  {transferPreview
+                    ? ` 총 출금액은 ${formatMinorAmount(
+                        transferPreview.totalDebitMinor,
+                        transferPreview.currencyCode,
+                      )}입니다.`
+                    : ""}
+                </span>
+              </div>
+            ) : null}
+            {transferStep === "otp" ? (
+              <OtpCodeInput
+                error={otpError}
+                hint="이체 실행을 위해 6자리 인증 코드를 입력하세요."
+                label="OTP 확인"
+                onValueChange={setOtpCode}
+                required
+                submitAttempted={submitAttempted}
+                value={otpCode}
+              />
+            ) : null}
+            {isOverLimit ? (
+              <div className="confirm-box warning" role="alert">
+                <strong>이체 사전 검증 실패</strong>
+                <span>
+                  {blockedReasonLabel}. 고객센터의 이체한도 메뉴에서 보안등급과 한도를 확인하세요.
+                </span>
+              </div>
+            ) : null}
+            <BankActionBar>
+              <div className="mobile-sticky-actions">
+                <button
+                  disabled={isBusy || (isOverLimit && transferStep !== "failed")}
+                  type="submit"
+                >
+                  {submitLabel}
+                </button>
+              </div>
+            </BankActionBar>
+          </BankForm>
 
-        <ResultPanel
-          title="취소 결과"
-          rows={
-            reversalResult
-              ? [
-                  ["원거래", reversalResult.originalTransactionReference],
-                  ["취소거래", reversalResult.reversalTransactionReference],
-                  ["상태", getTransferStatusLabel(reversalResult.status)],
-                  [
-                    "취소금액",
-                    formatMinorAmount(
-                      reversalResult.amountMinor,
-                      reversalResult.currencyCode,
-                    ),
-                  ],
-                  ["기장시각", formatDateTime(reversalResult.bookedAt)],
-                ]
-              : []
-          }
-        />
-      </div>
+          <div className="transfer-receipt transfer-receipt-panel">
+            <ReceiptPanel
+              action={
+                <>
+                  <span>완료증 출력</span>
+                  {transferResult ? (
+                    <CopyButton
+                      label="거래번호"
+                      value={transferResult.transactionReference}
+                    />
+                  ) : null}
+                  <button
+                    className="print-receipt-button"
+                    disabled={!transferResult}
+                    onClick={printTransferReceipt}
+                    type="button"
+                  >
+                    인쇄
+                  </button>
+                </>
+              }
+              label="이체 완료증 인쇄"
+              rows={
+                transferResult
+                  ? [
+                      ["거래번호", transferResult.transactionReference],
+                      ["상태", getTransactionStatusLabel(transferResult.status)],
+                      [
+                        "이체금액",
+                        formatMinorAmount(
+                          transferResult.amountMinor,
+                          transferResult.currencyCode,
+                        ),
+                      ],
+                      [
+                        "수수료",
+                        formatMinorAmount(transferFeeMinor, transferResult.currencyCode),
+                      ],
+                      [
+                        "총 출금액",
+                        formatMinorAmount(
+                          transferPreview?.totalDebitMinor ?? transferResult.amountMinor,
+                          transferResult.currencyCode,
+                        ),
+                      ],
+                      [
+                        "이체 후 잔액",
+                        formatMinorAmount(
+                          transferResult.availableBalanceAfterMinor,
+                          transferResult.currencyCode,
+                        ),
+                      ],
+                      ["출력구분", "이체 완료증 출력 전용"],
+                      ["기장시각", formatDateTime(transferResult.bookedAt)],
+                    ]
+                  : []
+              }
+              title="이체 완료증"
+            />
+            <BankDialog
+              confirmLabel="입력 다시 확인"
+              onClose={() => setTransferStep("input")}
+              onConfirm={() => setTransferStep("input")}
+              open={showFailedReceipt}
+              title="이체 실패 안내"
+            >
+              <dl className="detail-list">
+                <div>
+                  <dt>처리상태</dt>
+                  <dd>이체 실패 안내</dd>
+                </div>
+                <div>
+                  <dt>사유</dt>
+                  <dd>{blockedReasonLabel}</dd>
+                </div>
+              </dl>
+            </BankDialog>
+          </div>
+        </div>
+      ) : (
+        <div className="two-column" role="tabpanel">
+          <form className="bank-form" onSubmit={onReversal}>
+            <div className="form-heading">
+              <strong>이체 취소</strong>
+              <span>원거래번호 기준</span>
+            </div>
+            <label>
+              <span>원거래번호</span>
+              <input
+                onChange={(event) =>
+                  onReversalChange({
+                    ...reversalForm,
+                    transactionReference: event.target.value,
+                  })
+                }
+                required
+                value={reversalForm.transactionReference}
+              />
+            </label>
+            <div className="form-grid">
+              {hasOwnedAccounts && accounts ? (
+                <label className="form-field">
+                  <span>출금계좌 ID</span>
+                  <select
+                    onChange={(event) =>
+                      onReversalChange({
+                        ...reversalForm,
+                        sourceAccountId: event.target.value,
+                      })
+                    }
+                    required
+                    value={reversalForm.sourceAccountId}
+                  >
+                    <option value="">출금계좌를 선택하세요</option>
+                    {accounts.map((account) => (
+                      <option key={account.accountId} value={String(account.accountId)}>
+                        {account.displayName} ({account.accountNumber})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                <label>
+                  <span>출금계좌 ID</span>
+                  <input
+                    inputMode="numeric"
+                    onChange={(event) =>
+                      onReversalChange({
+                        ...reversalForm,
+                        sourceAccountId: event.target.value,
+                      })
+                    }
+                    required
+                    value={reversalForm.sourceAccountId}
+                  />
+                </label>
+              )}
+              <BankCurrencyInput
+                label="취소금액"
+                onValueChange={(digits) =>
+                  onReversalChange({
+                    ...reversalForm,
+                    amountKrw: digits,
+                  })
+                }
+                required
+                value={reversalForm.amountKrw}
+              />
+            </div>
+            <label>
+              <span>취소사유</span>
+              <select
+                onChange={(event) =>
+                  onReversalChange({
+                    ...reversalForm,
+                    reversalReason: event.target.value,
+                  })
+                }
+                value={reversalForm.reversalReason}
+              >
+                <option value="CUSTOMER_REQUEST">고객 요청</option>
+                <option value="DUPLICATE">중복 이체</option>
+                <option value="WRONG_AMOUNT">금액 오류</option>
+                <option value="WRONG_TARGET">받는 분 오류</option>
+                <option value="FRAUD_REPORTED">사기 의심 신고</option>
+              </select>
+            </label>
+            <label>
+              <span>적요</span>
+              <input
+                maxLength={120}
+                onChange={(event) =>
+                  onReversalChange({ ...reversalForm, summary: event.target.value })
+                }
+                required
+                value={reversalForm.summary}
+              />
+            </label>
+            <BankActionBar label="이체 취소 실행">
+              <button disabled={isBusy} type="submit">
+                취소 실행
+              </button>
+            </BankActionBar>
+          </form>
+
+          <div className="transfer-receipt">
+            <ResultPanel
+              title="취소 결과"
+              rows={
+                reversalResult
+                  ? [
+                      ["원거래", reversalResult.originalTransactionReference],
+                      ["취소거래", reversalResult.reversalTransactionReference],
+                      ["상태", getTransactionStatusLabel(reversalResult.status)],
+                      [
+                        "취소금액",
+                        formatMinorAmount(
+                          reversalResult.amountMinor,
+                          reversalResult.currencyCode,
+                        ),
+                      ],
+                      ["기장시각", formatDateTime(reversalResult.bookedAt)],
+                    ]
+                  : []
+              }
+            />
+            {reversalResult ? (
+              <div className="receipt-copy-bar">
+                <CopyButton
+                  label="취소거래번호"
+                  value={reversalResult.reversalTransactionReference}
+                />
+              </div>
+            ) : null}
+          </div>
+        </div>
+      )}
     </section>
   );
 }

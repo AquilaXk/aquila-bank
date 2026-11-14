@@ -41,6 +41,7 @@ type RequestOptions = {
   method?: "GET" | "POST" | "DELETE";
   body?: unknown;
   headers?: Record<string, string>;
+  signal?: AbortSignal;
 };
 
 type ResponseWithHeaders<T> = {
@@ -158,6 +159,7 @@ export class AquilaBankApiClient {
         headers: defaultHeaders(options),
         body: options.body === undefined ? undefined : JSON.stringify(options.body),
         credentials: "include",
+        signal: options.signal,
       });
     } catch (error) {
       if (isFetchNetworkError(error)) {
@@ -237,12 +239,14 @@ export class AquilaBankApiClient {
     });
   }
 
-  getSessions(size = 20): Promise<AuthSessionListResponse> {
-    return this.request(appendSearchParams("/api/v1/auth/sessions", { size }));
+  getSessions(size = 20, options?: { signal?: AbortSignal }): Promise<AuthSessionListResponse> {
+    return this.request(appendSearchParams("/api/v1/auth/sessions", { size }), {
+      signal: options?.signal,
+    });
   }
 
   revokeSession(sessionId: number): Promise<void> {
-    return this.request(`/api/v1/auth/sessions/${sessionId}`, {
+    return this.request(`/api/v1/auth/sessions/${encodeURIComponent(String(sessionId))}`, {
       method: "DELETE",
     });
   }
@@ -298,18 +302,26 @@ export class AquilaBankApiClient {
 
   getAccounts(
     params: { limit?: number; cursor?: string } = {},
+    options?: { signal?: AbortSignal },
   ): Promise<AccountListResponse> {
-    return this.request(appendSearchParams("/api/v1/accounts", params));
+    return this.request(appendSearchParams("/api/v1/accounts", params), {
+      signal: options?.signal,
+    });
   }
 
-  getAccount(accountId: number): Promise<AccountSummaryResponse> {
-    return this.request(`/api/v1/accounts/${accountId}`);
+  getAccount(accountId: number, options?: { signal?: AbortSignal }): Promise<AccountSummaryResponse> {
+    return this.request(`/api/v1/accounts/${encodeURIComponent(String(accountId))}`, {
+      signal: options?.signal,
+    });
   }
 
   previewTransfer(
     params: TransferPreviewRequest,
+    options?: { signal?: AbortSignal },
   ): Promise<TransferPreviewResponse> {
-    return this.request(appendSearchParams("/api/v1/transfers/preview", params));
+    return this.request(appendSearchParams("/api/v1/transfers/preview", params), {
+      signal: options?.signal,
+    });
   }
 
   transfer(
@@ -328,7 +340,7 @@ export class AquilaBankApiClient {
     request: TransferReversalRequest,
     idempotencyKey = createIdempotencyKey("reversal"),
   ): Promise<TransferReversalResponse> {
-    return this.request(`/api/v1/transfers/${transactionReference}/reversal`, {
+    return this.request(`/api/v1/transfers/${encodeURIComponent(transactionReference)}/reversal`, {
       method: "POST",
       body: request,
       headers: { "Idempotency-Key": idempotencyKey },
@@ -346,17 +358,23 @@ export class AquilaBankApiClient {
     });
   }
 
-  listCustomerApplications(limit = 20): Promise<CustomerApplicationListResponse> {
+  listCustomerApplications(
+    limit = 20,
+    options?: { signal?: AbortSignal },
+  ): Promise<CustomerApplicationListResponse> {
     return this.request(
       appendSearchParams("/api/v1/customer-service/applications", { limit }),
+      { signal: options?.signal },
     );
   }
 
   getCustomerApplication(
     applicationReference: string,
+    options?: { signal?: AbortSignal },
   ): Promise<CustomerApplicationDetailsResponse> {
     return this.request(
       `/api/v1/customer-service/applications/${encodeURIComponent(applicationReference)}`,
+      { signal: options?.signal },
     );
   }
 
@@ -373,41 +391,67 @@ export class AquilaBankApiClient {
     );
   }
 
-  getTransactions(params: TransactionQueryParams): Promise<TransactionQueryResponse> {
-    return this.request(appendSearchParams("/api/v1/transactions", params));
+  getTransactions(
+    params: TransactionQueryParams,
+    options?: { signal?: AbortSignal },
+  ): Promise<TransactionQueryResponse> {
+    return this.request(appendSearchParams("/api/v1/transactions", params), {
+      signal: options?.signal,
+    });
   }
 
   getArchivedTransactions(
     params: TransactionQueryParams,
+    options?: { signal?: AbortSignal },
   ): Promise<TransactionQueryResponse> {
-    return this.request(appendSearchParams("/api/v1/transactions/archive", params));
+    return this.request(appendSearchParams("/api/v1/transactions/archive", params), {
+      signal: options?.signal,
+    });
   }
 
   getTransactionDetail(
     transactionReference: string,
     accountId: number,
+    options?: { signal?: AbortSignal },
   ): Promise<TransactionDetailResponse> {
     return this.request(
-      appendSearchParams(`/api/v1/transactions/${transactionReference}`, { accountId }),
+      appendSearchParams(`/api/v1/transactions/${encodeURIComponent(transactionReference)}`, {
+        accountId,
+      }),
+      { signal: options?.signal },
     );
   }
 
-  getNotifications(params: NotificationQueryParams): Promise<NotificationQueryResponse> {
-    return this.request(appendSearchParams("/api/v1/notifications", params));
+  getNotifications(
+    params: NotificationQueryParams,
+    options?: { signal?: AbortSignal },
+  ): Promise<NotificationQueryResponse> {
+    return this.request(appendSearchParams("/api/v1/notifications", params), {
+      signal: options?.signal,
+    });
   }
 
   searchNotifications(
     params: NotificationSearchParams,
+    options?: { signal?: AbortSignal },
   ): Promise<NotificationSearchResponse> {
-    return this.request(appendSearchParams("/api/v1/notifications/search", params));
+    return this.request(appendSearchParams("/api/v1/notifications/search", params), {
+      signal: options?.signal,
+    });
   }
 
-  getUnreadCount(): Promise<NotificationUnreadCountResponse> {
-    return this.request("/api/v1/notifications/unread-count");
+  getUnreadCount(options?: { signal?: AbortSignal }): Promise<NotificationUnreadCountResponse> {
+    return this.request("/api/v1/notifications/unread-count", {
+      signal: options?.signal,
+    });
   }
 
-  getNotificationPreferences(): Promise<NotificationPreferenceResponse> {
-    return this.request("/api/v1/notifications/preferences");
+  getNotificationPreferences(
+    options?: { signal?: AbortSignal },
+  ): Promise<NotificationPreferenceResponse> {
+    return this.request("/api/v1/notifications/preferences", {
+      signal: options?.signal,
+    });
   }
 
   updateNotificationPreferences(
@@ -420,7 +464,7 @@ export class AquilaBankApiClient {
   }
 
   markNotificationAsRead(notificationId: number): Promise<void> {
-    return this.request(`/api/v1/notifications/${notificationId}/read`, {
+    return this.request(`/api/v1/notifications/${encodeURIComponent(String(notificationId))}/read`, {
       method: "POST",
     });
   }
