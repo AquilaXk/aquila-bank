@@ -300,6 +300,98 @@ resolve_auth_token() {
   export K6_AUTH_TOKEN
 }
 
+parse_env_secret_value() {
+  local key="$1"
+  local input_mode="$2"
+  if ! command -v python3 >/dev/null 2>&1; then
+    return 0
+  fi
+  local py_script
+  read -r -d '' py_script <<'PY' || true
+import base64
+import sys
+
+key = sys.argv[1]
+mode = sys.argv[2]
+payload = sys.stdin.read()
+
+if mode == "b64":
+    raw = "".join(payload.split())
+    if not raw:
+        sys.exit(0)
+    padded = raw + ("=" * ((4 - len(raw) % 4) % 4))
+    text = None
+    for decoder in (lambda v: base64.b64decode(v, validate=True), base64.urlsafe_b64decode):
+        try:
+            text = decoder(padded).decode("utf-8")
+            break
+        except Exception:
+            continue
+    if text is None:
+        sys.exit(0)
+else:
+    text = payload
+
+resolved = ""
+for raw_line in text.splitlines():
+    line = raw_line.strip()
+    if not line or line.startswith("#"):
+        continue
+    if line.startswith("export "):
+        line = line[len("export "):].lstrip()
+    if "=" not in line:
+        continue
+    name, value = line.split("=", 1)
+    name = name.strip()
+    value = value.strip()
+    if name != key:
+        continue
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        value = value[1:-1]
+    resolved = value
+
+if resolved:
+    sys.stdout.write(resolved)
+PY
+  python3 -c "${py_script}" "${key}" "${input_mode}"
+}
+
+resolve_backend_env_secret() {
+  local key="$1"
+  local current="${2:-}"
+  if [[ -n "${current}" ]]; then
+    printf '%s' "${current}"
+    return 0
+  fi
+  local encoded_env="${OCI_A1_BACKEND_ENV_B64:-${BACKEND_ENV_B64:-}}"
+  if [[ -n "${encoded_env}" ]]; then
+    parse_env_secret_value "${key}" "b64" <<<"${encoded_env}"
+    return 0
+  fi
+  if ! command -v docker >/dev/null 2>&1; then
+    return 0
+  fi
+  local container env_dump extracted
+  for container in \
+    "${loadtest_backend_container:-}" \
+    "${STAGING_REPLAY_BACKEND_CONTAINER:-}" \
+    "${BACKEND_CONTAINER_NAME:-}" \
+    "aquila-bank-backend-a" \
+    "aquila-bank-backend-b" \
+    "aquila-bank-backend" \
+    "aquila-bank-backend-loadtest"; do
+    [[ -z "${container}" ]] && continue
+    env_dump="$(docker exec "${container}" env 2>/dev/null || true)"
+    if [[ -n "${env_dump}" ]]; then
+      extracted="$(parse_env_secret_value "${key}" "raw" <<<"${env_dump}")"
+      if [[ -n "${extracted}" ]]; then
+        printf '%s' "${extracted}"
+        return 0
+      fi
+    fi
+  done
+}
+
 effective_auth_token_required() {
   case "${K6_AUTH_TOKEN_REQUIRED}" in
     true|false)
@@ -1377,6 +1469,8 @@ run_explain_snapshot pre
 run_k6_local() {
   local run_args
   local k6_command
+  local cursor_hmac_secret security_jwt_secret
+  local -a secret_env_args=()
   run_args=(--rm)
   if [[ "${run_dependencies}" != "true" ]]; then
     run_args+=(--no-deps)
@@ -1386,6 +1480,22 @@ run_k6_local() {
     k6_command+=(--out experimental-prometheus-rw)
   fi
   k6_command+=(/scripts/transaction-read-100m.js)
+  cursor_hmac_secret="$(
+    resolve_backend_env_secret \
+      AQUILA_TRANSACTION_CURSOR_HMAC_SECRET \
+      "${AQUILA_TRANSACTION_CURSOR_HMAC_SECRET:-}"
+  )"
+  security_jwt_secret="$(
+    resolve_backend_env_secret \
+      SECURITY_JWT_SECRET \
+      "${SECURITY_JWT_SECRET:-}"
+  )"
+  if [[ -n "${cursor_hmac_secret}" ]]; then
+    secret_env_args+=(-e "AQUILA_TRANSACTION_CURSOR_HMAC_SECRET=${cursor_hmac_secret}")
+  fi
+  if [[ -n "${security_jwt_secret}" ]]; then
+    secret_env_args+=(-e "SECURITY_JWT_SECRET=${security_jwt_secret}")
+  fi
 
   # summary-only는 k6 결과 파일만 남겨 same-host observability 비용을 제외합니다.
   docker compose "${compose_files[@]}" --profile loadtest run "${run_args[@]}" \
@@ -1420,8 +1530,7 @@ run_k6_local() {
     -e K6_COLD_DEEP_CURSOR_BOOKED_AT="${K6_COLD_DEEP_CURSOR_BOOKED_AT}" \
     -e K6_COLD_DEEP_CURSOR_ID="${K6_COLD_DEEP_CURSOR_ID}" \
     -e K6_AUTH_TOKEN="${K6_AUTH_TOKEN:-}" \
-    -e AQUILA_TRANSACTION_CURSOR_HMAC_SECRET="${AQUILA_TRANSACTION_CURSOR_HMAC_SECRET:-}" \
-    -e SECURITY_JWT_SECRET="${SECURITY_JWT_SECRET:-}" \
+    ${secret_env_args[@]+"${secret_env_args[@]}"} \
     -e AQUILA_K6_VUS="${K6_VUS}" \
     -e AQUILA_K6_DURATION="${K6_DURATION:-1m}" \
     -e K6_LIMIT="${K6_LIMIT}" \
@@ -1466,11 +1575,22 @@ run_k6_local() {
 run_k6_docker_context() {
   local remote_report_dir="${K6_REMOTE_WORKDIR}/build/reports/k6"
   local k6_command
+  local cursor_hmac_secret security_jwt_secret
   k6_command=(run)
   if [[ "${K6_OBSERVABILITY_MODE}" == "prometheus" ]]; then
     k6_command+=(--out experimental-prometheus-rw)
   fi
   k6_command+=(/scripts/transaction-read-100m.js)
+  cursor_hmac_secret="$(
+    resolve_backend_env_secret \
+      AQUILA_TRANSACTION_CURSOR_HMAC_SECRET \
+      "${AQUILA_TRANSACTION_CURSOR_HMAC_SECRET:-}"
+  )"
+  security_jwt_secret="$(
+    resolve_backend_env_secret \
+      SECURITY_JWT_SECRET \
+      "${SECURITY_JWT_SECRET:-}"
+  )"
 
   # backend/PostgreSQL CPU와 k6 CPU를 분리하기 위한 별도 Docker context 실행 경로.
   echo "[k6-transaction-100m] running remote k6 generator on docker context ${K6_DOCKER_CONTEXT}"
@@ -1510,8 +1630,8 @@ run_k6_docker_context() {
     -e K6_COLD_DEEP_CURSOR_BOOKED_AT="${K6_COLD_DEEP_CURSOR_BOOKED_AT}" \
     -e K6_COLD_DEEP_CURSOR_ID="${K6_COLD_DEEP_CURSOR_ID}" \
     -e K6_AUTH_TOKEN="${K6_AUTH_TOKEN:-}" \
-    -e AQUILA_TRANSACTION_CURSOR_HMAC_SECRET="${AQUILA_TRANSACTION_CURSOR_HMAC_SECRET:-}" \
-    -e SECURITY_JWT_SECRET="${SECURITY_JWT_SECRET:-}" \
+    -e AQUILA_TRANSACTION_CURSOR_HMAC_SECRET="${cursor_hmac_secret}" \
+    -e SECURITY_JWT_SECRET="${security_jwt_secret}" \
     -e AQUILA_K6_VUS="${K6_VUS}" \
     -e AQUILA_K6_DURATION="${K6_DURATION:-1m}" \
     -e K6_LIMIT="${K6_LIMIT}" \

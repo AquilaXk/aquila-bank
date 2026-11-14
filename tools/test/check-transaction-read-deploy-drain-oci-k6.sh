@@ -80,3 +80,67 @@ if DEPLOY_DRAIN_OCI_MODE=live \
   exit 1
 fi
 grep -F "DEPLOY_DRAIN_OCI_BASE_URL is required" "${temp_dir}/missing.log" >/dev/null
+
+echo "[transaction-read-deploy-drain-oci-k6] parses export and quoted secrets from BACKEND_ENV_B64"
+fake_bin="${temp_dir}/bin"
+mkdir -p "${fake_bin}"
+docker_args_file="${temp_dir}/docker-k6.args"
+cat >"${fake_bin}/docker" <<'SH'
+#!/usr/bin/env bash
+for arg in "$@"; do
+  if [[ "${arg}" == "grafana/k6:0.54.0" ]]; then
+    printf '%s\n' "$@" >"${FAKE_DOCKER_ARGS_FILE}"
+    sleep 5
+    exit 0
+  fi
+done
+exit 0
+SH
+chmod +x "${fake_bin}/docker"
+cat >"${fake_bin}/jq" <<'SH'
+#!/usr/bin/env bash
+exit 0
+SH
+chmod +x "${fake_bin}/jq"
+fake_deploy="${temp_dir}/fake-deploy.sh"
+cat >"${fake_deploy}" <<'SH'
+#!/usr/bin/env bash
+for _ in $(seq 1 50); do
+  if [[ -s "${FAKE_DOCKER_ARGS_FILE}" ]] && grep -q "AQUILA_TRANSACTION_CURSOR_HMAC_SECRET=" "${FAKE_DOCKER_ARGS_FILE}"; then
+    break
+  fi
+  sleep 0.05
+done
+exit 1
+SH
+chmod +x "${fake_deploy}"
+backend_env_b64="$(
+  python3 -c 'import base64; print(base64.b64encode(b"export AQUILA_TRANSACTION_CURSOR_HMAC_SECRET=\"quoted-cursor\"\nSECURITY_JWT_SECRET=\x27quoted-jwt\x27\n").decode())'
+)"
+if PATH="${fake_bin}:${PATH}" \
+  FAKE_DOCKER_ARGS_FILE="${docker_args_file}" \
+  DEPLOY_DRAIN_OCI_MODE=live \
+  DEPLOY_DRAIN_OCI_NAME="${name}-secret" \
+  DEPLOY_DRAIN_OCI_OUTPUT_DIR="${temp_dir}/secret-output" \
+  DEPLOY_DRAIN_OCI_BASE_URL="https://staging.example.invalid" \
+  DEPLOY_DRAIN_OCI_HOT_ACCOUNT_ID=910000001 \
+  DEPLOY_DRAIN_OCI_HOT_FROM=2026-04-01T00:00:00Z \
+  DEPLOY_DRAIN_OCI_HOT_TO=2026-04-30T00:00:00Z \
+  DEPLOY_DRAIN_OCI_COLD_ACCOUNT_ID=910000002 \
+  DEPLOY_DRAIN_OCI_COLD_FROM=2026-01-01T00:00:00Z \
+  DEPLOY_DRAIN_OCI_COLD_TO=2026-01-31T00:00:00Z \
+  DEPLOY_DRAIN_OCI_AUTH_TOKEN=fake-token \
+  BACKEND_IMAGE=ghcr.io/aquilaxk/aquila-bank-backend \
+  FRONTEND_IMAGE=ghcr.io/aquilaxk/aquila-bank-frontend \
+  IMAGE_TAG=testtag123456 \
+  GITHUB_ACTOR=aquilaxk \
+  GITHUB_TOKEN_B64=ZmFrZQ== \
+  BACKEND_ENV_B64="${backend_env_b64}" \
+  DEPLOY_DRAIN_OCI_LOAD_START_DELAY_SECONDS=0 \
+  DEPLOY_DRAIN_OCI_DEPLOY_SCRIPT="${fake_deploy}" \
+    bash "${runner}" >"${temp_dir}/secret.log" 2>&1; then
+  echo "expected fake deploy failure to abort live run" >&2
+  exit 1
+fi
+grep -Fx "AQUILA_TRANSACTION_CURSOR_HMAC_SECRET=quoted-cursor" "${docker_args_file}" >/dev/null
+grep -Fx "SECURITY_JWT_SECRET=quoted-jwt" "${docker_args_file}" >/dev/null

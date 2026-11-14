@@ -112,6 +112,11 @@ public abstract class PostgresContainerTestSupport {
     }
     // Integration tests must execute the same PostgreSQL migrations as runtime instead of
     // relying on an in-memory fallback.
-    Flyway.configure().dataSource(dataSource).locations("classpath:db/migration").load().migrate();
+    Flyway.configure()
+        .dataSource(dataSource)
+        .locations("classpath:db/migration")
+        .configuration(java.util.Map.of("flyway.postgresql.transactional.lock", "false"))
+        .load()
+        .migrate();
   }
 }

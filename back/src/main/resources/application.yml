@@ -27,6 +27,8 @@ spring:
     validate-on-migrate: true
     out-of-order: false
     clean-disabled: true
+    postgresql:
+      transactional-lock: false
   jdbc:
     template:
       query-timeout: ${DB_QUERY_TIMEOUT_SECONDS:3}

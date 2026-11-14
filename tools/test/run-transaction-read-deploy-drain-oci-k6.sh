@@ -451,6 +451,62 @@ cleanup_k6() {
 }
 trap cleanup_k6 EXIT
 
+parse_env_secret_value() {
+  local key="$1"
+  local input_mode="$2"
+  if ! command -v python3 >/dev/null 2>&1; then
+    return 0
+  fi
+  local py_script
+  read -r -d '' py_script <<'PY' || true
+import base64
+import sys
+
+key = sys.argv[1]
+mode = sys.argv[2]
+payload = sys.stdin.read()
+
+if mode == "b64":
+    raw = "".join(payload.split())
+    if not raw:
+        sys.exit(0)
+    padded = raw + ("=" * ((4 - len(raw) % 4) % 4))
+    text = None
+    for decoder in (lambda v: base64.b64decode(v, validate=True), base64.urlsafe_b64decode):
+        try:
+            text = decoder(padded).decode("utf-8")
+            break
+        except Exception:
+            continue
+    if text is None:
+        sys.exit(0)
+else:
+    text = payload
+
+resolved = ""
+for raw_line in text.splitlines():
+    line = raw_line.strip()
+    if not line or line.startswith("#"):
+        continue
+    if line.startswith("export "):
+        line = line[len("export "):].lstrip()
+    if "=" not in line:
+        continue
+    name, value = line.split("=", 1)
+    name = name.strip()
+    value = value.strip()
+    if name != key:
+        continue
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        value = value[1:-1]
+    resolved = value
+
+if resolved:
+    sys.stdout.write(resolved)
+PY
+  python3 -c "${py_script}" "${key}" "${input_mode}"
+}
+
 resolve_backend_env_secret() {
   local key="$1"
   local current="${2:-}"
@@ -458,14 +514,32 @@ resolve_backend_env_secret() {
     printf '%s' "${current}"
     return 0
   fi
-  if [[ -z "${backend_env_b64}" ]]; then
+  local encoded_env="${backend_env_b64:-${OCI_A1_BACKEND_ENV_B64:-${BACKEND_ENV_B64:-}}}"
+  if [[ -n "${encoded_env}" ]]; then
+    parse_env_secret_value "${key}" "b64" <<<"${encoded_env}"
     return 0
   fi
-  printf '%s' "${backend_env_b64}" \
-    | (base64 -d 2>/dev/null || base64 -D 2>/dev/null || true) \
-    | tr -d '\r' \
-    | sed -n "s/^${key}=//p" \
-    | tail -1
+  if ! command -v docker >/dev/null 2>&1; then
+    return 0
+  fi
+  local container env_dump extracted
+  for container in \
+    "${STAGING_REPLAY_BACKEND_CONTAINER:-}" \
+    "${BACKEND_CONTAINER_NAME:-}" \
+    "aquila-bank-backend-a" \
+    "aquila-bank-backend-b" \
+    "aquila-bank-backend" \
+    "aquila-bank-backend-loadtest"; do
+    [[ -z "${container}" ]] && continue
+    env_dump="$(docker exec "${container}" env 2>/dev/null || true)"
+    if [[ -n "${env_dump}" ]]; then
+      extracted="$(parse_env_secret_value "${key}" "raw" <<<"${env_dump}")"
+      if [[ -n "${extracted}" ]]; then
+        printf '%s' "${extracted}"
+        return 0
+      fi
+    fi
+  done
 }
 
 start_k6_under_load() {
