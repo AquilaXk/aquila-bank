@@ -4,11 +4,16 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.LongSupplier;
 
 public class T3MicroSaturationGuard {
+
+  private static final long SNAPSHOT_CACHE_TTL_NANOS = 50_000_000L;
 
   private final T3MicroSaturationGuardProperties properties;
   private final DbPoolSaturationProbe poolProbe;
@@ -17,6 +22,7 @@ public class T3MicroSaturationGuard {
   private final JvmPressureProbe jvmPressureProbe;
   private final T3MicroQueryTimeoutSignal timeoutSignal;
   private final MeterRegistry meterRegistry;
+  private final LongSupplier nanoTicker;
   private final Counter acceptedCounter;
   private final Counter rejectedCounter;
   private final ConcurrentMap<String, Counter> backgroundWorkerPauseCounters =
@@ -24,6 +30,7 @@ public class T3MicroSaturationGuard {
   private final ConcurrentMap<String, AtomicInteger> protectedSaturationStreaks =
       new ConcurrentHashMap<>();
   private final AtomicInteger saturatedGauge = new AtomicInteger();
+  private final AtomicReference<CachedSnapshot> cachedSnapshot = new AtomicReference<>();
 
   public T3MicroSaturationGuard(
       T3MicroSaturationGuardProperties properties,
@@ -39,7 +46,8 @@ public class T3MicroSaturationGuard {
         servletThreadProbe,
         jvmPressureProbe,
         timeoutSignal,
-        meterRegistry);
+        meterRegistry,
+        System::nanoTime);
   }
 
   public T3MicroSaturationGuard(
@@ -50,6 +58,26 @@ public class T3MicroSaturationGuard {
       JvmPressureProbe jvmPressureProbe,
       T3MicroQueryTimeoutSignal timeoutSignal,
       MeterRegistry meterRegistry) {
+    this(
+        properties,
+        poolProbe,
+        readReplicaPoolProbe,
+        servletThreadProbe,
+        jvmPressureProbe,
+        timeoutSignal,
+        meterRegistry,
+        System::nanoTime);
+  }
+
+  T3MicroSaturationGuard(
+      T3MicroSaturationGuardProperties properties,
+      DbPoolSaturationProbe poolProbe,
+      DbPoolSaturationProbe readReplicaPoolProbe,
+      ServletThreadSaturationProbe servletThreadProbe,
+      JvmPressureProbe jvmPressureProbe,
+      T3MicroQueryTimeoutSignal timeoutSignal,
+      MeterRegistry meterRegistry,
+      LongSupplier nanoTicker) {
     this.properties = properties;
     this.poolProbe = poolProbe;
     this.readReplicaPoolProbe = readReplicaPoolProbe;
@@ -57,6 +85,7 @@ public class T3MicroSaturationGuard {
     this.jvmPressureProbe = jvmPressureProbe;
     this.timeoutSignal = timeoutSignal;
     this.meterRegistry = meterRegistry;
+    this.nanoTicker = nanoTicker;
     if (properties.enabled()) {
       this.acceptedCounter = requestCounter(meterRegistry, "accepted");
       this.rejectedCounter = requestCounter(meterRegistry, "rejected");
@@ -117,6 +146,20 @@ public class T3MicroSaturationGuard {
   }
 
   private T3MicroSaturationSnapshot snapshot() {
+    long nowNanos = nanoTicker.getAsLong();
+    long timeoutVersion = timeoutSignal.version();
+    CachedSnapshot current = cachedSnapshot.get();
+    if (current != null
+        && nowNanos - current.capturedAtNanos() < SNAPSHOT_CACHE_TTL_NANOS
+        && current.timeoutVersion() == timeoutVersion) {
+      return current.snapshot();
+    }
+    T3MicroSaturationSnapshot fresh = collectSnapshot();
+    cachedSnapshot.compareAndSet(current, new CachedSnapshot(fresh, nowNanos, timeoutVersion));
+    return fresh;
+  }
+
+  private T3MicroSaturationSnapshot collectSnapshot() {
     DbPoolSaturationSnapshot pool = poolProbe.snapshot();
     DbPoolSaturationSnapshot readReplicaPool = readReplicaPoolProbe.snapshot();
     ServletThreadSaturationSnapshot servletThreads = servletThreadProbe.snapshot();
@@ -145,10 +188,14 @@ public class T3MicroSaturationGuard {
   }
 
   private String protectedPathPrefix(String path) {
-    return properties.protectedPathPrefixes().stream()
-        .filter(path::startsWith)
-        .findFirst()
-        .orElse(null);
+    List<String> prefixes = properties.protectedPathPrefixes();
+    for (int i = 0, size = prefixes.size(); i < size; i++) {
+      String prefix = prefixes.get(i);
+      if (path.startsWith(prefix)) {
+        return prefix;
+      }
+    }
+    return null;
   }
 
   private boolean readReplicaPoolSaturated(String path, T3MicroSaturationSnapshot snapshot) {
@@ -156,7 +203,13 @@ public class T3MicroSaturationGuard {
       return false;
     }
     // replica pool은 transaction read 경로에만 묶어 다른 보호 API의 과잉 차단을 피합니다.
-    return properties.readReplicaPool().protectedPathPrefixes().stream().anyMatch(path::startsWith);
+    List<String> prefixes = properties.readReplicaPool().protectedPathPrefixes();
+    for (int i = 0, size = prefixes.size(); i < size; i++) {
+      if (path.startsWith(prefixes.get(i))) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private Counter requestCounter(MeterRegistry meterRegistry, String outcome) {
@@ -175,4 +228,7 @@ public class T3MicroSaturationGuard {
                 .description("background worker pauses by t3.micro saturation guard")
                 .register(meterRegistry));
   }
+
+  private record CachedSnapshot(
+      T3MicroSaturationSnapshot snapshot, long capturedAtNanos, long timeoutVersion) {}
 }

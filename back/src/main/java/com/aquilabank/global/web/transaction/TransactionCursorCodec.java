@@ -17,16 +17,19 @@ public final class TransactionCursorCodec {
 
   private static final String HMAC_ALGORITHM = "HmacSHA256";
   private static final String DEFAULT_HMAC_SECRET = "aquila-bank-transaction-cursor-hmac-v1";
-  private static final int PAYLOAD_BYTES = Long.BYTES + Integer.BYTES + Long.BYTES;
+  private static final int PAYLOAD_BYTES = Long.BYTES + Long.BYTES + Integer.BYTES + Long.BYTES;
   private static final int HMAC_BYTES = 32;
   private static final int TOTAL_BYTES = PAYLOAD_BYTES + HMAC_BYTES;
+  private static final int MAX_ENCODED_LENGTH = 128;
   private static final int MAX_NANO = 999_999_999;
   private static final VarHandle LONG_VIEW =
       MethodHandles.byteArrayViewVarHandle(long[].class, ByteOrder.BIG_ENDIAN);
   private static final SecretKeySpec HMAC_KEY =
       resolveHmacKey(
           System.getProperty("aquila.transaction.cursor.hmac-secret"),
-          System.getenv("AQUILA_TRANSACTION_CURSOR_HMAC_SECRET"));
+          System.getenv("AQUILA_TRANSACTION_CURSOR_HMAC_SECRET"),
+          System.getProperty("spring.profiles.active"),
+          System.getenv("SPRING_PROFILES_ACTIVE"));
   private static final ThreadLocal<Mac> THREAD_LOCAL_MAC =
       ThreadLocal.withInitial(TransactionCursorCodec::createInitializedMac);
   private static final ThreadLocal<byte[]> THREAD_LOCAL_MAC_SCRATCH =
@@ -36,16 +39,57 @@ public final class TransactionCursorCodec {
 
   private TransactionCursorCodec() {}
 
-  static SecretKeySpec resolveHmacKey(String propertySecret, String envSecret) {
+  static SecretKeySpec resolveHmacKey(
+      String propertySecret,
+      String envSecret,
+      String activeProfilesProperty,
+      String activeProfilesEnv) {
     String resolved =
         propertySecret != null && !propertySecret.isBlank()
             ? propertySecret
-            : (envSecret != null && !envSecret.isBlank() ? envSecret : DEFAULT_HMAC_SECRET);
+            : (envSecret != null && !envSecret.isBlank() ? envSecret : null);
+    if (resolved == null) {
+      if (!isDevOrTestProfile(activeProfilesProperty, activeProfilesEnv)) {
+        throw new IllegalStateException(
+            "Transaction cursor HMAC secret must be configured outside dev/test profiles");
+      }
+      resolved = DEFAULT_HMAC_SECRET;
+    }
     return new SecretKeySpec(resolved.getBytes(StandardCharsets.UTF_8), HMAC_ALGORITHM);
   }
 
-  public static String encode(TransactionCursor cursor) {
+  private static boolean isDevOrTestProfile(
+      String activeProfilesProperty, String activeProfilesEnv) {
+    String profiles =
+        activeProfilesProperty != null && !activeProfilesProperty.isBlank()
+            ? activeProfilesProperty
+            : activeProfilesEnv;
+    if (profiles == null || profiles.isBlank()) {
+      return false;
+    }
+    int start = 0;
+    int length = profiles.length();
+    while (start <= length) {
+      int comma = profiles.indexOf(',', start);
+      int end = comma < 0 ? length : comma;
+      String token = profiles.substring(start, end).trim();
+      if ("dev".equals(token) || "test".equals(token)) {
+        return true;
+      }
+      if (comma < 0) {
+        break;
+      }
+      start = comma + 1;
+    }
+    return false;
+  }
+
+  public static String encode(long accountId, TransactionCursor cursor) {
+    if (accountId <= 0 || cursor == null) {
+      throw new IllegalArgumentException("accountId and cursor must be valid");
+    }
     ByteBuffer buffer = ByteBuffer.allocate(TOTAL_BYTES);
+    buffer.putLong(accountId);
     buffer.putLong(cursor.bookedAt().getEpochSecond());
     buffer.putInt(cursor.bookedAt().getNano());
     buffer.putLong(cursor.id());
@@ -54,8 +98,11 @@ public final class TransactionCursorCodec {
     return URL_ENCODER.encodeToString(raw);
   }
 
-  public static TransactionCursor decode(String rawCursor) {
-    if (rawCursor == null || rawCursor.isBlank()) {
+  public static TransactionCursor decode(long expectedAccountId, String rawCursor) {
+    if (expectedAccountId <= 0
+        || rawCursor == null
+        || rawCursor.isBlank()
+        || rawCursor.length() > MAX_ENCODED_LENGTH) {
       throw new IllegalArgumentException("cursor format is invalid");
     }
     try {
@@ -64,10 +111,11 @@ public final class TransactionCursorCodec {
         throw new IllegalArgumentException("cursor format is invalid");
       }
       ByteBuffer buffer = ByteBuffer.wrap(raw, 0, PAYLOAD_BYTES);
+      long accountId = buffer.getLong();
       long epochSecond = buffer.getLong();
       int nano = buffer.getInt();
       long id = buffer.getLong();
-      if (nano < 0 || nano > MAX_NANO || id <= 0) {
+      if (accountId != expectedAccountId || nano < 0 || nano > MAX_NANO || id <= 0) {
         throw new IllegalArgumentException("cursor format is invalid");
       }
       return new TransactionCursor(Instant.ofEpochSecond(epochSecond, nano), id);
@@ -93,11 +141,11 @@ public final class TransactionCursorCodec {
     mac.reset();
     mac.update(raw, 0, PAYLOAD_BYTES);
     mac.doFinal(scratch, 0);
-    // 32바이트 HMAC을 64비트 워드 4개 XOR 누적으로 상수 시간 비교해 배열 복사 할당을 제거합니다.
-    long w0 = (long) LONG_VIEW.get(raw, 20);
-    long w1 = (long) LONG_VIEW.get(raw, 28);
-    long w2 = (long) LONG_VIEW.get(raw, 36);
-    long w3 = (long) LONG_VIEW.get(raw, 44);
+    // 계좌 바인딩(28바이트 payload) 뒤 32바이트 HMAC을 64비트 워드 4개 XOR 누적으로 상수 시간 비교합니다.
+    long w0 = (long) LONG_VIEW.get(raw, 28);
+    long w1 = (long) LONG_VIEW.get(raw, 36);
+    long w2 = (long) LONG_VIEW.get(raw, 44);
+    long w3 = (long) LONG_VIEW.get(raw, 52);
     long s0 = (long) LONG_VIEW.get(scratch, 0);
     long s1 = (long) LONG_VIEW.get(scratch, 8);
     long s2 = (long) LONG_VIEW.get(scratch, 16);

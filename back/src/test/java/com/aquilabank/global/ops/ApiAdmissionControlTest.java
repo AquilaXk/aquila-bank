@@ -381,6 +381,31 @@ class ApiAdmissionControlTest {
     first.release();
   }
 
+  @Test
+  void supportsFull64BitSlidingWindowAndFailsClosedAbove64() {
+    org.assertj.core.api.Assertions.assertThatThrownBy(
+            () ->
+                new ApiAdmissionControlProperties.AdaptiveLimit(
+                    true, 1, 2, 10, 1, 65, 0.5, 0, 1, 0, 0, 0))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("64");
+
+    SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+    ApiAdmissionControl control =
+        new ApiAdmissionControl(adaptiveProperties(2, 1, 2, 100, 1, 64, 0.5, 0, 1), meterRegistry);
+
+    ApiAdmissionPermit holdA = control.tryAcquire("/api/v1/transactions");
+    ApiAdmissionPermit holdB = control.tryAcquire("/api/v1/transactions");
+    for (int i = 0; i < 61; i++) {
+      assertThat(control.tryAcquire("/api/v1/transactions").allowed()).isFalse();
+    }
+    assertCurrentLimit(meterRegistry, 2.0);
+    assertThat(control.tryAcquire("/api/v1/transactions").allowed()).isFalse();
+    assertCurrentLimit(meterRegistry, 1.0);
+    holdA.release();
+    holdB.release();
+  }
+
   private ApiAdmissionControlProperties properties(boolean enabled) {
     return new ApiAdmissionControlProperties(
         enabled,

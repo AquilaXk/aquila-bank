@@ -38,6 +38,134 @@ import org.springframework.transaction.annotation.Transactional;
 public class JdbcTransferWriteRepository implements TransferWritePort, TransferReversalWritePort {
 
   private static final String ACTIVE_ACCOUNT_STATUS = "ACTIVE";
+  private static final String PERSIST_ACCOUNTING_BUNDLE_SQL =
+      """
+      -- 송금/역분개 회계 적재 7건(원장 2, 잔액 스냅샷 2, read model 2, outbox 1)을 단일 CTE 왕복으로 처리합니다.
+      WITH inserted_ledger AS (
+          INSERT INTO ledger_entry (
+              account_id,
+              transaction_reference,
+              entry_reference,
+              direction,
+              entry_status,
+              amount_minor,
+              currency_code,
+              booked_at,
+              description,
+              trace_id,
+              metadata,
+              occurred_at,
+              created_at,
+              updated_at
+          )
+          VALUES
+              (
+                  :firstAccountId,
+                  :transactionReference,
+                  :firstEntryReference,
+                  :firstDirection,
+                  'BOOKED',
+                  :amountMinor,
+                  :currencyCode,
+                  :bookedAt,
+                  :summary,
+                  :traceId,
+                  CAST(:metadata AS jsonb),
+                  :bookedAt,
+                  :bookedAt,
+                  :bookedAt
+              ),
+              (
+                  :secondAccountId,
+                  :transactionReference,
+                  :secondEntryReference,
+                  :secondDirection,
+                  'BOOKED',
+                  :amountMinor,
+                  :currencyCode,
+                  :bookedAt,
+                  :summary,
+                  :traceId,
+                  CAST(:metadata AS jsonb),
+                  :bookedAt,
+                  :bookedAt,
+                  :bookedAt
+              )
+          RETURNING id, account_id, direction
+      ),
+      updated_snapshots AS (
+          UPDATE account_balance_snapshot s
+          SET last_applied_ledger_entry_id = l.id,
+              available_balance_minor = CASE
+                  WHEN s.account_id = :firstAccountId THEN :firstBalanceAfter
+                  ELSE :secondBalanceAfter
+              END,
+              updated_at = :bookedAt
+          FROM inserted_ledger l
+          WHERE s.account_id = l.account_id
+          RETURNING s.account_id
+      ),
+      inserted_read_model AS (
+          INSERT INTO transaction_read_model (
+              ledger_entry_id,
+              account_id,
+              transaction_reference,
+              direction,
+              transaction_status,
+              amount_minor,
+              balance_after_minor,
+              currency_code,
+              summary,
+              counterparty_masked_name,
+              booked_at,
+              created_at
+          )
+          SELECT l.id,
+                 l.account_id,
+                 :transactionReference,
+                 l.direction,
+                 'BOOKED',
+                 :amountMinor,
+                 CASE
+                     WHEN l.account_id = :firstAccountId THEN :firstBalanceAfter
+                     ELSE :secondBalanceAfter
+                 END,
+                 :currencyCode,
+                 :summary,
+                 CASE
+                     WHEN l.account_id = :firstAccountId THEN :firstCounterparty
+                     ELSE :secondCounterparty
+                 END,
+                 :bookedAt,
+                 :bookedAt
+          FROM inserted_ledger l
+      ),
+      inserted_outbox AS (
+          INSERT INTO outbox_event (
+              aggregate_type,
+              aggregate_id,
+              event_type,
+              event_key,
+              payload,
+              publish_status,
+              available_at,
+              created_at,
+              updated_at
+          )
+          VALUES (
+              'TRANSFER',
+              :transactionReference,
+              :outboxEventType,
+              :outboxEventKey,
+              CAST(:outboxPayload AS jsonb),
+              'PENDING',
+              :bookedAt,
+              :bookedAt,
+              :bookedAt
+          )
+      )
+      SELECT COUNT(*) FROM updated_snapshots
+      """;
 
   private static final RowMapper<IdempotencyRecord> IDEMPOTENCY_ROW_MAPPER =
       (rs, rowNum) -> mapIdempotencyRecord(rs);
@@ -123,59 +251,26 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
     long sourceBalanceAfter = source.availableBalanceMinor() - command.amountMinor();
     long targetBalanceAfter = Math.addExact(target.availableBalanceMinor(), command.amountMinor());
 
-    // ledger entry를 먼저 남겨 원장 기록을 source of truth로 고정합니다.
-    long debitEntryId =
-        insertLedgerEntry(
+    // ledger entry, 잔액 스냅샷, read model, outbox 적재를 단일 CTE 왕복으로 고정합니다.
+    persistAccountingBundle(
+        new AccountingBundleCommand(
             command.sourceAccountId(),
-            transactionReference,
             "DEBIT",
-            command.amountMinor(),
-            command.currencyCode(),
-            command.summary(),
-            bookedAt,
-            "{}");
-    long creditEntryId =
-        insertLedgerEntry(
+            sourceBalanceAfter,
+            "ACCOUNT-" + command.targetAccountId(),
             command.targetAccountId(),
-            transactionReference,
             "CREDIT",
+            targetBalanceAfter,
+            "ACCOUNT-" + command.sourceAccountId(),
+            transactionReference,
             command.amountMinor(),
             command.currencyCode(),
             command.summary(),
+            "{}",
             bookedAt,
-            "{}");
-
-    updateBalanceSnapshot(command.sourceAccountId(), debitEntryId, sourceBalanceAfter, bookedAt);
-    updateBalanceSnapshot(command.targetAccountId(), creditEntryId, targetBalanceAfter, bookedAt);
-
-    // 조회 path는 read model을 별도로 적재해 대량 timeline lookup 비용을 낮춥니다.
-    insertTransactionReadModel(
-        debitEntryId,
-        command.sourceAccountId(),
-        transactionReference,
-        "DEBIT",
-        "BOOKED",
-        command.amountMinor(),
-        sourceBalanceAfter,
-        command.currencyCode(),
-        command.summary(),
-        "ACCOUNT-" + command.targetAccountId(),
-        bookedAt);
-    insertTransactionReadModel(
-        creditEntryId,
-        command.targetAccountId(),
-        transactionReference,
-        "CREDIT",
-        "BOOKED",
-        command.amountMinor(),
-        targetBalanceAfter,
-        command.currencyCode(),
-        command.summary(),
-        "ACCOUNT-" + command.sourceAccountId(),
-        bookedAt);
-
-    // 비동기 알림은 같은 transaction 안에서 outbox에 적재하고 실제 delivery는 나중에 분리합니다.
-    insertOutboxEvent(command, transactionReference, bookedAt);
+            "TransferBooked",
+            "transfer-booked:" + transactionReference,
+            toJson(outboxPayload(command, transactionReference, bookedAt))));
 
     TransferResult result =
         new TransferResult(
@@ -258,61 +353,37 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
                 "reversalAmountMinor", reversalAmount,
                 "reversalReason", command.reversalReason().name()));
 
-    long sourceReversalEntryId =
-        insertLedgerEntry(
+    persistAccountingBundle(
+        new AccountingBundleCommand(
             original.sourceAccountId(),
-            reversalTransactionReference,
             "CREDIT",
-            reversalAmount,
-            original.currencyCode(),
-            command.summary(),
-            bookedAt,
-            reversalMetadata);
-    long targetReversalEntryId =
-        insertLedgerEntry(
+            sourceBalanceAfter,
+            "ACCOUNT-" + original.targetAccountId(),
             original.targetAccountId(),
-            reversalTransactionReference,
             "DEBIT",
+            targetBalanceAfter,
+            "ACCOUNT-" + original.sourceAccountId(),
+            reversalTransactionReference,
             reversalAmount,
             original.currencyCode(),
             command.summary(),
+            reversalMetadata,
             bookedAt,
-            reversalMetadata);
-
-    updateBalanceSnapshot(
-        original.sourceAccountId(), sourceReversalEntryId, sourceBalanceAfter, bookedAt);
-    updateBalanceSnapshot(
-        original.targetAccountId(), targetReversalEntryId, targetBalanceAfter, bookedAt);
+            "TransferReversed",
+            "transfer-reversed:" + reversalTransactionReference,
+            toJson(
+                Map.of(
+                    "originalTransactionReference", original.transactionReference(),
+                    "reversalTransactionReference", reversalTransactionReference,
+                    "sourceAccountId", original.sourceAccountId(),
+                    "targetAccountId", original.targetAccountId(),
+                    "amountMinor", reversalAmount,
+                    "currencyCode", original.currencyCode(),
+                    "reversalReason", command.reversalReason().name(),
+                    "bookedAt", bookedAt.toString()))));
 
     markTransactionReadModelStatus(original, originalStatus);
-    insertTransactionReadModel(
-        sourceReversalEntryId,
-        original.sourceAccountId(),
-        reversalTransactionReference,
-        "CREDIT",
-        "BOOKED",
-        reversalAmount,
-        sourceBalanceAfter,
-        original.currencyCode(),
-        command.summary(),
-        "ACCOUNT-" + original.targetAccountId(),
-        bookedAt);
-    insertTransactionReadModel(
-        targetReversalEntryId,
-        original.targetAccountId(),
-        reversalTransactionReference,
-        "DEBIT",
-        "BOOKED",
-        reversalAmount,
-        targetBalanceAfter,
-        original.currencyCode(),
-        command.summary(),
-        "ACCOUNT-" + original.sourceAccountId(),
-        bookedAt);
-
     insertTransferReversal(
-        original, reversalTransactionReference, reversalAmount, command, bookedAt);
-    insertReversalOutboxEvent(
         original, reversalTransactionReference, reversalAmount, command, bookedAt);
 
     TransferReversalResult result =
@@ -466,245 +537,37 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
     }
   }
 
-  private long insertLedgerEntry(
-      long accountId,
-      String transactionReference,
-      String direction,
-      long amountMinor,
-      String currencyCode,
-      String summary,
-      Instant bookedAt,
-      String metadataJson) {
+  private void persistAccountingBundle(AccountingBundleCommand bundle) {
     String traceId = RequestTraceContext.currentRequestId().orElse(null);
+    Timestamp bookedAt = Timestamp.from(bundle.bookedAt());
     MapSqlParameterSource params =
         new MapSqlParameterSource()
-            .addValue("accountId", accountId)
-            .addValue("transactionReference", transactionReference)
-            .addValue("entryReference", "ENT-" + UUID.randomUUID())
-            .addValue("direction", direction)
-            .addValue("amountMinor", amountMinor)
-            .addValue("currencyCode", currencyCode)
-            .addValue("summary", summary)
-            .addValue("metadata", metadataJson)
+            .addValue("firstAccountId", bundle.firstAccountId())
+            .addValue("firstEntryReference", "ENT-" + UUID.randomUUID())
+            .addValue("firstDirection", bundle.firstDirection())
+            .addValue("firstBalanceAfter", bundle.firstBalanceAfter())
+            .addValue("firstCounterparty", bundle.firstCounterparty())
+            .addValue("secondAccountId", bundle.secondAccountId())
+            .addValue("secondEntryReference", "ENT-" + UUID.randomUUID())
+            .addValue("secondDirection", bundle.secondDirection())
+            .addValue("secondBalanceAfter", bundle.secondBalanceAfter())
+            .addValue("secondCounterparty", bundle.secondCounterparty())
+            .addValue("transactionReference", bundle.transactionReference())
+            .addValue("amountMinor", bundle.amountMinor())
+            .addValue("currencyCode", bundle.currencyCode())
+            .addValue("summary", bundle.summary())
             .addValue("traceId", traceId)
-            .addValue("bookedAt", Timestamp.from(bookedAt));
+            .addValue("metadata", bundle.metadataJson())
+            .addValue("bookedAt", bookedAt)
+            .addValue("outboxEventType", bundle.outboxEventType())
+            .addValue("outboxEventKey", bundle.outboxEventKey())
+            .addValue("outboxPayload", bundle.outboxPayload());
 
-    Long id =
-        jdbcTemplate.queryForObject(
-            """
-            INSERT INTO ledger_entry (
-                account_id,
-                transaction_reference,
-                entry_reference,
-                direction,
-                entry_status,
-                amount_minor,
-                currency_code,
-                booked_at,
-                description,
-                trace_id,
-                metadata,
-                occurred_at,
-                created_at,
-                updated_at
-            )
-            VALUES (
-                :accountId,
-                :transactionReference,
-                :entryReference,
-                :direction,
-                'BOOKED',
-                :amountMinor,
-                :currencyCode,
-                :bookedAt,
-                :summary,
-                :traceId,
-                CAST(:metadata AS jsonb),
-                :bookedAt,
-                :bookedAt,
-                :bookedAt
-            )
-            RETURNING id
-            """,
-            params,
-            Long.class);
-    if (id == null) {
-      throw new IllegalStateException("ledger entry insert did not return id");
-    }
-    return id;
-  }
-
-  private void updateBalanceSnapshot(
-      long accountId, long ledgerEntryId, long availableBalanceAfter, Instant updatedAt) {
-    MapSqlParameterSource params =
-        new MapSqlParameterSource()
-            .addValue("accountId", accountId)
-            .addValue("ledgerEntryId", ledgerEntryId)
-            .addValue("availableBalanceAfter", availableBalanceAfter)
-            .addValue("updatedAt", Timestamp.from(updatedAt));
-
-    int updated =
-        jdbcTemplate.update(
-            """
-            UPDATE account_balance_snapshot
-            SET last_applied_ledger_entry_id = :ledgerEntryId,
-                available_balance_minor = :availableBalanceAfter,
-                updated_at = :updatedAt
-            WHERE account_id = :accountId
-            """,
-            params);
-    if (updated != 1) {
+    Integer updatedSnapshots =
+        jdbcTemplate.queryForObject(PERSIST_ACCOUNTING_BUNDLE_SQL, params, Integer.class);
+    if (updatedSnapshots == null || updatedSnapshots != 2) {
       throw new IllegalStateException("balance snapshot update failed");
     }
-  }
-
-  private void insertTransactionReadModel(
-      long ledgerEntryId,
-      long accountId,
-      String transactionReference,
-      String direction,
-      String transactionStatus,
-      long amountMinor,
-      long balanceAfterMinor,
-      String currencyCode,
-      String summary,
-      String counterpartyMaskedName,
-      Instant bookedAt) {
-    MapSqlParameterSource params =
-        new MapSqlParameterSource()
-            .addValue("ledgerEntryId", ledgerEntryId)
-            .addValue("accountId", accountId)
-            .addValue("transactionReference", transactionReference)
-            .addValue("direction", direction)
-            .addValue("transactionStatus", transactionStatus)
-            .addValue("amountMinor", amountMinor)
-            .addValue("balanceAfterMinor", balanceAfterMinor)
-            .addValue("currencyCode", currencyCode)
-            .addValue("summary", summary)
-            .addValue("counterpartyMaskedName", counterpartyMaskedName)
-            .addValue("bookedAt", Timestamp.from(bookedAt));
-
-    jdbcTemplate.update(
-        """
-        INSERT INTO transaction_read_model (
-            ledger_entry_id,
-            account_id,
-            transaction_reference,
-            direction,
-            transaction_status,
-            amount_minor,
-            balance_after_minor,
-            currency_code,
-            summary,
-            counterparty_masked_name,
-            booked_at,
-            created_at
-        )
-        VALUES (
-            :ledgerEntryId,
-            :accountId,
-            :transactionReference,
-            :direction,
-            :transactionStatus,
-            :amountMinor,
-            :balanceAfterMinor,
-            :currencyCode,
-            :summary,
-            :counterpartyMaskedName,
-            :bookedAt,
-            :bookedAt
-        )
-        """,
-        params);
-  }
-
-  private void insertOutboxEvent(
-      TransferCommand command, String transactionReference, Instant bookedAt) {
-    MapSqlParameterSource params =
-        new MapSqlParameterSource()
-            .addValue("aggregateId", transactionReference)
-            .addValue("eventKey", "transfer-booked:" + transactionReference)
-            .addValue("payload", toJson(outboxPayload(command, transactionReference, bookedAt)))
-            .addValue("bookedAt", Timestamp.from(bookedAt));
-
-    jdbcTemplate.update(
-        """
-        INSERT INTO outbox_event (
-            aggregate_type,
-            aggregate_id,
-            event_type,
-            event_key,
-            payload,
-            publish_status,
-            available_at,
-            created_at,
-            updated_at
-        )
-        VALUES (
-            'TRANSFER',
-            :aggregateId,
-            'TransferBooked',
-            :eventKey,
-            CAST(:payload AS jsonb),
-            'PENDING',
-            :bookedAt,
-            :bookedAt,
-            :bookedAt
-        )
-        """,
-        params);
-  }
-
-  private void insertReversalOutboxEvent(
-      OriginalTransferRecord original,
-      String reversalTransactionReference,
-      long reversalAmount,
-      TransferReversalCommand command,
-      Instant bookedAt) {
-    MapSqlParameterSource params =
-        new MapSqlParameterSource()
-            .addValue("aggregateId", reversalTransactionReference)
-            .addValue("eventKey", "transfer-reversed:" + reversalTransactionReference)
-            .addValue(
-                "payload",
-                toJson(
-                    Map.of(
-                        "originalTransactionReference", original.transactionReference(),
-                        "reversalTransactionReference", reversalTransactionReference,
-                        "sourceAccountId", original.sourceAccountId(),
-                        "targetAccountId", original.targetAccountId(),
-                        "amountMinor", reversalAmount,
-                        "currencyCode", original.currencyCode(),
-                        "reversalReason", command.reversalReason().name(),
-                        "bookedAt", bookedAt.toString())))
-            .addValue("bookedAt", Timestamp.from(bookedAt));
-
-    jdbcTemplate.update(
-        """
-        INSERT INTO outbox_event (
-            aggregate_type,
-            aggregate_id,
-            event_type,
-            event_key,
-            payload,
-            publish_status,
-            available_at,
-            created_at,
-            updated_at
-        )
-        VALUES (
-            'TRANSFER',
-            :aggregateId,
-            'TransferReversed',
-            :eventKey,
-            CAST(:payload AS jsonb),
-            'PENDING',
-            :bookedAt,
-            :bookedAt,
-            :bookedAt
-        )
-        """,
-        params);
   }
 
   private void insertTransferReversal(
@@ -989,4 +852,23 @@ public class JdbcTransferWriteRepository implements TransferWritePort, TransferR
 
   private record LockedBalanceSnapshotPair(
       LockedBalanceSnapshot first, LockedBalanceSnapshot second) {}
+
+  private record AccountingBundleCommand(
+      long firstAccountId,
+      String firstDirection,
+      long firstBalanceAfter,
+      String firstCounterparty,
+      long secondAccountId,
+      String secondDirection,
+      long secondBalanceAfter,
+      String secondCounterparty,
+      String transactionReference,
+      long amountMinor,
+      String currencyCode,
+      String summary,
+      String metadataJson,
+      Instant bookedAt,
+      String outboxEventType,
+      String outboxEventKey,
+      String outboxPayload) {}
 }

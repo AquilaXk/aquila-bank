@@ -45,12 +45,12 @@ class T3MicroSaturationGuardConfigurationTest {
   }
 
   @Test
-  void accumulatesGcCountsWithinWindowBeforeResettingAnchorAfterWindowExpires() {
+  void accumulatesGcCountsAcrossTwoRollingHalfWindowBucketsBeforeIdleReset() {
     MemoryMXBean memoryMXBean = mock(MemoryMXBean.class);
     when(memoryMXBean.getHeapMemoryUsage()).thenReturn(new MemoryUsage(100L, 450L, 800L, 1_000L));
     GarbageCollectorMXBean gcBean = mock(GarbageCollectorMXBean.class);
-    when(gcBean.getCollectionCount()).thenReturn(10L, 11L, 13L, 14L);
-    when(gcBean.getCollectionTime()).thenReturn(100L, 180L, 360L, 400L);
+    when(gcBean.getCollectionCount()).thenReturn(10L, 11L, 13L, 14L, 15L);
+    when(gcBean.getCollectionTime()).thenReturn(100L, 180L, 360L, 400L, 450L);
     AtomicReference<Instant> currentInstant =
         new AtomicReference<>(Instant.parse("2026-04-22T00:00:00Z"));
     Clock clock =
@@ -88,7 +88,11 @@ class T3MicroSaturationGuardConfigurationTest {
     assertThat(third).isEqualTo(new JvmPressureSnapshot(450L, 1_000L, 3L, 260L));
 
     currentInstant.set(Instant.parse("2026-04-22T00:00:11Z"));
-    JvmPressureSnapshot resetAfterWindow = probe.snapshot(window);
-    assertThat(resetAfterWindow).isEqualTo(new JvmPressureSnapshot(450L, 1_000L, 0L, 0L));
+    JvmPressureSnapshot slidWindow = probe.snapshot(window);
+    assertThat(slidWindow).isEqualTo(new JvmPressureSnapshot(450L, 1_000L, 1L, 40L));
+
+    currentInstant.set(Instant.parse("2026-04-22T00:00:22Z"));
+    JvmPressureSnapshot resetAfterIdle = probe.snapshot(window);
+    assertThat(resetAfterIdle).isEqualTo(new JvmPressureSnapshot(450L, 1_000L, 0L, 0L));
   }
 }

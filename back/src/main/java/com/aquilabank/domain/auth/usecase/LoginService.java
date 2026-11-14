@@ -24,6 +24,7 @@ import com.aquilabank.domain.auth.model.TotpCredentialStatus;
 import com.aquilabank.domain.auth.model.TotpLoginChallengeUpsertCommand;
 import com.aquilabank.domain.auth.model.UserStatus;
 import com.aquilabank.domain.auth.port.AuthTokenIssuePort;
+import com.aquilabank.domain.auth.port.AuthWriteTransactionPort;
 import com.aquilabank.domain.auth.port.LoginAttemptAuditPort;
 import com.aquilabank.domain.auth.port.LoginAttemptUpdatePort;
 import com.aquilabank.domain.auth.port.PasswordHashPort;
@@ -62,6 +63,7 @@ public final class LoginService implements LoginUseCase {
   private final RememberDevicePolicy rememberDevicePolicy;
   private final Duration totpChallengeTtl;
   private final String dummyPasswordHash;
+  private final AuthWriteTransactionPort authWriteTransactionPort;
   private final Clock clock;
 
   public LoginService(
@@ -83,6 +85,7 @@ public final class LoginService implements LoginUseCase {
       RememberDevicePolicy rememberDevicePolicy,
       Duration totpChallengeTtl,
       String dummyPasswordHash,
+      AuthWriteTransactionPort authWriteTransactionPort,
       Clock clock) {
     this.userCredentialLoadPort = userCredentialLoadPort;
     this.loginAttemptUpdatePort = loginAttemptUpdatePort;
@@ -102,21 +105,75 @@ public final class LoginService implements LoginUseCase {
     this.rememberDevicePolicy = rememberDevicePolicy;
     this.totpChallengeTtl = totpChallengeTtl;
     this.dummyPasswordHash = dummyPasswordHash;
+    this.authWriteTransactionPort = authWriteTransactionPort;
     this.clock = clock;
   }
 
   @Override
   public LoginResult login(LoginCommand command) {
     Instant now = Instant.now(clock);
-    LoginUser user =
+    LoginUser snapshot =
         userCredentialLoadPort
-            .findByLoginIdForUpdate(command.loginId())
+            .findByLoginId(command.loginId())
             .orElseGet(() -> consumeMissingUserPath(command.loginId(), command.password()));
 
+    throwIfBlockedUser(command.loginId(), snapshot, now);
+
+    // BCrypt 검증은 DB 행 락/트랜잭션 밖에서 실행해 로그인 동시성 병목과 커넥션 고갈을 차단합니다.
+    boolean snapshotPasswordMatches =
+        passwordHashPort.matches(command.password(), snapshot.passwordHash());
+
+    return authWriteTransactionPort.execute(
+        () -> {
+          LoginUser user =
+              userCredentialLoadPort
+                  .findByLoginIdForUpdate(command.loginId())
+                  .orElseGet(() -> auditMissingUserAndThrow(command.loginId()));
+          throwIfBlockedUser(command.loginId(), user, now);
+
+          boolean hashUnchanged = user.passwordHash().equals(snapshot.passwordHash());
+          if (!snapshotPasswordMatches || !hashUnchanged) {
+            if (hashUnchanged) {
+              recordLoginFailure(command.loginId(), user, now);
+            }
+            throw new InvalidCredentialsException("login failed");
+          }
+
+          loginAttemptUpdatePort.recordLoginSuccess(
+              new LoginSuccessUpdateCommand(user.userId(), now));
+          if (shouldLogReset(user)) {
+            loginAttemptAuditPort.logReset(
+                new LoginResetAuditEntry(
+                    command.loginId(),
+                    user.userId(),
+                    user.failedLoginCount(),
+                    user.loginLockedUntil()));
+          }
+          TotpCredential credential =
+              totpCredentialLoadPort.findCredentialByUserId(user.userId()).orElse(null);
+          if (credential != null && credential.credentialStatus() == TotpCredentialStatus.ACTIVE) {
+            LoginResult rememberDeviceResult =
+                tryRememberDeviceLogin(
+                    user.userId(),
+                    user.loginId(),
+                    command.sessionClientMetadata(),
+                    command.rememberDeviceToken(),
+                    now);
+            if (rememberDeviceResult != null) {
+              return rememberDeviceResult;
+            }
+            return issueTotpChallenge(user.userId(), command.sessionClientMetadata(), now);
+          }
+          return issueTokenPair(
+              user.userId(), user.loginId(), command.sessionClientMetadata(), now);
+        });
+  }
+
+  private void throwIfBlockedUser(String loginId, LoginUser user, Instant now) {
     if (user.status() == UserStatus.LOCKED) {
       loginAttemptAuditPort.logFailure(
           new LoginFailureAuditEntry(
-              command.loginId(),
+              loginId,
               user.userId(),
               LoginFailureReason.USER_STATUS_LOCKED,
               user.failedLoginCount(),
@@ -124,11 +181,10 @@ public final class LoginService implements LoginUseCase {
               user.loginLockedUntil()));
       throw new InvalidCredentialsException("login failed");
     }
-
     if (user.status() == UserStatus.DISABLED) {
       loginAttemptAuditPort.logFailure(
           new LoginFailureAuditEntry(
-              command.loginId(),
+              loginId,
               user.userId(),
               LoginFailureReason.USER_DISABLED,
               user.failedLoginCount(),
@@ -136,11 +192,10 @@ public final class LoginService implements LoginUseCase {
               user.loginLockedUntil()));
       throw new InvalidCredentialsException("login failed");
     }
-
     if (isTemporarilyLocked(user, now)) {
       loginAttemptAuditPort.logFailure(
           new LoginFailureAuditEntry(
-              command.loginId(),
+              loginId,
               user.userId(),
               LoginFailureReason.ACCOUNT_TEMPORARILY_LOCKED,
               user.failedLoginCount(),
@@ -148,34 +203,6 @@ public final class LoginService implements LoginUseCase {
               user.loginLockedUntil()));
       throw new InvalidCredentialsException("login failed");
     }
-
-    if (!passwordHashPort.matches(command.password(), user.passwordHash())) {
-      recordLoginFailure(command.loginId(), user, now);
-      throw new InvalidCredentialsException("login failed");
-    }
-
-    loginAttemptUpdatePort.recordLoginSuccess(new LoginSuccessUpdateCommand(user.userId(), now));
-    if (shouldLogReset(user)) {
-      loginAttemptAuditPort.logReset(
-          new LoginResetAuditEntry(
-              command.loginId(), user.userId(), user.failedLoginCount(), user.loginLockedUntil()));
-    }
-    TotpCredential credential =
-        totpCredentialLoadPort.findCredentialByUserId(user.userId()).orElse(null);
-    if (credential != null && credential.credentialStatus() == TotpCredentialStatus.ACTIVE) {
-      LoginResult rememberDeviceResult =
-          tryRememberDeviceLogin(
-              user.userId(),
-              user.loginId(),
-              command.sessionClientMetadata(),
-              command.rememberDeviceToken(),
-              now);
-      if (rememberDeviceResult != null) {
-        return rememberDeviceResult;
-      }
-      return issueTotpChallenge(user.userId(), command.sessionClientMetadata(), now);
-    }
-    return issueTokenPair(user.userId(), user.loginId(), command.sessionClientMetadata(), now);
   }
 
   private LoginResult tryRememberDeviceLogin(
@@ -220,6 +247,10 @@ public final class LoginService implements LoginUseCase {
 
   private LoginUser consumeMissingUserPath(String loginId, String password) {
     passwordHashPort.matches(password, dummyPasswordHash);
+    return auditMissingUserAndThrow(loginId);
+  }
+
+  private LoginUser auditMissingUserAndThrow(String loginId) {
     loginAttemptAuditPort.logFailure(
         new LoginFailureAuditEntry(
             loginId,

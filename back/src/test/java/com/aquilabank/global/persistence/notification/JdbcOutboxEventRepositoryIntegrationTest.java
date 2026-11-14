@@ -137,6 +137,37 @@ class JdbcOutboxEventRepositoryIntegrationTest extends PostgresContainerTestSupp
     assertThat(findStatus(pendingId[0])).isEqualTo("PENDING");
   }
 
+  @Test
+  void marksOnlySendingRowsAsPublishedInSingleBatch() {
+    Instant now = Instant.parse("2026-04-18T02:00:00Z");
+    long[] ids = new long[3];
+    commit(
+        transactionManager,
+        () -> {
+          ids[0] =
+              insertOutboxEventReturningId(
+                  "evt-sending-1", "SENDING", now.minusSeconds(60), null, now.minusSeconds(10), 0);
+          ids[1] =
+              insertOutboxEventReturningId(
+                  "evt-sending-2", "SENDING", now.minusSeconds(50), null, now.minusSeconds(10), 0);
+          ids[2] =
+              insertOutboxEventReturningId(
+                  "evt-pending-keep",
+                  "PENDING",
+                  now.minusSeconds(40),
+                  null,
+                  now.minusSeconds(10),
+                  0);
+        });
+
+    repository.markPublishedBatch(List.of(), now);
+    repository.markPublishedBatch(List.of(ids[0], ids[1], ids[2]), now);
+
+    assertThat(findStatus(ids[0])).isEqualTo("PUBLISHED");
+    assertThat(findStatus(ids[1])).isEqualTo("PUBLISHED");
+    assertThat(findStatus(ids[2])).isEqualTo("PENDING");
+  }
+
   private void insertOutboxEvent(
       String eventKey,
       String publishStatus,

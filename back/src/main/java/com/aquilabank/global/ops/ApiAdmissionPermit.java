@@ -1,30 +1,36 @@
 package com.aquilabank.global.ops;
 
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Consumer;
+import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 
 public final class ApiAdmissionPermit {
 
-  private static final Consumer<Boolean> NO_OP_RELEASE = healthy -> {};
+  @FunctionalInterface
+  interface ReleaseTarget {
+    void release(boolean healthy);
+  }
+
+  private static final AtomicIntegerFieldUpdater<ApiAdmissionPermit> RELEASED_UPDATER =
+      AtomicIntegerFieldUpdater.newUpdater(ApiAdmissionPermit.class, "released");
+  private static final ReleaseTarget NO_OP_RELEASE = healthy -> {};
   private static final ApiAdmissionPermit IGNORED =
       new ApiAdmissionPermit(true, "", 0, NO_OP_RELEASE);
 
   private final boolean allowed;
   private final String group;
   private final int retryAfterSeconds;
-  private final Consumer<Boolean> releaseCallback;
-  private final AtomicBoolean released = new AtomicBoolean();
+  private final ReleaseTarget releaseTarget;
+  private volatile int released;
 
   private ApiAdmissionPermit(
-      boolean allowed, String group, int retryAfterSeconds, Consumer<Boolean> releaseCallback) {
+      boolean allowed, String group, int retryAfterSeconds, ReleaseTarget releaseTarget) {
     this.allowed = allowed;
     this.group = group;
     this.retryAfterSeconds = retryAfterSeconds;
-    this.releaseCallback = releaseCallback;
+    this.releaseTarget = releaseTarget;
   }
 
-  public static ApiAdmissionPermit acquired(String group, Consumer<Boolean> releaseCallback) {
-    return new ApiAdmissionPermit(true, group, 0, releaseCallback);
+  static ApiAdmissionPermit acquired(String group, ReleaseTarget releaseTarget) {
+    return new ApiAdmissionPermit(true, group, 0, releaseTarget);
   }
 
   public static ApiAdmissionPermit rejected(String group, int retryAfterSeconds) {
@@ -52,8 +58,8 @@ public final class ApiAdmissionPermit {
   }
 
   public void release(boolean healthy) {
-    if (allowed && released.compareAndSet(false, true)) {
-      releaseCallback.accept(healthy);
+    if (allowed && RELEASED_UPDATER.compareAndSet(this, 0, 1)) {
+      releaseTarget.release(healthy);
     }
   }
 }

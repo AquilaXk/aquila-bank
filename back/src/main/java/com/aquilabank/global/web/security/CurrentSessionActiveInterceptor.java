@@ -11,8 +11,7 @@ import com.aquilabank.global.web.RequestTraceContext;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.time.Instant;
-import java.util.List;
-import java.util.regex.Pattern;
+import java.util.Set;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
@@ -23,27 +22,20 @@ import org.springframework.web.servlet.HandlerInterceptor;
 public class CurrentSessionActiveInterceptor implements HandlerInterceptor {
 
   private static final String CURRENT_SESSION_INACTIVE_MESSAGE = "current session is not active";
-  private static final List<SensitiveMutationPath> SENSITIVE_MUTATION_PATHS =
-      List.of(
-          new SensitiveMutationPath("POST", Pattern.compile("^/api/v1/transfers$")),
-          new SensitiveMutationPath("POST", Pattern.compile("^/api/v1/transfers/[^/]+/reversal$")),
-          new SensitiveMutationPath("POST", Pattern.compile("^/api/v1/auth/password-reset$")),
-          new SensitiveMutationPath("POST", Pattern.compile("^/api/v1/auth/mfa/totp/enroll$")),
-          new SensitiveMutationPath(
-              "POST", Pattern.compile("^/api/v1/auth/mfa/totp/enroll/verify$")),
-          new SensitiveMutationPath("POST", Pattern.compile("^/api/v1/auth/mfa/totp/disable$")),
-          new SensitiveMutationPath("POST", Pattern.compile("^/api/v1/auth/mfa/backup-codes$")),
-          new SensitiveMutationPath("DELETE", Pattern.compile("^/api/v1/auth/sessions$")),
-          new SensitiveMutationPath("DELETE", Pattern.compile("^/api/v1/auth/sessions/[^/]+$")),
-          new SensitiveMutationPath(
-              "POST", Pattern.compile("^/api/v1/customer-service/applications$")),
-          new SensitiveMutationPath(
-              "POST", Pattern.compile("^/api/v1/customer-service/applications/[^/]+/cancel$")),
-          new SensitiveMutationPath("POST", Pattern.compile("^/api/v1/notifications/preferences$")),
-          new SensitiveMutationPath("POST", Pattern.compile("^/api/v1/notifications/[^/]+/read$")),
-          new SensitiveMutationPath("POST", Pattern.compile("^/api/v1/notifications/read$")),
-          new SensitiveMutationPath("POST", Pattern.compile("^/api/v1/notifications/archive$")),
-          new SensitiveMutationPath("POST", Pattern.compile("^/api/v1/notifications/delete$")));
+  private static final String DELETE_EXACT_PATH = "/api/v1/auth/sessions";
+  private static final Set<String> POST_EXACT_PATHS =
+      Set.of(
+          "/api/v1/transfers",
+          "/api/v1/auth/password-reset",
+          "/api/v1/auth/mfa/totp/enroll",
+          "/api/v1/auth/mfa/totp/enroll/verify",
+          "/api/v1/auth/mfa/totp/disable",
+          "/api/v1/auth/mfa/backup-codes",
+          "/api/v1/customer-service/applications",
+          "/api/v1/notifications/preferences",
+          "/api/v1/notifications/read",
+          "/api/v1/notifications/archive",
+          "/api/v1/notifications/delete");
 
   private final CurrentSessionActiveUseCase currentSessionActiveUseCase;
   private final CurrentSessionActiveAuditPort currentSessionActiveAuditPort;
@@ -96,10 +88,32 @@ public class CurrentSessionActiveInterceptor implements HandlerInterceptor {
   }
 
   private boolean isSensitiveMutation(String method, String path) {
-    if (!"POST".equals(method) && !"DELETE".equals(method)) {
+    if ("POST".equals(method)) {
+      return POST_EXACT_PATHS.contains(path)
+          || matchesSingleSegmentTemplate(path, "/api/v1/transfers/", "/reversal")
+          || matchesSingleSegmentTemplate(path, "/api/v1/customer-service/applications/", "/cancel")
+          || matchesSingleSegmentTemplate(path, "/api/v1/notifications/", "/read");
+    }
+    if ("DELETE".equals(method)) {
+      return DELETE_EXACT_PATH.equals(path)
+          || matchesSingleSegmentPrefix(path, "/api/v1/auth/sessions/");
+    }
+    return false;
+  }
+
+  private static boolean matchesSingleSegmentTemplate(String path, String prefix, String suffix) {
+    int minLength = prefix.length() + suffix.length() + 1;
+    if (path.length() < minLength || !path.startsWith(prefix) || !path.endsWith(suffix)) {
       return false;
     }
-    return SENSITIVE_MUTATION_PATHS.stream().anyMatch(item -> item.matches(method, path));
+    int segmentEnd = path.length() - suffix.length();
+    return path.indexOf('/', prefix.length()) == segmentEnd;
+  }
+
+  private static boolean matchesSingleSegmentPrefix(String path, String prefix) {
+    return path.length() > prefix.length()
+        && path.startsWith(prefix)
+        && path.indexOf('/', prefix.length()) < 0;
   }
 
   private String requestId() {
@@ -113,12 +127,5 @@ public class CurrentSessionActiveInterceptor implements HandlerInterceptor {
       path = path.substring(contextPath.length());
     }
     return path.isBlank() ? "/" : path;
-  }
-
-  private record SensitiveMutationPath(String method, Pattern pathPattern) {
-
-    private boolean matches(String requestMethod, String path) {
-      return method.equals(requestMethod) && pathPattern.matcher(path).matches();
-    }
   }
 }

@@ -46,43 +46,70 @@ public class TransactionDetailController {
       @CurrentAuthenticatedPrincipal AuthenticatedRequestPrincipal principal,
       @PathVariable String transactionReference,
       @RequestParam @Positive(message = "accountId must be positive") long accountId) {
-    return hotPathMetrics.record(
-        TransactionReadHotPathMetrics.ENDPOINT_DETAIL,
-        TransactionReadHotPathMetrics.STAGE_TOTAL,
-        () -> getTransactionDetailMeasured(principal, transactionReference, accountId));
-  }
-
-  private TransactionDetailResponse getTransactionDetailMeasured(
-      AuthenticatedRequestPrincipal principal, String transactionReference, long accountId) {
+    long totalStart = hotPathMetrics.startTimestamp();
+    boolean totalOk = false;
     try {
       // 권한 실패를 먼저 끊어 타 계좌 거래 존재 여부를 상세 응답으로 노출하지 않습니다.
-      long resolvedAccountId =
-          hotPathMetrics.record(
-              TransactionReadHotPathMetrics.ENDPOINT_DETAIL,
-              TransactionReadHotPathMetrics.STAGE_AUTHORIZATION,
-              () ->
-                  requestAccountAuthorizationService.resolveReadableAccountId(
-                      principal, accountId));
+      long authStart = hotPathMetrics.startTimestamp();
+      boolean authOk = false;
+      long resolvedAccountId;
+      try {
+        resolvedAccountId =
+            requestAccountAuthorizationService.resolveReadableAccountId(principal, accountId);
+        authOk = true;
+      } finally {
+        hotPathMetrics.recordOutcome(
+            TransactionReadHotPathMetrics.ENDPOINT_DETAIL_INDEX,
+            TransactionReadHotPathMetrics.STAGE_AUTHORIZATION_INDEX,
+            authStart,
+            authOk);
+      }
       TransactionDetailQuery query =
           new TransactionDetailQuery(resolvedAccountId, transactionReference);
-      TransactionDetail detail =
-          hotPathMetrics.record(
-              TransactionReadHotPathMetrics.ENDPOINT_DETAIL,
-              TransactionReadHotPathMetrics.STAGE_USECASE,
-              () ->
-                  accountFairnessLimiter.execute(
-                      resolvedAccountId,
-                      () ->
-                          singleFlight.execute(
-                              TransactionReadHotPathMetrics.ENDPOINT_DETAIL,
-                              query,
-                              () -> transactionDetailQueryUseCase.getTransactionDetail(query))));
-      return hotPathMetrics.record(
-          TransactionReadHotPathMetrics.ENDPOINT_DETAIL,
-          TransactionReadHotPathMetrics.STAGE_RESPONSE_MAPPING,
-          () -> TransactionDetailResponse.from(detail));
+      long usecaseStart = hotPathMetrics.startTimestamp();
+      boolean usecaseOk = false;
+      int fairnessSlot = -1;
+      TransactionDetail detail;
+      try {
+        fairnessSlot = accountFairnessLimiter.acquire(resolvedAccountId);
+        detail =
+            singleFlight.execute(
+                TransactionReadHotPathMetrics.ENDPOINT_DETAIL,
+                query,
+                () -> transactionDetailQueryUseCase.getTransactionDetail(query));
+        usecaseOk = true;
+      } finally {
+        if (fairnessSlot >= 0) {
+          accountFairnessLimiter.release(fairnessSlot);
+        }
+        hotPathMetrics.recordOutcome(
+            TransactionReadHotPathMetrics.ENDPOINT_DETAIL_INDEX,
+            TransactionReadHotPathMetrics.STAGE_USECASE_INDEX,
+            usecaseStart,
+            usecaseOk);
+      }
+      long mappingStart = hotPathMetrics.startTimestamp();
+      boolean mappingOk = false;
+      try {
+        TransactionDetailResponse response = TransactionDetailResponse.from(detail);
+        mappingOk = true;
+        totalOk = true;
+        return response;
+      } finally {
+        hotPathMetrics.recordOutcome(
+            TransactionReadHotPathMetrics.ENDPOINT_DETAIL_INDEX,
+            TransactionReadHotPathMetrics.STAGE_RESPONSE_MAPPING_INDEX,
+            mappingStart,
+            mappingOk);
+      }
     } catch (IllegalArgumentException ex) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage(), ex);
+    } finally {
+      hotPathMetrics.recordOutcome(
+          TransactionReadHotPathMetrics.ENDPOINT_DETAIL_INDEX,
+          TransactionReadHotPathMetrics.STAGE_TOTAL_INDEX,
+          totalStart,
+          totalOk);
     }
   }
 }

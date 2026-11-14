@@ -17,6 +17,7 @@ public class AesPasswordRecoveryTokenManager implements PasswordRecoverySecretPo
   private static final int TOKEN_BYTE_LENGTH = 32;
   private static final int NONCE_BYTE_LENGTH = 12;
   private static final int GCM_TAG_BIT_LENGTH = 128;
+  private static final String HKDF_CONTEXT_INFO = "aquila-bank:password-recovery:aes-gcm:v1";
 
   private final SecretKeySpec secretKeySpec;
   private final SecureRandom secureRandom = new SecureRandom();
@@ -31,9 +32,7 @@ public class AesPasswordRecoveryTokenManager implements PasswordRecoverySecretPo
       throw new IllegalStateException(
           "security.password-recovery.secret-encryption-key is required");
     }
-    this.secretKeySpec =
-        new SecretKeySpec(
-            Sha256Hex.digest(secretEncryptionKey.getBytes(StandardCharsets.UTF_8)), "AES");
+    this.secretKeySpec = HkdfSha256.deriveAes256Key(secretEncryptionKey, HKDF_CONTEXT_INFO);
   }
 
   @Override

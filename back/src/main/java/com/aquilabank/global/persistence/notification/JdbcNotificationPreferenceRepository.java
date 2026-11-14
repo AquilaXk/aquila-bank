@@ -11,6 +11,7 @@ import java.util.List;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+import org.springframework.jdbc.core.namedparam.SqlParameterSource;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,6 +21,29 @@ public class JdbcNotificationPreferenceRepository
     implements NotificationPreferenceReadPort, NotificationPreferenceWritePort {
 
   private static final RowMapper<NotificationPreference> ROW_MAPPER = (rs, rowNum) -> mapRow(rs);
+  private static final String UPSERT_SQL =
+      """
+      INSERT INTO notification_preference (
+          user_id,
+          category,
+          channel,
+          enabled,
+          created_at,
+          updated_at
+      )
+      VALUES (
+          :userId,
+          :category,
+          :channel,
+          :enabled,
+          CURRENT_TIMESTAMP,
+          CURRENT_TIMESTAMP
+      )
+      ON CONFLICT (user_id, category, channel)
+      DO UPDATE
+      SET enabled = EXCLUDED.enabled,
+          updated_at = CURRENT_TIMESTAMP
+      """;
 
   private final NamedParameterJdbcTemplate jdbcTemplate;
 
@@ -46,36 +70,20 @@ public class JdbcNotificationPreferenceRepository
   @Override
   @Transactional
   public void upsert(long userId, List<NotificationPreference> items) {
-    for (NotificationPreference item : items) {
-      jdbcTemplate.update(
-          """
-          INSERT INTO notification_preference (
-              user_id,
-              category,
-              channel,
-              enabled,
-              created_at,
-              updated_at
-          )
-          VALUES (
-              :userId,
-              :category,
-              :channel,
-              :enabled,
-              CURRENT_TIMESTAMP,
-              CURRENT_TIMESTAMP
-          )
-          ON CONFLICT (user_id, category, channel)
-          DO UPDATE
-          SET enabled = EXCLUDED.enabled,
-              updated_at = CURRENT_TIMESTAMP
-          """,
+    if (items.isEmpty()) {
+      return;
+    }
+    SqlParameterSource[] batchParams = new SqlParameterSource[items.size()];
+    for (int i = 0; i < items.size(); i++) {
+      NotificationPreference item = items.get(i);
+      batchParams[i] =
           new MapSqlParameterSource()
               .addValue("userId", userId)
               .addValue("category", item.category().name())
               .addValue("channel", item.channel().name())
-              .addValue("enabled", item.enabled()));
+              .addValue("enabled", item.enabled());
     }
+    jdbcTemplate.batchUpdate(UPSERT_SQL, batchParams);
   }
 
   private static NotificationPreference mapRow(ResultSet rs) throws SQLException {

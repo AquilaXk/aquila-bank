@@ -1,6 +1,7 @@
 package com.aquilabank.global.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -10,6 +11,7 @@ import com.aquilabank.standard.util.Base32Codec;
 import java.nio.ByteBuffer;
 import java.time.Instant;
 import java.util.Locale;
+import java.util.OptionalLong;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.junit.jupiter.api.Test;
@@ -33,38 +35,45 @@ class AesTotpSecretManagerTest {
         .contains("&issuer=Aquila%20Bank&algorithm=SHA1&digits=6&period=30");
 
     byte[] rawSecret = Base32Codec.decode(secret.secretKey());
-    long currentStep = NOW.getEpochSecond() / 30L;
+    long currentStep = Math.floorDiv(NOW.getEpochSecond(), 30L);
 
-    assertTrue(
-        manager.matches(
+    assertEquals(
+        OptionalLong.of(currentStep - 1),
+        manager.matchTimeStep(
             secret.secretCiphertext(),
             secret.secretNonce(),
             totpCodeAtStep(rawSecret, currentStep - 1),
             NOW));
-    assertTrue(
-        manager.matches(
+    assertEquals(
+        OptionalLong.of(currentStep),
+        manager.matchTimeStep(
             secret.secretCiphertext(),
             secret.secretNonce(),
             totpCodeAtStep(rawSecret, currentStep),
             NOW));
-    assertTrue(
-        manager.matches(
+    assertEquals(
+        OptionalLong.of(currentStep + 1),
+        manager.matchTimeStep(
             secret.secretCiphertext(),
             secret.secretNonce(),
             totpCodeAtStep(rawSecret, currentStep + 1),
             NOW));
-    assertFalse(
-        manager.matches(
-            secret.secretCiphertext(),
-            secret.secretNonce(),
-            totpCodeAtStep(rawSecret, currentStep - 2),
-            NOW));
-    assertFalse(
-        manager.matches(
-            secret.secretCiphertext(),
-            secret.secretNonce(),
-            totpCodeAtStep(rawSecret, currentStep + 2),
-            NOW));
+    assertTrue(
+        manager
+            .matchTimeStep(
+                secret.secretCiphertext(),
+                secret.secretNonce(),
+                totpCodeAtStep(rawSecret, currentStep - 2),
+                NOW)
+            .isEmpty());
+    assertTrue(
+        manager
+            .matchTimeStep(
+                secret.secretCiphertext(),
+                secret.secretNonce(),
+                totpCodeAtStep(rawSecret, currentStep + 2),
+                NOW)
+            .isEmpty());
   }
 
   @Test
@@ -100,30 +109,49 @@ class AesTotpSecretManagerTest {
     assertThrows(IllegalArgumentException.class, () -> manager.generate(" "));
     assertThrows(
         IllegalArgumentException.class,
-        () -> manager.matches(null, secret.secretNonce(), "123456", NOW));
+        () -> manager.matchTimeStep(null, secret.secretNonce(), "123456", NOW));
     assertThrows(
         IllegalArgumentException.class,
-        () -> manager.matches(" ", secret.secretNonce(), "123456", NOW));
+        () -> manager.matchTimeStep(" ", secret.secretNonce(), "123456", NOW));
     assertThrows(
         IllegalArgumentException.class,
-        () -> manager.matches(secret.secretCiphertext(), null, "123456", NOW));
+        () -> manager.matchTimeStep(secret.secretCiphertext(), null, "123456", NOW));
     assertThrows(
         IllegalArgumentException.class,
-        () -> manager.matches(secret.secretCiphertext(), " ", "123456", NOW));
+        () -> manager.matchTimeStep(secret.secretCiphertext(), " ", "123456", NOW));
     assertThrows(
         IllegalArgumentException.class,
-        () -> manager.matches(secret.secretCiphertext(), secret.secretNonce(), "123456", null));
+        () ->
+            manager.matchTimeStep(secret.secretCiphertext(), secret.secretNonce(), "123456", null));
 
-    assertFalse(manager.matches(secret.secretCiphertext(), secret.secretNonce(), null, NOW));
-    assertFalse(manager.matches(secret.secretCiphertext(), secret.secretNonce(), "12345", NOW));
-    assertFalse(manager.matches(secret.secretCiphertext(), secret.secretNonce(), "1234567", NOW));
-    assertFalse(manager.matches(secret.secretCiphertext(), secret.secretNonce(), "/23456", NOW));
-    assertFalse(manager.matches(secret.secretCiphertext(), secret.secretNonce(), ":23456", NOW));
-    assertFalse(manager.matches(secret.secretCiphertext(), secret.secretNonce(), "12345a", NOW));
+    assertFalse(
+        manager
+            .matchTimeStep(secret.secretCiphertext(), secret.secretNonce(), null, NOW)
+            .isPresent());
+    assertFalse(
+        manager
+            .matchTimeStep(secret.secretCiphertext(), secret.secretNonce(), "12345", NOW)
+            .isPresent());
+    assertFalse(
+        manager
+            .matchTimeStep(secret.secretCiphertext(), secret.secretNonce(), "1234567", NOW)
+            .isPresent());
+    assertFalse(
+        manager
+            .matchTimeStep(secret.secretCiphertext(), secret.secretNonce(), "/23456", NOW)
+            .isPresent());
+    assertFalse(
+        manager
+            .matchTimeStep(secret.secretCiphertext(), secret.secretNonce(), ":23456", NOW)
+            .isPresent());
+    assertFalse(
+        manager
+            .matchTimeStep(secret.secretCiphertext(), secret.secretNonce(), "12345a", NOW)
+            .isPresent());
 
     assertThrows(
         IllegalStateException.class,
-        () -> manager.matches("aaaa", secret.secretNonce(), "123456", NOW));
+        () -> manager.matchTimeStep("aaaa", secret.secretNonce(), "123456", NOW));
   }
 
   private static String totpCodeAtStep(byte[] rawSecret, long step) throws Exception {

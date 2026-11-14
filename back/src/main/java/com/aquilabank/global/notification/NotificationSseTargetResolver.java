@@ -6,4 +6,6 @@ import java.util.List;
 public interface NotificationSseTargetResolver {
 
   List<Long> findActiveUserIdsByAccountId(long accountId);
+
+  List<Long> findActiveAccountIdsByUserId(long userId);
 }

@@ -5,7 +5,6 @@ import com.aquilabank.domain.auth.port.BackupCodeSecretPort;
 import com.aquilabank.standard.util.Sha256Hex;
 import java.security.SecureRandom;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -16,12 +15,15 @@ public class Sha256BackupCodeManager implements BackupCodeSecretPort {
   private static final String ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   private static final int CODE_LENGTH = 8;
   private static final int SEGMENT_LENGTH = 4;
-  private static final byte[] LOOKUP = new byte[128];
+  private static final int MAX_INPUT_LENGTH = 64;
+  private static final byte[] NORMALIZED_ASCII = new byte[128];
 
   static {
-    Arrays.fill(LOOKUP, (byte) -1);
     for (int index = 0; index < ALPHABET.length(); index++) {
-      LOOKUP[ALPHABET.charAt(index)] = (byte) index;
+      char upper = ALPHABET.charAt(index);
+      NORMALIZED_ASCII[upper] = (byte) upper;
+      char lower = Character.toLowerCase(upper);
+      NORMALIZED_ASCII[lower] = (byte) upper;
     }
   }
 
@@ -34,59 +36,68 @@ public class Sha256BackupCodeManager implements BackupCodeSecretPort {
     }
 
     List<GeneratedBackupCode> items = new ArrayList<>(count);
-    Set<String> seen = new HashSet<>(count);
+    Set<Long> seen = HashSet.newHashSet(count);
+    byte[] randomBytes = new byte[CODE_LENGTH];
+    byte[] normalizedAscii = new byte[CODE_LENGTH];
+    char[] formatted = new char[CODE_LENGTH + 1];
+    formatted[SEGMENT_LENGTH] = '-';
+
     while (items.size() < count) {
-      String normalized = generateNormalizedCode();
-      if (!seen.add(normalized)) {
-        continue;
+      // 32진 알파벳은 바이트 하위 5비트로 모듈로 편향 없이 추출되며 8글자를 40비트 long으로 패킹해 중복을 검사한다.
+      secureRandom.nextBytes(randomBytes);
+      long packed = 0L;
+      for (int index = 0; index < CODE_LENGTH; index++) {
+        int symbol = randomBytes[index] & 0x1F;
+        char ch = ALPHABET.charAt(symbol);
+        packed = (packed << 5) | symbol;
+        normalizedAscii[index] = (byte) ch;
+        formatted[index < SEGMENT_LENGTH ? index : index + 1] = ch;
       }
-      items.add(new GeneratedBackupCode(format(normalized), Sha256Hex.hashHex(normalized)));
+      if (seen.add(packed)) {
+        items.add(
+            new GeneratedBackupCode(new String(formatted), Sha256Hex.hashHex(normalizedAscii)));
+      }
     }
     return items;
   }
 
   @Override
   public String hash(String plainCode) {
-    return Sha256Hex.hashHex(normalize(plainCode));
+    return Sha256Hex.hashHex(normalizeToAscii(plainCode));
   }
 
-  private String generateNormalizedCode() {
-    StringBuilder builder = new StringBuilder(CODE_LENGTH);
-    for (int index = 0; index < CODE_LENGTH; index++) {
-      builder.append(ALPHABET.charAt(secureRandom.nextInt(ALPHABET.length())));
-    }
-    return builder.toString();
-  }
-
-  private String format(String normalized) {
-    return normalized.substring(0, SEGMENT_LENGTH) + "-" + normalized.substring(SEGMENT_LENGTH);
-  }
-
-  private String normalize(String plainCode) {
+  private byte[] normalizeToAscii(String plainCode) {
     if (plainCode == null || plainCode.isBlank()) {
       throw new IllegalArgumentException("plainCode is required");
     }
+    if (plainCode.length() > MAX_INPUT_LENGTH) {
+      throw new IllegalArgumentException("plainCode exceeds maximum length");
+    }
 
-    StringBuilder builder = new StringBuilder(CODE_LENGTH);
-    for (int index = 0; index < plainCode.length(); index++) {
+    byte[] ascii = new byte[CODE_LENGTH];
+    int len = 0;
+    boolean hasUnsupported = false;
+    // 단일 패스로 구분자를 건너뛰며 ASCII 룩업 테이블로 대소문자 정규화와 유효 문자 검증을 마친다.
+    for (int index = 0, length = plainCode.length(); index < length; index++) {
       char current = plainCode.charAt(index);
       if (current == '-' || Character.isWhitespace(current)) {
         continue;
       }
-      builder.append(Character.toUpperCase(current));
+      if (len == CODE_LENGTH) {
+        throw new IllegalArgumentException("plainCode must be 8 characters");
+      }
+      byte normalizedByte = current < NORMALIZED_ASCII.length ? NORMALIZED_ASCII[current] : 0;
+      if (normalizedByte == 0) {
+        hasUnsupported = true;
+      }
+      ascii[len++] = normalizedByte;
     }
-
-    String normalized = builder.toString();
-    if (normalized.length() != CODE_LENGTH) {
+    if (len != CODE_LENGTH) {
       throw new IllegalArgumentException("plainCode must be 8 characters");
     }
-    // 입력 formatting 차이로 hash가 달라지지 않게 hyphen/대소문자를 제거한 뒤 O(1) 룩업 테이블로 검증합니다.
-    for (int index = 0; index < normalized.length(); index++) {
-      char ch = normalized.charAt(index);
-      if (ch >= LOOKUP.length || LOOKUP[ch] < 0) {
-        throw new IllegalArgumentException("plainCode contains unsupported characters");
-      }
+    if (hasUnsupported) {
+      throw new IllegalArgumentException("plainCode contains unsupported characters");
     }
-    return normalized;
+    return ascii;
   }
 }

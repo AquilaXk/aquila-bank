@@ -318,6 +318,45 @@ class T3MicroSaturationGuardTest {
     assertThat(decision.snapshot().jvmPressureSaturated()).isFalse();
   }
 
+  @Test
+  void cachesProbeSnapshotWithin50msAndRefreshesOnTimeoutSignalOrExpiry() {
+    SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+    MutableClock clock = new MutableClock(Instant.parse("2026-04-22T00:00:00Z"));
+    T3MicroQueryTimeoutSignal timeoutSignal = new T3MicroQueryTimeoutSignal(clock, meterRegistry);
+    java.util.concurrent.atomic.AtomicInteger poolProbeCalls =
+        new java.util.concurrent.atomic.AtomicInteger();
+    DbPoolSaturationProbe countingPoolProbe =
+        () -> {
+          poolProbeCalls.incrementAndGet();
+          return new DbPoolSaturationSnapshot(4, 4, 1);
+        };
+    java.util.concurrent.atomic.AtomicLong nanoTicker =
+        new java.util.concurrent.atomic.AtomicLong();
+    T3MicroSaturationGuard guard =
+        new T3MicroSaturationGuard(
+            properties(),
+            countingPoolProbe,
+            DbPoolSaturationSnapshot::empty,
+            () -> new ServletThreadSaturationSnapshot(16, 16),
+            gcWindow -> JvmPressureSnapshot.empty(),
+            timeoutSignal,
+            meterRegistry,
+            nanoTicker::get);
+
+    assertThat(guard.check("/api/v1/transactions").allowed()).isTrue();
+    nanoTicker.addAndGet(20_000_000L);
+    assertThat(guard.check("/api/v1/transactions").allowed()).isTrue();
+    assertThat(poolProbeCalls.get()).isEqualTo(1);
+
+    timeoutSignal.record();
+    assertThat(guard.check("/api/v1/transactions").allowed()).isFalse();
+    assertThat(poolProbeCalls.get()).isEqualTo(2);
+
+    nanoTicker.addAndGet(50_000_000L);
+    assertThat(guard.check("/api/v1/transactions").allowed()).isFalse();
+    assertThat(poolProbeCalls.get()).isEqualTo(3);
+  }
+
   private T3MicroSaturationGuardProperties properties() {
     return propertiesWithJvmPressure(true);
   }

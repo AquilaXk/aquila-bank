@@ -12,15 +12,19 @@ import com.aquilabank.domain.customerapplication.model.CustomerApplicationStatus
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationExecutorPort;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationOperationAuditPort;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationOperationPort;
+import com.aquilabank.domain.customerapplication.port.CustomerApplicationWriteTransactionPort;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
-/** 고객 업무 상태전이는 row lock 안에서 검증해 중복 승인/실행을 차단합니다. */
+/** 고객 업무 상태전이는 row lock 안에서 검증하고, 외부 EXECUTE 호출은 락·트랜잭션 밖에서 실행합니다. */
 public final class CustomerApplicationOperationService
     implements CustomerApplicationOperationUseCase {
+
+  private static final String DISPATCHING_REASON = "EXTERNAL_EXECUTION_DISPATCHING";
+  private static final String DISPATCH_EXCEPTION_REASON = "EXTERNAL_EXECUTION_DISPATCH_EXCEPTION";
 
   private static final Map<CustomerApplicationAction, CustomerApplicationStatus> TARGET_STATUSES =
       Map.of(
@@ -32,65 +36,144 @@ public final class CustomerApplicationOperationService
   private final CustomerApplicationOperationPort operationPort;
   private final CustomerApplicationOperationAuditPort operationAuditPort;
   private final CustomerApplicationExecutorPort executorPort;
+  private final CustomerApplicationWriteTransactionPort writeTransactionPort;
   private final Clock clock;
 
   public CustomerApplicationOperationService(
       CustomerApplicationOperationPort operationPort,
       CustomerApplicationOperationAuditPort operationAuditPort,
       CustomerApplicationExecutorPort executorPort,
+      CustomerApplicationWriteTransactionPort writeTransactionPort,
       Clock clock) {
     this.operationPort = Objects.requireNonNull(operationPort);
     this.operationAuditPort = Objects.requireNonNull(operationAuditPort);
     this.executorPort = Objects.requireNonNull(executorPort);
+    this.writeTransactionPort = Objects.requireNonNull(writeTransactionPort);
     this.clock = Objects.requireNonNull(clock);
   }
 
   @Override
   public CustomerApplicationDetails apply(CustomerApplicationDecisionCommand command) {
-    CustomerApplicationDetails application =
-        operationPort
-            .findByReferenceForUpdate(command.applicationReference())
-            .orElseThrow(
-                () ->
-                    new CustomerApplicationNotFoundException("customer application was not found"));
-    Instant now = Instant.now(clock);
     if (command.action() == CustomerApplicationAction.EXECUTE) {
-      validateOperationPolicy(application, command);
-      CustomerApplicationExecutionResult result =
-          executorPort.execute(application, command.actorSubject(), command.requestId());
-      CustomerApplicationDetails updated =
-          requireUpdated(
-              operationPort.updateStatus(
-                  new CustomerApplicationStateUpdateCommand(
-                      command.applicationReference(),
-                      result.status(),
-                      result.reason(),
-                      command.actorSubject(),
-                      now,
-                      result.payload())));
-      appendAudit(application, updated, command, result.reason(), result.payload(), now);
-      return updated;
+      return applyExternalExecute(command);
     }
 
-    CustomerApplicationStatus status = targetStatus(application, command);
-    CustomerApplicationDetails updated =
-        requireUpdated(
-            operationPort.updateStatus(
-                new CustomerApplicationStateUpdateCommand(
-                    command.applicationReference(),
-                    status,
-                    normalizeReason(command.reason()),
-                    command.actorSubject(),
-                    now,
-                    application.executionResult())));
-    appendAudit(
-        application,
-        updated,
-        command,
-        normalizeReason(command.reason()),
-        application.executionResult(),
-        now);
-    return updated;
+    return writeTransactionPort.execute(
+        () -> {
+          CustomerApplicationDetails application = requireForUpdate(command.applicationReference());
+          Instant now = Instant.now(clock);
+          CustomerApplicationStatus status = targetStatus(application, command);
+          String reason = normalizeReason(command.reason());
+          CustomerApplicationDetails updated =
+              requireUpdated(
+                  operationPort.updateStatus(
+                      new CustomerApplicationStateUpdateCommand(
+                          command.applicationReference(),
+                          status,
+                          reason,
+                          command.actorSubject(),
+                          now,
+                          application.executionResult())));
+          appendAudit(application, updated, command, reason, application.executionResult(), now);
+          return updated;
+        });
+  }
+
+  private CustomerApplicationDetails applyExternalExecute(
+      CustomerApplicationDecisionCommand command) {
+    // Phase 1: 짧은 FOR UPDATE 트랜잭션으로 상태를 선점(PENDING_EXTERNAL) 커밋해 중복 EXECUTE를 막습니다.
+    CustomerApplicationDetails claimedApplication =
+        writeTransactionPort.execute(
+            () -> {
+              CustomerApplicationDetails application =
+                  requireForUpdate(command.applicationReference());
+              validateOperationPolicy(application, command);
+              Instant claimedAt = Instant.now(clock);
+              CustomerApplicationDetails claimed =
+                  requireUpdated(
+                      operationPort.updateStatus(
+                          new CustomerApplicationStateUpdateCommand(
+                              command.applicationReference(),
+                              CustomerApplicationStatus.PENDING_EXTERNAL,
+                              DISPATCHING_REASON,
+                              command.actorSubject(),
+                              claimedAt,
+                              application.executionResult())));
+              appendAudit(
+                  application,
+                  claimed,
+                  command,
+                  DISPATCHING_REASON,
+                  application.executionResult(),
+                  claimedAt);
+              return claimed;
+            });
+
+    // Phase 2: DB 락/트랜잭션 밖에서 외부 HTTP/정책 호출을 실행해 커넥션 고갈을 차단합니다.
+    final CustomerApplicationExecutionResult result;
+    try {
+      result =
+          Objects.requireNonNull(
+              executorPort.execute(claimedApplication, command.actorSubject(), command.requestId()),
+              "customer application execution result");
+    } catch (RuntimeException ex) {
+      compensateExecutionException(command, ex);
+      throw ex;
+    }
+
+    // Phase 3: 짧은 완료 트랜잭션에서 실행 결과를 반영하고, 선행 콜백으로 이미 종료된 상태는 덮어쓰지 않습니다.
+    return writeTransactionPort.execute(
+        () -> {
+          CustomerApplicationDetails latest = requireForUpdate(command.applicationReference());
+          if (latest.status().isTerminal()) {
+            return latest;
+          }
+          Instant completedAt = Instant.now(clock);
+          CustomerApplicationDetails updated =
+              requireUpdated(
+                  operationPort.updateStatus(
+                      new CustomerApplicationStateUpdateCommand(
+                          command.applicationReference(),
+                          result.status(),
+                          result.reason(),
+                          command.actorSubject(),
+                          completedAt,
+                          result.payload())));
+          appendAudit(latest, updated, command, result.reason(), result.payload(), completedAt);
+          return updated;
+        });
+  }
+
+  private void compensateExecutionException(
+      CustomerApplicationDecisionCommand command, RuntimeException ex) {
+    writeTransactionPort.execute(
+        () -> {
+          CustomerApplicationDetails latest = requireForUpdate(command.applicationReference());
+          if (latest.status().isTerminal()) {
+            return latest;
+          }
+          Instant failedAt = Instant.now(clock);
+          Map<String, Object> errorPayload = Map.of("error", ex.getClass().getSimpleName());
+          CustomerApplicationDetails failed =
+              requireUpdated(
+                  operationPort.updateStatus(
+                      new CustomerApplicationStateUpdateCommand(
+                          command.applicationReference(),
+                          CustomerApplicationStatus.FAILED,
+                          DISPATCH_EXCEPTION_REASON,
+                          command.actorSubject(),
+                          failedAt,
+                          errorPayload)));
+          appendAudit(latest, failed, command, DISPATCH_EXCEPTION_REASON, errorPayload, failedAt);
+          return failed;
+        });
+  }
+
+  private CustomerApplicationDetails requireForUpdate(String applicationReference) {
+    return operationPort
+        .findByReferenceForUpdate(applicationReference)
+        .orElseThrow(
+            () -> new CustomerApplicationNotFoundException("customer application was not found"));
   }
 
   private CustomerApplicationDetails requireUpdated(CustomerApplicationDetails updated) {

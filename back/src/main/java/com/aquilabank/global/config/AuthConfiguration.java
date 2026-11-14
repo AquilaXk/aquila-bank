@@ -2,7 +2,6 @@ package com.aquilabank.global.config;
 
 import com.aquilabank.domain.auth.exception.InvalidCredentialsException;
 import com.aquilabank.domain.auth.model.LoginProtectionPolicy;
-import com.aquilabank.domain.auth.model.LoginResult;
 import com.aquilabank.domain.auth.model.RefreshTokenPolicy;
 import com.aquilabank.domain.auth.model.RememberDevicePolicy;
 import com.aquilabank.domain.auth.port.AccountAccessPort;
@@ -10,6 +9,7 @@ import com.aquilabank.domain.auth.port.AccountStatusAccessPort;
 import com.aquilabank.domain.auth.port.AuthSessionQueryPort;
 import com.aquilabank.domain.auth.port.AuthStatusChangeAuditQueryPort;
 import com.aquilabank.domain.auth.port.AuthTokenIssuePort;
+import com.aquilabank.domain.auth.port.AuthWriteTransactionPort;
 import com.aquilabank.domain.auth.port.BackupCodeLoadPort;
 import com.aquilabank.domain.auth.port.BackupCodeSecretPort;
 import com.aquilabank.domain.auth.port.BackupCodeWritePort;
@@ -108,6 +108,7 @@ import com.aquilabank.domain.auth.usecase.VerifiedContactAdminService;
 import com.aquilabank.domain.auth.usecase.VerifiedContactAdminUseCase;
 import com.aquilabank.global.persistence.auth.JdbcPasswordRecoveryDeliveryOutboxRepository;
 import com.aquilabank.global.persistence.auth.JdbcPasswordRecoveryRepository;
+import com.aquilabank.global.persistence.auth.TransactionTemplateAuthWriteAdapter;
 import com.aquilabank.global.security.LoginProtectionProperties;
 import com.aquilabank.global.security.PasswordRecoveryProperties;
 import com.aquilabank.global.security.SecurityJwtProperties;
@@ -185,49 +186,31 @@ public class AuthConfiguration {
       SecurityTotpProperties securityTotpProperties,
       Clock authClock,
       PlatformTransactionManager platformTransactionManager) {
-    LoginService loginService =
-        new LoginService(
-            userCredentialLoadPort,
-            loginAttemptUpdatePort,
-            loginAttemptAuditPort,
-            passwordHashPort,
-            totpCredentialLoadPort,
-            totpLoginChallengeWritePort,
-            rememberDeviceLoadPort,
-            rememberDeviceWritePort,
-            rememberDeviceSecretPort,
-            refreshTokenSessionWritePort,
-            refreshTokenSecretPort,
-            refreshDeviceBindingSecretPort,
-            authTokenIssuePort,
-            loginProtectionPolicy,
-            refreshTokenPolicy,
-            rememberDevicePolicy,
-            Duration.ofSeconds(securityTotpProperties.challengeTtlSeconds()),
-            passwordHashPort.encode("login-dummy-password"),
-            authClock);
     TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
-    return command -> {
-      LoginTransactionResult transactionResult =
-          transactionTemplate.execute(
-              status -> {
-                try {
-                  return LoginTransactionResult.success(loginService.login(command));
-                } catch (InvalidCredentialsException ex) {
-                  return LoginTransactionResult.failure(ex);
-                }
-              });
-      if (transactionResult == null) {
-        throw new IllegalStateException("login transaction result is null");
-      }
-      if (transactionResult.exception() != null) {
-        throw transactionResult.exception();
-      }
-      if (transactionResult.result() == null) {
-        throw new IllegalStateException("login transaction returned null result");
-      }
-      return transactionResult.result();
-    };
+    AuthWriteTransactionPort writeTransactionPort =
+        new TransactionTemplateAuthWriteAdapter(
+            transactionTemplate, true, "login transaction returned null result");
+    return new LoginService(
+        userCredentialLoadPort,
+        loginAttemptUpdatePort,
+        loginAttemptAuditPort,
+        passwordHashPort,
+        totpCredentialLoadPort,
+        totpLoginChallengeWritePort,
+        rememberDeviceLoadPort,
+        rememberDeviceWritePort,
+        rememberDeviceSecretPort,
+        refreshTokenSessionWritePort,
+        refreshTokenSecretPort,
+        refreshDeviceBindingSecretPort,
+        authTokenIssuePort,
+        loginProtectionPolicy,
+        refreshTokenPolicy,
+        rememberDevicePolicy,
+        Duration.ofSeconds(securityTotpProperties.challengeTtlSeconds()),
+        passwordHashPort.encode("login-dummy-password"),
+        writeTransactionPort,
+        authClock);
   }
 
   @Bean
@@ -254,27 +237,10 @@ public class AuthConfiguration {
             refreshTokenPolicy,
             authClock);
     TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
-    return command -> {
-      LoginTransactionResult transactionResult =
-          transactionTemplate.execute(
-              status -> {
-                try {
-                  return LoginTransactionResult.success(externalOidcLoginService.login(command));
-                } catch (InvalidCredentialsException ex) {
-                  return LoginTransactionResult.failure(ex);
-                }
-              });
-      if (transactionResult == null) {
-        throw new IllegalStateException("external oidc login transaction result is null");
-      }
-      if (transactionResult.exception() != null) {
-        throw transactionResult.exception();
-      }
-      if (transactionResult.result() == null) {
-        throw new IllegalStateException("external oidc login transaction returned null result");
-      }
-      return transactionResult.result();
-    };
+    AuthWriteTransactionPort writeTransactionPort =
+        new TransactionTemplateAuthWriteAdapter(
+            transactionTemplate, true, "external oidc login transaction returned null result");
+    return command -> writeTransactionPort.execute(() -> externalOidcLoginService.login(command));
   }
 
   @Bean
@@ -299,27 +265,10 @@ public class AuthConfiguration {
             refreshTokenPolicy,
             authClock);
     TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
-    return command -> {
-      LoginTransactionResult transactionResult =
-          transactionTemplate.execute(
-              status -> {
-                try {
-                  return LoginTransactionResult.success(refreshTokenService.refresh(command));
-                } catch (InvalidCredentialsException ex) {
-                  return LoginTransactionResult.failure(ex);
-                }
-              });
-      if (transactionResult == null) {
-        throw new IllegalStateException("refresh transaction result is null");
-      }
-      if (transactionResult.exception() != null) {
-        throw transactionResult.exception();
-      }
-      if (transactionResult.result() == null) {
-        throw new IllegalStateException("refresh transaction returned null result");
-      }
-      return transactionResult.result();
-    };
+    AuthWriteTransactionPort writeTransactionPort =
+        new TransactionTemplateAuthWriteAdapter(
+            transactionTemplate, true, "refresh transaction returned null result");
+    return command -> writeTransactionPort.execute(() -> refreshTokenService.refresh(command));
   }
 
   @Bean
@@ -414,27 +363,11 @@ public class AuthConfiguration {
             securityTotpProperties.challengeMaxAttempts(),
             authClock);
     TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
-    return command -> {
-      LoginTransactionResult transactionResult =
-          transactionTemplate.execute(
-              status -> {
-                try {
-                  return LoginTransactionResult.success(totpChallengeVerifyService.verify(command));
-                } catch (InvalidCredentialsException ex) {
-                  return LoginTransactionResult.failure(ex);
-                }
-              });
-      if (transactionResult == null) {
-        throw new IllegalStateException("totp challenge verify transaction result is null");
-      }
-      if (transactionResult.exception() != null) {
-        throw transactionResult.exception();
-      }
-      if (transactionResult.result() == null) {
-        throw new IllegalStateException("totp challenge verify transaction returned null result");
-      }
-      return transactionResult.result();
-    };
+    AuthWriteTransactionPort writeTransactionPort =
+        new TransactionTemplateAuthWriteAdapter(
+            transactionTemplate, true, "totp challenge verify transaction returned null result");
+    return command ->
+        writeTransactionPort.execute(() -> totpChallengeVerifyService.verify(command));
   }
 
   @Bean
@@ -559,29 +492,13 @@ public class AuthConfiguration {
             securityTotpProperties.challengeMaxAttempts(),
             authClock);
     TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
-    return command -> {
-      LoginTransactionResult transactionResult =
-          transactionTemplate.execute(
-              status -> {
-                try {
-                  return LoginTransactionResult.success(
-                      backupCodeChallengeVerifyService.verify(command));
-                } catch (InvalidCredentialsException ex) {
-                  return LoginTransactionResult.failure(ex);
-                }
-              });
-      if (transactionResult == null) {
-        throw new IllegalStateException("backup code challenge verify transaction result is null");
-      }
-      if (transactionResult.exception() != null) {
-        throw transactionResult.exception();
-      }
-      if (transactionResult.result() == null) {
-        throw new IllegalStateException(
+    AuthWriteTransactionPort writeTransactionPort =
+        new TransactionTemplateAuthWriteAdapter(
+            transactionTemplate,
+            true,
             "backup code challenge verify transaction returned null result");
-      }
-      return transactionResult.result();
-    };
+    return command ->
+        writeTransactionPort.execute(() -> backupCodeChallengeVerifyService.verify(command));
   }
 
   @Bean
@@ -617,17 +534,17 @@ public class AuthConfiguration {
       RefreshTokenSessionWritePort refreshTokenSessionWritePort,
       Clock authClock,
       PlatformTransactionManager platformTransactionManager) {
-    PasswordResetService passwordResetService =
-        new PasswordResetService(
-            userCredentialLoadPort,
-            userCredentialUpdatePort,
-            passwordHashPort,
-            rememberDeviceWritePort,
-            refreshTokenSessionWritePort,
-            authClock);
     TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
-    return command ->
-        transactionTemplate.executeWithoutResult(status -> passwordResetService.reset(command));
+    AuthWriteTransactionPort writeTransactionPort =
+        new TransactionTemplateAuthWriteAdapter(transactionTemplate, false, null);
+    return new PasswordResetService(
+        userCredentialLoadPort,
+        userCredentialUpdatePort,
+        passwordHashPort,
+        rememberDeviceWritePort,
+        refreshTokenSessionWritePort,
+        writeTransactionPort,
+        authClock);
   }
 
   @Bean
@@ -675,33 +592,20 @@ public class AuthConfiguration {
       RememberDeviceWritePort rememberDeviceWritePort,
       Clock authClock,
       PlatformTransactionManager platformTransactionManager) {
-    PasswordRecoveryConfirmService passwordRecoveryConfirmService =
-        new PasswordRecoveryConfirmService(
-            passwordRecoverySecretPort,
-            passwordRecoveryTokenLoadPort,
-            passwordRecoveryTokenWritePort,
-            userCredentialLoadPort,
-            userCredentialUpdatePort,
-            passwordHashPort,
-            refreshTokenSessionWritePort,
-            rememberDeviceWritePort,
-            authClock);
     TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
-    return command -> {
-      InvalidCredentialsException failure =
-          transactionTemplate.execute(
-              status -> {
-                try {
-                  passwordRecoveryConfirmService.confirm(command);
-                  return null;
-                } catch (InvalidCredentialsException ex) {
-                  return ex;
-                }
-              });
-      if (failure != null) {
-        throw failure;
-      }
-    };
+    AuthWriteTransactionPort writeTransactionPort =
+        new TransactionTemplateAuthWriteAdapter(transactionTemplate, true, null);
+    return new PasswordRecoveryConfirmService(
+        passwordRecoverySecretPort,
+        passwordRecoveryTokenLoadPort,
+        passwordRecoveryTokenWritePort,
+        userCredentialLoadPort,
+        userCredentialUpdatePort,
+        passwordHashPort,
+        refreshTokenSessionWritePort,
+        rememberDeviceWritePort,
+        writeTransactionPort,
+        authClock);
   }
 
   @Bean
@@ -837,16 +741,5 @@ public class AuthConfiguration {
   UserAccountMembershipStatusUpdateUseCase userAccountMembershipStatusUpdateUseCase(
       UserAccountMembershipStatusUpdatePort userAccountMembershipStatusUpdatePort) {
     return new UserAccountMembershipStatusUpdateService(userAccountMembershipStatusUpdatePort);
-  }
-
-  private record LoginTransactionResult(LoginResult result, InvalidCredentialsException exception) {
-
-    private static LoginTransactionResult success(LoginResult result) {
-      return new LoginTransactionResult(result, null);
-    }
-
-    private static LoginTransactionResult failure(InvalidCredentialsException exception) {
-      return new LoginTransactionResult(null, exception);
-    }
   }
 }

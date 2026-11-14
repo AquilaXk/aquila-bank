@@ -3,8 +3,8 @@ package com.aquilabank.global.ops;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
-import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.LongSupplier;
 
 public class ApiAdmissionControl {
@@ -12,7 +12,7 @@ public class ApiAdmissionControl {
   private static final long NANOS_PER_SECOND = 1_000_000_000L;
 
   private final ApiAdmissionControlProperties properties;
-  private final List<EndpointState> endpoints;
+  private final EndpointState[] endpoints;
 
   public ApiAdmissionControl(
       ApiAdmissionControlProperties properties, MeterRegistry meterRegistry) {
@@ -28,7 +28,7 @@ public class ApiAdmissionControl {
                 endpoint ->
                     new EndpointState(
                         endpoint, properties.retryAfterSeconds(), meterRegistry, ticker))
-            .toList();
+            .toArray(EndpointState[]::new);
   }
 
   public ApiAdmissionPermit tryAcquire(String rawPath) {
@@ -41,10 +41,10 @@ public class ApiAdmissionControl {
     }
     if (!endpoint.tryAcquire()) {
       endpoint.recordRejection();
-      return ApiAdmissionPermit.rejected(endpoint.group(), endpoint.retryAfterSeconds());
+      return endpoint.rejectedPermit();
     }
     endpoint.recordAccepted();
-    return ApiAdmissionPermit.acquired(endpoint.group(), endpoint::release);
+    return ApiAdmissionPermit.acquired(endpoint.group(), endpoint);
   }
 
   private EndpointState findEndpoint(String path) {
@@ -66,24 +66,24 @@ public class ApiAdmissionControl {
     return queryIndex < 0 ? rawPath : rawPath.substring(0, queryIndex);
   }
 
-  private static final class EndpointState {
+  private static final class EndpointState implements ApiAdmissionPermit.ReleaseTarget {
 
     private final String group;
-    private final int retryAfterSeconds;
-    private final List<String> pathPrefixes;
+    private final String[] pathPrefixes;
     private final ApiAdmissionControlProperties.AdaptiveLimit adaptive;
+    private final ApiAdmissionPermit rejectedPermit;
     private final AtomicInteger currentLimit;
     private final AtomicInteger inFlight = new AtomicInteger();
     private final AtomicInteger healthyCompletions = new AtomicInteger();
     private final LongSupplier ticker;
-    private final boolean[] rejectionWindow;
+    private final int rejectionWindowSize;
+    private final long rejectionWindowMask;
+    // 최근 최대 64건의 거부 여부를 64비트 CAS 슬라이딩 비트마스크로 유지해 락과 배열 할당을 제거한다.
+    private final AtomicLong rejectionWindowBits = new AtomicLong();
+    private final AtomicInteger rejectionWindowSamples = new AtomicInteger();
+    private final AtomicLong decreaseCooldownUntilNanos;
     private final Counter acceptedCounter;
     private final Counter rejectedCounter;
-
-    private int rejectionWindowIndex;
-    private int rejectionWindowSamples;
-    private int rejectionWindowRejected;
-    private volatile long decreaseCooldownUntilNanos;
 
     private EndpointState(
         ApiAdmissionControlProperties.EndpointLimit endpoint,
@@ -91,15 +91,18 @@ public class ApiAdmissionControl {
         MeterRegistry meterRegistry,
         LongSupplier ticker) {
       this.group = endpoint.group();
-      this.retryAfterSeconds =
+      int resolvedRetryAfterSeconds =
           endpoint.retryAfterSeconds() >= 0
               ? endpoint.retryAfterSeconds()
               : defaultRetryAfterSeconds;
-      this.pathPrefixes = endpoint.pathPrefixes();
+      this.rejectedPermit = ApiAdmissionPermit.rejected(this.group, resolvedRetryAfterSeconds);
+      this.pathPrefixes = endpoint.pathPrefixes().toArray(String[]::new);
       this.adaptive = endpoint.adaptive();
       this.currentLimit = new AtomicInteger(endpoint.maxConcurrency());
       this.ticker = ticker;
-      this.rejectionWindow = new boolean[endpoint.adaptive().rejectionWindowSize()];
+      this.rejectionWindowSize = adaptive.rejectionWindowSize();
+      this.rejectionWindowMask = rejectionWindowSize == 64 ? -1L : (1L << rejectionWindowSize) - 1L;
+      this.decreaseCooldownUntilNanos = new AtomicLong(ticker.getAsLong());
       this.acceptedCounter =
           Counter.builder("aquila.api.admission.requests")
               .tag("group", group)
@@ -126,8 +129,8 @@ public class ApiAdmissionControl {
       return group;
     }
 
-    private int retryAfterSeconds() {
-      return retryAfterSeconds;
+    private ApiAdmissionPermit rejectedPermit() {
+      return rejectedPermit;
     }
 
     private int matchedPrefixLength(String path) {
@@ -141,15 +144,14 @@ public class ApiAdmissionControl {
     }
 
     private boolean tryAcquire() {
-      while (true) {
-        int current = inFlight.get();
+      int current;
+      do {
+        current = inFlight.get();
         if (current >= currentLimit.get()) {
           return false;
         }
-        if (inFlight.compareAndSet(current, current + 1)) {
-          return true;
-        }
-      }
+      } while (!inFlight.compareAndSet(current, current + 1));
+      return true;
     }
 
     private void recordAccepted() {
@@ -173,43 +175,49 @@ public class ApiAdmissionControl {
           value -> Math.max(adaptive.minConcurrency(), value - adaptive.decreaseOnRejections()));
     }
 
-    private synchronized void recordAdmissionDecision(boolean rejected) {
-      if (rejectionWindowSamples < rejectionWindow.length) {
-        rejectionWindow[rejectionWindowSamples] = rejected;
-        rejectionWindowSamples++;
-      } else {
-        if (rejectionWindow[rejectionWindowIndex]) {
-          rejectionWindowRejected--;
-        }
-        rejectionWindow[rejectionWindowIndex] = rejected;
-        rejectionWindowIndex = (rejectionWindowIndex + 1) % rejectionWindow.length;
+    private long recordAdmissionDecision(boolean rejected) {
+      long bit = rejected ? 1L : 0L;
+      long current;
+      long updatedBits;
+      do {
+        current = rejectionWindowBits.get();
+        updatedBits = ((current << 1) | bit) & rejectionWindowMask;
+      } while (!rejectionWindowBits.compareAndSet(current, updatedBits));
+      if (rejectionWindowSamples.get() < rejectionWindowSize) {
+        rejectionWindowSamples.updateAndGet(
+            samples -> samples < rejectionWindowSize ? samples + 1 : samples);
       }
-      if (rejected) {
-        rejectionWindowRejected++;
-      }
+      return updatedBits;
     }
 
-    private synchronized boolean tryReserveDecreaseOnRejection() {
-      recordAdmissionDecision(true);
+    private boolean tryReserveDecreaseOnRejection() {
+      long bits = recordAdmissionDecision(true);
       if (currentLimit.get() <= adaptive.minConcurrency()) {
         return false;
       }
-      if (rejectionWindowSamples < rejectionWindow.length) {
+      int samples = rejectionWindowSamples.get();
+      if (samples < rejectionWindowSize) {
         return false;
       }
-      long nowNanos = ticker.getAsLong();
-      if (nowNanos < decreaseCooldownUntilNanos) {
-        return false;
-      }
-      double ratio = (double) rejectionWindowRejected / rejectionWindowSamples;
+      int rejectedInWindow = Long.bitCount(bits);
+      double ratio = (double) rejectedInWindow / samples;
       if (ratio < adaptive.decreaseRejectionRatio()) {
         return false;
       }
-      decreaseCooldownUntilNanos = nowNanos + adaptive.decreaseCooldownSeconds() * NANOS_PER_SECOND;
+      long nowNanos = ticker.getAsLong();
+      long cooldownNanos = adaptive.decreaseCooldownSeconds() * NANOS_PER_SECOND;
+      long cooldownUntil;
+      do {
+        cooldownUntil = decreaseCooldownUntilNanos.get();
+        if (cooldownNanos > 0 && nowNanos - cooldownUntil < 0) {
+          return false;
+        }
+      } while (!decreaseCooldownUntilNanos.compareAndSet(cooldownUntil, nowNanos + cooldownNanos));
       return true;
     }
 
-    private void release(boolean healthy) {
+    @Override
+    public void release(boolean healthy) {
       inFlight.decrementAndGet();
       if (healthy) {
         recordHealthyCompletion();

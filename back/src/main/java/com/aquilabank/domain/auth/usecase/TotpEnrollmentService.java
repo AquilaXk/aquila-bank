@@ -81,8 +81,10 @@ public final class TotpEnrollmentService implements TotpEnrollmentUseCase {
       totpCredentialWritePort.deletePendingByUserId(command.userId());
       throw new InvalidCredentialsException("pending totp enrollment is expired");
     }
-    if (!totpSecretPort.matches(
-        credential.secretCiphertext(), credential.secretNonce(), command.totpCode(), now)) {
+    if (totpSecretPort
+        .matchTimeStep(
+            credential.secretCiphertext(), credential.secretNonce(), command.totpCode(), now)
+        .isEmpty()) {
       throw new InvalidCredentialsException("totp verification failed");
     }
 

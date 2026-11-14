@@ -26,4 +26,9 @@ public record TotpCredential(
       throw new IllegalArgumentException("secretNonce is required");
     }
   }
+
+  /** RFC 6238 기준 30초 타임스텝이 이미 사용됐거나 과거 스텝인지 판별합니다. */
+  public boolean isStepReplayed(long matchedStep) {
+    return lastUsedAt != null && matchedStep <= Math.floorDiv(lastUsedAt.getEpochSecond(), 30L);
+  }
 }

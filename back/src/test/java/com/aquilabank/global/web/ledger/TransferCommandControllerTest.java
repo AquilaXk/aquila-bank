@@ -252,6 +252,38 @@ class TransferCommandControllerTest {
   }
 
   @Test
+  void rejectsSameAccountPreviewForBootstrapAndJwtUser() throws Exception {
+    stubPreview(
+        account(101L, "111122223333", "생활비 계좌", "ACTIVE", 10_000L),
+        account(101L, "111122223333", "생활비 계좌", "ACTIVE", 10_000L),
+        0L);
+
+    performPreview(1_000L, "KRW")
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message").value("sourceAccountId and targetAccountId must differ"));
+
+    authenticateUser(7L);
+    allowRecipientPreview();
+    when(requestAccountAuthorizationService.resolveTransferSourceAccountId(
+            org.mockito.ArgumentMatchers.any(), eq(101L)))
+        .thenReturn(101L);
+    when(accountSummaryQueryUseCase.getByAccountId(101L))
+        .thenReturn(account(101L, "111122223333", "생활비 계좌", "ACTIVE", 10_000L));
+    when(accountSummaryQueryUseCase.getByAccountNumber("111122223333"))
+        .thenReturn(account(101L, "111122223333", "생활비 계좌", "ACTIVE", 10_000L));
+
+    mockMvc
+        .perform(
+            get("/api/v1/transfers/preview")
+                .queryParam("sourceAccountId", "101")
+                .queryParam("targetAccountNumber", "111122223333")
+                .queryParam("amountMinor", "1000")
+                .queryParam("currencyCode", "KRW"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message").value("sourceAccountId and targetAccountId must differ"));
+  }
+
+  @Test
   void previewsCurrencyMismatchAsBlocked() throws Exception {
     stubPreview(
         account(101L, "111122223333", "생활비 계좌", "ACTIVE", "KRW", 10_000L),

@@ -23,22 +23,67 @@ public class JdbcTransactionReadRepository implements TransactionReadPort {
       TransactionSummaryRowMapper.INSTANCE;
   private static final Duration DEEP_CURSOR_MIN_DISTANCE = Duration.ofHours(1);
   private static final long DEEP_CURSOR_WINDOW_DIVISOR = 4L;
+  private static final String[] QUERY_SHAPES = {
+    "reference_exact",
+    "status_cursor",
+    "status_first",
+    "direction_cursor",
+    "direction_first",
+    "amount_cursor",
+    "amount_first",
+    "mixed_cursor",
+    "mixed_first",
+    "first_page",
+    "deep_cursor",
+    "immediate_cursor"
+  };
+  private static final String[] OUTCOMES = {"success", "error"};
+  private static final int SHAPE_REFERENCE_EXACT = 0;
+  private static final int SHAPE_STATUS_CURSOR = 1;
+  private static final int SHAPE_STATUS_FIRST = 2;
+  private static final int SHAPE_DIRECTION_CURSOR = 3;
+  private static final int SHAPE_DIRECTION_FIRST = 4;
+  private static final int SHAPE_AMOUNT_CURSOR = 5;
+  private static final int SHAPE_AMOUNT_FIRST = 6;
+  private static final int SHAPE_MIXED_CURSOR = 7;
+  private static final int SHAPE_MIXED_FIRST = 8;
+  private static final int SHAPE_FIRST_PAGE = 9;
+  private static final int SHAPE_DEEP_CURSOR = 10;
+  private static final int SHAPE_IMMEDIATE_CURSOR = 11;
+  private static final int OUTCOME_SUCCESS = 0;
+  private static final int OUTCOME_ERROR = 1;
 
   private final NamedParameterJdbcTemplate jdbcTemplate;
   private final MeterRegistry meterRegistry;
+  private final Timer[][] latencyTimers;
 
   public JdbcTransactionReadRepository(
       @Qualifier("transactionReadJdbcTemplate") NamedParameterJdbcTemplate jdbcTemplate,
       MeterRegistry meterRegistry) {
     this.jdbcTemplate = jdbcTemplate;
     this.meterRegistry = meterRegistry;
+    // shape x outcome 조합별 Timer를 생성 시점에 선등록해 조회 핫패스의 tag 배열 할당과 registry 조회를 제거합니다.
+    Timer[][] matrix = new Timer[QUERY_SHAPES.length][OUTCOMES.length];
+    for (int shapeIndex = 0; shapeIndex < QUERY_SHAPES.length; shapeIndex++) {
+      for (int outcomeIndex = 0; outcomeIndex < OUTCOMES.length; outcomeIndex++) {
+        matrix[shapeIndex][outcomeIndex] =
+            meterRegistry.timer(
+                "aquila.transaction.query.latency",
+                "query_shape",
+                QUERY_SHAPES[shapeIndex],
+                "outcome",
+                OUTCOMES[outcomeIndex]);
+      }
+    }
+    this.latencyTimers = matrix;
   }
 
   @Override
   @Transactional(readOnly = true, transactionManager = "transactionReadTransactionManager")
   public TransactionSlice fetch(TransactionQuery query) {
     Timer.Sample sample = Timer.start(meterRegistry);
-    String outcome = "success";
+    int shapeIndex = queryShapeIndex(query);
+    int outcomeIndex = OUTCOME_SUCCESS;
     try {
       TransactionReadQueryStatement statement = TransactionReadQueryStatement.from(query);
       List<TransactionSummary> rows =
@@ -49,16 +94,10 @@ public class JdbcTransactionReadRepository implements TransactionReadPort {
       TransactionCursor nextCursor = hasNext ? toCursor(items.getLast()) : null;
       return new TransactionSlice(items, nextCursor, hasNext, query.limit());
     } catch (RuntimeException ex) {
-      outcome = "error";
+      outcomeIndex = OUTCOME_ERROR;
       throw ex;
     } finally {
-      sample.stop(
-          meterRegistry.timer(
-              "aquila.transaction.query.latency",
-              "query_shape",
-              queryShape(query),
-              "outcome",
-              outcome));
+      sample.stop(latencyTimers[shapeIndex][outcomeIndex]);
     }
   }
 
@@ -68,30 +107,34 @@ public class JdbcTransactionReadRepository implements TransactionReadPort {
   }
 
   static String queryShape(TransactionQuery query) {
+    return QUERY_SHAPES[queryShapeIndex(query)];
+  }
+
+  private static int queryShapeIndex(TransactionQuery query) {
     boolean hasCursor = query.cursor() != null;
     boolean hasStatus = query.status() != null;
     boolean hasDirection = query.direction() != null;
     boolean hasAmountRange = query.minAmountMinor() != null || query.maxAmountMinor() != null;
     if (query.transactionReference() != null) {
-      return "reference_exact";
+      return SHAPE_REFERENCE_EXACT;
     }
     if (hasStatus && !hasDirection && !hasAmountRange) {
-      return hasCursor ? "status_cursor" : "status_first";
+      return hasCursor ? SHAPE_STATUS_CURSOR : SHAPE_STATUS_FIRST;
     }
     if (!hasStatus && hasDirection && !hasAmountRange) {
-      return hasCursor ? "direction_cursor" : "direction_first";
+      return hasCursor ? SHAPE_DIRECTION_CURSOR : SHAPE_DIRECTION_FIRST;
     }
     if (!hasStatus && !hasDirection && hasAmountRange) {
-      return hasCursor ? "amount_cursor" : "amount_first";
+      return hasCursor ? SHAPE_AMOUNT_CURSOR : SHAPE_AMOUNT_FIRST;
     }
     // tag cardinality를 낮추려고 filter 조합은 coarse bucket으로만 묶습니다.
     if (hasStatus || hasDirection || hasAmountRange) {
-      return hasCursor ? "mixed_cursor" : "mixed_first";
+      return hasCursor ? SHAPE_MIXED_CURSOR : SHAPE_MIXED_FIRST;
     }
     if (!hasCursor) {
-      return "first_page";
+      return SHAPE_FIRST_PAGE;
     }
-    return isDeepTimelineCursor(query) ? "deep_cursor" : "immediate_cursor";
+    return isDeepTimelineCursor(query) ? SHAPE_DEEP_CURSOR : SHAPE_IMMEDIATE_CURSOR;
   }
 
   private static boolean isDeepTimelineCursor(TransactionQuery query) {

@@ -1,9 +1,11 @@
 package com.aquilabank.global.web.auth;
 
+import com.aquilabank.global.security.SecurityAuthCookieProperties;
 import com.aquilabank.global.security.SecurityJwtProperties;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Duration;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Component;
@@ -16,9 +18,23 @@ public class RefreshDeviceBindingCookieManager {
   private static final String SAME_SITE_LAX = "Lax";
 
   private final SecurityJwtProperties securityJwtProperties;
+  private final boolean secureCookie;
+
+  @Autowired
+  public RefreshDeviceBindingCookieManager(
+      SecurityJwtProperties securityJwtProperties,
+      SecurityAuthCookieProperties securityAuthCookieProperties) {
+    this(securityJwtProperties, securityAuthCookieProperties.secure());
+  }
 
   public RefreshDeviceBindingCookieManager(SecurityJwtProperties securityJwtProperties) {
+    this(securityJwtProperties, true);
+  }
+
+  private RefreshDeviceBindingCookieManager(
+      SecurityJwtProperties securityJwtProperties, boolean secureCookie) {
     this.securityJwtProperties = securityJwtProperties;
+    this.secureCookie = secureCookie;
   }
 
   public String resolve(HttpServletRequest request) {
@@ -46,7 +62,7 @@ public class RefreshDeviceBindingCookieManager {
   private ResponseCookie bindingCookie(String bindingToken) {
     return ResponseCookie.from(securityJwtProperties.refreshDeviceCookieName(), bindingToken)
         .httpOnly(true)
-        .secure(true)
+        .secure(secureCookie)
         .sameSite(SAME_SITE_LAX)
         .path(REFRESH_COOKIE_PATH)
         .maxAge(Duration.ofSeconds(securityJwtProperties.refreshTokenTtlSeconds()))
@@ -56,7 +72,7 @@ public class RefreshDeviceBindingCookieManager {
   private ResponseCookie clearCookie() {
     return ResponseCookie.from(securityJwtProperties.refreshDeviceCookieName(), "")
         .httpOnly(true)
-        .secure(true)
+        .secure(secureCookie)
         .sameSite(SAME_SITE_LAX)
         .path(REFRESH_COOKIE_PATH)
         .maxAge(Duration.ZERO)

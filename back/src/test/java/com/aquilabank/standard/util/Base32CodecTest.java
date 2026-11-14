@@ -53,6 +53,7 @@ class Base32CodecTest {
     assertThrows(IllegalArgumentException.class, () -> Base32Codec.decode("AAAAAA"));
     assertThrows(IllegalArgumentException.class, () -> Base32Codec.decode("75"));
     assertThrows(IllegalArgumentException.class, () -> Base32Codec.decode("77"));
+    assertThrows(IllegalArgumentException.class, () -> Base32Codec.decode("A".repeat(4097)));
     assertThat(Base32Codec.encode(new byte[] {(byte) 0xff})).isEqualTo("74");
   }
 }

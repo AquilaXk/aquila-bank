@@ -1,9 +1,11 @@
 package com.aquilabank.global.web.auth;
 
+import com.aquilabank.global.security.SecurityAuthCookieProperties;
 import com.aquilabank.global.security.SecurityRememberDeviceProperties;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Duration;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Component;
@@ -15,10 +17,24 @@ public class RememberDeviceCookieManager {
   private static final String SAME_SITE_LAX = "Lax";
 
   private final SecurityRememberDeviceProperties securityRememberDeviceProperties;
+  private final boolean secureCookie;
+
+  @Autowired
+  public RememberDeviceCookieManager(
+      SecurityRememberDeviceProperties securityRememberDeviceProperties,
+      SecurityAuthCookieProperties securityAuthCookieProperties) {
+    this(securityRememberDeviceProperties, securityAuthCookieProperties.secure());
+  }
 
   public RememberDeviceCookieManager(
       SecurityRememberDeviceProperties securityRememberDeviceProperties) {
+    this(securityRememberDeviceProperties, true);
+  }
+
+  private RememberDeviceCookieManager(
+      SecurityRememberDeviceProperties securityRememberDeviceProperties, boolean secureCookie) {
     this.securityRememberDeviceProperties = securityRememberDeviceProperties;
+    this.secureCookie = secureCookie;
   }
 
   public String resolve(HttpServletRequest request) {
@@ -46,7 +62,7 @@ public class RememberDeviceCookieManager {
   private ResponseCookie rememberDeviceCookie(String rememberDeviceToken) {
     return ResponseCookie.from(securityRememberDeviceProperties.cookieName(), rememberDeviceToken)
         .httpOnly(true)
-        .secure(true)
+        .secure(secureCookie)
         .sameSite(SAME_SITE_LAX)
         .path("/")
         .maxAge(Duration.ofSeconds(securityRememberDeviceProperties.ttlSeconds()))
@@ -56,7 +72,7 @@ public class RememberDeviceCookieManager {
   private ResponseCookie clearCookie() {
     return ResponseCookie.from(securityRememberDeviceProperties.cookieName(), "")
         .httpOnly(true)
-        .secure(true)
+        .secure(secureCookie)
         .sameSite(SAME_SITE_LAX)
         .path("/")
         .maxAge(Duration.ZERO)

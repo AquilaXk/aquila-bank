@@ -11,14 +11,23 @@ public record TransactionQueryResponse(
     List<TransactionItemResponse> items, String nextCursor, boolean hasNext, int limit) {
 
   public static TransactionQueryResponse from(TransactionSlice slice) {
-    return from(slice, TransactionResponseShape.FULL);
+    long accountId = 0L;
+    if (slice.nextCursor() != null) {
+      if (slice.items().isEmpty()) {
+        throw new IllegalArgumentException("accountId is required to encode cursor");
+      }
+      accountId = slice.items().get(0).accountId();
+    }
+    return from(accountId, slice, TransactionResponseShape.FULL);
   }
 
   public static TransactionQueryResponse from(
-      TransactionSlice slice, TransactionResponseShape responseShape) {
+      long accountId, TransactionSlice slice, TransactionResponseShape responseShape) {
     return new TransactionQueryResponse(
         toItemResponses(slice.items(), responseShape),
-        slice.nextCursor() == null ? null : TransactionCursorCodec.encode(slice.nextCursor()),
+        slice.nextCursor() == null
+            ? null
+            : TransactionCursorCodec.encode(accountId, slice.nextCursor()),
         slice.hasNext(),
         slice.limit());
   }

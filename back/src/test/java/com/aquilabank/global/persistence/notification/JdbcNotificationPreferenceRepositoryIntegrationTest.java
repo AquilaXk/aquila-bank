@@ -89,6 +89,9 @@ class JdbcNotificationPreferenceRepositoryIntegrationTest extends PostgresContai
                 true),
             new NotificationPreference(
                 NotificationPreferenceCategory.SECURITY, NotificationPreferenceChannel.SMS, false));
+
+    repository.upsert(userId[0], List.of());
+    assertThat(repository.findByUserId(userId[0])).hasSize(2);
   }
 
   private long insertUser(String loginId) {

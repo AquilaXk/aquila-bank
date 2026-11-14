@@ -18,6 +18,7 @@ import com.aquilabank.domain.auth.model.PasswordRecoveryTokenStatus;
 import com.aquilabank.domain.auth.model.PasswordRecoveryTokenUseCommand;
 import com.aquilabank.domain.auth.model.PasswordResetWriteCommand;
 import com.aquilabank.domain.auth.model.UserStatus;
+import com.aquilabank.domain.auth.port.AuthWriteTransactionPort;
 import com.aquilabank.domain.auth.port.PasswordHashPort;
 import com.aquilabank.domain.auth.port.PasswordRecoverySecretPort;
 import com.aquilabank.domain.auth.port.PasswordRecoveryTokenLoadPort;
@@ -30,12 +31,20 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Optional;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 
 class PasswordRecoveryConfirmServiceTest {
 
   private static final Instant NOW = Instant.parse("2026-04-17T02:00:00Z");
   private static final Clock CLOCK = Clock.fixed(NOW, ZoneOffset.UTC);
+  private static final AuthWriteTransactionPort DIRECT_TX =
+      new AuthWriteTransactionPort() {
+        @Override
+        public <T> T execute(Supplier<T> action) {
+          return action.get();
+        }
+      };
 
   @Test
   void resetsPasswordAndRevokesActiveRefreshSessions() {
@@ -51,8 +60,11 @@ class PasswordRecoveryConfirmServiceTest {
         mock(RefreshTokenSessionWritePort.class);
 
     when(passwordRecoverySecretPort.hash("recovery-token")).thenReturn("token-hash");
+    when(passwordRecoveryTokenLoadPort.findByTokenHash("token-hash"))
+        .thenReturn(Optional.of(pendingToken()));
     when(passwordRecoveryTokenLoadPort.findByTokenHashForUpdate("token-hash"))
         .thenReturn(Optional.of(pendingToken()));
+    when(userCredentialLoadPort.findByUserId(7L)).thenReturn(Optional.of(activeUser()));
     when(userCredentialLoadPort.findByUserIdForUpdate(7L)).thenReturn(Optional.of(activeUser()));
     when(passwordHashPort.encode("newPassword456!")).thenReturn("new-password-hash");
 
@@ -65,11 +77,24 @@ class PasswordRecoveryConfirmServiceTest {
             userCredentialUpdatePort,
             passwordHashPort,
             refreshTokenSessionWritePort,
+            DIRECT_TX,
             CLOCK);
 
     service.confirm(new PasswordRecoveryConfirmCommand("recovery-token", "newPassword456!"));
 
-    verify(userCredentialUpdatePort)
+    org.mockito.InOrder inOrder =
+        org.mockito.Mockito.inOrder(
+            passwordRecoveryTokenLoadPort,
+            userCredentialLoadPort,
+            passwordHashPort,
+            userCredentialUpdatePort);
+    inOrder.verify(passwordRecoveryTokenLoadPort).findByTokenHash("token-hash");
+    inOrder.verify(userCredentialLoadPort).findByUserId(7L);
+    inOrder.verify(passwordHashPort).encode("newPassword456!");
+    inOrder.verify(passwordRecoveryTokenLoadPort).findByTokenHashForUpdate("token-hash");
+    inOrder.verify(userCredentialLoadPort).findByUserIdForUpdate(7L);
+    inOrder
+        .verify(userCredentialUpdatePort)
         .resetPassword(new PasswordResetWriteCommand(7L, "new-password-hash", NOW));
     verify(passwordRecoveryTokenWritePort).markUsed(new PasswordRecoveryTokenUseCommand(11L, NOW));
     verify(refreshTokenSessionWritePort).revokeActiveSessionsByUserId(7L, NOW);
@@ -90,8 +115,11 @@ class PasswordRecoveryConfirmServiceTest {
     RememberDeviceWritePort rememberDeviceWritePort = mock(RememberDeviceWritePort.class);
 
     when(passwordRecoverySecretPort.hash("recovery-token")).thenReturn("token-hash");
+    when(passwordRecoveryTokenLoadPort.findByTokenHash("token-hash"))
+        .thenReturn(Optional.of(pendingToken()));
     when(passwordRecoveryTokenLoadPort.findByTokenHashForUpdate("token-hash"))
         .thenReturn(Optional.of(pendingToken()));
+    when(userCredentialLoadPort.findByUserId(7L)).thenReturn(Optional.of(activeUser()));
     when(userCredentialLoadPort.findByUserIdForUpdate(7L)).thenReturn(Optional.of(activeUser()));
     when(passwordHashPort.encode("newPassword456!")).thenReturn("new-password-hash");
 
@@ -105,6 +133,7 @@ class PasswordRecoveryConfirmServiceTest {
             passwordHashPort,
             refreshTokenSessionWritePort,
             rememberDeviceWritePort,
+            DIRECT_TX,
             CLOCK);
 
     service.confirm(new PasswordRecoveryConfirmCommand("recovery-token", "newPassword456!"));
@@ -130,7 +159,7 @@ class PasswordRecoveryConfirmServiceTest {
         mock(RefreshTokenSessionWritePort.class);
 
     when(passwordRecoverySecretPort.hash("wrong-token")).thenReturn("wrong-token-hash");
-    when(passwordRecoveryTokenLoadPort.findByTokenHashForUpdate("wrong-token-hash"))
+    when(passwordRecoveryTokenLoadPort.findByTokenHash("wrong-token-hash"))
         .thenReturn(Optional.empty());
 
     PasswordRecoveryConfirmService service =
@@ -142,6 +171,7 @@ class PasswordRecoveryConfirmServiceTest {
             userCredentialUpdatePort,
             passwordHashPort,
             refreshTokenSessionWritePort,
+            DIRECT_TX,
             CLOCK);
 
     InvalidCredentialsException ex =
@@ -169,6 +199,8 @@ class PasswordRecoveryConfirmServiceTest {
         mock(RefreshTokenSessionWritePort.class);
 
     when(passwordRecoverySecretPort.hash("recovery-token")).thenReturn("token-hash");
+    when(passwordRecoveryTokenLoadPort.findByTokenHash("token-hash"))
+        .thenReturn(Optional.of(expiredToken()));
     when(passwordRecoveryTokenLoadPort.findByTokenHashForUpdate("token-hash"))
         .thenReturn(Optional.of(expiredToken()));
 
@@ -181,6 +213,7 @@ class PasswordRecoveryConfirmServiceTest {
             userCredentialUpdatePort,
             passwordHashPort,
             refreshTokenSessionWritePort,
+            DIRECT_TX,
             CLOCK);
 
     InvalidCredentialsException ex =
@@ -211,7 +244,7 @@ class PasswordRecoveryConfirmServiceTest {
         mock(RefreshTokenSessionWritePort.class);
 
     when(passwordRecoverySecretPort.hash("recovery-token")).thenReturn("token-hash");
-    when(passwordRecoveryTokenLoadPort.findByTokenHashForUpdate("token-hash"))
+    when(passwordRecoveryTokenLoadPort.findByTokenHash("token-hash"))
         .thenReturn(Optional.of(usedToken()));
 
     PasswordRecoveryConfirmService service =
@@ -223,6 +256,7 @@ class PasswordRecoveryConfirmServiceTest {
             userCredentialUpdatePort,
             passwordHashPort,
             refreshTokenSessionWritePort,
+            DIRECT_TX,
             CLOCK);
 
     InvalidCredentialsException ex =
@@ -253,9 +287,9 @@ class PasswordRecoveryConfirmServiceTest {
         mock(RefreshTokenSessionWritePort.class);
 
     when(passwordRecoverySecretPort.hash("recovery-token")).thenReturn("token-hash");
-    when(passwordRecoveryTokenLoadPort.findByTokenHashForUpdate("token-hash"))
+    when(passwordRecoveryTokenLoadPort.findByTokenHash("token-hash"))
         .thenReturn(Optional.of(pendingToken()));
-    when(userCredentialLoadPort.findByUserIdForUpdate(7L)).thenReturn(Optional.of(inactiveUser()));
+    when(userCredentialLoadPort.findByUserId(7L)).thenReturn(Optional.of(inactiveUser()));
 
     PasswordRecoveryConfirmService service =
         new PasswordRecoveryConfirmService(
@@ -266,6 +300,7 @@ class PasswordRecoveryConfirmServiceTest {
             userCredentialUpdatePort,
             passwordHashPort,
             refreshTokenSessionWritePort,
+            DIRECT_TX,
             CLOCK);
 
     InvalidCredentialsException ex =
@@ -277,15 +312,77 @@ class PasswordRecoveryConfirmServiceTest {
 
     assertThat(ex).hasMessage("password recovery failed");
 
-    when(userCredentialLoadPort.findByUserIdForUpdate(7L)).thenReturn(Optional.empty());
+    when(userCredentialLoadPort.findByUserId(7L)).thenReturn(Optional.empty());
     assertThrows(
         InvalidCredentialsException.class,
         () ->
             service.confirm(
                 new PasswordRecoveryConfirmCommand("recovery-token", "newPassword456!")));
 
+    verify(passwordHashPort, never()).encode(any());
+    verify(passwordRecoveryTokenLoadPort, never()).findByTokenHashForUpdate(any());
     verify(passwordRecoveryTokenWritePort, never()).markUsed(any());
     verifyNoInteractions(userCredentialUpdatePort, refreshTokenSessionWritePort);
+  }
+
+  @Test
+  void rejectsConcurrentTokenOrUserStateChangeInsideWriteTransaction() {
+    PasswordRecoverySecretPort passwordRecoverySecretPort = mock(PasswordRecoverySecretPort.class);
+    PasswordRecoveryTokenLoadPort passwordRecoveryTokenLoadPort =
+        mock(PasswordRecoveryTokenLoadPort.class);
+    PasswordRecoveryTokenWritePort passwordRecoveryTokenWritePort =
+        mock(PasswordRecoveryTokenWritePort.class);
+    UserCredentialLoadPort userCredentialLoadPort = mock(UserCredentialLoadPort.class);
+    UserCredentialUpdatePort userCredentialUpdatePort = mock(UserCredentialUpdatePort.class);
+    PasswordHashPort passwordHashPort = mock(PasswordHashPort.class);
+    RefreshTokenSessionWritePort refreshTokenSessionWritePort =
+        mock(RefreshTokenSessionWritePort.class);
+
+    PasswordRecoveryConfirmService service =
+        new PasswordRecoveryConfirmService(
+            passwordRecoverySecretPort,
+            passwordRecoveryTokenLoadPort,
+            passwordRecoveryTokenWritePort,
+            userCredentialLoadPort,
+            userCredentialUpdatePort,
+            passwordHashPort,
+            refreshTokenSessionWritePort,
+            DIRECT_TX,
+            CLOCK);
+
+    when(passwordRecoverySecretPort.hash("recovery-token")).thenReturn("token-hash");
+    when(passwordRecoveryTokenLoadPort.findByTokenHash("token-hash"))
+        .thenReturn(Optional.of(pendingToken()));
+    when(userCredentialLoadPort.findByUserId(7L)).thenReturn(Optional.of(activeUser()));
+    when(passwordHashPort.encode("newPassword456!")).thenReturn("new-password-hash");
+
+    when(passwordRecoveryTokenLoadPort.findByTokenHashForUpdate("token-hash"))
+        .thenReturn(Optional.of(usedToken()));
+    assertThrows(
+        InvalidCredentialsException.class,
+        () ->
+            service.confirm(
+                new PasswordRecoveryConfirmCommand("recovery-token", "newPassword456!")));
+
+    when(passwordRecoveryTokenLoadPort.findByTokenHashForUpdate("token-hash"))
+        .thenReturn(Optional.of(expiredToken()));
+    assertThrows(
+        InvalidCredentialsException.class,
+        () ->
+            service.confirm(
+                new PasswordRecoveryConfirmCommand("recovery-token", "newPassword456!")));
+    verify(passwordRecoveryTokenWritePort).markExpired(11L, NOW);
+
+    when(passwordRecoveryTokenLoadPort.findByTokenHashForUpdate("token-hash"))
+        .thenReturn(Optional.of(pendingToken()));
+    when(userCredentialLoadPort.findByUserIdForUpdate(7L)).thenReturn(Optional.of(inactiveUser()));
+    assertThrows(
+        InvalidCredentialsException.class,
+        () ->
+            service.confirm(
+                new PasswordRecoveryConfirmCommand("recovery-token", "newPassword456!")));
+
+    verify(userCredentialUpdatePort, never()).resetPassword(any());
   }
 
   private PasswordRecoveryTokenRecord pendingToken() {

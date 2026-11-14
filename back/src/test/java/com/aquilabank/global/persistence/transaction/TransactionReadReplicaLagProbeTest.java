@@ -149,6 +149,71 @@ class TransactionReadReplicaLagProbeTest {
     assertThat(refreshedLag.lagMs()).isEqualTo(250L);
   }
 
+  @Test
+  void skipsDuplicateProbeWhenAnotherThreadRefreshesCacheBeforeCasWins() throws Exception {
+    Instant[] nowHolder = {Instant.parse("2026-04-24T12:00:00Z")};
+    java.util.concurrent.atomic.AtomicBoolean triggerConcurrentRefresh =
+        new java.util.concurrent.atomic.AtomicBoolean(false);
+    TransactionReadReplicaLagProbe[] probeRef = new TransactionReadReplicaLagProbe[1];
+    java.util.concurrent.atomic.AtomicReference<TransactionReadReplicaLagProbe.ReplicaLag>
+        concurrentWinnerLag = new java.util.concurrent.atomic.AtomicReference<>();
+    java.util.concurrent.ExecutorService executor =
+        java.util.concurrent.Executors.newSingleThreadExecutor();
+    Clock mutableClock =
+        new Clock() {
+          @Override
+          public ZoneOffset getZone() {
+            return ZoneOffset.UTC;
+          }
+
+          @Override
+          public Clock withZone(java.time.ZoneId zone) {
+            return this;
+          }
+
+          @Override
+          public Instant instant() {
+            return nowHolder[0];
+          }
+
+          @Override
+          public long millis() {
+            if (triggerConcurrentRefresh.compareAndSet(true, false)) {
+              try {
+                concurrentWinnerLag.set(
+                    executor
+                        .submit(() -> probeRef[0].currentLag())
+                        .get(5, java.util.concurrent.TimeUnit.SECONDS));
+              } catch (Exception ex) {
+                throw new IllegalStateException(ex);
+              }
+            }
+            return nowHolder[0].toEpochMilli();
+          }
+        };
+    DataSource initialDs = dataSource(true, 90L, false);
+    DataSource secondDs = dataSource(true, 180L, false);
+    int[] probeReads = {0};
+    probeRef[0] =
+        new TransactionReadReplicaLagProbe(
+            () -> ++probeReads[0] == 1 ? initialDs : secondDs, properties(), mutableClock);
+
+    try {
+      assertThat(probeRef[0].currentLag().lagMs()).isEqualTo(90L);
+      assertThat(probeReads[0]).isEqualTo(1);
+
+      // 캐시 만료 후 current를 읽은 직후 다른 스레드가 먼저 프로브를 끝내면 CAS 획득 후 중복 쿼리를 건너뛴다.
+      nowHolder[0] = nowHolder[0].plusSeconds(2);
+      triggerConcurrentRefresh.set(true);
+
+      assertThat(probeRef[0].currentLag().lagMs()).isEqualTo(180L);
+      assertThat(concurrentWinnerLag.get().lagMs()).isEqualTo(180L);
+      assertThat(probeReads[0]).isEqualTo(2);
+    } finally {
+      executor.shutdownNow();
+    }
+  }
+
   private static TransactionReadReplicaProperties properties() {
     return new TransactionReadReplicaProperties(
         true,

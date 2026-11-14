@@ -7,17 +7,19 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 
-/** Redis는 login throttling counter 용도로만 쓰고, IP/global reserve는 한 번에 원자 처리합니다. */
+/** Redis에서 스코프별 전역/IP 제한과 tracked IP 퇴거를 단일 원자 Lua 스크립트 1회 왕복으로 처리합니다. */
 public final class RedisLoginThrottleStore implements LoginThrottleStore {
 
   private static final String IP_KEY_SUFFIX = "ip:";
   private static final String GLOBAL_KEY_SUFFIX = "global";
   private static final String TRACKED_IPS_KEY_SUFFIX = "tracked-ips";
-  private static final DefaultRedisScript<List> RESERVE_SCRIPT = reserveScript();
+  private static final AtomicLong MEMBER_SEQUENCE = new AtomicLong();
+  private static final String PROCESS_TAG = Long.toHexString(System.nanoTime());
+  private static final DefaultRedisScript<List> RESERVE_AND_TRACK_SCRIPT = reserveAndTrackScript();
 
   private final LoginThrottlingProperties properties;
   private final StringRedisTemplate stringRedisTemplate;
@@ -37,126 +39,75 @@ public final class RedisLoginThrottleStore implements LoginThrottleStore {
 
   @Override
   public ThrottleDecision check(String ipAddress) {
-    String normalizedIpAddress = normalizeIpAddress(ipAddress);
-    String ipHash = hashIpAddress(normalizedIpAddress);
-    String ipKey = key(IP_KEY_SUFFIX + ipHash);
-    String globalKey = key(GLOBAL_KEY_SUFFIX);
-    String trackedIpsKey = key(TRACKED_IPS_KEY_SUFFIX);
+    LoginThrottleScopeKey scopeKey = LoginThrottleScopeKey.parse(ipAddress);
+    String scopedPrefix = basePrefix() + "{" + scopeKey.scope() + "}:";
+    String ipKeyPrefix = scopedPrefix + IP_KEY_SUFFIX;
+    String ipHash = Sha256Hex.hashHex(scopeKey.ipAddress());
+    String ipKey = ipKeyPrefix + ipHash;
+    String globalKey = scopedPrefix + GLOBAL_KEY_SUFFIX;
+    String trackedIpsKey = scopedPrefix + TRACKED_IPS_KEY_SUFFIX;
 
     LoginThrottlingProperties.ScopeProperties ip = properties.ip();
     LoginThrottlingProperties.ScopeProperties global = properties.global();
     long nowMillis = Instant.now(clock).toEpochMilli();
+    long ipWindowMillis = Duration.ofSeconds(ip.windowSeconds()).toMillis();
+    long globalWindowMillis = Duration.ofSeconds(global.windowSeconds()).toMillis();
+    String member = nowMillis + ":" + PROCESS_TAG + ":" + MEMBER_SEQUENCE.incrementAndGet();
 
-    Reservation reservation = reserve(ipKey, globalKey, nowMillis, ip, global);
-    if (reservation.throttled()) {
-      LoginThrottlingProperties.ScopeProperties blockedScope =
-          reservation.scope() == LoginThrottleScope.IP ? ip : global;
-      return ThrottleDecision.blocked(
-          reservation.scope(),
-          reservation.retryAfterSeconds(),
-          blockedScope.maxAttempts(),
-          blockedScope.windowSeconds(),
-          trackedIpCount(trackedIpsKey, nowMillis));
-    }
-
-    trackIp(trackedIpsKey, ipHash, ip.windowSeconds(), nowMillis);
-    return ThrottleDecision.allowed(
-        ip.maxAttempts(), ip.windowSeconds(), trackedIpCount(trackedIpsKey, nowMillis));
-  }
-
-  @Override
-  public void clear() {
-    // 테스트 편의용 정리 경로다. 운영 핫패스에서는 사용하지 않는다.
-    String prefix = key("");
-    Set<String> keys = stringRedisTemplate.keys(prefix + "*");
-    if (keys != null && !keys.isEmpty()) {
-      stringRedisTemplate.delete(keys);
-    }
-  }
-
-  private Reservation reserve(
-      String ipKey,
-      String globalKey,
-      long nowMillis,
-      LoginThrottlingProperties.ScopeProperties ip,
-      LoginThrottlingProperties.ScopeProperties global) {
     List<?> result =
         stringRedisTemplate.execute(
-            RESERVE_SCRIPT,
-            List.of(ipKey, globalKey),
+            RESERVE_AND_TRACK_SCRIPT,
+            List.of(ipKey, globalKey, trackedIpsKey),
             Long.toString(nowMillis),
-            Long.toString(Duration.ofSeconds(ip.windowSeconds()).toMillis()),
-            Long.toString(Duration.ofSeconds(global.windowSeconds()).toMillis()),
+            Long.toString(ipWindowMillis),
+            Long.toString(globalWindowMillis),
             Integer.toString(ip.maxAttempts()),
             Integer.toString(global.maxAttempts()),
-            reservationMember(nowMillis),
-            reservationMember(nowMillis));
-    if (result == null || result.size() < 2) {
+            Integer.toString(properties.maxTrackedIps()),
+            member,
+            ipHash,
+            ipKeyPrefix);
+    if (result == null || result.size() < 3) {
       throw new IllegalStateException("failed to reserve redis login throttle slot");
     }
 
     long status = toLong(result.get(0));
     long retryAfterMillis = toLong(result.get(1));
+    int trackedIpCount = Math.toIntExact(toLong(result.get(2)));
     if (status == 0L) {
-      return Reservation.allowed();
+      return ThrottleDecision.allowed(ip.maxAttempts(), ip.windowSeconds(), trackedIpCount);
     }
     if (status == 1L) {
-      return Reservation.blocked(LoginThrottleScope.IP, toRetryAfterSeconds(retryAfterMillis));
+      return ThrottleDecision.blocked(
+          LoginThrottleScope.IP,
+          toRetryAfterSeconds(retryAfterMillis),
+          ip.maxAttempts(),
+          ip.windowSeconds(),
+          trackedIpCount);
     }
     if (status == 2L) {
-      return Reservation.blocked(LoginThrottleScope.GLOBAL, toRetryAfterSeconds(retryAfterMillis));
+      return ThrottleDecision.blocked(
+          LoginThrottleScope.GLOBAL,
+          toRetryAfterSeconds(retryAfterMillis),
+          global.maxAttempts(),
+          global.windowSeconds(),
+          trackedIpCount);
     }
     throw new IllegalStateException("unexpected redis login throttle status: " + status);
   }
 
-  private void trackIp(String trackedIpsKey, String ipHash, long windowSeconds, long nowMillis) {
-    pruneTrackedIps(trackedIpsKey, nowMillis);
-    if (stringRedisTemplate.opsForZSet().score(trackedIpsKey, ipHash) == null) {
-      evictIfNeeded(trackedIpsKey);
+  @Override
+  public void clear() {
+    // 테스트 편의용 정리 경로다. 운영 핫패스에서는 사용하지 않는다.
+    Set<String> keys = stringRedisTemplate.keys(basePrefix() + "*");
+    if (keys != null && !keys.isEmpty()) {
+      stringRedisTemplate.delete(keys);
     }
-    long expiresAtMillis = nowMillis + Duration.ofSeconds(windowSeconds).toMillis();
-    stringRedisTemplate.opsForZSet().add(trackedIpsKey, ipHash, expiresAtMillis);
-    stringRedisTemplate.expire(trackedIpsKey, Duration.ofSeconds(windowSeconds));
   }
 
-  private void evictIfNeeded(String trackedIpsKey) {
-    Long trackedIpCount = stringRedisTemplate.opsForZSet().zCard(trackedIpsKey);
-    long trackedCount = trackedIpCount == null ? 0L : trackedIpCount;
-    if (trackedCount < properties.maxTrackedIps()) {
-      return;
-    }
-    long overflow = trackedCount - properties.maxTrackedIps() + 1L;
-    Set<String> oldestIps = stringRedisTemplate.opsForZSet().range(trackedIpsKey, 0, overflow - 1L);
-    if (oldestIps == null || oldestIps.isEmpty()) {
-      return;
-    }
-    for (String ipHash : oldestIps) {
-      stringRedisTemplate.delete(key(IP_KEY_SUFFIX + ipHash));
-    }
-    stringRedisTemplate.opsForZSet().remove(trackedIpsKey, oldestIps.toArray());
-  }
-
-  private int trackedIpCount(String trackedIpsKey, long nowMillis) {
-    pruneTrackedIps(trackedIpsKey, nowMillis);
-    Long trackedCount = stringRedisTemplate.opsForZSet().zCard(trackedIpsKey);
-    refreshTrackedIpsTtl(trackedIpsKey, trackedCount);
-    return trackedCount == null ? 0 : trackedCount.intValue();
-  }
-
-  private void pruneTrackedIps(String trackedIpsKey, long nowMillis) {
-    stringRedisTemplate.opsForZSet().removeRangeByScore(trackedIpsKey, 0.0d, (double) nowMillis);
-  }
-
-  private void refreshTrackedIpsTtl(String trackedIpsKey, Long trackedCount) {
-    if (trackedCount == null || trackedCount <= 0L) {
-      stringRedisTemplate.delete(trackedIpsKey);
-      return;
-    }
-    stringRedisTemplate.expire(trackedIpsKey, Duration.ofSeconds(properties.ip().windowSeconds()));
-  }
-
-  private String reservationMember(long nowMillis) {
-    return nowMillis + ":" + UUID.randomUUID();
+  private String basePrefix() {
+    String prefix = properties.redis().keyPrefix();
+    return prefix.endsWith(":") ? prefix : prefix + ":";
   }
 
   private long toLong(Object value) {
@@ -170,45 +121,27 @@ public final class RedisLoginThrottleStore implements LoginThrottleStore {
     return Math.max(1L, (Math.max(retryAfterMillis, 0L) + 999L) / 1000L);
   }
 
-  private String key(String suffix) {
-    String prefix = properties.redis().keyPrefix();
-    if (prefix.endsWith(":")) {
-      return prefix + suffix;
-    }
-    if (suffix.isEmpty()) {
-      return prefix;
-    }
-    return prefix + ":" + suffix;
-  }
-
-  private String hashIpAddress(String ipAddress) {
-    return Sha256Hex.hashHex(ipAddress);
-  }
-
-  private String normalizeIpAddress(String ipAddress) {
-    if (ipAddress == null || ipAddress.isBlank()) {
-      return "unknown";
-    }
-    return ipAddress;
-  }
-
-  private static DefaultRedisScript<List> reserveScript() {
+  private static DefaultRedisScript<List> reserveAndTrackScript() {
     DefaultRedisScript<List> script = new DefaultRedisScript<>();
     script.setResultType(List.class);
     script.setScriptText(
         """
         local ipKey = KEYS[1]
         local globalKey = KEYS[2]
+        local trackedIpsKey = KEYS[3]
         local nowMillis = tonumber(ARGV[1])
         local ipWindowMillis = tonumber(ARGV[2])
         local globalWindowMillis = tonumber(ARGV[3])
         local ipLimit = tonumber(ARGV[4])
         local globalLimit = tonumber(ARGV[5])
-        local ipMember = ARGV[6]
-        local globalMember = ARGV[7]
+        local maxTrackedIps = tonumber(ARGV[6])
+        local member = ARGV[7]
+        local ipHash = ARGV[8]
+        local ipKeyPrefix = ARGV[9]
 
         redis.call('ZREMRANGEBYSCORE', ipKey, '-inf', nowMillis - ipWindowMillis)
         redis.call('ZREMRANGEBYSCORE', globalKey, '-inf', nowMillis - globalWindowMillis)
+        redis.call('ZREMRANGEBYSCORE', trackedIpsKey, '-inf', nowMillis)
 
         local ipCount = redis.call('ZCARD', ipKey)
         if ipCount >= ipLimit then
@@ -217,7 +150,13 @@ public final class RedisLoginThrottleStore implements LoginThrottleStore {
           if oldest[2] ~= nil then
             retryAfterMillis = math.max(1, tonumber(oldest[2]) + ipWindowMillis - nowMillis)
           end
-          return {1, retryAfterMillis}
+          local trackedCount = redis.call('ZCARD', trackedIpsKey)
+          if trackedCount > 0 then
+            redis.call('PEXPIRE', trackedIpsKey, ipWindowMillis)
+          else
+            redis.call('DEL', trackedIpsKey)
+          end
+          return {1, retryAfterMillis, trackedCount}
         end
 
         local globalCount = redis.call('ZCARD', globalKey)
@@ -227,26 +166,38 @@ public final class RedisLoginThrottleStore implements LoginThrottleStore {
           if oldest[2] ~= nil then
             retryAfterMillis = math.max(1, tonumber(oldest[2]) + globalWindowMillis - nowMillis)
           end
-          return {2, retryAfterMillis}
+          local trackedCount = redis.call('ZCARD', trackedIpsKey)
+          if trackedCount > 0 then
+            redis.call('PEXPIRE', trackedIpsKey, ipWindowMillis)
+          else
+            redis.call('DEL', trackedIpsKey)
+          end
+          return {2, retryAfterMillis, trackedCount}
         end
 
-        redis.call('ZADD', ipKey, nowMillis, ipMember)
+        redis.call('ZADD', ipKey, nowMillis, member)
         redis.call('PEXPIRE', ipKey, ipWindowMillis)
-        redis.call('ZADD', globalKey, nowMillis, globalMember)
+        redis.call('ZADD', globalKey, nowMillis, member)
         redis.call('PEXPIRE', globalKey, globalWindowMillis)
-        return {0, 0}
+
+        if redis.call('ZSCORE', trackedIpsKey, ipHash) == false then
+          local trackedCount = redis.call('ZCARD', trackedIpsKey)
+          if trackedCount >= maxTrackedIps then
+            local overflow = trackedCount - maxTrackedIps + 1
+            local oldestIps = redis.call('ZRANGE', trackedIpsKey, 0, overflow - 1)
+            for i = 1, #oldestIps do
+              redis.call('DEL', ipKeyPrefix .. oldestIps[i])
+              redis.call('ZREM', trackedIpsKey, oldestIps[i])
+            end
+          end
+        end
+
+        local expiresAtMillis = nowMillis + ipWindowMillis
+        redis.call('ZADD', trackedIpsKey, expiresAtMillis, ipHash)
+        redis.call('PEXPIRE', trackedIpsKey, ipWindowMillis)
+        local finalTrackedCount = redis.call('ZCARD', trackedIpsKey)
+        return {0, 0, finalTrackedCount}
         """);
     return script;
-  }
-
-  private record Reservation(boolean throttled, LoginThrottleScope scope, long retryAfterSeconds) {
-
-    private static Reservation allowed() {
-      return new Reservation(false, null, 0L);
-    }
-
-    private static Reservation blocked(LoginThrottleScope scope, long retryAfterSeconds) {
-      return new Reservation(true, scope, retryAfterSeconds);
-    }
   }
 }

@@ -17,11 +17,15 @@ import com.aquilabank.domain.customerapplication.port.CustomerApplicationAccount
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationExternalExecutionPort;
 import com.aquilabank.domain.customerapplication.port.CustomerTransferLimitPolicyPort;
 import com.aquilabank.domain.ledger.model.TransferLimitPolicy;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class CustomerApplicationExecutorServiceTest {
+
+  private static final Instant FIXED_NOW = Instant.parse("2026-05-13T04:00:00Z");
 
   private final CustomerTransferLimitPolicyPort transferLimitPolicyPort =
       mock(CustomerTransferLimitPolicyPort.class);
@@ -31,12 +35,14 @@ class CustomerApplicationExecutorServiceTest {
       mock(CustomerApplicationExternalExecutionPort.class);
   private final CustomerTransferLimitChangePolicy transferLimitChangePolicy =
       new CustomerTransferLimitChangePolicy(1_000_000L, 5_000_000L);
+  private final Clock clock = Clock.fixed(FIXED_NOW, ZoneOffset.UTC);
   private final CustomerApplicationExecutorService service =
       new CustomerApplicationExecutorService(
           transferLimitPolicyPort,
           accountPolicyPort,
           externalExecutionPort,
-          transferLimitChangePolicy);
+          transferLimitChangePolicy,
+          clock);
 
   @Test
   void executesTransferLimitChangeApplication() {
@@ -77,7 +83,8 @@ class CustomerApplicationExecutorServiceTest {
                         && command.dailyTransferLimitMinor() == 2_000_000L
                         && command.applicationReference().equals("CSA-001")
                         && command.actorSubject().equals("ops-executor")
-                        && command.requestId().equals("req-transfer-limit")));
+                        && command.requestId().equals("req-transfer-limit")
+                        && command.approvedAt().equals(FIXED_NOW)));
   }
 
   @Test

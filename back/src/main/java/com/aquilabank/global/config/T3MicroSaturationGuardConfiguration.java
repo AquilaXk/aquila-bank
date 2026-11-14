@@ -20,7 +20,6 @@ import java.lang.management.MemoryUsage;
 import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.List;
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
@@ -186,7 +185,15 @@ public class T3MicroSaturationGuardConfiguration {
     private final MemoryMXBean memoryMXBean;
     private final List<GarbageCollectorMXBean> garbageCollectors;
     private final Clock clock;
-    private volatile GcSample previousSample;
+    // 2버킷 반윈도우 롤링 기준점을 원시 필드로 유지해 GC 조회 경로의 객체 할당을 없앤다.
+    private long anchorAtMs;
+    private long anchorCount;
+    private long anchorTimeMs;
+    private long midpointAtMs;
+    private long midpointCount;
+    private long midpointTimeMs;
+    private boolean hasAnchor;
+    private boolean hasMidpoint;
 
     JmxJvmPressureProbe(
         MemoryMXBean memoryMXBean, List<GarbageCollectorMXBean> garbageCollectors, Clock clock) {
@@ -196,34 +203,53 @@ public class T3MicroSaturationGuardConfiguration {
     }
 
     @Override
-    public JvmPressureSnapshot snapshot(Duration gcWindow) {
+    public synchronized JvmPressureSnapshot snapshot(Duration gcWindow) {
       MemoryUsage heap = memoryMXBean.getHeapMemoryUsage();
       long heapUsed = Math.max(heap.getUsed(), 0L);
       long heapMax = Math.max(heap.getMax(), 0L);
-      GcSample currentSample = sampleGc();
-      GcSample previous = previousSample;
-      if (previous == null
-          || currentSample.observedAt().minus(gcWindow).isAfter(previous.observedAt())) {
-        previousSample = currentSample;
+      long collectionCount = 0L;
+      long collectionTimeMs = 0L;
+      for (int i = 0, size = garbageCollectors.size(); i < size; i++) {
+        GarbageCollectorMXBean garbageCollector = garbageCollectors.get(i);
+        collectionCount += Math.max(garbageCollector.getCollectionCount(), 0L);
+        collectionTimeMs += Math.max(garbageCollector.getCollectionTime(), 0L);
+      }
+      long nowMs = clock.millis();
+      long windowMs = Math.max(gcWindow.toMillis(), 0L);
+      if (!hasAnchor) {
+        setAnchor(nowMs, collectionCount, collectionTimeMs);
         return new JvmPressureSnapshot(heapUsed, heapMax, 0L, 0L);
+      }
+      if (nowMs - anchorAtMs > windowMs) {
+        if (hasMidpoint && nowMs - midpointAtMs <= windowMs) {
+          anchorAtMs = midpointAtMs;
+          anchorCount = midpointCount;
+          anchorTimeMs = midpointTimeMs;
+          hasMidpoint = false;
+        } else {
+          setAnchor(nowMs, collectionCount, collectionTimeMs);
+          return new JvmPressureSnapshot(heapUsed, heapMax, 0L, 0L);
+        }
+      }
+      if (!hasMidpoint && (nowMs - anchorAtMs) * 2L >= windowMs) {
+        midpointAtMs = nowMs;
+        midpointCount = collectionCount;
+        midpointTimeMs = collectionTimeMs;
+        hasMidpoint = true;
       }
       return new JvmPressureSnapshot(
           heapUsed,
           heapMax,
-          Math.max(currentSample.collectionCount() - previous.collectionCount(), 0L),
-          Math.max(currentSample.collectionTimeMs() - previous.collectionTimeMs(), 0L));
+          Math.max(collectionCount - anchorCount, 0L),
+          Math.max(collectionTimeMs - anchorTimeMs, 0L));
     }
 
-    private GcSample sampleGc() {
-      long collectionCount = 0L;
-      long collectionTimeMs = 0L;
-      for (GarbageCollectorMXBean garbageCollector : garbageCollectors) {
-        collectionCount += Math.max(garbageCollector.getCollectionCount(), 0L);
-        collectionTimeMs += Math.max(garbageCollector.getCollectionTime(), 0L);
-      }
-      return new GcSample(clock.instant(), collectionCount, collectionTimeMs);
+    private void setAnchor(long nowMs, long collectionCount, long collectionTimeMs) {
+      anchorAtMs = nowMs;
+      anchorCount = collectionCount;
+      anchorTimeMs = collectionTimeMs;
+      hasAnchor = true;
+      hasMidpoint = false;
     }
-
-    private record GcSample(Instant observedAt, long collectionCount, long collectionTimeMs) {}
   }
 }

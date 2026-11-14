@@ -2,6 +2,7 @@ package com.aquilabank.global.persistence.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.aquilabank.domain.auth.model.BackupCodeIssueCommand;
 import com.aquilabank.support.PostgresContainerTestSupport;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -319,5 +320,30 @@ class JdbcAuthWriteRepositoryIntegrationTest extends PostgresContainerTestSuppor
 
   private Timestamp toTimestamp(Instant value) {
     return value == null ? null : Timestamp.from(value);
+  }
+
+  @Test
+  void issuesBackupCodesInSingleBatchAndIgnoresEmptyInput() {
+    long[] userId = new long[1];
+    Instant now = Instant.parse("2026-04-20T00:00:00Z");
+    commit(transactionManager, () -> userId[0] = insertUser("backup-batch-user"));
+
+    repository.issueAll(List.of());
+    repository.issueAll(
+        List.of(
+            new BackupCodeIssueCommand(userId[0], "hash-batch-1", now),
+            new BackupCodeIssueCommand(userId[0], "hash-batch-2", now)));
+
+    List<String> hashes =
+        jdbcTemplate.queryForList(
+            """
+            SELECT code_hash
+            FROM auth_mfa_backup_code
+            WHERE user_id = :userId
+            ORDER BY id ASC
+            """,
+            new MapSqlParameterSource().addValue("userId", userId[0]),
+            String.class);
+    assertThat(hashes).containsExactly("hash-batch-1", "hash-batch-2");
   }
 }

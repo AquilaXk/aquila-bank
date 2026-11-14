@@ -3,7 +3,6 @@ package com.aquilabank.global.security;
 import com.aquilabank.domain.auth.model.GeneratedTotpSecret;
 import com.aquilabank.domain.auth.port.TotpSecretPort;
 import com.aquilabank.standard.util.Base32Codec;
-import com.aquilabank.standard.util.Sha256Hex;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
@@ -11,6 +10,7 @@ import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.OptionalLong;
 import javax.crypto.Cipher;
 import javax.crypto.Mac;
 import javax.crypto.spec.GCMParameterSpec;
@@ -26,6 +26,7 @@ public class AesTotpSecretManager implements TotpSecretPort {
   private static final int OTP_MODULUS = 1_000_000;
   private static final long TIME_STEP_SECONDS = 30L;
   private static final int ALLOWED_DRIFT_STEPS = 1;
+  private static final String HKDF_CONTEXT_INFO = "aquila-bank:totp-secret:aes-gcm:v1";
 
   private final SecretKeySpec secretKeySpec;
   private final String issuer;
@@ -40,9 +41,7 @@ public class AesTotpSecretManager implements TotpSecretPort {
     if (secretEncryptionKey == null || secretEncryptionKey.isBlank()) {
       throw new IllegalStateException("security.totp.secret-encryption-key is required");
     }
-    this.secretKeySpec =
-        new SecretKeySpec(
-            Sha256Hex.digest(secretEncryptionKey.getBytes(StandardCharsets.UTF_8)), "AES");
+    this.secretKeySpec = HkdfSha256.deriveAes256Key(secretEncryptionKey, HKDF_CONTEXT_INFO);
     this.issuer =
         securityTotpProperties.issuer() == null || securityTotpProperties.issuer().isBlank()
             ? "Aquila Bank"
@@ -71,7 +70,7 @@ public class AesTotpSecretManager implements TotpSecretPort {
   }
 
   @Override
-  public boolean matches(
+  public OptionalLong matchTimeStep(
       String secretCiphertext, String secretNonce, String totpCode, Instant now) {
     if (secretCiphertext == null || secretCiphertext.isBlank()) {
       throw new IllegalArgumentException("secretCiphertext is required");
@@ -81,7 +80,7 @@ public class AesTotpSecretManager implements TotpSecretPort {
     }
     int candidateOtp = parseSixDigitCode(totpCode);
     if (candidateOtp < 0) {
-      return false;
+      return OptionalLong.empty();
     }
     if (now == null) {
       throw new IllegalArgumentException("now is required");
@@ -91,14 +90,21 @@ public class AesTotpSecretManager implements TotpSecretPort {
     try {
       Mac mac = initHmacSha1(rawSecret);
       byte[] counterBytes = new byte[Long.BYTES];
-      long counter = now.getEpochSecond() / TIME_STEP_SECONDS;
-      boolean matched = false;
-      // 드리프트 윈도우[-1, 0, +1] 전체를 상수 시간에 평가해 타이밍 부채널을 방지합니다.
+      long counter = Math.floorDiv(now.getEpochSecond(), TIME_STEP_SECONDS);
+      long matchedStep = 0L;
+      long matchedMask = 0L;
+      // 드리프트 윈도우[-1, 0, +1] 전체를 분기 없는 비트마스크로 평가해 타이밍 부채널을 방지합니다.
       for (long step = -ALLOWED_DRIFT_STEPS; step <= ALLOWED_DRIFT_STEPS; step++) {
-        int expectedOtp = generateOtp(mac, counterBytes, counter + step);
-        matched |= (expectedOtp == candidateOtp);
+        long candidateStep = counter + step;
+        int expectedOtp = generateOtp(mac, counterBytes, candidateStep);
+        long diff = expectedOtp ^ candidateOtp;
+        long notZero = (diff | -diff) >>> 63;
+        long hitMask = notZero - 1L;
+        long updateMask = hitMask & ~matchedMask;
+        matchedStep = (matchedStep & ~updateMask) | (candidateStep & updateMask);
+        matchedMask |= hitMask;
       }
-      return matched;
+      return matchedMask != 0L ? OptionalLong.of(matchedStep) : OptionalLong.empty();
     } finally {
       Arrays.fill(rawSecret, (byte) 0);
     }

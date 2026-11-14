@@ -1,13 +1,14 @@
 package com.aquilabank.domain.notification.usecase;
 
 import com.aquilabank.domain.notification.model.NotificationPreference;
+import com.aquilabank.domain.notification.model.NotificationPreferenceChannel;
 import com.aquilabank.domain.notification.model.NotificationPreferenceUpdateCommand;
 import com.aquilabank.domain.notification.port.NotificationPreferenceWritePort;
-import java.util.HashSet;
-import java.util.Set;
 
 public final class NotificationPreferenceUpdateService
     implements NotificationPreferenceUpdateUseCase {
+
+  private static final int CHANNEL_COUNT = NotificationPreferenceChannel.values().length;
 
   private final NotificationPreferenceWritePort notificationPreferenceWritePort;
 
@@ -29,12 +30,13 @@ public final class NotificationPreferenceUpdateService
   }
 
   private static void validateDuplicates(NotificationPreferenceUpdateCommand command) {
-    Set<String> keys = new HashSet<>();
+    int seenMask = 0;
     for (NotificationPreference item : command.items()) {
-      String key = item.category().name() + ":" + item.channel().name();
-      if (!keys.add(key)) {
+      int bit = 1 << (item.category().ordinal() * CHANNEL_COUNT + item.channel().ordinal());
+      if ((seenMask & bit) != 0) {
         throw new IllegalArgumentException("duplicate preference item");
       }
+      seenMask |= bit;
     }
   }
 }

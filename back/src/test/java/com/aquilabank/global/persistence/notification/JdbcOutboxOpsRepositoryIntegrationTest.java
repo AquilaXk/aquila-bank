@@ -124,6 +124,20 @@ class JdbcOutboxOpsRepositoryIntegrationTest extends PostgresContainerTestSuppor
   }
 
   @Test
+  void returnsZeroSummaryWhenOutboxHasOnlyPublishedOrNoRows() {
+    Instant observedAt = Instant.parse("2026-04-17T01:05:00Z");
+
+    OutboxOpsSummary summary = repository.getSummary(Duration.ofSeconds(30), observedAt);
+
+    assertThat(summary.oldestDispatchableAt()).isNull();
+    assertThat(summary.oldestDispatchLag()).isEqualTo(Duration.ZERO);
+    assertThat(summary.failedCount()).isZero();
+    assertThat(summary.quarantinedCount()).isZero();
+    assertThat(summary.producerTimeoutFailedCount()).isZero();
+    assertThat(summary.staleSendingCount()).isZero();
+  }
+
+  @Test
   void recoversOnlyStaleSendingRowsToPending() {
     Instant recoveredAt = Instant.parse("2026-04-17T01:10:00Z");
     long[] ids = new long[3];

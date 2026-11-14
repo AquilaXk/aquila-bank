@@ -14,6 +14,7 @@ import com.aquilabank.domain.customerapplication.port.CustomerApplicationReadPor
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationReferencePort;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationSecurityVerificationPort;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationWritePort;
+import com.aquilabank.domain.customerapplication.port.CustomerApplicationWriteTransactionPort;
 import com.aquilabank.domain.customerapplication.port.CustomerTransferLimitPolicyPort;
 import com.aquilabank.domain.customerapplication.usecase.CustomerApplicationExecutorService;
 import com.aquilabank.domain.customerapplication.usecase.CustomerApplicationExternalCallbackService;
@@ -25,6 +26,7 @@ import com.aquilabank.domain.customerapplication.usecase.CustomerApplicationSelf
 import com.aquilabank.domain.customerapplication.usecase.CustomerApplicationService;
 import com.aquilabank.domain.customerapplication.usecase.CustomerApplicationSubmitUseCase;
 import com.aquilabank.global.customerapplication.WebhookCustomerApplicationExternalExecutionAdapter;
+import com.aquilabank.global.persistence.customerapplication.TransactionTemplateCustomerApplicationWriteAdapter;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
@@ -105,12 +107,14 @@ public class CustomerApplicationConfiguration {
       CustomerTransferLimitPolicyPort transferLimitPolicyPort,
       CustomerApplicationAccountPolicyPort accountPolicyPort,
       CustomerApplicationExternalExecutionPort externalExecutionPort,
-      CustomerApplicationProperties properties) {
+      CustomerApplicationProperties properties,
+      Clock authClock) {
     return new CustomerApplicationExecutorService(
         transferLimitPolicyPort,
         accountPolicyPort,
         externalExecutionPort,
-        properties.transferLimitChangePolicy());
+        properties.transferLimitChangePolicy(),
+        authClock);
   }
 
   @Bean
@@ -120,18 +124,12 @@ public class CustomerApplicationConfiguration {
       CustomerApplicationExecutorPort executorPort,
       Clock authClock,
       PlatformTransactionManager platformTransactionManager) {
-    CustomerApplicationOperationService service =
-        new CustomerApplicationOperationService(
-            operationPort, operationAuditPort, executorPort, authClock);
     TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
-    return command -> {
-      var result = transactionTemplate.execute(status -> service.apply(command));
-      if (result == null) {
-        throw new IllegalStateException(
-            "customer application operation transaction returned null result");
-      }
-      return result;
-    };
+    CustomerApplicationWriteTransactionPort writeTransactionPort =
+        new TransactionTemplateCustomerApplicationWriteAdapter(
+            transactionTemplate, "customer application operation transaction returned null result");
+    return new CustomerApplicationOperationService(
+        operationPort, operationAuditPort, executorPort, writeTransactionPort, authClock);
   }
 
   @Bean

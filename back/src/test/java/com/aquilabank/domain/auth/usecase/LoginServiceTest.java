@@ -22,6 +22,7 @@ import com.aquilabank.domain.auth.model.TotpCredential;
 import com.aquilabank.domain.auth.model.TotpCredentialStatus;
 import com.aquilabank.domain.auth.model.UserStatus;
 import com.aquilabank.domain.auth.port.AuthTokenIssuePort;
+import com.aquilabank.domain.auth.port.AuthWriteTransactionPort;
 import com.aquilabank.domain.auth.port.LoginAttemptAuditPort;
 import com.aquilabank.domain.auth.port.LoginAttemptUpdatePort;
 import com.aquilabank.domain.auth.port.PasswordHashPort;
@@ -39,6 +40,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Optional;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
@@ -46,6 +48,14 @@ class LoginServiceTest {
 
   private static final AuthSessionClientMetadata SESSION_CLIENT_METADATA =
       new AuthSessionClientMetadata("Windows / Chrome", "203.0.113.10");
+  private static final AuthWriteTransactionPort DIRECT_TX = new DirectAuthWriteTransactionPort();
+
+  static class DirectAuthWriteTransactionPort implements AuthWriteTransactionPort {
+    @Override
+    public <T> T execute(Supplier<T> action) {
+      return action.get();
+    }
+  }
 
   @Test
   void usesDummyHashWhenLoginIdIsMissing() {
@@ -67,8 +77,7 @@ class LoginServiceTest {
         Mockito.mock(RefreshDeviceBindingSecretPort.class);
     AuthTokenIssuePort authTokenIssuePort = Mockito.mock(AuthTokenIssuePort.class);
 
-    when(userCredentialLoadPort.findByLoginIdForUpdate("missing-user"))
-        .thenReturn(Optional.empty());
+    when(userCredentialLoadPort.findByLoginId("missing-user")).thenReturn(Optional.empty());
     when(passwordHashPort.matches("wrong-password", "dummy-hash")).thenReturn(false);
 
     LoginService loginService =
@@ -91,6 +100,7 @@ class LoginServiceTest {
             new RememberDevicePolicy(Duration.ofDays(30)),
             Duration.ofMinutes(5),
             "dummy-hash",
+            DIRECT_TX,
             Clock.fixed(Instant.parse("2026-04-17T00:00:00Z"), ZoneOffset.UTC));
 
     assertThrows(
@@ -105,7 +115,8 @@ class LoginServiceTest {
     verify(refreshTokenSessionWritePort, never()).create(Mockito.any());
     verify(authTokenIssuePort, never())
         .issue(Mockito.anyLong(), Mockito.anyString(), Mockito.anyLong(), Mockito.any());
-    verify(userCredentialLoadPort).findByLoginIdForUpdate(eq("missing-user"));
+    verify(userCredentialLoadPort).findByLoginId(eq("missing-user"));
+    verify(userCredentialLoadPort, never()).findByLoginIdForUpdate(Mockito.any());
     verifyNoInteractions(
         totpCredentialLoadPort,
         totpLoginChallengeWritePort,
@@ -134,11 +145,11 @@ class LoginServiceTest {
         Mockito.mock(RefreshDeviceBindingSecretPort.class);
     AuthTokenIssuePort authTokenIssuePort = Mockito.mock(AuthTokenIssuePort.class);
 
+    LoginUser activeAlice =
+        new LoginUser(7L, "alice", "encoded-password", UserStatus.ACTIVE, 0, null, null, null);
+    when(userCredentialLoadPort.findByLoginId("alice")).thenReturn(Optional.of(activeAlice));
     when(userCredentialLoadPort.findByLoginIdForUpdate("alice"))
-        .thenReturn(
-            Optional.of(
-                new LoginUser(
-                    7L, "alice", "encoded-password", UserStatus.ACTIVE, 0, null, null, null)));
+        .thenReturn(Optional.of(activeAlice));
     when(passwordHashPort.matches("password123!", "encoded-password")).thenReturn(true);
     when(totpCredentialLoadPort.findCredentialByUserId(7L))
         .thenReturn(
@@ -172,6 +183,7 @@ class LoginServiceTest {
             new RememberDevicePolicy(Duration.ofDays(30)),
             Duration.ofMinutes(5),
             "dummy-hash",
+            DIRECT_TX,
             Clock.fixed(Instant.parse("2026-04-17T00:00:00Z"), ZoneOffset.UTC));
 
     var result =
@@ -211,11 +223,11 @@ class LoginServiceTest {
         Mockito.mock(RefreshDeviceBindingSecretPort.class);
     AuthTokenIssuePort authTokenIssuePort = Mockito.mock(AuthTokenIssuePort.class);
 
+    LoginUser activeAlice =
+        new LoginUser(7L, "alice", "encoded-password", UserStatus.ACTIVE, 0, null, null, null);
+    when(userCredentialLoadPort.findByLoginId("alice")).thenReturn(Optional.of(activeAlice));
     when(userCredentialLoadPort.findByLoginIdForUpdate("alice"))
-        .thenReturn(
-            Optional.of(
-                new LoginUser(
-                    7L, "alice", "encoded-password", UserStatus.ACTIVE, 0, null, null, null)));
+        .thenReturn(Optional.of(activeAlice));
     when(passwordHashPort.matches("password123!", "encoded-password")).thenReturn(true);
     when(totpCredentialLoadPort.findCredentialByUserId(7L))
         .thenReturn(
@@ -273,6 +285,7 @@ class LoginServiceTest {
             new RememberDevicePolicy(Duration.ofDays(30)),
             Duration.ofMinutes(5),
             "dummy-hash",
+            DIRECT_TX,
             Clock.fixed(Instant.parse("2026-04-17T00:00:00Z"), ZoneOffset.UTC));
 
     var result =
@@ -312,11 +325,11 @@ class LoginServiceTest {
         Mockito.mock(RefreshDeviceBindingSecretPort.class);
     AuthTokenIssuePort authTokenIssuePort = Mockito.mock(AuthTokenIssuePort.class);
 
+    LoginUser activeAlice =
+        new LoginUser(7L, "alice", "encoded-password", UserStatus.ACTIVE, 0, null, null, null);
+    when(userCredentialLoadPort.findByLoginId("alice")).thenReturn(Optional.of(activeAlice));
     when(userCredentialLoadPort.findByLoginIdForUpdate("alice"))
-        .thenReturn(
-            Optional.of(
-                new LoginUser(
-                    7L, "alice", "encoded-password", UserStatus.ACTIVE, 0, null, null, null)));
+        .thenReturn(Optional.of(activeAlice));
     when(passwordHashPort.matches("password123!", "encoded-password")).thenReturn(true);
     when(totpCredentialLoadPort.findCredentialByUserId(7L)).thenReturn(Optional.empty());
     when(refreshTokenSecretPort.createToken()).thenReturn("refresh-token");
@@ -349,6 +362,7 @@ class LoginServiceTest {
             new RememberDevicePolicy(Duration.ofDays(30)),
             Duration.ofMinutes(5),
             "dummy-hash",
+            DIRECT_TX,
             Clock.fixed(Instant.parse("2026-04-17T00:00:00Z"), ZoneOffset.UTC));
 
     var result =
@@ -368,5 +382,80 @@ class LoginServiceTest {
                     Instant.parse("2026-04-17T00:00:00Z"),
                     SESSION_CLIENT_METADATA)));
     verify(authTokenIssuePort).issue(7L, "alice", 32L, Instant.parse("2026-04-17T00:00:00Z"));
+  }
+
+  @Test
+  void executesPasswordVerificationBeforeOpeningWriteTransaction() {
+    UserCredentialLoadPort userCredentialLoadPort = Mockito.mock(UserCredentialLoadPort.class);
+    LoginAttemptUpdatePort loginAttemptUpdatePort = Mockito.mock(LoginAttemptUpdatePort.class);
+    LoginAttemptAuditPort loginAttemptAuditPort = Mockito.mock(LoginAttemptAuditPort.class);
+    PasswordHashPort passwordHashPort = Mockito.mock(PasswordHashPort.class);
+    TotpCredentialLoadPort totpCredentialLoadPort = Mockito.mock(TotpCredentialLoadPort.class);
+    TotpLoginChallengeWritePort totpLoginChallengeWritePort =
+        Mockito.mock(TotpLoginChallengeWritePort.class);
+    RememberDeviceLoadPort rememberDeviceLoadPort = Mockito.mock(RememberDeviceLoadPort.class);
+    RememberDeviceWritePort rememberDeviceWritePort = Mockito.mock(RememberDeviceWritePort.class);
+    RememberDeviceSecretPort rememberDeviceSecretPort =
+        Mockito.mock(RememberDeviceSecretPort.class);
+    RefreshTokenSessionWritePort refreshTokenSessionWritePort =
+        Mockito.mock(RefreshTokenSessionWritePort.class);
+    RefreshTokenSecretPort refreshTokenSecretPort = Mockito.mock(RefreshTokenSecretPort.class);
+    RefreshDeviceBindingSecretPort refreshDeviceBindingSecretPort =
+        Mockito.mock(RefreshDeviceBindingSecretPort.class);
+    AuthTokenIssuePort authTokenIssuePort = Mockito.mock(AuthTokenIssuePort.class);
+    AuthWriteTransactionPort trackingTx = Mockito.spy(new DirectAuthWriteTransactionPort());
+
+    LoginUser snapshot =
+        new LoginUser(7L, "alice", "encoded-password", UserStatus.ACTIVE, 0, null, null, null);
+    when(userCredentialLoadPort.findByLoginId("alice")).thenReturn(Optional.of(snapshot));
+    when(userCredentialLoadPort.findByLoginIdForUpdate("alice")).thenReturn(Optional.of(snapshot));
+    when(passwordHashPort.matches("wrong-pass", "encoded-password")).thenReturn(false);
+
+    LoginService loginService =
+        new LoginService(
+            userCredentialLoadPort,
+            loginAttemptUpdatePort,
+            loginAttemptAuditPort,
+            passwordHashPort,
+            totpCredentialLoadPort,
+            totpLoginChallengeWritePort,
+            rememberDeviceLoadPort,
+            rememberDeviceWritePort,
+            rememberDeviceSecretPort,
+            refreshTokenSessionWritePort,
+            refreshTokenSecretPort,
+            refreshDeviceBindingSecretPort,
+            authTokenIssuePort,
+            new LoginProtectionPolicy(5, Duration.ofMinutes(15), Duration.ofMinutes(15)),
+            new RefreshTokenPolicy(Duration.ofDays(14)),
+            new RememberDevicePolicy(Duration.ofDays(30)),
+            Duration.ofMinutes(5),
+            "dummy-hash",
+            trackingTx,
+            Clock.fixed(Instant.parse("2026-04-17T00:00:00Z"), ZoneOffset.UTC));
+
+    assertThrows(
+        InvalidCredentialsException.class,
+        () -> loginService.login(new LoginCommand("alice", "wrong-pass", SESSION_CLIENT_METADATA)));
+
+    org.mockito.InOrder inOrder =
+        Mockito.inOrder(userCredentialLoadPort, passwordHashPort, trackingTx);
+    inOrder.verify(userCredentialLoadPort).findByLoginId("alice");
+    inOrder.verify(passwordHashPort).matches("wrong-pass", "encoded-password");
+    inOrder.verify(trackingTx).execute(any());
+    inOrder.verify(userCredentialLoadPort).findByLoginIdForUpdate("alice");
+    verify(loginAttemptUpdatePort).recordLoginFailure(any());
+
+    LoginUser rotatedSnapshot =
+        new LoginUser(7L, "alice", "new-encoded-password", UserStatus.ACTIVE, 0, null, null, null);
+    when(passwordHashPort.matches("password123!", "encoded-password")).thenReturn(true);
+    when(userCredentialLoadPort.findByLoginIdForUpdate("alice"))
+        .thenReturn(Optional.of(rotatedSnapshot));
+
+    assertThrows(
+        InvalidCredentialsException.class,
+        () ->
+            loginService.login(new LoginCommand("alice", "password123!", SESSION_CLIENT_METADATA)));
+    verify(loginAttemptUpdatePort).recordLoginFailure(any());
   }
 }

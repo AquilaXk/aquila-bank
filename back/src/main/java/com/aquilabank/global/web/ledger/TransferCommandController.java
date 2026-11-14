@@ -53,6 +53,7 @@ public class TransferCommandController {
   private static final int USER_RECIPIENT_PREVIEW_MAX_ATTEMPTS = 20;
   private static final long USER_RECIPIENT_PREVIEW_WINDOW_SECONDS = 60L;
   private static final String INTERNAL_INSTITUTION_CODE = "AQUILA";
+  private static final ZoneId DEFAULT_BUSINESS_ZONE_ID = ZoneId.of("Asia/Seoul");
 
   private final TransferCommandUseCase transferCommandUseCase;
   private final TransferReversalUseCase transferReversalUseCase;
@@ -63,7 +64,7 @@ public class TransferCommandController {
   private final TransferLimitPolicyUseCase transferLimitPolicyUseCase;
   private final TotpOperationRequirementUseCase totpOperationRequirementUseCase;
   private final TotpOperationVerifyUseCase totpOperationVerifyUseCase;
-  private final TransferLimitPolicyProperties transferLimitPolicyProperties;
+  private final ZoneId businessZoneId;
   private final Clock clock;
 
   @Autowired
@@ -113,7 +114,11 @@ public class TransferCommandController {
     this.transferLimitPolicyUseCase = transferLimitPolicyUseCase;
     this.totpOperationRequirementUseCase = totpOperationRequirementUseCase;
     this.totpOperationVerifyUseCase = totpOperationVerifyUseCase;
-    this.transferLimitPolicyProperties = transferLimitPolicyProperties;
+    String configuredZoneId = transferLimitPolicyProperties.businessZoneId();
+    this.businessZoneId =
+        DEFAULT_BUSINESS_ZONE_ID.getId().equals(configuredZoneId)
+            ? DEFAULT_BUSINESS_ZONE_ID
+            : ZoneId.of(configuredZoneId);
     this.clock = clock;
   }
 
@@ -139,7 +144,9 @@ public class TransferCommandController {
     AccountSummary source = accountSummaryQueryUseCase.getByAccountId(resolvedSourceAccountId);
     AccountSummary target =
         resolveTransferPreviewTargetAccount(principal, targetAccountId, targetAccountNumber);
-    ZoneId businessZoneId = ZoneId.of(transferLimitPolicyProperties.businessZoneId());
+    if (resolvedSourceAccountId == target.accountId()) {
+      throw new IllegalArgumentException("sourceAccountId and targetAccountId must differ");
+    }
     Instant now = clock.instant();
     LocalDate businessDate = LocalDate.ofInstant(now, businessZoneId);
     Instant fromInclusive = businessDate.atStartOfDay(businessZoneId).toInstant();

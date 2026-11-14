@@ -1,24 +1,17 @@
 package com.aquilabank.global.persistence.transaction;
 
-import com.aquilabank.global.web.RequestTraceContext;
-
-/** pg_stat_activity에서 transaction read 요청을 requestId로 역추적하기 위한 SQL comment */
+/** pg_stat_activity에서 query shape별 실행 추적을 남기되 PreparedStatement 캐시를 깨지 않는 정적 SQL comment */
 final class TransactionReadSqlTraceComment {
 
   private static final int MAX_TOKEN_LENGTH = 96;
 
   static String current(String shape) {
-    String requestId = RequestTraceContext.currentRequestId().orElse("unknown");
-    return "/* requestId="
-        + sanitize(requestId)
-        + " queryShape="
-        + sanitize(shape)
-        + " */"
-        + System.lineSeparator();
+    // 요청별 requestId를 SQL 본문에 넣으면 PGJDBC/JdbcTemplate parsedSqlCache 캐시가 무력화되므로 정적 shape만 남깁니다.
+    return "/* queryShape=" + sanitize(shape) + " */" + System.lineSeparator();
   }
 
   private static String sanitize(String value) {
-    if (value.isBlank()) {
+    if (value == null || value.isBlank()) {
       return "unknown";
     }
     int limit = Math.min(value.length(), MAX_TOKEN_LENGTH);

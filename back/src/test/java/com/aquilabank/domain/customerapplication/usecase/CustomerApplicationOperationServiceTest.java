@@ -17,12 +17,16 @@ import com.aquilabank.domain.customerapplication.model.CustomerApplicationType;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationExecutorPort;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationOperationAuditPort;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationOperationPort;
+import com.aquilabank.domain.customerapplication.port.CustomerApplicationWriteTransactionPort;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
+import org.mockito.Mockito;
 
 class CustomerApplicationOperationServiceTest {
 
@@ -32,10 +36,18 @@ class CustomerApplicationOperationServiceTest {
       mock(CustomerApplicationExecutorPort.class);
   private final CustomerApplicationOperationAuditPort operationAuditPort =
       mock(CustomerApplicationOperationAuditPort.class);
+  private final CustomerApplicationWriteTransactionPort writeTransactionPort =
+      Mockito.spy(
+          new CustomerApplicationWriteTransactionPort() {
+            @Override
+            public <T> T execute(Supplier<T> action) {
+              return action.get();
+            }
+          });
   private final Clock clock = Clock.fixed(Instant.parse("2026-05-13T03:00:00Z"), ZoneOffset.UTC);
   private final CustomerApplicationOperationService service =
       new CustomerApplicationOperationService(
-          operationPort, operationAuditPort, executorPort, clock);
+          operationPort, operationAuditPort, executorPort, writeTransactionPort, clock);
 
   @Test
   void approvesApplicationFromReviewingState() {
@@ -235,10 +247,20 @@ class CustomerApplicationOperationServiceTest {
   void executesUnsupportedApplicationAsFailedWithReason() {
     CustomerApplicationDetails approved =
         details(CustomerApplicationType.LOAN_APPLICATION, CustomerApplicationStatus.APPROVED);
+    CustomerApplicationDetails claimedPending =
+        details(
+            CustomerApplicationType.LOAN_APPLICATION, CustomerApplicationStatus.PENDING_EXTERNAL);
     CustomerApplicationDetails failed =
         details(CustomerApplicationType.LOAN_APPLICATION, CustomerApplicationStatus.FAILED);
-    when(operationPort.findByReferenceForUpdate("CSA-002")).thenReturn(Optional.of(approved));
-    when(executorPort.execute(approved, "ops-executor", "req-execute-002"))
+    when(operationPort.findByReferenceForUpdate("CSA-002"))
+        .thenReturn(Optional.of(approved), Optional.of(claimedPending));
+    when(operationPort.updateStatus(
+            argThat(
+                command ->
+                    command != null
+                        && command.status() == CustomerApplicationStatus.PENDING_EXTERNAL)))
+        .thenReturn(claimedPending);
+    when(executorPort.execute(claimedPending, "ops-executor", "req-execute-002"))
         .thenReturn(
             CustomerApplicationExecutionResult.failed(
                 "EXTERNAL_EXECUTION_NOT_CONFIGURED",
@@ -259,7 +281,19 @@ class CustomerApplicationOperationServiceTest {
                 "req-execute-002"));
 
     assertThat(result.status()).isEqualTo(CustomerApplicationStatus.FAILED);
-    verify(operationPort)
+    InOrder inOrder = Mockito.inOrder(operationPort, executorPort, writeTransactionPort);
+    inOrder.verify(writeTransactionPort).execute(org.mockito.ArgumentMatchers.any());
+    inOrder
+        .verify(operationPort)
+        .updateStatus(
+            argThat(
+                command ->
+                    command.status() == CustomerApplicationStatus.PENDING_EXTERNAL
+                        && command.reason().equals("EXTERNAL_EXECUTION_DISPATCHING")));
+    inOrder.verify(executorPort).execute(claimedPending, "ops-executor", "req-execute-002");
+    inOrder.verify(writeTransactionPort).execute(org.mockito.ArgumentMatchers.any());
+    inOrder
+        .verify(operationPort)
         .updateStatus(
             argThat(
                 command ->
@@ -267,6 +301,103 @@ class CustomerApplicationOperationServiceTest {
                         && command.reason().equals("EXTERNAL_EXECUTION_NOT_CONFIGURED")
                         && "LOAN_APPLICATION"
                             .equals(command.executionResult().get("applicationType"))));
+  }
+
+  @Test
+  void preservesTerminalStateWhenCallbackCompletesDuringExternalExecution() {
+    CustomerApplicationDetails approved =
+        details(CustomerApplicationType.LOAN_APPLICATION, CustomerApplicationStatus.APPROVED);
+    CustomerApplicationDetails claimedPending =
+        details(
+            CustomerApplicationType.LOAN_APPLICATION, CustomerApplicationStatus.PENDING_EXTERNAL);
+    CustomerApplicationDetails callbackExecuted =
+        details(CustomerApplicationType.LOAN_APPLICATION, CustomerApplicationStatus.EXECUTED);
+
+    when(operationPort.findByReferenceForUpdate("CSA-race"))
+        .thenReturn(Optional.of(approved), Optional.of(callbackExecuted));
+    when(operationPort.updateStatus(
+            argThat(
+                command ->
+                    command != null
+                        && command.status() == CustomerApplicationStatus.PENDING_EXTERNAL)))
+        .thenReturn(claimedPending);
+    when(executorPort.execute(claimedPending, "ops-executor", "req-race"))
+        .thenReturn(
+            CustomerApplicationExecutionResult.pendingExternal(
+                "EXTERNAL_EXECUTION_DISPATCHED", Map.of()));
+
+    CustomerApplicationDetails result =
+        service.apply(
+            new CustomerApplicationDecisionCommand(
+                "CSA-race", CustomerApplicationAction.EXECUTE, "ops-executor", "race", "req-race"));
+
+    assertThat(result.status()).isEqualTo(CustomerApplicationStatus.EXECUTED);
+    verify(operationPort, Mockito.times(1)).updateStatus(org.mockito.ArgumentMatchers.any());
+  }
+
+  @Test
+  void compensatesFailedStatusOnExecutorRuntimeExceptionUnlessAlreadyTerminal() {
+    CustomerApplicationDetails approved =
+        details(CustomerApplicationType.LOAN_APPLICATION, CustomerApplicationStatus.APPROVED);
+    CustomerApplicationDetails claimedPending =
+        details(
+            CustomerApplicationType.LOAN_APPLICATION, CustomerApplicationStatus.PENDING_EXTERNAL);
+    CustomerApplicationDetails failed =
+        details(CustomerApplicationType.LOAN_APPLICATION, CustomerApplicationStatus.FAILED);
+
+    when(operationPort.findByReferenceForUpdate("CSA-ex"))
+        .thenReturn(Optional.of(approved), Optional.of(claimedPending));
+    when(operationPort.updateStatus(
+            argThat(
+                command ->
+                    command != null
+                        && command.status() == CustomerApplicationStatus.PENDING_EXTERNAL)))
+        .thenReturn(claimedPending);
+    when(executorPort.execute(claimedPending, "ops-executor", "req-ex"))
+        .thenThrow(new IllegalStateException("webhook timeout"));
+    when(operationPort.updateStatus(
+            argThat(
+                command ->
+                    command != null && command.status() == CustomerApplicationStatus.FAILED)))
+        .thenReturn(failed);
+
+    assertThrows(
+        IllegalStateException.class,
+        () ->
+            service.apply(
+                new CustomerApplicationDecisionCommand(
+                    "CSA-ex", CustomerApplicationAction.EXECUTE, "ops-executor", "ex", "req-ex")));
+
+    verify(operationPort)
+        .updateStatus(
+            argThat(
+                command ->
+                    command.status() == CustomerApplicationStatus.FAILED
+                        && command.reason().equals("EXTERNAL_EXECUTION_DISPATCH_EXCEPTION")));
+
+    CustomerApplicationDetails callbackDone =
+        details(CustomerApplicationType.LOAN_APPLICATION, CustomerApplicationStatus.EXECUTED);
+    when(operationPort.findByReferenceForUpdate("CSA-ex-terminal"))
+        .thenReturn(Optional.of(approved), Optional.of(callbackDone));
+    when(operationPort.updateStatus(
+            argThat(
+                command ->
+                    command != null
+                        && command.status() == CustomerApplicationStatus.PENDING_EXTERNAL)))
+        .thenReturn(claimedPending);
+    when(executorPort.execute(claimedPending, "ops-executor", "req-ex-terminal"))
+        .thenThrow(new IllegalStateException("late timeout"));
+
+    assertThrows(
+        IllegalStateException.class,
+        () ->
+            service.apply(
+                new CustomerApplicationDecisionCommand(
+                    "CSA-ex-terminal",
+                    CustomerApplicationAction.EXECUTE,
+                    "ops-executor",
+                    "ex",
+                    "req-ex-terminal")));
   }
 
   @Test

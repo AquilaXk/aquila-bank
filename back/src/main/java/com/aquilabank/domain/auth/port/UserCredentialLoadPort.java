@@ -8,6 +8,8 @@ public interface UserCredentialLoadPort {
 
   Optional<LoginUser> findByLoginId(String loginId);
 
+  Optional<LoginUser> findByUserId(long userId);
+
   Optional<LoginUser> findByLoginIdForUpdate(String loginId);
 
   Optional<LoginUser> findByUserIdForUpdate(long userId);

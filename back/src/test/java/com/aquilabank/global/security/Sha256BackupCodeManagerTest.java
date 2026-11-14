@@ -1,6 +1,7 @@
 package com.aquilabank.global.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.aquilabank.domain.auth.model.GeneratedBackupCode;
@@ -45,6 +46,22 @@ class Sha256BackupCodeManagerTest {
     Sha256BackupCodeManager manager = new Sha256BackupCodeManager();
 
     assertThrows(IllegalArgumentException.class, () -> manager.generate(0));
+    assertThrows(IllegalArgumentException.class, () -> manager.hash(null));
     assertThrows(IllegalArgumentException.class, () -> manager.hash(" "));
+    assertThatThrownBy(() -> manager.hash("A".repeat(65)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("plainCode exceeds maximum length");
+    assertThatThrownBy(() -> manager.hash("ABCD-EFGH-JKLM"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("plainCode must be 8 characters");
+    assertThatThrownBy(() -> manager.hash("ABCD-EFG"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("plainCode must be 8 characters");
+    assertThatThrownBy(() -> manager.hash("ABCD-EFG1"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("plainCode contains unsupported characters");
+    assertThatThrownBy(() -> manager.hash("ABCD-EFG가"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("plainCode contains unsupported characters");
   }
 }

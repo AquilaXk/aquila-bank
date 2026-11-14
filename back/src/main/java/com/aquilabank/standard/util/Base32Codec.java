@@ -46,9 +46,14 @@ public final class Base32Codec {
     return builder.toString();
   }
 
+  private static final int MAX_DECODE_INPUT_LENGTH = 4096;
+
   public static byte[] decode(String value) {
     if (value == null) {
       throw new IllegalArgumentException("value is required");
+    }
+    if (value.length() > MAX_DECODE_INPUT_LENGTH) {
+      throw new IllegalArgumentException("Base32 input exceeds maximum length");
     }
     int validCharCount = 0;
     for (int index = 0; index < value.length(); index++) {

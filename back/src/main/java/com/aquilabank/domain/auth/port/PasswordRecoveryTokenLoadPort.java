@@ -6,5 +6,7 @@ import java.util.Optional;
 /** tokenHash exact lookup을 위한 읽기 경로입니다. */
 public interface PasswordRecoveryTokenLoadPort {
 
+  Optional<PasswordRecoveryTokenRecord> findByTokenHash(String tokenHash);
+
   Optional<PasswordRecoveryTokenRecord> findByTokenHashForUpdate(String tokenHash);
 }

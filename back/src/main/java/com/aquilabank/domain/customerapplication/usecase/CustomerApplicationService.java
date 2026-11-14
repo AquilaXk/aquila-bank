@@ -10,13 +10,12 @@ import com.aquilabank.domain.customerapplication.model.CustomerTransferLimitChan
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationReferencePort;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationSecurityVerificationPort;
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationWritePort;
-import java.nio.charset.StandardCharsets;
+import com.aquilabank.standard.util.Sha256Hex;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
-import java.util.UUID;
 
 /** 고객 업무 write flow는 원장 변경 전 단계의 신청 접수로만 제한합니다. */
 public final class CustomerApplicationService implements CustomerApplicationSubmitUseCase {
@@ -91,51 +90,61 @@ public final class CustomerApplicationService implements CustomerApplicationSubm
   }
 
   private String fingerprint(CustomerApplicationSubmitCommand command) {
-    String raw =
-        command.applicationType().name()
-            + "|"
-            + command.accountId()
-            + "|"
-            + canonicalize(command.payload());
-    // 보안 hash가 아니라 같은 idempotency key의 요청 shape 충돌 감지용 marker입니다.
-    return uuidHex(raw) + uuidHex("v2:" + raw);
+    StringBuilder builder = new StringBuilder(256);
+    String typeName = command.applicationType().name();
+    String accountIdText = String.valueOf(command.accountId());
+    // 길이 접두어와 타입 태그를 함께 인코딩해 구분자/타입 충돌 없는 SHA-256 fingerprint를 계산합니다.
+    builder
+        .append("APP|T")
+        .append(typeName.length())
+        .append(':')
+        .append(typeName)
+        .append("|A")
+        .append(accountIdText.length())
+        .append(':')
+        .append(accountIdText)
+        .append('|');
+    appendCanonical(builder, command.payload());
+    return Sha256Hex.hashHex(builder.toString());
   }
 
-  private String uuidHex(String value) {
-    return UUID.nameUUIDFromBytes(value.getBytes(StandardCharsets.UTF_8))
-        .toString()
-        .replace("-", "");
-  }
-
-  private String canonicalize(Object value) {
+  private void appendCanonical(StringBuilder builder, Object value) {
+    if (value == null) {
+      builder.append("N;");
+      return;
+    }
+    if (value instanceof Boolean boolValue) {
+      builder.append(boolValue ? "B1;" : "B0;");
+      return;
+    }
+    if (value instanceof Number) {
+      String text = value.toString();
+      builder.append('D').append(text.length()).append(':').append(text);
+      return;
+    }
     if (value instanceof Map<?, ?> map) {
       TreeMap<String, Object> sorted = new TreeMap<>();
       for (Map.Entry<?, ?> entry : map.entrySet()) {
         sorted.put(String.valueOf(entry.getKey()), entry.getValue());
       }
-      StringBuilder builder = new StringBuilder("{");
-      boolean first = true;
+      builder.append("M{");
       for (Map.Entry<String, Object> entry : sorted.entrySet()) {
-        if (!first) {
-          builder.append(",");
-        }
-        first = false;
-        builder.append(entry.getKey()).append(":").append(canonicalize(entry.getValue()));
+        String key = entry.getKey();
+        builder.append('K').append(key.length()).append(':').append(key);
+        appendCanonical(builder, entry.getValue());
       }
-      return builder.append("}").toString();
+      builder.append('}');
+      return;
     }
     if (value instanceof Iterable<?> iterable) {
-      StringBuilder builder = new StringBuilder("[");
-      boolean first = true;
+      builder.append("A[");
       for (Object item : iterable) {
-        if (!first) {
-          builder.append(",");
-        }
-        first = false;
-        builder.append(canonicalize(item));
+        appendCanonical(builder, item);
       }
-      return builder.append("]").toString();
+      builder.append(']');
+      return;
     }
-    return String.valueOf(value);
+    String text = String.valueOf(value);
+    builder.append('S').append(text.length()).append(':').append(text);
   }
 }

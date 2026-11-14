@@ -24,6 +24,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Optional;
+import java.util.OptionalLong;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
@@ -82,7 +83,8 @@ class TotpEnrollmentServiceTest {
                     NOW.plus(Duration.ofMinutes(5)),
                     null,
                     null)));
-    when(totpSecretPort.matches("cipher", "nonce", "123456", NOW)).thenReturn(false);
+    when(totpSecretPort.matchTimeStep("cipher", "nonce", "123456", NOW))
+        .thenReturn(OptionalLong.empty());
 
     TotpEnrollmentService service =
         new TotpEnrollmentService(
@@ -99,7 +101,8 @@ class TotpEnrollmentServiceTest {
 
     verify(totpCredentialWritePort, never()).activate(any());
 
-    when(totpSecretPort.matches("cipher", "nonce", "123456", NOW)).thenReturn(true);
+    when(totpSecretPort.matchTimeStep("cipher", "nonce", "123456", NOW))
+        .thenReturn(OptionalLong.of(Math.floorDiv(NOW.getEpochSecond(), 30L)));
     assertEquals(
         TotpCredentialStatus.ACTIVE,
         service.verify(new TotpEnrollmentVerifyCommand(7L, "123456")).credentialStatus());

@@ -34,6 +34,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Optional;
+import java.util.OptionalLong;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
@@ -64,7 +65,9 @@ class TotpChallengeVerifyServiceTest {
         .thenReturn(Optional.of(activeChallenge()));
     when(totpCredentialLoadPort.findCredentialByUserIdForUpdate(7L))
         .thenReturn(Optional.of(activeCredential()));
-    when(totpSecretPort.matches("cipher", "nonce", "123456", NOW)).thenReturn(true);
+    long currentStep = Math.floorDiv(NOW.getEpochSecond(), 30L);
+    when(totpSecretPort.matchTimeStep("cipher", "nonce", "123456", NOW))
+        .thenReturn(OptionalLong.of(currentStep));
     when(refreshTokenSecretPort.createToken()).thenReturn("refresh-token");
     when(refreshTokenSecretPort.hash("refresh-token")).thenReturn("refresh-hash");
     when(refreshDeviceBindingSecretPort.createToken()).thenReturn("binding-token");
@@ -126,7 +129,8 @@ class TotpChallengeVerifyServiceTest {
         .thenReturn(Optional.of(activeChallenge()));
     when(totpCredentialLoadPort.findCredentialByUserIdForUpdate(7L))
         .thenReturn(Optional.of(activeCredential()));
-    when(totpSecretPort.matches("cipher", "nonce", "999999", NOW)).thenReturn(false);
+    when(totpSecretPort.matchTimeStep("cipher", "nonce", "999999", NOW))
+        .thenReturn(OptionalLong.empty());
 
     TotpChallengeVerifyService service =
         new TotpChallengeVerifyService(
@@ -177,7 +181,9 @@ class TotpChallengeVerifyServiceTest {
         .thenReturn(Optional.of(activeChallenge()));
     when(totpCredentialLoadPort.findCredentialByUserIdForUpdate(7L))
         .thenReturn(Optional.of(activeCredential()));
-    when(totpSecretPort.matches("cipher", "nonce", "123456", NOW)).thenReturn(true);
+    long currentStep = Math.floorDiv(NOW.getEpochSecond(), 30L);
+    when(totpSecretPort.matchTimeStep("cipher", "nonce", "123456", NOW))
+        .thenReturn(OptionalLong.of(currentStep));
     when(rememberDeviceSecretPort.createToken()).thenReturn("remember-device-token");
     when(rememberDeviceSecretPort.hash("remember-device-token")).thenReturn("remember-hash");
     when(refreshTokenSecretPort.createToken()).thenReturn("refresh-token");
@@ -237,6 +243,22 @@ class TotpChallengeVerifyServiceTest {
                     null,
                     NOW.minus(Duration.ofMinutes(10)),
                     NOW.plusSeconds(30))));
+    org.junit.jupiter.api.Assertions.assertThrows(
+        InvalidCredentialsException.class,
+        () -> service.verify(new TotpChallengeVerifyCommand("challenge-1", "123456", false)));
+
+    // 동일 30초 스텝 재전송은 거부됩니다.
+    when(totpCredentialLoadPort.findCredentialByUserIdForUpdate(7L))
+        .thenReturn(
+            Optional.of(
+                new TotpCredential(
+                    7L,
+                    TotpCredentialStatus.ACTIVE,
+                    "cipher",
+                    "nonce",
+                    null,
+                    NOW.minus(Duration.ofMinutes(10)),
+                    NOW)));
     org.junit.jupiter.api.Assertions.assertThrows(
         InvalidCredentialsException.class,
         () -> service.verify(new TotpChallengeVerifyCommand("challenge-1", "123456", false)));

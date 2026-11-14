@@ -4,9 +4,8 @@ import com.aquilabank.global.config.TransactionReadReplicaProperties;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Clock;
-import java.time.Instant;
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.function.Supplier;
 import javax.sql.DataSource;
 
@@ -28,7 +27,10 @@ public final class TransactionReadReplicaLagProbe {
   private final Supplier<DataSource> replicaDataSourceSupplier;
   private final TransactionReadReplicaProperties properties;
   private final Clock clock;
-  private final AtomicBoolean probing = new AtomicBoolean(false);
+  private static final AtomicIntegerFieldUpdater<TransactionReadReplicaLagProbe> PROBING_UPDATER =
+      AtomicIntegerFieldUpdater.newUpdater(TransactionReadReplicaLagProbe.class, "probing");
+
+  private volatile int probing;
   private volatile CachedLag cachedLag;
 
   public TransactionReadReplicaLagProbe(
@@ -42,20 +44,24 @@ public final class TransactionReadReplicaLagProbe {
   }
 
   public ReplicaLag currentLag() {
-    Instant now = clock.instant();
     CachedLag current = cachedLag;
-    if (current != null && now.isBefore(current.expiresAt())) {
+    long nowMs = clock.millis();
+    if (current != null && nowMs < current.expiresAtMs()) {
       return current.value();
     }
-    if (!probing.compareAndSet(false, true)) {
+    if (!PROBING_UPDATER.compareAndSet(this, 0, 1)) {
       return current != null ? current.value() : measure();
     }
     try {
+      CachedLag refreshed = cachedLag;
+      if (refreshed != null && nowMs < refreshed.expiresAtMs()) {
+        return refreshed.value();
+      }
       ReplicaLag measured = measure();
-      cachedLag = new CachedLag(measured, now.plusMillis(properties.probeCacheMs()));
+      cachedLag = new CachedLag(measured, nowMs + properties.probeCacheMs());
       return measured;
     } finally {
-      probing.set(false);
+      probing = 0;
     }
   }
 
@@ -113,5 +119,5 @@ public final class TransactionReadReplicaLagProbe {
     }
   }
 
-  private record CachedLag(ReplicaLag value, Instant expiresAt) {}
+  private record CachedLag(ReplicaLag value, long expiresAtMs) {}
 }

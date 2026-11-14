@@ -59,34 +59,27 @@ public class JdbcOutboxOpsRepository implements OutboxOpsReadPort, OutboxOpsReco
     SummaryRow row =
         jdbcTemplate.queryForObject(
             """
-            SELECT (
-                       SELECT MIN(available_at)
-                       FROM outbox_event
+            -- outbox_event(publish_status, ...) 인덱스로 PUBLISHED 대다수 행을 건너뛰고 1회 스캔으로 집계합니다.
+            SELECT MIN(available_at) FILTER (
                        WHERE publish_status IN ('PENDING', 'FAILED')
                          AND available_at <= :observedAt
                    ) AS oldest_dispatchable_at,
-                   (
-                       SELECT COUNT(*)
-                       FROM outbox_event
+                   COUNT(*) FILTER (
                        WHERE publish_status = 'FAILED'
                    ) AS failed_count,
-                   (
-                       SELECT COUNT(*)
-                       FROM outbox_event
+                   COUNT(*) FILTER (
                        WHERE publish_status = 'QUARANTINED'
                    ) AS quarantined_count,
-                   (
-                       SELECT COUNT(*)
-                       FROM outbox_event
+                   COUNT(*) FILTER (
                        WHERE publish_status = 'FAILED'
                          AND last_error = 'kafka publish timed out'
                    ) AS producer_timeout_failed_count,
-                   (
-                       SELECT COUNT(*)
-                       FROM outbox_event
+                   COUNT(*) FILTER (
                        WHERE publish_status = 'SENDING'
                          AND updated_at <= :staleCutoff
                    ) AS stale_sending_count
+            FROM outbox_event
+            WHERE publish_status IN ('PENDING', 'FAILED', 'QUARANTINED', 'SENDING')
             """,
             new MapSqlParameterSource()
                 .addValue("observedAt", Timestamp.from(observedAt))

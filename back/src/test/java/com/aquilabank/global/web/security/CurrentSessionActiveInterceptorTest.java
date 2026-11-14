@@ -147,6 +147,29 @@ class CurrentSessionActiveInterceptorTest {
     verifyNoInteractions(currentSessionActiveAuditPort);
   }
 
+  @Test
+  void skipsMalformedAndNestedParameterizedPathsWithoutCheckingSession() throws Exception {
+    authenticate(new AuthenticatedUserPrincipal(7L, "alice"));
+
+    assertTrue(interceptor.preHandle(request("PUT", "/api/v1/transfers"), response(), null));
+    assertTrue(
+        interceptor.preHandle(
+            request("POST", "/api/v1/transfers/TRX-1/extra/reversal"), response(), null));
+    assertTrue(
+        interceptor.preHandle(request("POST", "/api/v1/transfers//reversal"), response(), null));
+    assertTrue(
+        interceptor.preHandle(
+            request("POST", "/api/v1/notifications/10/extra/read"), response(), null));
+    assertTrue(
+        interceptor.preHandle(request("DELETE", "/api/v1/auth/sessions/"), response(), null));
+    assertTrue(
+        interceptor.preHandle(
+            request("DELETE", "/api/v1/auth/sessions/11/extra"), response(), null));
+
+    verifyNoInteractions(currentSessionActiveUseCase);
+    verifyNoInteractions(currentSessionActiveAuditPort);
+  }
+
   private MockHttpServletRequest request(String method, String path) {
     return new MockHttpServletRequest(method, path);
   }

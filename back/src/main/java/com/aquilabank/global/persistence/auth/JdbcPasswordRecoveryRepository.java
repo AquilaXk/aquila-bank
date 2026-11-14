@@ -24,6 +24,28 @@ public class JdbcPasswordRecoveryRepository
   }
 
   @Override
+  public Optional<PasswordRecoveryTokenRecord> findByTokenHash(String tokenHash) {
+    return jdbcTemplate
+        .query(
+            """
+            SELECT t.id,
+                   t.user_id,
+                   u.login_id,
+                   t.token_hash,
+                   t.token_status,
+                   t.expires_at
+            FROM auth_password_recovery_token t
+            JOIN bank_user u
+              ON u.id = t.user_id
+            WHERE t.token_hash = :tokenHash
+            """,
+            new MapSqlParameterSource().addValue("tokenHash", tokenHash),
+            (rs, rowNum) -> mapPasswordRecoveryTokenRecord(rs))
+        .stream()
+        .findFirst();
+  }
+
+  @Override
   public Optional<PasswordRecoveryTokenRecord> findByTokenHashForUpdate(String tokenHash) {
     return jdbcTemplate
         .query(

@@ -54,6 +54,12 @@ class LoginThrottleGuardAndMemoryStoreTest {
     assertDoesNotThrow(() -> guard.check("203.0.113.10"));
     assertDoesNotThrow(() -> guard.check("203.0.113.10"));
 
+    assertDoesNotThrow(() -> guard.checkTotpChallengeVerify("203.0.113.10"));
+    assertDoesNotThrow(() -> guard.checkBackupCodeChallengeVerify("203.0.113.10"));
+    assertDoesNotThrow(() -> guard.checkPasswordRecoveryConfirm("203.0.113.10"));
+    assertDoesNotThrow(() -> guard.checkRefresh("203.0.113.10"));
+    assertDoesNotThrow(() -> guard.checkPasswordRecovery(" "));
+
     RequestContextHolder.resetRequestAttributes();
     LoginThrottledException loginBlocked =
         assertThrows(LoginThrottledException.class, () -> guard.check("203.0.113.10"));
@@ -130,6 +136,12 @@ class LoginThrottleGuardAndMemoryStoreTest {
     assertThat(isolatedStore.check("password_recovery:203.0.113.1").throttled()).isFalse();
     assertThat(isolatedStore.check("password_recovery:203.0.113.2").scope())
         .isEqualTo(LoginThrottleScope.GLOBAL);
+    assertThat(isolatedStore.check("refresh:203.0.113.1").throttled()).isFalse();
+    assertThat(isolatedStore.check("refresh:203.0.113.2").scope())
+        .isEqualTo(LoginThrottleScope.GLOBAL);
+    assertThat(isolatedStore.check("mfa_totp_challenge:203.0.113.1").throttled()).isFalse();
+    assertThat(isolatedStore.check("mfa_backup_code_challenge:203.0.113.1").throttled()).isFalse();
+    assertThat(isolatedStore.check("password_recovery_confirm:203.0.113.1").throttled()).isFalse();
     assertThat(isolatedStore.check("203.0.113.1").throttled()).isFalse();
   }
 

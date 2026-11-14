@@ -146,7 +146,7 @@ class TransactionQueryControllerTest {
   @Test
   void decodesIncomingCursor() throws Exception {
     TransactionCursor cursor = new TransactionCursor(Instant.parse("2026-04-16T09:00:00Z"), 777L);
-    String encoded = TransactionCursorCodec.encode(cursor);
+    String encoded = TransactionCursorCodec.encode(101L, cursor);
     when(transactionQueryUseCase.getTransactions(argThat(query -> cursor.equals(query.cursor()))))
         .thenReturn(new TransactionSlice(List.of(), null, false, 20));
     when(requestAccountAuthorizationService.resolveReadableAccountId(

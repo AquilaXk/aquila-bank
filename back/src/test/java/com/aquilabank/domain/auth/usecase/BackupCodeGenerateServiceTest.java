@@ -5,12 +5,12 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.aquilabank.domain.auth.exception.InvalidCredentialsException;
 import com.aquilabank.domain.auth.model.BackupCodeGenerateCommand;
+import com.aquilabank.domain.auth.model.BackupCodeIssueCommand;
 import com.aquilabank.domain.auth.model.GeneratedBackupCode;
 import com.aquilabank.domain.auth.model.LoginUser;
 import com.aquilabank.domain.auth.model.TotpCredential;
@@ -29,6 +29,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalLong;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
@@ -47,7 +48,8 @@ class BackupCodeGenerateServiceTest {
     when(userCredentialLoadPort.findByUserIdForUpdate(7L)).thenReturn(Optional.of(activeUser()));
     when(totpCredentialLoadPort.findCredentialByUserIdForUpdate(7L))
         .thenReturn(Optional.of(activeCredential()));
-    when(totpSecretPort.matches("cipher", "nonce", "123456", NOW)).thenReturn(true);
+    when(totpSecretPort.matchTimeStep("cipher", "nonce", "123456", NOW))
+        .thenReturn(OptionalLong.of(Math.floorDiv(NOW.getEpochSecond(), 30L)));
     when(backupCodeSecretPort.generate(3))
         .thenReturn(
             List.of(
@@ -70,7 +72,12 @@ class BackupCodeGenerateServiceTest {
     assertEquals(3, result.codeCount());
     assertEquals(List.of("ABCD-EFGH", "JKLM-NPQR", "STUV-WXYZ"), result.backupCodes());
     verify(backupCodeWritePort).supersedeActiveByUserId(7L, NOW);
-    verify(backupCodeWritePort, times(3)).issue(any());
+    verify(backupCodeWritePort)
+        .issueAll(
+            List.of(
+                new BackupCodeIssueCommand(7L, "hash-1", NOW),
+                new BackupCodeIssueCommand(7L, "hash-2", NOW),
+                new BackupCodeIssueCommand(7L, "hash-3", NOW)));
   }
 
   @Test
@@ -85,7 +92,8 @@ class BackupCodeGenerateServiceTest {
     when(userCredentialLoadPort.findByUserIdForUpdate(7L)).thenReturn(Optional.of(activeUser()));
     when(totpCredentialLoadPort.findCredentialByUserIdForUpdate(7L))
         .thenReturn(Optional.of(activeCredential()));
-    when(totpSecretPort.matches("cipher", "nonce", "123456", NOW)).thenReturn(true);
+    when(totpSecretPort.matchTimeStep("cipher", "nonce", "123456", NOW))
+        .thenReturn(OptionalLong.of(Math.floorDiv(NOW.getEpochSecond(), 30L)));
     when(backupCodeSecretPort.generate(1))
         .thenReturn(List.of(new GeneratedBackupCode("ABCD-EFGH", "hash-1")));
 
@@ -118,7 +126,8 @@ class BackupCodeGenerateServiceTest {
     when(userCredentialLoadPort.findByUserIdForUpdate(7L)).thenReturn(Optional.of(activeUser()));
     when(totpCredentialLoadPort.findCredentialByUserIdForUpdate(7L))
         .thenReturn(Optional.of(activeCredential()));
-    when(totpSecretPort.matches("cipher", "nonce", "123456", NOW)).thenReturn(false);
+    when(totpSecretPort.matchTimeStep("cipher", "nonce", "123456", NOW))
+        .thenReturn(OptionalLong.empty());
 
     BackupCodeGenerateService service =
         new BackupCodeGenerateService(
@@ -135,7 +144,7 @@ class BackupCodeGenerateServiceTest {
         () -> service.issue(new BackupCodeGenerateCommand(7L, "123456")));
 
     verify(backupCodeWritePort, never()).supersedeActiveByUserId(anyLong(), any(Instant.class));
-    verify(backupCodeWritePort, never()).issue(any());
+    verify(backupCodeWritePort, never()).issueAll(any());
   }
 
   @Test
@@ -199,6 +208,24 @@ class BackupCodeGenerateServiceTest {
         InvalidCredentialsException.class,
         () -> service.issue(new BackupCodeGenerateCommand(7L, "123456")));
 
+    // 동일 30초 스텝 재전송은 거부됩니다.
+    when(totpSecretPort.matchTimeStep("cipher", "nonce", "123456", NOW))
+        .thenReturn(OptionalLong.of(Math.floorDiv(NOW.getEpochSecond(), 30L)));
+    when(totpCredentialLoadPort.findCredentialByUserIdForUpdate(7L))
+        .thenReturn(
+            Optional.of(
+                new TotpCredential(
+                    7L,
+                    TotpCredentialStatus.ACTIVE,
+                    "cipher",
+                    "nonce",
+                    null,
+                    NOW.minus(Duration.ofMinutes(10)),
+                    NOW)));
+    assertThrows(
+        InvalidCredentialsException.class,
+        () -> service.issue(new BackupCodeGenerateCommand(7L, "123456")));
+
     when(totpCredentialLoadPort.findCredentialByUserIdForUpdate(7L))
         .thenReturn(
             Optional.of(
@@ -210,7 +237,8 @@ class BackupCodeGenerateServiceTest {
                     null,
                     NOW.minus(Duration.ofMinutes(10)),
                     null)));
-    when(totpSecretPort.matches("cipher", "nonce", "123456", NOW)).thenReturn(true);
+    when(totpSecretPort.matchTimeStep("cipher", "nonce", "123456", NOW))
+        .thenReturn(OptionalLong.of(Math.floorDiv(NOW.getEpochSecond(), 30L)));
     when(backupCodeSecretPort.generate(3))
         .thenReturn(java.util.List.of(new GeneratedBackupCode("ABCD-EFGH", "hash-1")));
     assertEquals(1, service.issue(new BackupCodeGenerateCommand(7L, "123456")).codeCount());

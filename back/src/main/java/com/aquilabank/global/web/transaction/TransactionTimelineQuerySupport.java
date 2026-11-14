@@ -16,6 +16,7 @@ import org.springframework.web.server.ResponseStatusException;
 final class TransactionTimelineQuerySupport {
 
   private final String endpoint;
+  private final int endpointIndex;
   private final RequestAccountAuthorizationService requestAccountAuthorizationService;
   private final TransactionReadHotPathMetrics hotPathMetrics;
   private final TransactionReadSingleFlight singleFlight;
@@ -28,6 +29,7 @@ final class TransactionTimelineQuerySupport {
       TransactionReadSingleFlight singleFlight,
       TransactionReadAccountFairnessLimiter accountFairnessLimiter) {
     this.endpoint = endpoint;
+    this.endpointIndex = TransactionReadHotPathMetrics.endpointIndex(endpoint);
     this.requestAccountAuthorizationService = requestAccountAuthorizationService;
     this.hotPathMetrics = hotPathMetrics;
     this.singleFlight = singleFlight;
@@ -48,50 +50,27 @@ final class TransactionTimelineQuerySupport {
       String transactionReference,
       String responseShape,
       Function<TransactionQuery, TransactionSlice> queryExecutor) {
-    return hotPathMetrics.record(
-        endpoint,
-        TransactionReadHotPathMetrics.STAGE_TOTAL,
-        () ->
-            executeMeasured(
-                principal,
-                accountId,
-                from,
-                to,
-                limit,
-                cursor,
-                status,
-                direction,
-                minAmountMinor,
-                maxAmountMinor,
-                transactionReference,
-                responseShape,
-                queryExecutor));
-  }
-
-  private TransactionQueryResponse executeMeasured(
-      AuthenticatedRequestPrincipal principal,
-      long accountId,
-      OffsetDateTime from,
-      OffsetDateTime to,
-      int limit,
-      String cursor,
-      TransactionStatus status,
-      TransactionDirection direction,
-      Long minAmountMinor,
-      Long maxAmountMinor,
-      String transactionReference,
-      String responseShape,
-      Function<TransactionQuery, TransactionSlice> queryExecutor) {
+    long totalStart = hotPathMetrics.startTimestamp();
+    boolean totalOk = false;
     try {
+      long authStart = hotPathMetrics.startTimestamp();
+      boolean authOk = false;
+      long resolvedAccountId;
+      try {
+        resolvedAccountId =
+            requestAccountAuthorizationService.resolveReadableAccountId(principal, accountId);
+        authOk = true;
+      } finally {
+        hotPathMetrics.recordOutcome(
+            endpointIndex,
+            TransactionReadHotPathMetrics.STAGE_AUTHORIZATION_INDEX,
+            authStart,
+            authOk);
+      }
       TransactionCursor decodedCursor =
-          cursor == null || cursor.isBlank() ? null : TransactionCursorCodec.decode(cursor);
-      long resolvedAccountId =
-          hotPathMetrics.record(
-              endpoint,
-              TransactionReadHotPathMetrics.STAGE_AUTHORIZATION,
-              () ->
-                  requestAccountAuthorizationService.resolveReadableAccountId(
-                      principal, accountId));
+          cursor == null || cursor.isBlank()
+              ? null
+              : TransactionCursorCodec.decode(resolvedAccountId, cursor);
       TransactionQuery query =
           new TransactionQuery(
               resolvedAccountId,
@@ -105,20 +84,44 @@ final class TransactionTimelineQuerySupport {
               maxAmountMinor,
               transactionReference);
       TransactionResponseShape resolvedResponseShape = TransactionResponseShape.from(responseShape);
-      TransactionSlice slice =
-          hotPathMetrics.record(
-              endpoint,
-              TransactionReadHotPathMetrics.STAGE_USECASE,
-              () ->
-                  accountFairnessLimiter.execute(
-                      resolvedAccountId,
-                      () -> singleFlight.get(endpoint, query, () -> queryExecutor.apply(query))));
-      return hotPathMetrics.record(
-          endpoint,
-          TransactionReadHotPathMetrics.STAGE_RESPONSE_MAPPING,
-          () -> TransactionQueryResponse.from(slice, resolvedResponseShape));
+      long usecaseStart = hotPathMetrics.startTimestamp();
+      boolean usecaseOk = false;
+      int fairnessSlot = -1;
+      TransactionSlice slice;
+      try {
+        fairnessSlot = accountFairnessLimiter.acquire(resolvedAccountId);
+        slice = singleFlight.get(endpoint, query, () -> queryExecutor.apply(query));
+        usecaseOk = true;
+      } finally {
+        if (fairnessSlot >= 0) {
+          accountFairnessLimiter.release(fairnessSlot);
+        }
+        hotPathMetrics.recordOutcome(
+            endpointIndex,
+            TransactionReadHotPathMetrics.STAGE_USECASE_INDEX,
+            usecaseStart,
+            usecaseOk);
+      }
+      long mappingStart = hotPathMetrics.startTimestamp();
+      boolean mappingOk = false;
+      try {
+        TransactionQueryResponse response =
+            TransactionQueryResponse.from(resolvedAccountId, slice, resolvedResponseShape);
+        mappingOk = true;
+        totalOk = true;
+        return response;
+      } finally {
+        hotPathMetrics.recordOutcome(
+            endpointIndex,
+            TransactionReadHotPathMetrics.STAGE_RESPONSE_MAPPING_INDEX,
+            mappingStart,
+            mappingOk);
+      }
     } catch (IllegalArgumentException ex) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage(), ex);
+    } finally {
+      hotPathMetrics.recordOutcome(
+          endpointIndex, TransactionReadHotPathMetrics.STAGE_TOTAL_INDEX, totalStart, totalOk);
     }
   }
 }

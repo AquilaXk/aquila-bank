@@ -49,4 +49,20 @@ class AesPasswordRecoveryTokenManagerTest {
     assertThrows(IllegalArgumentException.class, () -> manager.reveal(" ", "nonce"));
     assertThrows(IllegalArgumentException.class, () -> manager.reveal("cipher", " "));
   }
+
+  @Test
+  void separatesAesDomainKeysEvenWithIdenticalSharedSecretMaterial() {
+    String sharedSecret = "shared-jwt-secret-key-material";
+    AesPasswordRecoveryTokenManager recoveryManager =
+        new AesPasswordRecoveryTokenManager(new PasswordRecoveryProperties(900, sharedSecret), "");
+    AesTotpSecretManager totpManager =
+        new AesTotpSecretManager(
+            new SecurityTotpProperties("Aquila Bank", sharedSecret, 300, 300, 5), "");
+
+    com.aquilabank.domain.auth.model.GeneratedTotpSecret totpSecret = totpManager.generate("alice");
+
+    assertThrows(
+        IllegalStateException.class,
+        () -> recoveryManager.reveal(totpSecret.secretCiphertext(), totpSecret.secretNonce()));
+  }
 }

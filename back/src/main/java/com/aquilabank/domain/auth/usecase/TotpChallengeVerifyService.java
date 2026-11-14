@@ -27,6 +27,7 @@ import com.aquilabank.domain.auth.port.TotpLoginChallengeWritePort;
 import com.aquilabank.domain.auth.port.TotpSecretPort;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.OptionalLong;
 
 /** one-time MFA challenge 검증 성공 시에만 최종 token pair를 발급합니다. */
 public final class TotpChallengeVerifyService implements TotpChallengeVerifyUseCase {
@@ -109,11 +110,10 @@ public final class TotpChallengeVerifyService implements TotpChallengeVerifyUseC
       throw invalidChallenge();
     }
 
-    if ((credential.lastUsedAt() != null
-            && Math.floorDiv(now.getEpochSecond(), 30L)
-                < Math.floorDiv(credential.lastUsedAt().getEpochSecond(), 30L))
-        || !totpSecretPort.matches(
-            credential.secretCiphertext(), credential.secretNonce(), command.totpCode(), now)) {
+    OptionalLong matchedStep =
+        totpSecretPort.matchTimeStep(
+            credential.secretCiphertext(), credential.secretNonce(), command.totpCode(), now);
+    if (matchedStep.isEmpty() || credential.isStepReplayed(matchedStep.getAsLong())) {
       int nextAttemptCount = challenge.attemptCount() + 1;
       TotpLoginChallengeStatus nextStatus =
           nextAttemptCount >= challengeMaxAttempts
@@ -124,7 +124,9 @@ public final class TotpChallengeVerifyService implements TotpChallengeVerifyUseC
     }
 
     updateChallenge(challenge, TotpLoginChallengeStatus.VERIFIED, challenge.attemptCount(), now);
-    totpCredentialWritePort.touchLastUsed(new TotpCredentialTouchCommand(challenge.userId(), now));
+    totpCredentialWritePort.touchLastUsed(
+        TotpCredentialTouchCommand.forMatchedStep(
+            challenge.userId(), now, matchedStep.getAsLong()));
     return issueTokenPair(challenge, now, command.rememberDevice());
   }
 

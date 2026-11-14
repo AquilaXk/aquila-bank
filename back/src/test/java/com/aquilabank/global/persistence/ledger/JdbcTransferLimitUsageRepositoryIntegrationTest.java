@@ -144,6 +144,24 @@ class JdbcTransferLimitUsageRepositoryIntegrationTest extends PostgresContainerT
         .contains("currency_code")
         .contains("booked_at")
         .contains("INCLUDE (amount_minor)");
+
+    String txCoveringDefinition =
+        jdbcTemplate.queryForObject(
+            """
+            SELECT indexdef
+            FROM pg_indexes
+            WHERE schemaname = 'public'
+              AND indexname = 'idx_ledger_entry_transfer_limit_daily_tx_covering'
+            """,
+            new MapSqlParameterSource(),
+            String.class);
+
+    assertThat(txCoveringDefinition)
+        .contains("ledger_entry")
+        .contains("account_id")
+        .contains("currency_code")
+        .contains("booked_at")
+        .contains("INCLUDE (amount_minor, transaction_reference)");
   }
 
   private long insertAccount(String displayName) {

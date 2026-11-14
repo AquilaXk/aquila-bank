@@ -1892,15 +1892,16 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
         currentTotpCode(enrollment.secretKey()),
         "backup-reissue-enroll-verify-001");
 
+    String initialTotpCode = currentTotpCode(enrollment.secretKey());
     BackupCodeIssueResponseView firstIssued =
-        issueBackupCodes(
-            initialSession.accessToken(),
-            currentTotpCode(enrollment.secretKey()),
-            "backup-reissue-issue-001");
+        issueBackupCodes(initialSession.accessToken(), initialTotpCode, "backup-reissue-issue-001");
+    // 동일 30초 스텝의 TOTP 재전송은 거부되고, 다음 유효 스텝(+1 드리프트) 코드는 허용됩니다.
+    issueBackupCodesExpectUnauthorized(
+        initialSession.accessToken(), initialTotpCode, "backup-reissue-replay-001");
     BackupCodeIssueResponseView secondIssued =
         issueBackupCodes(
             initialSession.accessToken(),
-            currentTotpCode(enrollment.secretKey()),
+            totpCodeAtOffset(enrollment.secretKey(), 1L),
             "backup-reissue-issue-002");
 
     assertEquals(10, countBackupCodesByStatus(userId, "ACTIVE"));
@@ -1965,14 +1966,14 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
         initialSession.accessToken(),
         currentTotpCode(enrollment.secretKey()),
         "totp-disable-verify-001");
-    issueBackupCodes(
-        initialSession.accessToken(),
-        currentTotpCode(enrollment.secretKey()),
-        "totp-disable-backup-issue-001");
+    String issuedTotpCode = currentTotpCode(enrollment.secretKey());
+    issueBackupCodes(initialSession.accessToken(), issuedTotpCode, "totp-disable-backup-issue-001");
 
+    disableTotpExpectUnauthorized(
+        initialSession.accessToken(), issuedTotpCode, "totp-disable-same-step-replay-001");
     disableTotp(
         initialSession.accessToken(),
-        currentTotpCode(enrollment.secretKey()),
+        totpCodeAtOffset(enrollment.secretKey(), 1L),
         "totp-disable-request-001");
 
     assertEquals(0, countTotpCredentialRows(userId));
@@ -1991,7 +1992,7 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
     MvcResult disableResult =
         performDisableTotp(
                 rememberedSession.session().accessToken(),
-                currentTotpCode(rememberedSession.secretKey()),
+                totpCodeAtOffset(rememberedSession.secretKey(), 1L),
                 "remember-device-disable-request-001",
                 rememberedSession.rememberDeviceToken())
             .andExpect(status().isNoContent())
@@ -2207,6 +2208,13 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
       backupCodes.add(item.asText());
     }
     return new BackupCodeIssueResponseView(body.get("codeCount").asInt(), backupCodes);
+  }
+
+  private void issueBackupCodesExpectUnauthorized(
+      String accessToken, String totpCode, String requestId) throws Exception {
+    performIssueBackupCodes(accessToken, totpCode, requestId)
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.message").value("backup code issue failed"));
   }
 
   private TokenPairResponseView verifyBackupCodeChallenge(
@@ -3165,8 +3173,12 @@ class LoginAndAccountAccessApiIntegrationTest extends PostgresContainerTestSuppo
   }
 
   private String currentTotpCode(String secretKey) {
+    return totpCodeAtOffset(secretKey, 0L);
+  }
+
+  private String totpCodeAtOffset(String secretKey, long stepOffset) {
     byte[] rawSecret = Base32Codec.decode(secretKey);
-    long counter = Instant.now().getEpochSecond() / 30L;
+    long counter = Math.floorDiv(Instant.now().getEpochSecond(), 30L) + stepOffset;
     return generateTotpCode(rawSecret, counter);
   }
 

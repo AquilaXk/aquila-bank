@@ -17,6 +17,7 @@ import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Base64;
@@ -154,6 +155,6 @@ class AccountListJwtSecurityIntegrationTest {
   private String encodeCursor(long accountId) {
     return Base64.getUrlEncoder()
         .withoutPadding()
-        .encodeToString(Long.toString(accountId).getBytes(StandardCharsets.UTF_8));
+        .encodeToString(ByteBuffer.allocate(Long.BYTES).putLong(accountId).array());
   }
 }

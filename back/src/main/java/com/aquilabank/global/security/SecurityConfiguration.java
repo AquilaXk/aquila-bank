@@ -35,6 +35,7 @@ import org.springframework.security.oauth2.server.resource.web.BearerTokenResolv
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.AnonymousAuthenticationFilter;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.security.web.context.SecurityContextHolderFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -145,14 +146,14 @@ public class SecurityConfiguration {
                                   HttpServletResponse.SC_UNAUTHORIZED, "oidc login failed")));
     }
 
-    http.addFilterBefore(requestIdFilter, AnonymousAuthenticationFilter.class);
+    http.addFilterBefore(requestIdFilter, SecurityContextHolderFilter.class);
     http.addFilterAfter(internalAuthStatusAuditRequestCachingFilter, RequestIdFilter.class);
 
     BootstrapHeaderAuthenticationFilter filter =
         bootstrapHeaderAuthenticationFilter.getIfAvailable();
     if (filter != null) {
-      // request-id를 먼저 심고 그 다음에 bootstrap auth를 해석합니다.
-      http.addFilterAfter(filter, RequestIdFilter.class);
+      // Bearer JWT 인증 뒤, AnonymousAuthenticationFilter 앞에서 bootstrap auth를 해석합니다.
+      http.addFilterBefore(filter, AnonymousAuthenticationFilter.class);
     }
     return http.build();
   }

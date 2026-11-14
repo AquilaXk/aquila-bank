@@ -45,4 +45,33 @@ public class JdbcNotificationSseTargetResolver implements NotificationSseTargetR
         new MapSqlParameterSource().addValue("accountId", accountId),
         Long.class);
   }
+
+  @Override
+  @Transactional(readOnly = true)
+  public List<Long> findActiveAccountIdsByUserId(long userId) {
+    return jdbcTemplate.queryForList(
+        """
+        SELECT m.account_id
+        FROM user_account_membership m
+        JOIN bank_user u
+          ON u.id = m.user_id
+        JOIN bank_account a
+          ON a.id = m.account_id
+        WHERE m.user_id = :userId
+          AND m.membership_status = 'ACTIVE'
+          AND u.user_status = 'ACTIVE'
+          AND a.account_status IN ('ACTIVE', 'LOCKED')
+          AND NOT EXISTS (
+              SELECT 1
+              FROM notification_preference np
+              WHERE np.user_id = m.user_id
+                AND np.category = 'TRANSACTIONAL'
+                AND np.channel = 'IN_APP'
+                AND np.enabled = FALSE
+          )
+        ORDER BY m.account_id
+        """,
+        new MapSqlParameterSource().addValue("userId", userId),
+        Long.class);
+  }
 }

@@ -180,6 +180,91 @@ class LoginThrottlingIntegrationTest extends PostgresContainerTestSupport {
                 "aquila_auth_throttling_reject_count_total\\{[^\\n]*entry_point=\"password_recovery\"[^\\n]*scope=\"ip\"[^\\n]*store=\"memory\"[^\\n]*\\}\\s+1\\.0"));
   }
 
+  @Test
+  void throttlesPublicMfaRefreshAndPasswordRecoveryConfirmEndpointsPerScope() throws Exception {
+    RequestClientMetadata burstIp = clientMetadata("203.0.113.240");
+
+    for (int i = 0; i < 2; i++) {
+      mockMvc
+          .perform(
+              post("/api/v1/auth/mfa/totp/challenge/verify")
+                  .contentType(MediaType.APPLICATION_JSON)
+                  .header("X-Forwarded-For", burstIp.forwardedFor())
+                  .header("User-Agent", burstIp.userAgent())
+                  .content("{\"challengeId\":\"missing\",\"totpCode\":\"123456\"}"))
+          .andExpect(status().isUnauthorized());
+    }
+    mockMvc
+        .perform(
+            post("/api/v1/auth/mfa/totp/challenge/verify")
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("X-Forwarded-For", burstIp.forwardedFor())
+                .header("User-Agent", burstIp.userAgent())
+                .content("{\"challengeId\":\"missing\",\"totpCode\":\"123456\"}"))
+        .andExpect(status().isTooManyRequests());
+
+    for (int i = 0; i < 2; i++) {
+      mockMvc
+          .perform(
+              post("/api/v1/auth/mfa/backup-codes/challenge/verify")
+                  .contentType(MediaType.APPLICATION_JSON)
+                  .header("X-Forwarded-For", burstIp.forwardedFor())
+                  .header("User-Agent", burstIp.userAgent())
+                  .content("{\"challengeId\":\"missing\",\"backupCode\":\"ABCD-EFGH\"}"))
+          .andExpect(status().isUnauthorized());
+    }
+    mockMvc
+        .perform(
+            post("/api/v1/auth/mfa/backup-codes/challenge/verify")
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("X-Forwarded-For", burstIp.forwardedFor())
+                .header("User-Agent", burstIp.userAgent())
+                .content("{\"challengeId\":\"missing\",\"backupCode\":\"ABCD-EFGH\"}"))
+        .andExpect(status().isTooManyRequests());
+
+    for (int i = 0; i < 2; i++) {
+      mockMvc
+          .perform(
+              post("/api/v1/auth/password-recovery/confirm")
+                  .contentType(MediaType.APPLICATION_JSON)
+                  .header("X-Forwarded-For", burstIp.forwardedFor())
+                  .header("User-Agent", burstIp.userAgent())
+                  .content("{\"recoveryToken\":\"invalid\",\"newPassword\":\"NextPass123!\"}"))
+          .andExpect(status().isUnauthorized());
+    }
+    mockMvc
+        .perform(
+            post("/api/v1/auth/password-recovery/confirm")
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("X-Forwarded-For", burstIp.forwardedFor())
+                .header("User-Agent", burstIp.userAgent())
+                .content("{\"recoveryToken\":\"invalid\",\"newPassword\":\"NextPass123!\"}"))
+        .andExpect(status().isTooManyRequests());
+
+    for (int i = 0; i < 2; i++) {
+      mockMvc
+          .perform(
+              post("/api/v1/auth/refresh")
+                  .contentType(MediaType.APPLICATION_JSON)
+                  .header("X-Forwarded-For", burstIp.forwardedFor())
+                  .header("User-Agent", burstIp.userAgent())
+                  .content("{\"refreshToken\":\"invalid-refresh\"}"))
+          .andExpect(status().isUnauthorized());
+    }
+    mockMvc
+        .perform(
+            post("/api/v1/auth/refresh")
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("X-Forwarded-For", burstIp.forwardedFor())
+                .header("User-Agent", burstIp.userAgent())
+                .content("{\"refreshToken\":\"invalid-refresh\"}"))
+        .andExpect(status().isTooManyRequests());
+
+    // Exhausting other endpoint scopes from burstIp must still leave /login unblocked for burstIp.
+    String accessToken = login("alice", "password123!", "login-isolated-001", burstIp);
+    assertNotNull(accessToken);
+  }
+
   private String login(
       String loginId, String password, String requestId, RequestClientMetadata clientMetadata)
       throws Exception {

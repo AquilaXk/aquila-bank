@@ -130,6 +130,9 @@ class TransactionReadAccountFairnessLimiterTest {
       }
       assertThat(maxObservedActive.get()).isEqualTo(1);
       assertThat(limiter.execute(101L, () -> "clean")).isEqualTo("clean");
+      int minSlot = limiter.acquire(Long.MIN_VALUE);
+      assertThat(minSlot).isBetween(0, 4095);
+      limiter.release(minSlot);
     } finally {
       executor.shutdownNow();
     }

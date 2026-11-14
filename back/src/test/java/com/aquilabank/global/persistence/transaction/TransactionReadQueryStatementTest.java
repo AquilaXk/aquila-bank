@@ -51,10 +51,12 @@ class TransactionReadQueryStatementTest {
   }
 
   @Test
-  void queryStatementsIncludeSanitizedRequestIdTraceComment() {
+  void queryStatementsIncludeStaticQueryShapeCommentWithoutRequestId() {
     RequestTraceContext.set("tx read/req 001");
+    TransactionReadQueryStatement hot1 = TransactionReadQueryStatement.from(query(null));
+    RequestTraceContext.set("tx read/req 002");
+    TransactionReadQueryStatement hot2 = TransactionReadQueryStatement.from(query(null));
 
-    TransactionReadQueryStatement hot = TransactionReadQueryStatement.from(query(null));
     TransactionArchiveReadQueryStatement archive =
         TransactionArchiveReadQueryStatement.from(query(null));
     TransactionDetailQueryStatement detail =
@@ -64,16 +66,20 @@ class TransactionReadQueryStatementTest {
         TransactionDetailQueryStatement.fromArchive(
             new com.aquilabank.domain.transaction.model.TransactionDetailQuery(11L, "tr-ref-001"));
 
-    assertThat(hot.sql()).startsWith("/* requestId=tx_read_req_001 queryShape=hot-timeline */");
-    assertThat(archive.sql())
-        .startsWith("/* requestId=tx_read_req_001 queryShape=archive-timeline */");
-    assertThat(detail.sql()).startsWith("/* requestId=tx_read_req_001 queryShape=detail-exact */");
+    assertThat(hot1.sql()).isSameAs(hot2.sql());
+    assertThat(hot1.sql()).startsWith("/* queryShape=hot-timeline */");
+    assertThat(hot1.sql()).doesNotContain("requestId=");
+    assertThat(archive.sql()).startsWith("/* queryShape=archive-timeline */");
+    assertThat(archive.sql()).doesNotContain("requestId=");
+    assertThat(detail.sql()).startsWith("/* queryShape=detail-exact */");
     assertThat(detail.sql())
+        .doesNotContain("requestId=")
         .contains("JOIN transaction_read_model trm")
         .contains("ON trm.ledger_entry_id = le.id")
         .contains("AND trm.booked_at = le.booked_at");
     assertThat(archiveDetail.sql())
-        .startsWith("/* requestId=tx_read_req_001 queryShape=detail-archive-exact */")
+        .startsWith("/* queryShape=detail-archive-exact */")
+        .doesNotContain("requestId=")
         .contains("JOIN transaction_read_model_archive trm")
         .contains("ON trm.ledger_entry_id = le.id")
         .contains("AND trm.booked_at = le.booked_at");
@@ -121,23 +127,48 @@ class TransactionReadQueryStatementTest {
   }
 
   @Test
-  void queryTraceCommentFallsBackAndBoundsRequestId() {
-    RequestTraceContext.set("   ");
-    assertThat(TransactionReadQueryStatement.from(query(null)).sql())
-        .startsWith("/* requestId=unknown queryShape=hot-timeline */");
+  void queryTraceCommentFallsBackAndSanitizesShapeToken() {
+    assertThat(TransactionReadSqlTraceComment.current("   "))
+        .startsWith("/* queryShape=unknown */");
+    assertThat(TransactionReadSqlTraceComment.current(null)).startsWith("/* queryShape=unknown */");
+    assertThat(TransactionReadSqlTraceComment.current("AZaz09_.:-"))
+        .startsWith("/* queryShape=AZaz09_.:- */");
+    assertThat(TransactionReadSqlTraceComment.current("x".repeat(120)))
+        .startsWith("/* queryShape=%s */".formatted("x".repeat(96)));
+    assertThat(TransactionReadSqlTraceComment.current("bad/shape " + "y".repeat(120)))
+        .startsWith("/* queryShape=%s */".formatted("bad_shape_" + "y".repeat(86)));
+  }
 
-    RequestTraceContext.set("AZaz09_.:-");
-    assertThat(TransactionReadQueryStatement.from(query(null)).sql())
-        .startsWith("/* requestId=AZaz09_.:- queryShape=hot-timeline */");
-
-    RequestTraceContext.set("x".repeat(120));
-    assertThat(TransactionReadQueryStatement.from(query(null)).sql())
-        .startsWith("/* requestId=%s queryShape=hot-timeline */".formatted("x".repeat(96)));
-
-    RequestTraceContext.set(("bad/id " + "y".repeat(120)));
-    assertThat(TransactionReadQueryStatement.from(query(null)).sql())
-        .startsWith(
-            "/* requestId=%s queryShape=hot-timeline */".formatted("bad_id_" + "y".repeat(89)));
+  @Test
+  void buildsAllSixtyFourBitmaskSqlShapesDeterministically() {
+    java.util.Set<String> hotSqls = new java.util.HashSet<>();
+    java.util.Set<String> archiveSqls = new java.util.HashSet<>();
+    for (int mask = 0; mask < 64; mask++) {
+      TransactionQuery candidate =
+          new TransactionQuery(
+              11L,
+              FROM,
+              TO,
+              20,
+              (mask & 1) != 0 ? new TransactionCursor(CURSOR_AT, 99L) : null,
+              (mask & 2) != 0
+                  ? com.aquilabank.domain.transaction.model.TransactionStatus.BOOKED
+                  : null,
+              (mask & 4) != 0
+                  ? com.aquilabank.domain.transaction.model.TransactionDirection.DEBIT
+                  : null,
+              (mask & 8) != 0 ? 100L : null,
+              (mask & 16) != 0 ? 500L : null,
+              (mask & 32) != 0 ? "TRX-1" : null);
+      String hotSql = TransactionReadQueryStatement.from(candidate).sql();
+      String archiveSql = TransactionArchiveReadQueryStatement.from(candidate).sql();
+      assertThat(hotSql).isSameAs(TransactionReadQueryStatement.from(candidate).sql());
+      assertThat(archiveSql).isSameAs(TransactionArchiveReadQueryStatement.from(candidate).sql());
+      hotSqls.add(hotSql);
+      archiveSqls.add(archiveSql);
+    }
+    assertThat(hotSqls).hasSize(64);
+    assertThat(archiveSqls).hasSize(64);
   }
 
   @Test

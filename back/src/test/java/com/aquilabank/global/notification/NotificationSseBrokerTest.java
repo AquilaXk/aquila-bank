@@ -6,12 +6,18 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.aquilabank.domain.notification.model.NotificationReplayQuery;
 import com.aquilabank.domain.notification.model.NotificationSummary;
 import com.aquilabank.domain.notification.usecase.NotificationQueryUseCase;
 import com.aquilabank.global.config.NotificationSseProperties;
+import com.aquilabank.global.web.notification.NotificationQueryResponse.NotificationItemResponse;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
@@ -64,6 +70,10 @@ class NotificationSseBrokerTest {
 
   @Test
   void fansOutNotificationsToAccountAndActiveUserSessionsUnderLoad() throws Exception {
+    when(notificationSseTargetResolver.findActiveAccountIdsByUserId(201L))
+        .thenReturn(List.of(101L));
+    when(notificationSseTargetResolver.findActiveAccountIdsByUserId(202L))
+        .thenReturn(List.of(101L));
     when(notificationSseTargetResolver.findActiveUserIdsByAccountId(101L))
         .thenReturn(List.of(201L, 202L));
     RecordingSseEmitterFactory emitterFactory = new RecordingSseEmitterFactory();
@@ -211,6 +221,43 @@ class NotificationSseBrokerTest {
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage(
             "notification.sse.max-user-sessions must not exceed notification.sse.max-total-sessions");
+  }
+
+  @Test
+  void skipsTargetResolverDbLookupWhenAccountHasNoLocalSubscriberAndSerializesPayloadOnce()
+      throws Exception {
+    when(notificationSseTargetResolver.findActiveAccountIdsByUserId(201L))
+        .thenReturn(List.of(101L));
+    when(notificationSseTargetResolver.findActiveUserIdsByAccountId(101L))
+        .thenReturn(List.of(201L));
+    RecordingSseEmitterFactory emitterFactory = new RecordingSseEmitterFactory();
+    ObjectMapper objectMapper = spy(new ObjectMapper().findAndRegisterModules());
+    NotificationSseBroker broker =
+        new NotificationSseBroker(
+            new NotificationSseProperties(
+                60_000L, 10_000L, 3_000L, 100, 8, 4, 8, "notification_sse_fanout", 1_000L, 2_000L),
+            notificationSseTargetResolver,
+            notificationQueryUseCase,
+            emitterFactory,
+            objectMapper);
+
+    SseEmitter accountA = broker.subscribeAccount(101L, "account-a");
+    SseEmitter accountB = broker.subscribeAccount(101L, "account-b");
+    SseEmitter userA = broker.subscribeUser(201L, "user-a");
+
+    broker.publishInsertedItems(
+        List.of(notification(501L, 101L, "subscribed"), notification(502L, 999L, "unrelated")));
+
+    verify(notificationSseTargetResolver, never()).findActiveUserIdsByAccountId(999L);
+    verify(notificationSseTargetResolver, times(1)).findActiveUserIdsByAccountId(101L);
+    verify(objectMapper, times(1)).writeValueAsString(any(NotificationItemResponse.class));
+    assertThat(emitterFactory.emitter(0).notificationIds()).containsExactly(501L);
+    assertThat(emitterFactory.emitter(1).notificationIds()).containsExactly(501L);
+    assertThat(emitterFactory.emitter(2).notificationIds()).containsExactly(501L);
+
+    accountA.complete();
+    accountB.complete();
+    userA.complete();
   }
 
   private NotificationSseBroker createBroker(

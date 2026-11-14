@@ -13,6 +13,7 @@ import com.aquilabank.domain.auth.port.TotpSecretPort;
 import com.aquilabank.domain.auth.port.UserCredentialLoadPort;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.OptionalLong;
 
 /** 고위험 업무 실행 직전에 active TOTP credential을 재검증합니다. */
 public final class TotpOperationVerifyService implements TotpOperationVerifyUseCase {
@@ -47,16 +48,14 @@ public final class TotpOperationVerifyService implements TotpOperationVerifyUseC
     if (credential.credentialStatus() != TotpCredentialStatus.ACTIVE) {
       throw invalidVerification();
     }
-    if (credential.lastUsedAt() != null
-        && Math.floorDiv(now.getEpochSecond(), 30L)
-            < Math.floorDiv(credential.lastUsedAt().getEpochSecond(), 30L)) {
+    OptionalLong matchedStep =
+        totpSecretPort.matchTimeStep(
+            credential.secretCiphertext(), credential.secretNonce(), command.totpCode(), now);
+    if (matchedStep.isEmpty() || credential.isStepReplayed(matchedStep.getAsLong())) {
       throw invalidVerification();
     }
-    if (!totpSecretPort.matches(
-        credential.secretCiphertext(), credential.secretNonce(), command.totpCode(), now)) {
-      throw invalidVerification();
-    }
-    totpCredentialWritePort.touchLastUsed(new TotpCredentialTouchCommand(command.userId(), now));
+    totpCredentialWritePort.touchLastUsed(
+        TotpCredentialTouchCommand.forMatchedStep(command.userId(), now, matchedStep.getAsLong()));
   }
 
   private LoginUser loadActiveUser(long userId) {

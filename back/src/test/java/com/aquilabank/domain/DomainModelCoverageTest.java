@@ -579,6 +579,13 @@ class DomainModelCoverageTest {
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("cursor bookedAt must be within [from, to)");
 
+    assertThatThrownBy(
+            () ->
+                new TransactionQuery(
+                    1L, Instant.MIN, Instant.MAX, 10, null, null, null, null, null, null))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("date range must be 31 days or less");
+
     TransactionCursor transactionCursor = new TransactionCursor(base, 1L);
     assertThat(new TransactionSlice(List.of(), null, false, 10).hasNext()).isFalse();
     assertThat(new TransactionSlice(List.of(), transactionCursor, true, 10).nextCursor())

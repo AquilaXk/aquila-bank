@@ -40,4 +40,29 @@ class JdbcNotificationSseTargetResolverTest {
         .contains("np.enabled = FALSE");
     assertThat(paramCaptor.getValue().getValue("accountId")).isEqualTo(101L);
   }
+
+  @Test
+  void queriesActiveAccountsForSubscribedUserExcludingDisabledInAppPreference() {
+    NamedParameterJdbcTemplate jdbcTemplate = mock(NamedParameterJdbcTemplate.class);
+    when(jdbcTemplate.queryForList(
+            anyString(),
+            org.mockito.ArgumentMatchers.any(MapSqlParameterSource.class),
+            eq(Long.class)))
+        .thenReturn(List.of(101L, 102L));
+    JdbcNotificationSseTargetResolver resolver =
+        new JdbcNotificationSseTargetResolver(jdbcTemplate);
+
+    List<Long> accountIds = resolver.findActiveAccountIdsByUserId(11L);
+
+    assertThat(accountIds).containsExactly(101L, 102L);
+    ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<MapSqlParameterSource> paramCaptor =
+        ArgumentCaptor.forClass(MapSqlParameterSource.class);
+    verify(jdbcTemplate).queryForList(sqlCaptor.capture(), paramCaptor.capture(), eq(Long.class));
+    assertThat(sqlCaptor.getValue())
+        .contains("SELECT m.account_id")
+        .contains("WHERE m.user_id = :userId")
+        .contains("np.enabled = FALSE");
+    assertThat(paramCaptor.getValue().getValue("userId")).isEqualTo(11L);
+  }
 }

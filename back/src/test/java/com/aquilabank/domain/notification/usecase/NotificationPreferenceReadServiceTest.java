@@ -62,5 +62,6 @@ class NotificationPreferenceReadServiceTest {
                 NotificationPreferenceCategory.SECURITY,
                 NotificationPreferenceChannel.EMAIL,
                 true));
+    assertThat(result).hasSize(9);
   }
 }

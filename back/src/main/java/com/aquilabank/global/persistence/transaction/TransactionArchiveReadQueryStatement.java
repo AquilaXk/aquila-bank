@@ -3,8 +3,12 @@ package com.aquilabank.global.persistence.transaction;
 import com.aquilabank.domain.transaction.model.TransactionQuery;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 
-/** archive 거래 조회 SQL을 hot query와 같은 keyset 계약으로 고정합니다. */
+/** archive 거래 조회 SQL을 6-비트 shape 테이블(64슬롯)로 고정해 PreparedStatement 캐시 효율과 계약을 유지합니다. */
 final class TransactionArchiveReadQueryStatement {
+
+  private static final String[] ARCHIVE_SQL_TABLE =
+      TransactionReadQueryStatement.buildSqlTable(
+          "archive-timeline", "transaction_read_model_archive");
 
   private final String sql;
   private final MapSqlParameterSource params;
@@ -15,10 +19,9 @@ final class TransactionArchiveReadQueryStatement {
   }
 
   static TransactionArchiveReadQueryStatement from(TransactionQuery query) {
-    TransactionReadQueryStatement delegate =
-        TransactionReadQueryStatement.from(
-            query, "archive-timeline", "transaction_read_model_archive");
-    return new TransactionArchiveReadQueryStatement(delegate.sql(), delegate.params());
+    return new TransactionArchiveReadQueryStatement(
+        ARCHIVE_SQL_TABLE[TransactionReadQueryStatement.shapeMask(query)],
+        TransactionReadQueryStatement.bindParameters(query));
   }
 
   String sql() {

@@ -18,7 +18,9 @@ import com.aquilabank.domain.auth.port.TotpSecretPort;
 import com.aquilabank.domain.auth.port.UserCredentialLoadPort;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.OptionalLong;
 
 /** backup code 묶음 교체는 현재 TOTP 재검증 뒤 같은 tx 안에서만 허용합니다. */
 public final class BackupCodeGenerateService implements BackupCodeGenerateUseCase {
@@ -81,28 +83,29 @@ public final class BackupCodeGenerateService implements BackupCodeGenerateUseCas
     if (credential.credentialStatus() != TotpCredentialStatus.ACTIVE) {
       throw invalidIssue();
     }
-    if (credential.lastUsedAt() != null
-        && Math.floorDiv(now.getEpochSecond(), 30L)
-            < Math.floorDiv(credential.lastUsedAt().getEpochSecond(), 30L)) {
-      throw invalidIssue();
-    }
-    if (!totpSecretPort.matches(
-        credential.secretCiphertext(), credential.secretNonce(), command.totpCode(), now)) {
+    OptionalLong matchedStep =
+        totpSecretPort.matchTimeStep(
+            credential.secretCiphertext(), credential.secretNonce(), command.totpCode(), now);
+    if (matchedStep.isEmpty() || credential.isStepReplayed(matchedStep.getAsLong())) {
       throw invalidIssue();
     }
     if (totpCredentialWritePort != null) {
-      totpCredentialWritePort.touchLastUsed(new TotpCredentialTouchCommand(command.userId(), now));
+      totpCredentialWritePort.touchLastUsed(
+          TotpCredentialTouchCommand.forMatchedStep(
+              command.userId(), now, matchedStep.getAsLong()));
     }
 
     List<GeneratedBackupCode> generatedItems = backupCodeSecretPort.generate(backupCodeCount);
     // 재발급 race에서도 active 묶음이 한 세트만 남도록 이전 code를 먼저 supersede 합니다.
     backupCodeWritePort.supersedeActiveByUserId(command.userId(), now);
+    List<BackupCodeIssueCommand> issueCommands = new ArrayList<>(generatedItems.size());
+    List<String> plainCodes = new ArrayList<>(generatedItems.size());
     for (GeneratedBackupCode item : generatedItems) {
-      backupCodeWritePort.issue(new BackupCodeIssueCommand(command.userId(), item.codeHash(), now));
+      issueCommands.add(new BackupCodeIssueCommand(command.userId(), item.codeHash(), now));
+      plainCodes.add(item.plainCode());
     }
-    return new BackupCodeIssueResult(
-        generatedItems.stream().map(GeneratedBackupCode::plainCode).toList(),
-        generatedItems.size());
+    backupCodeWritePort.issueAll(issueCommands);
+    return new BackupCodeIssueResult(plainCodes, plainCodes.size());
   }
 
   private LoginUser loadActiveUser(long userId) {

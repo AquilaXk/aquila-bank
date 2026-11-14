@@ -2,6 +2,7 @@ package com.aquilabank.domain.notification.usecase;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -58,7 +59,32 @@ class OutboxDispatchServiceTest {
 
     assertEquals(1, claimed);
     verify(outboxEventPublishPort).publish(event);
-    verify(outboxEventStore).markPublished(eq(1L), any(Instant.class));
+    verify(outboxEventStore).markPublishedBatch(eq(List.of(1L)), any(Instant.class));
+    verify(outboxEventStore, never()).markPublished(anyLong(), any(Instant.class));
+  }
+
+  @Test
+  void marksSucceededEventsInSingleBatchAndMarksFailuresIndividually() {
+    Instant now = Instant.now();
+    OutboxEvent first =
+        new OutboxEvent(10L, "TRANSFER", "100", "TransferBooked", "evt-10", "{}", 0, now, now);
+    OutboxEvent second =
+        new OutboxEvent(11L, "TRANSFER", "101", "TransferBooked", "evt-11", "{}", 0, now, now);
+    OutboxEvent third =
+        new OutboxEvent(12L, "TRANSFER", "102", "TransferBooked", "evt-12", "{}", 0, now, now);
+    when(outboxEventStore.claimBatch(eq(20), any(Duration.class), any(Instant.class)))
+        .thenReturn(List.of(first, second, third));
+    doThrow(new IllegalStateException("broker timeout"))
+        .when(outboxEventPublishPort)
+        .publish(second);
+
+    int claimed = outboxDispatchService.dispatchPendingEvents();
+
+    assertEquals(3, claimed);
+    verify(outboxEventStore).markPublishedBatch(eq(List.of(10L, 12L)), any(Instant.class));
+    verify(outboxEventStore, never()).markPublished(anyLong(), any(Instant.class));
+    verify(outboxEventStore)
+        .markFailed(eq(11L), any(Instant.class), any(Instant.class), eq("broker timeout"));
   }
 
   @Test

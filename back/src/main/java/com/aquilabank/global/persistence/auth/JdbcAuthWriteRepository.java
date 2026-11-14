@@ -61,9 +61,11 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.List;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+import org.springframework.jdbc.core.namedparam.SqlParameterSource;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -174,8 +176,20 @@ public class JdbcAuthWriteRepository
 
   @Override
   @Transactional
-  public void issue(BackupCodeIssueCommand command) {
-    jdbcTemplate.update(
+  public void issueAll(List<BackupCodeIssueCommand> commands) {
+    if (commands.isEmpty()) {
+      return;
+    }
+    SqlParameterSource[] batchParams = new SqlParameterSource[commands.size()];
+    for (int i = 0; i < commands.size(); i++) {
+      BackupCodeIssueCommand command = commands.get(i);
+      batchParams[i] =
+          new MapSqlParameterSource()
+              .addValue("userId", command.userId())
+              .addValue("codeHash", command.codeHash())
+              .addValue("createdAt", Timestamp.from(command.createdAt()));
+    }
+    jdbcTemplate.batchUpdate(
         """
         INSERT INTO auth_mfa_backup_code (
             user_id,
@@ -194,10 +208,7 @@ public class JdbcAuthWriteRepository
             :createdAt
         )
         """,
-        new MapSqlParameterSource()
-            .addValue("userId", command.userId())
-            .addValue("codeHash", command.codeHash())
-            .addValue("createdAt", Timestamp.from(command.createdAt())));
+        batchParams);
   }
 
   @Override
@@ -774,7 +785,10 @@ public class JdbcAuthWriteRepository
         jdbcTemplate.update(
             """
             UPDATE auth_totp_credential
-            SET last_used_at = :lastUsedAt,
+            SET last_used_at = CASE
+                  WHEN last_used_at IS NULL OR last_used_at < :lastUsedAt THEN :lastUsedAt
+                  ELSE last_used_at
+                END,
                 updated_at = :lastUsedAt
             WHERE user_id = :userId
               AND credential_status = 'ACTIVE'

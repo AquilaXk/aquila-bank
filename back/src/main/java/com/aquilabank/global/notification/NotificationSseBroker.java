@@ -7,6 +7,11 @@ import com.aquilabank.global.config.NotificationSseProperties;
 import com.aquilabank.global.web.notification.NotificationQueryResponse.NotificationItemResponse;
 import com.aquilabank.global.web.notification.NotificationStreamConnectedResponse;
 import com.aquilabank.global.web.notification.NotificationStreamHeartbeatResponse;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -14,6 +19,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -25,6 +31,7 @@ import java.util.function.LongFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -43,10 +50,16 @@ public class NotificationSseBroker {
   private final NotificationSseTargetResolver notificationSseTargetResolver;
   private final NotificationQueryUseCase notificationQueryUseCase;
   private final LongFunction<SseEmitter> sseEmitterFactory;
+  private final ObjectMapper objectMapper;
   private final Map<Long, Map<String, NotificationSseSession>> accountSessions =
       new ConcurrentHashMap<>();
   private final Map<Long, Map<String, NotificationSseSession>> userSessions =
       new ConcurrentHashMap<>();
+  private final ConcurrentHashMap<Long, List<Long>> userSubscribedAccounts =
+      new ConcurrentHashMap<>();
+  private final ConcurrentHashMap<Long, Set<Long>> subscribedUsersByAccountId =
+      new ConcurrentHashMap<>();
+  private final Object userAccountIndexLock = new Object();
   private final AtomicInteger activeSessionCount = new AtomicInteger();
   private final AtomicLong rejectedSubscriptionCount = new AtomicLong();
   private final AtomicLong backpressureDropCount = new AtomicLong();
@@ -55,12 +68,14 @@ public class NotificationSseBroker {
   public NotificationSseBroker(
       NotificationSseProperties notificationSseProperties,
       NotificationSseTargetResolver notificationSseTargetResolver,
-      NotificationQueryUseCase notificationQueryUseCase) {
+      NotificationQueryUseCase notificationQueryUseCase,
+      ObjectMapper objectMapper) {
     this(
         notificationSseProperties,
         notificationSseTargetResolver,
         notificationQueryUseCase,
-        SseEmitter::new);
+        SseEmitter::new,
+        objectMapper);
   }
 
   NotificationSseBroker(
@@ -68,10 +83,33 @@ public class NotificationSseBroker {
       NotificationSseTargetResolver notificationSseTargetResolver,
       NotificationQueryUseCase notificationQueryUseCase,
       LongFunction<SseEmitter> sseEmitterFactory) {
+    this(
+        notificationSseProperties,
+        notificationSseTargetResolver,
+        notificationQueryUseCase,
+        sseEmitterFactory,
+        defaultObjectMapper());
+  }
+
+  NotificationSseBroker(
+      NotificationSseProperties notificationSseProperties,
+      NotificationSseTargetResolver notificationSseTargetResolver,
+      NotificationQueryUseCase notificationQueryUseCase,
+      LongFunction<SseEmitter> sseEmitterFactory,
+      ObjectMapper objectMapper) {
     this.notificationSseProperties = notificationSseProperties;
     this.notificationSseTargetResolver = notificationSseTargetResolver;
     this.notificationQueryUseCase = notificationQueryUseCase;
     this.sseEmitterFactory = sseEmitterFactory;
+    this.objectMapper = objectMapper;
+  }
+
+  private static ObjectMapper defaultObjectMapper() {
+    return JsonMapper.builder()
+        .addModule(new JavaTimeModule())
+        .findAndAddModules()
+        .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+        .build();
   }
 
   public SseEmitter subscribeAccount(long accountId, String subject) {
@@ -144,8 +182,20 @@ public class NotificationSseBroker {
     for (Map.Entry<Long, List<NotificationSummary>> entry : itemsByAccountId.entrySet()) {
       long accountId = entry.getKey();
       List<NotificationSummary> accountItems = entry.getValue();
-      publishToAccountSessions(accountId, accountItems);
-      publishToUserSessions(accountId, accountItems);
+      Map<String, NotificationSseSession> directAccountSessions = accountSessions.get(accountId);
+      List<UserSessionGroup> targetUserGroups = resolveTargetUserSessions(accountId);
+      boolean hasAccountTargets = directAccountSessions != null && !directAccountSessions.isEmpty();
+      if (!hasAccountTargets && targetUserGroups.isEmpty()) {
+        continue;
+      }
+      // 로컬 구독 대상이 확인된 계좌에만 항목별 JSON 직렬화를 1회 수행해 팬아웃 전체에서 재사용합니다.
+      List<PreparedNotification> preparedItems = prepareNotifications(accountItems);
+      if (hasAccountTargets) {
+        publishPreparedToAccountSessions(accountId, directAccountSessions, preparedItems);
+      }
+      if (!targetUserGroups.isEmpty()) {
+        publishPreparedToUserSessions(targetUserGroups, preparedItems);
+      }
     }
   }
 
@@ -174,6 +224,10 @@ public class NotificationSseBroker {
           notificationSseProperties.maxTotalSessions());
       throw new NotificationSseOverloadException(OVERLOAD_MESSAGE);
     }
+    List<Long> userAccountIds =
+        sessionsByPrincipalId == userSessions
+            ? resolveUserAccountIdsForSubscription(principalId)
+            : List.of();
     String sessionId = UUID.randomUUID().toString();
     boolean registered = false;
     try {
@@ -182,7 +236,8 @@ public class NotificationSseBroker {
           new NotificationSseSession(sessionId, subject, emitter, lastEventId);
       session.sendLock().lock();
       try {
-        if (!registerSession(sessionsByPrincipalId, principalId, session, maxPrincipalSessions)) {
+        if (!registerSession(
+            sessionsByPrincipalId, principalId, session, maxPrincipalSessions, userAccountIds)) {
           rejectSubscription(
               sessionsByPrincipalId,
               principalId,
@@ -299,12 +354,53 @@ public class NotificationSseBroker {
     }
   }
 
-  private void publishToAccountSessions(long accountId, List<NotificationSummary> items) {
-    Map<String, NotificationSseSession> sessions = accountSessions.get(accountId);
-    if (sessions == null || sessions.isEmpty()) {
-      return;
+  private List<Long> resolveUserAccountIdsForSubscription(long userId) {
+    List<Long> cached = userSubscribedAccounts.get(userId);
+    if (cached != null) {
+      return cached;
     }
+    return List.copyOf(notificationSseTargetResolver.findActiveAccountIdsByUserId(userId));
+  }
+
+  private List<UserSessionGroup> resolveTargetUserSessions(long accountId) {
+    if (userSessions.isEmpty() || !subscribedUsersByAccountId.containsKey(accountId)) {
+      return List.of();
+    }
+    List<Long> userIds = notificationSseTargetResolver.findActiveUserIdsByAccountId(accountId);
+    if (userIds.isEmpty()) {
+      return List.of();
+    }
+    List<UserSessionGroup> groups = new ArrayList<>(userIds.size());
+    for (Long userId : userIds) {
+      Map<String, NotificationSseSession> sessions = userSessions.get(userId);
+      if (sessions != null && !sessions.isEmpty()) {
+        groups.add(new UserSessionGroup(userId, sessions));
+      }
+    }
+    return groups;
+  }
+
+  private List<PreparedNotification> prepareNotifications(List<NotificationSummary> items) {
+    List<PreparedNotification> prepared = new ArrayList<>(items.size());
     for (NotificationSummary item : items) {
+      prepared.add(new PreparedNotification(item, serializeNotification(item)));
+    }
+    return prepared;
+  }
+
+  private String serializeNotification(NotificationSummary item) {
+    try {
+      return objectMapper.writeValueAsString(NotificationItemResponse.from(item));
+    } catch (JsonProcessingException ex) {
+      throw new IllegalStateException("failed to serialize SSE notification payload", ex);
+    }
+  }
+
+  private void publishPreparedToAccountSessions(
+      long accountId,
+      Map<String, NotificationSseSession> sessions,
+      List<PreparedNotification> items) {
+    for (PreparedNotification item : items) {
       for (NotificationSseSession session : sessions.values()) {
         try {
           queueOrSendNotification(session, item);
@@ -328,20 +424,12 @@ public class NotificationSseBroker {
     }
   }
 
-  private void publishToUserSessions(long accountId, List<NotificationSummary> items) {
-    if (userSessions.isEmpty()) {
-      return;
-    }
-    List<Long> userIds = notificationSseTargetResolver.findActiveUserIdsByAccountId(accountId);
-    if (userIds.isEmpty()) {
-      return;
-    }
-    for (Long userId : userIds) {
-      Map<String, NotificationSseSession> sessions = userSessions.get(userId);
-      if (sessions == null || sessions.isEmpty()) {
-        continue;
-      }
-      for (NotificationSummary item : items) {
+  private void publishPreparedToUserSessions(
+      List<UserSessionGroup> userGroups, List<PreparedNotification> items) {
+    for (UserSessionGroup group : userGroups) {
+      long userId = group.userId();
+      Map<String, NotificationSseSession> sessions = group.sessions();
+      for (PreparedNotification item : items) {
         for (NotificationSseSession session : sessions.values()) {
           try {
             queueOrSendNotification(session, item);
@@ -382,7 +470,7 @@ public class NotificationSseBroker {
       }
       // replay 중 새 live event는 pendingItems 에 모았다가 같은 세션 lock 안에서 이어 보냅니다.
       for (NotificationSummary item : replayItems) {
-        sendNotification(session, item);
+        sendNotification(session, item, null);
       }
       flushPendingNotifications(session);
       session.finishReplay();
@@ -391,8 +479,9 @@ public class NotificationSseBroker {
     }
   }
 
-  private void queueOrSendNotification(NotificationSseSession session, NotificationSummary item)
-      throws IOException {
+  private void queueOrSendNotification(
+      NotificationSseSession session, PreparedNotification prepared) throws IOException {
+    NotificationSummary item = prepared.item();
     session.sendLock().lock();
     try {
       if (session.isClosed()) {
@@ -409,7 +498,7 @@ public class NotificationSseBroker {
         session.addPendingItem(item);
         return;
       }
-      sendNotification(session, item);
+      sendNotification(session, item, prepared.serializedPayload());
     } finally {
       session.sendLock().unlock();
     }
@@ -418,12 +507,13 @@ public class NotificationSseBroker {
   private void flushPendingNotifications(NotificationSseSession session) throws IOException {
     session.pendingItems().sort(Comparator.comparingLong(NotificationSummary::id));
     for (NotificationSummary pendingItem : session.pendingItems()) {
-      sendNotification(session, pendingItem);
+      sendNotification(session, pendingItem, null);
     }
     session.pendingItems().clear();
   }
 
-  private void sendNotification(NotificationSseSession session, NotificationSummary item)
+  private void sendNotification(
+      NotificationSseSession session, NotificationSummary item, String preSerializedPayload)
       throws IOException {
     if (session.isClosed()) {
       return;
@@ -431,13 +521,15 @@ public class NotificationSseBroker {
     if (item.id() <= session.lastDeliveredEventId()) {
       return;
     }
+    String payload =
+        preSerializedPayload != null ? preSerializedPayload : serializeNotification(item);
     session
         .emitter()
         .send(
             SseEmitter.event()
                 .id(Long.toString(item.id()))
                 .name("notification")
-                .data(NotificationItemResponse.from(item)));
+                .data(payload, MediaType.TEXT_PLAIN));
     session.markDelivered(item.id());
   }
 
@@ -487,6 +579,24 @@ public class NotificationSseBroker {
       Map<Long, Map<String, NotificationSseSession>> sessionsByPrincipalId,
       long principalId,
       NotificationSseSession session,
+      int maxPrincipalSessions,
+      List<Long> userAccountIds) {
+    if (sessionsByPrincipalId == userSessions) {
+      synchronized (userAccountIndexLock) {
+        if (!putSession(sessionsByPrincipalId, principalId, session, maxPrincipalSessions)) {
+          return false;
+        }
+        indexUserAccounts(principalId, userAccountIds);
+        return true;
+      }
+    }
+    return putSession(sessionsByPrincipalId, principalId, session, maxPrincipalSessions);
+  }
+
+  private boolean putSession(
+      Map<Long, Map<String, NotificationSseSession>> sessionsByPrincipalId,
+      long principalId,
+      NotificationSseSession session,
       int maxPrincipalSessions) {
     AtomicBoolean registered = new AtomicBoolean(false);
     sessionsByPrincipalId.compute(
@@ -505,6 +615,16 @@ public class NotificationSseBroker {
           return nextSessions;
         });
     return registered.get();
+  }
+
+  private void indexUserAccounts(long userId, List<Long> accountIds) {
+    if (userSubscribedAccounts.putIfAbsent(userId, accountIds) == null) {
+      for (Long accountId : accountIds) {
+        subscribedUsersByAccountId
+            .computeIfAbsent(accountId, ignored -> ConcurrentHashMap.newKeySet())
+            .add(userId);
+      }
+    }
   }
 
   private boolean reserveSessionSlot() {
@@ -575,8 +695,35 @@ public class NotificationSseBroker {
     }
     removedSession.markClosed();
     releaseSessionSlot();
+    if (sessionsByPrincipalId == userSessions) {
+      cleanupUserAccountIndexIfIdle(principalId);
+    }
     return true;
   }
+
+  private void cleanupUserAccountIndexIfIdle(long userId) {
+    synchronized (userAccountIndexLock) {
+      if (userSessions.containsKey(userId)) {
+        return;
+      }
+      List<Long> accountIds = userSubscribedAccounts.remove(userId);
+      if (accountIds == null) {
+        return;
+      }
+      for (Long accountId : accountIds) {
+        subscribedUsersByAccountId.computeIfPresent(
+            accountId,
+            (ignored, users) -> {
+              users.remove(userId);
+              return users.isEmpty() ? null : users;
+            });
+      }
+    }
+  }
+
+  private record PreparedNotification(NotificationSummary item, String serializedPayload) {}
+
+  private record UserSessionGroup(long userId, Map<String, NotificationSseSession> sessions) {}
 
   private static final class NotificationSseSession {
 

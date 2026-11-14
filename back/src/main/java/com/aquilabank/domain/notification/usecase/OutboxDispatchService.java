@@ -5,6 +5,7 @@ import com.aquilabank.domain.notification.port.OutboxEventPublishPort;
 import com.aquilabank.domain.notification.port.OutboxEventStore;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 
 /** 대기 중인 outbox row를 claim하고 publish 상태를 전진시키는 domain service */
@@ -66,16 +67,19 @@ public final class OutboxDispatchService implements OutboxDispatchUseCase {
     // 병렬 poller 간 중복 publish 방지용 선점 claim
     List<OutboxEvent> batch =
         outboxEventStore.claimBatch(adaptivePolicy.currentBatchSize(), staleAfter, now);
-    int publishedCount = 0;
+    List<Long> publishedIds = new ArrayList<>(batch.size());
     int failedCount = 0;
     for (OutboxEvent event : batch) {
       if (dispatchSingle(event)) {
-        publishedCount++;
+        publishedIds.add(event.id());
       } else {
         failedCount++;
       }
     }
-    adaptivePolicy.record(new OutboxDispatchResult(batch.size(), publishedCount, failedCount));
+    if (!publishedIds.isEmpty()) {
+      outboxEventStore.markPublishedBatch(publishedIds, Instant.now());
+    }
+    adaptivePolicy.record(new OutboxDispatchResult(batch.size(), publishedIds.size(), failedCount));
     return batch.size();
   }
 
@@ -88,7 +92,6 @@ public final class OutboxDispatchService implements OutboxDispatchUseCase {
     Instant now = Instant.now();
     try {
       outboxEventPublishPort.publish(event);
-      outboxEventStore.markPublished(event.id(), now);
       return true;
     } catch (RuntimeException ex) {
       String errorMessage = shorten(ex.getMessage());

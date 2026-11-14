@@ -13,6 +13,7 @@ import com.aquilabank.domain.customerapplication.port.CustomerApplicationExecuto
 import com.aquilabank.domain.customerapplication.port.CustomerApplicationExternalExecutionPort;
 import com.aquilabank.domain.customerapplication.port.CustomerTransferLimitPolicyPort;
 import com.aquilabank.domain.ledger.model.TransferLimitPolicy;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Objects;
@@ -24,16 +25,19 @@ public final class CustomerApplicationExecutorService implements CustomerApplica
   private final CustomerApplicationAccountPolicyPort accountPolicyPort;
   private final CustomerApplicationExternalExecutionPort externalExecutionPort;
   private final CustomerTransferLimitChangePolicy transferLimitChangePolicy;
+  private final Clock clock;
 
   public CustomerApplicationExecutorService(
       CustomerTransferLimitPolicyPort transferLimitPolicyPort,
       CustomerApplicationAccountPolicyPort accountPolicyPort,
       CustomerApplicationExternalExecutionPort externalExecutionPort,
-      CustomerTransferLimitChangePolicy transferLimitChangePolicy) {
+      CustomerTransferLimitChangePolicy transferLimitChangePolicy,
+      Clock clock) {
     this.transferLimitPolicyPort = Objects.requireNonNull(transferLimitPolicyPort);
     this.accountPolicyPort = Objects.requireNonNull(accountPolicyPort);
     this.externalExecutionPort = Objects.requireNonNull(externalExecutionPort);
     this.transferLimitChangePolicy = Objects.requireNonNull(transferLimitChangePolicy);
+    this.clock = Objects.requireNonNull(clock);
   }
 
   @Override
@@ -112,7 +116,7 @@ public final class CustomerApplicationExecutorService implements CustomerApplica
                 application.applicationReference(),
                 actorSubject,
                 requestId,
-                Instant.now()));
+                Instant.now(clock)));
     return CustomerApplicationExecutionResult.executed(
         "TRANSFER_LIMIT_UPDATED",
         Map.of(

@@ -12,17 +12,25 @@ import com.aquilabank.domain.notification.model.NotificationSearchSlice;
 import com.aquilabank.domain.notification.model.NotificationSlice;
 import com.aquilabank.domain.notification.model.NotificationUnreadProjectionReconcileResult;
 import com.aquilabank.support.PostgresContainerTestSupport;
+import java.lang.reflect.Proxy;
+import java.sql.Connection;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @ActiveProfiles("test")
 @SpringBootTest(properties = {"spring.flyway.enabled=true", "management.health.db.enabled=true"})
@@ -30,9 +38,13 @@ class JdbcNotificationInboxRepositoryIntegrationTest extends PostgresContainerTe
 
   @Autowired private JdbcNotificationInboxRepository repository;
 
+  @Autowired private DataSource dataSource;
+
   @Autowired private NamedParameterJdbcTemplate jdbcTemplate;
 
   @Autowired private PlatformTransactionManager transactionManager;
+
+  @Autowired private ApplicationEventPublisher applicationEventPublisher;
 
   @BeforeEach
   void setUpDatabase() {
@@ -1450,6 +1462,92 @@ class JdbcNotificationInboxRepositoryIntegrationTest extends PostgresContainerTe
             new MapSqlParameterSource(),
             Long.class);
     return count == null ? 0L : count;
+  }
+
+  @Test
+  void appendsAndMutatesNotificationsInBoundedBatchStatements() {
+    long[] userId = new long[1];
+    long[] accountId = new long[1];
+    Instant base = Instant.parse("2026-04-22T00:00:00Z");
+    commit(
+        transactionManager,
+        () -> {
+          userId[0] = insertUser("batch-inbox-user");
+          accountId[0] = insertAccount("batch-inbox-account");
+          insertMembership(userId[0], accountId[0], "OWNER", "ACTIVE");
+        });
+
+    List<String> executedSqls = Collections.synchronizedList(new ArrayList<>());
+    DataSource countingDataSource =
+        (DataSource)
+            Proxy.newProxyInstance(
+                DataSource.class.getClassLoader(),
+                new Class<?>[] {DataSource.class},
+                (proxy, method, args) -> {
+                  Object result = method.invoke(dataSource, args);
+                  if ("getConnection".equals(method.getName()) && result instanceof Connection c) {
+                    return Proxy.newProxyInstance(
+                        Connection.class.getClassLoader(),
+                        new Class<?>[] {Connection.class},
+                        (cp, cm, ca) -> {
+                          if ("prepareStatement".equals(cm.getName())
+                              && ca != null
+                              && ca.length > 0
+                              && ca[0] instanceof String sql) {
+                            executedSqls.add(sql);
+                          }
+                          return cm.invoke(c, ca);
+                        });
+                  }
+                  return result;
+                });
+    NamedParameterJdbcTemplate countedJdbc = new NamedParameterJdbcTemplate(countingDataSource);
+    TransactionTemplate tx =
+        new TransactionTemplate(new DataSourceTransactionManager(countingDataSource));
+    JdbcNotificationInboxRepository countedRepo =
+        new JdbcNotificationInboxRepository(countedJdbc, countedJdbc, applicationEventPublisher);
+
+    List<NotificationInboxEntry> batch = new ArrayList<>();
+    for (int i = 0; i < 5; i++) {
+      batch.add(
+          new NotificationInboxEntry(
+              accountId[0],
+              "evt-batch-" + i,
+              "TransferBooked",
+              "입금 " + i,
+              "메시지 " + i,
+              base.plusSeconds(i)));
+    }
+    tx.executeWithoutResult(status -> countedRepo.appendAllIfAbsent(batch));
+    assertThat(executedSqls.size()).isLessThanOrEqualTo(2);
+    assertThat(repository.countUnreadByAccountId(accountId[0])).isEqualTo(5L);
+    assertThat(repository.countUnreadByUserId(userId[0])).isEqualTo(5L);
+
+    List<Long> ids =
+        jdbcTemplate.queryForList(
+            "SELECT id FROM notification_inbox ORDER BY id ASC",
+            new MapSqlParameterSource(),
+            Long.class);
+    executedSqls.clear();
+    tx.executeWithoutResult(
+        status -> countedRepo.archiveByUserId(userId[0], ids.subList(0, 2), base.plusSeconds(30)));
+    assertThat(executedSqls).hasSize(1);
+    assertThat(repository.countUnreadByUserId(userId[0])).isEqualTo(3L);
+
+    executedSqls.clear();
+    tx.executeWithoutResult(
+        status -> countedRepo.deleteByUserId(userId[0], ids.subList(2, 4), base.plusSeconds(40)));
+    assertThat(executedSqls).hasSize(1);
+    assertThat(repository.countUnreadByUserId(userId[0])).isEqualTo(1L);
+
+    executedSqls.clear();
+    tx.executeWithoutResult(
+        status ->
+            countedRepo.archiveByAccountId(
+                accountId[0], List.of(ids.get(4)), base.plusSeconds(50)));
+    assertThat(executedSqls).hasSize(1);
+    assertThat(repository.countUnreadByAccountId(accountId[0])).isEqualTo(4L);
+    assertThat(repository.countUnreadByUserId(userId[0])).isZero();
   }
 
   private record ChannelOutboxRow(long userId, String channel, String eventKey) {}

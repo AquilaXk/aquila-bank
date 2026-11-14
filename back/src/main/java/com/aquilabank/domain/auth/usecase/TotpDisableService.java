@@ -15,6 +15,7 @@ import com.aquilabank.domain.auth.port.TotpSecretPort;
 import com.aquilabank.domain.auth.port.UserCredentialLoadPort;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.OptionalLong;
 
 /** 현재 TOTP code 재검증 뒤 credential 제거와 session 정리를 같은 tx에 묶습니다. */
 public final class TotpDisableService implements TotpDisableUseCase {
@@ -58,13 +59,10 @@ public final class TotpDisableService implements TotpDisableUseCase {
     if (credential.credentialStatus() != TotpCredentialStatus.ACTIVE) {
       throw invalidDisable();
     }
-    if (credential.lastUsedAt() != null
-        && Math.floorDiv(now.getEpochSecond(), 30L)
-            < Math.floorDiv(credential.lastUsedAt().getEpochSecond(), 30L)) {
-      throw invalidDisable();
-    }
-    if (!totpSecretPort.matches(
-        credential.secretCiphertext(), credential.secretNonce(), command.totpCode(), now)) {
+    OptionalLong matchedStep =
+        totpSecretPort.matchTimeStep(
+            credential.secretCiphertext(), credential.secretNonce(), command.totpCode(), now);
+    if (matchedStep.isEmpty() || credential.isStepReplayed(matchedStep.getAsLong())) {
       throw invalidDisable();
     }
 

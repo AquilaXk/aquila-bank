@@ -2,6 +2,7 @@ package com.aquilabank.global.web.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.aquilabank.global.security.SecurityAuthCookieProperties;
 import com.aquilabank.global.security.SecurityJwtProperties;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.Test;
@@ -41,5 +42,20 @@ class RefreshDeviceBindingCookieManagerTest {
     assertThat(setCookieHeaders).contains("Path=/api/v1/auth/refresh");
     assertThat(setCookieHeaders).contains("Max-Age=1209600");
     assertThat(setCookieHeaders).contains("Max-Age=0");
+  }
+
+  @Test
+  void respectsSecurityAuthCookieSecureSetting() {
+    RefreshDeviceBindingCookieManager manager =
+        new RefreshDeviceBindingCookieManager(
+            new SecurityJwtProperties("secret", "issuer", 900L, 1_209_600L, "ab_refresh_device"),
+            new SecurityAuthCookieProperties("ab_access_token", "ab_refresh_token", false));
+    HttpHeaders headers = new HttpHeaders();
+
+    manager.addBindingCookie(headers, "binding-token");
+    manager.addClearCookie(headers);
+
+    String setCookieHeaders = String.join("\n", headers.getOrEmpty(HttpHeaders.SET_COOKIE));
+    assertThat(setCookieHeaders).doesNotContain("Secure");
   }
 }

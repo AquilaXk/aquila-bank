@@ -129,7 +129,7 @@ class TransactionArchiveQueryControllerTest {
   @Test
   void decodesIncomingArchiveCursor() throws Exception {
     TransactionCursor cursor = new TransactionCursor(Instant.parse("2025-01-16T09:00:00Z"), 777L);
-    String encoded = TransactionCursorCodec.encode(cursor);
+    String encoded = TransactionCursorCodec.encode(101L, cursor);
     when(transactionArchiveQueryUseCase.getArchivedTransactions(
             argThat(query -> cursor.equals(query.cursor()))))
         .thenReturn(new TransactionSlice(List.of(), null, false, 20));

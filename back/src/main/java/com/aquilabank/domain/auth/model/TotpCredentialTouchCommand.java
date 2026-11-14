@@ -13,4 +13,15 @@ public record TotpCredentialTouchCommand(long userId, Instant lastUsedAt) {
       throw new IllegalArgumentException("lastUsedAt is required");
     }
   }
+
+  /** +1 드리프트 스텝 사용 시 서버 시계가 따라잡은 뒤 재전송되지 않도록 스텝 시작 시각까지 전진시킵니다. */
+  public static TotpCredentialTouchCommand forMatchedStep(
+      long userId, Instant now, long matchedStep) {
+    long currentStep = Math.floorDiv(now.getEpochSecond(), 30L);
+    Instant recordedAt =
+        matchedStep > currentStep
+            ? Instant.ofEpochSecond(Math.multiplyExact(matchedStep, 30L))
+            : now;
+    return new TotpCredentialTouchCommand(userId, recordedAt);
+  }
 }

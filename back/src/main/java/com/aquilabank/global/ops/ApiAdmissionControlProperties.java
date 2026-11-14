@@ -130,6 +130,9 @@ public record ApiAdmissionControlProperties(
       } else if (decreaseRejectionRatio > 1.0) {
         throw new IllegalArgumentException(
             "ops.api-admission-control adaptive decrease-rejection-ratio must be within (0, 1]");
+      } else if (rejectionWindowSize > 64) {
+        throw new IllegalArgumentException(
+            "ops.api-admission-control adaptive rejection-window-size must not exceed 64");
       } else {
         increaseEverySuccesses = increaseEverySuccesses > 0 ? increaseEverySuccesses : 100;
         decreaseOnRejections = decreaseOnRejections > 0 ? decreaseOnRejections : 1;

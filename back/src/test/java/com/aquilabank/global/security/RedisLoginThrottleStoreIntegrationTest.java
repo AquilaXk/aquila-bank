@@ -175,6 +175,46 @@ class RedisLoginThrottleStoreIntegrationTest {
         .isTrue();
   }
 
+  @Test
+  void isolatesGlobalBucketsAcrossScopesAndAtomicallyEvictsOldestTrackedIpInLua() {
+    LoginThrottlingProperties boundedProperties =
+        new LoginThrottlingProperties(
+            2,
+            new LoginThrottlingProperties.ScopeProperties(2, 60),
+            new LoginThrottlingProperties.ScopeProperties(2, 60),
+            LoginThrottlingProperties.StoreType.REDIS,
+            false,
+            new LoginThrottlingProperties.RedisProperties("auth:login:scoped:"));
+    RedisLoginThrottleStore store =
+        new RedisLoginThrottleStore(boundedProperties, stringRedisTemplate);
+
+    assertThat(store.check("203.0.113.1").throttled()).isFalse();
+    assertThat(store.check("203.0.113.2").throttled()).isFalse();
+    assertThat(store.check("203.0.113.3").scope()).isEqualTo(LoginThrottleScope.GLOBAL);
+
+    assertThat(store.check("refresh:203.0.113.10").throttled()).isFalse();
+    assertThat(store.check("refresh:203.0.113.11").throttled()).isFalse();
+    assertThat(store.check("refresh:203.0.113.12").scope()).isEqualTo(LoginThrottleScope.GLOBAL);
+    assertThat(store.check("password_recovery:203.0.113.20").throttled()).isFalse();
+
+    LoginThrottlingProperties evictionProperties =
+        new LoginThrottlingProperties(
+            2,
+            new LoginThrottlingProperties.ScopeProperties(1, 60),
+            new LoginThrottlingProperties.ScopeProperties(10, 60),
+            LoginThrottlingProperties.StoreType.REDIS,
+            false,
+            new LoginThrottlingProperties.RedisProperties("auth:login:evict:"));
+    RedisLoginThrottleStore evictionStore =
+        new RedisLoginThrottleStore(evictionProperties, stringRedisTemplate);
+
+    assertThat(evictionStore.check("198.51.100.1").trackedIpCount()).isEqualTo(1);
+    assertThat(evictionStore.check("198.51.100.2").trackedIpCount()).isEqualTo(2);
+    assertThat(evictionStore.check("198.51.100.3").trackedIpCount()).isEqualTo(2);
+    // Evicted 198.51.100.1 can re-enter because its IP key was atomically deleted in Lua.
+    assertThat(evictionStore.check("198.51.100.1").throttled()).isFalse();
+  }
+
   private StringRedisTemplate createTemplate() {
     LettuceConnectionFactory connectionFactory =
         new LettuceConnectionFactory(REDIS.getHost(), REDIS.getMappedPort(6379));

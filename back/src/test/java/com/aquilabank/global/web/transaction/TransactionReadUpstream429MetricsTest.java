@@ -35,4 +35,41 @@ class TransactionReadUpstream429MetricsTest {
                 .count())
         .isEqualTo(1.0);
   }
+
+  @Test
+  void preregistersKnownSourcesAndFallsBackForCustomSources() {
+    SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+    TransactionReadUpstream429Metrics metrics =
+        new TransactionReadUpstream429Metrics(meterRegistry);
+
+    for (String source :
+        new String[] {
+          "security-filter", "backend-admission", "fairness-limiter", "saturation-guard"
+        }) {
+      for (String endpoint : new String[] {"active", "archive", "other"}) {
+        assertThat(
+                meterRegistry
+                    .find("aquila.transaction.read.upstream.429")
+                    .tag("source", source)
+                    .tag("endpoint", endpoint)
+                    .counter())
+            .isNotNull();
+      }
+    }
+
+    assertThat(metrics.record("backend-admission", "/api/v1/transactions")).isEqualTo("active");
+    assertThat(metrics.record("fairness-limiter", "/api/v1/transactions/archive"))
+        .isEqualTo("archive");
+    assertThat(metrics.record("saturation-guard", "/api/v1/transactions")).isEqualTo("active");
+    assertThat(metrics.record("custom-source", "/api/v1/transactions")).isEqualTo("active");
+
+    assertThat(
+            meterRegistry
+                .find("aquila.transaction.read.upstream.429")
+                .tag("source", "custom-source")
+                .tag("endpoint", "active")
+                .counter()
+                .count())
+        .isEqualTo(1.0);
+  }
 }

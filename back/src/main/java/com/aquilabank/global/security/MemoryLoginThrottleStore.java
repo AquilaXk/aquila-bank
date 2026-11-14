@@ -5,20 +5,19 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/** memory 기본 경로에서 login burst 상태를 bounded하게 유지합니다. */
+/** memory 기본 경로에서 스코프별 전역/IP 버킷 상태를 bounded하게 격리 유지합니다. */
 public final class MemoryLoginThrottleStore implements LoginThrottleStore {
 
-  private static final String PASSWORD_RECOVERY_PREFIX = "password_recovery:";
   private static final int MAX_TRACKED_IPS_HARD_LIMIT = 10_000;
 
   private final LoginThrottlingProperties properties;
   private final Clock clock;
-  private final Deque<Instant> globalWindow = new ArrayDeque<>();
-  private final Deque<Instant> passwordRecoveryGlobalWindow = new ArrayDeque<>();
+  private final Map<String, Deque<Instant>> globalWindows = new HashMap<>();
   private final LinkedHashMap<String, AttemptWindow> ipWindows =
       new LinkedHashMap<>(16, 0.75f, true);
 
@@ -30,11 +29,14 @@ public final class MemoryLoginThrottleStore implements LoginThrottleStore {
   @Override
   public synchronized ThrottleDecision check(String ipAddress) {
     Instant now = Instant.now(clock);
-    Deque<Instant> activeGlobalWindow = selectGlobalWindow(ipAddress);
+    LoginThrottleScopeKey scopeKey = LoginThrottleScopeKey.parse(ipAddress);
+    String scopedIpKey = scopeKey.scope() + ":" + scopeKey.ipAddress();
+    Deque<Instant> activeGlobalWindow =
+        globalWindows.computeIfAbsent(scopeKey.scope(), ignored -> new ArrayDeque<>());
 
     pruneWindow(activeGlobalWindow, now, properties.global().windowSeconds());
 
-    ThrottleDecision ipDecision = evaluateIpWindow(ipAddress, now);
+    ThrottleDecision ipDecision = evaluateIpWindow(scopedIpKey, now);
     if (ipDecision.throttled()) {
       return ipDecision;
     }
@@ -44,7 +46,7 @@ public final class MemoryLoginThrottleStore implements LoginThrottleStore {
       return globalDecision;
     }
 
-    ipWindow(ipAddress, now).attempts().addLast(now);
+    ipWindow(scopedIpKey, now).attempts().addLast(now);
     activeGlobalWindow.addLast(now);
     return ThrottleDecision.allowed(
         properties.ip().maxAttempts(), properties.ip().windowSeconds(), ipWindows.size());
@@ -52,15 +54,8 @@ public final class MemoryLoginThrottleStore implements LoginThrottleStore {
 
   @Override
   public synchronized void clear() {
-    globalWindow.clear();
-    passwordRecoveryGlobalWindow.clear();
+    globalWindows.clear();
     ipWindows.clear();
-  }
-
-  private Deque<Instant> selectGlobalWindow(String ipAddress) {
-    return ipAddress != null && ipAddress.startsWith(PASSWORD_RECOVERY_PREFIX)
-        ? passwordRecoveryGlobalWindow
-        : globalWindow;
   }
 
   private ThrottleDecision evaluateIpWindow(String ipAddress, Instant now) {

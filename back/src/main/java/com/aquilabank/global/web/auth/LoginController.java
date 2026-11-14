@@ -172,7 +172,10 @@ public class LoginController {
 
   @PostMapping("/mfa/totp/challenge/verify")
   public ResponseEntity<LoginResponse> verifyTotpChallenge(
+      HttpServletRequest httpServletRequest,
       @Valid @RequestBody TotpChallengeVerifyRequest request) {
+    var sessionClientMetadata = authSessionMetadataResolver.resolve(httpServletRequest);
+    loginThrottleGuard.checkTotpChallengeVerify(sessionClientMetadata.ipAddress());
     LoginResult result =
         totpChallengeVerifyUseCase.verify(
             new TotpChallengeVerifyCommand(
@@ -204,7 +207,10 @@ public class LoginController {
 
   @PostMapping("/mfa/backup-codes/challenge/verify")
   public ResponseEntity<LoginResponse> verifyBackupCodeChallenge(
+      HttpServletRequest httpServletRequest,
       @Valid @RequestBody BackupCodeChallengeVerifyRequest request) {
+    var sessionClientMetadata = authSessionMetadataResolver.resolve(httpServletRequest);
+    loginThrottleGuard.checkBackupCodeChallengeVerify(sessionClientMetadata.ipAddress());
     LoginResult result =
         backupCodeChallengeVerifyUseCase.verify(
             new BackupCodeChallengeVerifyCommand(
@@ -245,13 +251,15 @@ public class LoginController {
   @PostMapping("/refresh")
   public ResponseEntity<LoginResponse> refresh(
       HttpServletRequest httpServletRequest, @Valid @RequestBody RefreshRequest request) {
+    var sessionClientMetadata = authSessionMetadataResolver.resolve(httpServletRequest);
+    loginThrottleGuard.checkRefresh(sessionClientMetadata.ipAddress());
     String refreshToken = resolveRefreshToken(request.refreshToken(), httpServletRequest);
     LoginResult result =
         refreshTokenUseCase.refresh(
             new RefreshTokenCommand(
                 refreshToken,
                 refreshDeviceBindingCookieManager.resolve(httpServletRequest),
-                authSessionMetadataResolver.resolve(httpServletRequest),
+                sessionClientMetadata,
                 RequestTraceContext.currentRequestId().orElse("-")));
     return loginResponse(result, false);
   }
@@ -296,7 +304,10 @@ public class LoginController {
 
   @PostMapping("/password-recovery/confirm")
   public ResponseEntity<Void> confirmPasswordRecovery(
+      HttpServletRequest httpServletRequest,
       @Valid @RequestBody PasswordRecoveryConfirmRequest request) {
+    var sessionClientMetadata = authSessionMetadataResolver.resolve(httpServletRequest);
+    loginThrottleGuard.checkPasswordRecoveryConfirm(sessionClientMetadata.ipAddress());
     passwordRecoveryConfirmUseCase.confirm(
         new PasswordRecoveryConfirmCommand(request.recoveryToken(), request.newPassword()));
     return ResponseEntity.noContent().build();

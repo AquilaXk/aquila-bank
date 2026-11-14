@@ -29,12 +29,25 @@ public class LoginThrottleGuard {
     check(ipAddress, LoginThrottleEntryPoint.PASSWORD_RECOVERY);
   }
 
+  public void checkTotpChallengeVerify(String ipAddress) {
+    check(ipAddress, LoginThrottleEntryPoint.MFA_TOTP_CHALLENGE);
+  }
+
+  public void checkBackupCodeChallengeVerify(String ipAddress) {
+    check(ipAddress, LoginThrottleEntryPoint.MFA_BACKUP_CODE_CHALLENGE);
+  }
+
+  public void checkPasswordRecoveryConfirm(String ipAddress) {
+    check(ipAddress, LoginThrottleEntryPoint.PASSWORD_RECOVERY_CONFIRM);
+  }
+
+  public void checkRefresh(String ipAddress) {
+    check(ipAddress, LoginThrottleEntryPoint.REFRESH);
+  }
+
   private void check(String ipAddress, LoginThrottleEntryPoint entryPoint) {
     String normalizedIpAddress = normalizeIpAddress(ipAddress);
-    String throttleKey =
-        entryPoint == LoginThrottleEntryPoint.PASSWORD_RECOVERY
-            ? "password_recovery:" + normalizedIpAddress
-            : normalizedIpAddress;
+    String throttleKey = entryPoint.keyPrefix() + normalizedIpAddress;
     LoginThrottleStore.ThrottleDecision decision = loginThrottleStore.check(throttleKey);
     if (decision.throttled()) {
       metricsRecorder.recordReject(entryPoint.metricTagValue(), decision.scope());
@@ -97,19 +110,48 @@ public class LoginThrottleGuard {
   }
 
   private enum LoginThrottleEntryPoint {
-    LOGIN("auth login throttled", "too many login attempts"),
-    PASSWORD_RECOVERY("auth password recovery throttled", "too many password recovery requests");
+    LOGIN("login", "", "auth login throttled", "too many login attempts"),
+    PASSWORD_RECOVERY(
+        "password_recovery",
+        "password_recovery:",
+        "auth password recovery throttled",
+        "too many password recovery requests"),
+    MFA_TOTP_CHALLENGE(
+        "mfa_totp_challenge",
+        "mfa_totp_challenge:",
+        "auth totp challenge throttled",
+        "too many mfa verification attempts"),
+    MFA_BACKUP_CODE_CHALLENGE(
+        "mfa_backup_code_challenge",
+        "mfa_backup_code_challenge:",
+        "auth backup code challenge throttled",
+        "too many backup code verification attempts"),
+    PASSWORD_RECOVERY_CONFIRM(
+        "password_recovery_confirm",
+        "password_recovery_confirm:",
+        "auth password recovery confirm throttled",
+        "too many password recovery confirmation attempts"),
+    REFRESH(
+        "refresh", "refresh:", "auth token refresh throttled", "too many token refresh attempts");
 
+    private final String metricTag;
+    private final String keyPrefix;
     private final String logMessage;
     private final String message;
 
-    LoginThrottleEntryPoint(String logMessage, String message) {
+    LoginThrottleEntryPoint(String metricTag, String keyPrefix, String logMessage, String message) {
+      this.metricTag = metricTag;
+      this.keyPrefix = keyPrefix;
       this.logMessage = logMessage;
       this.message = message;
     }
 
     String metricTagValue() {
-      return this == LOGIN ? "login" : "password_recovery";
+      return metricTag;
+    }
+
+    String keyPrefix() {
+      return keyPrefix;
     }
 
     String logMessage() {

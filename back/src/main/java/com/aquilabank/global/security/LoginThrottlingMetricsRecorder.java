@@ -3,12 +3,21 @@ package com.aquilabank.global.security;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.EnumMap;
+import java.util.List;
 import java.util.Map;
 
 /** auth throttling reject는 low-cardinality tag만 남겨 Prometheus 비용을 제한합니다. */
 public final class LoginThrottlingMetricsRecorder {
 
   private static final String METRIC_NAME = "aquila.auth.throttling.reject.count";
+  private static final List<String> ENTRY_POINTS =
+      List.of(
+          "login",
+          "password_recovery",
+          "mfa_totp_challenge",
+          "mfa_backup_code_challenge",
+          "password_recovery_confirm",
+          "refresh");
 
   private final Map<LoginThrottleScope, Map<String, Counter>> rejectCounters;
 
@@ -18,9 +27,9 @@ public final class LoginThrottlingMetricsRecorder {
     this.rejectCounters = new EnumMap<>(LoginThrottleScope.class);
     for (LoginThrottleScope scope : LoginThrottleScope.values()) {
       Map<String, Counter> entryPointCounters = new java.util.HashMap<>();
-      entryPointCounters.put("login", counter(meterRegistry, store, "login", scope));
-      entryPointCounters.put(
-          "password_recovery", counter(meterRegistry, store, "password_recovery", scope));
+      for (String entryPoint : ENTRY_POINTS) {
+        entryPointCounters.put(entryPoint, counter(meterRegistry, store, entryPoint, scope));
+      }
       rejectCounters.put(scope, Map.copyOf(entryPointCounters));
     }
   }

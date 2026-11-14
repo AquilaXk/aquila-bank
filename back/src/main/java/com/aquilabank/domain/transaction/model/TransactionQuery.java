@@ -54,8 +54,12 @@ public record TransactionQuery(
       }
     }
     // 작은 인프라에서도 예측 가능한 scan 비용 유지를 위한 조회 기간 상한
-    if (Duration.between(from, to).compareTo(MAX_RANGE) > 0) {
-      throw new IllegalArgumentException("date range must be 31 days or less");
+    try {
+      if (Duration.between(from, to).compareTo(MAX_RANGE) > 0) {
+        throw new IllegalArgumentException("date range must be 31 days or less");
+      }
+    } catch (ArithmeticException ex) {
+      throw new IllegalArgumentException("date range must be 31 days or less", ex);
     }
   }
 }

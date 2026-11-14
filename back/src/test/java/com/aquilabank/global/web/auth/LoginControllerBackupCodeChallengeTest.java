@@ -1,5 +1,6 @@
 package com.aquilabank.global.web.auth;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -7,6 +8,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.aquilabank.domain.auth.model.AuthSessionClientMetadata;
 import com.aquilabank.domain.auth.model.BackupCodeChallengeVerifyCommand;
 import com.aquilabank.domain.auth.model.LoginResult;
 import com.aquilabank.domain.auth.usecase.AuthSessionListUseCase;
@@ -43,6 +45,9 @@ class LoginControllerBackupCodeChallengeTest {
   @BeforeEach
   void setUp() {
     backupCodeChallengeVerifyUseCase = mock(BackupCodeChallengeVerifyUseCase.class);
+    AuthSessionMetadataResolver metadataResolver = mock(AuthSessionMetadataResolver.class);
+    when(metadataResolver.resolve(any()))
+        .thenReturn(new AuthSessionClientMetadata("Windows / Chrome", "203.0.113.10"));
     mockMvc =
         MockMvcBuilders.standaloneSetup(
                 new LoginController(
@@ -60,7 +65,7 @@ class LoginControllerBackupCodeChallengeTest {
                     mock(PasswordResetUseCase.class),
                     mock(PasswordRecoveryRequestUseCase.class),
                     mock(PasswordRecoveryConfirmUseCase.class),
-                    mock(AuthSessionMetadataResolver.class),
+                    metadataResolver,
                     mock(LoginThrottleGuard.class),
                     new RememberDeviceCookieManager(
                         new SecurityRememberDeviceProperties("ab_mfa_remember_device", 2_592_000L)),

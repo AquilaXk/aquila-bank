@@ -21,6 +21,16 @@ import org.springframework.transaction.annotation.Transactional;
 public class JdbcOutboxEventRepository implements OutboxEventStore, OutboxCleanupPort {
 
   private static final RowMapper<OutboxEvent> ROW_MAPPER = (rs, rowNum) -> mapRow(rs);
+  private static final String MARK_PUBLISHED_BATCH_SQL =
+      """
+      UPDATE outbox_event
+      SET publish_status = 'PUBLISHED',
+          published_at = ?,
+          last_error = NULL,
+          updated_at = ?
+      WHERE id = ANY(?)
+        AND publish_status = 'SENDING'
+      """;
 
   private final NamedParameterJdbcTemplate jdbcTemplate;
 
@@ -77,22 +87,25 @@ public class JdbcOutboxEventRepository implements OutboxEventStore, OutboxCleanu
   @Override
   @Transactional
   public void markPublished(long id, Instant publishedAt) {
-    MapSqlParameterSource params =
-        new MapSqlParameterSource()
-            .addValue("id", id)
-            .addValue("publishedAt", Timestamp.from(publishedAt));
+    markPublishedBatch(List.of(id), publishedAt);
+  }
 
-    jdbcTemplate.update(
-        """
-        UPDATE outbox_event
-        SET publish_status = 'PUBLISHED',
-            published_at = :publishedAt,
-            last_error = NULL,
-            updated_at = :publishedAt
-        WHERE id = :id
-          AND publish_status = 'SENDING'
-        """,
-        params);
+  @Override
+  @Transactional
+  public void markPublishedBatch(List<Long> ids, Instant publishedAt) {
+    if (ids.isEmpty()) {
+      return;
+    }
+    Timestamp ts = Timestamp.from(publishedAt);
+    jdbcTemplate
+        .getJdbcOperations()
+        .update(
+            MARK_PUBLISHED_BATCH_SQL,
+            ps -> {
+              ps.setTimestamp(1, ts);
+              ps.setTimestamp(2, ts);
+              ps.setArray(3, ps.getConnection().createArrayOf("bigint", ids.toArray(Long[]::new)));
+            });
   }
 
   @Override

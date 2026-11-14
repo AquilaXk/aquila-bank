@@ -37,6 +37,10 @@ import org.springframework.web.server.ResponseStatusException;
 public class CustomerApplicationController {
 
   private static final int MAX_PAYLOAD_FIELDS = 30;
+  private static final int MAX_PAYLOAD_DEPTH = 16;
+  private static final int MAX_PAYLOAD_NODES = 128;
+  private static final int MAX_PAYLOAD_BYTES = 16_384;
+  private static final int SCALAR_TOKEN_OVERHEAD_BYTES = 8;
 
   private final CustomerApplicationSubmitUseCase customerApplicationSubmitUseCase;
   private final CustomerApplicationSelfServiceUseCase customerApplicationSelfServiceUseCase;
@@ -136,7 +140,83 @@ public class CustomerApplicationController {
     if (payload.size() > MAX_PAYLOAD_FIELDS) {
       throw new IllegalArgumentException("payload has too many fields");
     }
-    payload.keySet().forEach(this::validatePayloadKey);
+    PayloadValidationBudget budget = new PayloadValidationBudget();
+    validatePayloadMap(payload, 1, budget);
+  }
+
+  private void validatePayloadMap(Map<?, ?> map, int depth, PayloadValidationBudget budget) {
+    if (depth > MAX_PAYLOAD_DEPTH) {
+      throw new IllegalArgumentException("payload exceeds maximum depth");
+    }
+    budget.consumeNode(2);
+    for (Map.Entry<?, ?> entry : map.entrySet()) {
+      String key = String.valueOf(entry.getKey());
+      validatePayloadKey(key);
+      budget.consumeNode(utf8ByteLength(key) + 4);
+      validatePayloadValue(entry.getValue(), depth + 1, budget);
+    }
+  }
+
+  private void validatePayloadValue(Object value, int depth, PayloadValidationBudget budget) {
+    if (value == null) {
+      budget.consumeNode(4);
+      return;
+    }
+    if (value instanceof Map<?, ?> nestedMap) {
+      validatePayloadMap(nestedMap, depth, budget);
+      return;
+    }
+    if (value instanceof Iterable<?> iterable) {
+      if (depth > MAX_PAYLOAD_DEPTH) {
+        throw new IllegalArgumentException("payload exceeds maximum depth");
+      }
+      budget.consumeNode(2);
+      for (Object item : iterable) {
+        validatePayloadValue(item, depth + 1, budget);
+      }
+      return;
+    }
+    if (value instanceof String text) {
+      budget.consumeNode(utf8ByteLength(text) + 2);
+      return;
+    }
+    budget.consumeNode(SCALAR_TOKEN_OVERHEAD_BYTES);
+  }
+
+  private static int utf8ByteLength(String text) {
+    int length = text.length();
+    int bytes = 0;
+    for (int index = 0; index < length; index++) {
+      char ch = text.charAt(index);
+      if (ch < 0x80) {
+        bytes++;
+      } else if (ch < 0x800) {
+        bytes += 2;
+      } else if (Character.isHighSurrogate(ch)
+          && index + 1 < length
+          && Character.isLowSurrogate(text.charAt(index + 1))) {
+        bytes += 4;
+        index++;
+      } else {
+        bytes += 3;
+      }
+    }
+    return bytes;
+  }
+
+  private static final class PayloadValidationBudget {
+    private int nodes;
+    private int estimatedBytes;
+
+    private void consumeNode(int deltaBytes) {
+      if (++nodes > MAX_PAYLOAD_NODES) {
+        throw new IllegalArgumentException("payload exceeds maximum node count");
+      }
+      estimatedBytes += deltaBytes;
+      if (estimatedBytes > MAX_PAYLOAD_BYTES) {
+        throw new IllegalArgumentException("payload exceeds maximum size");
+      }
+    }
   }
 
   private void validatePayloadKey(String key) {

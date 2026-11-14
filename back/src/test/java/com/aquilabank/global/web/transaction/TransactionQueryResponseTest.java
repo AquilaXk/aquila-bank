@@ -36,11 +36,18 @@ class TransactionQueryResponseTest {
     assertEquals("DEBIT", response.items().get(0).direction());
     assertEquals("TX-2", response.items().get(1).transactionReference());
     assertEquals("CREDIT", response.items().get(1).direction());
-    assertEquals(TransactionCursorCodec.encode(nextCursor), response.nextCursor());
+    assertEquals(TransactionCursorCodec.encode(101L, nextCursor), response.nextCursor());
     assertEquals(true, response.hasNext());
     assertEquals(20, response.limit());
     assertThrows(
         UnsupportedOperationException.class, () -> response.items().add(response.items().get(0)));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> TransactionQueryResponse.from(new TransactionSlice(List.of(), nextCursor, true, 20)));
+    assertEquals(
+        null,
+        TransactionQueryResponse.from(new TransactionSlice(List.of(), null, false, 20))
+            .nextCursor());
   }
 
   @Test

@@ -300,6 +300,102 @@ class CustomerApplicationControllerTest {
                     CustomerApplicationType.BILL_PAYMENT, null, "123456", Map.of("", "value"))));
   }
 
+  @Test
+  void rejectsOversizedOrDeeplyNestedPayloadAndNestedSecretKeys() {
+    CustomerApplicationController controller =
+        new CustomerApplicationController(
+            customerApplicationSubmitUseCase,
+            customerApplicationSelfServiceUseCase,
+            requestAccountAuthorizationService);
+    AuthenticatedUserPrincipal principal = new AuthenticatedUserPrincipal(7L, "tester");
+
+    Map<String, Object> deep = new LinkedHashMap<>();
+    Map<String, Object> cursor = deep;
+    for (int depth = 1; depth <= 17; depth++) {
+      Map<String, Object> child = new LinkedHashMap<>();
+      cursor.put("n" + depth, child);
+      cursor = child;
+    }
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            controller.submit(
+                principal,
+                "payload-deep",
+                new CustomerApplicationController.CustomerApplicationRequest(
+                    CustomerApplicationType.BILL_PAYMENT, null, "123456", deep)));
+
+    List<Object> tooManyNodes = new java.util.ArrayList<>();
+    for (int index = 0; index < 130; index++) {
+      tooManyNodes.add(index);
+    }
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            controller.submit(
+                principal,
+                "payload-nodes",
+                new CustomerApplicationController.CustomerApplicationRequest(
+                    CustomerApplicationType.BILL_PAYMENT,
+                    null,
+                    "123456",
+                    Map.of("items", tooManyNodes))));
+
+    LinkedHashMap<String, Object> oversizedBytes = new LinkedHashMap<>();
+    String largeString = "가".repeat(2_000);
+    for (int index = 0; index < 3; index++) {
+      oversizedBytes.put("k" + index, largeString);
+    }
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            controller.submit(
+                principal,
+                "payload-bytes",
+                new CustomerApplicationController.CustomerApplicationRequest(
+                    CustomerApplicationType.BILL_PAYMENT, null, "123456", oversizedBytes)));
+
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            controller.submit(
+                principal,
+                "payload-nested-secret",
+                new CustomerApplicationController.CustomerApplicationRequest(
+                    CustomerApplicationType.BILL_PAYMENT,
+                    null,
+                    "123456",
+                    Map.of("meta", Map.of("secretToken", "hidden")))));
+
+    Map<String, Object> deepIterableContainer = new LinkedHashMap<>();
+    Map<String, Object> iterCursor = deepIterableContainer;
+    for (int depth = 1; depth <= 15; depth++) {
+      Map<String, Object> child = new LinkedHashMap<>();
+      iterCursor.put("d" + depth, child);
+      iterCursor = child;
+    }
+    iterCursor.put("list", List.of(1));
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            controller.submit(
+                principal,
+                "payload-deep-list",
+                new CustomerApplicationController.CustomerApplicationRequest(
+                    CustomerApplicationType.BILL_PAYMENT, null, "123456", deepIterableContainer)));
+
+    Map<String, Object> utf8Payload = new LinkedHashMap<>();
+    utf8Payload.put("note", "cafe\u00E9-\uD83D\uDE00-\uD83D");
+    utf8Payload.put("tags", java.util.Arrays.asList("kr", null, 2, true));
+    utf8Payload.put("meta", Map.of("channel", "web"));
+    when(customerApplicationSubmitUseCase.submit(any())).thenReturn(submission());
+    controller.submit(
+        principal,
+        "payload-utf8-ok",
+        new CustomerApplicationController.CustomerApplicationRequest(
+            CustomerApplicationType.BILL_PAYMENT, null, "123456", utf8Payload));
+  }
+
   private void authenticateUser(long userId) {
     SecurityContextHolder.getContext()
         .setAuthentication(
