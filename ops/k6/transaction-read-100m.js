@@ -491,8 +491,61 @@ function preemptivePace() {
   sleep(sleepMs / 1000);
 }
 
-const cursorHmacSecret =
-  __ENV.AQUILA_TRANSACTION_CURSOR_HMAC_SECRET || "aquila-bank-transaction-cursor-hmac-v1";
+const DEFAULT_CURSOR_HMAC_SECRET = "aquila-bank-transaction-cursor-hmac-v1";
+const CURSOR_HKDF_INFO = "aquila-bank:transaction-cursor:hmac-sha256:v1";
+
+function utf8Bytes(text) {
+  const bytes = [];
+  const source = String(text || "");
+  for (let i = 0; i < source.length; i++) {
+    const code = source.charCodeAt(i);
+    if (code < 0x80) {
+      bytes.push(code);
+    } else if (code < 0x800) {
+      bytes.push(0xc0 | (code >> 6), 0x80 | (code & 0x3f));
+    } else if (code >= 0xd800 && code <= 0xdbff && i + 1 < source.length) {
+      const next = source.charCodeAt(i + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        const cp = ((code - 0xd800) << 10) + (next - 0xdc00) + 0x10000;
+        bytes.push(
+          0xf0 | (cp >> 18),
+          0x80 | ((cp >> 12) & 0x3f),
+          0x80 | ((cp >> 6) & 0x3f),
+          0x80 | (cp & 0x3f),
+        );
+        i++;
+      } else {
+        bytes.push(0xef, 0xbf, 0xbd);
+      }
+    } else if (code >= 0xd800 && code <= 0xdfff) {
+      bytes.push(0xef, 0xbf, 0xbd);
+    } else {
+      bytes.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f));
+    }
+  }
+  return new Uint8Array(bytes);
+}
+
+function resolveCursorHmacKey() {
+  const explicitSecret = __ENV.AQUILA_TRANSACTION_CURSOR_HMAC_SECRET;
+  if (explicitSecret && String(explicitSecret).trim().length > 0) {
+    return utf8Bytes(explicitSecret).buffer;
+  }
+  const jwtSecret = __ENV.SECURITY_JWT_SECRET;
+  if (jwtSecret && String(jwtSecret).trim().length > 0) {
+    // TransactionCursorCodec과 동일하게 RFC 5869 HKDF-SHA256(salt=32B zero, info=domain)으로 파생합니다.
+    const zeroSalt = new Uint8Array(32);
+    const prk = crypto.hmac("sha256", zeroSalt.buffer, utf8Bytes(jwtSecret).buffer, "binary");
+    const infoBytes = utf8Bytes(CURSOR_HKDF_INFO);
+    const expandInput = new Uint8Array(infoBytes.length + 1);
+    expandInput.set(infoBytes, 0);
+    expandInput[infoBytes.length] = 0x01;
+    return crypto.hmac("sha256", prk, expandInput.buffer, "binary");
+  }
+  return utf8Bytes(DEFAULT_CURSOR_HMAC_SECRET).buffer;
+}
+
+const cursorHmacKey = resolveCursorHmacKey();
 
 function writeBigInt64BE(view, byteOffset, value) {
   const high = Number((value >> 32n) & 0xffffffffn);
@@ -515,18 +568,20 @@ function parseInstantEpochAndNano(isoString) {
   return {epochSecond, nano};
 }
 
-function encodeCursor(bookedAt, id) {
+function encodeCursor(accountId, bookedAt, id) {
+  const resolvedAccountId = BigInt(String(accountId));
   const {epochSecond, nano} = parseInstantEpochAndNano(bookedAt);
   const entryId = BigInt(String(id));
-  const payload = new Uint8Array(20);
+  const payload = new Uint8Array(28);
   const payloadView = new DataView(payload.buffer);
-  writeBigInt64BE(payloadView, 0, epochSecond);
-  payloadView.setInt32(8, nano, false);
-  writeBigInt64BE(payloadView, 12, entryId);
-  const macBuffer = crypto.hmac("sha256", cursorHmacSecret, payload.buffer, "binary");
-  const combined = new Uint8Array(52);
+  writeBigInt64BE(payloadView, 0, resolvedAccountId);
+  writeBigInt64BE(payloadView, 8, epochSecond);
+  payloadView.setInt32(16, nano, false);
+  writeBigInt64BE(payloadView, 20, entryId);
+  const macBuffer = crypto.hmac("sha256", cursorHmacKey, payload.buffer, "binary");
+  const combined = new Uint8Array(60);
   combined.set(payload, 0);
-  combined.set(new Uint8Array(macBuffer), 20);
+  combined.set(new Uint8Array(macBuffer), 28);
   return encoding.b64encode(combined.buffer, "rawurl");
 }
 
@@ -678,24 +733,26 @@ function requestWeightedStep(shape) {
     return;
   }
   if (shape === "hot_cursor") {
+    const accountId = pickAccount(hotAccountIds);
     requestPage(
       "hot_cursor",
       "/api/v1/transactions",
-      pickAccount(hotAccountIds),
+      accountId,
       hotFrom,
       hotTo,
-      encodeCursor(hotDeepCursorBookedAt, hotDeepCursorId),
+      encodeCursor(accountId, hotDeepCursorBookedAt, hotDeepCursorId),
     );
     return;
   }
   if (shape === "hot_deep_cursor") {
+    const accountId = pickAccount(hotAccountIds);
     requestPage(
       "hot_deep_cursor",
       "/api/v1/transactions",
-      pickAccount(hotAccountIds),
+      accountId,
       hotFrom,
       hotTo,
-      encodeCursor(hotDeepCursorBookedAt, hotDeepCursorId),
+      encodeCursor(accountId, hotDeepCursorBookedAt, hotDeepCursorId),
     );
     return;
   }
@@ -704,23 +761,25 @@ function requestWeightedStep(shape) {
     return;
   }
   if (shape === "cold_cursor") {
+    const accountId = pickAccount(coldAccountIds);
     requestPage(
       "cold_cursor",
       "/api/v1/transactions/archive",
-      pickAccount(coldAccountIds),
+      accountId,
       coldFrom,
       coldTo,
-      encodeCursor(coldDeepCursorBookedAt, coldDeepCursorId),
+      encodeCursor(accountId, coldDeepCursorBookedAt, coldDeepCursorId),
     );
     return;
   }
+  const accountId = pickAccount(coldAccountIds);
   requestPage(
     "cold_deep_cursor",
     "/api/v1/transactions/archive",
-    pickAccount(coldAccountIds),
+    accountId,
     coldFrom,
     coldTo,
-    encodeCursor(coldDeepCursorBookedAt, coldDeepCursorId),
+    encodeCursor(accountId, coldDeepCursorBookedAt, coldDeepCursorId),
   );
 }
 
@@ -773,7 +832,7 @@ function runFixedOrder() {
     hotAccount,
     hotFrom,
     hotTo,
-    encodeCursor(hotDeepCursorBookedAt, hotDeepCursorId),
+    encodeCursor(hotAccount, hotDeepCursorBookedAt, hotDeepCursorId),
   );
   if (!hotDeepCursorBody) {
     return;
@@ -810,7 +869,7 @@ function runFixedOrder() {
     coldAccount,
     coldFrom,
     coldTo,
-    encodeCursor(coldDeepCursorBookedAt, coldDeepCursorId),
+    encodeCursor(coldAccount, coldDeepCursorBookedAt, coldDeepCursorId),
   );
   if (!coldDeepCursorBody) {
     return;

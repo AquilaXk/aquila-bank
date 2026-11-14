@@ -1,9 +1,12 @@
 package com.aquilabank.global.web.transaction;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.aquilabank.domain.transaction.model.TransactionCursor;
+import com.aquilabank.global.security.HkdfSha256;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Base64;
@@ -76,37 +79,81 @@ class TransactionCursorCodecTest {
   }
 
   @Test
-  void resolvesHmacKeyAndFailsClosedOutsideDevOrTest() {
+  void resolvesHmacKeySupportsJwtHkdfFallbackAndFailsClosedOutsideDevOrTest() {
     assertEquals(
         "prop-secret",
         new String(
-            TransactionCursorCodec.resolveHmacKey("prop-secret", "env-secret", "prod", null)
+            TransactionCursorCodec.resolveHmacKey(
+                    "prop-secret", "legacy-secret", "env-secret", "jwt-secret", "prod", null)
+                .getEncoded(),
+            StandardCharsets.UTF_8));
+    assertEquals(
+        "legacy-secret",
+        new String(
+            TransactionCursorCodec.resolveHmacKey(
+                    " ", "legacy-secret", "env-secret", "jwt-secret", null, "prod")
                 .getEncoded(),
             StandardCharsets.UTF_8));
     assertEquals(
         "env-secret",
         new String(
-            TransactionCursorCodec.resolveHmacKey(" ", "env-secret", null, "prod").getEncoded(),
-            StandardCharsets.UTF_8));
-    assertEquals(
-        "aquila-bank-transaction-cursor-hmac-v1",
-        new String(
-            TransactionCursorCodec.resolveHmacKey(null, " ", "test", null).getEncoded(),
-            StandardCharsets.UTF_8));
-    assertEquals(
-        "aquila-bank-transaction-cursor-hmac-v1",
-        new String(
-            TransactionCursorCodec.resolveHmacKey(null, null, null, "local,dev").getEncoded(),
+            TransactionCursorCodec.resolveHmacKey(
+                    null, " ", "env-secret", "jwt-secret", null, "prod")
+                .getEncoded(),
             StandardCharsets.UTF_8));
 
+    String jwtSecret = "staging-jwt-secret-key-material";
+    assertArrayEquals(
+        HkdfSha256.deriveBytes(
+            jwtSecret.getBytes(StandardCharsets.UTF_8),
+            null,
+            TransactionCursorCodec.HKDF_CONTEXT_INFO,
+            32),
+        TransactionCursorCodec.resolveHmacKey(null, " ", " ", jwtSecret, "prod", null)
+            .getEncoded());
+
+    assertEquals(
+        "aquila-bank-transaction-cursor-hmac-v1",
+        new String(
+            TransactionCursorCodec.resolveHmacKey(null, null, " ", null, "test", null).getEncoded(),
+            StandardCharsets.UTF_8));
+    assertEquals(
+        "aquila-bank-transaction-cursor-hmac-v1",
+        new String(
+            TransactionCursorCodec.resolveHmacKey(null, null, null, " ", null, "local,dev")
+                .getEncoded(),
+            StandardCharsets.UTF_8));
+
+    assertNull(TransactionCursorCodec.resolveHmacKeyOrNull(null, null, null, null, "prod", null));
     assertThrows(
         IllegalStateException.class,
-        () -> TransactionCursorCodec.resolveHmacKey(null, null, "prod", null));
+        () -> TransactionCursorCodec.resolveHmacKey(null, null, null, null, "prod", null));
     assertThrows(
         IllegalStateException.class,
-        () -> TransactionCursorCodec.resolveHmacKey(" ", " ", " ", "staging"));
+        () -> TransactionCursorCodec.resolveHmacKey(" ", " ", " ", " ", " ", "staging"));
     assertThrows(
         IllegalStateException.class,
-        () -> TransactionCursorCodec.resolveHmacKey(null, null, null, null));
+        () -> TransactionCursorCodec.resolveHmacKey(null, null, null, null, null, null));
+    assertThrows(
+        IllegalStateException.class,
+        () -> TransactionCursorCodec.configure(null, null, null, "prod"));
+  }
+
+  @Test
+  void reconfigureRotatesActiveKeyAndPreservesRoundTrip() {
+    TransactionCursor cursor =
+        new TransactionCursor(Instant.parse("2026-04-16T10:15:30.123456789Z"), 99L);
+    try {
+      String beforeRotation = TransactionCursorCodec.encode(101L, cursor);
+      TransactionCursorCodec.configure(null, null, "rotated-jwt-secret-material", "prod");
+      String afterRotation = TransactionCursorCodec.encode(101L, cursor);
+
+      assertThrows(
+          IllegalArgumentException.class,
+          () -> TransactionCursorCodec.decode(101L, beforeRotation));
+      assertEquals(cursor, TransactionCursorCodec.decode(101L, afterRotation));
+    } finally {
+      TransactionCursorCodec.configure(null, null, null, "test");
+    }
   }
 }

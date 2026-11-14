@@ -4,6 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.aquilabank.domain.auth.model.GeneratedPasswordRecoveryToken;
+import com.aquilabank.standard.util.Sha256Hex;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+import javax.crypto.Cipher;
+import javax.crypto.spec.GCMParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 import org.junit.jupiter.api.Test;
 
 class AesPasswordRecoveryTokenManagerTest {
@@ -17,7 +23,7 @@ class AesPasswordRecoveryTokenManagerTest {
     GeneratedPasswordRecoveryToken generatedToken = manager.generate();
 
     assertThat(generatedToken.plainToken()).isNotBlank();
-    assertThat(generatedToken.tokenCiphertext()).isNotBlank();
+    assertThat(generatedToken.tokenCiphertext()).startsWith("v2:");
     assertThat(generatedToken.tokenNonce()).isNotBlank();
     assertThat(generatedToken.tokenHash()).isEqualTo(manager.hash(generatedToken.plainToken()));
     assertThat(manager.reveal(generatedToken.tokenCiphertext(), generatedToken.tokenNonce()))
@@ -64,5 +70,30 @@ class AesPasswordRecoveryTokenManagerTest {
     assertThrows(
         IllegalStateException.class,
         () -> recoveryManager.reveal(totpSecret.secretCiphertext(), totpSecret.secretNonce()));
+    assertThrows(
+        IllegalStateException.class,
+        () -> recoveryManager.reveal("v2:aaaa", totpSecret.secretNonce()));
+  }
+
+  @Test
+  void revealsLegacyUnprefixedSha256CiphertextAndBlocksFallbackForV2() throws Exception {
+    String encryptionKey = "legacy-recovery-encryption-secret";
+    AesPasswordRecoveryTokenManager manager =
+        new AesPasswordRecoveryTokenManager(new PasswordRecoveryProperties(900, encryptionKey), "");
+    byte[] nonce = new byte[] {21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32};
+    String plainToken = "legacy-recovery-plain-token-value";
+    SecretKeySpec legacyKey =
+        new SecretKeySpec(Sha256Hex.digest(encryptionKey.getBytes(StandardCharsets.UTF_8)), "AES");
+    Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+    cipher.init(Cipher.ENCRYPT_MODE, legacyKey, new GCMParameterSpec(128, nonce));
+    String legacyCiphertext =
+        Base64.getUrlEncoder()
+            .withoutPadding()
+            .encodeToString(cipher.doFinal(plainToken.getBytes(StandardCharsets.UTF_8)));
+    String encodedNonce = Base64.getUrlEncoder().withoutPadding().encodeToString(nonce);
+
+    assertThat(manager.reveal(legacyCiphertext, encodedNonce)).isEqualTo(plainToken);
+    assertThrows(
+        IllegalStateException.class, () -> manager.reveal("v2:" + legacyCiphertext, encodedNonce));
   }
 }

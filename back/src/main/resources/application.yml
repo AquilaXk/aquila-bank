@@ -290,6 +290,8 @@ ledger:
     recovery-reason-max-length: ${LEDGER_SNAPSHOT_RECONCILIATION_RECOVERY_REASON_MAX_LENGTH:200}
 
 transaction:
+  cursor:
+    hmac-secret: ${AQUILA_TRANSACTION_CURSOR_HMAC_SECRET:}
   read-replica:
     enabled: ${TRANSACTION_READ_REPLICA_ENABLED:false}
     url: ${TRANSACTION_READ_REPLICA_URL:}

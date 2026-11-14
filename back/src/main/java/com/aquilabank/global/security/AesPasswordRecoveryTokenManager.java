@@ -17,9 +17,11 @@ public class AesPasswordRecoveryTokenManager implements PasswordRecoverySecretPo
   private static final int TOKEN_BYTE_LENGTH = 32;
   private static final int NONCE_BYTE_LENGTH = 12;
   private static final int GCM_TAG_BIT_LENGTH = 128;
+  private static final String KEY_VERSION_PREFIX = "v2:";
   private static final String HKDF_CONTEXT_INFO = "aquila-bank:password-recovery:aes-gcm:v1";
 
   private final SecretKeySpec secretKeySpec;
+  private final SecretKeySpec legacySecretKeySpec;
   private final SecureRandom secureRandom = new SecureRandom();
 
   public AesPasswordRecoveryTokenManager(
@@ -33,6 +35,9 @@ public class AesPasswordRecoveryTokenManager implements PasswordRecoverySecretPo
           "security.password-recovery.secret-encryption-key is required");
     }
     this.secretKeySpec = HkdfSha256.deriveAes256Key(secretEncryptionKey, HKDF_CONTEXT_INFO);
+    this.legacySecretKeySpec =
+        new SecretKeySpec(
+            Sha256Hex.digest(secretEncryptionKey.getBytes(StandardCharsets.UTF_8)), "AES");
   }
 
   @Override
@@ -48,7 +53,7 @@ public class AesPasswordRecoveryTokenManager implements PasswordRecoverySecretPo
     return new GeneratedPasswordRecoveryToken(
         plainToken,
         Sha256Hex.hashHex(plainTokenBytes),
-        encode(encrypt(plainTokenBytes, nonce)),
+        KEY_VERSION_PREFIX + encode(encrypt(plainTokenBytes, nonce)),
         encode(nonce));
   }
 
@@ -68,7 +73,7 @@ public class AesPasswordRecoveryTokenManager implements PasswordRecoverySecretPo
     if (tokenNonce == null || tokenNonce.isBlank()) {
       throw new IllegalArgumentException("tokenNonce is required");
     }
-    return new String(decrypt(decode(tokenCiphertext), decode(tokenNonce)), StandardCharsets.UTF_8);
+    return new String(decryptStoredCiphertext(tokenCiphertext, tokenNonce), StandardCharsets.UTF_8);
   }
 
   private byte[] encrypt(byte[] plainTokenBytes, byte[] nonce) {
@@ -82,11 +87,18 @@ public class AesPasswordRecoveryTokenManager implements PasswordRecoverySecretPo
     }
   }
 
-  private byte[] decrypt(byte[] tokenCiphertext, byte[] nonce) {
+  private byte[] decryptStoredCiphertext(String encodedCiphertext, String encodedNonce) {
+    boolean versioned = encodedCiphertext.startsWith(KEY_VERSION_PREFIX);
+    String payload =
+        versioned ? encodedCiphertext.substring(KEY_VERSION_PREFIX.length()) : encodedCiphertext;
+    SecretKeySpec keySpec = versioned ? secretKeySpec : legacySecretKeySpec;
+    return decrypt(decode(payload), decode(encodedNonce), keySpec);
+  }
+
+  private byte[] decrypt(byte[] tokenCiphertext, byte[] nonce, SecretKeySpec keySpec) {
     try {
       Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-      cipher.init(
-          Cipher.DECRYPT_MODE, secretKeySpec, new GCMParameterSpec(GCM_TAG_BIT_LENGTH, nonce));
+      cipher.init(Cipher.DECRYPT_MODE, keySpec, new GCMParameterSpec(GCM_TAG_BIT_LENGTH, nonce));
       return cipher.doFinal(tokenCiphertext);
     } catch (GeneralSecurityException ex) {
       throw new IllegalStateException("password recovery token decryption failed", ex);

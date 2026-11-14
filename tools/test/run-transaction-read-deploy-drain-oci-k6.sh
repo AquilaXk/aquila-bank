@@ -451,7 +451,35 @@ cleanup_k6() {
 }
 trap cleanup_k6 EXIT
 
+resolve_backend_env_secret() {
+  local key="$1"
+  local current="${2:-}"
+  if [[ -n "${current}" ]]; then
+    printf '%s' "${current}"
+    return 0
+  fi
+  if [[ -z "${backend_env_b64}" ]]; then
+    return 0
+  fi
+  printf '%s' "${backend_env_b64}" \
+    | (base64 -d 2>/dev/null || base64 -D 2>/dev/null || true) \
+    | tr -d '\r' \
+    | sed -n "s/^${key}=//p" \
+    | tail -1
+}
+
 start_k6_under_load() {
+  local cursor_hmac_secret security_jwt_secret
+  cursor_hmac_secret="$(
+    resolve_backend_env_secret \
+      AQUILA_TRANSACTION_CURSOR_HMAC_SECRET \
+      "${AQUILA_TRANSACTION_CURSOR_HMAC_SECRET:-}"
+  )"
+  security_jwt_secret="$(
+    resolve_backend_env_secret \
+      SECURITY_JWT_SECRET \
+      "${SECURITY_JWT_SECRET:-}"
+  )"
   mkdir -p "${generated_dir}"
   prepare_remote_report_dir_permissions
   docker --context "${docker_context}" run --rm \
@@ -472,6 +500,8 @@ start_k6_under_load() {
     -e K6_COLD_FROM="${cold_from}" \
     -e K6_COLD_TO="${cold_to}" \
     -e K6_AUTH_TOKEN="${auth_token}" \
+    -e AQUILA_TRANSACTION_CURSOR_HMAC_SECRET="${cursor_hmac_secret}" \
+    -e SECURITY_JWT_SECRET="${security_jwt_secret}" \
     -e AQUILA_K6_VUS="${vus}" \
     -e AQUILA_K6_DURATION="${duration}" \
     -e K6_LIMIT="${DEPLOY_DRAIN_OCI_LIMIT:-50}" \

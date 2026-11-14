@@ -6,3 +6,7 @@ security:
   password-recovery:
     ttl-seconds: 900
     secret-encryption-key: test-local-password-recovery-secret-encryption-key
+
+transaction:
+  cursor:
+    hmac-secret: ${AQUILA_TRANSACTION_CURSOR_HMAC_SECRET:aquila-bank-transaction-cursor-hmac-v1}

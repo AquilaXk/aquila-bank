@@ -54,3 +54,7 @@ notification:
         topic: ${NOTIFICATION_INBOX_CONSUMER_DLQ_TOPIC:bank.transfer.booked.dlq.v1}
       ops:
         enabled: ${NOTIFICATION_INBOX_CONSUMER_OPS_ENABLED:true}
+
+transaction:
+  cursor:
+    hmac-secret: ${AQUILA_TRANSACTION_CURSOR_HMAC_SECRET:aquila-bank-transaction-cursor-hmac-v1}

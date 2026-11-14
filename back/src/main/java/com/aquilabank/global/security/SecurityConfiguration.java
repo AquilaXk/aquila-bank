@@ -10,6 +10,7 @@ import com.aquilabank.domain.auth.port.RememberDeviceSecretPort;
 import com.aquilabank.global.web.InternalAuthStatusAuditRequestCachingFilter;
 import com.aquilabank.global.web.RequestIdFilter;
 import com.aquilabank.global.web.auth.OidcLoginAuthenticationSuccessHandler;
+import com.aquilabank.global.web.transaction.TransactionCursorCodec;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import javax.crypto.spec.SecretKeySpec;
@@ -19,6 +20,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
+import org.springframework.core.env.Environment;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -269,7 +271,13 @@ public class SecurityConfiguration {
   }
 
   @Bean
-  AuthTokenIssuePort authTokenIssuePort(SecurityJwtProperties securityJwtProperties) {
+  AuthTokenIssuePort authTokenIssuePort(
+      SecurityJwtProperties securityJwtProperties, Environment environment) {
+    TransactionCursorCodec.configure(
+        environment.getProperty("transaction.cursor.hmac-secret"),
+        environment.getProperty("aquila.transaction.cursor.hmac-secret"),
+        securityJwtProperties.secret(),
+        String.join(",", environment.getActiveProfiles()));
     return new HmacAccessTokenIssuer(
         secretKeySpec(securityJwtProperties),
         securityJwtProperties.issuer(),

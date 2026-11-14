@@ -3,6 +3,7 @@ package com.aquilabank.global.security;
 import com.aquilabank.domain.auth.model.GeneratedTotpSecret;
 import com.aquilabank.domain.auth.port.TotpSecretPort;
 import com.aquilabank.standard.util.Base32Codec;
+import com.aquilabank.standard.util.Sha256Hex;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
@@ -26,9 +27,11 @@ public class AesTotpSecretManager implements TotpSecretPort {
   private static final int OTP_MODULUS = 1_000_000;
   private static final long TIME_STEP_SECONDS = 30L;
   private static final int ALLOWED_DRIFT_STEPS = 1;
+  private static final String KEY_VERSION_PREFIX = "v2:";
   private static final String HKDF_CONTEXT_INFO = "aquila-bank:totp-secret:aes-gcm:v1";
 
   private final SecretKeySpec secretKeySpec;
+  private final SecretKeySpec legacySecretKeySpec;
   private final String issuer;
   private final SecureRandom secureRandom = new SecureRandom();
 
@@ -42,6 +45,9 @@ public class AesTotpSecretManager implements TotpSecretPort {
       throw new IllegalStateException("security.totp.secret-encryption-key is required");
     }
     this.secretKeySpec = HkdfSha256.deriveAes256Key(secretEncryptionKey, HKDF_CONTEXT_INFO);
+    this.legacySecretKeySpec =
+        new SecretKeySpec(
+            Sha256Hex.digest(secretEncryptionKey.getBytes(StandardCharsets.UTF_8)), "AES");
     this.issuer =
         securityTotpProperties.issuer() == null || securityTotpProperties.issuer().isBlank()
             ? "Aquila Bank"
@@ -60,7 +66,7 @@ public class AesTotpSecretManager implements TotpSecretPort {
       secureRandom.nextBytes(nonce);
 
       String secretKey = Base32Codec.encode(rawSecret);
-      String secretCiphertext = encode(encrypt(rawSecret, nonce));
+      String secretCiphertext = KEY_VERSION_PREFIX + encode(encrypt(rawSecret, nonce));
       String secretNonce = encode(nonce);
       return new GeneratedTotpSecret(
           secretKey, buildOtpauthUri(loginId, secretKey), secretCiphertext, secretNonce);
@@ -86,7 +92,7 @@ public class AesTotpSecretManager implements TotpSecretPort {
       throw new IllegalArgumentException("now is required");
     }
 
-    byte[] rawSecret = decrypt(decode(secretCiphertext), decode(secretNonce));
+    byte[] rawSecret = decryptStoredCiphertext(secretCiphertext, secretNonce);
     try {
       Mac mac = initHmacSha1(rawSecret);
       byte[] counterBytes = new byte[Long.BYTES];
@@ -162,11 +168,18 @@ public class AesTotpSecretManager implements TotpSecretPort {
     }
   }
 
-  private byte[] decrypt(byte[] ciphertext, byte[] nonce) {
+  private byte[] decryptStoredCiphertext(String encodedCiphertext, String encodedNonce) {
+    boolean versioned = encodedCiphertext.startsWith(KEY_VERSION_PREFIX);
+    String payload =
+        versioned ? encodedCiphertext.substring(KEY_VERSION_PREFIX.length()) : encodedCiphertext;
+    SecretKeySpec keySpec = versioned ? secretKeySpec : legacySecretKeySpec;
+    return decrypt(decode(payload), decode(encodedNonce), keySpec);
+  }
+
+  private byte[] decrypt(byte[] ciphertext, byte[] nonce, SecretKeySpec keySpec) {
     try {
       Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-      cipher.init(
-          Cipher.DECRYPT_MODE, secretKeySpec, new GCMParameterSpec(GCM_TAG_BIT_LENGTH, nonce));
+      cipher.init(Cipher.DECRYPT_MODE, keySpec, new GCMParameterSpec(GCM_TAG_BIT_LENGTH, nonce));
       return cipher.doFinal(ciphertext);
     } catch (GeneralSecurityException ex) {
       throw new IllegalStateException("TOTP secret decryption failed", ex);
