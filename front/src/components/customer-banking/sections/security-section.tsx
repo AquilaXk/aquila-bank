@@ -10,8 +10,8 @@ import type {
 import { formatDateTime } from "@/lib/customer-banking/format";
 import { getSessionStatusLabel } from "@/lib/customer-banking/labels";
 import { encodeQrCodeSvgPaths } from "@/lib/customer-banking/qrcode";
-import { QrCodeIcon, ShieldCheckIcon } from "../../oss-fintech/icons";
-import { ProgressCircle } from "../../oss-fintech/tremor-primitives";
+import { QrCodeIcon, ShieldCheckIcon } from "../../fintech-ui/icons";
+import { RadialGauge } from "../../fintech-ui/metric-primitives";
 import {
   BankActionBar,
   BankDialog,
@@ -503,14 +503,14 @@ export function SecuritySection(props: {
         <div className="two-column">
           <div className="bank-form passive">
             <div className="form-heading">
-              <strong className="oss-inline-icon">
+              <strong className="ab-inline-icon">
                 <ShieldCheckIcon size={16} />
                 <span>현재 세션</span>
               </strong>
               <span>로그인됨</span>
             </div>
-            <div className="oss-pocket-row">
-              <ProgressCircle
+            <div className="ab-pocket-row">
+              <RadialGauge
                 label="보안 연결 수준"
                 radius={28}
                 strokeWidth={6}
@@ -518,7 +518,7 @@ export function SecuritySection(props: {
                 variant="emerald"
               >
                 <span className="tabular-nums">{activeTotpEnrollment ? "85%" : "70%"}</span>
-              </ProgressCircle>
+              </RadialGauge>
               <dl className="detail-list" style={{ flex: "1 1 0", marginTop: 0 }}>
                 <div>
                   <dt>고객번호</dt>
@@ -643,7 +643,7 @@ export function SecuritySection(props: {
                       </svg>
                     </div>
                     <div>
-                      <strong className="oss-inline-icon">
+                      <strong className="ab-inline-icon">
                         <QrCodeIcon size={15} />
                         <span>인증 앱 QR 스캔</span>
                       </strong>

@@ -11,15 +11,15 @@ import {
 } from "@/lib/customer-banking/constants";
 import { formatMinorAmount } from "@/lib/customer-banking/format";
 import type { MenuSection } from "@/lib/customer-banking/types";
-import { GuestLockedBankCard, HorizonBankCard } from "../../oss-fintech/bank-card";
+import { AccountCard, GuestLockedAccountCard } from "../../fintech-ui/account-card";
 import {
+  CashflowAreaChart,
   CategorySpendingDonut,
-  MoneyMovementChart,
   OverviewKpiStrip,
   PortfolioDonutBox,
   RecentTransactionsFeed,
-} from "../../oss-fintech/fintech-charts";
-import { LockIcon, MenuSectionIcon } from "../../oss-fintech/icons";
+} from "../../fintech-ui/analytics-panels";
+import { LockIcon, MenuSectionIcon } from "../../fintech-ui/icons";
 import { BankNoticeStrip, WorkTabs } from "../common";
 
 const MASKED_AMOUNT_TEXT = "••••••";
@@ -233,9 +233,9 @@ export function DashboardSection({
         />
       ) : null}
 
-      <div className="oss-hero-grid" aria-label="개인 자산 요약">
+      <div className="ab-hero-grid" aria-label="개인 자산 요약">
         {hasSession ? (
-          <MoneyMovementChart
+          <CashflowAreaChart
             balanceMasked={balanceMasked}
             currencyCode={dashboardCurrencyCode}
             flowBars={flowBars}
@@ -245,10 +245,10 @@ export function DashboardSection({
             transactionCount={transactions.length}
           />
         ) : (
-          <section className="oss-donut-box">
-            <div className="oss-donut-meta">
+          <div className="ab-donut-box">
+            <div className="ab-donut-meta">
               <div className="form-heading">
-                <strong className="oss-inline-icon">
+                <strong className="ab-inline-icon">
                   <LockIcon size={16} />
                   <span>자산 현황 요약</span>
                 </strong>
@@ -263,11 +263,11 @@ export function DashboardSection({
                 </button>
               </div>
             </div>
-          </section>
+          </div>
         )}
 
         <div className="dashboard-primary-account-card" aria-label="대표 계좌 요약">
-          <div className="oss-primary-card-top">
+          <div className="ab-primary-card-top">
             <div className="dashboard-primary-account-meta">
               <div className="dashboard-primary-account-badge">
                 <span className="account-badge-label">대표 계좌</span>
@@ -293,7 +293,7 @@ export function DashboardSection({
             </div>
           </div>
           {hasSession && primaryAccount ? (
-            <HorizonBankCard
+            <AccountCard
               account={{
                 ...primaryAccount,
                 customAlias,
@@ -304,13 +304,13 @@ export function DashboardSection({
               onSelect={() => onMove("accounts")}
             />
           ) : (
-            <GuestLockedBankCard />
+            <GuestLockedAccountCard />
           )}
         </div>
       </div>
 
       {hasSession ? (
-        <div className="oss-hero-grid" aria-label="개인 자산 및 입출금 요약">
+        <div className="ab-hero-grid" aria-label="개인 자산 및 입출금 요약">
           <RecentTransactionsFeed
             annotationsMap={annotationsMap}
             balanceMasked={balanceMasked}
@@ -318,7 +318,7 @@ export function DashboardSection({
             onSelect={() => onMove("transactions")}
             onViewAll={() => onMove("transactions")}
           />
-          <div className="oss-side-analytics-stack">
+          <div className="ab-side-analytics-stack">
             <PortfolioDonutBox
               accounts={memberAccounts.map((acc) => ({
                 ...acc,
@@ -351,7 +351,7 @@ export function DashboardSection({
                 onClick={() => onMove(item.section)}
                 type="button"
               >
-                <span className="oss-inline-icon">
+                <span className="ab-inline-icon">
                   <MenuSectionIcon section={item.section} size={14} />
                   <span>{item.group}</span>
                 </span>

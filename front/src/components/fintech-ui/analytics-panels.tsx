@@ -1,27 +1,22 @@
 /*
- * shadcn/ui Dashboard-01 & Finance Charts (Zero-dependency SVG adaptation)
- *
- * 참조 구현:
- * - shadcn-ui/ui (MIT License, Copyright (c) 2023 shadcn) — dashboard-01 section-cards & chart-area-interactive
- * - satnaing/shadcn-admin (MIT License, Copyright (c) 2024 Sat Naing) — dashboard recent-sales list
- * - arhamkhnz/next-shadcn-admin-dashboard (MIT License, Copyright (c) 2025 Arham Khan) — finance overview-kpis & cash-flow
- * - adrianhajdin/banking (MIT License, Copyright (c) 2024 Adrian Hajdin - JS Mastery)
+ * First-Party Financial Analytics Panels & Single-Pass SVG Charts
  */
 
-import { useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { formatDateTime, formatMinorAmount } from "@/lib/customer-banking/format";
 import { getDirectionLabel, getTransactionCategoryLabel } from "@/lib/customer-banking/labels";
-import { HorizonCategoryBadge } from "./category-badge";
+import { CategoryBadge } from "./category-badge";
 import { ArrowDownLeftIcon, ArrowUpRightIcon } from "./icons";
-import { CategoryBar, type TremorColor } from "./tremor-primitives";
+import { type MetricTone, SegmentedRatioBar } from "./metric-primitives";
 
 const MASKED_TEXT = "••••••";
-const RING_PALETTE: Array<{ stroke: string; tremor: TremorColor }> = [
-  { stroke: "var(--chart-1)", tremor: "slate" },
-  { stroke: "var(--chart-2)", tremor: "blue" },
-  { stroke: "var(--chart-3)", tremor: "emerald" },
-  { stroke: "var(--chart-4)", tremor: "amber" },
-  { stroke: "var(--chart-5)", tremor: "indigo" },
+
+const CHART_PALETTE: ReadonlyArray<{ stroke: string; tone: MetricTone }> = [
+  { stroke: "var(--chart-1)", tone: "slate" },
+  { stroke: "var(--chart-2)", tone: "blue" },
+  { stroke: "var(--chart-3)", tone: "emerald" },
+  { stroke: "var(--chart-4)", tone: "amber" },
+  { stroke: "var(--chart-5)", tone: "indigo" },
 ];
 
 export function OverviewKpiStrip({
@@ -43,29 +38,36 @@ export function OverviewKpiStrip({
   totalOutflowMinor: number;
   transactionCount: number;
 }) {
-  const krwTotal = currencyEntries.find(([code]) => code === "KRW")?.[1] ?? 0;
-  const fxEntries = currencyEntries.filter(([code]) => code !== "KRW");
-  const primaryFx = fxEntries[0];
+  let krwTotal = 0;
+  let primaryFx: [string, number] | undefined;
+  for (let i = 0; i < currencyEntries.length; i += 1) {
+    const entry = currencyEntries[i];
+    if (entry[0] === "KRW") {
+      krwTotal = entry[1];
+    } else if (!primaryFx) {
+      primaryFx = entry;
+    }
+  }
 
   return (
-    <section aria-label="핵심 자산 지표" className="oss-kpi-strip">
-      <div className="oss-kpi-cell">
-        <div className="oss-kpi-cell-head">
+    <div aria-label="핵심 자산 지표" className="ab-kpi-strip" role="group">
+      <div className="ab-kpi-cell">
+        <div className="ab-kpi-cell-head">
           <span>원화 보유자산</span>
-          <span className="oss-kpi-tag tabular-nums">보유 {accountCount}계좌</span>
+          <span className="ab-kpi-tag tabular-nums">보유 {accountCount}계좌</span>
         </div>
-        <strong className="oss-kpi-number tabular-nums font-mono">
+        <strong className="ab-kpi-number tabular-nums font-mono">
           {balanceMasked ? MASKED_TEXT : formatMinorAmount(krwTotal, "KRW")}
         </strong>
         <small>출금 가능 원화 잔액 합계</small>
       </div>
 
-      <div className="oss-kpi-cell">
-        <div className="oss-kpi-cell-head">
+      <div className="ab-kpi-cell">
+        <div className="ab-kpi-cell-head">
           <span>외화·예약현황</span>
-          <span className="oss-kpi-tag tabular-nums">예약 {activeSchedulesCount}건</span>
+          <span className="ab-kpi-tag tabular-nums">예약 {activeSchedulesCount}건</span>
         </div>
-        <strong className="oss-kpi-number tabular-nums font-mono">
+        <strong className="ab-kpi-number tabular-nums font-mono">
           {balanceMasked
             ? MASKED_TEXT
             : primaryFx
@@ -75,12 +77,12 @@ export function OverviewKpiStrip({
         <small>{primaryFx ? `${primaryFx[0]} 외화 출금가능` : "외화 예치금 없음"}</small>
       </div>
 
-      <div className="oss-kpi-cell">
-        <div className="oss-kpi-cell-head">
+      <div className="ab-kpi-cell">
+        <div className="ab-kpi-cell-head">
           <span>최근 입금 합계</span>
-          <span className="oss-kpi-tag positive">입금</span>
+          <span className="ab-kpi-tag positive">입금</span>
         </div>
-        <strong className="oss-kpi-number positive tabular-nums font-mono">
+        <strong className="ab-kpi-number positive tabular-nums font-mono">
           {balanceMasked
             ? MASKED_TEXT
             : `+${formatMinorAmount(totalInflowMinor, primaryCurrency)}`}
@@ -88,19 +90,19 @@ export function OverviewKpiStrip({
         <small className="tabular-nums">최근 {transactionCount}건 기준</small>
       </div>
 
-      <div className="oss-kpi-cell">
-        <div className="oss-kpi-cell-head">
+      <div className="ab-kpi-cell">
+        <div className="ab-kpi-cell-head">
           <span>최근 출금 합계</span>
-          <span className="oss-kpi-tag negative">출금</span>
+          <span className="ab-kpi-tag negative">출금</span>
         </div>
-        <strong className="oss-kpi-number negative tabular-nums font-mono">
+        <strong className="ab-kpi-number negative tabular-nums font-mono">
           {balanceMasked
             ? MASKED_TEXT
             : `-${formatMinorAmount(totalOutflowMinor, primaryCurrency)}`}
         </strong>
         <small className="tabular-nums">최근 {transactionCount}건 기준</small>
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -122,13 +124,23 @@ export function PortfolioDonutBox({
 }) {
   const radius = 36;
   const circumference = 2 * Math.PI * radius;
-  const weights = accounts.map((acc) => Math.max(1, Math.abs(acc.availableBalanceMinor)));
-  const totalWeight = weights.reduce((acc, w) => acc + w, 0) || 1;
+
+  // Single pass computes weights and total weight without intermediate chain allocations.
+  const weights = new Array<number>(accounts.length);
+  const barColors = new Array<MetricTone>(accounts.length);
+  let totalWeight = 0;
+  for (let i = 0; i < accounts.length; i += 1) {
+    const w = Math.max(1, Math.abs(accounts[i].availableBalanceMinor));
+    weights[i] = w;
+    totalWeight += w;
+    barColors[i] = CHART_PALETTE[i % CHART_PALETTE.length].tone;
+  }
+  const safeTotal = totalWeight || 1;
   let accumulatedOffset = 0;
 
   return (
-    <section aria-label="총 보유자산 도넛 차트" className="oss-donut-box">
-      <div className="oss-donut-visual">
+    <div className="ab-donut-box">
+      <div className="ab-donut-visual">
         <svg
           aria-label="계좌별 자산 비중 차트"
           height="96"
@@ -145,10 +157,10 @@ export function PortfolioDonutBox({
             strokeWidth="10"
           />
           {accounts.map((acc, idx) => {
-            const segLength = (weights[idx] / totalWeight) * circumference;
+            const segLength = (weights[idx] / safeTotal) * circumference;
             const dashOffset = -accumulatedOffset;
             accumulatedOffset += segLength;
-            const color = RING_PALETTE[idx % RING_PALETTE.length].stroke;
+            const color = CHART_PALETTE[idx % CHART_PALETTE.length].stroke;
             return (
               <circle
                 cx="48"
@@ -172,13 +184,13 @@ export function PortfolioDonutBox({
             );
           })}
         </svg>
-        <div className="oss-donut-center">
+        <div className="ab-donut-center">
           <strong className="tabular-nums">{accounts.length}</strong>
           <span>계좌</span>
         </div>
       </div>
 
-      <div className="oss-donut-meta">
+      <div className="ab-donut-meta">
         <div className="form-heading">
           <strong>통화별 보유 자산</strong>
           <span>
@@ -200,18 +212,20 @@ export function PortfolioDonutBox({
           </dl>
         )}
         {accounts.length > 0 ? (
-          <CategoryBar
-            colors={accounts.map((_, idx) => RING_PALETTE[idx % RING_PALETTE.length].tremor)}
-            label="계좌별 보유 비중"
-            values={weights}
-          />
+          <SegmentedRatioBar colors={barColors} label="계좌별 보유 비중" values={weights} />
         ) : null}
       </div>
-    </section>
+    </div>
   );
 }
 
-export function MoneyMovementChart({
+const FLOW_SERIES_OPTIONS = [
+  ["ALL", "전체"],
+  ["CREDIT", "입금"],
+  ["DEBIT", "출금"],
+] as const;
+
+export function CashflowAreaChart({
   balanceMasked = false,
   currencyCode,
   flowBars,
@@ -229,13 +243,21 @@ export function MoneyMovementChart({
   transactionCount: number;
 }) {
   const [seriesMode, setSeriesMode] = useState<"ALL" | "CREDIT" | "DEBIT">("ALL");
+  const gradientId = useId();
   const netMinor = inflowMinor - outflowMinor;
-  const visibleBars =
-    seriesMode === "ALL"
-      ? flowBars
-      : flowBars.filter((item) => item.direction === seriesMode);
-  const series = visibleBars.slice().reverse();
-  const maxAmount = series.reduce((max, item) => Math.max(max, item.amount), 1);
+
+  // Backward single pass reverses chronological order, filters mode, and finds max scale at once.
+  const series: Array<{ ref: string; amount: number; direction: string }> = [];
+  let maxAmount = 1;
+  for (let i = flowBars.length - 1; i >= 0; i -= 1) {
+    const item = flowBars[i];
+    if (seriesMode === "ALL" || item.direction === seriesMode) {
+      series.push(item);
+      if (item.amount > maxAmount) {
+        maxAmount = item.amount;
+      }
+    }
+  }
 
   const width = 520;
   const height = 148;
@@ -244,39 +266,67 @@ export function MoneyMovementChart({
   const padBottom = 22;
   const innerW = width - padX * 2;
   const innerH = height - padTop - padBottom;
+  const baselineY = padTop + innerH;
 
-  const points = series.map((item, idx) => {
+  let linePath = "";
+  let firstX = 0;
+  let lastX = 0;
+  const pointElements: ReactNode[] = [];
+  const count = series.length;
+
+  for (let idx = 0; idx < count; idx += 1) {
+    const item = series[idx];
     const x =
-      series.length <= 1
-        ? width / 2
-        : Math.round(padX + (idx / (series.length - 1)) * innerW);
+      count <= 1 ? width / 2 : Math.round(padX + (idx / (count - 1)) * innerW);
     const y = Math.round(padTop + innerH - (item.amount / maxAmount) * innerH);
-    return { ...item, x, y };
-  });
+    if (idx === 0) {
+      firstX = x;
+      linePath = `M ${x} ${y}`;
+    } else {
+      linePath += ` L ${x} ${y}`;
+    }
+    lastX = x;
+    pointElements.push(
+      <g key={`${item.ref}-${idx}`}>
+        <circle
+          cx={x}
+          cy={y}
+          fill={item.direction === "CREDIT" ? "var(--success)" : "var(--accent)"}
+          r="4"
+          stroke="var(--surface)"
+          strokeWidth="1.5"
+        >
+          <title>
+            {balanceMasked
+              ? `${getDirectionLabel(item.direction)} ${MASKED_TEXT}`
+              : `${getDirectionLabel(item.direction)} ${formatMinorAmount(item.amount, currencyCode)}`}
+          </title>
+        </circle>
+        <text
+          fill="var(--muted)"
+          fontSize="10"
+          textAnchor="middle"
+          x={x}
+          y={height - 4}
+        >
+          {item.ref.slice(-4)}
+        </text>
+      </g>,
+    );
+  }
 
-  const linePath = points
-    .map((pt, idx) => `${idx === 0 ? "M" : "L"} ${pt.x} ${pt.y}`)
-    .join(" ");
   const areaPath =
-    points.length > 0
-      ? `${linePath} L ${points[points.length - 1].x} ${padTop + innerH} L ${points[0].x} ${padTop + innerH} Z`
-      : "";
+    count > 1 ? `${linePath} L ${lastX} ${baselineY} L ${firstX} ${baselineY} Z` : "";
 
   return (
-    <section aria-label="입출금 추이" className="oss-money-movement">
+    <div className="ab-money-movement">
       <div className="form-heading">
         <div>
           <strong>입출금 추이</strong>
-          <span className="oss-sub-meta">최근 {transactionCount}건 기준</span>
+          <span className="ab-sub-meta">최근 {transactionCount}건 기준</span>
         </div>
-        <div className="oss-seg-control" role="group" aria-label="입출금 구분 필터">
-          {(
-            [
-              ["ALL", "전체"],
-              ["CREDIT", "입금"],
-              ["DEBIT", "출금"],
-            ] as const
-          ).map(([mode, label]) => (
+        <div className="ab-seg-control" role="group" aria-label="입출금 구분 필터">
+          {FLOW_SERIES_OPTIONS.map(([mode, label]) => (
             <button
               aria-pressed={seriesMode === mode}
               className={seriesMode === mode ? "active" : undefined}
@@ -299,7 +349,7 @@ export function MoneyMovementChart({
         </div>
       ) : (
         <>
-          <div className="oss-movement-metrics">
+          <div className="ab-movement-metrics">
             <div>
               <span>총 입금</span>
               <strong className="tabular-nums font-mono positive">
@@ -326,12 +376,12 @@ export function MoneyMovementChart({
 
           <svg
             aria-label="최근 입출금 추이 영역 차트"
-            className="oss-movement-svg"
+            className="ab-movement-svg"
             role="img"
             viewBox={`0 0 ${width} ${height}`}
           >
             <defs>
-              <linearGradient id="shadcnAreaFill" x1="0" x2="0" y1="0" y2="1">
+              <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
                 <stop offset="5%" stopColor="var(--accent)" stopOpacity="0.28" />
                 <stop offset="95%" stopColor="var(--accent)" stopOpacity="0.02" />
               </linearGradient>
@@ -356,12 +406,12 @@ export function MoneyMovementChart({
               stroke="var(--line)"
               x1={padX}
               x2={width - padX}
-              y1={padTop + innerH}
-              y2={padTop + innerH}
+              y1={baselineY}
+              y2={baselineY}
             />
-            {points.length > 1 ? (
+            {count > 1 ? (
               <>
-                <path d={areaPath} fill="url(#shadcnAreaFill)" />
+                <path d={areaPath} fill={`url(#${gradientId})`} />
                 <path
                   d={linePath}
                   fill="none"
@@ -372,37 +422,11 @@ export function MoneyMovementChart({
                 />
               </>
             ) : null}
-            {points.map((pt, idx) => (
-              <g key={`${pt.ref}-${idx}`}>
-                <circle
-                  cx={pt.x}
-                  cy={pt.y}
-                  fill={pt.direction === "CREDIT" ? "var(--success)" : "var(--accent)"}
-                  r="4"
-                  stroke="var(--surface)"
-                  strokeWidth="1.5"
-                >
-                  <title>
-                    {balanceMasked
-                      ? `${getDirectionLabel(pt.direction)} ${MASKED_TEXT}`
-                      : `${getDirectionLabel(pt.direction)} ${formatMinorAmount(pt.amount, currencyCode)}`}
-                  </title>
-                </circle>
-                <text
-                  fill="var(--muted)"
-                  fontSize="10"
-                  textAnchor="middle"
-                  x={pt.x}
-                  y={height - 4}
-                >
-                  {pt.ref.slice(-4)}
-                </text>
-              </g>
-            ))}
+            {pointElements}
           </svg>
         </>
       )}
-    </section>
+    </div>
   );
 }
 
@@ -428,11 +452,11 @@ export function RecentTransactionsFeed({
   onViewAll: () => void;
 }) {
   return (
-    <section aria-label="최근 거래 요약" className="oss-recent-feed">
+    <div className="ab-recent-feed">
       <div className="form-heading">
         <div>
           <strong>최근 거래 내역</strong>
-          <span className="oss-sub-meta">최근 {items.length}건</span>
+          <span className="ab-sub-meta">최근 {items.length}건</span>
         </div>
         <button onClick={onViewAll} type="button">
           전체보기
@@ -441,7 +465,7 @@ export function RecentTransactionsFeed({
       {items.length === 0 ? (
         <p className="field-note">최근 조회된 거래가 없습니다.</p>
       ) : (
-        <ul className="oss-recent-sales-list">
+        <ul className="ab-recent-sales-list" role="list">
           {items.map((tx) => {
             const cat = annotationsMap?.get(tx.transactionReference)?.category;
             const isCredit = tx.direction === "CREDIT";
@@ -450,7 +474,7 @@ export function RecentTransactionsFeed({
                 <button onClick={onSelect} type="button">
                   <span
                     aria-hidden="true"
-                    className={`oss-sales-avatar ${isCredit ? "credit" : "debit"}`}
+                    className={`ab-sales-avatar ${isCredit ? "credit" : "debit"}`}
                   >
                     {isCredit ? (
                       <ArrowDownLeftIcon size={15} />
@@ -458,7 +482,7 @@ export function RecentTransactionsFeed({
                       <ArrowUpRightIcon size={15} />
                     )}
                   </span>
-                  <div className="oss-sales-meta">
+                  <div className="ab-sales-meta">
                     <strong>
                       {tx.counterpartyMaskedName ||
                         tx.summary ||
@@ -468,8 +492,8 @@ export function RecentTransactionsFeed({
                       {formatDateTime(tx.bookedAt)} · {tx.transactionReference}
                     </small>
                   </div>
-                  <div className="oss-sales-right">
-                    {cat ? <HorizonCategoryBadge category={cat} /> : null}
+                  <div className="ab-sales-right">
+                    {cat ? <CategoryBadge category={cat} /> : null}
                     <strong
                       className={`tabular-nums font-mono ${isCredit ? "credit" : "debit"}`}
                     >
@@ -484,7 +508,7 @@ export function RecentTransactionsFeed({
           })}
         </ul>
       )}
-    </section>
+    </div>
   );
 }
 
@@ -497,23 +521,44 @@ export function CategorySpendingDonut({
   categories: Array<{ category: string; amountMinor: number; count: number }>;
   currencyCode: string;
 }) {
-  const total = categories.reduce((acc, item) => acc + item.amountMinor, 0);
-  const radius = 34;
-  const circumference = 2 * Math.PI * radius;
-  let offset = 0;
+  let total = 0;
+  for (let i = 0; i < categories.length; i += 1) {
+    total += categories[i].amountMinor;
+  }
 
   if (categories.length === 0 || total <= 0) {
     return null;
   }
 
+  const radius = 34;
+  const circumference = 2 * Math.PI * radius;
+  let offset = 0;
+  const legendLimit = Math.min(4, categories.length);
+  const legendItems: ReactNode[] = [];
+  for (let idx = 0; idx < legendLimit; idx += 1) {
+    const item = categories[idx];
+    legendItems.push(
+      <li key={item.category}>
+        <span
+          className="ab-legend-dot"
+          style={{ background: CHART_PALETTE[idx % CHART_PALETTE.length].stroke }}
+        />
+        <span className="ab-legend-name">{getTransactionCategoryLabel(item.category)}</span>
+        <strong className="tabular-nums font-mono">
+          {balanceMasked ? MASKED_TEXT : formatMinorAmount(item.amountMinor, currencyCode)}
+        </strong>
+      </li>,
+    );
+  }
+
   return (
-    <section aria-label="분류별 지출 현황" className="oss-category-panel">
+    <div className="ab-category-panel">
       <div className="form-heading">
         <strong>분류별 지출</strong>
         <span>{categories.length}개 항목</span>
       </div>
-      <div className="oss-category-donut-card">
-        <div className="oss-donut-visual small">
+      <div className="ab-category-donut-card">
+        <div className="ab-donut-visual small">
           <svg
             aria-label="분류별 지출 요약 차트"
             height="92"
@@ -540,7 +585,7 @@ export function CategorySpendingDonut({
                   fill="transparent"
                   key={item.category}
                   r={radius}
-                  stroke={RING_PALETTE[idx % RING_PALETTE.length].stroke}
+                  stroke={CHART_PALETTE[idx % CHART_PALETTE.length].stroke}
                   strokeDasharray={`${Math.max(3, seg - 1.5)} ${circumference}`}
                   strokeDashoffset={dashOffset}
                   strokeWidth="10"
@@ -549,27 +594,16 @@ export function CategorySpendingDonut({
               );
             })}
           </svg>
-          <div className="oss-donut-center">
+          <div className="ab-donut-center">
             <strong className="tabular-nums">{categories.length}</strong>
             <span>분류</span>
           </div>
         </div>
 
-        <ul className="oss-category-legend">
-          {categories.slice(0, 4).map((item, idx) => (
-            <li key={item.category}>
-              <span
-                className="oss-legend-dot"
-                style={{ background: RING_PALETTE[idx % RING_PALETTE.length].stroke }}
-              />
-              <span className="oss-legend-name">{getTransactionCategoryLabel(item.category)}</span>
-              <strong className="tabular-nums font-mono">
-                {balanceMasked ? MASKED_TEXT : formatMinorAmount(item.amountMinor, currencyCode)}
-              </strong>
-            </li>
-          ))}
+        <ul className="ab-category-legend" role="list">
+          {legendItems}
         </ul>
       </div>
-    </section>
+    </div>
   );
 }

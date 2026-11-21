@@ -15,7 +15,7 @@ import type {
   CustomerApplicationSubmitHandler,
 } from "@/lib/customer-banking/types";
 import { BankCurrencyInput, BankNoticeStrip, CopyButton, OtpCodeInput } from "../common";
-import { SlidersHorizontalIcon } from "../../oss-fintech/icons";
+import { SlidersHorizontalIcon } from "../../fintech-ui/icons";
 
 const faqItems = [
   {
@@ -512,7 +512,7 @@ export function SupportCenterSection({
         <article className="limit-change-form">
           <div className="panel-toolbar">
             <div>
-              <strong className="oss-inline-icon">
+              <strong className="ab-inline-icon">
                 <SlidersHorizontalIcon size={15} />
                 <span>이체한도 변경</span>
               </strong>

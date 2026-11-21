@@ -25,7 +25,7 @@ import {
   MoonIcon,
   SearchIcon,
   SunIcon,
-} from "../oss-fintech/icons";
+} from "../fintech-ui/icons";
 import { BankNoticeStrip } from "./common";
 
 type MoveHandler = (section: MenuSection) => void;
@@ -633,7 +633,7 @@ export function RightRail({
                 onClick={() => onMove(item.section)}
                 type="button"
               >
-                <span className="oss-inline-icon">
+                <span className="ab-inline-icon">
                   <MenuSectionIcon section={item.section} size={14} />
                   <span>{item.label}</span>
                 </span>

@@ -10,9 +10,14 @@ import type {
 import { tryKrwToMinor } from "@/lib/customer-banking/currency";
 import { formatDateTime, formatMinorAmount } from "@/lib/customer-banking/format";
 import { getAccountStatusLabel } from "@/lib/customer-banking/labels";
-import { HorizonBankCard } from "../../oss-fintech/bank-card";
-import { PiggyBankIcon } from "../../oss-fintech/icons";
-import { BarList, CategoryBar, ProgressCircle, type TremorColor } from "../../oss-fintech/tremor-primitives";
+import { AccountCard } from "../../fintech-ui/account-card";
+import { PiggyBankIcon } from "../../fintech-ui/icons";
+import {
+  type MetricTone,
+  RadialGauge,
+  RankedMetricList,
+  SegmentedRatioBar,
+} from "../../fintech-ui/metric-primitives";
 import {
   BankActionBar,
   BankCurrencyInput,
@@ -28,7 +33,7 @@ import {
   WorkTabs,
 } from "../common";
 
-const TREMOR_BAR_COLORS: TremorColor[] = ["blue", "emerald", "indigo", "amber", "slate"];
+const METRIC_BAR_COLORS: MetricTone[] = ["blue", "emerald", "indigo", "amber", "slate"];
 const MASKED_BALANCE = "••••••";
 
 function getAccountStatusTone(status: string): "success" | "warn" | "danger" | "muted" {
@@ -217,11 +222,11 @@ export function AccountsSection({
       </div>
 
       {accounts.length > 0 ? (
-        <div className="oss-bank-card-grid" aria-label="계좌 카드 요약">
+        <div className="ab-bank-card-grid" aria-label="계좌 카드 요약">
           {accounts.map((account) => {
             const pref = accountPreferencesMap?.get(account.accountId);
             return (
-              <HorizonBankCard
+              <AccountCard
                 account={{
                   ...account,
                   customAlias: pref?.customAlias,
@@ -249,12 +254,12 @@ export function AccountsSection({
                     : formatMinorAmount(group.totalMinor, currencyCode)}
                 </strong>
               </div>
-              <CategoryBar
-                colors={TREMOR_BAR_COLORS}
+              <SegmentedRatioBar
+                colors={METRIC_BAR_COLORS}
                 label={`${currencyCode} 계좌별 비중`}
                 values={group.accounts.map((account) => account.availableBalanceMinor)}
               />
-              <BarList
+              <RankedMetricList
                 data={group.accounts.map((account, idx) => ({
                   key: String(account.accountId),
                   name:
@@ -264,7 +269,7 @@ export function AccountsSection({
                   formattedValue: balanceMasked
                     ? MASKED_BALANCE
                     : formatMinorAmount(account.availableBalanceMinor, account.currencyCode),
-                  color: TREMOR_BAR_COLORS[idx % TREMOR_BAR_COLORS.length],
+                  color: METRIC_BAR_COLORS[idx % METRIC_BAR_COLORS.length],
                 }))}
               />
             </div>
@@ -468,8 +473,8 @@ export function AccountsSection({
                         );
                         return (
                           <div className="pocket-card" key={pocket.pocketId}>
-                            <div className="oss-pocket-row">
-                              <ProgressCircle
+                            <div className="ab-pocket-row">
+                              <RadialGauge
                                 label={`${pocket.pocketName} 달성률`}
                                 radius={26}
                                 strokeWidth={6}
@@ -477,10 +482,10 @@ export function AccountsSection({
                                 variant={pct >= 100 ? "emerald" : "blue"}
                               >
                                 <span className="tabular-nums">{pct}%</span>
-                              </ProgressCircle>
-                              <div className="oss-pocket-meta">
+                              </RadialGauge>
+                              <div className="ab-pocket-meta">
                                 <div className="form-heading">
-                                  <strong className="oss-inline-icon">
+                                  <strong className="ab-inline-icon">
                                     <PiggyBankIcon size={15} />
                                     <span>{pocket.pocketName}</span>
                                   </strong>

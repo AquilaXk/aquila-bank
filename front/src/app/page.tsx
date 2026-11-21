@@ -21,7 +21,7 @@ import { SecuritySection } from "@/components/customer-banking/sections/security
 import { SupportCenterSection } from "@/components/customer-banking/sections/support-center-section";
 import { TransactionsSection } from "@/components/customer-banking/sections/transactions-section";
 import { TransferSection } from "@/components/customer-banking/sections/transfer-section";
-import { LockIcon } from "@/components/oss-fintech/icons";
+import { LockIcon } from "@/components/fintech-ui/icons";
 import { useBankingEnhancements } from "@/hooks/use-banking-enhancements";
 import { useCustomerBanking } from "@/hooks/use-customer-banking";
 import { searchCustomerBankingServices } from "@/lib/customer-banking/search";
@@ -262,7 +262,7 @@ export default function HomePage() {
         role="status"
       >
         <div>
-          <strong className="oss-inline-icon">
+          <strong className="ab-inline-icon">
             <LockIcon size={16} />
             <span>로그인이 필요한 업무</span>
           </strong>

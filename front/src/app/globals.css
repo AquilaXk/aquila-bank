@@ -3,8 +3,7 @@
 @tailwind utilities;
 
 /*
- * shadcn/ui + satnaing/shadcn-admin Zinc/Slate Adaptive Design Tokens (MIT)
- * References: shadcn-ui/ui (Copyright (c) 2023 shadcn), satnaing/shadcn-admin (Copyright (c) 2024 Sat Naing)
+ * Aquila Bank Adaptive Neutral Design Tokens (light-dark() SSOT)
  */
 @layer base {
   :root {

@@ -21,9 +21,9 @@ import {
   getScheduledTransferStatusLabel,
   getTransactionStatusLabel,
 } from "@/lib/customer-banking/labels";
-import { HorizonAccountBanner } from "../../oss-fintech/bank-card";
-import { CalendarClockIcon, StarIcon } from "../../oss-fintech/icons";
-import { CategoryBar } from "../../oss-fintech/tremor-primitives";
+import { AccountSummaryBanner } from "../../fintech-ui/account-card";
+import { CalendarClockIcon, StarIcon } from "../../fintech-ui/icons";
+import { SegmentedRatioBar } from "../../fintech-ui/metric-primitives";
 import {
   BankActionBar,
   BankCurrencyInput,
@@ -365,7 +365,7 @@ export function TransferSection({
               </ol>
             </div>
             {selectedSourceAccount ? (
-              <HorizonAccountBanner
+              <AccountSummaryBanner
                 accountNumber={selectedSourceAccount.accountNumber}
                 balanceMinor={selectedSourceAccount.availableBalanceMinor}
                 currencyCode={selectedSourceAccount.currencyCode}
@@ -399,7 +399,7 @@ export function TransferSection({
                   1회 한도 {formatMinorAmount(limitMinor, transferForm.currencyCode)}
                 </small>
                 {transferPreview ? (
-                  <CategoryBar
+                  <SegmentedRatioBar
                     colors={["amber", "emerald"]}
                     label="1일 한도 잔여 비중"
                     values={[
@@ -458,7 +458,7 @@ export function TransferSection({
                     }
                     type="button"
                   >
-                    <span className="oss-recipient-chip-avatar" aria-hidden="true">
+                    <span className="ab-recipient-chip-avatar" aria-hidden="true">
                       {recipient.nickname.slice(0, 1)}
                     </span>
                     {recipient.favorite ? <StarIcon filled size={12} /> : null}
@@ -951,7 +951,7 @@ export function TransferSection({
                 {scheduledTransfers.map((rule) => (
                   <article className="schedule-card" key={rule.scheduleId}>
                     <div className="form-heading">
-                      <strong className="oss-inline-icon">
+                      <strong className="ab-inline-icon">
                         <CalendarClockIcon size={15} />
                         <span>
                           {rule.targetAccountNumber} ·{" "}

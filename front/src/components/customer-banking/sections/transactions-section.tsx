@@ -15,9 +15,9 @@ import {
   getTransactionStatusLabel,
   TRANSACTION_CATEGORY_OPTIONS,
 } from "@/lib/customer-banking/labels";
-import { HorizonAccountBanner } from "../../oss-fintech/bank-card";
-import { HorizonCategoryBadge } from "../../oss-fintech/category-badge";
-import { ArrowDownLeftIcon, ArrowUpRightIcon, DownloadIcon } from "../../oss-fintech/icons";
+import { AccountSummaryBanner } from "../../fintech-ui/account-card";
+import { CategoryBadge } from "../../fintech-ui/category-badge";
+import { ArrowDownLeftIcon, ArrowUpRightIcon, DownloadIcon } from "../../fintech-ui/icons";
 import {
   BankActionBar,
   BankCurrencyInput,
@@ -258,7 +258,7 @@ export function TransactionsSection({
         ]}
       />
       {selectedAccount ? (
-        <HorizonAccountBanner
+        <AccountSummaryBanner
           accountNumber={selectedAccount.accountNumber}
           balanceMasked={balanceMasked}
           balanceMinor={selectedAccount.availableBalanceMinor}
@@ -500,7 +500,7 @@ export function TransactionsSection({
                   }
                   type="button"
                 >
-                  <span className="oss-inline-icon">
+                  <span className="ab-inline-icon">
                     <DownloadIcon size={14} />
                     <span>CSV 내보내기</span>
                   </span>
@@ -508,9 +508,9 @@ export function TransactionsSection({
               </div>
             </div>
             {filteredRows.length > 0 ? (
-              <div className="oss-kpi-duo" aria-label="조회 거래 입출금 합계">
-                <div className="oss-kpi-pill income">
-                  <span className="oss-kpi-icon">
+              <div className="ab-kpi-duo" aria-label="조회 거래 입출금 합계">
+                <div className="ab-kpi-pill income">
+                  <span className="ab-kpi-icon">
                     <ArrowDownLeftIcon size={15} />
                   </span>
                   <div>
@@ -522,8 +522,8 @@ export function TransactionsSection({
                     </strong>
                   </div>
                 </div>
-                <div className="oss-kpi-pill expense">
-                  <span className="oss-kpi-icon">
+                <div className="ab-kpi-pill expense">
+                  <span className="ab-kpi-icon">
                     <ArrowUpRightIcon size={15} />
                   </span>
                   <div>
@@ -583,7 +583,7 @@ export function TransactionsSection({
                           <td className="tabular-nums">{formatDateTime(item.bookedAt)}</td>
                           <td className="tabular-nums">{item.transactionReference}</td>
                           <td>
-                            <span className="oss-inline-icon">
+                            <span className="ab-inline-icon">
                               {item.direction === "CREDIT" ? (
                                 <ArrowDownLeftIcon size={13} />
                               ) : (
@@ -596,7 +596,7 @@ export function TransactionsSection({
                             {item.counterpartyMaskedName?.trim() || item.summary?.trim() || "-"}
                           </td>
                           <td>
-                            <HorizonCategoryBadge category={annotation?.category} />
+                            <CategoryBadge category={annotation?.category} />
                             {annotation?.memo ? (
                               <span className="table-message"> {annotation.memo}</span>
                             ) : null}

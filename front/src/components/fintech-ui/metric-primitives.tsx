@@ -1,19 +1,12 @@
 /*
- * Tremor Data Visualization Primitives (Zero-dependency React/CSS adaptation)
- *
- * 참조 구현: tremorlabs/tremor (Apache License 2.0, Copyright (c) Tremor Labs)
- * - src/components/CategoryBar/CategoryBar.tsx
- * - src/components/BarList/BarList.tsx
- * - src/components/ProgressCircle/ProgressCircle.tsx
- * - src/components/Tracker/Tracker.tsx
- * https://github.com/tremorlabs/tremor
+ * First-Party Metric Visualization Primitives (Single-pass SVG & CSS components)
  */
 
 import type { ReactNode } from "react";
 
-export type TremorColor = "blue" | "emerald" | "amber" | "rose" | "slate" | "indigo";
+export type MetricTone = "blue" | "emerald" | "amber" | "rose" | "slate" | "indigo";
 
-const SEGMENT_COLOR_VAR: Record<TremorColor, string> = {
+const TONE_CSS_VAR: Record<MetricTone, string> = {
   blue: "var(--primary)",
   emerald: "var(--success)",
   amber: "var(--warning)",
@@ -22,64 +15,56 @@ const SEGMENT_COLOR_VAR: Record<TremorColor, string> = {
   indigo: "#4f46e5",
 };
 
-function sumValues(values: ReadonlyArray<number>): number {
-  let sum = 0;
-  for (let i = 0; i < values.length; i += 1) {
-    if (values[i] > 0) {
-      sum += values[i];
-    }
-  }
-  return sum;
-}
-
-export function CategoryBar({
+export function SegmentedRatioBar({
   colors = ["blue", "emerald", "amber", "indigo", "slate"],
   label = "비율 막대",
   markerValue,
   values,
 }: {
-  colors?: TremorColor[];
+  colors?: MetricTone[];
   label?: string;
   markerValue?: number;
   values: number[];
 }) {
-  const total = sumValues(values);
+  let total = 0;
+  for (let i = 0; i < values.length; i += 1) {
+    if (values[i] > 0) {
+      total += values[i];
+    }
+  }
   const safeTotal = total > 0 ? total : 1;
   const clampedMarker =
     typeof markerValue === "number"
       ? Math.max(0, Math.min(100, (markerValue / safeTotal) * 100))
       : undefined;
 
+  const segments: ReactNode[] = [];
+  for (let idx = 0; idx < values.length; idx += 1) {
+    const val = values[idx];
+    if (val <= 0) {
+      continue;
+    }
+    const pct = (val / safeTotal) * 100;
+    const colorKey = colors[idx % colors.length];
+    segments.push(
+      <div
+        className="ab-category-bar-seg"
+        key={`${idx}-${colorKey}`}
+        style={{
+          background: TONE_CSS_VAR[colorKey],
+          width: `${Math.max(2, pct)}%`,
+        }}
+      />,
+    );
+  }
+
   return (
-    <div
-      aria-label={label}
-      className="oss-category-bar"
-      role="group"
-    >
-      <div className="oss-category-bar-track">
-        {values.map((rawValue, idx) => {
-          const val = Math.max(0, rawValue);
-          if (val === 0) {
-            return null;
-          }
-          const pct = (val / safeTotal) * 100;
-          const colorKey = colors[idx % colors.length];
-          return (
-            <div
-              className="oss-category-bar-seg"
-              key={`${idx}-${colorKey}`}
-              style={{
-                background: SEGMENT_COLOR_VAR[colorKey],
-                width: `${Math.max(2, pct)}%`,
-              }}
-            />
-          );
-        })}
-      </div>
+    <div aria-label={label} className="ab-category-bar" role="group">
+      <div className="ab-category-bar-track">{segments}</div>
       {typeof clampedMarker === "number" ? (
         <div
           aria-hidden="true"
-          className="oss-category-bar-marker"
+          className="ab-category-bar-marker"
           style={{ left: `${clampedMarker}%` }}
         />
       ) : null}
@@ -87,7 +72,7 @@ export function CategoryBar({
   );
 }
 
-export function ProgressCircle({
+export function RadialGauge({
   children,
   label = "진행률",
   max = 100,
@@ -102,7 +87,7 @@ export function ProgressCircle({
   radius?: number;
   strokeWidth?: number;
   value?: number;
-  variant?: TremorColor;
+  variant?: MetricTone;
 }) {
   const safeMax = max > 0 ? max : 100;
   const safeValue = Math.min(safeMax, Math.max(0, value));
@@ -117,20 +102,21 @@ export function ProgressCircle({
       aria-valuemax={safeMax}
       aria-valuemin={0}
       aria-valuenow={Math.round(safeValue)}
-      className="oss-progress-circle"
+      className="ab-progress-circle"
       role="progressbar"
       style={{ height: size, width: size }}
     >
       <svg
         aria-hidden="true"
-        className="oss-progress-circle-svg"
+        className="ab-progress-circle-svg"
         focusable="false"
         height={size}
+        style={{ pointerEvents: "none" }}
         viewBox={`0 0 ${size} ${size}`}
         width={size}
       >
         <circle
-          className="oss-progress-circle-bg"
+          className="ab-progress-circle-bg"
           cx={radius}
           cy={radius}
           fill="transparent"
@@ -138,36 +124,32 @@ export function ProgressCircle({
           strokeWidth={strokeWidth}
         />
         <circle
-          className="oss-progress-circle-fg"
+          className="ab-progress-circle-fg"
           cx={radius}
           cy={radius}
           fill="transparent"
           r={normalizedRadius}
-          stroke={SEGMENT_COLOR_VAR[variant]}
+          stroke={TONE_CSS_VAR[variant]}
           strokeDasharray={`${circumference} ${circumference}`}
           strokeDashoffset={offset}
           strokeLinecap="round"
           strokeWidth={strokeWidth}
         />
       </svg>
-      <div className="oss-progress-circle-center">{children}</div>
+      <div className="ab-progress-circle-center">{children}</div>
     </div>
   );
 }
 
-export type BarListItem = {
+export type RankedMetricItem = {
   key?: string;
   name: string;
   value: number;
   formattedValue?: string;
-  color?: TremorColor;
+  color?: MetricTone;
 };
 
-export function BarList({
-  data,
-}: {
-  data: BarListItem[];
-}) {
+export function RankedMetricList({ data }: { data: RankedMetricItem[] }) {
   let maxVal = 0;
   for (let i = 0; i < data.length; i += 1) {
     if (data[i].value > maxVal) {
@@ -177,22 +159,22 @@ export function BarList({
   const safeMax = maxVal > 0 ? maxVal : 1;
 
   return (
-    <div className="oss-bar-list">
+    <div className="ab-bar-list">
       {data.map((item, idx) => {
         const pct = item.value <= 0 ? 0 : Math.max(4, Math.round((item.value / safeMax) * 100));
         return (
-          <div className="oss-bar-list-row" key={item.key ?? `${item.name}-${idx}`}>
-            <div className="oss-bar-list-bar-wrap">
+          <div className="ab-bar-list-row" key={item.key ?? `${item.name}-${idx}`}>
+            <div className="ab-bar-list-bar-wrap">
               <div
-                className="oss-bar-list-bar"
+                className="ab-bar-list-bar"
                 style={{
                   width: `${pct}%`,
-                  background: item.color ? SEGMENT_COLOR_VAR[item.color] : undefined,
+                  background: item.color ? TONE_CSS_VAR[item.color] : undefined,
                 }}
               />
-              <span className="oss-bar-list-name">{item.name}</span>
+              <span className="ab-bar-list-name">{item.name}</span>
             </div>
-            <strong className="oss-bar-list-val tabular-nums font-mono">
+            <strong className="ab-bar-list-val tabular-nums font-mono">
               {item.formattedValue ?? String(item.value)}
             </strong>
           </div>
@@ -202,7 +184,7 @@ export function BarList({
   );
 }
 
-export function ActivityTracker({
+export function StatusBlockStrip({
   items,
   label = "상태 트래커",
 }: {
@@ -210,10 +192,10 @@ export function ActivityTracker({
   label?: string;
 }) {
   return (
-    <div aria-label={label} className="oss-tracker" role="group">
+    <div aria-label={label} className="ab-tracker" role="group">
       {items.map((item) => (
         <span
-          className={`oss-tracker-block tone-${item.tone}`}
+          className={`ab-tracker-block tone-${item.tone}`}
           key={item.key}
           title={item.title}
         />

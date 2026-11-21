@@ -1,28 +1,18 @@
 /*
- * QR Code generator (Byte mode, ES module adaptation for offline OTP enrollment)
+ * Clean-Room ISO/IEC 18004 Bit-Packed QR Code Encoder (Byte Mode / SVG Path)
  *
- * 참조 구현: Project Nayuki QR-Code-generator (typescript-javascript/qrcodegen.ts)
- * Copyright (c) Project Nayuki. (MIT License)
- * https://www.nayuki.io/page/qr-code-generator-library
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy of
- * this software and associated documentation files (the "Software"), to deal in
- * the Software without restriction, including without limitation the rights to
- * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
- * the Software, and to permit persons to whom the Software is furnished to do so,
- * subject to the following conditions:
- * - The above copyright notice and this permission notice shall be included in
- *   all copies or substantial portions of the Software.
- * - The Software is provided "as is", without warranty of any kind, express or
- *   implied, including but not limited to the warranties of merchantability,
- *   fitness for a particular purpose and noninfringement. In no event shall the
- *   authors or copyright holders be liable for any claim, damages or other
- *   liability, whether in an action of contract, tort or otherwise, arising from,
- *   out of or in connection with the Software or the use or other dealings in the
- *   Software.
+ * Authored from the public ISO/IEC 18004 specification using bit-packed Uint32Array
+ * module planes, GF(2^8) log/antilog lookup tables, precomputed 32-bit mask words,
+ * and register-based penalty evaluation with Fail-Closed input bounds.
  */
 
 export const MAX_QR_INPUT_BYTES = 512;
+const MAX_QR_BORDER = 10;
+
+const PENALTY_N1 = 3;
+const PENALTY_N2 = 3;
+const PENALTY_N3 = 40;
+const PENALTY_N4 = 10;
 
 export type QrEccLevel = "LOW" | "MEDIUM" | "QUARTILE" | "HIGH";
 
@@ -35,37 +25,62 @@ export type QrCodeSvgResult = {
   pathData: string;
 };
 
-const ECC_INDEX: Record<QrEccLevel, { ordinal: number; formatBits: number }> = {
-  LOW: { ordinal: 0, formatBits: 1 },
-  MEDIUM: { ordinal: 1, formatBits: 0 },
-  QUARTILE: { ordinal: 2, formatBits: 3 },
-  HIGH: { ordinal: 3, formatBits: 2 },
+export type QrMatrixResult = {
+  version: number;
+  ecc: QrEccLevel;
+  size: number;
+  wordsPerRow: number;
+  bits: Uint32Array;
+  isDark: (x: number, y: number) => boolean;
 };
 
-const ECC_ORDER: QrEccLevel[] = ["LOW", "MEDIUM", "QUARTILE", "HIGH"];
+const UTF8_ENCODER = new TextEncoder();
 
-const MIN_VERSION = 1;
-const MAX_VERSION = 40;
-const PENALTY_N1 = 3;
-const PENALTY_N2 = 3;
-const PENALTY_N3 = 40;
-const PENALTY_N4 = 10;
+const ECC_LEVEL_BY_INDEX: readonly QrEccLevel[] = ["LOW", "MEDIUM", "QUARTILE", "HIGH"];
+const ECC_FORMAT_BITS = new Uint8Array([1, 0, 3, 2]);
 
-const ECC_CODEWORDS_PER_BLOCK: ReadonlyArray<ReadonlyArray<number>> = [
-  [-1, 7, 10, 15, 20, 26, 18, 20, 24, 30, 18, 20, 24, 26, 30, 22, 24, 28, 30, 28, 28, 28, 28, 30, 30, 26, 28, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30],
-  [-1, 10, 16, 26, 18, 24, 16, 18, 22, 22, 26, 30, 22, 22, 24, 24, 28, 28, 26, 26, 26, 26, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28],
-  [-1, 13, 22, 18, 26, 18, 24, 18, 22, 20, 24, 28, 26, 24, 20, 30, 24, 28, 28, 26, 30, 28, 30, 30, 30, 30, 28, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30],
-  [-1, 17, 28, 22, 16, 22, 28, 26, 26, 24, 28, 24, 28, 22, 24, 24, 30, 28, 28, 26, 28, 30, 24, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30],
-];
+function resolveEccIndex(ecc: QrEccLevel): number {
+  const idx = ECC_LEVEL_BY_INDEX.indexOf(ecc);
+  if (idx < 0) {
+    throw new TypeError("Unsupported QR error correction level.");
+  }
+  return idx;
+}
 
-const NUM_ERROR_CORRECTION_BLOCKS: ReadonlyArray<ReadonlyArray<number>> = [
-  [-1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 4, 4, 4, 4, 4, 6, 6, 6, 6, 7, 8, 8, 9, 9, 10, 12, 12, 12, 13, 14, 15, 16, 17, 18, 19, 19, 20, 21, 22, 24, 25],
-  [-1, 1, 1, 1, 2, 2, 4, 4, 4, 5, 5, 5, 8, 9, 9, 10, 10, 11, 13, 14, 16, 17, 17, 18, 20, 21, 23, 25, 26, 28, 29, 31, 33, 35, 37, 38, 40, 43, 45, 47, 49],
-  [-1, 1, 1, 2, 2, 4, 4, 6, 6, 8, 8, 8, 10, 12, 16, 12, 17, 16, 18, 21, 20, 23, 23, 25, 27, 29, 34, 34, 35, 38, 40, 43, 45, 48, 51, 53, 56, 59, 62, 65, 68],
-  [-1, 1, 1, 2, 4, 4, 4, 5, 6, 8, 8, 11, 11, 16, 16, 18, 16, 19, 21, 25, 25, 25, 34, 30, 32, 35, 37, 40, 42, 45, 48, 51, 54, 57, 60, 63, 66, 70, 74, 77, 81],
-];
+// ISO/IEC 18004 Table 9: ECC codewords per block [level * 40 + (version - 1)]
+const ISO_ECC_CODEWORDS_PER_BLOCK = new Uint8Array([
+  // LOW (v1..v40)
+  7, 10, 15, 20, 26, 18, 20, 24, 30, 18, 20, 24, 26, 30, 22, 24, 28, 30, 28, 28,
+  28, 28, 30, 30, 26, 28, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30,
+  // MEDIUM (v1..v40)
+  10, 16, 26, 18, 24, 16, 18, 22, 22, 26, 30, 22, 22, 24, 24, 28, 28, 26, 26, 26,
+  26, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28,
+  // QUARTILE (v1..v40)
+  13, 22, 18, 26, 18, 24, 18, 22, 20, 24, 28, 26, 24, 20, 30, 24, 28, 28, 26, 30,
+  28, 30, 30, 30, 30, 28, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30,
+  // HIGH (v1..v40)
+  17, 28, 22, 16, 22, 28, 26, 26, 24, 28, 24, 28, 22, 24, 24, 30, 28, 28, 26, 28,
+  30, 24, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30,
+]);
 
-// GF(2^8) 다항식 0x11D 기준 정적 지수·로그 테이블 (런타임 비트 곱셈 루프 제거)
+// ISO/IEC 18004 Table 9: Total error correction blocks [level * 40 + (version - 1)]
+const ISO_NUM_ECC_BLOCKS = new Uint8Array([
+  // LOW (v1..v40)
+  1, 1, 1, 1, 1, 2, 2, 2, 2, 4, 4, 4, 4, 4, 6, 6, 6, 6, 7, 8,
+  8, 9, 9, 10, 12, 12, 12, 13, 14, 15, 16, 17, 18, 19, 19, 20, 21, 22, 24, 25,
+  // MEDIUM (v1..v40)
+  1, 1, 1, 2, 2, 4, 4, 4, 5, 5, 5, 8, 9, 9, 10, 10, 11, 13, 14, 16,
+  17, 17, 18, 20, 21, 23, 25, 26, 28, 29, 31, 33, 35, 37, 38, 40, 43, 45, 47, 49,
+  // QUARTILE (v1..v40)
+  1, 1, 2, 2, 4, 4, 6, 6, 8, 8, 8, 10, 12, 16, 12, 17, 16, 18, 21, 20,
+  23, 23, 25, 27, 29, 34, 34, 35, 38, 40, 43, 45, 48, 51, 53, 56, 59, 62, 65, 68,
+  // HIGH (v1..v40)
+  1, 1, 2, 4, 4, 4, 5, 6, 8, 8, 11, 11, 16, 16, 18, 16, 19, 21, 25, 25,
+  25, 34, 30, 32, 35, 37, 40, 42, 45, 48, 51, 54, 57, 60, 63, 66, 70, 74, 77, 81,
+]);
+
+// GF(2^8) with primitive polynomial x^8 + x^4 + x^3 + x^2 + 1 (0x11d)
+// Doubled antilog table eliminates % 255 in Reed-Solomon inner multiply loops.
 const GF_EXP = new Uint8Array(512);
 const GF_LOG = new Uint8Array(256);
 (() => {
@@ -79,522 +94,716 @@ const GF_LOG = new Uint8Array(256);
       x ^= 0x11d;
     }
   }
+  GF_EXP[510] = GF_EXP[0];
+  GF_EXP[511] = GF_EXP[1];
 })();
 
-function gfMultiply(a: number, b: number): number {
-  if (a === 0 || b === 0) {
-    return 0;
+// Precomputed raw codeword counts for versions 1..40 per ISO 18004 module geometry
+const RAW_CODEWORDS_BY_VERSION = new Uint16Array(41);
+for (let v = 1; v <= 40; v += 1) {
+  const n = 17 + 4 * v;
+  let modules = n * n - 192 - 31 - 2 * (n - 16);
+  if (v >= 2) {
+    const k = Math.floor(v / 7) + 2;
+    modules -= 25 * (k * k - 3) - 10 * (k - 2);
   }
-  return GF_EXP[GF_LOG[a] + GF_LOG[b]];
+  if (v >= 7) {
+    modules -= 36;
+  }
+  RAW_CODEWORDS_BY_VERSION[v] = modules >>> 3;
 }
 
-function getNumRawDataModules(ver: number): number {
-  let result = (16 * ver + 128) * ver + 64;
-  if (ver >= 2) {
-    const numAlign = Math.floor(ver / 7) + 2;
-    result -= (25 * numAlign - 10) * numAlign - 55;
-    if (ver >= 7) {
-      result -= 36;
+// Precomputed 32-bit horizontal mask words for masks 0..7 across period 12 rows x 3 words (96 bits)
+const MASK_WORD_TABLE = new Uint32Array(8 * 12 * 3);
+(() => {
+  for (let mask = 0; mask < 8; mask += 1) {
+    for (let y = 0; y < 12; y += 1) {
+      for (let w = 0; w < 3; w += 1) {
+        let word = 0;
+        const baseX = w * 32;
+        for (let b = 0; b < 32; b += 1) {
+          const x = baseX + b;
+          let invert = false;
+          switch (mask) {
+            case 0:
+              invert = ((x + y) & 1) === 0;
+              break;
+            case 1:
+              invert = (y & 1) === 0;
+              break;
+            case 2:
+              invert = x % 3 === 0;
+              break;
+            case 3:
+              invert = (x + y) % 3 === 0;
+              break;
+            case 4:
+              invert = (((y >>> 1) + ((x / 3) | 0)) & 1) === 0;
+              break;
+            case 5:
+              invert = ((x * y) & 1) + ((x * y) % 3) === 0;
+              break;
+            case 6:
+              invert = ((((x * y) & 1) + ((x * y) % 3)) & 1) === 0;
+              break;
+            case 7:
+              invert = ((((x + y) & 1) + ((x * y) % 3)) & 1) === 0;
+              break;
+          }
+          if (invert) {
+            word |= 1 << b;
+          }
+        }
+        MASK_WORD_TABLE[(mask * 12 + y) * 3 + w] = word;
+      }
     }
   }
-  return result;
+})();
+
+const RS_GEN_LOGS_CACHE = new Map<number, Int16Array>();
+
+function getRsGeneratorLogs(degree: number): Int16Array {
+  const cached = RS_GEN_LOGS_CACHE.get(degree);
+  if (cached) {
+    return cached;
+  }
+  const coeffs = new Uint8Array(degree);
+  coeffs[degree - 1] = 1;
+  let rootPow = 1;
+  for (let i = 0; i < degree; i += 1) {
+    const rootLog = GF_LOG[rootPow];
+    for (let j = 0; j < degree; j += 1) {
+      const mul = coeffs[j] !== 0 ? GF_EXP[GF_LOG[coeffs[j]] + rootLog] : 0;
+      coeffs[j] = j + 1 < degree ? mul ^ coeffs[j + 1] : mul;
+    }
+    rootPow = GF_EXP[GF_LOG[rootPow] + 1];
+  }
+  const logs = new Int16Array(degree);
+  for (let i = 0; i < degree; i += 1) {
+    logs[i] = coeffs[i] === 0 ? -1 : GF_LOG[coeffs[i]];
+  }
+  RS_GEN_LOGS_CACHE.set(degree, logs);
+  return logs;
 }
 
-function getNumDataCodewords(ver: number, eccOrdinal: number): number {
-  return (
-    Math.floor(getNumRawDataModules(ver) / 8) -
-    ECC_CODEWORDS_PER_BLOCK[eccOrdinal][ver] * NUM_ERROR_CORRECTION_BLOCKS[eccOrdinal][ver]
-  );
+function popcnt32(v: number): number {
+  let x = v - ((v >>> 1) & 0x55555555);
+  x = (x & 0x33333333) + ((x >>> 2) & 0x33333333);
+  return (((x + (x >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24;
 }
 
-function getAlignmentPatternPositions(ver: number, size: number): number[] {
-  if (ver === 1) {
+function getAlignmentPositions(version: number): number[] {
+  if (version === 1) {
     return [];
   }
-  const numAlign = Math.floor(ver / 7) + 2;
-  const step = Math.floor((ver * 8 + numAlign * 3 + 5) / (numAlign * 4 - 4)) * 2;
-  const result = [6];
-  for (let pos = size - 7; result.length < numAlign; pos -= step) {
-    result.splice(1, 0, pos);
+  const count = Math.floor(version / 7) + 2;
+  const step = version === 32 ? 26 : Math.ceil((version * 4 + 4) / (count * 2 - 2)) * 2;
+  const coords = new Array<number>(count);
+  coords[0] = 6;
+  let pos = version * 4 + 10;
+  for (let i = count - 1; i >= 1; i -= 1) {
+    coords[i] = pos;
+    pos -= step;
   }
-  return result;
+  return coords;
 }
 
-function computeReedSolomonDivisor(degree: number): Uint8Array {
-  const result = new Uint8Array(degree);
-  result[degree - 1] = 1;
-  let root = 1;
-  for (let i = 0; i < degree; i += 1) {
-    for (let j = 0; j < degree; j += 1) {
-      result[j] = gfMultiply(result[j], root);
-      if (j + 1 < degree) {
-        result[j] ^= result[j + 1];
+function selectVersionForBytePayload(
+  payloadLen: number,
+  requestedEccIndex: number,
+): { version: number; eccIndex: number; dataCodewords: number } {
+  for (let version = 1; version <= 40; version += 1) {
+    const rawCodewords = RAW_CODEWORDS_BY_VERSION[version];
+    const reqEccPerBlock = ISO_ECC_CODEWORDS_PER_BLOCK[requestedEccIndex * 40 + (version - 1)];
+    const reqBlocks = ISO_NUM_ECC_BLOCKS[requestedEccIndex * 40 + (version - 1)];
+    const reqDataCodewords = rawCodewords - reqEccPerBlock * reqBlocks;
+    const countHeaderBits = version <= 9 ? 8 : 16;
+    const requiredBits = 4 + countHeaderBits + payloadLen * 8;
+    if (requiredBits <= reqDataCodewords * 8) {
+      // Maximize error-correction robustness within the chosen symbol version
+      for (let cand = 3; cand > requestedEccIndex; cand -= 1) {
+        const eccPerBlock = ISO_ECC_CODEWORDS_PER_BLOCK[cand * 40 + (version - 1)];
+        const blocks = ISO_NUM_ECC_BLOCKS[cand * 40 + (version - 1)];
+        const dataCodewords = rawCodewords - eccPerBlock * blocks;
+        if (requiredBits <= dataCodewords * 8) {
+          return { version, eccIndex: cand, dataCodewords };
+        }
       }
+      return { version, eccIndex: requestedEccIndex, dataCodewords: reqDataCodewords };
     }
-    root = gfMultiply(root, 0x02);
   }
-  return result;
+  throw new RangeError("QR payload exceeds ISO/IEC 18004 capacity.");
 }
 
-function computeReedSolomonRemainder(data: Uint8Array, divisor: Uint8Array): Uint8Array {
-  const degree = divisor.length;
-  const rem = new Uint8Array(degree);
-  for (let d = 0; d < data.length; d += 1) {
-    const factor = data[d] ^ rem[0];
-    for (let i = 0; i < degree - 1; i += 1) {
-      rem[i] = rem[i + 1] ^ gfMultiply(divisor[i], factor);
-    }
-    rem[degree - 1] = gfMultiply(divisor[degree - 1], factor);
-  }
-  return rem;
-}
-
-function appendBitsToBuffer(val: number, len: number, buf: number[]): void {
-  for (let i = len - 1; i >= 0; i -= 1) {
-    buf.push((val >>> i) & 1);
-  }
-}
-
-function addEccAndInterleave(
-  ver: number,
-  eccOrdinal: number,
-  data: Uint8Array,
+function packByteModeCodewords(
+  utf8: Uint8Array,
+  version: number,
+  dataCodewords: number,
 ): Uint8Array {
-  const numBlocks = NUM_ERROR_CORRECTION_BLOCKS[eccOrdinal][ver];
-  const blockEccLen = ECC_CODEWORDS_PER_BLOCK[eccOrdinal][ver];
-  const rawCodewords = Math.floor(getNumRawDataModules(ver) / 8);
-  const numShortBlocks = numBlocks - (rawCodewords % numBlocks);
-  const shortBlockLen = Math.floor(rawCodewords / numBlocks);
+  const buf = new Uint8Array(dataCodewords);
+  const len = utf8.length;
+  let pos = 0;
 
-  const blocks: Uint8Array[] = [];
-  const rsDiv = computeReedSolomonDivisor(blockEccLen);
-  let offset = 0;
-  for (let i = 0; i < numBlocks; i += 1) {
-    const dataLen = shortBlockLen - blockEccLen + (i < numShortBlocks ? 0 : 1);
-    const slice = data.subarray(offset, offset + dataLen);
-    offset += dataLen;
-    const ecc = computeReedSolomonRemainder(slice, rsDiv);
-    const block = new Uint8Array(shortBlockLen + 1);
-    block.set(slice, 0);
-    if (i < numShortBlocks) {
-      block.set(ecc, dataLen + 1);
-    } else {
-      block.set(ecc, dataLen);
-    }
-    blocks.push(block);
+  if (version <= 9) {
+    buf[pos++] = 0x40 | (len >>> 4);
+  } else {
+    buf[pos++] = 0x40 | (len >>> 12);
+    buf[pos++] = (len >>> 4) & 0xff;
   }
 
-  const result = new Uint8Array(rawCodewords);
-  let outIdx = 0;
-  for (let i = 0; i <= shortBlockLen; i += 1) {
-    for (let j = 0; j < numBlocks; j += 1) {
-      if (i === shortBlockLen - blockEccLen && j < numShortBlocks) {
-        continue;
-      }
-      result[outIdx] = blocks[j][i];
-      outIdx += 1;
-    }
+  let carry = (len & 0x0f) << 4;
+  for (let i = 0; i < len; i += 1) {
+    const b = utf8[i];
+    buf[pos++] = carry | (b >>> 4);
+    carry = (b & 0x0f) << 4;
   }
-  return result;
+  if (pos < dataCodewords) {
+    buf[pos++] = carry;
+  }
+
+  let padByte = 0xec;
+  while (pos < dataCodewords) {
+    buf[pos++] = padByte;
+    padByte ^= 0xec ^ 0x11;
+  }
+  return buf;
 }
 
-class QrMatrix {
-  private readonly version: number;
-  readonly size: number;
-  readonly modules: Uint8Array;
-  readonly isFunction: Uint8Array;
+function encodeEccAndInterleave(
+  version: number,
+  eccIndex: number,
+  dataBuf: Uint8Array,
+): Uint8Array {
+  const tableIdx = eccIndex * 40 + (version - 1);
+  const eccLen = ISO_ECC_CODEWORDS_PER_BLOCK[tableIdx];
+  const blockCount = ISO_NUM_ECC_BLOCKS[tableIdx];
+  const rawCodewords = RAW_CODEWORDS_BY_VERSION[version];
+  const shortBlockTotal = Math.floor(rawCodewords / blockCount);
+  const numShortBlocks = blockCount - (rawCodewords % blockCount);
+  const shortDataLen = shortBlockTotal - eccLen;
+  const dataTotal = dataBuf.length;
 
-  constructor(version: number) {
-    this.version = version;
-    this.size = version * 4 + 17;
-    this.modules = new Uint8Array(this.size * this.size);
-    this.isFunction = new Uint8Array(this.size * this.size);
-  }
+  const genLogs = getRsGeneratorLogs(eccLen);
+  const out = new Uint8Array(rawCodewords);
+  const rem = new Uint8Array(eccLen);
 
-  setFunction(x: number, y: number, dark: boolean): void {
-    const idx = y * this.size + x;
-    this.modules[idx] = dark ? 1 : 0;
-    this.isFunction[idx] = 1;
-  }
+  let dataCursor = 0;
+  for (let b = 0; b < blockCount; b += 1) {
+    const blockDataLen = b < numShortBlocks ? shortDataLen : shortDataLen + 1;
+    rem.fill(0);
 
-  get(x: number, y: number): number {
-    return this.modules[y * this.size + x];
-  }
+    for (let k = 0; k < blockDataLen; k += 1) {
+      const d = dataBuf[dataCursor++];
+      const destIdx =
+        k < shortDataLen
+          ? k * blockCount + b
+          : shortDataLen * blockCount + (b - numShortBlocks);
+      out[destIdx] = d;
 
-  drawFinderPattern(cx: number, cy: number): void {
-    for (let dy = -4; dy <= 4; dy += 1) {
-      for (let dx = -4; dx <= 4; dx += 1) {
-        const xx = cx + dx;
-        const yy = cy + dy;
-        if (xx >= 0 && xx < this.size && yy >= 0 && yy < this.size) {
-          const dist = Math.max(Math.abs(dx), Math.abs(dy));
-          this.setFunction(xx, yy, dist !== 2 && dist !== 4);
+      const factor = d ^ rem[0];
+      if (factor !== 0) {
+        const factorLog = GF_LOG[factor];
+        for (let j = 0; j < eccLen - 1; j += 1) {
+          const gLog = genLogs[j];
+          rem[j] = gLog >= 0 ? rem[j + 1] ^ GF_EXP[factorLog + gLog] : rem[j + 1];
         }
-      }
-    }
-  }
-
-  drawAlignmentPattern(cx: number, cy: number): void {
-    for (let dy = -2; dy <= 2; dy += 1) {
-      for (let dx = -2; dx <= 2; dx += 1) {
-        this.setFunction(cx + dx, cy + dy, Math.max(Math.abs(dx), Math.abs(dy)) !== 1);
-      }
-    }
-  }
-
-  drawFormatBits(formatBitsPrefix: number, mask: number): void {
-    const data = (formatBitsPrefix << 3) | mask;
-    let rem = data;
-    for (let i = 0; i < 10; i += 1) {
-      rem = (rem << 1) ^ ((rem >>> 9) * 0x537);
-    }
-    const bits = ((data << 10) | rem) ^ 0x5412;
-
-    for (let i = 0; i <= 5; i += 1) {
-      this.setFunction(8, i, ((bits >>> i) & 1) !== 0);
-    }
-    this.setFunction(8, 7, ((bits >>> 6) & 1) !== 0);
-    this.setFunction(8, 8, ((bits >>> 7) & 1) !== 0);
-    this.setFunction(7, 8, ((bits >>> 8) & 1) !== 0);
-    for (let i = 9; i < 15; i += 1) {
-      this.setFunction(14 - i, 8, ((bits >>> i) & 1) !== 0);
-    }
-    for (let i = 0; i < 8; i += 1) {
-      this.setFunction(this.size - 1 - i, 8, ((bits >>> i) & 1) !== 0);
-    }
-    for (let i = 8; i < 15; i += 1) {
-      this.setFunction(8, this.size - 15 + i, ((bits >>> i) & 1) !== 0);
-    }
-    this.setFunction(8, this.size - 8, true);
-  }
-
-  drawVersionBits(): void {
-    if (this.version < 7) {
-      return;
-    }
-    let rem = this.version;
-    for (let i = 0; i < 12; i += 1) {
-      rem = (rem << 1) ^ ((rem >>> 11) * 0x1f25);
-    }
-    const bits = (this.version << 12) | rem;
-    for (let i = 0; i < 18; i += 1) {
-      const color = ((bits >>> i) & 1) !== 0;
-      const a = this.size - 11 + (i % 3);
-      const b = Math.floor(i / 3);
-      this.setFunction(a, b, color);
-      this.setFunction(b, a, color);
-    }
-  }
-
-  drawFunctionPatterns(formatBitsPrefix: number): void {
-    for (let i = 0; i < this.size; i += 1) {
-      this.setFunction(6, i, i % 2 === 0);
-      this.setFunction(i, 6, i % 2 === 0);
-    }
-    this.drawFinderPattern(3, 3);
-    this.drawFinderPattern(this.size - 4, 3);
-    this.drawFinderPattern(3, this.size - 4);
-
-    const align = getAlignmentPatternPositions(this.version, this.size);
-    for (let i = 0; i < align.length; i += 1) {
-      for (let j = 0; j < align.length; j += 1) {
-        if (
-          !(
-            (i === 0 && j === 0) ||
-            (i === 0 && j === align.length - 1) ||
-            (i === align.length - 1 && j === 0)
-          )
-        ) {
-          this.drawAlignmentPattern(align[i], align[j]);
+        const lastLog = genLogs[eccLen - 1];
+        rem[eccLen - 1] = lastLog >= 0 ? GF_EXP[factorLog + lastLog] : 0;
+      } else {
+        for (let j = 0; j < eccLen - 1; j += 1) {
+          rem[j] = rem[j + 1];
         }
+        rem[eccLen - 1] = 0;
       }
     }
-    this.drawFormatBits(formatBitsPrefix, 0);
-    this.drawVersionBits();
+
+    for (let j = 0; j < eccLen; j += 1) {
+      out[dataTotal + j * blockCount + b] = rem[j];
+    }
   }
 
-  drawCodewords(allCodewords: Uint8Array): void {
-    let bitIndex = 0;
-    const totalBits = allCodewords.length * 8;
-    for (let right = this.size - 1; right >= 1; right -= 2) {
-      if (right === 6) {
-        right = 5;
+  return out;
+}
+
+function setBit(plane: Uint32Array, wordsPerRow: number, x: number, y: number, dark: boolean): void {
+  const idx = y * wordsPerRow + (x >>> 5);
+  const mask = 1 << (x & 31);
+  if (dark) {
+    plane[idx] |= mask;
+  } else {
+    plane[idx] &= ~mask;
+  }
+}
+
+function setFunctionBit(
+  baseBits: Uint32Array,
+  reservedBits: Uint32Array,
+  wordsPerRow: number,
+  x: number,
+  y: number,
+  dark: boolean,
+): void {
+  const idx = y * wordsPerRow + (x >>> 5);
+  const mask = 1 << (x & 31);
+  reservedBits[idx] |= mask;
+  if (dark) {
+    baseBits[idx] |= mask;
+  } else {
+    baseBits[idx] &= ~mask;
+  }
+}
+
+// Renders concentric Chebyshev-distance square rings (Finder+Separator: half=4, darkMask=0x0b; Alignment: half=2, darkMask=0x05)
+function drawConcentricSquare(
+  baseBits: Uint32Array,
+  reservedBits: Uint32Array,
+  wordsPerRow: number,
+  size: number,
+  cx: number,
+  cy: number,
+  half: number,
+  darkDistMask: number,
+): void {
+  const yStart = cy - half < 0 ? 0 : cy - half;
+  const yEnd = cy + half >= size ? size - 1 : cy + half;
+  const xStart = cx - half < 0 ? 0 : cx - half;
+  const xEnd = cx + half >= size ? size - 1 : cx + half;
+
+  for (let y = yStart; y <= yEnd; y += 1) {
+    const dy = y < cy ? cy - y : y - cy;
+    for (let x = xStart; x <= xEnd; x += 1) {
+      const dx = x < cx ? cx - x : x - cx;
+      const dist = dx > dy ? dx : dy;
+      setFunctionBit(baseBits, reservedBits, wordsPerRow, x, y, ((darkDistMask >>> dist) & 1) !== 0);
+    }
+  }
+}
+
+function computeFormatBch(eccFormatBits: number, maskId: number): number {
+  const data = (eccFormatBits << 3) | maskId;
+  let rem = data;
+  for (let i = 0; i < 10; i += 1) {
+    rem = (rem << 1) ^ ((rem >>> 9) * 0x537);
+  }
+  return ((data << 10) | rem) ^ 0x5412;
+}
+
+function writeFormatBits(
+  plane: Uint32Array,
+  reservedBits: Uint32Array | null,
+  wordsPerRow: number,
+  size: number,
+  eccFormatBits: number,
+  maskId: number,
+): void {
+  const bits = computeFormatBch(eccFormatBits, maskId);
+  const put = (x: number, y: number, bitIdx: number) => {
+    const dark = ((bits >>> bitIdx) & 1) !== 0;
+    if (reservedBits) {
+      setFunctionBit(plane, reservedBits, wordsPerRow, x, y, dark);
+    } else {
+      setBit(plane, wordsPerRow, x, y, dark);
+    }
+  };
+
+  for (let i = 0; i <= 5; i += 1) {
+    put(8, i, i);
+  }
+  put(8, 7, 6);
+  put(8, 8, 7);
+  put(7, 8, 8);
+  for (let i = 9; i < 15; i += 1) {
+    put(14 - i, 8, i);
+  }
+
+  for (let i = 0; i < 8; i += 1) {
+    put(size - 1 - i, 8, i);
+  }
+  for (let i = 8; i < 15; i += 1) {
+    put(8, size - 15 + i, i);
+  }
+  if (reservedBits) {
+    setFunctionBit(plane, reservedBits, wordsPerRow, 8, size - 8, true);
+  } else {
+    setBit(plane, wordsPerRow, 8, size - 8, true);
+  }
+}
+
+function writeVersionBits(
+  baseBits: Uint32Array,
+  reservedBits: Uint32Array,
+  wordsPerRow: number,
+  size: number,
+  version: number,
+): void {
+  if (version < 7) {
+    return;
+  }
+  let rem = version;
+  for (let i = 0; i < 12; i += 1) {
+    rem = (rem << 1) ^ ((rem >>> 11) * 0x1f25);
+  }
+  const bits = (version << 12) | rem;
+  for (let i = 0; i < 18; i += 1) {
+    const dark = ((bits >>> i) & 1) !== 0;
+    const a = size - 11 + (i % 3);
+    const b = Math.floor(i / 3);
+    setFunctionBit(baseBits, reservedBits, wordsPerRow, a, b, dark);
+    setFunctionBit(baseBits, reservedBits, wordsPerRow, b, a, dark);
+  }
+}
+
+function drawFunctionPatterns(
+  baseBits: Uint32Array,
+  reservedBits: Uint32Array,
+  wordsPerRow: number,
+  size: number,
+  version: number,
+  eccFormatBits: number,
+): void {
+  // Timing strips (row 6 and column 6)
+  for (let i = 0; i < size; i += 1) {
+    const dark = (i & 1) === 0;
+    setFunctionBit(baseBits, reservedBits, wordsPerRow, 6, i, dark);
+    setFunctionBit(baseBits, reservedBits, wordsPerRow, i, 6, dark);
+  }
+
+  // Finder + quiet separator patterns at 3 corners (dark rings at Chebyshev distances 0, 1, 3 -> 0x0b)
+  drawConcentricSquare(baseBits, reservedBits, wordsPerRow, size, 3, 3, 4, 0x0b);
+  drawConcentricSquare(baseBits, reservedBits, wordsPerRow, size, size - 4, 3, 4, 0x0b);
+  drawConcentricSquare(baseBits, reservedBits, wordsPerRow, size, 3, size - 4, 4, 0x0b);
+
+  // Alignment patterns (dark rings at Chebyshev distances 0, 2 -> 0x05)
+  const alignPos = getAlignmentPositions(version);
+  const alignCount = alignPos.length;
+  for (let i = 0; i < alignCount; i += 1) {
+    for (let j = 0; j < alignCount; j += 1) {
+      const skip =
+        (i === 0 && j === 0) ||
+        (i === 0 && j === alignCount - 1) ||
+        (i === alignCount - 1 && j === 0);
+      if (!skip) {
+        drawConcentricSquare(baseBits, reservedBits, wordsPerRow, size, alignPos[i], alignPos[j], 2, 0x05);
       }
-      for (let vert = 0; vert < this.size; vert += 1) {
-        for (let j = 0; j < 2; j += 1) {
-          const x = right - j;
-          const upward = ((right + 1) & 2) === 0;
-          const y = upward ? this.size - 1 - vert : vert;
-          const idx = y * this.size + x;
-          if (this.isFunction[idx] === 0 && bitIndex < totalBits) {
-            this.modules[idx] = (allCodewords[bitIndex >>> 3] >>> (7 - (bitIndex & 7))) & 1;
-            bitIndex += 1;
+    }
+  }
+
+  // Reserve & seed format strips + dark module + version info
+  writeFormatBits(baseBits, reservedBits, wordsPerRow, size, eccFormatBits, 0);
+  writeVersionBits(baseBits, reservedBits, wordsPerRow, size, version);
+}
+
+function placeCodewords(
+  baseBits: Uint32Array,
+  reservedBits: Uint32Array,
+  wordsPerRow: number,
+  size: number,
+  codewords: Uint8Array,
+): void {
+  let bitIndex = 0;
+  const totalBits = codewords.length * 8;
+
+  for (let right = size - 1; right >= 1; right -= 2) {
+    if (right === 6) {
+      right = 5;
+    }
+    const upward = (((right + 1) & 2) === 0);
+    for (let vert = 0; vert < size; vert += 1) {
+      const y = upward ? size - 1 - vert : vert;
+      const rowBase = y * wordsPerRow;
+      for (let j = 0; j < 2; j += 1) {
+        const x = right - j;
+        const wIdx = rowBase + (x >>> 5);
+        const mask = 1 << (x & 31);
+        if ((reservedBits[wIdx] & mask) === 0 && bitIndex < totalBits) {
+          const dark = ((codewords[bitIndex >>> 3] >>> (7 - (bitIndex & 7))) & 1) !== 0;
+          if (dark) {
+            baseBits[wIdx] |= mask;
           }
+          bitIndex += 1;
         }
       }
     }
   }
+}
 
-  applyMask(mask: number): void {
-    for (let y = 0; y < this.size; y += 1) {
-      for (let x = 0; x < this.size; x += 1) {
-        let invert = false;
-        switch (mask) {
-          case 0:
-            invert = (x + y) % 2 === 0;
-            break;
-          case 1:
-            invert = y % 2 === 0;
-            break;
-          case 2:
-            invert = x % 3 === 0;
-            break;
-          case 3:
-            invert = (x + y) % 3 === 0;
-            break;
-          case 4:
-            invert = (Math.floor(x / 3) + Math.floor(y / 2)) % 2 === 0;
-            break;
-          case 5:
-            invert = ((x * y) % 2) + ((x * y) % 3) === 0;
-            break;
-          case 6:
-            invert = (((x * y) % 2) + ((x * y) % 3)) % 2 === 0;
-            break;
-          case 7:
-            invert = (((x + y) % 2) + ((x * y) % 3)) % 2 === 0;
-            break;
-        }
-        const idx = y * this.size + x;
-        if (invert && this.isFunction[idx] === 0) {
-          this.modules[idx] ^= 1;
+function countPenaltyN3AtLightClose(
+  h0: number,
+  h1: number,
+  h2: number,
+  h3: number,
+  h4: number,
+  h5: number,
+  h6: number,
+): number {
+  if (h1 > 0 && h2 === h1 && h3 === h1 * 3 && h4 === h1 && h5 === h1) {
+    let matches = 0;
+    if (h0 >= h1 * 4 && h6 >= h1) {
+      matches += 1;
+    }
+    if (h6 >= h1 * 4 && h0 >= h1) {
+      matches += 1;
+    }
+    return matches * PENALTY_N3;
+  }
+  return 0;
+}
+
+function evaluateMaskPenalty(plane: Uint32Array, wordsPerRow: number, size: number): number {
+  let penalty = 0;
+  let darkCount = 0;
+
+  // 1) Linear run pass for rows (axis=0) and columns (axis=1): N1 + N3, plus N4 dark popcnt on rows
+  for (let axis = 0; axis < 2; axis += 1) {
+    for (let outer = 0; outer < size; outer += 1) {
+      const rowBase = outer * wordsPerRow;
+      if (axis === 0) {
+        for (let w = 0; w < wordsPerRow; w += 1) {
+          darkCount += popcnt32(plane[rowBase + w]);
         }
       }
-    }
-  }
+      const colWordOff = outer >>> 5;
+      const colBitMask = 1 << (outer & 31);
 
-  private finderPenaltyAddHistory(currentRunLength: number, runHistory: Int32Array): void {
-    let runLen = currentRunLength;
-    if (runHistory[0] === 0) {
-      runLen += this.size;
-    }
-    for (let i = 6; i >= 1; i -= 1) {
-      runHistory[i] = runHistory[i - 1];
-    }
-    runHistory[0] = runLen;
-  }
-
-  private finderPenaltyCountPatterns(runHistory: Int32Array): number {
-    const n = runHistory[1];
-    const core =
-      n > 0 &&
-      runHistory[2] === n &&
-      runHistory[3] === n * 3 &&
-      runHistory[4] === n &&
-      runHistory[5] === n;
-    return (
-      (core && runHistory[0] >= n * 4 && runHistory[6] >= n ? 1 : 0) +
-      (core && runHistory[6] >= n * 4 && runHistory[0] >= n ? 1 : 0)
-    );
-  }
-
-  private finderPenaltyTerminate(
-    currentRunColor: number,
-    currentRunLength: number,
-    runHistory: Int32Array,
-  ): number {
-    let runLen = currentRunLength;
-    if (currentRunColor === 1) {
-      this.finderPenaltyAddHistory(runLen, runHistory);
-      runLen = 0;
-    }
-    runLen += this.size;
-    this.finderPenaltyAddHistory(runLen, runHistory);
-    return this.finderPenaltyCountPatterns(runHistory);
-  }
-
-  getPenaltyScore(): number {
-    let result = 0;
-    const runHistory = new Int32Array(7);
-
-    for (let y = 0; y < this.size; y += 1) {
       let runColor = 0;
-      let runX = 0;
-      runHistory.fill(0);
-      for (let x = 0; x < this.size; x += 1) {
-        const mod = this.get(x, y);
-        if (mod === runColor) {
-          runX += 1;
-          if (runX === 5) {
-            result += PENALTY_N1;
-          } else if (runX > 5) {
-            result += 1;
+      let runLen = 0;
+      let h0 = 0;
+      let h1 = 0;
+      let h2 = 0;
+      let h3 = 0;
+      let h4 = 0;
+      let h5 = 0;
+      let h6 = 0;
+
+      for (let inner = 0; inner < size; inner += 1) {
+        const bit =
+          axis === 0
+            ? (plane[rowBase + (inner >>> 5)] >>> (inner & 31)) & 1
+            : (plane[inner * wordsPerRow + colWordOff] & colBitMask) !== 0
+              ? 1
+              : 0;
+        if (bit === runColor) {
+          runLen += 1;
+          if (runLen === 5) {
+            penalty += PENALTY_N1;
+          } else if (runLen > 5) {
+            penalty += 1;
           }
         } else {
-          this.finderPenaltyAddHistory(runX, runHistory);
+          const pushed = h0 === 0 ? runLen + size : runLen;
+          h6 = h5;
+          h5 = h4;
+          h4 = h3;
+          h3 = h2;
+          h2 = h1;
+          h1 = h0;
+          h0 = pushed;
           if (runColor === 0) {
-            result += this.finderPenaltyCountPatterns(runHistory) * PENALTY_N3;
+            penalty += countPenaltyN3AtLightClose(h0, h1, h2, h3, h4, h5, h6);
           }
-          runColor = mod;
-          runX = 1;
+          runColor = bit;
+          runLen = 1;
         }
       }
-      result += this.finderPenaltyTerminate(runColor, runX, runHistory) * PENALTY_N3;
-    }
 
-    for (let x = 0; x < this.size; x += 1) {
-      let runColor = 0;
-      let runY = 0;
-      runHistory.fill(0);
-      for (let y = 0; y < this.size; y += 1) {
-        const mod = this.get(x, y);
-        if (mod === runColor) {
-          runY += 1;
-          if (runY === 5) {
-            result += PENALTY_N1;
-          } else if (runY > 5) {
-            result += 1;
-          }
-        } else {
-          this.finderPenaltyAddHistory(runY, runHistory);
-          if (runColor === 0) {
-            result += this.finderPenaltyCountPatterns(runHistory) * PENALTY_N3;
-          }
-          runColor = mod;
-          runY = 1;
-        }
+      if (runColor === 1) {
+        const pushed = h0 === 0 ? runLen + size : runLen;
+        h6 = h5;
+        h5 = h4;
+        h4 = h3;
+        h3 = h2;
+        h2 = h1;
+        h1 = h0;
+        h0 = pushed;
+        runLen = 0;
       }
-      result += this.finderPenaltyTerminate(runColor, runY, runHistory) * PENALTY_N3;
+      const tailLen = h0 === 0 ? runLen + size * 2 : runLen + size;
+      h6 = h5;
+      h5 = h4;
+      h4 = h3;
+      h3 = h2;
+      h2 = h1;
+      h1 = h0;
+      h0 = tailLen;
+      penalty += countPenaltyN3AtLightClose(h0, h1, h2, h3, h4, h5, h6);
     }
-
-    for (let y = 0; y < this.size - 1; y += 1) {
-      for (let x = 0; x < this.size - 1; x += 1) {
-        const color = this.get(x, y);
-        if (
-          color === this.get(x + 1, y) &&
-          color === this.get(x, y + 1) &&
-          color === this.get(x + 1, y + 1)
-        ) {
-          result += PENALTY_N2;
-        }
-      }
-    }
-
-    let dark = 0;
-    for (let i = 0; i < this.modules.length; i += 1) {
-      dark += this.modules[i];
-    }
-    const total = this.size * this.size;
-    const k = Math.ceil(Math.abs(dark * 20 - total * 10) / total) - 1;
-    return result + k * PENALTY_N4;
   }
+
+  // 3) 2x2 same-color block pass (N2) via word-level vertical + horizontal shifts & popcnt32
+  const validPairCount = size - 1;
+  const lastPairWord = (validPairCount - 1) >>> 5;
+  const remPairBits = validPairCount & 31;
+  const lastPairMask = remPairBits === 0 ? 0xffffffff : (1 << remPairBits) - 1;
+
+  let block2x2Count = 0;
+  for (let y = 0; y < size - 1; y += 1) {
+    const r0 = y * wordsPerRow;
+    const r1 = (y + 1) * wordsPerRow;
+    for (let w = 0; w <= lastPairWord; w += 1) {
+      const w00 = plane[r0 + w];
+      const w10 = plane[r1 + w];
+      const hasNext = w + 1 < wordsPerRow;
+      const w0Next = hasNext ? (plane[r0 + w + 1] & 1) << 31 : 0;
+      const w1Next = hasNext ? (plane[r1 + w + 1] & 1) << 31 : 0;
+      const w01 = (w00 >>> 1) | w0Next;
+      const w11 = (w10 >>> 1) | w1Next;
+
+      const allDark = w00 & w10 & w01 & w11;
+      const allLight = ~(w00 | w10 | w01 | w11);
+      let hits = allDark | allLight;
+      if (w === lastPairWord) {
+        hits &= lastPairMask;
+      }
+      block2x2Count += popcnt32(hits);
+    }
+  }
+  penalty += block2x2Count * PENALTY_N2;
+
+  // 4) Dark/light module ratio balance (N4)
+  const totalModules = size * size;
+  const k = Math.floor((Math.abs(darkCount * 20 - totalModules * 10) + totalModules - 1) / totalModules) - 1;
+  if (k > 0) {
+    penalty += k * PENALTY_N4;
+  }
+  return penalty;
+}
+
+function applyMaskPattern(
+  srcBits: Uint32Array,
+  reservedBits: Uint32Array,
+  dstBits: Uint32Array,
+  wordsPerRow: number,
+  size: number,
+  maskId: number,
+): void {
+  const maskBase = maskId * 36;
+  const remBits = size & 31;
+  const lastWordMask = remBits === 0 ? 0xffffffff : (1 << remBits) - 1;
+
+  for (let y = 0; y < size; y += 1) {
+    const rowBase = y * wordsPerRow;
+    const mRow = maskBase + (y % 12) * 3;
+    for (let w = 0; w < wordsPerRow; w += 1) {
+      const idx = rowBase + w;
+      const mWord = MASK_WORD_TABLE[mRow + (w % 3)];
+      let val = srcBits[idx] ^ (mWord & ~reservedBits[idx]);
+      if (w === wordsPerRow - 1) {
+        val &= lastWordMask;
+      }
+      dstBits[idx] = val;
+    }
+  }
+}
+
+export function encodeQrCodeMatrix(text: string, ecc: QrEccLevel = "MEDIUM"): QrMatrixResult {
+  if (typeof text !== "string" || text.length === 0) {
+    throw new TypeError("QR payload must be a non-empty string.");
+  }
+
+  const utf8 = UTF8_ENCODER.encode(text);
+  if (utf8.length === 0 || utf8.length > MAX_QR_INPUT_BYTES) {
+    throw new RangeError(`QR payload must be between 1 and ${MAX_QR_INPUT_BYTES} UTF-8 bytes.`);
+  }
+
+  const requestedEccIndex = resolveEccIndex(ecc);
+  const { version, eccIndex, dataCodewords } = selectVersionForBytePayload(
+    utf8.length,
+    requestedEccIndex,
+  );
+  const selectedEcc = ECC_LEVEL_BY_INDEX[eccIndex];
+  const formatBits = ECC_FORMAT_BITS[eccIndex];
+  const packedData = packByteModeCodewords(utf8, version, dataCodewords);
+  const allCodewords = encodeEccAndInterleave(version, eccIndex, packedData);
+
+  const size = 17 + 4 * version;
+  const wordsPerRow = (size + 31) >>> 5;
+  const baseBits = new Uint32Array(size * wordsPerRow);
+  const reservedBits = new Uint32Array(size * wordsPerRow);
+
+  drawFunctionPatterns(baseBits, reservedBits, wordsPerRow, size, version, formatBits);
+  placeCodewords(baseBits, reservedBits, wordsPerRow, size, allCodewords);
+
+  const candidateBits = new Uint32Array(size * wordsPerRow);
+  let bestMask = 0;
+  let minPenalty = Number.POSITIVE_INFINITY;
+
+  for (let maskId = 0; maskId < 8; maskId += 1) {
+    applyMaskPattern(baseBits, reservedBits, candidateBits, wordsPerRow, size, maskId);
+    writeFormatBits(candidateBits, null, wordsPerRow, size, formatBits, maskId);
+    const penalty = evaluateMaskPenalty(candidateBits, wordsPerRow, size);
+    if (penalty < minPenalty) {
+      minPenalty = penalty;
+      bestMask = maskId;
+    }
+  }
+
+  applyMaskPattern(baseBits, reservedBits, candidateBits, wordsPerRow, size, bestMask);
+  writeFormatBits(candidateBits, null, wordsPerRow, size, formatBits, bestMask);
+
+  return {
+    version,
+    ecc: selectedEcc,
+    size,
+    wordsPerRow,
+    bits: candidateBits,
+    isDark: (x: number, y: number) =>
+      x >= 0 &&
+      x < size &&
+      y >= 0 &&
+      y < size &&
+      ((candidateBits[y * wordsPerRow + (x >>> 5)] >>> (x & 31)) & 1) !== 0,
+  };
 }
 
 export function encodeQrCodeSvgPaths(
   text: string,
-  options: { ecc?: QrEccLevel; border?: number } = {},
+  options?: { ecc?: QrEccLevel; border?: number },
 ): QrCodeSvgResult {
-  const border = options.border ?? 4;
-  if (!Number.isInteger(border) || border < 0 || border > 10) {
-    throw new RangeError("QR border must be an integer between 0 and 10.");
-  }
-  const bytes = new TextEncoder().encode(text);
-  if (bytes.length === 0 || bytes.length > MAX_QR_INPUT_BYTES) {
-    throw new RangeError(
-      `QR input payload must be between 1 and ${MAX_QR_INPUT_BYTES} UTF-8 bytes.`,
-    );
+  const ecc = options?.ecc ?? "MEDIUM";
+  const border = options?.border ?? 4;
+  if (!Number.isInteger(border) || border < 0 || border > MAX_QR_BORDER) {
+    throw new RangeError(`QR border must be an integer between 0 and ${MAX_QR_BORDER}.`);
   }
 
-  let selectedEcc = options.ecc ?? "MEDIUM";
-  let version = MIN_VERSION;
-  let dataUsedBits = 0;
-  for (; version <= MAX_VERSION; version += 1) {
-    const charCountBits = version <= 9 ? 8 : 16;
-    const neededBits = 4 + charCountBits + bytes.length * 8;
-    const capacityBits = getNumDataCodewords(version, ECC_INDEX[selectedEcc].ordinal) * 8;
-    if (neededBits <= capacityBits) {
-      dataUsedBits = neededBits;
-      break;
-    }
-  }
-  if (version > MAX_VERSION) {
-    throw new RangeError("QR input exceeds symbol capacity.");
-  }
+  const matrix = encodeQrCodeMatrix(text, ecc);
+  const { size, wordsPerRow, bits, version } = matrix;
 
-  for (const candidate of ECC_ORDER) {
-    if (
-      ECC_INDEX[candidate].ordinal > ECC_INDEX[selectedEcc].ordinal &&
-      dataUsedBits <= getNumDataCodewords(version, ECC_INDEX[candidate].ordinal) * 8
-    ) {
-      selectedEcc = candidate;
-    }
-  }
-
-  const eccMeta = ECC_INDEX[selectedEcc];
-  const bitBuffer: number[] = [];
-  const charCountBits = version <= 9 ? 8 : 16;
-  appendBitsToBuffer(0x4, 4, bitBuffer);
-  appendBitsToBuffer(bytes.length, charCountBits, bitBuffer);
-  for (let i = 0; i < bytes.length; i += 1) {
-    appendBitsToBuffer(bytes[i], 8, bitBuffer);
-  }
-
-  const capacityBits = getNumDataCodewords(version, eccMeta.ordinal) * 8;
-  appendBitsToBuffer(0, Math.min(4, capacityBits - bitBuffer.length), bitBuffer);
-  appendBitsToBuffer(0, (8 - (bitBuffer.length % 8)) % 8, bitBuffer);
-  for (let padByte = 0xec; bitBuffer.length < capacityBits; padByte ^= 0xec ^ 0x11) {
-    appendBitsToBuffer(padByte, 8, bitBuffer);
-  }
-
-  const dataCodewords = new Uint8Array(capacityBits >>> 3);
-  for (let i = 0; i < bitBuffer.length; i += 1) {
-    dataCodewords[i >>> 3] |= bitBuffer[i] << (7 - (i & 7));
-  }
-
-  const matrix = new QrMatrix(version);
-  matrix.drawFunctionPatterns(eccMeta.formatBits);
-  const allCodewords = addEccAndInterleave(version, eccMeta.ordinal, dataCodewords);
-  matrix.drawCodewords(allCodewords);
-
-  let bestMask = 0;
-  let minPenalty = Number.POSITIVE_INFINITY;
-  for (let m = 0; m < 8; m += 1) {
-    matrix.applyMask(m);
-    matrix.drawFormatBits(eccMeta.formatBits, m);
-    const penalty = matrix.getPenaltyScore();
-    if (penalty < minPenalty) {
-      bestMask = m;
-      minPenalty = penalty;
-    }
-    matrix.applyMask(m);
-  }
-  matrix.applyMask(bestMask);
-  matrix.drawFormatBits(eccMeta.formatBits, bestMask);
-
-  // 가로 연속 어두운 셀을 한 번에 직렬화해 SVG <path> 길이와 DOM 노드를 최소화한다.
-  const segments: string[] = [];
-  for (let y = 0; y < matrix.size; y += 1) {
+  // Serialize horizontal dark module runs directly to keep SVG path length compact.
+  let pathData = "";
+  for (let y = 0; y < size; y += 1) {
+    const rowBase = y * wordsPerRow;
+    const py = y + border;
     let x = 0;
-    while (x < matrix.size) {
-      if (matrix.get(x, y) === 1) {
-        const startX = x;
-        while (x < matrix.size && matrix.get(x, y) === 1) {
+    while (x < size) {
+      const word = bits[rowBase + (x >>> 5)];
+      const bitPos = x & 31;
+      if (((word >>> bitPos) & 1) === 0) {
+        // Fast skip empty zero bits within remaining word
+        const shifted = word >>> bitPos;
+        if (shifted === 0) {
+          x += 32 - bitPos;
+        } else {
           x += 1;
         }
-        segments.push(`M${startX + border} ${y + border}h${x - startX}v1h${startX - x}z`);
-      } else {
+        continue;
+      }
+      const startX = x;
+      x += 1;
+      while (x < size && ((bits[rowBase + (x >>> 5)] >>> (x & 31)) & 1) !== 0) {
         x += 1;
       }
+      const len = x - startX;
+      pathData += `M${startX + border} ${py}h${len}v1h-${len}z`;
     }
   }
 
-  const totalSize = matrix.size + border * 2;
+  const totalSize = size + border * 2;
   return {
     version,
-    ecc: selectedEcc,
-    moduleCount: matrix.size,
+    ecc: matrix.ecc,
+    moduleCount: size,
     size: totalSize,
     viewBox: `0 0 ${totalSize} ${totalSize}`,
-    pathData: segments.join(""),
+    pathData,
   };
 }
