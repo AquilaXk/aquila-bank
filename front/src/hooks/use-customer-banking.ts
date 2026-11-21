@@ -52,6 +52,30 @@ export const BUSY_DOMAIN_APPLICATIONS = 1 << 5;
 
 const SSE_DEDUP_RING_CAPACITY = 256;
 const SSE_DEDUP_RING_MASK = SSE_DEDUP_RING_CAPACITY - 1;
+const SSE_MAX_RECONNECT_ATTEMPTS = 5;
+
+const VALID_MENU_SECTIONS = new Set<MenuSection>([
+  "dashboard",
+  "accounts",
+  "transfer",
+  "transactions",
+  "notifications",
+  "security",
+  "securityHub",
+  "supportCenter",
+  "enterpriseServices",
+]);
+
+function readSectionFromUrl(): MenuSection | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  const raw = new URLSearchParams(window.location.search).get("section");
+  if (raw && VALID_MENU_SECTIONS.has(raw as MenuSection)) {
+    return raw as MenuSection;
+  }
+  return null;
+}
 
 export type SseConnectionState =
   | "DISCONNECTED"
@@ -184,7 +208,7 @@ function insertNotificationMonotonic(
 
 export function useCustomerBanking() {
   const api = useMemo(() => new AquilaBankApiClient(), []);
-  const [activeSection, setActiveSection] = useState<MenuSection>("dashboard");
+  const [activeSection, setActiveSectionState] = useState<MenuSection>("dashboard");
   const [session, setSession] = useState<CustomerSession | null>(null);
   const [authGeneration, setAuthGeneration] = useState(0);
   const [alert, setAlert] = useState<AlertMessage>({
@@ -250,6 +274,7 @@ export function useCustomerBanking() {
     amountKrw: "",
     reversalReason: "CUSTOMER_REQUEST",
     summary: "",
+    totpCode: "",
   });
   const [reversalResult, setReversalResult] =
     useState<TransferReversalResponse | null>(null);
@@ -278,6 +303,8 @@ export function useCustomerBanking() {
   const [transactions, setTransactions] = useState<TransactionItem[]>([]);
   const [transactionDetail, setTransactionDetail] =
     useState<TransactionDetailResponse | null>(null);
+  const [transactionCursorStack, setTransactionCursorStack] = useState<string[]>([]);
+  const activeTransactionCursorRef = useRef<string>("");
 
   const [notificationMode, setNotificationMode] =
     useState<NotificationViewMode>("inbox");
@@ -306,7 +333,12 @@ export function useCustomerBanking() {
     lastEventAt: "",
     lastEventId: "",
   });
+  const [lastIncomingNotification, setLastIncomingNotification] =
+    useState<NotificationItem | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const sseReconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sseRetryCountRef = useRef(0);
+  const sseManualDisconnectRef = useRef(false);
   const sseDedupRingRef = useRef<Float64Array>(
     new Float64Array(SSE_DEDUP_RING_CAPACITY).fill(Number.NaN),
   );
@@ -314,6 +346,31 @@ export function useCustomerBanking() {
 
   const sessionRef = useRef<CustomerSession | null>(null);
   sessionRef.current = session;
+
+  const setActiveSection = useCallback((nextSection: MenuSection) => {
+    setActiveSectionState(nextSection);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (nextSection === "dashboard") {
+        url.searchParams.delete("section");
+      } else {
+        url.searchParams.set("section", nextSection);
+      }
+      window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+    }
+  }, []);
+
+  useEffect(() => {
+    const initial = readSectionFromUrl();
+    if (initial) {
+      setActiveSectionState(initial);
+    }
+    const handlePopState = () => {
+      setActiveSectionState(readSectionFromUrl() ?? "dashboard");
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
   const syncBusyDisplay = useCallback((nextMask: number) => {
     setBusyMask(nextMask);
@@ -349,6 +406,12 @@ export function useCustomerBanking() {
 
   const resetAllAuthenticatedState = useCallback(
     (nextAlert?: AlertMessage) => {
+      sseManualDisconnectRef.current = true;
+      sseRetryCountRef.current = 0;
+      if (sseReconnectTimerRef.current) {
+        clearTimeout(sseReconnectTimerRef.current);
+        sseReconnectTimerRef.current = null;
+      }
       eventSourceRef.current?.close();
       eventSourceRef.current = null;
 
@@ -398,6 +461,7 @@ export function useCustomerBanking() {
         amountKrw: "",
         reversalReason: "CUSTOMER_REQUEST",
         summary: "",
+        totpCode: "",
       });
       setReversalResult(null);
 
@@ -415,6 +479,9 @@ export function useCustomerBanking() {
       setTransactionSlice(null);
       setTransactions([]);
       setTransactionDetail(null);
+      setTransactionCursorStack([]);
+      activeTransactionCursorRef.current = "";
+      setLastIncomingNotification(null);
 
       setNotificationMode("inbox");
       setNotificationFilters(buildInitialNotificationFilters());
@@ -1040,7 +1107,7 @@ export function useCustomerBanking() {
         }
         setAlert({
           type: "success",
-          text: `받는 사람 검증 완료: ${result.targetAccount.displayName}`,
+          text: `받는 사람 검증 완료: ${result.targetAccount.displayName?.trim() || result.targetAccount.maskedAccountNumber}`,
         });
       },
       { domain: BUSY_DOMAIN_TRANSFER, abortPrevious: true },
@@ -1070,6 +1137,7 @@ export function useCustomerBanking() {
             amountMinor,
             reversalReason: reversalForm.reversalReason,
             summary: reversalForm.summary,
+            totpCode: reversalForm.totpCode.trim() || undefined,
           },
           reversalIdempotencyKeyRef.current,
         );
@@ -1210,6 +1278,7 @@ export function useCustomerBanking() {
     mode = transactionMode,
     cursor = "",
     append = false,
+    resetCursorHistory = cursor === "" && !append,
   ) {
     if (!requireSession()) {
       return;
@@ -1246,6 +1315,12 @@ export function useCustomerBanking() {
         if (!isCurrent()) {
           return;
         }
+        if (resetCursorHistory) {
+          setTransactionCursorStack([]);
+          activeTransactionCursorRef.current = "";
+        } else {
+          activeTransactionCursorRef.current = cursor;
+        }
         setTransactionMode(mode);
         setTransactionSlice(result);
         setTransactions((items) =>
@@ -1261,6 +1336,35 @@ export function useCustomerBanking() {
     );
   }
 
+  async function handleNextTransactions() {
+    if (!transactionSlice?.nextCursor) {
+      return;
+    }
+    const previousCursor = activeTransactionCursorRef.current;
+    setTransactionCursorStack((prev) => [...prev, previousCursor]);
+    await handleSearchTransactions(
+      transactionMode,
+      transactionSlice.nextCursor,
+      false,
+      false,
+    );
+  }
+
+  async function handlePrevTransactions() {
+    if (transactionCursorStack.length === 0) {
+      return;
+    }
+    const nextStack = transactionCursorStack.slice(0, -1);
+    const previousCursor = transactionCursorStack[transactionCursorStack.length - 1] ?? "";
+    setTransactionCursorStack(nextStack);
+    await handleSearchTransactions(transactionMode, previousCursor, false, false);
+  }
+
+  async function handleFirstTransactions() {
+    setTransactionCursorStack([]);
+    await handleSearchTransactions(transactionMode, "", false, true);
+  }
+
   function handleResetTransactionFilters() {
     setTransactionFilters({
       ...buildInitialTransactionFilters(),
@@ -1273,6 +1377,8 @@ export function useCustomerBanking() {
     setTransactionSlice(null);
     setTransactions([]);
     setTransactionDetail(null);
+    setTransactionCursorStack([]);
+    activeTransactionCursorRef.current = "";
     setAlert({ type: "info", text: "거래내역 조회 조건을 초기화했습니다." });
   }
 
@@ -1528,83 +1634,153 @@ export function useCustomerBanking() {
     );
   }
 
+  const connectNotificationStream = useCallback(
+    (silent = false) => {
+      if (!sessionRef.current || typeof EventSource === "undefined") {
+        if (!silent) {
+          setAlert({ type: "error", text: "로그인이 필요한 업무입니다." });
+        }
+        return;
+      }
+      sseManualDisconnectRef.current = false;
+      if (sseReconnectTimerRef.current) {
+        clearTimeout(sseReconnectTimerRef.current);
+        sseReconnectTimerRef.current = null;
+      }
+      try {
+        eventSourceRef.current?.close();
+        const eventSource = new EventSource(
+          api.streamUrl("/api/v1/notifications/stream"),
+          { withCredentials: true },
+        );
+        eventSourceRef.current = eventSource;
+        setSseStatus({
+          state: "CONNECTING",
+          lastEventAt: "",
+          lastEventId: "",
+        });
+
+        const markConnectedEvent = (lastEventId?: string) => {
+          sseRetryCountRef.current = 0;
+          setSseStatus((status) => ({
+            state: "CONNECTED",
+            lastEventAt: new Date().toISOString(),
+            lastEventId: lastEventId || status.lastEventId,
+          }));
+        };
+
+        const processNotificationEvent = (rawData: string, lastEventId: string) => {
+          const incoming = parseSseNotificationPayload(rawData);
+          markConnectedEvent(lastEventId);
+          if (!incoming) {
+            return;
+          }
+          if (!recordSseNotificationId(incoming.notificationId)) {
+            return;
+          }
+          setNotifications((items) => insertNotificationMonotonic(items, incoming));
+          setLastIncomingNotification(incoming);
+          if (!incoming.read) {
+            setUnreadCount((count) => (count === null ? 1 : count + 1));
+          }
+        };
+
+        eventSource.onopen = () => {
+          markConnectedEvent();
+          if (!silent) {
+            setAlert({ type: "success", text: "알림 스트림에 연결되었습니다." });
+          }
+        };
+
+        eventSource.addEventListener("connected", (event) => {
+          const msg = event as MessageEvent<string>;
+          markConnectedEvent(msg.lastEventId);
+        });
+
+        eventSource.addEventListener("heartbeat", (event) => {
+          const msg = event as MessageEvent<string>;
+          markConnectedEvent(msg.lastEventId);
+        });
+
+        eventSource.addEventListener("notification", (event) => {
+          const msg = event as MessageEvent<string>;
+          processNotificationEvent(msg.data, msg.lastEventId);
+        });
+
+        eventSource.onmessage = (event) => {
+          processNotificationEvent(event.data, event.lastEventId);
+        };
+
+        eventSource.onerror = () => {
+          eventSource.close();
+          if (eventSourceRef.current === eventSource) {
+            eventSourceRef.current = null;
+          }
+          setSseStatus((status) => ({ ...status, state: "ERROR" }));
+          if (
+            sessionRef.current &&
+            !sseManualDisconnectRef.current &&
+            sseRetryCountRef.current < SSE_MAX_RECONNECT_ATTEMPTS
+          ) {
+            const delayMs = Math.min(1000 * (1 << sseRetryCountRef.current), 15000);
+            sseRetryCountRef.current += 1;
+            sseReconnectTimerRef.current = setTimeout(() => {
+              connectNotificationStream(true);
+            }, delayMs);
+          }
+        };
+      } catch (error) {
+        if (!silent) {
+          setAlert({ type: "error", text: toErrorMessage(error) });
+        }
+      }
+    },
+    [api, recordSseNotificationId],
+  );
+
   function handleConnectNotifications() {
     if (!requireSession()) {
       return;
     }
-    try {
-      eventSourceRef.current?.close();
-      const eventSource = new EventSource(
-        api.streamUrl("/api/v1/notifications/stream"),
-        { withCredentials: true },
-      );
-      eventSourceRef.current = eventSource;
-      setSseStatus({
-        state: "CONNECTING",
-        lastEventAt: "",
-        lastEventId: "",
-      });
-
-      const markConnectedEvent = (lastEventId?: string) => {
-        setSseStatus((status) => ({
-          state: "CONNECTED",
-          lastEventAt: new Date().toISOString(),
-          lastEventId: lastEventId || status.lastEventId,
-        }));
-      };
-
-      const processNotificationEvent = (rawData: string, lastEventId: string) => {
-        const incoming = parseSseNotificationPayload(rawData);
-        markConnectedEvent(lastEventId);
-        if (!incoming) {
-          return;
-        }
-        if (!recordSseNotificationId(incoming.notificationId)) {
-          return;
-        }
-        setNotifications((items) => insertNotificationMonotonic(items, incoming));
-        if (!incoming.read) {
-          setUnreadCount((count) => (count === null ? 1 : count + 1));
-        }
-      };
-
-      eventSource.onopen = () => {
-        markConnectedEvent();
-        setAlert({ type: "success", text: "알림 스트림에 연결되었습니다." });
-      };
-
-      eventSource.addEventListener("connected", (event) => {
-        const msg = event as MessageEvent<string>;
-        markConnectedEvent(msg.lastEventId);
-      });
-
-      eventSource.addEventListener("heartbeat", (event) => {
-        const msg = event as MessageEvent<string>;
-        markConnectedEvent(msg.lastEventId);
-      });
-
-      eventSource.addEventListener("notification", (event) => {
-        const msg = event as MessageEvent<string>;
-        processNotificationEvent(msg.data, msg.lastEventId);
-      });
-
-      eventSource.onmessage = (event) => {
-        processNotificationEvent(event.data, event.lastEventId);
-      };
-
-      eventSource.onerror = () => {
-        setSseStatus((status) => ({ ...status, state: "ERROR" }));
-      };
-    } catch (error) {
-      setAlert({ type: "error", text: toErrorMessage(error) });
-    }
+    connectNotificationStream(false);
   }
 
   function handleDisconnectNotifications() {
+    sseManualDisconnectRef.current = true;
+    sseRetryCountRef.current = 0;
+    if (sseReconnectTimerRef.current) {
+      clearTimeout(sseReconnectTimerRef.current);
+      sseReconnectTimerRef.current = null;
+    }
     eventSourceRef.current?.close();
     eventSourceRef.current = null;
     setSseStatus((status) => ({ ...status, state: "DISCONNECTED" }));
   }
+
+  useEffect(() => {
+    if (!session) {
+      return;
+    }
+    const controller = new AbortController();
+    connectNotificationStream(true);
+    void api
+      .getUnreadCount({ signal: controller.signal })
+      .then((res) => {
+        if (sessionRef.current && !controller.signal.aborted) {
+          setUnreadCount(res.unreadCount);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      controller.abort();
+      if (sseReconnectTimerRef.current) {
+        clearTimeout(sseReconnectTimerRef.current);
+        sseReconnectTimerRef.current = null;
+      }
+      eventSourceRef.current?.close();
+      eventSourceRef.current = null;
+    };
+  }, [api, authGeneration, connectNotificationStream, session]);
 
   const isBusy = busyMask !== 0;
 
@@ -1652,7 +1828,12 @@ export function useCustomerBanking() {
     unreadCount,
     preferences,
     sseStatus,
+    lastIncomingNotification,
+    hasPrevTransactionPage: transactionCursorStack.length > 0,
     hasPrevNotificationPage: notificationCursorStack.length > 0,
+    api,
+    setAlert,
+    setSelectedAccount,
     handleLogin,
     handleTotpChallenge,
     handleBackupChallenge,
@@ -1678,6 +1859,9 @@ export function useCustomerBanking() {
     handleSelectCustomerApplication,
     handleCancelCustomerApplication,
     handleSearchTransactions,
+    handleNextTransactions,
+    handlePrevTransactions,
+    handleFirstTransactions,
     handleResetTransactionFilters,
     handleLoadTransactionDetail,
     handleLoadNotifications,

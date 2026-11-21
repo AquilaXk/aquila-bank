@@ -1,8 +1,18 @@
-import type { AccountItem, AccountSummaryResponse } from "@/lib/api/types";
+import { useEffect, useState } from "react";
+import type {
+  AccountItem,
+  AccountPreferenceItem,
+  AccountSummaryResponse,
+  SaveAccountPreferenceRequest,
+  SaveSavingsPocketRequest,
+  SavingsPocketItem,
+} from "@/lib/api/types";
+import { tryKrwToMinor } from "@/lib/customer-banking/currency";
 import { formatDateTime, formatMinorAmount } from "@/lib/customer-banking/format";
 import { getAccountStatusLabel } from "@/lib/customer-banking/labels";
 import {
   BankActionBar,
+  BankCurrencyInput,
   BankNoticeStrip,
   BankSelect,
   BankTable,
@@ -16,6 +26,7 @@ import {
 } from "../common";
 
 const BALANCE_BAR_COLORS = ["#1d4ed8", "#0f766e", "#b45309", "#6d28d9", "#475569"] as const;
+const MASKED_BALANCE = "••••••";
 
 function getAccountStatusTone(status: string): "success" | "warn" | "danger" | "muted" {
   switch (status) {
@@ -34,32 +45,57 @@ function getAccountStatusTone(status: string): "success" | "warn" | "danger" | "
 export function AccountsSection({
   accountCursor,
   accountLimit,
+  accountPreferencesMap,
   accounts,
+  balanceMasked = false,
   isBusy,
-  selectedAccount,
   onAccountLimitChange,
+  onCreateSavingsPocket,
+  onDeleteSavingsPocket,
   onLoadAccountDetail,
   onLoadAccounts,
   onLoadNextAccounts,
+  onSaveAccountPreference,
+  onUpdateSavingsPocket,
+  savingsPockets = [],
+  selectedAccount,
 }: {
   accountCursor: string;
   accountLimit: number;
+  accountPreferencesMap?: ReadonlyMap<number, AccountPreferenceItem>;
   accounts: AccountItem[];
+  balanceMasked?: boolean;
   isBusy: boolean;
-  selectedAccount: AccountSummaryResponse | null;
   onAccountLimitChange: (value: number) => void;
+  onCreateSavingsPocket?: (accountId: number, request: SaveSavingsPocketRequest) => Promise<boolean>;
+  onDeleteSavingsPocket?: (accountId: number, pocketId: number) => Promise<boolean>;
   onLoadAccountDetail: (accountId: number) => void;
   onLoadAccounts: () => void;
   onLoadNextAccounts: () => void;
+  onSaveAccountPreference?: (accountId: number, request: SaveAccountPreferenceRequest) => Promise<boolean>;
+  onUpdateSavingsPocket?: (accountId: number, pocketId: number, request: SaveSavingsPocketRequest) => Promise<boolean>;
+  savingsPockets?: SavingsPocketItem[];
+  selectedAccount: AccountSummaryResponse | null;
 }) {
   const selectedAccountId = selectedAccount?.accountId;
+  const selectedPref = selectedAccountId ? accountPreferencesMap?.get(selectedAccountId) : undefined;
+  const [aliasInput, setAliasInput] = useState("");
+  const [primaryChecked, setPrimaryChecked] = useState(false);
+  const [pocketName, setPocketName] = useState("");
+  const [pocketTargetKrw, setPocketTargetKrw] = useState("");
+  const [pocketSavedKrw, setPocketSavedKrw] = useState("0");
 
-  // 단일 패스 순회로 상태별 건수와 총 출금가능금액을 동시에 집계한다.
+  useEffect(() => {
+    setAliasInput(selectedPref?.customAlias ?? "");
+    setPrimaryChecked(Boolean(selectedPref?.primaryAccount));
+  }, [selectedAccountId, selectedPref?.customAlias, selectedPref?.primaryAccount]);
+
+  // 단일 패스 순회로 상태별 건수와 통화별 출금가능금액 합계를 동시에 집계한다(통화 간 단순 합산 방지).
   let activeCount = 0;
   let suspendedCount = 0;
   let restrictedCount = 0;
   let lowBalanceCount = 0;
-  let totalAvailableMinor = 0;
+  const totalsByCurrency = new Map<string, { totalMinor: number; accounts: AccountItem[] }>();
   for (let i = 0; i < accounts.length; i += 1) {
     const account = accounts[i];
     if (account.accountStatus === "ACTIVE") {
@@ -75,9 +111,16 @@ export function AccountsSection({
     if (account.availableBalanceMinor <= 0) {
       lowBalanceCount += 1;
     } else {
-      totalAvailableMinor += account.availableBalanceMinor;
+      const group = totalsByCurrency.get(account.currencyCode) ?? {
+        totalMinor: 0,
+        accounts: [],
+      };
+      group.totalMinor += account.availableBalanceMinor;
+      group.accounts.push(account);
+      totalsByCurrency.set(account.currencyCode, group);
     }
   }
+  const currencySummaryGroups = Array.from(totalsByCurrency.entries());
 
   return (
     <section className="task-section compact-work-section">
@@ -170,56 +213,61 @@ export function AccountsSection({
         </div>
       </div>
 
-      {accounts.length > 0 && totalAvailableMinor > 0 ? (
-        <div className="account-balance-chart" aria-label="계좌별 출금가능잔액 비중">
-          <div className="balance-chart-head">
-            <span>총 출금가능잔액</span>
-            <strong className="tabular-nums font-mono">
-              {formatMinorAmount(totalAvailableMinor, accounts[0]?.currencyCode ?? "KRW")}
-            </strong>
-          </div>
-          <svg
-            aria-label="계좌별 잔액 비율 막대"
-            className="balance-ratio-svg"
-            height={12}
-            preserveAspectRatio="none"
-            role="img"
-            viewBox="0 0 1000 12"
-            width="100%"
-          >
-            {(() => {
-              let offsetX = 0;
-              return accounts.map((account, idx) => {
-                if (account.availableBalanceMinor <= 0) {
-                  return null;
-                }
-                const ratioWidth = Math.max(
-                  8,
-                  Math.round((account.availableBalanceMinor / totalAvailableMinor) * 1000),
-                );
-                const x = offsetX;
-                offsetX = Math.min(1000, offsetX + ratioWidth);
-                return (
-                  <rect
-                    fill={BALANCE_BAR_COLORS[idx % BALANCE_BAR_COLORS.length]}
-                    height={12}
-                    key={account.accountId}
-                    rx={2}
-                    width={Math.min(ratioWidth, 1000 - x)}
-                    x={x}
-                    y={0}
-                  >
-                    <title>
-                      {`${account.displayName}: ${formatMinorAmount(
-                        account.availableBalanceMinor,
-                        account.currencyCode,
-                      )}`}
-                    </title>
-                  </rect>
-                );
-              });
-            })()}
-          </svg>
+      {currencySummaryGroups.length > 0 ? (
+        <div className="currency-summary-grid" aria-label="통화별 출금가능잔액 비중">
+          {currencySummaryGroups.map(([currencyCode, group]) => (
+            <div className="currency-summary-card" key={currencyCode}>
+              <div className="balance-chart-head">
+                <span>{currencyCode} 총 출금가능잔액</span>
+                <strong className="tabular-nums font-mono">
+                  {balanceMasked
+                    ? MASKED_BALANCE
+                    : formatMinorAmount(group.totalMinor, currencyCode)}
+                </strong>
+              </div>
+              <svg
+                aria-label={`${currencyCode} 계좌별 잔액 비율 막대`}
+                className="balance-ratio-svg"
+                height={12}
+                preserveAspectRatio="none"
+                role="img"
+                viewBox="0 0 1000 12"
+                width="100%"
+              >
+                {(() => {
+                  let offsetX = 0;
+                  return group.accounts.map((account, idx) => {
+                    const ratioWidth = Math.max(
+                      8,
+                      Math.round((account.availableBalanceMinor / group.totalMinor) * 1000),
+                    );
+                    const x = offsetX;
+                    offsetX = Math.min(1000, offsetX + ratioWidth);
+                    return (
+                      <rect
+                        fill={BALANCE_BAR_COLORS[idx % BALANCE_BAR_COLORS.length]}
+                        height={12}
+                        key={account.accountId}
+                        rx={2}
+                        width={Math.min(ratioWidth, 1000 - x)}
+                        x={x}
+                        y={0}
+                      >
+                        <title>
+                          {balanceMasked
+                            ? `${accountPreferencesMap?.get(account.accountId)?.customAlias || account.displayName}: ${MASKED_BALANCE}`
+                            : `${accountPreferencesMap?.get(account.accountId)?.customAlias || account.displayName}: ${formatMinorAmount(
+                                account.availableBalanceMinor,
+                                account.currencyCode,
+                              )}`}
+                        </title>
+                      </rect>
+                    );
+                  });
+                })()}
+              </svg>
+            </div>
+          ))}
         </div>
       ) : null}
 
@@ -260,17 +308,27 @@ export function AccountsSection({
                     key={account.accountId}
                   >
                     <td className="tabular-nums">{account.accountNumber}</td>
-                    <td>{account.displayName}</td>
+                    <td>
+                      {accountPreferencesMap?.get(account.accountId)?.customAlias ||
+                        account.displayName}
+                      {accountPreferencesMap?.get(account.accountId)?.primaryAccount ? (
+                        <StatusBadge className="ml-1" tone="success">
+                          대표계좌
+                        </StatusBadge>
+                      ) : null}
+                    </td>
                     <td>
                       <StatusBadge tone={getAccountStatusTone(account.accountStatus)}>
                         {getAccountStatusLabel(account.accountStatus)}
                       </StatusBadge>
                     </td>
                     <td className="amount-cell font-mono tabular-nums">
-                      {formatMinorAmount(
-                        account.availableBalanceMinor,
-                        account.currencyCode,
-                      )}
+                      {balanceMasked
+                        ? MASKED_BALANCE
+                        : formatMinorAmount(
+                            account.availableBalanceMinor,
+                            account.currencyCode,
+                          )}
                     </td>
                     <td>
                       {account.accountId === selectedAccountId ? (
@@ -311,12 +369,14 @@ export function AccountsSection({
           {selectedAccount ? (
             <>
               <div className="balance-card">
-                <span>{selectedAccount.displayName}</span>
+                <span>{selectedPref?.customAlias || selectedAccount.displayName}</span>
                 <strong className="font-mono tabular-nums">
-                  {formatMinorAmount(
-                    selectedAccount.availableBalanceMinor,
-                    selectedAccount.currencyCode,
-                  )}
+                  {balanceMasked
+                    ? MASKED_BALANCE
+                    : formatMinorAmount(
+                        selectedAccount.availableBalanceMinor,
+                        selectedAccount.currencyCode,
+                      )}
                 </strong>
                 <small>출금가능금액</small>
               </div>
@@ -331,10 +391,12 @@ export function AccountsSection({
                 <div>
                   <dt>보류금액</dt>
                   <dd className="tabular-nums">
-                    {formatMinorAmount(
-                      selectedAccount.pendingBalanceMinor,
-                      selectedAccount.currencyCode,
-                    )}
+                    {balanceMasked
+                      ? MASKED_BALANCE
+                      : formatMinorAmount(
+                          selectedAccount.pendingBalanceMinor,
+                          selectedAccount.currencyCode,
+                        )}
                   </dd>
                 </div>
                 <div>
@@ -351,6 +413,166 @@ export function AccountsSection({
                   잔액 새로고침
                 </button>
               </BankActionBar>
+              {onSaveAccountPreference ? (
+                <div className="bank-form passive compact">
+                  <div className="form-heading">
+                    <strong>계좌 별칭 · 대표계좌 설정</strong>
+                    <span>{primaryChecked ? "대표계좌 지정" : "일반"}</span>
+                  </div>
+                  <label>
+                    <span>계좌 별칭</span>
+                    <input
+                      maxLength={60}
+                      onChange={(event) => setAliasInput(event.target.value)}
+                      placeholder="예: 월급통장, 생활비"
+                      value={aliasInput}
+                    />
+                  </label>
+                  <label className="checkbox-line">
+                    <input
+                      checked={primaryChecked}
+                      onChange={(event) => setPrimaryChecked(event.target.checked)}
+                      type="checkbox"
+                    />
+                    <span>이 계좌를 대표계좌로 지정</span>
+                  </label>
+                  <button
+                    disabled={isBusy}
+                    onClick={() => {
+                      void onSaveAccountPreference(selectedAccount.accountId, {
+                        customAlias: aliasInput.trim(),
+                        primaryAccount: primaryChecked,
+                      });
+                    }}
+                    type="button"
+                  >
+                    계좌 설정 저장
+                  </button>
+                </div>
+              ) : null}
+              {onCreateSavingsPocket ? (
+                <div className="bank-form passive compact" aria-label="목표 저축 포켓">
+                  <div className="form-heading">
+                    <strong>목표 저축 포켓</strong>
+                    <span className="tabular-nums">{savingsPockets.length}개</span>
+                  </div>
+                  {savingsPockets.length > 0 ? (
+                    <div className="pocket-grid">
+                      {savingsPockets.map((pocket) => {
+                        const pct = Math.min(
+                          100,
+                          Math.round(
+                            (pocket.savedAmountMinor / Math.max(1, pocket.targetAmountMinor)) * 100,
+                          ),
+                        );
+                        return (
+                          <div className="pocket-card" key={pocket.pocketId}>
+                            <div className="form-heading">
+                              <strong>{pocket.pocketName}</strong>
+                              <span className="tabular-nums">{pct}%</span>
+                            </div>
+                            <div className="pocket-progress-track" aria-hidden="true">
+                              <div
+                                className="pocket-progress-fill"
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                            <small className="tabular-nums font-mono">
+                              {balanceMasked
+                                ? MASKED_BALANCE
+                                : `${formatMinorAmount(pocket.savedAmountMinor, pocket.currencyCode)} / ${formatMinorAmount(pocket.targetAmountMinor, pocket.currencyCode)}`}
+                            </small>
+                            <div className="button-row compact">
+                              {onUpdateSavingsPocket ? (
+                                <button
+                                  disabled={isBusy}
+                                  onClick={() =>
+                                    void onUpdateSavingsPocket(
+                                      selectedAccount.accountId,
+                                      pocket.pocketId,
+                                      {
+                                        pocketName: pocket.pocketName,
+                                        targetAmountMinor: pocket.targetAmountMinor,
+                                        savedAmountMinor: pocket.savedAmountMinor + 1_000_000,
+                                      },
+                                    )
+                                  }
+                                  type="button"
+                                >
+                                  +1만원 적립
+                                </button>
+                              ) : null}
+                              {onDeleteSavingsPocket ? (
+                                <button
+                                  disabled={isBusy}
+                                  onClick={() =>
+                                    void onDeleteSavingsPocket(
+                                      selectedAccount.accountId,
+                                      pocket.pocketId,
+                                    )
+                                  }
+                                  type="button"
+                                >
+                                  삭제
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="field-note">등록된 목표 저축 포켓이 없습니다.</p>
+                  )}
+                  <div className="form-grid compact">
+                    <label>
+                      <span>포켓 이름</span>
+                      <input
+                        maxLength={60}
+                        onChange={(event) => setPocketName(event.target.value)}
+                        placeholder="예: 비상금, 여행자금"
+                        value={pocketName}
+                      />
+                    </label>
+                    <BankCurrencyInput
+                      label="목표금액"
+                      onValueChange={setPocketTargetKrw}
+                      placeholder="목표 원화 금액"
+                      value={pocketTargetKrw}
+                    />
+                    <BankCurrencyInput
+                      label="초기 적립액"
+                      onValueChange={setPocketSavedKrw}
+                      placeholder="초기 적립 원화"
+                      value={pocketSavedKrw}
+                    />
+                  </div>
+                  <button
+                    disabled={isBusy || !pocketName.trim() || !(tryKrwToMinor(pocketTargetKrw) ?? 0)}
+                    onClick={() => {
+                      const targetMinor = tryKrwToMinor(pocketTargetKrw) ?? 0;
+                      const savedMinor = tryKrwToMinor(pocketSavedKrw) ?? 0;
+                      if (!pocketName.trim() || targetMinor <= 0) {
+                        return;
+                      }
+                      void onCreateSavingsPocket(selectedAccount.accountId, {
+                        pocketName: pocketName.trim(),
+                        targetAmountMinor: targetMinor,
+                        savedAmountMinor: savedMinor,
+                      }).then((ok) => {
+                        if (ok) {
+                          setPocketName("");
+                          setPocketTargetKrw("");
+                          setPocketSavedKrw("0");
+                        }
+                      });
+                    }}
+                    type="button"
+                  >
+                    저축 포켓 추가
+                  </button>
+                </div>
+              ) : null}
             </>
           ) : (
             <EmptyState

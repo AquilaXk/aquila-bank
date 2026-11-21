@@ -16,6 +16,84 @@
       ]
     },
     {
+      "id": "account.pockets.create",
+      "method": "POST",
+      "path": "/api/v1/accounts/{accountId}/pockets",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/accounts/${encodeURIComponent(String(accountId))}/pockets", "method: \"POST\""]
+        }
+      ]
+    },
+    {
+      "id": "account.pockets.delete",
+      "method": "DELETE",
+      "path": "/api/v1/accounts/{accountId}/pockets/{pocketId}",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/pockets/${encodeURIComponent(String(pocketId))}", "method: \"DELETE\""]
+        }
+      ]
+    },
+    {
+      "id": "account.pockets.list",
+      "method": "GET",
+      "path": "/api/v1/accounts/{accountId}/pockets",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/accounts/${encodeURIComponent(String(accountId))}/pockets"]
+        }
+      ]
+    },
+    {
+      "id": "account.pockets.update",
+      "method": "PUT",
+      "path": "/api/v1/accounts/{accountId}/pockets/{pocketId}",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/pockets/${encodeURIComponent(String(pocketId))}", "method: \"PUT\""]
+        }
+      ]
+    },
+    {
+      "id": "account.preferences.list",
+      "method": "GET",
+      "path": "/api/v1/accounts/preferences",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/accounts/preferences"]
+        }
+      ]
+    },
+    {
+      "id": "account.preferences.save",
+      "method": "PUT",
+      "path": "/api/v1/accounts/{accountId}/preferences",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/accounts/${encodeURIComponent(String(accountId))}/preferences", "method: \"PUT\""]
+        }
+      ]
+    },
+    {
       "id": "account.summary",
       "method": "GET",
       "path": "/api/v1/accounts/{accountId}",
@@ -414,6 +492,32 @@
       ]
     },
     {
+      "id": "transaction.annotation.save",
+      "method": "PUT",
+      "path": "/api/v1/transactions/{transactionReference}/annotation",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/transactions/${encodeURIComponent(transactionReference)}/annotation", "method: \"PUT\""]
+        }
+      ]
+    },
+    {
+      "id": "transaction.annotations.list",
+      "method": "GET",
+      "path": "/api/v1/transactions/annotations",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/transactions/annotations"]
+        }
+      ]
+    },
+    {
       "id": "transaction.archive.query",
       "method": "GET",
       "path": "/api/v1/transactions/archive",
@@ -479,6 +583,45 @@
       ]
     },
     {
+      "id": "transfer.recipients.delete",
+      "method": "DELETE",
+      "path": "/api/v1/transfers/recipients/{recipientId}",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/transfers/recipients/${encodeURIComponent(String(recipientId))}", "method: \"DELETE\""]
+        }
+      ]
+    },
+    {
+      "id": "transfer.recipients.list",
+      "method": "GET",
+      "path": "/api/v1/transfers/recipients",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/transfers/recipients"]
+        }
+      ]
+    },
+    {
+      "id": "transfer.recipients.save",
+      "method": "POST",
+      "path": "/api/v1/transfers/recipients",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/transfers/recipients", "method: \"POST\""]
+        }
+      ]
+    },
+    {
       "id": "transfer.reversal",
       "method": "POST",
       "path": "/api/v1/transfers/{transactionReference}/reversal",
@@ -488,6 +631,45 @@
         {
           "file": "src/lib/api/client.ts",
           "contains": ["/api/v1/transfers/${encodeURIComponent(transactionReference)}/reversal"]
+        }
+      ]
+    },
+    {
+      "id": "transfer.schedules.create",
+      "method": "POST",
+      "path": "/api/v1/transfers/schedules",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/transfers/schedules", "method: \"POST\""]
+        }
+      ]
+    },
+    {
+      "id": "transfer.schedules.list",
+      "method": "GET",
+      "path": "/api/v1/transfers/schedules",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/transfers/schedules"]
+        }
+      ]
+    },
+    {
+      "id": "transfer.schedules.status",
+      "method": "POST",
+      "path": "/api/v1/transfers/schedules/{scheduleId}/status",
+      "audience": "customer",
+      "frontendStatus": "implemented",
+      "frontendEvidence": [
+        {
+          "file": "src/lib/api/client.ts",
+          "contains": ["/api/v1/transfers/schedules/${encodeURIComponent(String(scheduleId))}/status", "method: \"POST\""]
         }
       ]
     },

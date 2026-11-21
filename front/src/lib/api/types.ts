@@ -147,7 +147,7 @@ export type TransferPreviewRequest = {
 export type TransferPreviewAccount = {
   accountId?: number;
   maskedAccountNumber: string;
-  displayName: string;
+  displayName?: Nullable<string>;
   accountStatus?: string;
   currencyCode?: string;
 };
@@ -193,6 +193,7 @@ export type TransferReversalRequest = {
   amountMinor: number;
   reversalReason: TransferReversalReason;
   summary: string;
+  totpCode?: string;
 };
 
 export type TransferReversalResponse = {
@@ -379,4 +380,126 @@ export type CustomerSession = {
   userId: Nullable<number>;
   expiresAt: Nullable<string>;
   refreshExpiresAt: Nullable<string>;
+};
+
+export type SavedRecipientItem = {
+  recipientId: number;
+  nickname: string;
+  institutionCode: string;
+  accountNumber: string;
+  currencyCode: string;
+  favorite: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SavedRecipientListResponse = {
+  items: SavedRecipientItem[];
+};
+
+export type SaveRecipientRequest = {
+  nickname: string;
+  institutionCode?: string;
+  accountNumber: string;
+  currencyCode: string;
+  favorite?: boolean;
+};
+
+export type ScheduledTransferFrequency = "ONCE" | "WEEKLY" | "MONTHLY";
+export type ScheduledTransferStatus = "ACTIVE" | "PAUSED" | "CANCELLED";
+
+export type ScheduledTransferItem = {
+  scheduleId: number;
+  sourceAccountId: number;
+  targetAccountNumber: string;
+  amountMinor: number;
+  currencyCode: string;
+  summary: string;
+  scheduleType: ScheduledTransferFrequency | string;
+  scheduledDay: number;
+  nextExecutionAt: string;
+  ruleStatus: ScheduledTransferStatus | string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ScheduledTransferListResponse = {
+  items: ScheduledTransferItem[];
+};
+
+export type CreateScheduledTransferRequest = {
+  sourceAccountId: number;
+  targetAccountNumber: string;
+  amountMinor: number;
+  currencyCode: string;
+  summary: string;
+  scheduleType: ScheduledTransferFrequency;
+  scheduledDay: number;
+  nextExecutionAt: string;
+  totpCode?: string;
+};
+
+export type AccountPreferenceItem = {
+  accountId: number;
+  customAlias: string;
+  primaryAccount: boolean;
+  updatedAt: string;
+};
+
+export type AccountPreferenceListResponse = {
+  items: AccountPreferenceItem[];
+};
+
+export type SaveAccountPreferenceRequest = {
+  customAlias: string;
+  primaryAccount: boolean;
+};
+
+export type SavingsPocketItem = {
+  pocketId: number;
+  accountId: number;
+  pocketName: string;
+  targetAmountMinor: number;
+  savedAmountMinor: number;
+  currencyCode: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SavingsPocketListResponse = {
+  items: SavingsPocketItem[];
+};
+
+export type SaveSavingsPocketRequest = {
+  pocketName: string;
+  targetAmountMinor: number;
+  savedAmountMinor: number;
+};
+
+export type TransactionCategory =
+  | "TRANSFER"
+  | "LIVING"
+  | "FOOD"
+  | "HOUSING"
+  | "SALARY"
+  | "SAVINGS"
+  | "UTILITY"
+  | "OTHER";
+
+export type TransactionAnnotationItem = {
+  accountId: number;
+  transactionReference: string;
+  category: TransactionCategory | string;
+  memo: string;
+  updatedAt: string;
+};
+
+export type TransactionAnnotationListResponse = {
+  items: TransactionAnnotationItem[];
+};
+
+export type SaveTransactionAnnotationRequest = {
+  accountId: number;
+  category: TransactionCategory;
+  memo: string;
 };

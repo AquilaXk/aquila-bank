@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useMemo, useRef, useState, type FormEvent } from "react";
 import type {
   AuthSessionItem,
   BackupCodeIssueResponse,
@@ -9,6 +9,7 @@ import type {
 } from "@/lib/api/types";
 import { formatDateTime } from "@/lib/customer-banking/format";
 import { getSessionStatusLabel } from "@/lib/customer-banking/labels";
+import { encodeQrCodeSvgPaths } from "@/lib/customer-banking/qrcode";
 import {
   BankActionBar,
   BankDialog,
@@ -121,10 +122,31 @@ export function SecuritySection(props: {
   const isAuthenticated = Boolean(props.session);
   const activeBackupCodes = isAuthenticated ? props.backupCodes : null;
   const activeTotpEnrollment = isAuthenticated ? props.totpEnrollment : null;
+  const loginFormRef = useRef<HTMLFormElement>(null);
   const [loginSubmitAttempted, setLoginSubmitAttempted] = useState(false);
   const [confirmAction, setConfirmAction] = useState<
     "disableTotp" | "revokeAllSessions" | null
   >(null);
+
+  const totpQrSvg = useMemo(() => {
+    const uri = activeTotpEnrollment?.otpauthUri;
+    if (!isSafeOtpAuthUri(uri)) {
+      return null;
+    }
+    try {
+      return encodeQrCodeSvgPaths(uri, { ecc: "MEDIUM", border: 3 });
+    } catch {
+      return null;
+    }
+  }, [activeTotpEnrollment?.otpauthUri]);
+
+  function focusLoginForm(): void {
+    const input = loginFormRef.current?.querySelector("input");
+    if (input instanceof HTMLInputElement) {
+      input.focus();
+      input.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }
 
   function renderAuthMethodGrid() {
     return (
@@ -133,16 +155,25 @@ export function SecuritySection(props: {
           <span>로그인 방식</span>
           <strong>공동인증서</strong>
           <small>전자서명 기반 로그인</small>
+          <button onClick={focusLoginForm} type="button">
+            로그인 입력 이동
+          </button>
         </div>
         <div>
           <span>로그인 방식</span>
           <strong>금융인증서</strong>
           <small>클라우드 인증서</small>
+          <button onClick={focusLoginForm} type="button">
+            로그인 입력 이동
+          </button>
         </div>
         <div>
           <span>로그인 방식</span>
           <strong>아이디 로그인</strong>
           <small>추가 인증 연계</small>
+          <button onClick={focusLoginForm} type="button">
+            아이디 입력 이동
+          </button>
         </div>
       </section>
     );
@@ -151,6 +182,7 @@ export function SecuritySection(props: {
   function renderLoginForm() {
     return (
       <form
+        ref={loginFormRef}
         className="bank-form tight-work-form"
         onSubmit={(event) => {
           setLoginSubmitAttempted(true);
@@ -580,37 +612,60 @@ export function SecuritySection(props: {
               </button>
             </div>
             {activeTotpEnrollment ? (
-              <dl className="detail-list compact-list">
-                <div>
-                  <dt>등록키</dt>
-                  <dd className="inline-copy-cell font-mono">
-                    <span>{activeTotpEnrollment.secretKey}</span>
-                    <CopyButton
-                      label="등록키"
-                      value={activeTotpEnrollment.secretKey}
-                    />
-                  </dd>
-                </div>
-                {isSafeOtpAuthUri(activeTotpEnrollment.otpauthUri) ? (
-                  <div>
-                    <dt>앱 등록</dt>
-                    <dd>
-                      <a
-                        className="otp-app-link"
-                        href={activeTotpEnrollment.otpauthUri}
+              <div className="bank-form passive compact">
+                {totpQrSvg ? (
+                  <div className="qr-enrollment-card">
+                    <div className="qr-svg-frame">
+                      <svg
+                        aria-label="OTP 등록 QR 코드"
+                        height={132}
+                        role="img"
+                        width={132}
+                        viewBox={totpQrSvg.viewBox}
                       >
-                        인증 앱에서 바로 등록
-                      </a>
-                    </dd>
+                        <path d={totpQrSvg.pathData} fill="currentColor" />
+                      </svg>
+                    </div>
+                    <div>
+                      <strong>인증 앱 QR 스캔</strong>
+                      <p className="field-note">
+                        인증 앱에서 QR 코드를 스캔하거나 아래 등록키를 직접 입력하세요.
+                      </p>
+                    </div>
                   </div>
                 ) : null}
-                <div>
-                  <dt>만료</dt>
-                  <dd className="tabular-nums">
-                    {formatDateTime(activeTotpEnrollment.expiresAt)}
-                  </dd>
-                </div>
-              </dl>
+                <dl className="detail-list compact-list">
+                  <div>
+                    <dt>등록키</dt>
+                    <dd className="inline-copy-cell font-mono">
+                      <span>{activeTotpEnrollment.secretKey}</span>
+                      <CopyButton
+                        label="등록키"
+                        value={activeTotpEnrollment.secretKey}
+                      />
+                    </dd>
+                  </div>
+                  {isSafeOtpAuthUri(activeTotpEnrollment.otpauthUri) ? (
+                    <div>
+                      <dt>앱 등록</dt>
+                      <dd>
+                        <a
+                          className="otp-app-link"
+                          href={activeTotpEnrollment.otpauthUri}
+                        >
+                          인증 앱에서 바로 등록
+                        </a>
+                      </dd>
+                    </div>
+                  ) : null}
+                  <div>
+                    <dt>만료</dt>
+                    <dd className="tabular-nums">
+                      {formatDateTime(activeTotpEnrollment.expiresAt)}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
             ) : null}
             {activeBackupCodes ? (
               <div className="backup-codes-panel">

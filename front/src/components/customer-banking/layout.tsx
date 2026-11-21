@@ -5,7 +5,6 @@ import {
   mainMenus,
   noticeItems,
   quickMenus,
-  recentMenus,
   recommendedKeywords,
   serviceMapGroups,
 } from "@/lib/customer-banking/constants";
@@ -25,28 +24,36 @@ const IME_COMPOSITION_COOLDOWN_MS = 50;
 
 export function BankHeader({
   activeSection,
+  balanceMasked,
   mobileSearchOpen,
   searchQuery,
   searchResults,
   serviceMapOpen,
   session,
+  unreadCount,
   onMobileSearchToggle,
   onMove,
+  onOpenCommandPalette,
   onSearchChange,
   onSearchSelect,
   onServiceMapToggle,
+  onToggleBalanceMask,
 }: {
   activeSection: MenuSection;
+  balanceMasked: boolean;
   mobileSearchOpen: boolean;
   searchQuery: string;
   searchResults: ServiceSearchItem[];
   serviceMapOpen: boolean;
   session: CustomerSession | null;
+  unreadCount: number | null;
   onMobileSearchToggle: () => void;
   onMove: MoveHandler;
+  onOpenCommandPalette: () => void;
   onSearchChange: (value: string) => void;
   onSearchSelect: (item: ServiceSearchItem) => void;
   onServiceMapToggle: () => void;
+  onToggleBalanceMask: () => void;
 }) {
   const isAuthenticated = Boolean(session);
   const hasSearchQuery = searchQuery.trim().length > 0;
@@ -65,22 +72,6 @@ export function BankHeader({
   }, [searchQuery, searchResults.length]);
 
   useEffect(() => {
-    const handleGlobalKeyDown = (event: globalThis.KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        if (event.isComposing || event.keyCode === IME_KEY_CODE) {
-          return;
-        }
-        event.preventDefault();
-        if (!mobileSearchOpen && window.matchMedia("(max-width: 760px)").matches) {
-          onMobileSearchToggle();
-        }
-        window.requestAnimationFrame(() => {
-          searchInputRef.current?.focus();
-          searchInputRef.current?.select();
-        });
-      }
-    };
-
     const handleOutsidePointerDown = (event: globalThis.PointerEvent) => {
       if (
         hasSearchQuery &&
@@ -92,13 +83,11 @@ export function BankHeader({
       }
     };
 
-    window.addEventListener("keydown", handleGlobalKeyDown);
     document.addEventListener("pointerdown", handleOutsidePointerDown);
     return () => {
-      window.removeEventListener("keydown", handleGlobalKeyDown);
       document.removeEventListener("pointerdown", handleOutsidePointerDown);
     };
-  }, [hasSearchQuery, mobileSearchOpen, onMobileSearchToggle, onSearchChange]);
+  }, [hasSearchQuery, onSearchChange]);
 
   function toggleColorScheme() {
     setColorScheme((current) => toggleStoredColorScheme(current));
@@ -222,6 +211,14 @@ export function BankHeader({
             type="button"
           >
             전체서비스
+          </button>
+          <button
+            aria-label="빠른 메뉴 팔레트 열기"
+            className="utility-link"
+            onClick={onOpenCommandPalette}
+            type="button"
+          >
+            빠른실행
           </button>
           <button
             aria-label="테마 전환"
@@ -387,6 +384,29 @@ export function BankHeader({
         <span>{isAuthenticated ? "HTTPS 보안접속" : "민감정보 보호"}</span>
         <span>평일 09:00-18:00 상담</span>
         <span>{isAuthenticated ? "서비스 상태 정상" : "인증센터 로그인"}</span>
+        {isAuthenticated ? (
+          <div className="header-compact-utility">
+            <button
+              aria-pressed={balanceMasked}
+              className="header-utility-pill"
+              onClick={onToggleBalanceMask}
+              type="button"
+            >
+              {balanceMasked ? "금액 표시" : "금액 숨김"}
+            </button>
+            <button
+              aria-label="알림함 이동"
+              className="header-utility-pill"
+              onClick={() => onMove("notifications")}
+              type="button"
+            >
+              알림
+              {unreadCount !== null && unreadCount > 0 ? (
+                <span className="header-unread-badge">{unreadCount}</span>
+              ) : null}
+            </button>
+          </div>
+        ) : null}
       </div>
       {serviceMapOpen ? (
         <section
@@ -454,11 +474,13 @@ export function SideMenu({
 
 export function RightRail({
   isBusy,
+  recentVisitedMenus,
   session,
   onMove,
   onRefresh,
 }: {
   isBusy: boolean;
+  recentVisitedMenus: Array<{ label: string; section: MenuSection }>;
   session: CustomerSession | null;
   onMove: MoveHandler;
   onRefresh: () => void;
@@ -528,9 +550,9 @@ export function RightRail({
         </div>
         {isAuthenticated ? (
           <div className="recent-menu-list">
-            {recentMenus.map((item) => (
+            {recentVisitedMenus.map((item) => (
               <button
-                key={item.label}
+                key={`${item.section}-${item.label}`}
                 onClick={() => onMove(item.section)}
                 type="button"
               >
@@ -571,5 +593,37 @@ export function RightRail({
         </ul>
       </section>
     </aside>
+  );
+}
+
+const MOBILE_BOTTOM_ITEMS: Array<{ id: MenuSection; label: string }> = [
+  { id: "dashboard", label: "홈" },
+  { id: "accounts", label: "계좌" },
+  { id: "transfer", label: "이체" },
+  { id: "transactions", label: "내역" },
+  { id: "security", label: "인증" },
+];
+
+export function MobileBottomNav({
+  activeSection,
+  onMove,
+}: {
+  activeSection: MenuSection;
+  onMove: MoveHandler;
+}) {
+  return (
+    <nav aria-label="모바일 하단 메뉴" className="mobile-bottom-nav">
+      {MOBILE_BOTTOM_ITEMS.map((item) => (
+        <button
+          aria-current={activeSection === item.id ? "page" : undefined}
+          className={activeSection === item.id ? "active" : undefined}
+          key={item.id}
+          onClick={() => onMove(item.id)}
+          type="button"
+        >
+          <span>{item.label}</span>
+        </button>
+      ))}
+    </nav>
   );
 }

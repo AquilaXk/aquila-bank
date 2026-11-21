@@ -1,8 +1,18 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import {
+  CommandPaletteDialog,
+  type CommandPaletteEntry,
+  NotificationToastRegion,
+} from "@/components/customer-banking/common";
 import { AccountsSection } from "@/components/customer-banking/sections/accounts-section";
-import { BankHeader, RightRail, SideMenu } from "@/components/customer-banking/layout";
+import {
+  BankHeader,
+  MobileBottomNav,
+  RightRail,
+  SideMenu,
+} from "@/components/customer-banking/layout";
 import { DashboardSection } from "@/components/customer-banking/sections/dashboard-section";
 import { EnterpriseServicesSection } from "@/components/customer-banking/sections/enterprise-services-section";
 import { NotificationsSection } from "@/components/customer-banking/sections/notifications-section";
@@ -11,6 +21,7 @@ import { SecuritySection } from "@/components/customer-banking/sections/security
 import { SupportCenterSection } from "@/components/customer-banking/sections/support-center-section";
 import { TransactionsSection } from "@/components/customer-banking/sections/transactions-section";
 import { TransferSection } from "@/components/customer-banking/sections/transfer-section";
+import { useBankingEnhancements } from "@/hooks/use-banking-enhancements";
 import { useCustomerBanking } from "@/hooks/use-customer-banking";
 import { searchCustomerBankingServices } from "@/lib/customer-banking/search";
 import type { MenuSection, ServiceSearchItem } from "@/lib/customer-banking/types";
@@ -61,7 +72,11 @@ export default function HomePage() {
     unreadCount,
     preferences,
     sseStatus,
+    lastIncomingNotification,
+    hasPrevTransactionPage,
     hasPrevNotificationPage,
+    api,
+    setAlert,
     handleLogin,
     handleTotpChallenge,
     handleBackupChallenge,
@@ -87,6 +102,9 @@ export default function HomePage() {
     handleSelectCustomerApplication,
     handleCancelCustomerApplication,
     handleSearchTransactions,
+    handleNextTransactions,
+    handlePrevTransactions,
+    handleFirstTransactions,
     handleResetTransactionFilters,
     handleLoadTransactionDetail,
     handleLoadNotifications,
@@ -115,6 +133,46 @@ export default function HomePage() {
     setNotificationFilters,
     setPreferences,
   } = useCustomerBanking();
+  const parsedTxAccountId = Number(transactionFilters.accountId);
+  const {
+    recipients,
+    scheduledTransfers,
+    accountPreferencesMap,
+    primaryAccountId,
+    savingsPockets,
+    annotationsMap,
+    balanceMasked,
+    visitedMenus,
+    commandPaletteOpen,
+    toasts,
+    enhancementsBusy,
+    setCommandPaletteOpen,
+    toggleBalanceMasked,
+    dismissToast,
+    handleSaveRecipient,
+    handleDeleteRecipient,
+    handleCreateScheduledTransfer,
+    handleUpdateScheduledTransferStatus,
+    handleSaveAccountPreference,
+    handleCreateSavingsPocket,
+    handleUpdateSavingsPocket,
+    handleDeleteSavingsPocket,
+    handleSaveTransactionAnnotation,
+  } = useBankingEnhancements({
+    api,
+    isAuthenticated: Boolean(session),
+    authGeneration,
+    activeSection,
+    selectedAccountId: selectedAccount?.accountId ?? accounts[0]?.accountId ?? null,
+    transactions,
+    transactionAccountId:
+      Number.isSafeInteger(parsedTxAccountId) && parsedTxAccountId > 0
+        ? parsedTxAccountId
+        : null,
+    lastIncomingNotification,
+    onAlert: setAlert,
+  });
+  const combinedBusy = isBusy || enhancementsBusy;
   const sessionRequired =
     !session && !publicSections.includes(activeSection);
   const canRenderWorkSection = !sessionRequired;
@@ -125,6 +183,57 @@ export default function HomePage() {
     () => searchCustomerBankingServices(searchQuery),
     [searchQuery],
   );
+  const commandEntries = useMemo<CommandPaletteEntry[]>(() => {
+    const baseEntries: CommandPaletteEntry[] = searchCustomerBankingServices("").map(
+      (item) => ({
+        id: `svc-${item.id}`,
+        label: item.label,
+        group: item.group,
+        description: item.description,
+        keywordsText: item.keywords.join(" "),
+        onSelect: () => setActiveSection(item.section),
+      }),
+    );
+    if (!session) {
+      return baseEntries;
+    }
+    const accountEntries: CommandPaletteEntry[] = accounts.map((acc) => ({
+      id: `acc-${acc.accountId}`,
+      label: accountPreferencesMap.get(acc.accountId)?.customAlias || acc.displayName,
+      group: "보유계좌",
+      description: acc.accountNumber,
+      keywordsText: `${acc.accountNumber} ${acc.currencyCode}`,
+      onSelect: () => {
+        setActiveSection("accounts");
+        void handleLoadAccountDetail(acc.accountId);
+      },
+    }));
+    const recipientEntries: CommandPaletteEntry[] = recipients.map((rec) => ({
+      id: `rec-${rec.recipientId}`,
+      label: `${rec.nickname} 즉시이체`,
+      group: "자주 쓰는 계좌",
+      description: rec.accountNumber,
+      keywordsText: `${rec.nickname} ${rec.accountNumber}`,
+      onSelect: () => {
+        setTransferForm({
+          ...transferForm,
+          targetAccountNumber: rec.accountNumber,
+          currencyCode: rec.currencyCode,
+        });
+        setActiveSection("transfer");
+      },
+    }));
+    return [...accountEntries, ...recipientEntries, ...baseEntries];
+  }, [
+    accountPreferencesMap,
+    accounts,
+    handleLoadAccountDetail,
+    recipients,
+    session,
+    setActiveSection,
+    setTransferForm,
+    transferForm,
+  ]);
 
   useEffect(() => {
     setSearchQuery("");
@@ -177,15 +286,19 @@ export default function HomePage() {
       </a>
       <BankHeader
         activeSection={activeSection}
+        balanceMasked={balanceMasked}
         mobileSearchOpen={mobileSearchOpen}
         searchQuery={searchQuery}
         serviceMapOpen={serviceMapOpen}
         session={session}
+        unreadCount={unreadCount}
         onMobileSearchToggle={() => setMobileSearchOpen((value) => !value)}
         onMove={moveToSection}
+        onOpenCommandPalette={() => setCommandPaletteOpen(true)}
         onSearchChange={setSearchQuery}
         onSearchSelect={selectSearchResult}
         onServiceMapToggle={() => setServiceMapOpen((value) => !value)}
+        onToggleBalanceMask={toggleBalanceMasked}
         searchResults={searchResults}
       />
 
@@ -214,11 +327,16 @@ export default function HomePage() {
           {sessionRequired ? renderLoginRequiredWork() : null}
           {activeSection === "dashboard" ? (
             <DashboardSection
+              accountPreferencesMap={accountPreferencesMap}
               accounts={accounts}
+              balanceMasked={balanceMasked}
               hasSession={Boolean(session)}
+              isBusy={combinedBusy}
               onMove={moveToSection}
               onRefresh={handleRefresh}
-              isBusy={isBusy}
+              primaryAccountId={primaryAccountId}
+              scheduledTransfers={scheduledTransfers}
+              transactions={transactions}
             />
           ) : null}
           {canRenderWorkSection && activeSection === "accounts" ? (
@@ -226,59 +344,70 @@ export default function HomePage() {
               key={`accounts-${authGeneration}`}
               accountCursor={accountCursor}
               accountLimit={accountLimit}
+              accountPreferencesMap={accountPreferencesMap}
               accounts={accounts}
-              isBusy={isBusy}
+              balanceMasked={balanceMasked}
+              isBusy={combinedBusy}
               selectedAccount={selectedAccount}
+              savingsPockets={savingsPockets}
               onAccountLimitChange={setAccountLimit}
+              onCreateSavingsPocket={handleCreateSavingsPocket}
+              onDeleteSavingsPocket={handleDeleteSavingsPocket}
               onLoadAccountDetail={handleLoadAccountDetail}
               onLoadAccounts={() => void handleLoadAccounts()}
               onLoadNextAccounts={() => void handleLoadAccounts(accountCursor, true)}
+              onSaveAccountPreference={handleSaveAccountPreference}
+              onUpdateSavingsPocket={handleUpdateSavingsPocket}
             />
           ) : null}
           {canRenderWorkSection && activeSection === "transfer" ? (
             <TransferSection
               key={`transfer-${authGeneration}`}
               accounts={accounts}
-              isBusy={isBusy}
+              isBusy={combinedBusy}
+              recipients={recipients}
               reversalForm={reversalForm}
               reversalResult={reversalResult}
+              scheduledTransfers={scheduledTransfers}
               transferForm={transferForm}
               transferPreview={transferPreview}
               transferResult={transferResult}
+              onCreateScheduledTransfer={handleCreateScheduledTransfer}
+              onDeleteRecipient={handleDeleteRecipient}
               onPreviewTransfer={handlePreviewTransfer}
               onReversal={handleReversal}
               onReversalChange={setReversalForm}
+              onSaveRecipient={handleSaveRecipient}
               onTransfer={handleTransfer}
               onTransferChange={setTransferForm}
+              onUpdateScheduledTransferStatus={handleUpdateScheduledTransferStatus}
             />
           ) : null}
           {canRenderWorkSection && activeSection === "transactions" ? (
             <TransactionsSection
               key={`transactions-${authGeneration}`}
               accounts={accounts}
+              annotationsMap={annotationsMap}
+              balanceMasked={balanceMasked}
               filters={transactionFilters}
-              isBusy={isBusy}
+              hasPrev={hasPrevTransactionPage}
+              isBusy={combinedBusy}
               mode={transactionMode}
               slice={transactionSlice}
               transactionDetail={transactionDetail}
               transactions={transactions}
               onDetail={handleLoadTransactionDetail}
               onFilterChange={setTransactionFilters}
+              onFirst={() => void handleFirstTransactions()}
               onModeChange={setTransactionMode}
-              onNext={() => {
-                if (transactionSlice?.nextCursor) {
-                  void handleSearchTransactions(
-                    transactionMode,
-                    transactionSlice.nextCursor,
-                    true,
-                  );
-                }
-              }}
+              onNext={() => void handleNextTransactions()}
+              onPrev={() => void handlePrevTransactions()}
+              onReset={handleResetTransactionFilters}
+              onSaveAnnotation={handleSaveTransactionAnnotation}
               onSearch={(event) => {
                 event.preventDefault();
                 void handleSearchTransactions(transactionMode);
               }}
-              onReset={handleResetTransactionFilters}
             />
           ) : null}
           {activeSection === "security" ? (
@@ -394,12 +523,20 @@ export default function HomePage() {
         </section>
 
         <RightRail
-          isBusy={isBusy}
+          isBusy={combinedBusy}
+          recentVisitedMenus={visitedMenus}
           session={session}
           onMove={moveToSection}
           onRefresh={handleRefresh}
         />
       </div>
+      <MobileBottomNav activeSection={activeSection} onMove={moveToSection} />
+      <CommandPaletteDialog
+        entries={commandEntries}
+        onClose={() => setCommandPaletteOpen(false)}
+        open={commandPaletteOpen}
+      />
+      <NotificationToastRegion items={toasts} onDismiss={dismissToast} />
     </main>
   );
 }

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { CustomerApplicationDetailsResponse } from "@/lib/api/types";
 import { supportCenterItems } from "@/lib/customer-banking/constants";
+import { tryKrwToMinor } from "@/lib/customer-banking/currency";
 import { formatDateTime } from "@/lib/customer-banking/format";
 import {
   getApplicationStatusLabel,
@@ -13,7 +14,7 @@ import type {
   CustomerApplicationLatestResult,
   CustomerApplicationSubmitHandler,
 } from "@/lib/customer-banking/types";
-import { BankNoticeStrip, CopyButton, OtpCodeInput } from "../common";
+import { BankCurrencyInput, BankNoticeStrip, CopyButton, OtpCodeInput } from "../common";
 
 const faqItems = [
   {
@@ -116,6 +117,14 @@ export function SupportCenterSection({
     contact: "",
     totpCode: "",
   });
+  const [limitForm, setLimitForm] = useState({
+    accountId: "",
+    singleLimitKrw: "300000",
+    dailyLimitKrw: "1000000",
+    changeReason: "생활비 및 공과금 이체 한도 조정",
+    evidenceReference: "LIM-REQ-202611",
+    totpCode: "",
+  });
   const [certificateForms, setCertificateForms] = useState(() =>
     Object.fromEntries(
       certificateItems.map((item) => [
@@ -164,11 +173,13 @@ export function SupportCenterSection({
             <button
               onClick={() =>
                 setActiveTask(
-                  item.title === "사고신고" || item.title === "이체한도"
-                    ? "incident"
-                    : item.title === "고객센터"
-                      ? "faq"
-                      : "status",
+                  item.title === "이체한도"
+                    ? "limit"
+                    : item.title === "사고신고"
+                      ? "incident"
+                      : item.title === "고객센터"
+                        ? "faq"
+                        : "status",
                 )
               }
               type="button"
@@ -207,6 +218,13 @@ export function SupportCenterSection({
           type="button"
         >
           긴급신고
+        </button>
+        <button
+          className={activeTask === "limit" ? "active" : ""}
+          onClick={() => setActiveTask("limit")}
+          type="button"
+        >
+          이체한도변경
         </button>
         <button
           className={activeTask === "certificate" ? "active" : ""}
@@ -485,6 +503,111 @@ export function SupportCenterSection({
             }
           >
             신고 접수
+          </button>
+        </article>
+        ) : null}
+
+        {activeTask === "all" || activeTask === "limit" ? (
+        <article className="limit-change-form">
+          <div className="panel-toolbar">
+            <div>
+              <strong>이체한도 변경</strong>
+              <span>1회 최대 50만원 · 1일 최대 200만원</span>
+            </div>
+          </div>
+          <div className="form-grid">
+            {accounts.length > 0 ? (
+              <label>
+                <span>대상 계좌</span>
+                <select
+                  onChange={(event) =>
+                    setLimitForm((form) => ({ ...form, accountId: event.target.value }))
+                  }
+                  value={limitForm.accountId}
+                >
+                  <option value="">계좌를 선택하세요</option>
+                  {accounts.map((account) => (
+                    <option key={account.accountId} value={String(account.accountId)}>
+                      {account.displayName} ({account.accountNumber})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <label>
+                <span>계좌 ID</span>
+                <input
+                  inputMode="numeric"
+                  onChange={(event) =>
+                    setLimitForm((form) => ({ ...form, accountId: event.target.value }))
+                  }
+                  value={limitForm.accountId}
+                />
+              </label>
+            )}
+            <BankCurrencyInput
+              label="변경 1회 이체한도"
+              onValueChange={(digits) =>
+                setLimitForm((form) => ({ ...form, singleLimitKrw: digits }))
+              }
+              value={limitForm.singleLimitKrw}
+            />
+            <BankCurrencyInput
+              label="변경 1일 이체한도"
+              onValueChange={(digits) =>
+                setLimitForm((form) => ({ ...form, dailyLimitKrw: digits }))
+              }
+              value={limitForm.dailyLimitKrw}
+            />
+            <label>
+              <span>변경 사유</span>
+              <input
+                maxLength={120}
+                onChange={(event) =>
+                  setLimitForm((form) => ({ ...form, changeReason: event.target.value }))
+                }
+                value={limitForm.changeReason}
+              />
+            </label>
+            <label>
+              <span>증빙 참조번호</span>
+              <input
+                maxLength={80}
+                onChange={(event) =>
+                  setLimitForm((form) => ({ ...form, evidenceReference: event.target.value.toUpperCase() }))
+                }
+                value={limitForm.evidenceReference}
+              />
+            </label>
+            <OtpCodeInput
+              label="OTP"
+              onValueChange={(nextCode) =>
+                setLimitForm((form) => ({ ...form, totpCode: nextCode }))
+              }
+              value={limitForm.totpCode}
+            />
+          </div>
+          <button
+            disabled={isBusy}
+            onClick={() => {
+              const singleTransferLimitMinor = tryKrwToMinor(limitForm.singleLimitKrw) ?? 0;
+              const dailyTransferLimitMinor = tryKrwToMinor(limitForm.dailyLimitKrw) ?? 0;
+              void onSubmitCustomerApplication({
+                applicationType: "TRANSFER_LIMIT_CHANGE",
+                accountId: limitForm.accountId || (accounts[0] ? String(accounts[0].accountId) : ""),
+                totpCode: limitForm.totpCode,
+                payload: {
+                  singleTransferLimitMinor,
+                  dailyTransferLimitMinor,
+                  changeReason: limitForm.changeReason.trim() || "이체한도 조정 신청",
+                  evidenceReference: limitForm.evidenceReference.trim() || "LIM-REQ-202611",
+                },
+                successMessage: "이체한도 변경 신청이 접수되었습니다.",
+              });
+            }}
+            type="button"
+          >
+            이체한도 변경 접수
           </button>
         </article>
         ) : null}

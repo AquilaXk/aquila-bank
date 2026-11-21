@@ -2,6 +2,7 @@ package com.aquilabank.global.web;
 
 import com.aquilabank.domain.account.exception.AccountStatusChangeAuditNotFoundException;
 import com.aquilabank.domain.account.exception.AccountSummaryNotFoundException;
+import com.aquilabank.domain.account.exception.SavingsPocketNotFoundException;
 import com.aquilabank.domain.auth.exception.AccountAccessDeniedException;
 import com.aquilabank.domain.auth.exception.AuthStatusChangeAuditNotFoundException;
 import com.aquilabank.domain.auth.exception.AuthUserNotFoundException;
@@ -22,6 +23,8 @@ import com.aquilabank.domain.ledger.exception.CurrencyMismatchException;
 import com.aquilabank.domain.ledger.exception.InsufficientBalanceException;
 import com.aquilabank.domain.ledger.exception.LedgerAuditEntryNotFoundException;
 import com.aquilabank.domain.ledger.exception.LedgerSnapshotOpenDriftNotFoundException;
+import com.aquilabank.domain.ledger.exception.SavedRecipientNotFoundException;
+import com.aquilabank.domain.ledger.exception.ScheduledTransferNotFoundException;
 import com.aquilabank.domain.ledger.exception.SnapshotNotFoundException;
 import com.aquilabank.domain.ledger.exception.TransferAccountStatusBlockedException;
 import com.aquilabank.domain.ledger.exception.TransferLimitExceededException;
@@ -314,6 +317,9 @@ public class ApiExceptionHandler {
   @ExceptionHandler({
     AccountSummaryNotFoundException.class,
     AccountStatusChangeAuditNotFoundException.class,
+    SavingsPocketNotFoundException.class,
+    SavedRecipientNotFoundException.class,
+    ScheduledTransferNotFoundException.class,
     SnapshotNotFoundException.class,
     TransferReversalNotFoundException.class,
     AuthStatusChangeAuditNotFoundException.class,

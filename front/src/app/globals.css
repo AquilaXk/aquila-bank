@@ -31,10 +31,12 @@
     --text: light-dark(var(--palette-grey-1200), var(--palette-grey-10));
     --muted: light-dark(var(--palette-grey-800), var(--palette-grey-300));
     --primary: light-dark(var(--palette-blue-700), var(--palette-blue-400));
-    --primary-dark: light-dark(#124bb5, #8ab8ff);
+    --primary-dark: light-dark(#1e40af, #93c5fd);
+    --primary-contrast: light-dark(var(--palette-grey-0), var(--palette-grey-1200));
     --primary-soft: light-dark(rgba(50, 121, 249, 0.08), rgba(91, 155, 255, 0.14));
     --accent: var(--palette-blue-600);
     --danger: light-dark(#c81e1e, #f87171);
+    --danger-contrast: light-dark(var(--palette-grey-0), var(--palette-grey-1200));
     --danger-soft: light-dark(rgba(200, 30, 30, 0.08), rgba(248, 113, 113, 0.14));
     --success: light-dark(#0e7452, #34d399);
     --success-soft: light-dark(rgba(14, 116, 82, 0.08), rgba(52, 211, 153, 0.14));
@@ -55,6 +57,16 @@
 
     accent-color: var(--primary);
     scrollbar-color: light-dark(var(--palette-grey-200), var(--palette-grey-800)) transparent;
+  }
+
+  :root:has(> head > meta[name="color-scheme"][content="dark"]),
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+  }
+
+  :root:has(> head > meta[name="color-scheme"][content="light"]),
+  :root[data-theme="light"] {
+    color-scheme: light;
   }
 
   :root:has(> head > meta[name="color-scheme"][content="dark"]),

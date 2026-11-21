@@ -109,7 +109,7 @@ export function BankTable({
   dense?: boolean;
 }) {
   return (
-    <div className="bank-table-wrap">
+    <div aria-label={caption} className="bank-table-wrap" role="region" tabIndex={0}>
       <table className={`bank-table ${dense ? "dense-bank-table" : ""} ${className}`.trim()}>
         <caption>{caption}</caption>
         {children}
@@ -524,6 +524,7 @@ export function BankDialog({
   children,
   confirmLabel,
   confirmTone = "primary",
+  dismissOnBackdrop = true,
   onClose,
   onConfirm,
   open,
@@ -534,6 +535,7 @@ export function BankDialog({
   children: ReactNode;
   confirmLabel?: string;
   confirmTone?: "danger" | "primary";
+  dismissOnBackdrop?: boolean;
   onClose?: () => void;
   onConfirm?: () => void;
   open: boolean;
@@ -544,13 +546,14 @@ export function BankDialog({
   const panelRef = useRef<HTMLDivElement>(null);
   const pointerDownOutsideRef = useRef(false);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  const allowBackdropClose = !busy && dismissOnBackdrop && confirmTone !== "danger";
 
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) {
       return;
     }
-    dialog.setAttribute("closedby", "any");
+    dialog.setAttribute("closedby", busy ? "none" : allowBackdropClose ? "any" : "closerequest");
     if (open) {
       if (!dialog.open) {
         previousFocusRef.current =
@@ -569,7 +572,7 @@ export function BankDialog({
       }
       previousFocusRef.current?.focus();
     }
-  }, [open]);
+  }, [allowBackdropClose, busy, open]);
 
   function isPointOutsidePanel(clientX: number, clientY: number): boolean {
     const panel = panelRef.current;
@@ -587,12 +590,14 @@ export function BankDialog({
 
   function handlePointerDown(event: PointerEvent<HTMLDialogElement>) {
     pointerDownOutsideRef.current =
+      allowBackdropClose &&
       event.target === dialogRef.current &&
       isPointOutsidePanel(event.clientX, event.clientY);
   }
 
   function handlePointerUp(event: PointerEvent<HTMLDialogElement>) {
     const shouldClose =
+      allowBackdropClose &&
       pointerDownOutsideRef.current &&
       event.target === dialogRef.current &&
       isPointOutsidePanel(event.clientX, event.clientY);
@@ -609,7 +614,9 @@ export function BankDialog({
       className="bank-dialog"
       onCancel={(event) => {
         event.preventDefault();
-        onClose?.();
+        if (!busy) {
+          onClose?.();
+        }
       }}
       onClose={() => {
         previousFocusRef.current?.focus();
@@ -624,6 +631,7 @@ export function BankDialog({
             <button
               aria-label={`${title} 닫기`}
               className="dialog-close-button"
+              disabled={busy}
               onClick={onClose}
               type="button"
             >
@@ -634,7 +642,12 @@ export function BankDialog({
         <div className="bank-dialog-body">{children}</div>
         {onConfirm ? (
           <div className="bank-dialog-actions">
-            <button autoFocus onClick={onClose} type="button">
+            <button
+              autoFocus={confirmTone === "danger"}
+              disabled={busy}
+              onClick={onClose}
+              type="button"
+            >
               {cancelLabel}
             </button>
             <button
@@ -876,5 +889,320 @@ export function BankNoticeStrip({
         </div>
       ))}
     </dl>
+  );
+}
+
+const HANGUL_CHOSEONG = [
+  "ㄱ", "ㄲ", "ㄴ", "ㄷ", "ㄸ", "ㄹ", "ㅁ", "ㅂ", "ㅃ",
+  "ㅅ", "ㅆ", "ㅇ", "ㅈ", "ㅉ", "ㅊ", "ㅋ", "ㅌ", "ㅍ", "ㅎ",
+];
+
+export function toChoseongSearchKey(text: string): string {
+  let out = "";
+  for (let i = 0; i < text.length; i += 1) {
+    const code = text.charCodeAt(i);
+    if (code >= 0xac00 && code <= 0xd7a3) {
+      out += HANGUL_CHOSEONG[Math.floor((code - 0xac00) / 588)];
+    } else {
+      out += text[i].toLowerCase();
+    }
+  }
+  return out;
+}
+
+export function matchesKoreanQuery(target: string, rawQuery: string): boolean {
+  const needle = rawQuery.trim().toLowerCase();
+  if (!needle) {
+    return true;
+  }
+  if (target.toLowerCase().includes(needle)) {
+    return true;
+  }
+  return toChoseongSearchKey(target).includes(toChoseongSearchKey(needle));
+}
+
+export type BankToastItem = {
+  id: string;
+  title: string;
+  message: string;
+  tone?: "info" | "success" | "error";
+};
+
+export function NotificationToastRegion({
+  items,
+  onDismiss,
+}: {
+  items: BankToastItem[];
+  onDismiss: (id: string) => void;
+}) {
+  const regionRef = useRef<HTMLDivElement>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [paused, setPaused] = useState(false);
+
+  useEffect(() => {
+    if (paused || modalOpen || items.length === 0) {
+      return;
+    }
+    const oldestId = items[0].id;
+    const timer = setTimeout(() => {
+      onDismiss(oldestId);
+    }, 6000);
+    return () => clearTimeout(timer);
+  }, [items, modalOpen, onDismiss, paused]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+    const updateModalState = () => {
+      setModalOpen(Boolean(document.querySelector("dialog[open]")));
+    };
+    updateModalState();
+    const observer = new MutationObserver(updateModalState);
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: ["open"],
+      subtree: true,
+      childList: true,
+    });
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const el = regionRef.current;
+    if (!el || typeof el.showPopover !== "function") {
+      return;
+    }
+    try {
+      if (items.length > 0 && !modalOpen) {
+        if (!el.matches(":popover-open")) {
+          el.showPopover();
+        }
+      } else if (el.matches(":popover-open")) {
+        el.hidePopover?.();
+      }
+    } catch {
+      // popover API 미지원 환경에서는 고정 컨테이너로 안전하게 동작
+    }
+  }, [items.length, modalOpen]);
+
+  if (items.length === 0 || modalOpen) {
+    return null;
+  }
+
+  return (
+    <div
+      ref={regionRef}
+      aria-live="polite"
+      className="bank-toast-region"
+      onBlur={() => setPaused(false)}
+      onFocus={() => setPaused(true)}
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      popover="manual"
+      role="status"
+    >
+      {items.map((item) => (
+        <div className={`bank-toast ${item.tone ?? "info"}`} key={item.id}>
+          <div>
+            <strong>{item.title}</strong>
+            <p>{item.message}</p>
+          </div>
+          <button
+            aria-label={`${item.title} 알림 닫기`}
+            onClick={() => onDismiss(item.id)}
+            type="button"
+          >
+            닫기
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export type CommandPaletteEntry = {
+  id: string;
+  label: string;
+  group: string;
+  description: string;
+  keywordsText: string;
+  onSelect: () => void;
+};
+
+export function CommandPaletteDialog({
+  entries,
+  onClose,
+  open,
+}: {
+  entries: CommandPaletteEntry[];
+  onClose: () => void;
+  open: boolean;
+}) {
+  const titleId = useId();
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const pointerDownOutsideRef = useRef(false);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const [query, setQuery] = useState("");
+  const [selectedIndex, setSelectedIndex] = useState(0);
+
+  const filtered: CommandPaletteEntry[] = [];
+  for (let i = 0; i < entries.length; i += 1) {
+    const entry = entries[i];
+    if (matchesKoreanQuery(`${entry.label} ${entry.group} ${entry.keywordsText}`, query)) {
+      filtered.push(entry);
+      if (filtered.length >= 16) {
+        break;
+      }
+    }
+  }
+
+  const clampedIndex = filtered.length > 0 ? Math.min(selectedIndex, filtered.length - 1) : 0;
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) {
+      return;
+    }
+    dialog.setAttribute("closedby", "any");
+    if (open) {
+      setQuery("");
+      setSelectedIndex(0);
+      if (!dialog.open) {
+        previousFocusRef.current =
+          document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        if (typeof dialog.showModal === "function") {
+          dialog.showModal();
+        } else {
+          dialog.setAttribute("open", "");
+        }
+      }
+      requestAnimationFrame(() => inputRef.current?.focus());
+    } else if (dialog.open) {
+      if (typeof dialog.close === "function") {
+        dialog.close();
+      } else {
+        dialog.removeAttribute("open");
+      }
+      previousFocusRef.current?.focus();
+    }
+  }, [open]);
+
+  function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      if (filtered.length > 0) {
+        setSelectedIndex((prev) => (prev + 1) % filtered.length);
+      }
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      if (filtered.length > 0) {
+        setSelectedIndex((prev) => (prev - 1 + filtered.length) % filtered.length);
+      }
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      setSelectedIndex(0);
+    } else if (event.key === "End" && filtered.length > 0) {
+      event.preventDefault();
+      setSelectedIndex(filtered.length - 1);
+    } else if (event.key === "Enter" && filtered[clampedIndex]) {
+      event.preventDefault();
+      const target = filtered[clampedIndex];
+      onClose();
+      target.onSelect();
+    }
+  }
+
+  function isOutside(clientX: number, clientY: number): boolean {
+    const rect = panelRef.current?.getBoundingClientRect();
+    if (!rect) {
+      return false;
+    }
+    return (
+      clientX < rect.left ||
+      clientX > rect.right ||
+      clientY < rect.top ||
+      clientY > rect.bottom
+    );
+  }
+
+  return (
+    <dialog
+      ref={dialogRef}
+      aria-labelledby={titleId}
+      className="cmd-palette-dialog"
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+      onClose={() => {
+        previousFocusRef.current?.focus();
+      }}
+      onPointerDown={(event) => {
+        pointerDownOutsideRef.current =
+          event.target === dialogRef.current && isOutside(event.clientX, event.clientY);
+      }}
+      onPointerUp={(event) => {
+        const shouldClose =
+          pointerDownOutsideRef.current &&
+          event.target === dialogRef.current &&
+          isOutside(event.clientX, event.clientY);
+        pointerDownOutsideRef.current = false;
+        if (shouldClose) {
+          onClose();
+        }
+      }}
+    >
+      <div ref={panelRef} className="cmd-palette-panel">
+        <div className="cmd-palette-input-row">
+          <input
+            ref={inputRef}
+            aria-label="빠른 메뉴 및 계좌 검색"
+            id={titleId}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setSelectedIndex(0);
+            }}
+            onKeyDown={handleKeyDown}
+            placeholder="메뉴, 계좌, 받는 사람 검색 (초성 ㅇㅊ 지원)"
+            type="search"
+            value={query}
+          />
+          <button onClick={onClose} type="button">
+            닫기
+          </button>
+        </div>
+        <div className="cmd-palette-list" role="listbox">
+          {filtered.length === 0 ? (
+            <EmptyState
+              title="일치하는 항목이 없습니다."
+              description="메뉴 이름이나 초성으로 다시 검색하세요."
+            />
+          ) : (
+            filtered.map((entry, idx) => (
+              <button
+                aria-selected={idx === clampedIndex}
+                className={`cmd-palette-item ${idx === clampedIndex ? "selected" : ""}`.trim()}
+                key={entry.id}
+                onClick={() => {
+                  onClose();
+                  entry.onSelect();
+                }}
+                role="option"
+                type="button"
+              >
+                <div>
+                  <strong>{entry.label}</strong>
+                  <small> · {entry.description}</small>
+                </div>
+                <StatusBadge tone="muted">{entry.group}</StatusBadge>
+              </button>
+            ))
+          )}
+        </div>
+      </div>
+    </dialog>
   );
 }

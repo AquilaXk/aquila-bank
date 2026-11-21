@@ -1,3 +1,5 @@
+import type { TransactionCategory } from "@/lib/api/types";
+
 const ACCOUNT_STATUS_MAP = new Map<string, string>([
   ["ACTIVE", "정상"],
   ["RESTRICTED", "거래제한"],
@@ -103,6 +105,40 @@ const SESSION_STATUS_MAP = new Map<string, string>([
   ["EXPIRED", "만료됨"],
 ]);
 
+const TRANSACTION_CATEGORY_MAP = new Map<string, string>([
+  ["TRANSFER", "계좌이체"],
+  ["LIVING", "생활비"],
+  ["FOOD", "식비"],
+  ["HOUSING", "주거/관리비"],
+  ["SALARY", "급여/소득"],
+  ["SAVINGS", "저축/투자"],
+  ["UTILITY", "공과금/통신"],
+  ["OTHER", "기타"],
+]);
+
+const SCHEDULE_FREQUENCY_MAP = new Map<string, string>([
+  ["ONCE", "1회 예약"],
+  ["WEEKLY", "매주 반복"],
+  ["MONTHLY", "매월 반복"],
+]);
+
+const SCHEDULE_STATUS_MAP = new Map<string, string>([
+  ["ACTIVE", "정상 예약"],
+  ["PAUSED", "일시중지"],
+  ["CANCELLED", "해지됨"],
+]);
+
+export const TRANSACTION_CATEGORY_OPTIONS: Array<{ value: TransactionCategory; label: string }> = [
+  { value: "TRANSFER", label: "계좌이체" },
+  { value: "LIVING", label: "생활비" },
+  { value: "FOOD", label: "식비" },
+  { value: "HOUSING", label: "주거/관리비" },
+  { value: "SALARY", label: "급여/소득" },
+  { value: "SAVINGS", label: "저축/투자" },
+  { value: "UTILITY", label: "공과금/통신" },
+  { value: "OTHER", label: "기타" },
+];
+
 function lookupLabel(map: Map<string, string>, raw?: string | null, fallback = "-"): string {
   if (!raw) {
     return fallback;
@@ -157,4 +193,16 @@ export function getFeePolicyLabel(policy?: string | null): string {
 
 export function getSessionStatusLabel(status?: string | null): string {
   return lookupLabel(SESSION_STATUS_MAP, status);
+}
+
+export function getTransactionCategoryLabel(category?: string | null): string {
+  return lookupLabel(TRANSACTION_CATEGORY_MAP, category, "미분류");
+}
+
+export function getScheduledTransferFrequencyLabel(scheduleType?: string | null): string {
+  return lookupLabel(SCHEDULE_FREQUENCY_MAP, scheduleType);
+}
+
+export function getScheduledTransferStatusLabel(ruleStatus?: string | null): string {
+  return lookupLabel(SCHEDULE_STATUS_MAP, ruleStatus);
 }

@@ -1,9 +1,12 @@
 import type {
   AccountListResponse,
+  AccountPreferenceItem,
+  AccountPreferenceListResponse,
   AccountSummaryResponse,
   AuthSessionListResponse,
   BackupCodeChallengeVerifyRequest,
   BackupCodeIssueResponse,
+  CreateScheduledTransferRequest,
   CustomerApplicationDetailsResponse,
   CustomerApplicationListResponse,
   CustomerApplicationRequest,
@@ -22,10 +25,23 @@ import type {
   PasswordRecoveryRequest,
   PasswordRecoveryRequestResult,
   PasswordResetRequest,
+  SaveAccountPreferenceRequest,
+  SaveRecipientRequest,
+  SaveSavingsPocketRequest,
+  SaveTransactionAnnotationRequest,
+  SavedRecipientItem,
+  SavedRecipientListResponse,
+  SavingsPocketItem,
+  SavingsPocketListResponse,
+  ScheduledTransferItem,
+  ScheduledTransferListResponse,
+  ScheduledTransferStatus,
   TotpChallengeVerifyRequest,
   TotpCodeRequest,
   TotpEnrollmentStartResponse,
   TotpEnrollmentVerifyResponse,
+  TransactionAnnotationItem,
+  TransactionAnnotationListResponse,
   TransactionDetailResponse,
   TransactionQueryParams,
   TransactionQueryResponse,
@@ -38,7 +54,7 @@ import type {
 } from "./types";
 
 type RequestOptions = {
-  method?: "GET" | "POST" | "DELETE";
+  method?: "GET" | "POST" | "PUT" | "DELETE";
   body?: unknown;
   headers?: Record<string, string>;
   signal?: AbortSignal;
@@ -488,5 +504,140 @@ export class AquilaBankApiClient {
       method: "POST",
       body: request,
     });
+  }
+
+  getSavedRecipients(options?: { signal?: AbortSignal }): Promise<SavedRecipientListResponse> {
+    return this.request("/api/v1/transfers/recipients", { signal: options?.signal });
+  }
+
+  saveRecipient(request: SaveRecipientRequest): Promise<SavedRecipientItem> {
+    return this.request("/api/v1/transfers/recipients", {
+      method: "POST",
+      body: request,
+    });
+  }
+
+  deleteRecipient(recipientId: number): Promise<{ recipientId: number; deleted: boolean }> {
+    return this.request(
+      `/api/v1/transfers/recipients/${encodeURIComponent(String(recipientId))}`,
+      { method: "DELETE" },
+    );
+  }
+
+  getScheduledTransfers(options?: { signal?: AbortSignal }): Promise<ScheduledTransferListResponse> {
+    return this.request("/api/v1/transfers/schedules", { signal: options?.signal });
+  }
+
+  createScheduledTransfer(request: CreateScheduledTransferRequest): Promise<ScheduledTransferItem> {
+    return this.request("/api/v1/transfers/schedules", {
+      method: "POST",
+      body: request,
+    });
+  }
+
+  updateScheduledTransferStatus(
+    scheduleId: number,
+    ruleStatus: ScheduledTransferStatus,
+    totpCode?: string,
+  ): Promise<ScheduledTransferItem> {
+    return this.request(
+      `/api/v1/transfers/schedules/${encodeURIComponent(String(scheduleId))}/status`,
+      {
+        method: "POST",
+        body: totpCode?.trim()
+          ? { ruleStatus, totpCode: totpCode.trim() }
+          : { ruleStatus },
+      },
+    );
+  }
+
+  getAccountPreferences(options?: { signal?: AbortSignal }): Promise<AccountPreferenceListResponse> {
+    return this.request("/api/v1/accounts/preferences", { signal: options?.signal });
+  }
+
+  saveAccountPreference(
+    accountId: number,
+    request: SaveAccountPreferenceRequest,
+  ): Promise<AccountPreferenceItem> {
+    return this.request(
+      `/api/v1/accounts/${encodeURIComponent(String(accountId))}/preferences`,
+      {
+        method: "PUT",
+        body: request,
+      },
+    );
+  }
+
+  getSavingsPockets(
+    accountId: number,
+    options?: { signal?: AbortSignal },
+  ): Promise<SavingsPocketListResponse> {
+    return this.request(`/api/v1/accounts/${encodeURIComponent(String(accountId))}/pockets`, {
+      signal: options?.signal,
+    });
+  }
+
+  createSavingsPocket(
+    accountId: number,
+    request: SaveSavingsPocketRequest,
+  ): Promise<SavingsPocketItem> {
+    return this.request(`/api/v1/accounts/${encodeURIComponent(String(accountId))}/pockets`, {
+      method: "POST",
+      body: request,
+    });
+  }
+
+  updateSavingsPocket(
+    accountId: number,
+    pocketId: number,
+    request: SaveSavingsPocketRequest,
+  ): Promise<SavingsPocketItem> {
+    return this.request(
+      `/api/v1/accounts/${encodeURIComponent(String(accountId))}/pockets/${encodeURIComponent(String(pocketId))}`,
+      {
+        method: "PUT",
+        body: request,
+      },
+    );
+  }
+
+  deleteSavingsPocket(
+    accountId: number,
+    pocketId: number,
+  ): Promise<{ pocketId: number; deleted: boolean }> {
+    return this.request(
+      `/api/v1/accounts/${encodeURIComponent(String(accountId))}/pockets/${encodeURIComponent(String(pocketId))}`,
+      {
+        method: "DELETE",
+      },
+    );
+  }
+
+  getTransactionAnnotations(
+    accountId: number,
+    references: string[],
+    options?: { signal?: AbortSignal },
+  ): Promise<TransactionAnnotationListResponse> {
+    const search = new URLSearchParams();
+    search.set("accountId", String(accountId));
+    for (let i = 0; i < references.length; i += 1) {
+      search.append("references", references[i]);
+    }
+    return this.request(`/api/v1/transactions/annotations?${search.toString()}`, {
+      signal: options?.signal,
+    });
+  }
+
+  saveTransactionAnnotation(
+    transactionReference: string,
+    request: SaveTransactionAnnotationRequest,
+  ): Promise<TransactionAnnotationItem> {
+    return this.request(
+      `/api/v1/transactions/${encodeURIComponent(transactionReference)}/annotation`,
+      {
+        method: "PUT",
+        body: request,
+      },
+    );
   }
 }

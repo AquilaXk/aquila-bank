@@ -37,6 +37,8 @@ export const recommendedKeywords = [
   "인증서",
   "OTP",
   "이체한도",
+  "예약이체",
+  "저축포켓",
   "공과금",
   "외환",
 ];
@@ -49,6 +51,7 @@ export const serviceMapGroups: Array<{
     title: "조회",
     items: [
       { label: "계좌조회", section: "accounts" },
+      { label: "목표 저축 포켓", section: "accounts" },
       { label: "거래내역 조회", section: "transactions" },
       { label: "출금가능금액", section: "accounts" },
       { label: "오픈뱅킹 연결", section: "enterpriseServices" },
@@ -58,8 +61,8 @@ export const serviceMapGroups: Array<{
     title: "이체",
     items: [
       { label: "즉시이체", section: "transfer" },
+      { label: "예약·자동이체", section: "transfer" },
       { label: "이체결과 조회", section: "transactions" },
-      { label: "자동이체", section: "transfer" },
       { label: "이체한도 조회", section: "supportCenter" },
     ],
   },

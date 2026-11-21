@@ -44,6 +44,11 @@ public abstract class PostgresContainerTestSupport {
                     statement.execute(
                         """
                         TRUNCATE TABLE
+                            scheduled_transfer_rule,
+                            user_transaction_annotation,
+                            account_savings_pocket,
+                            user_account_preference,
+                            user_saved_recipient,
                             auth_status_change_audit,
                             provider_delivery_metric_summary,
                             auth_password_recovery_delivery_outbox,

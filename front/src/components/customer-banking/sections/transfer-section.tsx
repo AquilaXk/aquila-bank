@@ -1,6 +1,12 @@
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
 import type {
+  CreateScheduledTransferRequest,
+  SavedRecipientItem,
+  SaveRecipientRequest,
+  ScheduledTransferFrequency,
+  ScheduledTransferItem,
+  ScheduledTransferStatus,
   TransferPreviewResponse,
   TransferResponse,
   TransferReversalResponse,
@@ -9,8 +15,12 @@ import {
   addKrwAmount,
   tryKrwToMinor,
 } from "@/lib/customer-banking/currency";
-import { formatDateTime, formatMinorAmount } from "@/lib/customer-banking/format";
-import { getTransactionStatusLabel } from "@/lib/customer-banking/labels";
+import { formatDateTime, formatMinorAmount, toIsoDateTime, toLocalInputValue } from "@/lib/customer-banking/format";
+import {
+  getScheduledTransferFrequencyLabel,
+  getScheduledTransferStatusLabel,
+  getTransactionStatusLabel,
+} from "@/lib/customer-banking/labels";
 import {
   BankActionBar,
   BankCurrencyInput,
@@ -49,17 +59,24 @@ function getTransferBlockedReasonLabel(
     return "이체 가능";
   }
   switch (reason) {
-    case "LIMIT_EXCEEDED":
-    case "DAILY_LIMIT_EXCEEDED":
+    case "CURRENCY_MISMATCH":
+      return "통화 불일치 확인 필요";
+    case "TARGET_ACCOUNT_NOT_ACTIVE":
+      return "입금계좌 거래제한 상태";
     case "SINGLE_LIMIT_EXCEEDED":
+      return "1회 이체한도 초과";
+    case "DAILY_LIMIT_EXCEEDED":
+      return "1일 이체한도 초과";
+    case "LIMIT_EXCEEDED":
       return "한도 확인 필요";
     case "OTP_REQUIRED":
       return "보안 확인 필요";
     case "TARGET_ACCOUNT_NOT_FOUND":
     case "INVALID_TARGET_ACCOUNT":
       return "받는 계좌 확인 필요";
+    case "INSUFFICIENT_BALANCE":
     case "INSUFFICIENT_FUNDS":
-      return "출금가능금액 확인 필요";
+      return "출금가능금액 부족";
     case "PREVIEW_REQUIRED":
     default:
       return "받는 계좌 확인 필요";
@@ -69,16 +86,22 @@ function getTransferBlockedReasonLabel(
 export function TransferSection({
   accounts,
   isBusy,
-  reversalForm,
-  reversalResult,
-  transferForm,
-  transferPreview,
-  transferResult,
+  onCreateScheduledTransfer,
+  onDeleteRecipient,
   onPreviewTransfer,
   onReversal,
   onReversalChange,
+  onSaveRecipient,
   onTransfer,
   onTransferChange,
+  onUpdateScheduledTransferStatus,
+  recipients = [],
+  reversalForm,
+  reversalResult,
+  scheduledTransfers = [],
+  transferForm,
+  transferPreview,
+  transferResult,
 }: {
   accounts?: Array<{
     accountId: number;
@@ -88,14 +111,43 @@ export function TransferSection({
     availableBalanceMinor?: number;
   }>;
   isBusy: boolean;
+  onCreateScheduledTransfer?: (request: CreateScheduledTransferRequest) => Promise<boolean>;
+  onDeleteRecipient?: (recipientId: number) => Promise<boolean>;
+  onPreviewTransfer: () => Promise<boolean>;
+  onReversal: (event: FormEvent<HTMLFormElement>) => void;
+  onReversalChange: (value: {
+    transactionReference: string;
+    sourceAccountId: string;
+    amountKrw: string;
+    reversalReason: string;
+    summary: string;
+    totpCode: string;
+  }) => void;
+  onSaveRecipient?: (request: SaveRecipientRequest) => Promise<boolean>;
+  onTransfer: (event: FormEvent<HTMLFormElement>, totpCode?: string) => Promise<boolean>;
+  onTransferChange: (value: {
+    sourceAccountId: string;
+    targetAccountNumber: string;
+    amountKrw: string;
+    currencyCode: string;
+    summary: string;
+  }) => void;
+  onUpdateScheduledTransferStatus?: (
+    scheduleId: number,
+    status: ScheduledTransferStatus,
+    totpCode?: string,
+  ) => Promise<boolean>;
+  recipients?: SavedRecipientItem[];
   reversalForm: {
     transactionReference: string;
     sourceAccountId: string;
     amountKrw: string;
     reversalReason: string;
     summary: string;
+    totpCode: string;
   };
   reversalResult: TransferReversalResponse | null;
+  scheduledTransfers?: ScheduledTransferItem[];
   transferForm: {
     sourceAccountId: string;
     targetAccountNumber: string;
@@ -105,28 +157,24 @@ export function TransferSection({
   };
   transferPreview: TransferPreviewResponse | null;
   transferResult: TransferResponse | null;
-  onPreviewTransfer: () => Promise<boolean>;
-  onReversal: (event: FormEvent<HTMLFormElement>) => void;
-  onReversalChange: (value: {
-    transactionReference: string;
-    sourceAccountId: string;
-    amountKrw: string;
-    reversalReason: string;
-    summary: string;
-  }) => void;
-  onTransfer: (event: FormEvent<HTMLFormElement>, totpCode?: string) => Promise<boolean>;
-  onTransferChange: (value: {
-    sourceAccountId: string;
-    targetAccountNumber: string;
-    amountKrw: string;
-    currencyCode: string;
-    summary: string;
-  }) => void;
 }) {
-  const [activeTab, setActiveTab] = useState<"transfer" | "reversal">("transfer");
+  const [activeTab, setActiveTab] = useState<"transfer" | "scheduled" | "reversal">("transfer");
   const [transferStep, setTransferStep] = useState<TransferStep>("input");
   const [otpCode, setOtpCode] = useState("");
   const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [recipientNickname, setRecipientNickname] = useState("");
+  const [scheduleResumeTotp, setScheduleResumeTotp] = useState("");
+  const [scheduleForm, setScheduleForm] = useState(() => ({
+    sourceAccountId: transferForm.sourceAccountId || "",
+    targetAccountNumber: "",
+    amountKrw: "",
+    currencyCode: "KRW",
+    summary: "",
+    scheduleType: "MONTHLY" as ScheduledTransferFrequency,
+    scheduledDay: "25",
+    nextExecutionLocal: toLocalInputValue(new Date(Date.now() + 24 * 60 * 60 * 1000)),
+    totpCode: "",
+  }));
 
   useEffect(() => {
     if (transferResult) {
@@ -136,6 +184,9 @@ export function TransferSection({
 
   const selectedSourceAccount = accounts?.find(
     (item) => String(item.accountId) === transferForm.sourceAccountId,
+  );
+  const matchedRecipient = recipients.find(
+    (item) => item.accountNumber === transferForm.targetAccountNumber.trim(),
   );
 
   function updateTransferForm(value: typeof transferForm): void {
@@ -171,7 +222,13 @@ export function TransferSection({
       return;
     }
     if (transferStep === "confirm") {
-      setTransferStep("otp");
+      if (otpRequired) {
+        setTransferStep("otp");
+        return;
+      }
+      setTransferStep("submitting");
+      const ok = await onTransfer(event, undefined);
+      setTransferStep(ok ? "complete" : "failed");
       return;
     }
     if (transferStep !== "otp" || otpCode.length < 6) {
@@ -209,7 +266,9 @@ export function TransferSection({
     transferStep === "receiverCheck"
       ? "받는 분 확인 완료"
       : transferStep === "confirm"
-        ? "OTP 확인"
+        ? otpRequired
+          ? "OTP 확인"
+          : "이체 실행"
         : transferStep === "otp"
           ? "이체 실행"
           : transferStep === "failed"
@@ -245,6 +304,7 @@ export function TransferSection({
         active={activeTab}
         items={[
           { id: "transfer", label: "즉시이체", onClick: () => setActiveTab("transfer") },
+          { id: "scheduled", label: "예약·자동이체", onClick: () => setActiveTab("scheduled") },
           { id: "reversal", label: "이체 취소", onClick: () => setActiveTab("reversal") },
         ]}
         label="이체 업무 전환 탭"
@@ -306,7 +366,7 @@ export function TransferSection({
                 <span>받는 분</span>
                 <strong>
                   {transferPreview
-                    ? `${transferPreview.targetAccount.displayName} ${transferPreview.targetAccount.maskedAccountNumber}`
+                    ? `${transferPreview.targetAccount.displayName?.trim() || matchedRecipient?.nickname || "입금계좌"} ${transferPreview.targetAccount.maskedAccountNumber}`
                     : `계좌번호 ${transferForm.targetAccountNumber || "-"}`}
                 </strong>
                 <small>{recipientMismatchLabel} · {blockedReasonLabel}</small>
@@ -357,6 +417,33 @@ export function TransferSection({
                 ))}
               </div>
             </div>
+            {recipients.length > 0 ? (
+              <div className="recipient-chip-list" aria-label="자주 쓰는 계좌">
+                {recipients.map((recipient) => (
+                  <button
+                    className={
+                      transferForm.targetAccountNumber === recipient.accountNumber
+                        ? "recipient-chip active"
+                        : "recipient-chip"
+                    }
+                    key={recipient.recipientId}
+                    onClick={() =>
+                      updateTransferForm({
+                        ...transferForm,
+                        targetAccountNumber: recipient.accountNumber,
+                        currencyCode: recipient.currencyCode,
+                      })
+                    }
+                    type="button"
+                  >
+                    <span>
+                      {recipient.favorite ? "★ " : ""}
+                      {recipient.nickname} ({recipient.accountNumber})
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
             <div className="form-grid">
               {hasOwnedAccounts && accounts ? (
                 <label className="form-field">
@@ -561,6 +648,83 @@ export function TransferSection({
               }
               title="이체 완료증"
             />
+            {transferResult && onSaveRecipient && transferForm.targetAccountNumber.trim() ? (
+              <div className="bank-form passive compact">
+                <div className="form-heading">
+                  <strong>자주 쓰는 계좌 등록</strong>
+                  <span>{transferForm.targetAccountNumber}</span>
+                </div>
+                <div className="button-row compact">
+                  <input
+                    aria-label="수취인 별칭"
+                    maxLength={60}
+                    onChange={(event) => setRecipientNickname(event.target.value)}
+                    placeholder="별칭 입력 (예: 가족, 관리비)"
+                    value={recipientNickname}
+                  />
+                  <button
+                    disabled={isBusy}
+                    onClick={() => {
+                      const label = recipientNickname.trim() || "자주 쓰는 계좌";
+                      void onSaveRecipient({
+                        nickname: label,
+                        institutionCode: "AQUILA",
+                        accountNumber: transferForm.targetAccountNumber.trim(),
+                        currencyCode: transferResult.currencyCode,
+                        favorite: true,
+                      }).then((ok) => {
+                        if (ok) {
+                          setRecipientNickname("");
+                        }
+                      });
+                    }}
+                    type="button"
+                  >
+                    수취인 등록
+                  </button>
+                </div>
+              </div>
+            ) : null}
+            {onSaveRecipient ? (
+              <div className="bank-form passive compact">
+                <div className="form-heading">
+                  <strong>수취인 주소록</strong>
+                  <span className="tabular-nums">{recipients.length}명</span>
+                </div>
+                {recipients.length === 0 ? (
+                  <p className="field-note">등록된 자주 쓰는 계좌가 없습니다.</p>
+                ) : (
+                  <ul className="application-status-list">
+                    {recipients.map((item) => (
+                      <li key={item.recipientId}>
+                        <button
+                          onClick={() =>
+                            updateTransferForm({
+                              ...transferForm,
+                              targetAccountNumber: item.accountNumber,
+                              currencyCode: item.currencyCode,
+                            })
+                          }
+                          type="button"
+                        >
+                          <strong>{item.nickname}</strong>
+                          <span>{item.accountNumber}</span>
+                        </button>
+                        {onDeleteRecipient ? (
+                          <button
+                            disabled={isBusy}
+                            onClick={() => void onDeleteRecipient(item.recipientId)}
+                            type="button"
+                          >
+                            삭제
+                          </button>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ) : null}
             <BankDialog
               confirmLabel="입력 다시 확인"
               onClose={() => setTransferStep("input")}
@@ -579,6 +743,234 @@ export function TransferSection({
                 </div>
               </dl>
             </BankDialog>
+          </div>
+        </div>
+      ) : activeTab === "scheduled" ? (
+        <div className="two-column" role="tabpanel">
+          <form
+            className="bank-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!onCreateScheduledTransfer) {
+                return;
+              }
+              const sourceAccountId = Number(
+                scheduleForm.sourceAccountId || transferForm.sourceAccountId,
+              );
+              const amountNum = tryKrwToMinor(scheduleForm.amountKrw) ?? 0;
+              const scheduledDay = Number(scheduleForm.scheduledDay || "25");
+              if (!sourceAccountId || amountNum <= 0) {
+                return;
+              }
+              void onCreateScheduledTransfer({
+                sourceAccountId,
+                targetAccountNumber: scheduleForm.targetAccountNumber.trim(),
+                amountMinor: amountNum,
+                currencyCode: scheduleForm.currencyCode,
+                summary: scheduleForm.summary.trim() || "예약이체",
+                scheduleType: scheduleForm.scheduleType,
+                scheduledDay,
+                nextExecutionAt: toIsoDateTime(scheduleForm.nextExecutionLocal),
+                totpCode: scheduleForm.totpCode,
+              }).then((ok) => {
+                if (ok) {
+                  setScheduleForm((prev) => ({
+                    ...prev,
+                    targetAccountNumber: "",
+                    amountKrw: "",
+                    summary: "",
+                    totpCode: "",
+                  }));
+                }
+              });
+            }}
+          >
+            <div className="form-heading">
+              <strong>예약·자동이체 등록</strong>
+              <span>OTP 인증 필수</span>
+            </div>
+            <div className="form-grid">
+              {hasOwnedAccounts && accounts ? (
+                <label className="form-field">
+                  <span>출금계좌</span>
+                  <select
+                    onChange={(event) =>
+                      setScheduleForm((prev) => ({ ...prev, sourceAccountId: event.target.value }))
+                    }
+                    required
+                    value={scheduleForm.sourceAccountId || transferForm.sourceAccountId}
+                  >
+                    <option value="">출금계좌 선택</option>
+                    {accounts.map((acc) => (
+                      <option key={acc.accountId} value={String(acc.accountId)}>
+                        {acc.displayName} ({acc.accountNumber})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                <label className="form-field">
+                  <span>출금계좌 ID</span>
+                  <input
+                    inputMode="numeric"
+                    onChange={(event) =>
+                      setScheduleForm((prev) => ({ ...prev, sourceAccountId: event.target.value }))
+                    }
+                    required
+                    value={scheduleForm.sourceAccountId}
+                  />
+                </label>
+              )}
+              <BankInput
+                label="입금계좌번호"
+                onChange={(event) =>
+                  setScheduleForm((prev) => ({ ...prev, targetAccountNumber: event.target.value }))
+                }
+                required
+                value={scheduleForm.targetAccountNumber}
+              />
+              <BankCurrencyInput
+                label="예약 이체금액"
+                onValueChange={(digits) =>
+                  setScheduleForm((prev) => ({ ...prev, amountKrw: digits }))
+                }
+                required
+                value={scheduleForm.amountKrw}
+              />
+              <label className="form-field">
+                <span>반복 주기</span>
+                <select
+                  onChange={(event) =>
+                    setScheduleForm((prev) => ({
+                      ...prev,
+                      scheduleType: event.target.value as ScheduledTransferFrequency,
+                    }))
+                  }
+                  value={scheduleForm.scheduleType}
+                >
+                  <option value="ONCE">1회 예약</option>
+                  <option value="WEEKLY">매주 반복</option>
+                  <option value="MONTHLY">매월 반복</option>
+                </select>
+              </label>
+              <label className="form-field">
+                <span>이체 실행일(1~31)</span>
+                <input
+                  inputMode="numeric"
+                  max={31}
+                  min={1}
+                  onChange={(event) =>
+                    setScheduleForm((prev) => ({ ...prev, scheduledDay: event.target.value }))
+                  }
+                  required
+                  type="number"
+                  value={scheduleForm.scheduledDay}
+                />
+              </label>
+              <label className="form-field">
+                <span>최초 실행일시</span>
+                <input
+                  onChange={(event) =>
+                    setScheduleForm((prev) => ({
+                      ...prev,
+                      nextExecutionLocal: event.target.value,
+                    }))
+                  }
+                  required
+                  type="datetime-local"
+                  value={scheduleForm.nextExecutionLocal}
+                />
+              </label>
+            </div>
+            <BankInput
+              label="받는 분 통장 표시"
+              maxLength={120}
+              onChange={(event) =>
+                setScheduleForm((prev) => ({ ...prev, summary: event.target.value }))
+              }
+              required
+              value={scheduleForm.summary}
+            />
+            <OtpCodeInput
+              label="OTP 인증번호"
+              onValueChange={(nextCode) =>
+                setScheduleForm((prev) => ({ ...prev, totpCode: nextCode }))
+              }
+              required
+              value={scheduleForm.totpCode}
+            />
+            <BankActionBar>
+              <button disabled={isBusy || !onCreateScheduledTransfer} type="submit">
+                예약이체 등록
+              </button>
+            </BankActionBar>
+          </form>
+
+          <div className="bank-form passive">
+            <div className="form-heading">
+              <strong>예약·자동이체 현황</strong>
+              <span className="tabular-nums">{scheduledTransfers.length}건</span>
+            </div>
+            {scheduledTransfers.some((rule) => rule.ruleStatus === "PAUSED") ? (
+              <OtpCodeInput
+                hint="일시중지된 예약이체를 재개할 때 6자리 인증 코드를 입력하세요."
+                label="예약이체 재개 OTP (재개 시 필요)"
+                onValueChange={setScheduleResumeTotp}
+                value={scheduleResumeTotp}
+              />
+            ) : null}
+            {scheduledTransfers.length === 0 ? (
+              <p className="field-note">등록된 예약·자동이체 규칙이 없습니다.</p>
+            ) : (
+              <div className="schedule-card-list">
+                {scheduledTransfers.map((rule) => (
+                  <article className="schedule-card" key={rule.scheduleId}>
+                    <div className="form-heading">
+                      <strong>
+                        {rule.targetAccountNumber} ·{" "}
+                        {formatMinorAmount(rule.amountMinor, rule.currencyCode)}
+                      </strong>
+                      <StatusBadge tone={rule.ruleStatus === "ACTIVE" ? "success" : "warn"}>
+                        {getScheduledTransferStatusLabel(rule.ruleStatus)}
+                      </StatusBadge>
+                    </div>
+                    <p className="field-note">
+                      {getScheduledTransferFrequencyLabel(rule.scheduleType)} (매기 {rule.scheduledDay}일) ·{" "}
+                      {rule.summary}
+                    </p>
+                    <small className="tabular-nums">
+                      예정일시 {formatDateTime(rule.nextExecutionAt)}
+                    </small>
+                    {onUpdateScheduledTransferStatus ? (
+                      <div className="button-row compact">
+                        <button
+                          disabled={isBusy}
+                          onClick={() =>
+                            void onUpdateScheduledTransferStatus(
+                              rule.scheduleId,
+                              rule.ruleStatus === "ACTIVE" ? "PAUSED" : "ACTIVE",
+                              rule.ruleStatus === "ACTIVE" ? undefined : scheduleResumeTotp,
+                            )
+                          }
+                          type="button"
+                        >
+                          {rule.ruleStatus === "ACTIVE" ? "일시중지" : "재개"}
+                        </button>
+                        <button
+                          disabled={isBusy}
+                          onClick={() =>
+                            void onUpdateScheduledTransferStatus(rule.scheduleId, "CANCELLED")
+                          }
+                          type="button"
+                        >
+                          해지
+                        </button>
+                      </div>
+                    ) : null}
+                  </article>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       ) : (
@@ -680,6 +1072,14 @@ export function TransferSection({
                 value={reversalForm.summary}
               />
             </label>
+            <OtpCodeInput
+              hint="보안 설정에 따라 필요할 때만 6자리 코드를 입력하세요."
+              label="OTP 추가 인증 (선택)"
+              onValueChange={(nextCode) =>
+                onReversalChange({ ...reversalForm, totpCode: nextCode })
+              }
+              value={reversalForm.totpCode}
+            />
             <BankActionBar label="이체 취소 실행">
               <button disabled={isBusy} type="submit">
                 취소 실행
