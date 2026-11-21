@@ -10,6 +10,8 @@ import type {
 import { formatDateTime } from "@/lib/customer-banking/format";
 import { getSessionStatusLabel } from "@/lib/customer-banking/labels";
 import { encodeQrCodeSvgPaths } from "@/lib/customer-banking/qrcode";
+import { QrCodeIcon, ShieldCheckIcon } from "../../oss-fintech/icons";
+import { ProgressCircle } from "../../oss-fintech/tremor-primitives";
 import {
   BankActionBar,
   BankDialog,
@@ -501,25 +503,39 @@ export function SecuritySection(props: {
         <div className="two-column">
           <div className="bank-form passive">
             <div className="form-heading">
-              <strong>현재 세션</strong>
+              <strong className="oss-inline-icon">
+                <ShieldCheckIcon size={16} />
+                <span>현재 세션</span>
+              </strong>
               <span>로그인됨</span>
             </div>
-            <dl className="detail-list">
-              <div>
-                <dt>고객번호</dt>
-                <dd className="tabular-nums">{props.session?.userId ?? "확인 전"}</dd>
-              </div>
-              <div>
-                <dt>인증 방식</dt>
-                <dd>{props.session ? "보안 세션" : "확인 전"}</dd>
-              </div>
-              <div>
-                <dt>세션 만료</dt>
-                <dd className="tabular-nums">
-                  {formatDateTime(props.session?.refreshExpiresAt)}
-                </dd>
-              </div>
-            </dl>
+            <div className="oss-pocket-row">
+              <ProgressCircle
+                label="보안 연결 수준"
+                radius={28}
+                strokeWidth={6}
+                value={activeTotpEnrollment ? 85 : 70}
+                variant="emerald"
+              >
+                <span className="tabular-nums">{activeTotpEnrollment ? "85%" : "70%"}</span>
+              </ProgressCircle>
+              <dl className="detail-list" style={{ flex: "1 1 0", marginTop: 0 }}>
+                <div>
+                  <dt>고객번호</dt>
+                  <dd className="tabular-nums">{props.session?.userId ?? "확인 전"}</dd>
+                </div>
+                <div>
+                  <dt>인증 방식</dt>
+                  <dd>{props.session ? "보안 세션" : "확인 전"}</dd>
+                </div>
+                <div>
+                  <dt>세션 만료</dt>
+                  <dd className="tabular-nums">
+                    {formatDateTime(props.session?.refreshExpiresAt)}
+                  </dd>
+                </div>
+              </dl>
+            </div>
           </div>
         </div>
 
@@ -627,7 +643,10 @@ export function SecuritySection(props: {
                       </svg>
                     </div>
                     <div>
-                      <strong>인증 앱 QR 스캔</strong>
+                      <strong className="oss-inline-icon">
+                        <QrCodeIcon size={15} />
+                        <span>인증 앱 QR 스캔</span>
+                      </strong>
                       <p className="field-note">
                         인증 앱에서 QR 코드를 스캔하거나 아래 등록키를 직접 입력하세요.
                       </p>

@@ -10,6 +10,9 @@ import type {
 import { tryKrwToMinor } from "@/lib/customer-banking/currency";
 import { formatDateTime, formatMinorAmount } from "@/lib/customer-banking/format";
 import { getAccountStatusLabel } from "@/lib/customer-banking/labels";
+import { HorizonBankCard } from "../../oss-fintech/bank-card";
+import { PiggyBankIcon } from "../../oss-fintech/icons";
+import { BarList, CategoryBar, ProgressCircle, type TremorColor } from "../../oss-fintech/tremor-primitives";
 import {
   BankActionBar,
   BankCurrencyInput,
@@ -25,7 +28,8 @@ import {
   WorkTabs,
 } from "../common";
 
-const BALANCE_BAR_COLORS = ["#1d4ed8", "#0f766e", "#b45309", "#6d28d9", "#475569"] as const;
+const BALANCE_BAR_COLORS = ["#0179fe", "#039855", "#4f46e5", "#d97706", "#667085"] as const;
+const TREMOR_BAR_COLORS: TremorColor[] = ["blue", "emerald", "indigo", "amber", "slate"];
 const MASKED_BALANCE = "••••••";
 
 function getAccountStatusTone(status: string): "success" | "warn" | "danger" | "muted" {
@@ -213,6 +217,27 @@ export function AccountsSection({
         </div>
       </div>
 
+      {accounts.length > 0 ? (
+        <div className="oss-bank-card-grid" aria-label="계좌 카드 요약">
+          {accounts.map((account) => {
+            const pref = accountPreferencesMap?.get(account.accountId);
+            return (
+              <HorizonBankCard
+                account={{
+                  ...account,
+                  customAlias: pref?.customAlias,
+                  isPrimary: Boolean(pref?.primaryAccount),
+                }}
+                balanceMasked={balanceMasked}
+                key={account.accountId}
+                onSelect={onLoadAccountDetail}
+                selected={account.accountId === selectedAccountId}
+              />
+            );
+          })}
+        </div>
+      ) : null}
+
       {currencySummaryGroups.length > 0 ? (
         <div className="currency-summary-grid" aria-label="통화별 출금가능잔액 비중">
           {currencySummaryGroups.map(([currencyCode, group]) => (
@@ -225,6 +250,11 @@ export function AccountsSection({
                     : formatMinorAmount(group.totalMinor, currencyCode)}
                 </strong>
               </div>
+              <CategoryBar
+                colors={TREMOR_BAR_COLORS}
+                label={`${currencyCode} 계좌별 비중`}
+                values={group.accounts.map((account) => account.availableBalanceMinor)}
+              />
               <svg
                 aria-label={`${currencyCode} 계좌별 잔액 비율 막대`}
                 className="balance-ratio-svg"
@@ -266,6 +296,19 @@ export function AccountsSection({
                   });
                 })()}
               </svg>
+              <BarList
+                data={group.accounts.map((account, idx) => ({
+                  key: String(account.accountId),
+                  name:
+                    accountPreferencesMap?.get(account.accountId)?.customAlias ||
+                    account.displayName,
+                  value: account.availableBalanceMinor,
+                  formattedValue: balanceMasked
+                    ? MASKED_BALANCE
+                    : formatMinorAmount(account.availableBalanceMinor, account.currencyCode),
+                  color: TREMOR_BAR_COLORS[idx % TREMOR_BAR_COLORS.length],
+                }))}
+              />
             </div>
           ))}
         </div>
@@ -467,21 +510,31 @@ export function AccountsSection({
                         );
                         return (
                           <div className="pocket-card" key={pocket.pocketId}>
-                            <div className="form-heading">
-                              <strong>{pocket.pocketName}</strong>
-                              <span className="tabular-nums">{pct}%</span>
+                            <div className="oss-pocket-row">
+                              <ProgressCircle
+                                label={`${pocket.pocketName} 달성률`}
+                                radius={26}
+                                strokeWidth={6}
+                                value={pct}
+                                variant={pct >= 100 ? "emerald" : "blue"}
+                              >
+                                <span className="tabular-nums">{pct}%</span>
+                              </ProgressCircle>
+                              <div className="oss-pocket-meta">
+                                <div className="form-heading">
+                                  <strong className="oss-inline-icon">
+                                    <PiggyBankIcon size={15} />
+                                    <span>{pocket.pocketName}</span>
+                                  </strong>
+                                  <span className="tabular-nums">{pct}%</span>
+                                </div>
+                                <small className="tabular-nums font-mono">
+                                  {balanceMasked
+                                    ? MASKED_BALANCE
+                                    : `${formatMinorAmount(pocket.savedAmountMinor, pocket.currencyCode)} / ${formatMinorAmount(pocket.targetAmountMinor, pocket.currencyCode)}`}
+                                </small>
+                              </div>
                             </div>
-                            <div className="pocket-progress-track" aria-hidden="true">
-                              <div
-                                className="pocket-progress-fill"
-                                style={{ width: `${pct}%` }}
-                              />
-                            </div>
-                            <small className="tabular-nums font-mono">
-                              {balanceMasked
-                                ? MASKED_BALANCE
-                                : `${formatMinorAmount(pocket.savedAmountMinor, pocket.currencyCode)} / ${formatMinorAmount(pocket.targetAmountMinor, pocket.currencyCode)}`}
-                            </small>
                             <div className="button-row compact">
                               {onUpdateSavingsPocket ? (
                                 <button

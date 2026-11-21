@@ -15,6 +15,8 @@ import type {
   CustomerApplicationSubmitHandler,
 } from "@/lib/customer-banking/types";
 import { BankCurrencyInput, BankNoticeStrip, CopyButton, OtpCodeInput } from "../common";
+import { SlidersHorizontalIcon } from "../../oss-fintech/icons";
+import { CategoryBar } from "../../oss-fintech/tremor-primitives";
 
 const faqItems = [
   {
@@ -511,10 +513,21 @@ export function SupportCenterSection({
         <article className="limit-change-form">
           <div className="panel-toolbar">
             <div>
-              <strong>이체한도 변경</strong>
+              <strong className="oss-inline-icon">
+                <SlidersHorizontalIcon size={15} />
+                <span>이체한도 변경</span>
+              </strong>
               <span>1회 최대 50만원 · 1일 최대 200만원</span>
             </div>
           </div>
+          <CategoryBar
+            colors={["blue", "slate"]}
+            label="요청 1일 이체한도 비중"
+            values={[
+              Math.min(200_000_000, Math.max(0, tryKrwToMinor(limitForm.dailyLimitKrw) ?? 0)),
+              Math.max(0, 200_000_000 - (tryKrwToMinor(limitForm.dailyLimitKrw) ?? 0)),
+            ]}
+          />
           <div className="form-grid">
             {accounts.length > 0 ? (
               <label>

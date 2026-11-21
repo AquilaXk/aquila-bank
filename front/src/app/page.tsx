@@ -21,6 +21,7 @@ import { SecuritySection } from "@/components/customer-banking/sections/security
 import { SupportCenterSection } from "@/components/customer-banking/sections/support-center-section";
 import { TransactionsSection } from "@/components/customer-banking/sections/transactions-section";
 import { TransferSection } from "@/components/customer-banking/sections/transfer-section";
+import { LockIcon } from "@/components/oss-fintech/icons";
 import { useBankingEnhancements } from "@/hooks/use-banking-enhancements";
 import { useCustomerBanking } from "@/hooks/use-customer-banking";
 import { searchCustomerBankingServices } from "@/lib/customer-banking/search";
@@ -140,6 +141,7 @@ export default function HomePage() {
     accountPreferencesMap,
     primaryAccountId,
     savingsPockets,
+    dashboardTransactions,
     annotationsMap,
     balanceMasked,
     visitedMenus,
@@ -260,7 +262,10 @@ export default function HomePage() {
         role="status"
       >
         <div>
-          <strong>로그인이 필요한 업무</strong>
+          <strong className="oss-inline-icon">
+            <LockIcon size={16} />
+            <span>로그인이 필요한 업무</span>
+          </strong>
           <small className="login-required-code">로그인 필요</small>
           <span>
             본인 인증 후 이용할 수 있는 업무입니다.
@@ -329,6 +334,7 @@ export default function HomePage() {
             <DashboardSection
               accountPreferencesMap={accountPreferencesMap}
               accounts={accounts}
+              annotationsMap={annotationsMap}
               balanceMasked={balanceMasked}
               hasSession={Boolean(session)}
               isBusy={combinedBusy}
@@ -336,7 +342,7 @@ export default function HomePage() {
               onRefresh={handleRefresh}
               primaryAccountId={primaryAccountId}
               scheduledTransfers={scheduledTransfers}
-              transactions={transactions}
+              transactions={transactions.length > 0 ? transactions : dashboardTransactions}
             />
           ) : null}
           {canRenderWorkSection && activeSection === "accounts" ? (
@@ -523,7 +529,11 @@ export default function HomePage() {
         </section>
 
         <RightRail
+          accountPreferencesMap={accountPreferencesMap}
+          accounts={accounts}
+          balanceMasked={balanceMasked}
           isBusy={combinedBusy}
+          primaryAccountId={primaryAccountId}
           recentVisitedMenus={visitedMenus}
           session={session}
           onMove={moveToSection}

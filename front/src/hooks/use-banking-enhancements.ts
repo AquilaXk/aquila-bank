@@ -55,6 +55,7 @@ export function useBankingEnhancements(params: {
   const [scheduledTransfers, setScheduledTransfers] = useState<ScheduledTransferItem[]>([]);
   const [accountPreferences, setAccountPreferences] = useState<AccountPreferenceItem[]>([]);
   const [savingsPockets, setSavingsPockets] = useState<SavingsPocketItem[]>([]);
+  const [dashboardTransactions, setDashboardTransactions] = useState<TransactionItem[]>([]);
   const [annotationsList, setAnnotationsList] = useState<TransactionAnnotationItem[]>([]);
   const [balanceMasked, setBalanceMasked] = useState(false);
   const [visitedMenus, setVisitedMenus] = useState<Array<{ label: string; section: MenuSection }>>(
@@ -90,6 +91,7 @@ export function useBankingEnhancements(params: {
       setScheduledTransfers([]);
       setAccountPreferences([]);
       setSavingsPockets([]);
+      setDashboardTransactions([]);
       setAnnotationsList([]);
       setBalanceMasked(false);
       setVisitedMenus(recentMenus);
@@ -120,13 +122,16 @@ export function useBankingEnhancements(params: {
     return () => controller.abort();
   }, [api, authGeneration, isAuthenticated]);
 
-  // 선택된 계좌의 목표 저축 포켓을 조회한다.
+  // 선택된 계좌의 목표 저축 포켓 및 대시보드 최근 입출금 추이를 조회한다.
   useEffect(() => {
     if (!isAuthenticated || !selectedAccountId || selectedAccountId <= 0) {
       setSavingsPockets([]);
+      setDashboardTransactions([]);
       return;
     }
     const controller = new AbortController();
+    const toDate = new Date();
+    const fromDate = new Date(toDate.getTime() - 90 * 24 * 60 * 60 * 1000);
     void api
       .getSavingsPockets(selectedAccountId, { signal: controller.signal })
       .then((res) => {
@@ -139,23 +144,45 @@ export function useBankingEnhancements(params: {
           setSavingsPockets([]);
         }
       });
+    void api
+      .getTransactions(
+        {
+          accountId: selectedAccountId,
+          from: fromDate.toISOString(),
+          to: toDate.toISOString(),
+          limit: 12,
+          responseShape: "full",
+        },
+        { signal: controller.signal },
+      )
+      .then((res) => {
+        if (!controller.signal.aborted) {
+          setDashboardTransactions(Array.isArray(res.items) ? res.items : []);
+        }
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setDashboardTransactions([]);
+        }
+      });
     return () => controller.abort();
   }, [api, authGeneration, isAuthenticated, selectedAccountId]);
 
   // 거래내역 목록 변경 시 분류/메모 오버레이를 백엔드 상한(50건) 이내로 일괄 조회한다(N+1 방지).
   useEffect(() => {
-    const firstTxAccountId = transactions[0]?.accountId;
+    const activeRows = transactions.length > 0 ? transactions : dashboardTransactions;
+    const firstTxAccountId = activeRows[0]?.accountId;
     const accountId =
       firstTxAccountId && firstTxAccountId > 0
         ? firstTxAccountId
         : (transactionAccountId ?? selectedAccountId);
-    if (!isAuthenticated || !accountId || accountId <= 0 || transactions.length === 0) {
+    if (!isAuthenticated || !accountId || accountId <= 0 || activeRows.length === 0) {
       setAnnotationsList([]);
       return;
     }
     const references: string[] = [];
-    for (let i = 0; i < transactions.length && references.length < 50; i += 1) {
-      const ref = transactions[i].transactionReference;
+    for (let i = 0; i < activeRows.length && references.length < 50; i += 1) {
+      const ref = activeRows[i].transactionReference;
       if (ref) {
         references.push(ref);
       }
@@ -174,7 +201,7 @@ export function useBankingEnhancements(params: {
       })
       .catch(() => undefined);
     return () => controller.abort();
-  }, [api, isAuthenticated, selectedAccountId, transactionAccountId, transactions]);
+  }, [api, dashboardTransactions, isAuthenticated, selectedAccountId, transactionAccountId, transactions]);
 
   // 실시간 SSE 알림 수신 시 중복 없이 토스트를 띄운다.
   useEffect(() => {
@@ -497,6 +524,7 @@ export function useBankingEnhancements(params: {
     accountPreferencesMap,
     primaryAccountId,
     savingsPockets,
+    dashboardTransactions,
     annotationsMap,
     balanceMasked,
     visitedMenus,

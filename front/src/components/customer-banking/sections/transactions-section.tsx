@@ -12,10 +12,12 @@ import { downloadTransactionsCsv } from "@/lib/customer-banking/csv-export";
 import { formatDateTime, formatMinorAmount, toLocalInputValue } from "@/lib/customer-banking/format";
 import {
   getDirectionLabel,
-  getTransactionCategoryLabel,
   getTransactionStatusLabel,
   TRANSACTION_CATEGORY_OPTIONS,
 } from "@/lib/customer-banking/labels";
+import { HorizonAccountBanner } from "../../oss-fintech/bank-card";
+import { HorizonCategoryBadge } from "../../oss-fintech/category-badge";
+import { ArrowDownLeftIcon, ArrowUpRightIcon, DownloadIcon } from "../../oss-fintech/icons";
 import {
   BankActionBar,
   BankCurrencyInput,
@@ -91,6 +93,8 @@ export function TransactionsSection({
     accountId: number;
     accountNumber: string;
     displayName: string;
+    currencyCode?: string;
+    availableBalanceMinor?: number;
   }>;
   annotationsMap?: ReadonlyMap<string, TransactionAnnotationItem>;
   balanceMasked?: boolean;
@@ -253,6 +257,16 @@ export function TransactionsSection({
           { label: "다음조회", value: slice?.hasNext ? "가능" : "없음" },
         ]}
       />
+      {selectedAccount ? (
+        <HorizonAccountBanner
+          accountNumber={selectedAccount.accountNumber}
+          balanceMasked={balanceMasked}
+          balanceMinor={selectedAccount.availableBalanceMinor}
+          currencyCode={selectedAccount.currencyCode ?? "KRW"}
+          label={selectedAccount.displayName}
+          statusLabel="조회 대상"
+        />
+      ) : null}
 
       <div className="transaction-work-grid">
         <form className="bank-form filter-form mobile-filter-drawer" onSubmit={onSearch}>
@@ -479,27 +493,48 @@ export function TransactionsSection({
                   onClick={() =>
                     downloadTransactionsCsv(filteredRows, {
                       annotations: annotationsMap,
-                      categoryLabelResolver: getTransactionCategoryLabel,
+                      categoryLabelResolver: (cat) =>
+                        TRANSACTION_CATEGORY_OPTIONS.find((opt) => opt.value === cat)?.label ??
+                        "기타",
                     })
                   }
                   type="button"
                 >
-                  CSV 내보내기
+                  <span className="oss-inline-icon">
+                    <DownloadIcon size={14} />
+                    <span>CSV 내보내기</span>
+                  </span>
                 </button>
               </div>
             </div>
             {filteredRows.length > 0 ? (
-              <div className="filter-summary">
-                <span>
-                  조회 합계 · 입금{" "}
-                  {balanceMasked
-                    ? MASKED_AMOUNT
-                    : formatMinorAmount(inflowMinor, primaryCurrency)}{" "}
-                  · 출금{" "}
-                  {balanceMasked
-                    ? MASKED_AMOUNT
-                    : formatMinorAmount(outflowMinor, primaryCurrency)}
-                </span>
+              <div className="oss-kpi-duo" aria-label="조회 거래 입출금 합계">
+                <div className="oss-kpi-pill income">
+                  <span className="oss-kpi-icon">
+                    <ArrowDownLeftIcon size={15} />
+                  </span>
+                  <div>
+                    <small>조회 입금</small>
+                    <strong className="tabular-nums font-mono">
+                      {balanceMasked
+                        ? MASKED_AMOUNT
+                        : formatMinorAmount(inflowMinor, primaryCurrency)}
+                    </strong>
+                  </div>
+                </div>
+                <div className="oss-kpi-pill expense">
+                  <span className="oss-kpi-icon">
+                    <ArrowUpRightIcon size={15} />
+                  </span>
+                  <div>
+                    <small>조회 출금</small>
+                    <strong className="tabular-nums font-mono">
+                      {balanceMasked
+                        ? MASKED_AMOUNT
+                        : formatMinorAmount(outflowMinor, primaryCurrency)}
+                    </strong>
+                  </div>
+                </div>
               </div>
             ) : null}
             <div className="table-scroll-hint">거래내역 표는 좌우로 스크롤해서 볼 수 있습니다.</div>
@@ -547,14 +582,21 @@ export function TransactionsSection({
                         >
                           <td className="tabular-nums">{formatDateTime(item.bookedAt)}</td>
                           <td className="tabular-nums">{item.transactionReference}</td>
-                          <td>{getDirectionLabel(item.direction)}</td>
+                          <td>
+                            <span className="oss-inline-icon">
+                              {item.direction === "CREDIT" ? (
+                                <ArrowDownLeftIcon size={13} />
+                              ) : (
+                                <ArrowUpRightIcon size={13} />
+                              )}
+                              <span>{getDirectionLabel(item.direction)}</span>
+                            </span>
+                          </td>
                           <td>
                             {item.counterpartyMaskedName?.trim() || item.summary?.trim() || "-"}
                           </td>
                           <td>
-                            <StatusBadge tone="muted">
-                              {getTransactionCategoryLabel(annotation?.category)}
-                            </StatusBadge>
+                            <HorizonCategoryBadge category={annotation?.category} />
                             {annotation?.memo ? (
                               <span className="table-message"> {annotation.memo}</span>
                             ) : null}

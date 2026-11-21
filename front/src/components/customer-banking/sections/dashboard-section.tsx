@@ -1,6 +1,7 @@
 import type {
   AccountPreferenceItem,
   ScheduledTransferItem,
+  TransactionAnnotationItem,
   TransactionItem,
 } from "@/lib/api/types";
 import {
@@ -11,7 +12,15 @@ import {
 import { formatDateTime, formatMinorAmount } from "@/lib/customer-banking/format";
 import { getDirectionLabel } from "@/lib/customer-banking/labels";
 import type { MenuSection } from "@/lib/customer-banking/types";
-import { BankNoticeStrip, StatusBadge, WorkTabs } from "../common";
+import { GuestLockedBankCard, HorizonBankCard } from "../../oss-fintech/bank-card";
+import { HorizonCategoryBadge } from "../../oss-fintech/category-badge";
+import {
+  CategorySpendingDonut,
+  MoneyMovementChart,
+  PortfolioDonutBox,
+} from "../../oss-fintech/fintech-charts";
+import { ArrowDownLeftIcon, ArrowUpRightIcon, LockIcon, MenuSectionIcon } from "../../oss-fintech/icons";
+import { BankNoticeStrip, WorkTabs } from "../common";
 
 const MASKED_AMOUNT_TEXT = "••••••";
 
@@ -90,6 +99,7 @@ function resolveDashboardWorkStatus(hasSession: boolean) {
 export function DashboardSection({
   accountPreferencesMap,
   accounts,
+  annotationsMap,
   balanceMasked = false,
   hasSession,
   isBusy,
@@ -101,6 +111,7 @@ export function DashboardSection({
 }: {
   accountPreferencesMap?: ReadonlyMap<number, AccountPreferenceItem>;
   accounts?: DashboardAccountItem[];
+  annotationsMap?: ReadonlyMap<string, TransactionAnnotationItem>;
   balanceMasked?: boolean;
   hasSession: boolean;
   isBusy: boolean;
@@ -125,7 +136,7 @@ export function DashboardSection({
   } = resolvePrimaryAccountDisplay(primaryAccount, hasSession, customAlias, balanceMasked);
   const workStatus = resolveDashboardWorkStatus(hasSession);
 
-  // 통화별 보유 잔액과 최근 거래 입출금 합계를 단일 패스로 집계한다.
+  // 통화별 보유 잔액, 분류별 지출, 입출금 합계를 단일 패스로 집계한다.
   const currencyTotals = new Map<string, number>();
   for (let i = 0; i < memberAccounts.length; i += 1) {
     const acc = memberAccounts[i];
@@ -139,12 +150,18 @@ export function DashboardSection({
   let totalInflowMinor = 0;
   let totalOutflowMinor = 0;
   const flowBars: Array<{ ref: string; amount: number; direction: string }> = [];
+  const categoryStats = new Map<string, { amountMinor: number; count: number }>();
   for (let i = 0; i < transactions.length; i += 1) {
     const tx = transactions[i];
     if (tx.direction === "CREDIT") {
       totalInflowMinor += tx.amountMinor;
     } else {
       totalOutflowMinor += tx.amountMinor;
+      const cat = annotationsMap?.get(tx.transactionReference)?.category ?? "OTHER";
+      const entry = categoryStats.get(cat) ?? { amountMinor: 0, count: 0 };
+      entry.amountMinor += tx.amountMinor;
+      entry.count += 1;
+      categoryStats.set(cat, entry);
     }
     if (flowBars.length < 14) {
       flowBars.push({
@@ -154,11 +171,14 @@ export function DashboardSection({
       });
     }
   }
-  const maxBarAmount = flowBars.reduce((max, b) => Math.max(max, b.amount), 1);
   const recentFiveTransactions = transactions.slice(0, 5);
   const activeSchedulesCount = scheduledTransfers.filter(
     (rule) => rule.ruleStatus === "ACTIVE",
   ).length;
+  const categorySummaries = Array.from(categoryStats.entries())
+    .map(([category, stat]) => ({ category, ...stat }))
+    .sort((a, b) => b.amountMinor - a.amountMinor);
+  const dashboardCurrencyCode = primaryAccount?.currencyCode ?? "KRW";
 
   return (
     <section className="task-section compact-work-section">
@@ -199,106 +219,94 @@ export function DashboardSection({
           { label: "인증", value: "인증서 관리" },
         ]}
       />
-      <div className="dashboard-primary-account-card" aria-label="대표 계좌 요약">
-        <div className="dashboard-primary-account-meta">
-          <div className="dashboard-primary-account-badge">
-            <span className="account-badge-label">대표 계좌</span>
-            <span className={hasSession ? "account-status-dot active" : "account-status-dot"} />
-            <span className="account-status-text">{hasSession ? "정상 이용중" : "로그인 필요"}</span>
-          </div>
-          <strong className="dashboard-primary-account-name">{primaryDisplayName}</strong>
-          <span className="dashboard-primary-account-number tabular-nums">
-            {primaryAccountNumber}
-          </span>
-        </div>
-        <div className="dashboard-primary-account-balance">
-          <span className="balance-label">출금가능 잔액</span>
-          <strong className="balance-value tabular-nums">{primaryBalanceDisplay}</strong>
-          <div className="button-row compact">
-            <button onClick={() => onMove("transfer")} type="button">
-              즉시이체
-            </button>
-            <button onClick={() => onMove("accounts")} type="button">
-              계좌관리
-            </button>
-          </div>
-        </div>
-      </div>
-      {hasSession ? (
-        <div className="bank-home-grid" aria-label="개인 자산 및 입출금 요약">
-          <section className="dashboard-cashflow-card">
-            <div className="form-heading">
-              <strong>통화별 보유 자산</strong>
-              <span>{activeSchedulesCount > 0 ? `예약이체 ${activeSchedulesCount}건` : `${memberAccounts.length}계좌`}</span>
-            </div>
-            {currencyEntries.length === 0 ? (
-              <p className="field-note">계좌조회 후 통화별 잔액 합계가 표시됩니다.</p>
-            ) : (
-              <dl className="detail-list compact-list">
-                {currencyEntries.map(([currencyCode, total]) => (
-                  <div key={currencyCode}>
-                    <dt>{currencyCode} 합계</dt>
-                    <dd className="font-mono tabular-nums">
-                      {balanceMasked ? MASKED_AMOUNT_TEXT : formatMinorAmount(total, currencyCode)}
-                    </dd>
-                  </div>
-                ))}
-              </dl>
-            )}
-          </section>
-          <section className="dashboard-cashflow-card">
-            <div className="form-heading">
-              <strong>입출금 추이</strong>
-              <span>최근 {transactions.length}건 기준</span>
-            </div>
-            {transactions.length === 0 ? (
+      <div className="oss-hero-grid" aria-label="개인 자산 요약">
+        {hasSession ? (
+          <PortfolioDonutBox
+            accounts={memberAccounts.map((acc) => ({
+              ...acc,
+              displayName:
+                accountPreferencesMap?.get(acc.accountId)?.customAlias || acc.displayName,
+            }))}
+            activeSchedulesCount={activeSchedulesCount}
+            balanceMasked={balanceMasked}
+            currencyEntries={currencyEntries}
+          />
+        ) : (
+          <section className="oss-donut-box">
+            <div className="oss-donut-meta">
+              <div className="form-heading">
+                <strong className="oss-inline-icon">
+                  <LockIcon size={16} />
+                  <span>자산 현황 요약</span>
+                </strong>
+                <span>보호모드</span>
+              </div>
+              <p className="field-note">
+                인증센터 로그인 후 통화별 보유 자산 비중과 입출금 분석 차트가 표시됩니다.
+              </p>
               <div className="button-row compact">
-                <span className="field-note">거래내역 조회 후 입출금 추이 그래프가 표시됩니다.</span>
-                <button onClick={() => onMove("transactions")} type="button">
-                  거래내역 보기
+                <button onClick={() => onMove("security")} type="button">
+                  인증센터 이동
                 </button>
               </div>
-            ) : (
-              <>
-                <div className="button-row compact">
-                  <StatusBadge tone="success">
-                    입금 {balanceMasked ? MASKED_AMOUNT_TEXT : formatMinorAmount(totalInflowMinor, primaryAccount?.currencyCode ?? "KRW")}
-                  </StatusBadge>
-                  <StatusBadge tone="warn">
-                    출금 {balanceMasked ? MASKED_AMOUNT_TEXT : formatMinorAmount(totalOutflowMinor, primaryAccount?.currencyCode ?? "KRW")}
-                  </StatusBadge>
-                </div>
-                <svg
-                  aria-label="최근 입출금 추이 막대"
-                  className="cashflow-svg"
-                  role="img"
-                  viewBox="0 0 280 96"
-                >
-                  {flowBars.map((bar, idx) => {
-                    const height = Math.max(8, Math.round((bar.amount / maxBarAmount) * 76));
-                    const x = idx * 20 + 2;
-                    return (
-                      <rect
-                        fill={bar.direction === "CREDIT" ? "var(--success)" : "var(--primary)"}
-                        height={height}
-                        key={`${bar.ref}-${idx}`}
-                        rx={3}
-                        width={14}
-                        x={x}
-                        y={88 - height}
-                      >
-                        <title>
-                          {balanceMasked
-                            ? `${getDirectionLabel(bar.direction)} ${MASKED_AMOUNT_TEXT}`
-                            : `${getDirectionLabel(bar.direction)} ${formatMinorAmount(bar.amount)}`}
-                        </title>
-                      </rect>
-                    );
-                  })}
-                </svg>
-              </>
-            )}
+            </div>
           </section>
+        )}
+
+        <div className="dashboard-primary-account-card" aria-label="대표 계좌 요약">
+          <div className="oss-primary-card-top">
+            <div className="dashboard-primary-account-meta">
+              <div className="dashboard-primary-account-badge">
+                <span className="account-badge-label">대표 계좌</span>
+                <span className={hasSession ? "account-status-dot active" : "account-status-dot"} />
+                <span className="account-status-text">{hasSession ? "정상 이용중" : "로그인 필요"}</span>
+              </div>
+              <strong className="dashboard-primary-account-name">{primaryDisplayName}</strong>
+              <span className="dashboard-primary-account-number tabular-nums">
+                {primaryAccountNumber}
+              </span>
+            </div>
+            <div className="dashboard-primary-account-balance">
+              <span className="balance-label">출금가능 잔액</span>
+              <strong className="balance-value tabular-nums">{primaryBalanceDisplay}</strong>
+              <div className="button-row compact">
+                <button onClick={() => onMove("transfer")} type="button">
+                  즉시이체
+                </button>
+                <button onClick={() => onMove("accounts")} type="button">
+                  계좌관리
+                </button>
+              </div>
+            </div>
+          </div>
+          {hasSession && primaryAccount ? (
+            <HorizonBankCard
+              account={{
+                ...primaryAccount,
+                customAlias,
+                isPrimary: true,
+              }}
+              balanceMasked={balanceMasked}
+              compact
+              onSelect={() => onMove("accounts")}
+            />
+          ) : (
+            <GuestLockedBankCard />
+          )}
+        </div>
+      </div>
+
+      {hasSession ? (
+        <div className="two-column" aria-label="개인 자산 및 입출금 요약">
+          <MoneyMovementChart
+            balanceMasked={balanceMasked}
+            currencyCode={dashboardCurrencyCode}
+            flowBars={flowBars}
+            inflowMinor={totalInflowMinor}
+            onViewAll={() => onMove("transactions")}
+            outflowMinor={totalOutflowMinor}
+            transactionCount={transactions.length}
+          />
           <section className="dashboard-cashflow-card">
             <div className="form-heading">
               <strong>최근 거래 요약</strong>
@@ -306,18 +314,45 @@ export function DashboardSection({
                 전체보기
               </button>
             </div>
+            <CategorySpendingDonut
+              balanceMasked={balanceMasked}
+              categories={categorySummaries}
+              currencyCode={dashboardCurrencyCode}
+            />
             {recentFiveTransactions.length === 0 ? (
               <p className="field-note">최근 조회된 거래가 없습니다.</p>
             ) : (
               <ul className="bank-news-list">
-                {recentFiveTransactions.map((tx) => (
-                  <li key={tx.transactionReference}>
-                    <button onClick={() => onMove("transactions")} type="button">
-                      {formatDateTime(tx.bookedAt)} · {tx.counterpartyMaskedName || tx.summary || getDirectionLabel(tx.direction)} (
-                      {balanceMasked ? MASKED_AMOUNT_TEXT : formatMinorAmount(tx.amountMinor, tx.currencyCode)})
-                    </button>
-                  </li>
-                ))}
+                {recentFiveTransactions.map((tx) => {
+                  const txCategory = annotationsMap?.get(tx.transactionReference)?.category;
+                  return (
+                    <li key={tx.transactionReference}>
+                      <button onClick={() => onMove("transactions")} type="button">
+                        <span className="oss-inline-icon">
+                          {tx.direction === "CREDIT" ? (
+                            <ArrowDownLeftIcon size={14} />
+                          ) : (
+                            <ArrowUpRightIcon size={14} />
+                          )}
+                          <span>
+                            {formatDateTime(tx.bookedAt)} ·{" "}
+                            {tx.counterpartyMaskedName ||
+                              tx.summary ||
+                              getDirectionLabel(tx.direction)}
+                          </span>
+                        </span>
+                        <span className="oss-inline-icon">
+                          {txCategory ? <HorizonCategoryBadge category={txCategory} /> : null}
+                          <strong className="tabular-nums font-mono">
+                            {balanceMasked
+                              ? MASKED_AMOUNT_TEXT
+                              : formatMinorAmount(tx.amountMinor, tx.currencyCode)}
+                          </strong>
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </section>
@@ -336,7 +371,10 @@ export function DashboardSection({
                 onClick={() => onMove(item.section)}
                 type="button"
               >
-                <span>{item.group}</span>
+                <span className="oss-inline-icon">
+                  <MenuSectionIcon section={item.section} size={14} />
+                  <span>{item.group}</span>
+                </span>
                 <strong>{item.label}</strong>
               </button>
             ))}

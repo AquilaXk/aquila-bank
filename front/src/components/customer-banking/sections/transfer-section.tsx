@@ -21,6 +21,9 @@ import {
   getScheduledTransferStatusLabel,
   getTransactionStatusLabel,
 } from "@/lib/customer-banking/labels";
+import { HorizonAccountBanner } from "../../oss-fintech/bank-card";
+import { CalendarClockIcon, StarIcon } from "../../oss-fintech/icons";
+import { CategoryBar } from "../../oss-fintech/tremor-primitives";
 import {
   BankActionBar,
   BankCurrencyInput,
@@ -361,6 +364,15 @@ export function TransferSection({
                 ))}
               </ol>
             </div>
+            {selectedSourceAccount ? (
+              <HorizonAccountBanner
+                accountNumber={selectedSourceAccount.accountNumber}
+                balanceMinor={selectedSourceAccount.availableBalanceMinor}
+                currencyCode={selectedSourceAccount.currencyCode}
+                label={selectedSourceAccount.displayName}
+                statusLabel="출금계좌"
+              />
+            ) : null}
             <div className="transfer-risk-grid transfer-process-grid" aria-label="이체 사전 확인">
               <div>
                 <span>받는 분</span>
@@ -386,6 +398,16 @@ export function TransferSection({
                 <small className="tabular-nums">
                   1회 한도 {formatMinorAmount(limitMinor, transferForm.currencyCode)}
                 </small>
+                {transferPreview ? (
+                  <CategoryBar
+                    colors={["amber", "emerald"]}
+                    label="1일 한도 잔여 비중"
+                    values={[
+                      Math.max(0, transferPreview.dailyUsedMinor),
+                      Math.max(1, transferPreview.dailyRemainingMinor),
+                    ]}
+                  />
+                ) : null}
               </div>
               <div>
                 <span>보안 확인</span>
@@ -436,8 +458,11 @@ export function TransferSection({
                     }
                     type="button"
                   >
+                    <span className="oss-recipient-chip-avatar" aria-hidden="true">
+                      {recipient.nickname.slice(0, 1)}
+                    </span>
+                    {recipient.favorite ? <StarIcon filled size={12} /> : null}
                     <span>
-                      {recipient.favorite ? "★ " : ""}
                       {recipient.nickname} ({recipient.accountNumber})
                     </span>
                   </button>
@@ -926,9 +951,12 @@ export function TransferSection({
                 {scheduledTransfers.map((rule) => (
                   <article className="schedule-card" key={rule.scheduleId}>
                     <div className="form-heading">
-                      <strong>
-                        {rule.targetAccountNumber} ·{" "}
-                        {formatMinorAmount(rule.amountMinor, rule.currencyCode)}
+                      <strong className="oss-inline-icon">
+                        <CalendarClockIcon size={15} />
+                        <span>
+                          {rule.targetAccountNumber} ·{" "}
+                          {formatMinorAmount(rule.amountMinor, rule.currencyCode)}
+                        </span>
                       </strong>
                       <StatusBadge tone={rule.ruleStatus === "ACTIVE" ? "success" : "warn"}>
                         {getScheduledTransferStatusLabel(rule.ruleStatus)}

@@ -1,6 +1,6 @@
 import Image from "next/image";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import type { CustomerSession } from "@/lib/api/types";
+import type { AccountItem, AccountPreferenceItem, CustomerSession } from "@/lib/api/types";
 import {
   mainMenus,
   noticeItems,
@@ -15,6 +15,18 @@ import {
   type ColorScheme,
 } from "@/lib/customer-banking/theme";
 import type { MenuSection, ServiceSearchItem } from "@/lib/customer-banking/types";
+import { GuestLockedBankCard, StackedBankDeck } from "../oss-fintech/bank-card";
+import {
+  BellIcon,
+  ChevronRightIcon,
+  CommandIcon,
+  EyeIcon,
+  EyeOffIcon,
+  MenuSectionIcon,
+  MoonIcon,
+  SearchIcon,
+  SunIcon,
+} from "../oss-fintech/icons";
 import { BankNoticeStrip } from "./common";
 
 type MoveHandler = (section: MenuSection) => void;
@@ -218,7 +230,8 @@ export function BankHeader({
             onClick={onOpenCommandPalette}
             type="button"
           >
-            빠른실행
+            <CommandIcon size={14} />
+            <span>빠른실행</span>
           </button>
           <button
             aria-label="테마 전환"
@@ -227,7 +240,8 @@ export function BankHeader({
             onClick={toggleColorScheme}
             type="button"
           >
-            {colorScheme === "dark" ? "라이트 모드" : "다크 모드"}
+            {colorScheme === "dark" ? <SunIcon size={14} /> : <MoonIcon size={14} />}
+            <span>{colorScheme === "dark" ? "라이트 모드" : "다크 모드"}</span>
           </button>
           <button
             aria-controls="utility-search-panel"
@@ -237,7 +251,8 @@ export function BankHeader({
             onClick={onMobileSearchToggle}
             type="button"
           >
-            검색
+            <SearchIcon size={14} />
+            <span>검색</span>
           </button>
           <div
             ref={searchPanelRef}
@@ -392,7 +407,8 @@ export function BankHeader({
               onClick={onToggleBalanceMask}
               type="button"
             >
-              {balanceMasked ? "금액 표시" : "금액 숨김"}
+              {balanceMasked ? <EyeIcon size={14} /> : <EyeOffIcon size={14} />}
+              <span>{balanceMasked ? "금액 표시" : "금액 숨김"}</span>
             </button>
             <button
               aria-label="알림함 이동"
@@ -400,7 +416,8 @@ export function BankHeader({
               onClick={() => onMove("notifications")}
               type="button"
             >
-              알림
+              <BellIcon size={14} />
+              <span>알림</span>
               {unreadCount !== null && unreadCount > 0 ? (
                 <span className="header-unread-badge">{unreadCount}</span>
               ) : null}
@@ -464,6 +481,9 @@ export function SideMenu({
           onClick={() => onMove(item.id)}
           type="button"
         >
+          <span className="side-item-icon">
+            <MenuSectionIcon section={item.id} size={16} />
+          </span>
           <span>{item.group}</span>
           <strong>{item.label}</strong>
         </button>
@@ -473,13 +493,21 @@ export function SideMenu({
 }
 
 export function RightRail({
+  accountPreferencesMap,
+  accounts = [],
+  balanceMasked = false,
   isBusy,
+  primaryAccountId,
   recentVisitedMenus,
   session,
   onMove,
   onRefresh,
 }: {
+  accountPreferencesMap?: ReadonlyMap<number, AccountPreferenceItem>;
+  accounts?: AccountItem[];
+  balanceMasked?: boolean;
   isBusy: boolean;
+  primaryAccountId?: number | null;
   recentVisitedMenus: Array<{ label: string; section: MenuSection }>;
   session: CustomerSession | null;
   onMove: MoveHandler;
@@ -493,37 +521,56 @@ export function RightRail({
       aria-label="빠른 업무"
     >
       <section className="rail-panel login-panel">
-        <div className="rail-heading">
-          <span>로그인 상태</span>
-          <strong>{isAuthenticated ? "정상" : "보호모드"}</strong>
-        </div>
-        {isAuthenticated && session ? (
-          <dl className="session-summary">
-            <div>
-              <dt>접속 고객</dt>
-              <dd>{session.userId ? `${session.userId}번 고객` : "-"}</dd>
+        <div className="oss-profile-banner" aria-hidden="true" />
+        <div className="oss-profile-body">
+          <div className="oss-profile-avatar" aria-hidden="true">
+            {isAuthenticated && session?.userId ? String(session.userId).slice(-2) : "AQ"}
+          </div>
+          <div className="rail-heading">
+            <span>로그인 상태</span>
+            <strong>{isAuthenticated ? "정상" : "보호모드"}</strong>
+          </div>
+          {isAuthenticated && session ? (
+            <dl className="session-summary">
+              <div>
+                <dt>접속 고객</dt>
+                <dd>{session.userId ? `${session.userId}번 고객` : "-"}</dd>
+              </div>
+              <div>
+                <dt>인증 방식</dt>
+                <dd>보안 세션</dd>
+              </div>
+              <div>
+                <dt>만료</dt>
+                <dd>{formatDateTime(session.expiresAt)}</dd>
+              </div>
+            </dl>
+          ) : (
+            <p className="rail-copy sensitive-placeholder">
+              로그인 후 업무 가능. 고객별 조회, 이체, 거래내역은 인증 후 표시됩니다.
+            </p>
+          )}
+          <div className="button-row compact rail-auth-actions">
+            <button onClick={() => onMove("security")} type="button">
+              인증센터
+            </button>
+            <button disabled={!session || isBusy} onClick={onRefresh} type="button">
+              재발급
+            </button>
+          </div>
+          {isAuthenticated ? (
+            <StackedBankDeck
+              accounts={accounts}
+              balanceMasked={balanceMasked}
+              onSelectAccount={() => onMove("accounts")}
+              preferencesMap={accountPreferencesMap}
+              primaryAccountId={primaryAccountId}
+            />
+          ) : (
+            <div className="oss-bank-deck-wrap">
+              <GuestLockedBankCard />
             </div>
-            <div>
-              <dt>인증 방식</dt>
-              <dd>보안 세션</dd>
-            </div>
-            <div>
-              <dt>만료</dt>
-              <dd>{formatDateTime(session.expiresAt)}</dd>
-            </div>
-          </dl>
-        ) : (
-          <p className="rail-copy sensitive-placeholder">
-            로그인 후 업무 가능. 고객별 조회, 이체, 거래내역은 인증 후 표시됩니다.
-          </p>
-        )}
-        <div className="button-row compact rail-auth-actions">
-          <button onClick={() => onMove("security")} type="button">
-            인증센터
-          </button>
-          <button disabled={!session || isBusy} onClick={onRefresh} type="button">
-            재발급
-          </button>
+          )}
         </div>
       </section>
 
@@ -538,7 +585,8 @@ export function RightRail({
               onClick={() => onMove(item.section)}
               type="button"
             >
-              {item.label}
+              <MenuSectionIcon section={item.section} size={14} />
+              <span>{item.label}</span>
             </button>
           ))}
         </div>
@@ -556,7 +604,11 @@ export function RightRail({
                 onClick={() => onMove(item.section)}
                 type="button"
               >
-                {item.label}
+                <span className="oss-inline-icon">
+                  <MenuSectionIcon section={item.section} size={14} />
+                  <span>{item.label}</span>
+                </span>
+                <ChevronRightIcon size={14} />
               </button>
             ))}
           </div>
@@ -621,6 +673,7 @@ export function MobileBottomNav({
           onClick={() => onMove(item.id)}
           type="button"
         >
+          <MenuSectionIcon section={item.id} size={16} />
           <span>{item.label}</span>
         </button>
       ))}
