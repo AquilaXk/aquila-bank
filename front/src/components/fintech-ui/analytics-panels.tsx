@@ -291,7 +291,7 @@ export function CashflowAreaChart({
         <circle
           cx={x}
           cy={y}
-          fill={item.direction === "CREDIT" ? "var(--success)" : "var(--accent)"}
+          fill={item.direction === "CREDIT" ? "var(--credit)" : "var(--danger)"}
           r="4"
           stroke="var(--surface)"
           strokeWidth="1.5"
@@ -382,8 +382,8 @@ export function CashflowAreaChart({
           >
             <defs>
               <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
-                <stop offset="5%" stopColor="var(--accent)" stopOpacity="0.28" />
-                <stop offset="95%" stopColor="var(--accent)" stopOpacity="0.02" />
+                <stop offset="5%" stopColor="var(--primary)" stopOpacity="0.24" />
+                <stop offset="95%" stopColor="var(--primary)" stopOpacity="0.02" />
               </linearGradient>
             </defs>
             <line
@@ -415,7 +415,7 @@ export function CashflowAreaChart({
                 <path
                   d={linePath}
                   fill="none"
-                  stroke="var(--accent)"
+                  stroke="var(--primary)"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth="2.2"

@@ -463,7 +463,7 @@ export function TransactionsSection({
               </div>
               <div className="button-row compact">
                 <input
-                  aria-label="결과 내 적요·상대방·메모 검색"
+                  aria-label="결과 내 검색"
                   onChange={(event) => {
                     setInstantQuery(event.target.value);
                     setSelectedRowIndex(0);

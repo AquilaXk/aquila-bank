@@ -185,6 +185,9 @@ export function BankHeader({
     topNavItems.find((item) => item.activeSections.includes(activeSection))?.id ??
     "personal";
 
+  const activeMenuLabel =
+    mainMenus.find((item) => item.id === activeSection)?.label ?? "뱅킹홈";
+
   function moveFromServiceMap(section: MenuSection) {
     onServiceMapToggle();
     onMove(section);
@@ -363,7 +366,7 @@ export function BankHeader({
           </span>
           <div>
             <strong>Aquila Bank</strong>
-            <small>Personal Banking</small>
+            <small>개인인터넷뱅킹</small>
           </div>
         </div>
         <nav
@@ -396,6 +399,9 @@ export function BankHeader({
         </div>
       </div>
       <div className="bank-service-strip" aria-label="뱅킹 이용 상태">
+        <span className="bank-breadcrumb" aria-label="현재 위치">
+          홈 › 개인뱅킹 › <strong>{activeMenuLabel}</strong>
+        </span>
         <span>
           보안등급 <strong>{isAuthenticated ? "정상" : "보호모드"}</strong>
         </span>
@@ -614,7 +620,9 @@ export function RightRail({
               onClick={() => onMove(item.section)}
               type="button"
             >
-              <MenuSectionIcon section={item.section} size={14} />
+              <span aria-hidden="true" className="quick-tile-icon">
+                <MenuSectionIcon section={item.section} size={15} />
+              </span>
               <span>{item.label}</span>
             </button>
           ))}
@@ -707,5 +715,32 @@ export function MobileBottomNav({
         </button>
       ))}
     </nav>
+  );
+}
+
+export function BankFooter({ onMove }: { onMove: MoveHandler }) {
+  return (
+    <footer className="bank-footer" aria-label="인터넷뱅킹 안내">
+      <div className="bank-footer-inner">
+        <div className="bank-footer-links">
+          <button onClick={() => onMove("supportCenter")} type="button">
+            전자금융거래기본약관
+          </button>
+          <button onClick={() => onMove("security")} type="button">
+            개인정보처리방침
+          </button>
+          <button onClick={() => onMove("securityHub")} type="button">
+            전자금융사기예방안내
+          </button>
+          <button onClick={() => onMove("supportCenter")} type="button">
+            고객센터
+          </button>
+        </div>
+        <div className="bank-footer-meta">
+          <span>대표문의 1599-8000 (평일 09:00~18:00)</span>
+          <span>Aquila Bank 개인인터넷뱅킹</span>
+        </div>
+      </div>
+    </footer>
   );
 }

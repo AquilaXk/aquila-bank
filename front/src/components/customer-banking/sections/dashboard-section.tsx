@@ -20,7 +20,7 @@ import {
   RecentTransactionsFeed,
 } from "../../fintech-ui/analytics-panels";
 import { LockIcon, MenuSectionIcon } from "../../fintech-ui/icons";
-import { BankNoticeStrip, WorkTabs } from "../common";
+import { BankNoticeStrip } from "../common";
 
 const MASKED_AMOUNT_TEXT = "••••••";
 
@@ -32,14 +32,6 @@ type DashboardAccountItem = {
   currencyCode: string;
   availableBalanceMinor: number;
 };
-
-const DASHBOARD_WORK_TABS: Array<{ label: string; section: MenuSection }> = [
-  { label: "개인뱅킹", section: "dashboard" },
-  { label: "조회", section: "accounts" },
-  { label: "이체", section: "transfer" },
-  { label: "인증센터", section: "security" },
-  { label: "고객센터", section: "supportCenter" },
-];
 
 function resolvePrimaryAccountDisplay(
   primaryAccount: DashboardAccountItem | null,
@@ -182,14 +174,6 @@ export function DashboardSection({
 
   return (
     <section className="task-section compact-work-section">
-      <WorkTabs
-        active="개인뱅킹"
-        items={DASHBOARD_WORK_TABS.map(({ label, section }) => ({
-          id: label,
-          label,
-          onClick: () => onMove(section),
-        }))}
-      />
       <div className="section-title">
         <div>
           <p>개인뱅킹</p>

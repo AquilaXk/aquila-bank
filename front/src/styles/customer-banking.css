@@ -3884,7 +3884,7 @@ dialog.cmd-palette-dialog::backdrop {
 }
 
 /* ============================================================================
-   Aquila Bank Executive Banking & Analytics Layer
+   Aquila Bank Korean Commercial Banking Design Layer (Royal Blue & Ledger UI)
    ============================================================================ */
 
 .sr-only {
@@ -3904,6 +3904,9 @@ dialog.cmd-palette-dialog::backdrop {
 }
 
 .bank-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
   background: var(--page);
   color: var(--text);
 }
@@ -3928,16 +3931,16 @@ button {
   color: var(--text);
   padding: 0 12px;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
   line-height: 1.25;
   box-shadow: var(--shadow-xs);
   transition: background-color 0.14s ease, border-color 0.14s ease, color 0.14s ease;
 }
 
 button:hover:not(:disabled) {
-  border-color: var(--line-strong);
-  background: var(--surface-muted);
-  color: var(--text);
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary);
 }
 
 input,
@@ -3962,21 +3965,22 @@ select {
 .brand-row,
 .bank-service-strip,
 .service-map-panel,
-.bank-layout {
-  width: min(1440px, calc(100% - 32px));
+.bank-layout,
+.bank-footer-inner {
+  width: min(1400px, calc(100% - 32px));
+  margin-inline: auto;
 }
 
 .bank-header {
-  background: color-mix(in srgb, var(--surface) 94%, transparent);
-  backdrop-filter: blur(12px);
+  background: var(--surface);
   border-bottom: 1px solid var(--line);
-  box-shadow: none;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
 }
 
 .utility-bar {
-  min-height: 44px;
-  padding-top: 6px;
-  padding-bottom: 6px;
+  min-height: 38px;
+  padding-top: 4px;
+  padding-bottom: 4px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -3984,17 +3988,16 @@ select {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  padding: 3px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface-muted);
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
 .top-channel-nav .top-channel-link {
-  min-height: 28px;
-  padding: 0 11px;
-  border: 0;
-  border-radius: 6px;
+  min-height: 26px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 4px;
   background: transparent;
   color: var(--muted);
   font-size: 12px;
@@ -4004,20 +4007,22 @@ select {
 }
 
 .top-channel-nav .top-channel-link:hover:not(:disabled) {
-  background: var(--surface);
-  color: var(--text);
+  background: var(--surface-muted);
+  color: var(--primary);
 }
 
 .top-channel-nav .top-channel-link.active {
-  background: var(--surface);
-  border-color: var(--line);
-  color: var(--text);
-  box-shadow: var(--shadow-xs);
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-contrast);
+  font-weight: 700;
+  box-shadow: none;
 }
 
 .top-channel-nav .top-channel-link.active:hover:not(:disabled) {
-  background: var(--surface);
-  color: var(--text);
+  background: var(--primary-dark);
+  border-color: var(--primary-dark);
+  color: var(--primary-contrast);
 }
 
 .utility-right {
@@ -4030,20 +4035,20 @@ select {
   align-items: center;
   justify-content: center;
   gap: 5px;
-  min-height: 32px;
+  min-height: 30px;
   padding: 0 10px;
-  border-radius: 8px;
+  border-radius: 6px;
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--text);
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
   white-space: nowrap;
-  box-shadow: var(--shadow-xs);
+  box-shadow: none;
 }
 
 .utility-link.spacing-safe-service-map {
-  min-height: 32px;
+  min-height: 30px;
   padding: 0 10px;
 }
 
@@ -4071,19 +4076,19 @@ select {
 .search-leading-icon {
   position: absolute;
   left: 10px;
-  color: var(--muted);
+  color: var(--primary);
   pointer-events: none;
 }
 
 .utility-search .search-field input {
   width: 100%;
-  height: 32px;
-  border-radius: 8px;
+  height: 30px;
+  border-radius: 999px;
   padding-left: 30px;
-  padding-right: 10px;
+  padding-right: 12px;
   font-size: 12.5px;
-  background: var(--surface-muted);
-  border-color: var(--line);
+  background: var(--surface);
+  border: 1.5px solid var(--primary);
   box-shadow: none;
 }
 
@@ -4098,7 +4103,7 @@ select {
   display: flex;
   align-items: center;
   flex-wrap: nowrap;
-  gap: 4px;
+  gap: 3px;
   min-width: 0;
 }
 
@@ -4111,15 +4116,15 @@ select {
 
 .keyword-list button {
   flex: 0 0 auto;
-  min-height: 26px;
+  min-height: 24px;
   min-width: 0;
-  border-radius: 6px;
-  padding: 2px 7px;
+  border-radius: 4px;
+  padding: 2px 6px;
   font-size: 11.5px;
   font-weight: 500;
   line-height: 1.3;
-  background: var(--surface-muted);
-  border: 1px solid var(--line);
+  background: transparent;
+  border: 0;
   color: var(--muted);
   box-shadow: none;
   white-space: nowrap;
@@ -4127,126 +4132,195 @@ select {
 }
 
 .keyword-list button:hover:not(:disabled) {
-  color: var(--text);
-  background: var(--surface);
+  color: var(--primary);
+  background: var(--primary-soft);
 }
 
 .brand-row {
-  min-height: 48px;
-  padding-top: 6px;
-  padding-bottom: 6px;
+  min-height: 56px;
+  padding-block: 0;
+  align-items: stretch;
+}
+
+.brand-mark {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .brand-symbol {
-  width: 30px;
-  height: 30px;
-  border-radius: 7px;
-  border: 1px solid var(--line);
-  background: var(--surface-muted);
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in oklab, var(--primary) 22%, var(--line));
+  background: var(--primary-soft);
 }
 
 .brand-symbol img {
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
 }
 
 .brand-mark strong {
-  font-size: 16px;
-  font-weight: 700;
+  font-size: 17px;
+  font-weight: 800;
   letter-spacing: -0.02em;
+  color: light-dark(#001e62, #ffffff);
 }
 
 .brand-mark small {
   font-size: 11px;
-  color: var(--muted);
+  font-weight: 600;
+  color: var(--primary);
 }
 
 .primary-nav {
+  align-items: stretch;
   gap: 2px;
 }
 
 .nav-tab {
+  position: relative;
   display: inline-flex;
   align-items: center;
   min-width: auto;
-  min-height: 34px;
-  padding: 0 11px;
-  border-radius: 7px;
-  border: 1px solid transparent;
+  min-height: 56px;
+  padding: 0 13px;
+  border-radius: 0;
+  border: 0;
+  border-bottom: 0;
   background: transparent;
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 500;
+  color: var(--text);
+  font-size: 14.5px;
+  font-weight: 600;
   box-shadow: none;
 }
 
 .nav-tab:hover:not(:disabled) {
-  background: var(--surface-muted);
+  background: transparent;
+  color: var(--primary);
+}
+
+.nav-tab[aria-current="page"],
+.nav-tab.active {
+  background: transparent;
+  border: 0;
+  color: var(--primary);
+  font-weight: 700;
+  box-shadow: none;
+}
+
+.nav-tab[aria-current="page"]::after,
+.nav-tab.active::after {
+  content: "";
+  position: absolute;
+  inset: auto 10px 0 10px;
+  border-block-end: 3px solid var(--primary);
+}
+
+.header-user-chip {
+  align-self: center;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: var(--primary-soft);
+  border: 1px solid color-mix(in oklab, var(--primary) 24%, var(--line));
+  font-size: 12px;
   color: var(--text);
 }
 
-.nav-tab.active {
-  background: var(--surface-muted);
-  border-color: var(--line);
-  border-bottom-color: var(--line);
-  color: var(--text);
+.bank-service-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  min-height: 34px;
+  padding: 5px 0;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.bank-breadcrumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 12px;
+  border-right: 1px solid var(--line);
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.bank-breadcrumb strong {
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.header-compact-utility {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.header-utility-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 999px;
+  min-height: 26px;
+  padding: 2px 10px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  font-size: 11.5px;
   font-weight: 600;
   box-shadow: none;
 }
 
-.header-user-chip {
-  padding: 4px 10px;
+.header-unread-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 5px;
   border-radius: 999px;
-  background: var(--surface-muted);
-  border: 1px solid var(--line);
-  font-size: 12px;
-}
-
-.bank-service-strip {
-  min-height: 32px;
-  padding: 5px 0;
-  border-top: 1px solid var(--line);
-  font-size: 11.5px;
-}
-
-.header-utility-pill {
-  border-radius: 999px;
-  min-height: 24px;
-  padding: 2px 9px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  font-size: 11.5px;
-  box-shadow: none;
+  background: var(--primary);
+  color: var(--primary-contrast);
+  font-size: 10.5px;
+  font-weight: 700;
 }
 
 .bank-layout,
 .dense-banking-shell .bank-layout {
-  grid-template-columns: 224px minmax(0, 1fr) 252px;
-  gap: 16px;
+  flex: 1 0 auto;
+  grid-template-columns: 218px minmax(0, 1fr) 264px;
+  gap: 18px;
   align-items: start;
-  padding: 16px 0 48px;
+  padding: 18px 0 36px;
 }
 
+/* Left LNB (Royal Navy Header + Active Blue Left Rule) */
 .side-menu,
 .side-menu.compact-menu {
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--surface);
-  padding: 8px;
+  padding: 0;
   box-shadow: var(--shadow-xs);
-  overflow: visible;
+  overflow: hidden;
 }
 
 .side-title {
-  min-height: 30px;
-  padding: 4px 8px 8px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--muted);
-  border-bottom: 1px solid var(--line);
-  margin-bottom: 6px;
+  min-height: 46px;
+  margin: 0;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, var(--primary-navy) 0%, var(--primary) 100%);
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-transform: none;
+  border-bottom: 0;
 }
 
 .side-item,
@@ -4255,16 +4329,18 @@ select {
   grid-template-columns: 18px minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
-  min-height: 36px;
-  padding: 6px 9px;
-  border-radius: 8px;
-  border: 1px solid transparent;
+  min-height: 42px;
+  margin: 0;
+  padding: 8px 13px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
   background: transparent;
   box-shadow: none;
 }
 
-.side-item + .side-item {
-  margin-top: 2px;
+.side-item:last-of-type {
+  border-bottom: 0;
 }
 
 .side-item-icon {
@@ -4279,7 +4355,7 @@ select {
 
 .side-item strong {
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--text);
   white-space: nowrap;
   overflow: visible;
@@ -4295,37 +4371,42 @@ select {
 
 .side-item:hover:not(:disabled) {
   background: var(--surface-muted);
-  border-color: transparent;
+  color: var(--primary);
+}
+
+.side-item:hover:not(:disabled) strong,
+.side-item:hover:not(:disabled) .side-item-icon {
+  color: var(--primary);
 }
 
 .side-item.active,
 .spacing-safe-side-menu .side-item.active {
-  background: var(--primary);
-  border-color: var(--primary);
-  color: var(--primary-contrast);
-  box-shadow: var(--shadow-xs);
-  padding-left: 9px;
+  background: var(--primary-soft);
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-inline-start: 3px solid var(--primary);
+  color: var(--primary);
+  box-shadow: none;
+  padding-left: 10px;
 }
 
-.side-item.active strong {
-  font-weight: 600;
-  color: var(--primary-contrast);
+.side-item.active strong,
+.side-item.active .side-item-icon {
+  font-weight: 700;
+  color: var(--primary);
 }
 
 .side-item.active span {
-  color: var(--primary-contrast);
-  opacity: 0.72;
+  color: var(--primary);
+  opacity: 0.85;
 }
 
-.side-item.active .side-item-icon {
-  color: var(--primary-contrast);
-}
-
+/* Status Banner */
 .alert {
   min-height: 36px;
-  padding: 7px 12px;
+  padding: 7px 14px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--surface);
   color: var(--text);
   font-size: 12.5px;
@@ -4338,11 +4419,11 @@ select {
   height: 7px;
   border-radius: 999px;
   flex: none;
-  background: var(--accent);
+  background: var(--primary);
 }
 
 .alert.success {
-  border-color: var(--line);
+  border-color: color-mix(in oklab, var(--success) 32%, var(--line));
   background: var(--surface);
 }
 
@@ -4351,7 +4432,7 @@ select {
 }
 
 .alert.error {
-  border-color: color-mix(in srgb, var(--danger) 45%, var(--line));
+  border-color: color-mix(in oklab, var(--danger) 45%, var(--line));
   background: var(--danger-soft);
 }
 
@@ -4359,6 +4440,7 @@ select {
   background: var(--danger);
 }
 
+/* Panels & Authoritative Korean Banking Typography */
 .task-section,
 .task-section.compact-work-section,
 .rail-panel,
@@ -4371,7 +4453,7 @@ select {
 .application-detail-card,
 .certificate-list,
 .incident-form {
-  border-radius: 12px;
+  border-radius: 10px;
   border: 1px solid var(--line);
   background: var(--surface);
   box-shadow: var(--shadow-card);
@@ -4379,56 +4461,149 @@ select {
 
 .task-section,
 .task-section.compact-work-section {
-  padding: 20px;
+  padding: 20px 22px;
+}
+
+.section-title {
+  padding-bottom: 12px;
+  border-bottom: 2px solid light-dark(#111827, #334155);
 }
 
 .section-title p {
-  color: var(--muted);
+  color: var(--primary);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .section-title h1 {
-  font-size: 20px;
+  font-size: 21px;
   font-weight: 700;
   letter-spacing: -0.02em;
 }
 
+.section-title .button-row button:first-child {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-contrast);
+  font-weight: 600;
+}
+
+.section-title .button-row button:first-child:hover:not(:disabled) {
+  border-color: var(--primary-dark);
+  background: var(--primary-dark);
+  color: var(--primary-contrast);
+}
+
+/* Underline WorkTabs */
 .work-tabs {
-  display: inline-flex;
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 0;
+  width: 100%;
+  padding: 0;
+  margin-bottom: 14px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+}
+
+.work-tabs + .section-title {
+  margin-top: 4px;
+}
+
+.work-tabs button {
+  position: relative;
+  flex: none;
+  min-height: 40px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13.5px;
+  font-weight: 600;
+  box-shadow: none;
+  white-space: nowrap;
+}
+
+.work-tabs button:hover:not(:disabled) {
+  background: transparent;
+  color: var(--primary);
+}
+
+.work-tabs button.active,
+.work-tabs button[aria-selected="true"] {
+  background: transparent;
+  color: var(--primary);
+  box-shadow: none;
+}
+
+.work-tabs button.active::after,
+.work-tabs button[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  border-block-end: 3px solid var(--primary);
+}
+
+/* Single Compact Horizontal Notice Bar & 4-Cell Summary Strip */
+.bank-notice-strip {
+  display: flex;
   flex-wrap: wrap;
-  gap: 2px;
-  padding: 3px;
+  align-items: center;
+  gap: 6px 16px;
+  margin-top: 10px;
+  padding: 9px 14px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface-muted);
 }
 
-.work-tabs button {
-  min-height: 30px;
-  padding: 0 12px;
+.bank-notice-strip div {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 0;
+  padding: 0;
   border: 0;
-  border-radius: 6px;
   background: transparent;
+}
+
+.bank-notice-strip dt {
+  margin: 0;
   color: var(--muted);
-  font-size: 12.5px;
-  font-weight: 500;
-  box-shadow: none;
+  font-size: 11.5px;
+  font-weight: 600;
   white-space: nowrap;
 }
 
-.work-tabs button.active {
-  background: var(--surface);
+.bank-notice-strip dd {
+  margin: 0;
   color: var(--text);
+  font-size: 12px;
   font-weight: 600;
-  box-shadow: var(--shadow-xs);
+  line-height: 1.4;
+}
+
+.security-notice .bank-notice-strip {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+}
+
+.security-notice .bank-notice-strip div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
 }
 
 .work-summary-strip {
   gap: 4px 14px;
   margin-top: 10px;
-  padding: 6px 12px;
-  border: 1px solid var(--line);
+  padding: 7px 14px;
+  border: 1px solid color-mix(in oklab, var(--primary) 16%, var(--line));
   border-radius: 8px;
   background: var(--surface-muted);
 }
@@ -4440,18 +4615,19 @@ select {
   background: transparent;
   color: var(--muted);
   padding: 0;
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 500;
 }
 
 .work-state-grid,
 .account-status-grid {
   gap: 0;
+  margin-top: 10px;
   border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--surface);
+  border-radius: 8px;
+  background: var(--surface-muted);
   overflow: hidden;
-  box-shadow: var(--shadow-xs);
+  box-shadow: none;
 }
 
 .work-state-grid > div,
@@ -4471,16 +4647,22 @@ select {
 .work-state-grid strong,
 .account-status-grid strong {
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
   white-space: nowrap;
 }
 
+.filter-form {
+  background: var(--surface-muted);
+  border: 1px solid color-mix(in oklab, var(--primary) 18%, var(--line));
+}
+
+/* KPI Strip & Analytics (Korean Deposit-Blue / Withdrawal-Red) */
 .ab-kpi-strip {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin-top: 14px;
+  margin-top: 12px;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--surface);
   overflow: hidden;
   box-shadow: var(--shadow-xs);
@@ -4488,8 +4670,8 @@ select {
 
 .ab-kpi-cell {
   display: grid;
-  gap: 6px;
-  padding: 14px 16px;
+  gap: 5px;
+  padding: 13px 15px;
   border-right: 1px solid var(--line);
   min-width: 0;
 }
@@ -4507,7 +4689,7 @@ select {
 
 .ab-kpi-cell-head > span:first-child {
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--muted);
 }
 
@@ -4525,19 +4707,19 @@ select {
 }
 
 .ab-kpi-tag.positive {
-  border-color: color-mix(in srgb, var(--success) 35%, transparent);
-  background: var(--success-soft);
-  color: var(--success);
+  border-color: color-mix(in oklab, var(--credit) 32%, transparent);
+  background: var(--credit-soft);
+  color: var(--credit);
 }
 
 .ab-kpi-tag.negative {
-  border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+  border-color: color-mix(in oklab, var(--danger) 32%, transparent);
   background: var(--danger-soft);
   color: var(--danger);
 }
 
 .ab-kpi-number {
-  font-size: 20px;
+  font-size: 19px;
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--text);
@@ -4545,7 +4727,7 @@ select {
 }
 
 .ab-kpi-number.positive {
-  color: var(--success);
+  color: var(--credit);
 }
 
 .ab-kpi-number.negative {
@@ -4582,7 +4764,7 @@ select {
   margin-top: 0;
   padding: 16px 18px;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--surface);
   box-shadow: var(--shadow-xs);
 }
@@ -4611,15 +4793,15 @@ select {
   background: transparent;
   color: var(--muted);
   font-size: 11.5px;
-  font-weight: 500;
+  font-weight: 600;
   box-shadow: none;
   white-space: nowrap;
 }
 
 .ab-seg-control button.active {
   background: var(--surface);
-  color: var(--text);
-  font-weight: 600;
+  color: var(--primary);
+  font-weight: 700;
   box-shadow: var(--shadow-xs);
 }
 
@@ -4651,7 +4833,7 @@ select {
 }
 
 .ab-movement-metrics strong.positive {
-  color: var(--success);
+  color: var(--credit);
 }
 
 .ab-movement-metrics strong.negative {
@@ -4672,12 +4854,13 @@ select {
   gap: 10px;
 }
 
+/* Passbook Account Cards */
 .ab-bank-card {
   position: relative;
   display: flex;
   justify-content: space-between;
   width: 100%;
-  min-height: 148px;
+  min-height: 146px;
   padding: 16px 18px;
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -4692,27 +4875,27 @@ button.ab-bank-card:hover:not(:disabled) {
 }
 
 .ab-bank-card.compact {
-  min-height: 138px;
+  min-height: 134px;
   padding: 14px 16px;
 }
 
 .ab-bank-card.variant-royal {
   background: var(--bank-gradient);
-  border-color: rgba(255, 255, 255, 0.12);
-  color: #fafafa;
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
   box-shadow: var(--shadow-credit-card);
 }
 
 .ab-bank-card.variant-royal:hover:not(:disabled) {
   background: var(--bank-gradient);
-  color: #fafafa;
-  border-color: rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.36);
 }
 
 .ab-bank-card.variant-emerald {
   background: var(--surface);
   border-color: var(--line-strong);
-  border-top: 3px solid var(--success);
+  border-top: 3px solid #008485;
   color: var(--text);
 }
 
@@ -4730,7 +4913,7 @@ button.ab-bank-card:hover:not(:disabled) {
 .ab-bank-card.selected {
   box-shadow:
     0 0 0 2px var(--surface),
-    0 0 0 4px var(--accent),
+    0 0 0 4px var(--primary),
     var(--shadow-credit-card);
 }
 
@@ -4774,8 +4957,14 @@ button.ab-bank-card:hover:not(:disabled) {
   width: 26px;
   height: 26px;
   border-radius: 7px;
-  background: rgba(128, 128, 128, 0.16);
+  background: rgba(255, 255, 255, 0.16);
   flex: none;
+}
+
+.ab-bank-card.variant-emerald .ab-bank-card-icon,
+.ab-bank-card.variant-slate .ab-bank-card-icon {
+  background: var(--primary-soft);
+  color: var(--primary);
 }
 
 .ab-bank-card-title {
@@ -4783,23 +4972,30 @@ button.ab-bank-card:hover:not(:disabled) {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 13.5px;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .ab-bank-card-pill {
   flex: none;
   padding: 2px 7px;
   border-radius: 999px;
-  background: rgba(128, 128, 128, 0.18);
+  background: rgba(255, 255, 255, 0.2);
   font-size: 10.5px;
   font-weight: 600;
   white-space: nowrap;
 }
 
+.ab-bank-card.variant-emerald .ab-bank-card-pill,
+.ab-bank-card.variant-slate .ab-bank-card-pill {
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+
 .ab-bank-card-currency {
   font-size: 11px;
   font-weight: 700;
-  opacity: 0.78;
+  opacity: 0.82;
   white-space: nowrap;
 }
 
@@ -4810,7 +5006,7 @@ button.ab-bank-card:hover:not(:disabled) {
 
 .ab-bank-card-caption {
   font-size: 11px;
-  opacity: 0.72;
+  opacity: 0.78;
 }
 
 .ab-bank-card-balance {
@@ -4821,7 +5017,7 @@ button.ab-bank-card:hover:not(:disabled) {
 
 .ab-bank-card-foot {
   font-size: 12px;
-  opacity: 0.85;
+  opacity: 0.88;
 }
 
 .ab-bank-card-grid {
@@ -4839,9 +5035,9 @@ button.ab-bank-card:hover:not(:disabled) {
   gap: 12px;
   margin-top: 12px;
   padding: 12px 16px;
-  border: 1px solid var(--line);
+  border: 1px solid color-mix(in oklab, var(--primary) 22%, var(--line));
   border-radius: 10px;
-  background: var(--surface-muted);
+  background: var(--primary-soft);
   color: var(--text);
 }
 
@@ -4875,7 +5071,7 @@ button.ab-bank-card:hover:not(:disabled) {
   border-radius: 999px;
   border: 1px solid var(--line);
   background: var(--surface);
-  color: var(--muted);
+  color: var(--primary);
   font-size: 11px;
   font-weight: 600;
   white-space: nowrap;
@@ -4899,8 +5095,14 @@ button.ab-bank-card:hover:not(:disabled) {
 .ab-account-banner-balance strong {
   font-size: 15px;
   font-weight: 700;
+  color: var(--primary-navy);
 }
 
+:root[data-theme="dark"] .ab-account-banner-balance strong {
+  color: var(--text);
+}
+
+/* Feed, Donut, Ratio Primitives & Category Badges */
 .ab-recent-sales-list {
   list-style: none;
   margin: 0;
@@ -4946,12 +5148,15 @@ button.ab-bank-card:hover:not(:disabled) {
 }
 
 .ab-sales-avatar.credit {
-  color: var(--success);
-  background: var(--success-soft);
+  border-color: color-mix(in oklab, var(--credit) 28%, var(--line));
+  background: var(--credit-soft);
+  color: var(--credit);
 }
 
 .ab-sales-avatar.debit {
-  color: var(--text);
+  border-color: color-mix(in oklab, var(--danger) 24%, var(--line));
+  background: var(--danger-soft);
+  color: var(--danger);
 }
 
 .ab-sales-meta {
@@ -4978,6 +5183,14 @@ button.ab-bank-card:hover:not(:disabled) {
   align-items: center;
   gap: 8px;
   white-space: nowrap;
+}
+
+.ab-sales-right strong.credit {
+  color: var(--credit);
+}
+
+.ab-sales-right strong.debit {
+  color: var(--danger);
 }
 
 .ab-donut-box {
@@ -5151,7 +5364,7 @@ button.ab-bank-card:hover:not(:disabled) {
   position: absolute;
   inset-block: 0;
   left: 0;
-  background: var(--accent);
+  background: var(--primary);
   border-radius: 7px;
   opacity: 0.16;
 }
@@ -5222,28 +5435,28 @@ button.ab-bank-card:hover:not(:disabled) {
 }
 
 .ab-category-badge.cat-rose {
-  border-color: color-mix(in srgb, #e11d48 30%, var(--line));
-  background: color-mix(in srgb, #e11d48 10%, transparent);
-  color: light-dark(#be123c, #fb7185);
+  border-color: color-mix(in oklab, var(--danger) 30%, var(--line));
+  background: var(--danger-soft);
+  color: var(--danger);
 }
 
 .ab-category-badge.cat-emerald {
-  border-color: color-mix(in srgb, var(--success) 32%, var(--line));
+  border-color: color-mix(in oklab, var(--success) 32%, var(--line));
   background: var(--success-soft);
   color: var(--success);
 }
 
 .ab-category-badge.cat-amber {
-  border-color: color-mix(in srgb, var(--warning) 35%, var(--line));
+  border-color: color-mix(in oklab, var(--warning) 35%, var(--line));
   background: var(--warning-soft);
   color: var(--warning);
 }
 
 .ab-category-badge.cat-indigo,
 .ab-category-badge.cat-blue {
-  border-color: color-mix(in srgb, var(--accent) 32%, var(--line));
-  background: var(--accent-soft);
-  color: var(--accent);
+  border-color: color-mix(in oklab, var(--primary) 30%, var(--line));
+  background: var(--primary-soft);
+  color: var(--primary);
 }
 
 .ab-category-badge.cat-slate {
@@ -5307,7 +5520,7 @@ button.ab-bank-card:hover:not(:disabled) {
 }
 
 .ab-kpi-pill.income {
-  color: var(--success);
+  color: var(--credit);
 }
 
 .ab-kpi-pill.expense {
@@ -5338,7 +5551,7 @@ button.ab-bank-card:hover:not(:disabled) {
   font-weight: 700;
 }
 
-/* Right rail (Session summary & Quick shortcuts) */
+/* Right Rail (Session Card + 3x3 Quick Tile Grid) */
 .right-rail {
   gap: 12px;
 }
@@ -5366,8 +5579,8 @@ button.ab-bank-card:hover:not(:disabled) {
   width: 34px;
   height: 34px;
   border-radius: 8px;
-  background: var(--primary);
-  color: var(--primary-contrast);
+  background: linear-gradient(135deg, var(--primary-navy) 0%, var(--primary) 100%);
+  color: #ffffff;
   font-size: 13px;
   font-weight: 700;
   flex: none;
@@ -5387,7 +5600,7 @@ button.ab-bank-card:hover:not(:disabled) {
 
 .rail-user-meta strong {
   font-size: 13.5px;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .rail-status-pill {
@@ -5402,9 +5615,22 @@ button.ab-bank-card:hover:not(:disabled) {
 }
 
 .rail-status-pill.active {
-  border-color: color-mix(in srgb, var(--success) 35%, transparent);
+  border-color: color-mix(in oklab, var(--success) 35%, transparent);
   background: var(--success-soft);
   color: var(--success);
+}
+
+.rail-auth-actions button:first-child {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-contrast);
+  font-weight: 600;
+}
+
+.rail-auth-actions button:first-child:hover:not(:disabled) {
+  background: var(--primary-dark);
+  border-color: var(--primary-dark);
+  color: var(--primary-contrast);
 }
 
 .session-summary {
@@ -5481,18 +5707,45 @@ button.ab-bank-card:hover:not(:disabled) {
   white-space: nowrap;
 }
 
+.quick-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
 .quick-grid button {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: flex-start;
-  gap: 6px;
-  min-height: 36px;
-  padding: 0 9px;
+  justify-content: center;
+  gap: 5px;
+  min-height: 62px;
+  padding: 8px 4px;
+  border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface-muted);
-  font-size: 12px;
-  font-weight: 500;
+  color: var(--text);
+  font-size: 11.5px;
+  font-weight: 600;
+  text-align: center;
   box-shadow: none;
+}
+
+.quick-grid button:hover:not(:disabled) {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.quick-tile-icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--primary);
 }
 
 .recent-menu-list button {
@@ -5508,7 +5761,7 @@ button.ab-bank-card:hover:not(:disabled) {
   box-shadow: none;
 }
 
-/* Structural Bug Fixes: Phantom Drawer Column, Form Alignment, Table Typography, Stepper */
+/* Structural Work Grid & Crisp Ledger Table */
 .split-work {
   grid-template-columns: minmax(0, 1fr);
   align-items: start;
@@ -5527,7 +5780,24 @@ button.ab-bank-card:hover:not(:disabled) {
 }
 
 .account-grid {
-  grid-template-columns: minmax(0, 1.35fr) minmax(290px, 0.9fr);
+  grid-template-columns: minmax(0, 1.6fr) minmax(290px, 0.9fr);
+}
+
+.account-grid .bank-table th,
+.account-grid .bank-table td {
+  padding: 8px 6px;
+  font-size: 12px;
+}
+
+.account-grid .bank-table tbody td:nth-child(4),
+.account-grid .bank-table tbody td:nth-child(5) {
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.account-grid .form-grid.compact {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
 }
 
 .bank-form,
@@ -5550,7 +5820,9 @@ button.ab-bank-card:hover:not(:disabled) {
 .bank-form > button:hover:not(:disabled),
 .bank-form .bank-action-bar button[type="submit"]:hover:not(:disabled),
 .bank-form .button-row button[type="submit"]:hover:not(:disabled) {
-  opacity: 0.9;
+  background: var(--primary-dark);
+  border-color: var(--primary-dark);
+  color: var(--primary-contrast);
 }
 
 .panel-toolbar {
@@ -5583,26 +5855,63 @@ button.ab-bank-card:hover:not(:disabled) {
 }
 
 .bank-table-wrap {
-  border-radius: 10px;
+  border-radius: 0 0 8px 8px;
   border: 1px solid var(--line);
+  border-top: 2px solid var(--primary-navy);
   background: var(--surface);
   overflow-x: auto;
 }
 
+:root[data-theme="dark"] .bank-table-wrap {
+  border-top-color: var(--primary);
+}
+
+.bank-table thead {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 1;
+}
+
 .bank-table thead th {
-  height: 38px;
+  height: 40px;
+  padding: 8px 10px;
   background: var(--surface-muted);
-  color: var(--muted);
+  border-bottom: 1px solid var(--line-strong);
+  color: var(--text);
   font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
 }
 
-.bank-table td {
+.bank-table tbody td {
+  padding: 10px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12.5px;
   vertical-align: middle;
+  white-space: nowrap;
 }
 
-.bank-table td button,
+.bank-table tbody td:nth-child(4),
+.bank-table tbody td:nth-child(5) {
+  min-width: 120px;
+  white-space: normal;
+}
+
+.bank-table td:last-child {
+  white-space: nowrap;
+}
+
+.bank-table td button + button {
+  margin-left: 6px;
+}
+
+.bank-table td button {
+  min-height: 30px;
+  padding: 0 9px;
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
 .status-badge,
 .amount,
 .amount-cell {
@@ -5611,6 +5920,16 @@ button.ab-bank-card:hover:not(:disabled) {
 
 .transfer-process-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.transfer-process-grid > div {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  padding: 12px 14px;
+  min-height: 0;
+  height: auto;
+  overflow: visible;
 }
 
 .transfer-process-grid div:nth-child(odd) {
@@ -5656,12 +5975,55 @@ button.ab-bank-card:hover:not(:disabled) {
   color: var(--primary-contrast);
 }
 
+/* Institutional Korean Commercial Banking Footer */
+.bank-footer {
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+  padding: 18px 0 26px;
+  margin-top: auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.bank-footer-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 20px;
+}
+
+.bank-footer-links,
+.bank-footer-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+
+.bank-footer-links button {
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  box-shadow: none;
+}
+
+.bank-footer-links button:hover:not(:disabled) {
+  color: var(--primary);
+  background: transparent;
+}
+
 @media (max-width: 1180px) {
   .utility-bar,
   .brand-row,
   .bank-service-strip,
   .service-map-panel,
-  .bank-layout {
+  .bank-layout,
+  .bank-footer-inner {
     width: min(100% - 24px, 960px);
   }
 
@@ -5694,10 +6056,15 @@ button.ab-bank-card:hover:not(:disabled) {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .side-title {
+    grid-column: 1 / -1;
+  }
+
   .side-item,
   .side-menu.compact-menu .side-item {
     grid-template-columns: auto minmax(0, 1fr);
     min-height: 46px;
+    border-right: 1px solid var(--line);
   }
 
   .side-item .side-item-icon {
@@ -5718,9 +6085,14 @@ button.ab-bank-card:hover:not(:disabled) {
   .brand-row,
   .bank-service-strip,
   .service-map-panel,
-  .bank-layout {
+  .bank-layout,
+  .bank-footer-inner {
     width: calc(100% - 20px);
     max-width: calc(100% - 20px);
+  }
+
+  .bank-shell {
+    padding-bottom: 72px;
   }
 
   .ab-kpi-strip,
@@ -5770,6 +6142,10 @@ button.ab-bank-card:hover:not(:disabled) {
     overflow-x: auto;
   }
 
+  .nav-tab {
+    min-height: 42px;
+  }
+
   .side-menu.compact-menu.mobile-compact-side-menu,
   .side-menu.mobile-compact-side-menu {
     display: flex;
@@ -5779,10 +6155,16 @@ button.ab-bank-card:hover:not(:disabled) {
     overflow-y: hidden;
   }
 
+  .side-title {
+    display: none;
+  }
+
   .side-menu.mobile-compact-side-menu .side-item {
     flex: 0 0 156px;
     min-height: 62px;
     grid-template-columns: auto minmax(0, 1fr);
+    border-right: 1px solid var(--line);
+    border-bottom: 0;
   }
 
   .side-menu.mobile-compact-side-menu .side-item span,
@@ -5799,14 +6181,24 @@ button.ab-bank-card:hover:not(:disabled) {
   }
 
   .mobile-bottom-nav {
-    background: color-mix(in srgb, var(--surface) 94%, transparent);
+    background: color-mix(in oklab, var(--surface) 94%, transparent);
     backdrop-filter: blur(12px);
-    box-shadow: 0 -4px 18px rgba(9, 9, 11, 0.08);
+    box-shadow: 0 -4px 18px rgba(15, 23, 42, 0.08);
   }
 
   .mobile-bottom-nav button {
     min-height: 44px;
     border-radius: 8px;
+  }
+}
+
+@media (max-width: 480px) {
+  .utility-bar.mobile-compact-utility {
+    grid-template-columns: 1fr;
+  }
+
+  .quick-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -5821,6 +6213,11 @@ button.ab-bank-card:hover:not(:disabled) {
   .balance-card,
   .status-badge {
     border: 1px solid CanvasText;
+  }
+
+  .nav-tab[aria-current="page"]::after,
+  .work-tabs button[aria-selected="true"]::after {
+    border-block-end-color: Highlight;
   }
 }
 
@@ -5843,6 +6240,7 @@ button.ab-bank-card:hover:not(:disabled) {
   }
 
   .bank-shell > .bank-header,
+  .bank-shell > .bank-footer,
   .bank-layout > .side-menu,
   .bank-layout > .right-rail,
   .mobile-bottom-nav,

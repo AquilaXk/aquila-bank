@@ -8,6 +8,7 @@ import {
 } from "@/components/customer-banking/common";
 import { AccountsSection } from "@/components/customer-banking/sections/accounts-section";
 import {
+  BankFooter,
   BankHeader,
   MobileBottomNav,
   RightRail,
@@ -540,6 +541,7 @@ export default function HomePage() {
           onRefresh={handleRefresh}
         />
       </div>
+      <BankFooter onMove={moveToSection} />
       <MobileBottomNav activeSection={activeSection} onMove={moveToSection} />
       <CommandPaletteDialog
         entries={commandEntries}

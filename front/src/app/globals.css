@@ -3,71 +3,77 @@
 @tailwind utilities;
 
 /*
- * Aquila Bank Adaptive Neutral Design Tokens (light-dark() SSOT)
+ * Aquila Bank Korean Commercial Banking Design Tokens (light-dark() SSOT)
  */
 @layer base {
   :root {
     color-scheme: light dark;
-    --radius: 0.625rem;
+    --radius: 0.5rem;
     --palette-grey-0: #ffffff;
-    --palette-grey-10: #fafafa;
-    --palette-grey-15: #f4f4f5;
-    --palette-grey-20: #e4e4e7;
-    --palette-grey-50: #f4f4f5;
-    --palette-grey-100: #e4e4e7;
-    --palette-grey-200: #d4d4d8;
-    --palette-grey-300: #a1a1aa;
-    --palette-grey-800: #71717a;
-    --palette-grey-900: #27272a;
-    --palette-grey-1000: #18181b;
-    --palette-grey-1100: #121215;
-    --palette-grey-1200: #09090b;
-    --palette-blue-600: #2563eb;
-    --palette-blue-700: #18181b;
-    --palette-blue-400: #60a5fa;
+    --palette-grey-10: #f3f5f9;
+    --palette-grey-15: #f5f7fb;
+    --palette-grey-20: #dfe5ef;
+    --palette-grey-50: #f5f7fb;
+    --palette-grey-100: #e5e8ee;
+    --palette-grey-200: #d0d7e3;
+    --palette-grey-300: #9ba8bf;
+    --palette-grey-800: #596579;
+    --palette-grey-900: #1e293b;
+    --palette-grey-1000: #111827;
+    --palette-grey-1100: #131b2e;
+    --palette-grey-1200: #0b101b;
+    --palette-blue-600: #0046ff;
+    --palette-blue-700: #0033cc;
+    --palette-blue-400: #4d82ff;
 
-    --page: light-dark(#fafafa, #09090b);
-    --surface: light-dark(#ffffff, #121215);
-    --surface-muted: light-dark(#f4f4f5, #18181b);
-    --surface-elevated: light-dark(#ffffff, #202024);
-    --line: light-dark(#e4e4e7, rgba(255, 255, 255, 0.09));
-    --line-strong: light-dark(#d4d4d8, rgba(255, 255, 255, 0.16));
-    --text: light-dark(#09090b, #fafafa);
-    --muted: light-dark(#71717a, #a1a1aa);
-    --primary: light-dark(#18181b, #fafafa);
-    --primary-dark: light-dark(#09090b, #e4e4e7);
-    --primary-contrast: light-dark(#fafafa, #09090b);
-    --primary-soft: light-dark(#f4f4f5, rgba(255, 255, 255, 0.08));
-    --accent: light-dark(#2563eb, #60a5fa);
-    --accent-soft: light-dark(rgba(37, 99, 235, 0.08), rgba(96, 165, 250, 0.14));
-    --danger: light-dark(#dc2626, #f87171);
+    --page: light-dark(#f3f5f9, #0b101b);
+    --surface: light-dark(#ffffff, #131b2e);
+    --surface-muted: light-dark(#f5f7fb, #1a243b);
+    --surface-elevated: light-dark(#ffffff, #202c47);
+    --line: light-dark(#dfe5ef, rgba(255, 255, 255, 0.11));
+    --line-strong: light-dark(#b8c4d6, rgba(255, 255, 255, 0.22));
+    --text: light-dark(#111827, #f3f6fc);
+    --muted: light-dark(#596579, #9ba8bf);
+    --primary: light-dark(#0046ff, #4d82ff);
+    --primary-dark: light-dark(#0033cc, #7aa2ff);
+    --primary-navy: light-dark(#001e62, #17347a);
+    --primary-contrast: light-dark(#ffffff, #081126);
+    --primary-soft: light-dark(#ebf2ff, rgba(77, 130, 255, 0.16));
+    --accent: light-dark(#0046ff, #6094ff);
+    --accent-soft: light-dark(#eef4ff, rgba(96, 148, 255, 0.14));
+    --credit: light-dark(#0046ff, #6094ff);
+    --credit-soft: light-dark(#ebf2ff, rgba(96, 148, 255, 0.16));
+    --danger: light-dark(#d92d20, #f87171);
     --danger-contrast: light-dark(#ffffff, #09090b);
-    --danger-soft: light-dark(rgba(220, 38, 38, 0.08), rgba(248, 113, 113, 0.14));
-    --success: light-dark(#059669, #34d399);
-    --success-soft: light-dark(rgba(5, 150, 105, 0.09), rgba(52, 211, 153, 0.14));
-    --warning: light-dark(#d97706, #fbbf24);
-    --warning-soft: light-dark(rgba(217, 119, 6, 0.1), rgba(251, 191, 36, 0.14));
+    --danger-soft: light-dark(#fef2f2, rgba(248, 113, 113, 0.15));
+    --success: light-dark(#067647, #34d399);
+    --success-soft: light-dark(#ecfdf3, rgba(52, 211, 153, 0.15));
+    --warning: light-dark(#b54708, #fbbf24);
+    --warning-soft: light-dark(#fffaeb, rgba(251, 191, 36, 0.15));
 
-    --chart-1: light-dark(#18181b, #e4e4e7);
-    --chart-2: light-dark(#2563eb, #60a5fa);
-    --chart-3: light-dark(#059669, #34d399);
+    --chart-1: light-dark(#0046ff, #6094ff);
+    --chart-2: light-dark(#001e62, #93b4ff);
+    --chart-3: light-dark(#008485, #2dd4bf);
     --chart-4: light-dark(#d97706, #fbbf24);
-    --chart-5: light-dark(#71717a, #a1a1aa);
+    --chart-5: light-dark(#64748b, #94a3b8);
 
-    --bank-gradient: linear-gradient(145deg, #18181b 0%, #09090b 100%);
-    --bank-emerald-gradient: linear-gradient(145deg, #064e3b 0%, #022c22 100%);
-    --bank-slate-gradient: linear-gradient(145deg, #27272a 0%, #18181b 100%);
+    --bank-gradient: linear-gradient(135deg, #0046ff 0%, #002899 58%, #001a66 100%);
+    --bank-emerald-gradient: linear-gradient(135deg, #006d77 0%, #004b57 100%);
+    --bank-slate-gradient: linear-gradient(135deg, #334155 0%, #1e293b 100%);
     --shadow-xs: light-dark(
-      0 1px 2px 0 rgba(9, 9, 11, 0.04),
-      0 1px 2px 0 rgba(0, 0, 0, 0.4)
+      0 1px 2px 0 rgba(15, 23, 42, 0.04),
+      0 1px 2px 0 rgba(0, 0, 0, 0.42)
     );
-    --shadow-card: var(--shadow-xs);
+    --shadow-card: light-dark(
+      0 1px 3px 0 rgba(15, 23, 42, 0.05),
+      0 2px 6px 0 rgba(0, 0, 0, 0.35)
+    );
     --shadow-chart: light-dark(
-      0 2px 8px -2px rgba(9, 9, 11, 0.05),
+      0 2px 10px -2px rgba(0, 30, 98, 0.08),
       0 6px 18px -4px rgba(0, 0, 0, 0.45)
     );
     --shadow-credit-card: light-dark(
-      0 10px 24px -10px rgba(9, 9, 11, 0.22),
+      0 10px 24px -10px rgba(0, 40, 153, 0.32),
       0 14px 28px -10px rgba(0, 0, 0, 0.65)
     );
     --shadow-profile: var(--shadow-xs);
@@ -82,7 +88,7 @@
     --text-secondary: var(--muted);
 
     accent-color: var(--primary);
-    scrollbar-color: light-dark(#d4d4d8, #3f3f46) transparent;
+    scrollbar-color: light-dark(#cbd5e1, #334155) transparent;
   }
 
   :root:has(> head > meta[name="color-scheme"][content="dark"]),
