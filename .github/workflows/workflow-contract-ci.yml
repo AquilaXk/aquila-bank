@@ -1,11 +1,33 @@
 name: CI Workflow Contract
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/**"
+      - "CONTRIBUTING.md"
+      - "SECURITY.md"
+      - "LICENSE"
+      - "NOTICE"
+      - "THIRD_PARTY_NOTICES.md"
+      - "tools/ci/check-repo-hygiene.mjs"
+      - "tools/test/check-ci-runtime-optimization-contract.sh"
+      - "tools/test/check-flyway-backward-compatible-migrations.sh"
+      - "tools/test/check-transaction-read-model-staging-replay.sh"
+      - "tools/ops/transaction-read-model-staging-replay.sh"
+      - "tools/test/run-transaction-query-plan-regression-gate.sh"
   pull_request:
     branches:
       - main
     paths:
-      - ".github/workflows/**"
+      - ".github/**"
+      - "CONTRIBUTING.md"
+      - "SECURITY.md"
+      - "LICENSE"
+      - "NOTICE"
+      - "THIRD_PARTY_NOTICES.md"
+      - "tools/ci/check-repo-hygiene.mjs"
       - "tools/test/check-ci-runtime-optimization-contract.sh"
       - "tools/test/check-flyway-backward-compatible-migrations.sh"
       - "tools/test/check-transaction-read-model-staging-replay.sh"
@@ -27,6 +49,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+
+      - name: Check repository hygiene guard
+        run: node tools/ci/check-repo-hygiene.mjs
 
       - name: Check CI runtime optimization contract
         run: bash tools/test/check-ci-runtime-optimization-contract.sh

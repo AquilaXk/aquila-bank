@@ -57,6 +57,10 @@ jobs:
           cache: yarn
           cache-dependency-path: front/yarn.lock
 
+      - name: Run repository hygiene guard
+        working-directory: ${{ github.workspace }}
+        run: node tools/ci/check-repo-hygiene.mjs
+
       - name: Install dependencies
         run: yarn install --frozen-lockfile --non-interactive
 

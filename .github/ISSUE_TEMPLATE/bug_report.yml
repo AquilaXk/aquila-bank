@@ -1,38 +1,94 @@
-name: "🐞 Bug Report"
-description: "버그, 장애, 정합성 회귀 이슈를 등록합니다."
-title: "[Fix] "
+name: 버그 신고 / Bug report
+description: 서비스 이용 중 발생한 문제를 알려 주세요. / Report a problem in the application.
 labels: ["bug"]
 body:
-  - type: textarea
-    id: summary
+  - type: markdown
     attributes:
-      label: "배경 및 문제 요약"
-      description: "발생한 문제 현상, 재현 경로, 기대 결과와 실제 결과의 차이를 요약합니다."
-      placeholder: |
-        - 현상 및 재현 경로:
-        - 기대 결과 / 실제 결과:
+      value: |
+        기능 요청과 PR은 받지 않습니다. 버그 신고만 받습니다. 보안 문제는 이슈로 올리지 말고 [SECURITY.md](https://github.com/AquilaXk/aquila-bank/blob/main/SECURITY.md)의 비공개 신고를 이용해 주세요.
+
+        Feature requests and pull requests are not accepted. Only bug reports are. Do not file security problems here; use the private report described in [SECURITY.md](https://github.com/AquilaXk/aquila-bank/blob/main/SECURITY.md).
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 업무 영역 / Area
+      options:
+        - 계좌 조회 · 잔액 / Accounts & Balance
+        - 즉시이체 · 이체 취소 / Transfers & Reversals
+        - 거래내역 조회 / Transaction History
+        - 로그인 · 보안 · MFA / Auth, Session & MFA
+        - 실시간 알림 (SSE) / Realtime Notifications
+        - 고객센터 · 부가업무 신청 / Customer Service Applications
+        - 운영 콘솔 / Operations Console
+        - 화면 · 반응형 · 접근성 / UI, Responsive & Accessibility
+        - 인프라 · 배포 / Infra & Deployment
+        - 기타 / Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: browser
+    attributes:
+      label: 브라우저 / Browser
+      options:
+        - Chrome / Chromium
+        - Safari (macOS / iOS)
+        - Firefox
+        - Edge
+        - API / CLI 직접 호출
+        - 기타 / Other
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: 운영체제 및 브라우저 버전 / OS & Browser version
+      placeholder: "예: macOS 15.4 / Safari 18.4, Windows 11 / Chrome 136"
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: 버전 또는 커밋 / Version or commit SHA
+      placeholder: "예: v1.1.0"
+    validations:
+      required: false
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 재현 절차 / Steps to reproduce
+      value: |
+        1.
+        2.
+        3.
     validations:
       required: true
 
   - type: textarea
-    id: scope
+    id: expected
     attributes:
-      label: "변경 범위 및 설계 방향"
-      description: "영향받는 도메인/파일 경로와 수정 방향을 정리합니다. 상위 Epic이나 연관 Sub-issue가 있으면 함께 연결하고, 연관된 수정은 하나의 수직 슬라이스 PR로 묶어 처리합니다."
-      placeholder: |
-        - 상위 Epic / Sub-issue:
-        - 대상 도메인 및 경로:
-        - 수정 방향:
+      label: 기대한 결과 / Expected result
     validations:
       required: true
 
   - type: textarea
-    id: acceptance
+    id: actual
     attributes:
-      label: "인수 기준 및 결정론적 검증 게이트"
-      description: "수정 완료 조건과 실행할 검증 명령어를 체크리스트로 작성합니다."
-      placeholder: |
-        - [ ] 실패 재현 테스트 작성 및 수정 후 통과 확인
-        - [ ] ./back/gradlew -p back check (또는 yarn --cwd front lint && yarn --cwd front build) 통과
+      label: 실제 결과 / Actual result
+      description: 화면 캡처, HTTP 상태 코드, 오류 문구를 붙여 주세요. / Attach screenshots, HTTP status codes, or error messages.
     validations:
       required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 확인 / Checklist
+      options:
+        - label: 본문과 첨부 이미지에 실제 계좌번호, 인증 토큰/쿠키, 시크릿, 개인정보가 없습니다. / No real account numbers, auth tokens/cookies, secrets, or personal data are included.
+          required: true
+        - label: 최신 `main` 또는 최신 릴리스에서 다시 확인했습니다. / I confirmed the problem on the latest release or `main`.
+          required: true

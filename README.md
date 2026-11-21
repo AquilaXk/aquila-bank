@@ -322,7 +322,7 @@ small page response / timeout / admission control
 
 ### 5. Evidence 기반 성능 판단
 
-성능 개선 PR은 live artifact를 기준으로 판단합니다.
+성능 개선 변경은 live artifact를 기준으로 판단합니다.
 
 - OCI 또는 production-like 환경에서 실행한 run id, artifact URL, 주요 수치를 남깁니다.
 - synthetic fixture pass, mock evidence, harness-only pass는 성능 개선 증거로 보지 않습니다.
@@ -331,25 +331,24 @@ small page response / timeout / admission control
 ### 6. 개발 및 운영 워크플로우
 
 ```text
-Epic -> Sub-Issue -> 격리 브랜치(from main) -> 수직 슬라이스 PR
+격리 작업 브랜치(from main) -> 로컬 품질·계약 게이트 검증 -> main 반영
         |
         v
-GitHub Actions CI + 2중 코드리뷰(aquila-review & security-reviewer) -> main 병합
+GitHub Actions Main CI (Backend Check + Frontend Build + Hygiene Guard)
         |
         v
 staging 자동 배포 -> production 수동 승격(prod-* 태그) 및 GitHub Release 발행
 ```
 
-- 도메인 목표 단위의 Epic 아래에 Sub-Issue를 두고, 연관된 변경은 하나의 수직 슬라이스(Vertical Slice) PR로 묶어 발행합니다.
-- 모든 PR은 GitHub Actions 품질 게이트와 `aquila-review`(5대 적대적 감사 게이트 + 4-Pass 리뷰) 및 `security-reviewer`(3-Lens 보안 감사) 2중 코드리뷰를 통과하고 미해결 스레드 0건을 확인한 뒤 `main`에 병합합니다.
-- `main` 병합 커밋은 staging 환경에 자동 배포되며, 검증이 끝난 동일 SHA만 GitHub Environment 수동 승인 또는 `prod-*` 태그로 승격하고 `.github/release.yml` 기반 GitHub Release를 발행합니다.
+- 연관된 도메인·문서·테스트 변경은 격리 작업 브랜치에서 결정론적 품질 게이트를 통과한 뒤 `main`에 반영합니다.
+- `main` 반영 커밋은 staging 환경에 자동 배포되며, 검증이 끝난 동일 SHA만 GitHub Environment 수동 승인 또는 `prod-*` 태그로 승격하고 `.github/release.yml` 기반 GitHub Release를 발행합니다.
 - 미완성 기능은 장기 `develop` 브랜치 대신 feature flag로 기본 비노출 처리합니다.
 
 ## 기술 스택
 
 | 영역 | 스택 |
 | --- | --- |
-| Frontend | Next.js 14, React 18, TypeScript, Tailwind CSS, PostCSS, Lucide Icons |
+| Frontend | Next.js 14, React 18, TypeScript, Tailwind CSS, PostCSS |
 | Backend | Spring Boot 4, Java 21, Spring Security, JDBC, Flyway |
 | Data | PostgreSQL 18 |
 | Event / Async | Kafka 4.0 (KRaft), Outbox, SSE |
@@ -365,8 +364,8 @@ staging 자동 배포 -> production 수동 승격(prod-* 태그) 및 GitHub Rele
 ├── back/                   # Spring Boot 4 / Java 21 backend
 ├── infra/                  # OCI/AWS 선택형 Terraform baseline
 ├── ops/                    # Nginx, Prometheus, Grafana 운영 baseline
-├── tools/                  # test/evidence/ops helper scripts
-├── .github/                # issue/PR templates, CI/CD workflows
+├── tools/                  # test/evidence/ops/ci helper scripts
+├── .github/                # bug report form, release config, CI/CD workflows
 ├── compose.yml             # 로컬 PostgreSQL/Kafka 개발 인프라
 ├── compose.t3micro.yml     # 작은 CPU/메모리 budget 근사 overlay
 └── compose.loadtest.yml    # k6/Prometheus/Grafana 부하테스트 overlay
@@ -538,7 +537,7 @@ docker compose -f compose.yml -f compose.loadtest.yml --profile loadtest up -d
 
 | 항목 | 기준 |
 | --- | --- |
-| PR 분류 | 실측 라이브 아티팩트가 포함된 개선만 `[Perf]`로 분류하며, 테스트/스크립트 정리는 `[Test]`, `[CI]`, `[Chore]`를 사용 |
+| 변경 분류 | 실측 라이브 아티팩트가 포함된 개선만 `[Perf]`로 분류하며, 테스트/스크립트 정리는 `[Test]`, `[CI]`, `[Chore]`를 사용 |
 | 병목 근거 | 코드 hot path, DB query/index/statistics, runtime/application 설정 중 하나 |
 | 증거 | OCI 또는 production-like run id, artifact URL, 주요 수치 |
 

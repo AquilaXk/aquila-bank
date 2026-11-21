@@ -32,7 +32,7 @@ while IFS= read -r file; do
   case "${file}" in
     .env.example|back/.env.example|front/.env.example)
       ;;
-    AGENTS.md|CLAUDE.md|GEMINI.md|CURSOR.md|COPILOT.md|docs/AGENT-CONTEXT.md|docs/agent/*|.codex/*|.claude/*|.cursor/*|.aider|.aider/*|.windsurf/*|.ai/*)
+    AGENTS.md|CLAUDE.md|CLAUDE.local.md|GEMINI.md|CURSOR.md|COPILOT.md|docs/AGENT-CONTEXT.md|docs/policy-decisions.md|docs/agent/*|.agents/*|.gemini/*|.codex/*|.claude/*|.cursor/*|.aider|.aider/*|.windsurf/*|.ai/*)
       blocked_files+=("${file} (agent-local file)")
       ;;
     .env|.env.*|back/.env|back/.env.*|front/.env|front/.env.*|front/.env.local|front/.env.development.local|front/.env.test.local|front/.env.production.local|back/src/main/resources/application-local.yml|back/src/main/resources/application-local.yaml|back/src/main/resources/application-*.local.yml|back/src/main/resources/application-*.local.yaml)
@@ -65,6 +65,10 @@ if [[ "${#blocked_files[@]}" -gt 0 ]]; then
     echo "[pre-commit] 해당 파일을 unstage 하거나 .gitignore 대상만 유지하세요."
   } >&2
   exit 1
+fi
+
+if [[ -f "tools/ci/check-repo-hygiene.mjs" ]] && command -v node >/dev/null 2>&1; then
+  node tools/ci/check-repo-hygiene.mjs
 fi
 
 if [[ "${needs_backend_check}" == "true" ]]; then

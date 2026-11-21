@@ -1,28 +1,25 @@
 changelog:
+  exclude:
+    labels:
+      - duplicate
+      - invalid
+      - wontfix
+      - chore
+      - ci
   categories:
-    - title: "⛰️ Epic & Major Milestones"
+    - title: "✨ 주요 기능 (Features)"
       labels:
-        - "epic"
-    - title: "✨ Features"
+        - enhancement
+        - feature
+    - title: "🐛 결함 수정 (Bug Fixes)"
       labels:
-        - "feature"
-        - "enhancement"
-    - title: "🐛 Bug Fixes"
+        - bug
+    - title: "🔒 보안 및 안정성 (Security & Hardening)"
       labels:
-        - "bug"
-    - title: "⚡ Performance & Capacity"
+        - security
+    - title: "⚡ 성능 및 용량 검증 (Performance & Capacity)"
       labels:
-        - "performance"
-    - title: "🔒 Security & Auth"
+        - performance
+    - title: "🔧 기타 개선 (Other Changes)"
       labels:
-        - "security"
-    - title: "🔨 Refactoring & Design System"
-      labels:
-        - "refactor"
-    - title: "📚 Documentation"
-      labels:
-        - "documentation"
-    - title: "⚙️ CI & Maintenance"
-      labels:
-        - "ci"
-        - "task"
+        - "*"

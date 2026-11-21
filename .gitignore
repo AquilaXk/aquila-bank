@@ -62,10 +62,13 @@ tools/ops/production-github-environment.env
 # Agent-only local docs and state
 AGENTS.md
 CLAUDE.md
+CLAUDE.local.md
 GEMINI.md
 CURSOR.md
 COPILOT.md
 docs/
+.agents/
+.gemini/
 .codex/
 .claude/
 .cursor/

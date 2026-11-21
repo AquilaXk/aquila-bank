@@ -1,1 +1,5 @@
 blank_issues_enabled: false
+contact_links:
+  - name: 보안 문제 신고 / Report a security vulnerability
+    url: https://github.com/AquilaXk/aquila-bank/security/advisories/new
+    about: 보안 문제는 이슈로 올리지 말고 GitHub Security Advisories로 비공개 신고해 주세요. / Report vulnerabilities privately through GitHub Security Advisories, not as a public issue.
