@@ -28,7 +28,6 @@ import {
   WorkTabs,
 } from "../common";
 
-const BALANCE_BAR_COLORS = ["#0179fe", "#039855", "#4f46e5", "#d97706", "#667085"] as const;
 const TREMOR_BAR_COLORS: TremorColor[] = ["blue", "emerald", "indigo", "amber", "slate"];
 const MASKED_BALANCE = "••••••";
 
@@ -255,47 +254,6 @@ export function AccountsSection({
                 label={`${currencyCode} 계좌별 비중`}
                 values={group.accounts.map((account) => account.availableBalanceMinor)}
               />
-              <svg
-                aria-label={`${currencyCode} 계좌별 잔액 비율 막대`}
-                className="balance-ratio-svg"
-                height={12}
-                preserveAspectRatio="none"
-                role="img"
-                viewBox="0 0 1000 12"
-                width="100%"
-              >
-                {(() => {
-                  let offsetX = 0;
-                  return group.accounts.map((account, idx) => {
-                    const ratioWidth = Math.max(
-                      8,
-                      Math.round((account.availableBalanceMinor / group.totalMinor) * 1000),
-                    );
-                    const x = offsetX;
-                    offsetX = Math.min(1000, offsetX + ratioWidth);
-                    return (
-                      <rect
-                        fill={BALANCE_BAR_COLORS[idx % BALANCE_BAR_COLORS.length]}
-                        height={12}
-                        key={account.accountId}
-                        rx={2}
-                        width={Math.min(ratioWidth, 1000 - x)}
-                        x={x}
-                        y={0}
-                      >
-                        <title>
-                          {balanceMasked
-                            ? `${accountPreferencesMap?.get(account.accountId)?.customAlias || account.displayName}: ${MASKED_BALANCE}`
-                            : `${accountPreferencesMap?.get(account.accountId)?.customAlias || account.displayName}: ${formatMinorAmount(
-                                account.availableBalanceMinor,
-                                account.currencyCode,
-                              )}`}
-                        </title>
-                      </rect>
-                    );
-                  });
-                })()}
-              </svg>
               <BarList
                 data={group.accounts.map((account, idx) => ({
                   key: String(account.accountId),

@@ -82,12 +82,12 @@ Licensed under the Apache License, Version 2.0 (see [LICENSE](LICENSE)).
 
 ---
 
-## 5. shadcn Fintech Dashboard Cards & Charts (`front/src/components/oss-fintech/bank-card.tsx`, `fintech-charts.tsx`)
+## 5. shadcn/ui · shadcn-admin · Finance Dashboard Cards & Charts (`front/src/components/oss-fintech/bank-card.tsx`, `fintech-charts.tsx`, `front/src/app/globals.css`)
 
-- **Projects**: `shadcn-ui/ui` and `abderrahimghazali/shadcn-fintech`
-- **Copyright**: Copyright (c) 2023 shadcn; Copyright (c) 2026 Abderrahim Ghazali
+- **Projects**: `shadcn-ui/ui` (`dashboard-01` & `cards`), `satnaing/shadcn-admin`, `arhamkhnz/next-shadcn-admin-dashboard` (`finance`), `abderrahimghazali/shadcn-fintech`
+- **Copyright**: Copyright (c) 2023 shadcn; Copyright (c) 2024 Sat Naing; Copyright (c) 2025 Arham Khan; Copyright (c) 2026 Abderrahim Ghazali
 - **License**: MIT License (`SPDX-License-Identifier: MIT`)
-- **Sources**: https://github.com/shadcn-ui/ui, https://github.com/abderrahimghazali/shadcn-fintech
+- **Sources**: https://github.com/shadcn-ui/ui, https://github.com/satnaing/shadcn-admin, https://github.com/arhamkhnz/next-shadcn-admin-dashboard, https://github.com/abderrahimghazali/shadcn-fintech
 
 ```text
 Permission is hereby granted, free of charge, to any person obtaining a copy

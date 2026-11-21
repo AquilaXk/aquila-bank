@@ -37,8 +37,6 @@ export const recommendedKeywords = [
   "인증서",
   "OTP",
   "이체한도",
-  "예약이체",
-  "저축포켓",
   "공과금",
   "외환",
 ];

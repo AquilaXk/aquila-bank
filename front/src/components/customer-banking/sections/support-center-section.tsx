@@ -16,7 +16,6 @@ import type {
 } from "@/lib/customer-banking/types";
 import { BankCurrencyInput, BankNoticeStrip, CopyButton, OtpCodeInput } from "../common";
 import { SlidersHorizontalIcon } from "../../oss-fintech/icons";
-import { CategoryBar } from "../../oss-fintech/tremor-primitives";
 
 const faqItems = [
   {
@@ -520,14 +519,6 @@ export function SupportCenterSection({
               <span>1회 최대 50만원 · 1일 최대 200만원</span>
             </div>
           </div>
-          <CategoryBar
-            colors={["blue", "slate"]}
-            label="요청 1일 이체한도 비중"
-            values={[
-              Math.min(200_000_000, Math.max(0, tryKrwToMinor(limitForm.dailyLimitKrw) ?? 0)),
-              Math.max(0, 200_000_000 - (tryKrwToMinor(limitForm.dailyLimitKrw) ?? 0)),
-            ]}
-          />
           <div className="form-grid">
             {accounts.length > 0 ? (
               <label>

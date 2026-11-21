@@ -9,17 +9,17 @@ import {
   favoriteServiceItems,
   serviceHourItems,
 } from "@/lib/customer-banking/constants";
-import { formatDateTime, formatMinorAmount } from "@/lib/customer-banking/format";
-import { getDirectionLabel } from "@/lib/customer-banking/labels";
+import { formatMinorAmount } from "@/lib/customer-banking/format";
 import type { MenuSection } from "@/lib/customer-banking/types";
 import { GuestLockedBankCard, HorizonBankCard } from "../../oss-fintech/bank-card";
-import { HorizonCategoryBadge } from "../../oss-fintech/category-badge";
 import {
   CategorySpendingDonut,
   MoneyMovementChart,
+  OverviewKpiStrip,
   PortfolioDonutBox,
+  RecentTransactionsFeed,
 } from "../../oss-fintech/fintech-charts";
-import { ArrowDownLeftIcon, ArrowUpRightIcon, LockIcon, MenuSectionIcon } from "../../oss-fintech/icons";
+import { LockIcon, MenuSectionIcon } from "../../oss-fintech/icons";
 import { BankNoticeStrip, WorkTabs } from "../common";
 
 const MASKED_AMOUNT_TEXT = "••••••";
@@ -219,17 +219,30 @@ export function DashboardSection({
           { label: "인증", value: "인증서 관리" },
         ]}
       />
+
+      {hasSession ? (
+        <OverviewKpiStrip
+          accountCount={memberAccounts.length}
+          activeSchedulesCount={activeSchedulesCount}
+          balanceMasked={balanceMasked}
+          currencyEntries={currencyEntries}
+          primaryCurrency={dashboardCurrencyCode}
+          totalInflowMinor={totalInflowMinor}
+          totalOutflowMinor={totalOutflowMinor}
+          transactionCount={transactions.length}
+        />
+      ) : null}
+
       <div className="oss-hero-grid" aria-label="개인 자산 요약">
         {hasSession ? (
-          <PortfolioDonutBox
-            accounts={memberAccounts.map((acc) => ({
-              ...acc,
-              displayName:
-                accountPreferencesMap?.get(acc.accountId)?.customAlias || acc.displayName,
-            }))}
-            activeSchedulesCount={activeSchedulesCount}
+          <MoneyMovementChart
             balanceMasked={balanceMasked}
-            currencyEntries={currencyEntries}
+            currencyCode={dashboardCurrencyCode}
+            flowBars={flowBars}
+            inflowMinor={totalInflowMinor}
+            onViewAll={() => onMove("transactions")}
+            outflowMinor={totalOutflowMinor}
+            transactionCount={transactions.length}
           />
         ) : (
           <section className="oss-donut-box">
@@ -297,67 +310,34 @@ export function DashboardSection({
       </div>
 
       {hasSession ? (
-        <div className="two-column" aria-label="개인 자산 및 입출금 요약">
-          <MoneyMovementChart
+        <div className="oss-hero-grid" aria-label="개인 자산 및 입출금 요약">
+          <RecentTransactionsFeed
+            annotationsMap={annotationsMap}
             balanceMasked={balanceMasked}
-            currencyCode={dashboardCurrencyCode}
-            flowBars={flowBars}
-            inflowMinor={totalInflowMinor}
+            items={recentFiveTransactions}
+            onSelect={() => onMove("transactions")}
             onViewAll={() => onMove("transactions")}
-            outflowMinor={totalOutflowMinor}
-            transactionCount={transactions.length}
           />
-          <section className="dashboard-cashflow-card">
-            <div className="form-heading">
-              <strong>최근 거래 요약</strong>
-              <button onClick={() => onMove("transactions")} type="button">
-                전체보기
-              </button>
-            </div>
+          <div className="oss-side-analytics-stack">
+            <PortfolioDonutBox
+              accounts={memberAccounts.map((acc) => ({
+                ...acc,
+                displayName:
+                  accountPreferencesMap?.get(acc.accountId)?.customAlias || acc.displayName,
+              }))}
+              activeSchedulesCount={activeSchedulesCount}
+              balanceMasked={balanceMasked}
+              currencyEntries={currencyEntries}
+            />
             <CategorySpendingDonut
               balanceMasked={balanceMasked}
               categories={categorySummaries}
               currencyCode={dashboardCurrencyCode}
             />
-            {recentFiveTransactions.length === 0 ? (
-              <p className="field-note">최근 조회된 거래가 없습니다.</p>
-            ) : (
-              <ul className="bank-news-list">
-                {recentFiveTransactions.map((tx) => {
-                  const txCategory = annotationsMap?.get(tx.transactionReference)?.category;
-                  return (
-                    <li key={tx.transactionReference}>
-                      <button onClick={() => onMove("transactions")} type="button">
-                        <span className="oss-inline-icon">
-                          {tx.direction === "CREDIT" ? (
-                            <ArrowDownLeftIcon size={14} />
-                          ) : (
-                            <ArrowUpRightIcon size={14} />
-                          )}
-                          <span>
-                            {formatDateTime(tx.bookedAt)} ·{" "}
-                            {tx.counterpartyMaskedName ||
-                              tx.summary ||
-                              getDirectionLabel(tx.direction)}
-                          </span>
-                        </span>
-                        <span className="oss-inline-icon">
-                          {txCategory ? <HorizonCategoryBadge category={txCategory} /> : null}
-                          <strong className="tabular-nums font-mono">
-                            {balanceMasked
-                              ? MASKED_AMOUNT_TEXT
-                              : formatMinorAmount(tx.amountMinor, tx.currencyCode)}
-                          </strong>
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </section>
+          </div>
         </div>
       ) : null}
+
       <div className="bank-home-grid">
         <section className="table-panel bank-home-panel">
           <div className="panel-toolbar">
